@@ -1,5 +1,13 @@
 # applesauce-core
 
+## 0.7.0
+
+### Minor Changes
+
+- 7673403: Add `size` to database
+- d11fbe8: export `LRU` helper class
+- b96717c: Add `getValue` observable helper
+
 ## 0.6.0
 
 ### Minor Changes

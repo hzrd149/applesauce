@@ -1,6 +1,6 @@
 {
   "name": "applesauce-lists",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A collection of tools for working with NIP-51 lists",
   "type": "module",
   "main": "dist/index.js",
@@ -46,7 +46,7 @@
     "@noble/secp256k1": "^1.7.1",
     "@scure/base": "^1.1.9",
     "@types/dom-serial": "^1.0.6",
-    "applesauce-core": "^0.6.0",
+    "applesauce-core": "^0.7.0",
     "debug": "^4.3.7",
     "nostr-tools": "^2.7.2"
   },

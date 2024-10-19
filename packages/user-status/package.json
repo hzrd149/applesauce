@@ -1,6 +1,6 @@
 {
   "name": "applesauce-user-status",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -34,7 +34,7 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^0.6.0",
+    "applesauce-core": "^0.7.0",
     "nostr-tools": "^2.7.2"
   },
   "devDependencies": {
