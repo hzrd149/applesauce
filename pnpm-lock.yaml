@@ -28,7 +28,7 @@ importers:
   packages/channel:
     dependencies:
       applesauce-core:
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../core
       nostr-tools:
         specifier: ^2.7.2
@@ -62,7 +62,7 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       applesauce-core:
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../core
       linkifyjs:
         specifier: ^4.1.3
@@ -157,7 +157,7 @@ importers:
         specifier: ^1.0.6
         version: 1.0.6
       applesauce-core:
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../core
       debug:
         specifier: ^4.3.7
@@ -185,10 +185,10 @@ importers:
   packages/react:
     dependencies:
       applesauce-content:
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../content
       applesauce-core:
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../core
       nostr-tools:
         specifier: ^2.7.2
@@ -234,7 +234,7 @@ importers:
         specifier: ^1.0.6
         version: 1.0.6
       applesauce-core:
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../core
       debug:
         specifier: ^4.3.7
@@ -262,7 +262,7 @@ importers:
   packages/user-status:
     dependencies:
       applesauce-core:
-        specifier: ^0.6.0
+        specifier: ^0.7.0
         version: link:../core
       nostr-tools:
         specifier: ^2.7.2
