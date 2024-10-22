@@ -185,7 +185,7 @@ importers:
   packages/react:
     dependencies:
       applesauce-content:
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../content
       applesauce-core:
         specifier: ^0.7.0
