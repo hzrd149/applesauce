@@ -1,5 +1,16 @@
 # applesauce-react
 
+## 0.8.0
+
+### Minor Changes
+
+- fcde36a: Cleanup exports
+
+### Patch Changes
+
+- Updated dependencies [fcde36a]
+  - applesauce-content@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes

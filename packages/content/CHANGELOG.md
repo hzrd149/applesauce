@@ -1,5 +1,11 @@
 # applesauce-content
 
+## 0.8.0
+
+### Minor Changes
+
+- fcde36a: Cleanup root exports
+
 ## 0.7.0
 
 ### Minor Changes
