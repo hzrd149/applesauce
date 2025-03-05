@@ -1,5 +1,11 @@
 # applesauce-factory
 
+## 0.11.1
+
+### Patch Changes
+
+- bf53581: Add a few more tests
+
 ## 0.11.0
 
 ### Minor Changes
