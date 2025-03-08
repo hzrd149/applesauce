@@ -1,5 +1,14 @@
 # applesauce-core
 
+## 0.12.0
+
+### Minor Changes
+
+- 06263df: Rename `Database.getForFilters` to `Database.getEventsForFilters`
+- 06263df: Add `blossomServers` method to the `QueryStore`
+- f92f10c: Add `normalizeToPubkey` and `normalizeToSecretKey` NIP-19 helpers
+- 06263df: Add `EventStore.getTimeline` method
+
 ## 0.11.0
 
 ### Minor Changes
