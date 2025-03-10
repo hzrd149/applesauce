@@ -1,5 +1,21 @@
 # applesauce-factory
 
+## 0.12.0
+
+### Patch Changes
+
+- bf53581: Add a few more tests
+- Updated dependencies [e176601]
+- Updated dependencies [06263df]
+- Updated dependencies [91621b5]
+- Updated dependencies [91621b5]
+- Updated dependencies [06263df]
+- Updated dependencies [91621b5]
+- Updated dependencies [f92f10c]
+- Updated dependencies [06263df]
+  - applesauce-core@0.12.0
+  - applesauce-content@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

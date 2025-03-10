@@ -1,5 +1,18 @@
 # applesauce-core
 
+## 0.12.0
+
+### Minor Changes
+
+- e176601: Update `unlockHiddenTags` to return tags array
+- 06263df: Rename `Database.getForFilters` to `Database.getEventsForFilters`
+- 91621b5: Add gift-wrap helper methods
+- 91621b5: Add direct message helper methods
+- 06263df: Add `blossomServers` method to the `QueryStore`
+- 91621b5: Add hidden content helper methods
+- f92f10c: Add `normalizeToPubkey` and `normalizeToSecretKey` NIP-19 helpers
+- 06263df: Add `EventStore.getTimeline` method
+
 ## 0.11.0
 
 ### Minor Changes
