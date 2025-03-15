@@ -1,5 +1,31 @@
 # applesauce-factory
 
+## 0.12.0
+
+### Minor Changes
+
+- 685b2ae: Add `FollowSetBlueprint`
+- dcda34e: Preserve unencrypted hidden content when building and signing an event
+- 75d7254: Add `EventFactory.sign` method for signing events
+
+### Patch Changes
+
+- bf53581: Add a few more tests
+- Updated dependencies [6882991]
+- Updated dependencies [e176601]
+- Updated dependencies [06263df]
+- Updated dependencies [5e95ed5]
+- Updated dependencies [91621b5]
+- Updated dependencies [3780d5e]
+- Updated dependencies [91621b5]
+- Updated dependencies [06263df]
+- Updated dependencies [91621b5]
+- Updated dependencies [0c6251d]
+- Updated dependencies [f92f10c]
+- Updated dependencies [06263df]
+  - applesauce-core@0.12.0
+  - applesauce-content@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes
