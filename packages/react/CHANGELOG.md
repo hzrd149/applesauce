@@ -1,5 +1,41 @@
 # applesauce-react
 
+## 0.12.0
+
+### Minor Changes
+
+- dcda34e: Add actions providers and hooks
+
+### Patch Changes
+
+- Updated dependencies [685b2ae]
+- Updated dependencies [37fdfd8]
+- Updated dependencies [6882991]
+- Updated dependencies [e176601]
+- Updated dependencies [75d7254]
+- Updated dependencies [bb6f775]
+- Updated dependencies [6bd2607]
+- Updated dependencies [06263df]
+- Updated dependencies [5e95ed5]
+- Updated dependencies [685b2ae]
+- Updated dependencies [91621b5]
+- Updated dependencies [3780d5e]
+- Updated dependencies [dcda34e]
+- Updated dependencies [91621b5]
+- Updated dependencies [06263df]
+- Updated dependencies [91621b5]
+- Updated dependencies [75d7254]
+- Updated dependencies [0c6251d]
+- Updated dependencies [bf53581]
+- Updated dependencies [f92f10c]
+- Updated dependencies [06263df]
+- Updated dependencies [bb6f775]
+  - applesauce-actions@0.12.0
+  - applesauce-core@0.12.0
+  - applesauce-accounts@0.12.0
+  - applesauce-factory@0.12.0
+  - applesauce-content@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

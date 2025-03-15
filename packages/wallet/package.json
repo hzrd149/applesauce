@@ -1,6 +1,6 @@
 {
   "name": "applesauce-wallet",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -86,16 +86,16 @@
     "@cashu/cashu-ts": "2.0.0-rc1",
     "@gandlaf21/bc-ur": "^1.1.12",
     "@noble/hashes": "^1.7.1",
-    "applesauce-actions": "^0.11.0",
-    "applesauce-core": "^0.11.0",
-    "applesauce-factory": "^0.11.0",
+    "applesauce-actions": "^0.12.0",
+    "applesauce-core": "^0.12.0",
+    "applesauce-factory": "^0.12.0",
     "nostr-tools": "^2.10.4",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/debug": "^4.1.12",
-    "applesauce-signers": "^0.11.0",
+    "applesauce-signers": "^0.12.0",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   },

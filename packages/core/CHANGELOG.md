@@ -1,5 +1,25 @@
 # applesauce-core
 
+## 0.12.0
+
+### Minor Changes
+
+- 6882991: Add generic interface for `EventStore`
+- e176601: Update `unlockHiddenTags` to return tags array
+- 06263df: Rename `Database.getForFilters` to `Database.getEventsForFilters`
+- 91621b5: Add gift-wrap helper methods
+- 3780d5e: Add `setEventContentEncryptionMethod` method
+- 91621b5: Add direct message helper methods
+- 06263df: Add `blossomServers` method to the `QueryStore`
+- 91621b5: Add hidden content helper methods
+- 0c6251d: Tag events that are added to an `EventStore` with `EventStoreSymbol` symbol
+- f92f10c: Add `normalizeToPubkey` and `normalizeToSecretKey` NIP-19 helpers
+- 06263df: Add `EventStore.getTimeline` method
+
+### Patch Changes
+
+- 5e95ed5: Fix bug with EventStore.getAll not handling single filter
+
 ## 0.11.0
 
 ### Minor Changes

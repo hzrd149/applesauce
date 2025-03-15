@@ -1,6 +1,6 @@
 {
   "name": "applesauce-factory",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -79,8 +79,8 @@
     }
   },
   "dependencies": {
-    "applesauce-content": "^0.11.0",
-    "applesauce-core": "^0.11.0",
+    "applesauce-content": "^0.12.0",
+    "applesauce-core": "^0.12.0",
     "nanoid": "^5.0.9",
     "nostr-tools": "^2.10.4"
   },
@@ -88,7 +88,7 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.1",
     "@vitest/coverage-v8": "2.1.8",
-    "applesauce-signers": "^0.11.0",
+    "applesauce-signers": "^0.12.0",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   },
