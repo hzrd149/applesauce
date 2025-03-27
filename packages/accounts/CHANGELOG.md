@@ -1,5 +1,20 @@
 # applesauce-accounts
 
+## 1.0.0
+
+### Major Changes
+
+- 40debfd: Update nostr connect signer to use observable like interface
+
+### Minor Changes
+
+- d8dc5c2: Export `ProxySigner` class
+
+### Patch Changes
+
+- Updated dependencies [40debfd]
+  - applesauce-signers@1.0.0
+
 ## 0.12.0
 
 ### Minor Changes

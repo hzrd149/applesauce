@@ -1,5 +1,12 @@
 # applesauce-relay
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [d8dc5c2]
+  - applesauce-core@1.0.0
+
 ## 0.12.0
 
 ### Patch Changes
