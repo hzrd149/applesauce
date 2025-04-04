@@ -1,5 +1,24 @@
 # applesauce-react
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [0bf55cb]
+- Updated dependencies [d8dc5c2]
+- Updated dependencies [3de9928]
+- Updated dependencies [40debfd]
+- Updated dependencies [c92982d]
+- Updated dependencies [3de9928]
+- Updated dependencies [4e0943d]
+- Updated dependencies [d8dc5c2]
+- Updated dependencies [d8dc5c2]
+  - applesauce-actions@0.13.0
+  - applesauce-core@1.0.0
+  - applesauce-accounts@1.0.0
+  - applesauce-factory@1.0.0
+  - applesauce-content@1.0.0
+
 ## 0.12.0
 
 ### Minor Changes
