@@ -1,5 +1,16 @@
 # applesauce-signer
 
+## 1.0.0
+
+### Major Changes
+
+- 40debfd: Update nostr connect signer to use observable like interface
+
+### Patch Changes
+
+- Updated dependencies [d8dc5c2]
+  - applesauce-core@1.0.0
+
 ## 0.12.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # applesauce-loaders
 
+## 1.0.0
+
+### Major Changes
+
+- 49bd6c1: Remove dependency on rx-nostr
+
+### Patch Changes
+
+- Updated dependencies [d8dc5c2]
+  - applesauce-core@1.0.0
+
 ## 0.12.0
 
 ### Minor Changes
