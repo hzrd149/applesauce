@@ -43,7 +43,7 @@ importers:
         specifier: ^1.7.1
         version: 1.7.1
       applesauce-signers:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../signers
       nanoid:
         specifier: ^5.1.5
@@ -65,10 +65,10 @@ importers:
   packages/actions:
     dependencies:
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       applesauce-factory:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../factory
       nostr-tools:
         specifier: ^2.10.4
@@ -84,7 +84,7 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12
       applesauce-signers:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../signers
       nanoid:
         specifier: ^5.1.5
@@ -111,7 +111,7 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       mdast-util-find-and-replace:
         specifier: ^3.0.2
@@ -200,10 +200,10 @@ importers:
         specifier: ^1.7.1
         version: 1.7.1
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       applesauce-factory:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../factory
       nostr-tools:
         specifier: ^2.10.4
@@ -219,10 +219,10 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12
       applesauce-relay:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../relay
       applesauce-signers:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../signers
       typescript:
         specifier: ^5.8.3
@@ -246,16 +246,16 @@ importers:
         specifier: ^6.4.4
         version: 6.4.4(@emotion/react@11.14.0(@types/react@18.3.18)(react@18.3.1))(@emotion/styled@11.14.0(@emotion/react@11.14.0(@types/react@18.3.18)(react@18.3.1))(@types/react@18.3.18)(react@18.3.1))(@types/react@18.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       applesauce-factory:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../factory
       applesauce-loaders:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../loaders
       applesauce-react:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../react
       nostr-tools:
         specifier: ^2.10.4
@@ -298,10 +298,10 @@ importers:
   packages/factory:
     dependencies:
       applesauce-content:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../content
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -320,7 +320,7 @@ importers:
         specifier: 2.1.8
         version: 2.1.8(@vitest/browser@3.1.1)(vitest@3.1.1(@types/debug@4.1.12)(@types/node@22.13.1)(@vitest/browser@3.1.1)(msw@2.7.3(@types/node@22.13.1)(typescript@5.8.3))(yaml@2.7.1))
       applesauce-signers:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../signers
       typescript:
         specifier: ^5.8.3
@@ -332,7 +332,7 @@ importers:
   packages/loaders:
     dependencies:
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -360,19 +360,19 @@ importers:
   packages/react:
     dependencies:
       applesauce-accounts:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../accounts
       applesauce-actions:
-        specifier: ^0.12.0
+        specifier: ^0.13.0
         version: link:../actions
       applesauce-content:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../content
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       applesauce-factory:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../factory
       nostr-tools:
         specifier: ^2.10.4
@@ -403,7 +403,7 @@ importers:
         specifier: ^1.7.1
         version: 1.7.1
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -443,7 +443,7 @@ importers:
         specifier: ^1.2.4
         version: 1.2.4
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       debug:
         specifier: ^4.4.0
@@ -471,7 +471,7 @@ importers:
   packages/solidjs:
     dependencies:
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       solid-js:
         specifier: ^1.9.5
@@ -496,13 +496,13 @@ importers:
         specifier: ^1.7.1
         version: 1.7.1
       applesauce-actions:
-        specifier: ^0.12.0
+        specifier: ^0.13.0
         version: link:../actions
       applesauce-core:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../core
       applesauce-factory:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../factory
       nostr-tools:
         specifier: ^2.10.4
@@ -518,7 +518,7 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12
       applesauce-signers:
-        specifier: ^0.12.0
+        specifier: ^1.0.0
         version: link:../signers
       typescript:
         specifier: ^5.8.3
