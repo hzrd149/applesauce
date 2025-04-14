@@ -1,5 +1,15 @@
 # applesauce-core
 
+## 1.0.0
+
+### Minor Changes
+
+- e548779: Add `type` field to comment pointers
+
+### Patch Changes
+
+- d8dc5c2: Break IEventStore interface into two parts
+
 ## 0.12.1
 
 ### Patch Changes
