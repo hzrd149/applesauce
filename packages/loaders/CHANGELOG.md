@@ -1,5 +1,13 @@
 # applesauce-loaders
 
+## 1.3.0
+
+### Patch Changes
+
+- aec8278: Fix `UserSetsLoader` making requests with no filters
+- Updated dependencies
+  - applesauce-core@1.3.0
+
 ## 1.0.0
 
 ### Major Changes

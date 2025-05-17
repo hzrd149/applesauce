@@ -1,5 +1,17 @@
 # applesauce-signer
 
+## 1.3.0
+
+### Minor Changes
+
+- c290264: Allow an `AbortSignal` to be passed into `NostrConnectSigner.waitForSigner`
+
+### Patch Changes
+
+- 29d5350: Make `NostrConnectSigner.close` cancel `.waitForSigner()` promise
+- Updated dependencies
+  - applesauce-core@1.3.0
+
 ## 1.2.0
 
 ### Patch Changes
