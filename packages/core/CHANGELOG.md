@@ -1,5 +1,17 @@
 # applesauce-core
 
+## 1.3.0
+
+### Minor Changes
+
+- 85090f7: Allow `getDisplayName` to take kind 0 profile event and use NIP-19 npub as fallback
+- a1919cd: Add `mapEventsToTimeline` operator
+- d52d39a: Add `mapEventsToStore` operator
+
+### Patch Changes
+
+- 60e7ec8: Fix `CommentsQuery` not returning comments for newer versions of replaceable events
+
 ## 1.2.0
 
 ### Minor Changes

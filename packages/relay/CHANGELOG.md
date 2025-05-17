@@ -1,5 +1,13 @@
 # applesauce-relay
 
+## 1.3.0
+
+### Patch Changes
+
+- d52d39a: Fix `toEventStore` not removing duplicate events
+- Updated dependencies
+  - applesauce-core@1.3.0
+
 ## 1.2.0
 
 ### Minor Changes
