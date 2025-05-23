@@ -1,0 +1,21 @@
+{
+  "relays": [
+    "wss://nos.lol",
+    "wss://nostrue.com",
+    "wss://relay.damus.io",
+    "wss://relay.primal.net"
+  ],
+  "servers": [
+    "https://nostr.download",
+    "https://cdn.hzrd149.com",
+    "https://blossom.primal.net"
+  ],
+  "profile": {
+    "name": "applesauce",
+    "display_name": "applesauce",
+    "about": "Applesauce library documentation"
+  },
+  "publishProfile": false,
+  "publishRelayList": true,
+  "publishServerList": true
+}
