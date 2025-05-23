@@ -1,5 +1,16 @@
 # applesauce-accounts
 
+## 2.0.0
+
+### Minor Changes
+
+- 324b960: Bump `nostr-tools` to 2.13
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-signers@2.0.0
+
 ## 1.0.0
 
 ### Major Changes

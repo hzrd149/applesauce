@@ -1,5 +1,38 @@
 # applesauce-core
 
+## 2.0.0
+
+### Major Changes
+
+- 856d6f9: Update `EventStore.update` to return `boolean` if event was updated
+- 324b960: Removed `getPointerFromTag` method
+- 856d6f9: Return `null` from `EventStore.add` when event is ignored by `verifyEvent`
+
+### Minor Changes
+
+- 225f619: Added `groupMessageEvents` helper
+- e0e455a: Add `getReactionEventPointer` and `getReactionAddressPointer` helper methods
+- e0e455a: Add `getSharedEventPointer` and `getSharedAddressPointer` helper
+- 9b165a0: Add `ensureWebSocketURL` helper
+- 0b74762: Support NIP-89 handler information in `getProfileContent`
+- abaa340: Add report event helpers
+- 324b960: Bump `nostr-tools` to 2.13
+- e0e455a: Renamed `parseSharedEvent` to `getEmbededSharedEvent`
+- e0e455a: Add `addRelayHintsToPointer` helper
+- 85090f7: Allow `getDisplayName` to take kind 0 profile event and use NIP-19 npub as fallback
+- 0b74762: Add NIP-89 application handler helpers
+- a1919cd: Add `mapEventsToTimeline` operator
+- d52d39a: Add `mapEventsToStore` operator
+- 7c221e2: Add `getProfilePicture` helper method
+- e0e455a: Add `getReactionEmoji` helper
+
+### Patch Changes
+
+- 0213ce5: Fix `GroupPointer.relay` missing protocol
+- 8c789b2: Fix hashtags regexp matching hash in URL if it came after a `/`
+- d505c5f: Use `\b` in token RegExp instead of `\s`
+- 60e7ec8: Fix `CommentsQuery` not returning comments for newer versions of replaceable events
+
 ## 1.2.0
 
 ### Minor Changes

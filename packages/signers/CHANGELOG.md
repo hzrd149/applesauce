@@ -1,5 +1,20 @@
 # applesauce-signer
 
+## 2.0.0
+
+### Minor Changes
+
+- c1f8f28: Allow `NostrConnectSigner.subscriptionMethod` to return `Observable<NostrEvent|string>` for better compatabilitiy with `applesauce-relay`
+- c1f8f28: Allow `NostrConnectSigner.publishMethod` to return an `Observable<any>` for better compatabilitiy with `applesauce-relay`
+- 324b960: Bump `nostr-tools` to 2.13
+- c290264: Allow an `AbortSignal` to be passed into `NostrConnectSigner.waitForSigner`
+
+### Patch Changes
+
+- 29d5350: Make `NostrConnectSigner.close` cancel `.waitForSigner()` promise
+- Updated dependencies
+  - applesauce-core@2.0.0
+
 ## 1.2.0
 
 ### Patch Changes

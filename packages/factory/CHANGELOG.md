@@ -1,5 +1,19 @@
 # applesauce-factory
 
+## 2.0.0
+
+### Minor Changes
+
+- 9b165a0: Update `includeGroupHTag` event operation to include relay hint
+- 324b960: Bump `nostr-tools` to 2.13
+- 9b165a0: Add `createGroupHTagFromGroupPointer` helper
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@2.0.0
+  - applesauce-content@2.0.0
+
 ## 1.2.0
 
 ### Patch Changes

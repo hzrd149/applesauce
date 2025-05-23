@@ -1,5 +1,30 @@
 # applesauce-loaders
 
+## 2.0.0
+
+### Major Changes
+
+- 9b165a0: Export loaders under `Loaders` namespace from root `import { Loaders } from "applesauce-loaders"`
+- 8384565: Remove `CacheTimelineLoader` class
+- 8384565: Remove `RelayTimelineLoader` class
+- 8384565: Remove `ReplaceableLoader` class
+- 7535052: Remove `UserSetsLoader` class
+- 8384565: Remove `TimelineLoader` class
+- e0e455a: Remove `SingleEventLoader` class
+
+### Minor Changes
+
+- 8384565: Add `timelineLoader` loader method
+- 7535052: Add `userListsLoader` loader
+- a1e5652: Add `createAddressLoader` method to create a pre-built address loader
+- 324b960: Bump `nostr-tools` to 2.13
+
+### Patch Changes
+
+- aec8278: Fix `UserSetsLoader` making requests with no filters
+- Updated dependencies
+  - applesauce-core@2.0.0
+
 ## 1.0.0
 
 ### Major Changes
