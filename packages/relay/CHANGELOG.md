@@ -1,5 +1,18 @@
 # applesauce-relay
 
+## 2.0.0
+
+### Minor Changes
+
+- 324b960: Bump `nostr-tools` to 2.13
+
+### Patch Changes
+
+- f8d833e: Fix bug with NIP-11 `auth_required` preventing connection
+- d52d39a: Fix `toEventStore` not removing duplicate events
+- Updated dependencies
+  - applesauce-core@2.0.0
+
 ## 1.2.0
 
 ### Minor Changes

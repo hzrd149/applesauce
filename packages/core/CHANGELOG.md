@@ -1,5 +1,53 @@
 # applesauce-core
 
+## 2.0.0
+
+### Major Changes
+
+- 8fa9742: Don't pass `queryStore` argument `Query` methods
+- 856d6f9: Update `EventStore.update` to return `boolean` if event was updated
+- 471d3c7: Remove `HiddenContentEvent` type
+- 324b960: Remove `getPointerFromTag` method
+- 856d6f9: Return `null` from `EventStore.add` when event is ignored by `verifyEvent`
+- 0e4e076: Rename `setEventContentEncryptionMethod` to `setEncryptedContentEncryptionMethod`
+
+### Minor Changes
+
+- 225f619: Add `groupMessageEvents` helper
+- 0e4e076: Add `setHiddenTagsEncryptionMethod` method for setting or enabling hidden tags on event kind
+- e0e455a: Add `getReactionEventPointer` and `getReactionAddressPointer` helper methods
+- 3bbf7ad: Add `watchEventsUpdates` operator for listening to updates on arrays of events
+- e0e455a: Add `getSharedEventPointer` and `getSharedAddressPointer` helper
+- 0e4e076: Add `HiddenTagsKinds` set for manage kinds that can have hidden tags
+- 62488e0: Add NIP-40 `getExpirationTimestamp` and `isExpired` helpers
+- 0e4e076: Add `HiddenTagsKinds` set for manage kinds that can have hidden content
+- 9b165a0: Add `ensureWebSocketURL` helper
+- 0b74762: Support NIP-89 handler information in `getProfileContent`
+- abaa340: Add report event helpers
+- 62488e0: Add NIP-70 `isProtectedEvent` helper
+- 324b960: Bump `nostr-tools` to 2.13
+- a1578f2: Add NIP-23 article helpers
+- 0e4e076: Add `lockGiftWrap` method for clearing gift warp cache
+- 0e4e076: Add `setHiddenContentEncryptionMethod` to set or enable hidden content on event kinds
+- 3bbf7ad: Add `GiftWrapQuery` with pubkey and optional locked filter
+- e0e455a: Rename `parseSharedEvent` to `getEmbededSharedEvent`
+- e0e455a: Add `addRelayHintsToPointer` helper
+- 85090f7: Allow `getDisplayName` to take kind 0 profile event and use NIP-19 npub as fallback
+- 0b74762: Add NIP-89 application handler helpers
+- a1919cd: Add `mapEventsToTimeline` operator
+- d52d39a: Add `mapEventsToStore` operator
+- 7c221e2: Add `getProfilePicture` helper method
+- e0e455a: Add `getReactionEmoji` helper
+
+### Patch Changes
+
+- 0e4e076: Fix `getHiddenTags` trying to parse non-list event kinds
+- 0213ce5: Fix `GroupPointer.relay` missing protocol
+- 0e4e076: Fix `unlockGiftWrap` decrypting the content with owners pubkey
+- 8c789b2: Fix hashtags regexp matching hash in URL if it came after a `/`
+- d505c5f: Use `\b` in token RegExp instead of `\s`
+- 60e7ec8: Fix `CommentsQuery` not returning comments for newer versions of replaceable events
+
 ## 1.2.0
 
 ### Minor Changes

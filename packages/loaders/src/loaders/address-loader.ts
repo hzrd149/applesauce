@@ -4,22 +4,10 @@ import {
   getReplaceableAddress,
   getReplaceableIdentifier,
   isReplaceable,
-  mergeRelaySets
+  mergeRelaySets,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
-import {
-  bufferTime,
-  catchError,
-  EMPTY,
-  filter,
-  isObservable,
-  map,
-  Observable,
-  of,
-  pipe,
-  switchMap,
-  take
-} from "rxjs";
+import { bufferTime, catchError, EMPTY, filter, isObservable, map, Observable, of, pipe, switchMap, take } from "rxjs";
 
 import {
   consolidateAddressPointers,
@@ -49,7 +37,7 @@ export function cacheAddressPointersLoader(request: CacheRequest): AddressPointe
           // Ignore pointers that want to skip cache
           .filter((p) => p.force !== true),
       ),
-    )
+    );
 }
 
 /** Loads address pointers from the relay hints */
