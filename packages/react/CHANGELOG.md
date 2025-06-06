@@ -1,5 +1,25 @@
 # applesauce-react
 
+## 2.0.0
+
+### Major Changes
+
+- 1d28426: Rename `useStoreQuery` to `useEventModel`
+- 1d28426: Remove query store provider and context
+
+### Minor Changes
+
+- 324b960: Bump `nostr-tools` to 2.13
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@2.0.0
+  - applesauce-factory@2.0.0
+  - applesauce-accounts@2.0.0
+  - applesauce-actions@2.0.0
+  - applesauce-content@2.0.0
+
 ## 1.0.0
 
 ### Patch Changes

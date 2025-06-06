@@ -1,5 +1,22 @@
 # applesauce-wallet
 
+## 2.0.0
+
+### Major Changes
+
+- 1d28426: Rename "Queries" to "Models"
+
+### Minor Changes
+
+- 324b960: Bump `nostr-tools` to 2.13
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@2.0.0
+  - applesauce-factory@2.0.0
+  - applesauce-actions@2.0.0
+
 ## 1.0.0
 
 ### Patch Changes
