@@ -18,7 +18,13 @@ import {
 } from "rxjs";
 
 import { Model } from "../event-store/interface.js";
-import { createReplaceableAddress, getEventUID, getReplaceableIdentifier, isReplaceable, matchFilters } from "../helpers/index.js";
+import {
+  createReplaceableAddress,
+  getEventUID,
+  getReplaceableIdentifier,
+  isReplaceable,
+  matchFilters,
+} from "../helpers/index.js";
 import { claimEvents } from "../observable/claim-events.js";
 import { claimLatest } from "../observable/claim-latest.js";
 import { insertEventIntoDescendingList } from "nostr-tools/utils";
@@ -241,5 +247,5 @@ export function ReplaceableSetModel(
       // ignore changes that do not modify the directory
       distinctUntilChanged(),
     );
-  }
+  };
 }

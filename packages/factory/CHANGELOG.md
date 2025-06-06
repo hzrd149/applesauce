@@ -1,5 +1,37 @@
 # applesauce-factory
 
+## 2.0.0
+
+### Major Changes
+
+- 58d9c24: Replace `createMetaTagOperations` with `setMetaTags` event operation
+- 58d9c24: Replace `createZapSplitOperations` with `setZapSplit` event operation
+- 58d9c24: Replace `createTextContentOperations` with `setShortTextContent` event operation
+- de32a5c: Remove static `EventFactory.runProcess` method and replace it with `build` and `modify` methods
+
+### Minor Changes
+
+- de32a5c: Add `blueprint` helper to simplify creating custom blueprints
+- 62488e0: Add NIP-10 `expiration` option to common blueprints
+- 9b165a0: Update `includeGroupHTag` event operation to include relay hint
+- 471d3c7: Add `setGiftWrapSeal`, `setGiftWrapAddress`, and `setSealRumor` event operations for NIP-59 gift wraps
+- 4804784: Add NIP-17 wrapped messages blueprints and operations
+- de32a5c: Move core `EventFactory` logic out into `build` and `modify` methods to allow it to be used without and instance
+- 4804784: Add legacy NIP-04 message blueprints and operations
+- 324b960: Bump `nostr-tools` to 2.13
+- 62488e0: Add `splits` option to `ShareBlueprint`
+- 471d3c7: Add `GiftWrapBlueprint`
+- 62488e0: Add `setProtected` event operation
+- 62488e0: Add NIP-70 `protected` option to common blueprints
+- 62488e0: Add NIP-40 `setExpirationTimestamp` event operation
+- 9b165a0: Add `createGroupHTagFromGroupPointer` helper
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@2.0.0
+  - applesauce-content@2.0.0
+
 ## 1.2.0
 
 ### Patch Changes
