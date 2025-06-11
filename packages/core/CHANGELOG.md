@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 2.0.1
+
+### Patch Changes
+
+- d8ed6ec: Fix typo in name `getArticlePublishd` -> `getArticlePublished`
+
 ## 2.0.0
 
 ### Major Changes
