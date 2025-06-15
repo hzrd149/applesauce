@@ -1,5 +1,16 @@
 # applesauce-loaders
 
+## 2.1.0
+
+### Minor Changes
+
+- b652776: Update all loaders to accept observables for `extraRelays` option
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@2.1.0
+
 ## 2.0.0
 
 ### Major Changes
