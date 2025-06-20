@@ -1,5 +1,11 @@
 # applesauce-relay
 
+## 2.1.1
+
+### Patch Changes
+
+- b446dd1: Fix bug with fetching NIP-11 document using wss URL
+
 ## 2.0.0
 
 ### Minor Changes
