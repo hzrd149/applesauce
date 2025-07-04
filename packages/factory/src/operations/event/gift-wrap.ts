@@ -4,7 +4,7 @@ import {
   Rumor,
   RumorSymbol,
   SealSymbol,
-  unixNow
+  unixNow,
 } from "applesauce-core/helpers";
 import {
   EventTemplate,

@@ -1,5 +1,15 @@
 # applesauce-core
 
+## 2.3.0
+
+### Minor Changes
+
+- dfd4218: Add `getSealGiftWrap`, `getRumorSeals`, and `getRumorGiftWraps` to allow getting parent gift wraps and seals events
+- dfd4218: Add `reset` method to `EventSet`
+- dfd4218: Update gift wrap methods to handle rumors wrapped inside multiple gift wraps
+- dfd4218: Add `getSealRumor` method to handling parsing rumors on seals
+- dfd4218: Add `unlockSeal` method to manually unlock seals
+
 ## 2.2.0
 
 ### Minor Changes

@@ -1,5 +1,17 @@
 # applesauce-relay
 
+## 2.3.0
+
+### Minor Changes
+
+- d638591: Expose `authRequiredForPublish` and `authRequiredForRead` observables on `Relay`
+- 3f6dbb0: Add `Relay.authenticationResponse` to expose last AUTH response
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@2.3.0
+
 ## 2.1.1
 
 ### Patch Changes

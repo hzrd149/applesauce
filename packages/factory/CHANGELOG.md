@@ -1,5 +1,13 @@
 # applesauce-factory
 
+## 2.3.0
+
+### Patch Changes
+
+- bb9fe08: Fix wrapped message blueprint including "p" tags when pubkey is mentioned in the content
+- Updated dependencies
+  - applesauce-core@2.3.0
+
 ## 2.0.0
 
 ### Major Changes
