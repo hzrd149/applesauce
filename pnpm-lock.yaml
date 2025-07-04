@@ -71,10 +71,10 @@ importers:
   packages/actions:
     dependencies:
       applesauce-core:
-        specifier: ^2.1.0
+        specifier: ^2.3.0
         version: link:../core
       applesauce-factory:
-        specifier: ^2.0.0
+        specifier: ^2.3.0
         version: link:../factory
       nostr-tools:
         specifier: ^2.13
@@ -265,16 +265,16 @@ importers:
         specifier: ^2.0.0
         version: link:../accounts
       applesauce-actions:
-        specifier: ^2.1.0
+        specifier: ^2.3.0
         version: link:../actions
       applesauce-content:
         specifier: ^2.0.0
         version: link:../content
       applesauce-core:
-        specifier: ^2.2.0
+        specifier: ^2.3.0
         version: link:../core
       applesauce-factory:
-        specifier: ^2.0.0
+        specifier: ^2.3.0
         version: link:../factory
       applesauce-loaders:
         specifier: ^2.1.0
@@ -283,7 +283,7 @@ importers:
         specifier: ^2.1.0
         version: link:../react
       applesauce-relay:
-        specifier: ^2.0.0
+        specifier: ^2.3.0
         version: link:../relay
       applesauce-signers:
         specifier: ^2.0.0
@@ -368,7 +368,7 @@ importers:
         specifier: ^2.0.0
         version: link:../content
       applesauce-core:
-        specifier: ^2.0.0
+        specifier: ^2.3.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -482,7 +482,7 @@ importers:
         specifier: ^1.7.1
         version: 1.8.0
       applesauce-core:
-        specifier: ^2.0.0
+        specifier: ^2.3.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
