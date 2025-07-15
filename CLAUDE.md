@@ -112,7 +112,7 @@ const profile = useObservableState(userProfileModel);
 
 1. **Always check signer availability** before attempting to use
 2. **Handle relay disconnections** gracefully
-3. **Cache data appropriately** using loaders
+3. **Cache data appropriately** using EventStore or nostr-idb (Note: Loaders only fetch from relays, they don't cache)
 4. **Use TypeScript types** for event validation
 5. **Follow NIP specifications** for interoperability
 
