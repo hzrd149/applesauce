@@ -11,7 +11,10 @@ import {
   EventStore,
   mapEventsToStore,
   mapEventsToTimeline,
+  defined,
+  Model,
 } from "applesauce-core";
+import { ProxySigner } from "applesauce-accounts";
 import {
   getBookmarks,
   parseBookmarkTags,
@@ -29,7 +32,6 @@ import { addressPointerLoader } from "applesauce-loaders/loaders";
 import { map, toArray, take, filter, mergeMap, distinctUntilChanged, switchMap, ignoreElements } from "rxjs/operators";
 import { firstValueFrom, BehaviorSubject, Observable, of, merge, defer, EMPTY } from "rxjs";
 import { ProfilePointer } from "nostr-tools/nip19";
-import { Model } from "applesauce-core";
 
 type SignerType = "extension" | "nostrconnect" | "password";
 
@@ -38,6 +40,10 @@ const eventStore = new EventStore();
 
 // Create relay pool
 const pool = new RelayPool();
+
+// Create signer subject and factory
+const signer$ = new BehaviorSubject<AbstractSigner | null>(null);
+const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
 
 // Default relays to use
 const DEFAULT_RELAYS = [
@@ -248,6 +254,7 @@ function BookmarkManager() {
       
       if (newSigner) {
         setSigner(newSigner);
+        signer$.next(newSigner);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to initialize signer");
@@ -278,8 +285,6 @@ function BookmarkManager() {
   // Add bookmark
   const addBookmark = useCallback((event: NostrEvent) => {
     if (!signer) return;
-    
-    const factory = new EventFactory({ signer });
     
     // Get current bookmark list from event store
     const currentBookmarks$ = eventStore.timeline([{
@@ -325,8 +330,6 @@ function BookmarkManager() {
   // Remove bookmark
   const removeBookmark = useCallback((event: NostrEvent) => {
     if (!signer) return;
-    
-    const factory = new EventFactory({ signer });
     
     // Get current bookmark list from event store
     const currentBookmarks$ = eventStore.timeline([{
