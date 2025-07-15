@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   ExtensionSigner,
   NostrConnectSigner,
@@ -17,10 +17,6 @@ import {
 import { ProxySigner } from "applesauce-accounts";
 import {
   getBookmarks,
-  parseBookmarkTags,
-  Bookmarks,
-  EventPointer,
-  AddressPointer,
   getDisplayName,
   getProfilePicture,
   ProfileContent,
@@ -29,8 +25,8 @@ import { useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { NostrEvent } from "applesauce-core/core";
 import { kinds } from "nostr-tools";
 import { addressPointerLoader } from "applesauce-loaders/loaders";
-import { map, toArray, take, filter, mergeMap, distinctUntilChanged, switchMap, ignoreElements } from "rxjs/operators";
-import { firstValueFrom, BehaviorSubject, Observable, of, merge, defer, EMPTY } from "rxjs";
+import { map, take, filter, mergeMap, distinctUntilChanged, switchMap, ignoreElements } from "rxjs/operators";
+import { BehaviorSubject, of, merge, defer, EMPTY } from "rxjs";
 import { ProfilePointer } from "nostr-tools/nip19";
 
 type SignerType = "extension" | "nostrconnect" | "password";
@@ -76,6 +72,297 @@ function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
   return useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey, user.relays?.join("|")]);
+}
+
+// Signer selection component
+function SignerSelection({ onSelect }: { onSelect: (type: SignerType) => void }) {
+  return (
+    <div className="container mx-auto my-8 px-4 py-8 max-w-md">
+      <h1 className="text-2xl font-bold mb-6 text-center">Nostr Bookmark Manager</h1>
+      <div className="flex flex-col gap-4">
+        <button
+          onClick={() => onSelect("extension")}
+          className="btn btn-primary w-full"
+        >
+          Use Browser Extension
+        </button>
+        <button
+          onClick={() => onSelect("nostrconnect")}
+          className="btn btn-secondary w-full"
+        >
+          Use Nostr Connect
+        </button>
+        <button
+          onClick={() => onSelect("password")}
+          className="btn btn-accent w-full"
+        >
+          Use Password Login
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Extension login component
+function ExtensionLogin({ onLogin, onBack }: { onLogin: (signer: AbstractSigner, pubkey: string) => void; onBack: () => void }) {
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    setError("");
+    
+    try {
+      const signer = new ExtensionSigner();
+      const pubkey = await signer.getPublicKey();
+      onLogin(signer, pubkey);
+    } catch (err) {
+      setError("No Nostr extension found. Please install Alby or nos2x.");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  return (
+    <div className="container mx-auto my-8 px-4 py-8 max-w-md">
+      <h1 className="text-2xl font-bold mb-6 text-center">Connect to Nostr</h1>
+      <div className="card bg-base-200 shadow-md">
+        <div className="card-body">
+          <h2 className="card-title mb-4">Browser Extension</h2>
+          <p className="text-sm mb-4">Click below to connect with your browser extension</p>
+          <button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className="btn btn-primary w-full"
+          >
+            {isConnecting ? "Connecting..." : "Connect Extension"}
+          </button>
+        </div>
+      </div>
+      
+      {error && (
+        <div className="alert alert-error mt-4">
+          <span>{error}</span>
+        </div>
+      )}
+      
+      <button onClick={onBack} className="btn btn-outline mt-4">
+        Back
+      </button>
+    </div>
+  );
+}
+
+// Nostr Connect login component
+function NostrConnectLogin({ onLogin, onBack }: { onLogin: (signer: AbstractSigner, pubkey: string) => void; onBack: () => void }) {
+  const [bunkerUrl, setBunkerUrl] = useState("");
+  const [connectUri, setConnectUri] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    setError("");
+    
+    try {
+      NostrConnectSigner.subscriptionMethod = (relays, filters, opts) => 
+        pool.subscription(relays, filters, opts);
+      NostrConnectSigner.publishMethod = (relays, event, opts) => 
+        pool.publish(relays, event, opts);
+      
+      if (bunkerUrl) {
+        const signer = await NostrConnectSigner.fromBunkerURI(bunkerUrl);
+        const pubkey = await signer.getPublicKey();
+        onLogin(signer, pubkey);
+      } else {
+        const signer = new NostrConnectSigner();
+        const uri = signer.getNostrConnectURI({ name: "Bookmark Manager" });
+        setConnectUri(uri);
+        
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+        
+        try {
+          await signer.waitForSigner(controller.signal);
+          clearTimeout(timeout);
+          const pubkey = await signer.getPublicKey();
+          onLogin(signer, pubkey);
+        } catch (err) {
+          clearTimeout(timeout);
+          if (err instanceof Error && err.message === "Aborted") {
+            throw new Error("Connection timeout");
+          }
+          throw err;
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  return (
+    <div className="container mx-auto my-8 px-4 py-8 max-w-md">
+      <h1 className="text-2xl font-bold mb-6 text-center">Connect to Nostr</h1>
+      <div className="card bg-base-200 shadow-md">
+        <div className="card-body">
+          <h2 className="card-title mb-4">Nostr Connect</h2>
+          
+          {!connectUri ? (
+            <>
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text">Bunker URL</span>
+                </label>
+                <input
+                  type="text"
+                  value={bunkerUrl}
+                  onChange={(e) => setBunkerUrl(e.target.value)}
+                  placeholder="bunker://..."
+                  className="input input-bordered w-full"
+                />
+              </div>
+              
+              <button
+                onClick={handleConnect}
+                disabled={isConnecting || !bunkerUrl}
+                className="btn btn-secondary w-full mb-2"
+              >
+                {isConnecting ? "Connecting..." : "Connect with Bunker URL"}
+              </button>
+              
+              <div className="divider">OR</div>
+              
+              <button
+                onClick={() => {
+                  setBunkerUrl("");
+                  handleConnect();
+                }}
+                disabled={isConnecting}
+                className="btn btn-outline btn-secondary w-full"
+              >
+                {isConnecting ? "Generating..." : "Generate QR Code"}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col items-center mb-4">
+                <p className="text-sm mb-2">Scan with your signer app:</p>
+                <div className="bg-white p-4 rounded-lg">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(connectUri)}`}
+                    alt="QR Code"
+                    className="w-48 h-48"
+                  />
+                </div>
+                <p className="text-xs opacity-70 mt-2">Waiting for connection...</p>
+              </div>
+              
+              <button
+                onClick={() => {
+                  setConnectUri("");
+                  setIsConnecting(false);
+                }}
+                className="btn btn-outline w-full"
+              >
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      
+      {error && (
+        <div className="alert alert-error mt-4">
+          <span>{error}</span>
+        </div>
+      )}
+      
+      <button onClick={onBack} className="btn btn-outline mt-4">
+        Back
+      </button>
+    </div>
+  );
+}
+
+// Password login component
+function PasswordLogin({ onLogin, onBack }: { onLogin: (signer: AbstractSigner, pubkey: string) => void; onBack: () => void }) {
+  const [ncryptsec, setNcryptsec] = useState("");
+  const [password, setPassword] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const handleConnect = async () => {
+    if (!ncryptsec || !password) {
+      setError("Please provide encrypted key and password");
+      return;
+    }
+    
+    setIsConnecting(true);
+    setError("");
+    
+    try {
+      const signer = new PasswordSigner(ncryptsec, password);
+      const pubkey = await signer.getPublicKey();
+      onLogin(signer, pubkey);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unlock");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  return (
+    <div className="container mx-auto my-8 px-4 py-8 max-w-md">
+      <h1 className="text-2xl font-bold mb-6 text-center">Connect to Nostr</h1>
+      <div className="card bg-base-200 shadow-md">
+        <div className="card-body">
+          <h2 className="card-title mb-4">Password Login</h2>
+          <div className="form-control mb-4">
+            <label className="label">
+              <span className="label-text">Encrypted Key (ncryptsec)</span>
+            </label>
+            <input
+              type="text"
+              value={ncryptsec}
+              onChange={(e) => setNcryptsec(e.target.value)}
+              placeholder="ncryptsec1..."
+              className="input input-bordered w-full"
+            />
+          </div>
+          <div className="form-control mb-4">
+            <label className="label">
+              <span className="label-text">Password</span>
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input input-bordered w-full"
+            />
+          </div>
+          <button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className="btn btn-accent w-full"
+          >
+            {isConnecting ? "Connecting..." : "Unlock"}
+          </button>
+        </div>
+      </div>
+      
+      {error && (
+        <div className="alert alert-error mt-4">
+          <span>{error}</span>
+        </div>
+      )}
+      
+      <button onClick={onBack} className="btn btn-outline mt-4">
+        Back
+      </button>
+    </div>
+  );
 }
 
 // Profile component
@@ -134,16 +421,7 @@ function BookmarkManager() {
   const [signerType, setSignerType] = useState<SignerType | null>(null);
   const [signer, setSigner] = useState<AbstractSigner | null>(null);
   const [pubkey, setPubkey] = useState<string>("");
-  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string>("");
-  
-  // Nostr Connect specific state
-  const [bunkerUrl, setBunkerUrl] = useState("");
-  const [connectUri, setConnectUri] = useState("");
-  
-  // Password signer specific state
-  const [password, setPassword] = useState("");
-  const [ncryptsec, setNcryptsec] = useState("");
   
   // Bookmark state
   const [showBookmarksOnly, setShowBookmarksOnly] = useState(false);
@@ -178,90 +456,13 @@ function BookmarkManager() {
   // Subscribe to bookmarks observable
   const bookmarkedEventIds = useObservableState(bookmarksObservable, new Set<string>());
 
-  // Initialize signer based on type
-  const initializeSigner = useCallback(async () => {
-    setIsConnecting(true);
-    setError("");
-    
-    try {
-      let newSigner: AbstractSigner | null = null;
-      
-      switch (signerType) {
-        case "extension":
-          try {
-            newSigner = new ExtensionSigner();
-            const pk = await newSigner.getPublicKey();
-            setPubkey(pk);
-          } catch (err) {
-            throw new Error("No Nostr extension found. Please install Alby or nos2x.");
-          }
-          break;
-          
-        case "nostrconnect":
-          if (!bunkerUrl) {
-            // Generate connect URI for QR code
-            NostrConnectSigner.subscriptionMethod = (relays, filters, opts) => 
-              pool.subscription(relays, filters, opts);
-            NostrConnectSigner.publishMethod = (relays, event, opts) => 
-              pool.publish(relays, event, opts);
-            
-            const signer = new NostrConnectSigner();
-            const uri = signer.getNostrConnectURI({
-              name: "Bookmark Manager",
-            });
-            setConnectUri(uri);
-            
-            // Wait for connection
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 60000);
-            
-            try {
-              await signer.waitForSigner(controller.signal);
-              clearTimeout(timeout);
-            } catch (err) {
-              clearTimeout(timeout);
-              if (err instanceof Error && err.message === "Aborted") {
-                throw new Error("Connection timeout");
-              }
-              throw err;
-            }
-            
-            newSigner = signer;
-            const pk = await newSigner.getPublicKey();
-            setPubkey(pk);
-          } else {
-            // Connect via bunker URL
-            NostrConnectSigner.subscriptionMethod = (relays, filters, opts) => 
-              pool.subscription(relays, filters, opts);
-            NostrConnectSigner.publishMethod = (relays, event, opts) => 
-              pool.publish(relays, event, opts);
-            
-            newSigner = await NostrConnectSigner.fromBunkerURI(bunkerUrl);
-            const pk = await newSigner.getPublicKey();
-            setPubkey(pk);
-          }
-          break;
-          
-        case "password":
-          if (!ncryptsec || !password) {
-            throw new Error("Please provide encrypted key and password");
-          }
-          newSigner = new PasswordSigner(ncryptsec, password);
-          const pk = await newSigner.getPublicKey();
-          setPubkey(pk);
-          break;
-      }
-      
-      if (newSigner) {
-        setSigner(newSigner);
-        signer$.next(newSigner);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to initialize signer");
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [signerType, bunkerUrl, password, ncryptsec, pool]);
+  // Handle login callback
+  const handleLogin = useCallback((newSigner: AbstractSigner, newPubkey: string) => {
+    setSigner(newSigner);
+    setPubkey(newPubkey);
+    signer$.next(newSigner);
+    setSignerType(null); // Clear signer type to show main view
+  }, []);
 
   // Load timeline feed
   const timelineEvents = useObservableMemo(
@@ -280,7 +481,6 @@ function BookmarkManager() {
     },
     [selectedRelay]
   );
-
 
   // Add bookmark
   const addBookmark = useCallback((event: NostrEvent) => {
@@ -325,7 +525,7 @@ function BookmarkManager() {
         setError(err instanceof Error ? err.message : "Failed to add bookmark");
       }
     });
-  }, [signer, pubkey, eventStore]);
+  }, [signer, pubkey]);
 
   // Remove bookmark
   const removeBookmark = useCallback((event: NostrEvent) => {
@@ -362,186 +562,31 @@ function BookmarkManager() {
         setError(err instanceof Error ? err.message : "Failed to remove bookmark");
       }
     });
-  }, [signer, pubkey, eventStore]);
+  }, [signer, pubkey]);
 
+  // Handle logout
+  const handleLogout = useCallback(() => {
+    setSigner(null);
+    setPubkey("");
+    setSignerType(null);
+    signer$.next(null);
+  }, []);
 
   // Render signer selection
-  if (!signerType) {
-    return (
-      <div className="container mx-auto my-8 px-4 py-8 max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">Nostr Bookmark Manager</h1>
-        <div className="flex flex-col gap-4">
-          <button
-            onClick={() => setSignerType("extension")}
-            className="btn btn-primary w-full"
-          >
-            Use Browser Extension
-          </button>
-          <button
-            onClick={() => setSignerType("nostrconnect")}
-            className="btn btn-secondary w-full"
-          >
-            Use Nostr Connect
-          </button>
-          <button
-            onClick={() => setSignerType("password")}
-            className="btn btn-accent w-full"
-          >
-            Use Password Login
-          </button>
-        </div>
-      </div>
-    );
+  if (!signer && !signerType) {
+    return <SignerSelection onSelect={setSignerType} />;
   }
 
   // Render login forms
-  if (!signer) {
-    return (
-      <div className="container mx-auto my-8 px-4 py-8 max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">Connect to Nostr</h1>
-        
-        {signerType === "extension" && (
-          <div className="card bg-base-200 shadow-md">
-            <div className="card-body">
-              <h2 className="card-title mb-4">Browser Extension</h2>
-              <p className="text-sm mb-4">Click below to connect with your browser extension</p>
-              <button
-                onClick={initializeSigner}
-                disabled={isConnecting}
-                className="btn btn-primary w-full"
-              >
-                {isConnecting ? "Connecting..." : "Connect Extension"}
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {signerType === "nostrconnect" && (
-          <div className="card bg-base-200 shadow-md">
-            <div className="card-body">
-              <h2 className="card-title mb-4">Nostr Connect</h2>
-              
-              {/* Show input field OR QR code, not both */}
-              {!connectUri ? (
-                <>
-                  <div className="form-control mb-4">
-                    <label className="label">
-                      <span className="label-text">Bunker URL</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={bunkerUrl}
-                      onChange={(e) => setBunkerUrl(e.target.value)}
-                      placeholder="bunker://..."
-                      className="input input-bordered w-full"
-                    />
-                  </div>
-                  
-                  <button
-                    onClick={initializeSigner}
-                    disabled={isConnecting || !bunkerUrl}
-                    className="btn btn-secondary w-full mb-2"
-                  >
-                    {isConnecting ? "Connecting..." : "Connect with Bunker URL"}
-                  </button>
-                  
-                  <div className="divider">OR</div>
-                  
-                  <button
-                    onClick={() => {
-                      setBunkerUrl(""); // Clear bunker URL
-                      initializeSigner();
-                    }}
-                    disabled={isConnecting}
-                    className="btn btn-outline btn-secondary w-full"
-                  >
-                    {isConnecting ? "Generating..." : "Generate QR Code"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="flex flex-col items-center mb-4">
-                    <p className="text-sm mb-2">Scan with your signer app:</p>
-                    <div className="bg-white p-4 rounded-lg">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(connectUri)}`}
-                        alt="QR Code"
-                        className="w-48 h-48"
-                      />
-                    </div>
-                    <p className="text-xs opacity-70 mt-2">Waiting for connection...</p>
-                  </div>
-                  
-                  <button
-                    onClick={() => {
-                      setConnectUri("");
-                      setIsConnecting(false);
-                    }}
-                    className="btn btn-outline w-full"
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {signerType === "password" && (
-          <div className="card bg-base-200 shadow-md">
-            <div className="card-body">
-              <h2 className="card-title mb-4">Password Login</h2>
-              <div className="form-control mb-4">
-                <label className="label">
-                  <span className="label-text">Encrypted Key (ncryptsec)</span>
-                </label>
-                <input
-                  type="text"
-                  value={ncryptsec}
-                  onChange={(e) => setNcryptsec(e.target.value)}
-                  placeholder="ncryptsec1..."
-                  className="input input-bordered w-full"
-                />
-              </div>
-              <div className="form-control mb-4">
-                <label className="label">
-                  <span className="label-text">Password</span>
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input input-bordered w-full"
-                />
-              </div>
-              <button
-                onClick={initializeSigner}
-                disabled={isConnecting}
-                className="btn btn-accent w-full"
-              >
-                {isConnecting ? "Connecting..." : "Unlock"}
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {error && (
-          <div className="alert alert-error mt-4">
-            <span>{error}</span>
-          </div>
-        )}
-        
-        <button
-          onClick={() => {
-            setSignerType(null);
-            setError("");
-          }}
-          className="btn btn-outline mt-4"
-        >
-          Back
-        </button>
-      </div>
-    );
+  if (!signer && signerType) {
+    switch (signerType) {
+      case "extension":
+        return <ExtensionLogin onLogin={handleLogin} onBack={() => setSignerType(null)} />;
+      case "nostrconnect":
+        return <NostrConnectLogin onLogin={handleLogin} onBack={() => setSignerType(null)} />;
+      case "password":
+        return <PasswordLogin onLogin={handleLogin} onBack={() => setSignerType(null)} />;
+    }
   }
 
   // Filter events based on bookmark state
@@ -561,11 +606,7 @@ function BookmarkManager() {
             <h1 className="card-title">Nostr Bookmark Manager</h1>
             <div className="flex items-center gap-4">
               <button
-                onClick={() => {
-                  setSigner(null);
-                  setPubkey("");
-                  setSignerType(null);
-                }}
+                onClick={handleLogout}
                 className="btn btn-outline btn-sm"
               >
                 Logout
