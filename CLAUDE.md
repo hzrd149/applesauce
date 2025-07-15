@@ -46,7 +46,18 @@ const signed = await factory.sign(note);
 
 ```typescript
 const pool = new RelayPool();
-pool.addRelays(["wss://relay.damus.io", "wss://nos.lol"]);
+
+// Relays are passed directly to request, publish, or subscription methods
+const relays = ["wss://relay.damus.io", "wss://nos.lol"];
+
+// Request events from relays
+pool.request(relays, [{ kinds: [0], authors: [pubkey] }]);
+
+// Publish event to relays
+pool.publish(relays, signedEvent);
+
+// Create subscription
+pool.subscription(relays, [{ kinds: [1], limit: 20 }]);
 ```
 
 ### 4. Models & Loaders
