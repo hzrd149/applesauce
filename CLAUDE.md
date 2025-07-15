@@ -74,19 +74,13 @@ Loaders fetch and cache data:
 
 ```typescript
 // Load bookmarks
-const loader = userListsLoader(pool, {
-  authors: [pubkey],
-  kinds: [30001] // Bookmark lists
-});
+const actions = new ActionHub(eventStore, factory);
 
 // Add bookmark
-const action = new BookmarkEvent(factory, pool);
-await action.bookmarkUrl(url, isPublic);
+await actions.exec(BookmarkEvent, <nostr event>).forEach(e => pool.publish(<relays>, e))
 
 // Remove bookmark
-const remove = new UnbookmarkEvent(factory, pool);
-await remove.unbookmarkUrl(url, isPublic);
-```
+await actions.exec(UnbookmarkEvent, <nostr event>).forEach(e => pool.publish(<relays>, e))
 
 ### React Integration
 
