@@ -130,11 +130,29 @@ await pool.publish(signed);
 ### Loading User Profile
 
 ```typescript
-const model = new UserProfileModel(pubkey, pool);
-model.subscribe(profile => {
-  console.log(profile.name, profile.picture);
+const addressLoader = addressPointerLoader(pool.request.bind(pool), {
+  eventStore,
+  lookupRelays: ["wss://purplepag.es/"],
 });
-```
+
+/** A model that loads the profile if its not found in the event store */
+function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
+  return (events) =>
+    merge(
+      // Load the profile if its not found in the event store
+      defer(() => {
+        if (events.hasReplaceable(kinds.Metadata, user.pubkey)) return EMPTY;
+        else return addressLoader({ kind: kinds.Metadata, ...user }).pipe(ignoreElements());
+      }),
+      // Subscribe to the profile content
+      events.profile(user.pubkey),
+    );
+}
+
+/** Create a hook for loading a users profile */
+function useProfile(user: ProfilePointer): ProfileContent | undefined {
+  return useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey, user.relays?.join("|")]);
+}
 
 ### Managing Bookmarks
 
