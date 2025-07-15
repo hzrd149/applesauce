@@ -25,9 +25,11 @@ import {
 import { useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { NostrEvent } from "applesauce-core/core";
 import { kinds } from "nostr-tools";
-import { profilePointerLoader } from "applesauce-loaders/loaders";
-import { map, toArray, take, filter, mergeMap, distinctUntilChanged, switchMap } from "rxjs/operators";
-import { firstValueFrom, BehaviorSubject, Observable, of, merge } from "rxjs";
+import { addressPointerLoader } from "applesauce-loaders/loaders";
+import { map, toArray, take, filter, mergeMap, distinctUntilChanged, switchMap, ignoreElements } from "rxjs/operators";
+import { firstValueFrom, BehaviorSubject, Observable, of, merge, defer, EMPTY } from "rxjs";
+import { ProfilePointer } from "nostr-tools/nip19";
+import { Model } from "applesauce-core";
 
 type SignerType = "extension" | "nostrconnect" | "password";
 
@@ -45,12 +47,34 @@ const DEFAULT_RELAYS = [
   "wss://relay.primal.net",
 ];
 
+// Create address loader
+const addressLoader = addressPointerLoader(pool.request.bind(pool), {
+  eventStore,
+  lookupRelays: ["wss://purplepag.es/"],
+});
+
+/** A model that loads the profile if its not found in the event store */
+function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
+  return (events) =>
+    merge(
+      // Load the profile if its not found in the event store
+      defer(() => {
+        if (events.hasReplaceable(kinds.Metadata, user.pubkey)) return EMPTY;
+        else return addressLoader({ kind: kinds.Metadata, ...user }).pipe(ignoreElements());
+      }),
+      // Subscribe to the profile content
+      events.profile(user.pubkey),
+    );
+}
+
+/** Create a hook for loading a users profile */
+function useProfile(user: ProfilePointer): ProfileContent | undefined {
+  return useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey, user.relays?.join("|")]);
+}
+
 // Profile component
 function UserProfile({ pubkey }: { pubkey: string }) {
-  const profile = useObservableMemo(
-    () => profilePointerLoader(pool.request.bind(pool))({ pubkey, relays: DEFAULT_RELAYS }),
-    [pubkey]
-  );
+  const profile = useProfile({ pubkey, relays: DEFAULT_RELAYS });
 
   const displayName = profile ? getDisplayName(profile as ProfileContent, pubkey) : null;
   const picture = profile ? getProfilePicture(profile as ProfileContent) : null;
