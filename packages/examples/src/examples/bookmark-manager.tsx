@@ -25,9 +25,9 @@ import { useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { NostrEvent } from "applesauce-core/core";
 import { kinds } from "nostr-tools";
 import { addressPointerLoader } from "applesauce-loaders/loaders";
-import { map, take, filter, mergeMap, distinctUntilChanged, switchMap, ignoreElements } from "rxjs/operators";
-import { BehaviorSubject, of, merge, defer, EMPTY } from "rxjs";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { map, take, filter, mergeMap, distinctUntilChanged, switchMap } from "rxjs/operators";
+import { BehaviorSubject, of } from "rxjs";
+import { useEffect } from "react";
 
 type SignerType = "extension" | "nostrconnect" | "password";
 
@@ -49,29 +49,27 @@ const DEFAULT_RELAYS = [
   "wss://relay.primal.net",
 ];
 
-// Create address loader
+// Create address loader for fetching profiles from relays
 const addressLoader = addressPointerLoader(pool.request.bind(pool), {
   eventStore,
   lookupRelays: ["wss://purplepag.es/"],
 });
 
-/** A model that loads the profile if its not found in the event store */
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    merge(
-      // Load the profile if its not found in the event store
-      defer(() => {
-        if (events.hasReplaceable(kinds.Metadata, user.pubkey)) return EMPTY;
-        else return addressLoader({ kind: kinds.Metadata, ...user }).pipe(ignoreElements());
-      }),
-      // Subscribe to the profile content
-      events.profile(user.pubkey),
-    );
+/** A model that subscribes to profile content from the event store */
+function ProfileModel(pubkey: string): Model<ProfileContent | undefined> {
+  return (events) => events.profile(pubkey);
 }
 
 /** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey, user.relays?.join("|")]);
+function useProfile(pubkey: string): ProfileContent | undefined {
+  // First, ensure the profile is loaded into the event store
+  useEffect(() => {
+    const sub = addressLoader({ kind: kinds.Metadata, pubkey }).subscribe();
+    return () => sub.unsubscribe();
+  }, [pubkey]);
+  
+  // Then subscribe to the profile from the event store
+  return useObservableMemo(() => eventStore.model(ProfileModel, pubkey), [pubkey]);
 }
 
 // Signer selection component
@@ -367,7 +365,7 @@ function PasswordLogin({ onLogin, onBack }: { onLogin: (signer: AbstractSigner, 
 
 // Profile component
 function UserProfile({ pubkey }: { pubkey: string }) {
-  const profile = useProfile({ pubkey, relays: DEFAULT_RELAYS });
+  const profile = useProfile(pubkey);
 
   const displayName = profile ? getDisplayName(profile as ProfileContent, pubkey) : null;
   const picture = profile ? getProfilePicture(profile as ProfileContent) : null;
