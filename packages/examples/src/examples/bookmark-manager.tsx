@@ -52,17 +52,15 @@ function UserProfile({ pubkey }: { pubkey: string }) {
     [pubkey]
   );
 
-  const displayName = profile ? getDisplayName(profile as ProfileContent, pubkey) : pubkey.slice(0, 8);
+  const displayName = profile ? getDisplayName(profile as ProfileContent, pubkey) : null;
   const picture = profile ? getProfilePicture(profile as ProfileContent) : null;
 
   return (
     <div className="flex items-center gap-2">
-      {picture ? (
-        <img src={picture} alt={displayName} className="w-8 h-8 rounded-full" />
-      ) : (
-        <div className="w-8 h-8 rounded-full bg-base-300" />
+      {picture && (
+        <img src={picture} alt={displayName || ''} className="w-8 h-8 rounded-full" />
       )}
-      <span className="font-semibold">{displayName}</span>
+      {displayName && <span className="font-semibold">{displayName}</span>}
     </div>
   );
 }
