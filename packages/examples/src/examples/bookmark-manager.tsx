@@ -25,9 +25,11 @@ import { useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { NostrEvent } from "applesauce-core/core";
 import { kinds } from "nostr-tools";
 import { addressPointerLoader } from "applesauce-loaders/loaders";
-import { map, take, filter, mergeMap, distinctUntilChanged, switchMap } from "rxjs/operators";
+import { map, distinctUntilChanged } from "rxjs/operators";
 import { BehaviorSubject, of } from "rxjs";
 import { useEffect } from "react";
+import { ActionHub } from "applesauce-actions";
+import { BookmarkEvent, UnbookmarkEvent } from "applesauce-actions/actions";
 
 type SignerType = "extension" | "nostrconnect" | "password";
 
@@ -40,6 +42,15 @@ const pool = new RelayPool();
 // Create signer subject and factory
 const signer$ = new BehaviorSubject<AbstractSigner | null>(null);
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
+
+// Create ActionHub for bookmark actions
+const actions = new ActionHub(eventStore, factory);
+
+// Set NostrConnectSigner static methods
+NostrConnectSigner.subscriptionMethod = (relays, filters, opts) => 
+  pool.subscription(relays, filters, opts);
+NostrConnectSigner.publishMethod = (relays, event, opts) => 
+  pool.publish(relays, event, opts);
 
 // Default relays to use
 const DEFAULT_RELAYS = [
@@ -163,11 +174,6 @@ function NostrConnectLogin({ onLogin, onBack }: { onLogin: (signer: AbstractSign
     setError("");
     
     try {
-      NostrConnectSigner.subscriptionMethod = (relays, filters, opts) => 
-        pool.subscription(relays, filters, opts);
-      NostrConnectSigner.publishMethod = (relays, event, opts) => 
-        pool.publish(relays, event, opts);
-      
       if (bunkerUrl) {
         const signer = await NostrConnectSigner.fromBunkerURI(bunkerUrl);
         const pubkey = await signer.getPublicKey();
@@ -481,86 +487,32 @@ function BookmarkManager() {
   );
 
   // Add bookmark
-  const addBookmark = useCallback((event: NostrEvent) => {
+  const addBookmark = useCallback(async (event: NostrEvent) => {
     if (!signer) return;
     
-    // Get current bookmark list from event store
-    const currentBookmarks$ = eventStore.timeline([{
-      kinds: [kinds.BookmarkList],
-      authors: [pubkey],
-    }]).pipe(
-      take(1),
-      map(events => events.length > 0 ? events[0] : null)
-    );
-    
-    currentBookmarks$.pipe(
-      switchMap(existingBookmarks => {
-        // Build bookmark tags
-        const bookmarkTags = existingBookmarks ? [...existingBookmarks.tags] : [];
-        
-        // Add the "d" tag if not present
-        if (!bookmarkTags.find(tag => tag[0] === "d")) {
-          bookmarkTags.push(["d", ""]);
-        }
-        
-        // Add the event bookmark tag if not already bookmarked
-        const eventTag = ["e", event.id];
-        if (!bookmarkTags.find(tag => tag[0] === "e" && tag[1] === event.id)) {
-          bookmarkTags.push(eventTag);
-        }
-        
-        // Create bookmark list event
-        return factory.build({
-          kind: kinds.BookmarkList,
-          content: "",
-          tags: bookmarkTags,
-        });
-      }),
-      switchMap(draft => factory.sign(draft)),
-      mergeMap(signed => pool.publish(DEFAULT_RELAYS, signed))
-    ).subscribe({
-      error: (err) => {
-        setError(err instanceof Error ? err.message : "Failed to add bookmark");
+    try {
+      const events = await actions.exec(BookmarkEvent, event).toArray();
+      for (const e of events) {
+        await pool.publish(DEFAULT_RELAYS, e);
       }
-    });
-  }, [signer, pubkey]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add bookmark");
+    }
+  }, [signer]);
 
   // Remove bookmark
-  const removeBookmark = useCallback((event: NostrEvent) => {
+  const removeBookmark = useCallback(async (event: NostrEvent) => {
     if (!signer) return;
     
-    // Get current bookmark list from event store
-    const currentBookmarks$ = eventStore.timeline([{
-      kinds: [kinds.BookmarkList],
-      authors: [pubkey],
-    }]).pipe(
-      take(1),
-      map(events => events.length > 0 ? events[0] : null)
-    );
-    
-    currentBookmarks$.pipe(
-      filter(existingBookmarks => existingBookmarks !== null),
-      switchMap(existingBookmarks => {
-        // Remove the event tag
-        const bookmarkTags = existingBookmarks!.tags.filter(
-          tag => !(tag[0] === "e" && tag[1] === event.id)
-        );
-        
-        // Create updated bookmark list
-        return factory.build({
-          kind: kinds.BookmarkList,
-          content: "",
-          tags: bookmarkTags,
-        });
-      }),
-      switchMap(draft => factory.sign(draft)),
-      mergeMap(signed => pool.publish(DEFAULT_RELAYS, signed))
-    ).subscribe({
-      error: (err) => {
-        setError(err instanceof Error ? err.message : "Failed to remove bookmark");
+    try {
+      const events = await actions.exec(UnbookmarkEvent, event).toArray();
+      for (const e of events) {
+        await pool.publish(DEFAULT_RELAYS, e);
       }
-    });
-  }, [signer, pubkey]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove bookmark");
+    }
+  }, [signer]);
 
   // Handle logout
   const handleLogout = useCallback(() => {
