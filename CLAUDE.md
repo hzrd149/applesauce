@@ -86,8 +86,10 @@ await actions.exec(UnbookmarkEvent, <nostr event>).forEach(e => pool.publish(<re
 
 ```typescript
 import { useObservableState } from "applesauce-react/hooks";
+import { UserProfileModel } from "applesauce-core/models";
 
-const profile = useObservableState(userProfileModel);
+// useObservableState works similar to useMemo - it takes a function that returns an observable
+const profile = useObservableState(() => eventStore.model(UserProfileModel, pubkey));
 ```
 
 ## Testing & Development
@@ -157,8 +159,19 @@ function useProfile(user: ProfilePointer): ProfileContent | undefined {
 ### Managing Bookmarks
 
 ```typescript
-// See bookmark-manager.tsx example for full implementation
-const bookmarks = new UserBookmarkModel(pubkey, pool);
+import { UserBookmarkModel } from "applesauce-core/models";
+import { BookmarkEvent } from "applesauce-actions/actions";
+
+// Subscribe to a user's bookmarks using the event store
+const observable = eventStore.model(UserBookmarkModel, pubkey);
+
+observable.subscribe(bookmarks => {
+  // bookmarks will be an object with "notes" (kind 1), "articles" (kind 30023), "hashtags", and "urls"
+  console.log(bookmarks.notes);
+  console.log(bookmarks.urls);
+});
+
+// To add bookmarks, use the action
 const action = new BookmarkEvent(factory, pool);
 await action.bookmarkUrl("https://example.com");
 ```
