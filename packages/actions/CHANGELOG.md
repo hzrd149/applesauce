@@ -1,5 +1,16 @@
 # applesauce-actions
 
+## 3.0.0
+
+### Minor Changes
+
+- b681e97: Allow article kinds to be added and removed from pin list
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-factory@3.0.0
+
 ## 2.3.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # applesauce-factory
 
+## 3.0.0
+
+### Minor Changes
+
+- b681e97: rename `removeCoordinateTag` to `removeAddressTag` and deprecate old export
+- b681e97: Rename `addCoordinateTag` to `addAddressTag` and deprecate old export
+
 ## 2.3.0
 
 ### Patch Changes

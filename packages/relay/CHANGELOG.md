@@ -1,5 +1,15 @@
 # applesauce-relay
 
+## 3.0.0
+
+### Major Changes
+
+- eaf8bc7: Update `relay.publish` return `Promise<PublishResponse>` so `lastValueFrom` does not need to be used.
+- eaf8bc7: Removed `IRelayState` and `Nip01Actions` interfaces
+- eaf8bc7: Update `pool.publish` and `group.publish` to return `Promise<PublishResponse[]>` so `lastValueFrom` does not need to be used.
+- eaf8bc7: Update `relay.authenticate` to return `Promise<PublishResponse>` so `lastValueFrom` does not need to be used.
+- eaf8bc7: Update `relay.auth` to return `Promise<PublishResponse>` so `lastValueFrom` does not need to be used.
+
 ## 2.3.0
 
 ### Minor Changes

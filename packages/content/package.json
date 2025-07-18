@@ -68,7 +68,7 @@
   },
   "devDependencies": {
     "typescript": "^5.8.3",
-    "applesauce-signers": "^2.0.0",
+    "applesauce-signers": "^3.0.0",
     "vitest": "^3.2.3"
   },
   "funding": {
