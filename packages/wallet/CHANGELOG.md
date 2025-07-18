@@ -1,5 +1,17 @@
 # applesauce-wallet
 
+## 3.0.0
+
+### Minor Changes
+
+- 2517962: Add NIP-61 nutzap helpers, operations, blueprints, models, and actions
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-factory@3.0.0
+  - applesauce-actions@3.0.0
+
 ## 2.0.0
 
 ### Major Changes

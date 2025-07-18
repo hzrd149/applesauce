@@ -1,5 +1,12 @@
 # applesauce-signer
 
+## 3.0.0
+
+### Major Changes
+
+- 7b469b5: Remove `getRelays` method since its not longer listed in NIP-07
+- 7b469b5: Remove syncronus API on some signers and accounts. every method now returns a Promise
+
 ## 2.0.0
 
 ### Minor Changes

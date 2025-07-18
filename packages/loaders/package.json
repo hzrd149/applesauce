@@ -66,7 +66,7 @@
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
-    "applesauce-signers": "^2.0.0",
+    "applesauce-signers": "^3.0.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3",
     "vitest-nostr": "^0.4.1",
