@@ -1,7 +1,4 @@
-import {
-  DATE_BASED_CALENDAR_EVENT_KIND,
-  TIME_BASED_CALENDAR_EVENT_KIND,
-} from "applesauce-core/helpers/calendar-events";
+import { DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND } from "applesauce-core/helpers/calendar-event";
 import { calendarAddEvent, calendarRemoveEvent } from "applesauce-factory/operations/event";
 import { kinds, NostrEvent } from "nostr-tools";
 
