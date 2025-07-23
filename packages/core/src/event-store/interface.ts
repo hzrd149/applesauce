@@ -6,6 +6,7 @@ import { LRU } from "../helpers/lru.js";
 import { Mutes } from "../helpers/mutes.js";
 import { ProfileContent } from "../helpers/profile.js";
 import { Thread } from "../models/thread.js";
+import { AddressPointerWithoutD } from "../helpers/pointers.js";
 
 /** The read interface for an event store */
 export interface IEventStoreRead {
@@ -57,6 +58,18 @@ export interface IEventClaims {
   removeClaim(event: NostrEvent, claim: any): void;
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void;
+}
+
+/** An event store that can be subscribed to */
+export interface IEventStoreSubscriptions {
+  /** Susbscribe to an event by id */
+  event(id: string | EventPointer): Observable<NostrEvent | undefined>;
+  /** Subscribe to a replaceable event by pointer */
+  replaceable(pointer: AddressPointerWithoutD): Observable<NostrEvent | undefined>;
+  /** Subscribe to an addressable event by pointer */
+  addressable(pointer: AddressPointer): Observable<NostrEvent | undefined>;
+  /** Subscribe to a batch of events that match the filters */
+  filter(filters: Filter | Filter[]): Observable<NostrEvent[]>;
 }
 
 /** Methods for creating common models */

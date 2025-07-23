@@ -6,6 +6,8 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "BlockedRelaysModel",
+        "CalendarEventRSVPsModel",
+        "CalendarEventsModel",
         "ChannelHiddenModel",
         "ChannelMessagesModel",
         "ChannelMetadataModel",

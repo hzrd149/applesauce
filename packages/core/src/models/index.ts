@@ -1,5 +1,6 @@
 export * from "./blossom.js";
 export * from "./bookmarks.js";
+export * from "./calendar.js";
 export * from "./channels.js";
 export * from "./comments.js";
 export * from "./common.js";

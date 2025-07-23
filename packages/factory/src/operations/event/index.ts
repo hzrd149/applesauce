@@ -1,3 +1,6 @@
+export * from "./calendar-event.js";
+export * from "./calendar-rsvp.js";
+export * from "./calendar.js";
 export * from "./channels.js";
 export * from "./client.js";
 export * from "./comment.js";
@@ -7,6 +10,7 @@ export * from "./delete.js";
 export * from "./emojis.js";
 export * from "./encryption.js";
 export * from "./expiration.js";
+export * from "./geohash.js";
 export * from "./gift-wrap.js";
 export * from "./groups.js";
 export * from "./hashtags.js";
