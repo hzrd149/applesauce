@@ -12,7 +12,7 @@ import {
 import { CommentsModel } from "applesauce-core/models";
 import { EventFactory } from "applesauce-factory";
 import { CommentBlueprint } from "applesauce-factory/blueprints";
-import { includeGroupHTag, includeSingletonTag, setShortTextContent } from "applesauce-factory/operations/event";
+import { Groups, includeSingletonTag, Content } from "applesauce-factory/operations";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
@@ -130,7 +130,7 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
     try {
       let draft = await factory.create(CommentBlueprint, event, content);
       // Include the group h tag
-      draft = await factory.modify(draft, includeGroupHTag(pointer));
+      draft = await factory.modify(draft, Groups.setGroupPointer(pointer));
       // Sign the event
       const signed = await factory.sign(draft);
       // Publish the event
@@ -208,11 +208,11 @@ function NewThreadForm({
       const draft = await factory.build(
         { kind: 11 },
         // Include the "h" tag for the group
-        includeGroupHTag(pointer),
+        Groups.setGroupPointer(pointer),
         // Set the title
         includeSingletonTag(["title", title]),
         // Set the content and handle hashtags and mentions
-        setShortTextContent(content),
+        Content.setShortTextContent(content),
       );
       const signed = await factory.sign(draft);
       // Add to the event store for the app

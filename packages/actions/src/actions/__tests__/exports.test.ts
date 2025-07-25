@@ -40,7 +40,7 @@ describe("exports", () => {
         "RemoveBlockedRelay",
         "RemoveBlossomServer",
         "RemoveDMRelay",
-        "RemoveEventToCalendar",
+        "RemoveEventFromCalendar",
         "RemoveFavoriteRelay",
         "RemoveFavoriteRelaySet",
         "RemoveInboxRelay",

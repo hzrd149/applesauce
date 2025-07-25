@@ -1,9 +1,9 @@
 import { Action } from "applesauce-actions";
-import { modifyPublicTags } from "applesauce-factory/operations/event";
+import { modifyPublicTags } from "applesauce-factory/operations";
 import { addNameValueTag, removeNameValueTag, setSingletonTag } from "applesauce-factory/operations/tag";
 
 import { NUTZAP_INFO_KIND } from "../helpers/zap-info.js";
-import { setNutzapInfoMints, setNutzapInfoPubkey, setNutzapInfoRelays } from "../operations/event/zap-info.js";
+import { setNutzapInfoMints, setNutzapInfoPubkey, setNutzapInfoRelays } from "../operations/zap-info.js";
 
 /** An action to add a relay to the kind 10019 nutzap info event */
 export function AddNutzapInfoRelay(relay: string | string[]): Action {

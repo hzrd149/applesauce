@@ -1,6 +1,6 @@
 import { blueprint, TagOperation } from "applesauce-factory";
 import { fillAndTrimTag } from "applesauce-factory/helpers";
-import { includeSingletonTag, modifyPublicTags } from "applesauce-factory/operations/event";
+import { includeSingletonTag, modifyPublicTags } from "applesauce-factory/operations";
 import { RequestInput } from "../helpers/request.js";
 
 /** Includes the input tags for a request */

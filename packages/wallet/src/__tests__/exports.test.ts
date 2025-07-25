@@ -7,10 +7,9 @@ describe("exports", () => {
       [
         "Actions",
         "Blueprints",
-        "EventOperations",
         "Helpers",
         "Models",
-        "TagOperations",
+        "Operations",
       ]
     `);
   });

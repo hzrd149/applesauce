@@ -2,8 +2,8 @@ import { kinds } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 
 import { blueprint } from "../event-factory.js";
-import { setListDescription, setListImage, setListTitle } from "../operations/event/list.js";
-import { modifyHiddenTags, modifyPublicTags } from "../operations/event/tags.js";
+import { setDescription, setImage, setTitle } from "../operations/list.js";
+import { modifyHiddenTags, modifyPublicTags } from "../operations/tags.js";
 import { addPubkeyTag } from "../operations/tag/common.js";
 import { EventBlueprint } from "../types.js";
 
@@ -34,9 +34,9 @@ export function FollowSetBlueprint(
     kinds.Followsets,
 
     // set list info tags
-    list?.title ? setListTitle(list.title) : undefined,
-    list?.description ? setListDescription(list.description) : undefined,
-    list?.image ? setListImage(list.image) : undefined,
+    list?.title ? setTitle(list.title) : undefined,
+    list?.description ? setDescription(list.description) : undefined,
+    list?.image ? setImage(list.image) : undefined,
 
     // add users to the list
     ...userOperations,

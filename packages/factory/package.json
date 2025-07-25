@@ -52,15 +52,10 @@
       "require": "./dist/operations/tag/*.js",
       "types": "./dist/operations/tag/*.d.ts"
     },
-    "./operations/event": {
-      "import": "./dist/operations/event/index.js",
-      "require": "./dist/operations/event/index.js",
-      "types": "./dist/operations/event/index.d.ts"
-    },
-    "./operations/event/*": {
-      "import": "./dist/operations/event/*.js",
-      "require": "./dist/operations/event/*.js",
-      "types": "./dist/operations/event/*.d.ts"
+    "./operations/*": {
+      "import": "./dist/operations/*.js",
+      "require": "./dist/operations/*.js",
+      "types": "./dist/operations/*.d.ts"
     },
     "./helpers": {
       "import": "./dist/helpers/index.js",

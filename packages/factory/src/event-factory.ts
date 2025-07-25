@@ -8,7 +8,6 @@ import { ReactionBlueprint } from "./blueprints/reaction.js";
 import { NoteReplyBlueprint } from "./blueprints/reply.js";
 import { ShareBlueprint } from "./blueprints/share.js";
 import { eventPipe } from "./helpers/pipeline.js";
-import { includeClientTag } from "./operations/event/client.js";
 import {
   includeReplaceableIdentifier,
   modifyTags,
@@ -19,7 +18,8 @@ import {
   stripStamp,
   stripSymbols,
   updateCreatedAt,
-} from "./operations/event/index.js";
+  Client,
+} from "./operations/index.js";
 import { EventBlueprint, EventFactoryContext, EventOperation } from "./types.js";
 
 export type EventFactoryTemplate = {
@@ -39,7 +39,7 @@ function wrapCommon(...operations: (EventOperation | undefined)[]): EventOperati
     // Apply operations
     ...operations,
     // Include client tag if its set in the context
-    (draft, ctx) => (ctx.client ? includeClientTag(ctx.client.name, ctx.client.address)(draft, ctx) : draft),
+    (draft, ctx) => (ctx.client ? Client.setClient(ctx.client.name, ctx.client.address)(draft, ctx) : draft),
   );
 }
 

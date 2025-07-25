@@ -1,6 +1,6 @@
 import { kinds } from "nostr-tools";
 import { addInboxRelay, addOutboxRelay, removeInboxRelay, removeOutboxRelay } from "applesauce-factory/operations/tag";
-import { modifyPublicTags } from "applesauce-factory/operations/event";
+import { modifyPublicTags } from "applesauce-factory/operations";
 
 import { Action } from "../action-hub.js";
 

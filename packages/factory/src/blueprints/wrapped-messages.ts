@@ -1,14 +1,10 @@
 import { Emoji, getConversationParticipants, Rumor } from "applesauce-core/helpers";
 import { kinds } from "nostr-tools";
 import { blueprint } from "../event-factory.js";
-import { repairContentNostrLinks, setContent } from "../operations/event/content.js";
-import { includeContentEmojiTags } from "../operations/event/emojis.js";
-import { toRumor } from "../operations/event/gift-wrap.js";
-import {
-  setWrappedMessageConversation,
-  setWrappedMessageParent,
-  setWrappedMessageSubject,
-} from "../operations/event/wrapped-message.js";
+import { repairNostrLinks, setContent } from "../operations/content.js";
+import { includeEmojis } from "../operations/content.js";
+import { toRumor } from "../operations/gift-wrap.js";
+import { setConversation, setParent, setSubject } from "../operations/wrapped-message.js";
 import { EventBlueprint } from "../types.js";
 
 export type WrappedMessageBlueprintOptions = {
@@ -36,13 +32,13 @@ export function WrappedMessageBlueprint(
       // set text content
       setContent(message),
       // fix @ mentions
-      repairContentNostrLinks(),
+      repairNostrLinks(),
       // Include the "p" tags for the conversation
-      setWrappedMessageConversation(participants, self),
+      setConversation(participants, self),
       // include "emoji" tags
-      opts?.emojis ? includeContentEmojiTags(opts.emojis) : undefined,
+      opts?.emojis ? includeEmojis(opts.emojis) : undefined,
       // Include the subject if provided
-      opts?.subject ? setWrappedMessageSubject(opts.subject) : undefined,
+      opts?.subject ? setSubject(opts.subject) : undefined,
       // Convert the event to a rumor
       toRumor(),
     )(context) as Promise<Rumor>;
@@ -74,15 +70,15 @@ export function WrappedMessageReplyBlueprint(
       // set text content
       setContent(message),
       // fix @ mentions
-      repairContentNostrLinks(),
+      repairNostrLinks(),
       // Include the "p" tags for the conversation
-      setWrappedMessageConversation(participants, self),
+      setConversation(participants, self),
       // Include the parent message id
-      setWrappedMessageParent(parent),
+      setParent(parent),
       // include "emoji" tags
-      opts?.emojis ? includeContentEmojiTags(opts.emojis) : undefined,
+      opts?.emojis ? includeEmojis(opts.emojis) : undefined,
       // Include the subject if provided
-      opts?.subject ? setWrappedMessageSubject(opts.subject) : undefined,
+      opts?.subject ? setSubject(opts.subject) : undefined,
       // Convert the event to a rumor
       toRumor(),
     )(context) as Promise<Rumor>;

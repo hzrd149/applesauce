@@ -5,7 +5,7 @@ export * from "./delete.js";
 export * from "./file-metadata.js";
 export * from "./follow-sets.js";
 export * from "./gift-wrap.js";
-export * from "./groups.js";
+export * from "./group.js";
 export * from "./legacy-message.js";
 export * from "./live-stream.js";
 export * from "./note.js";

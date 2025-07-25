@@ -1,9 +1,9 @@
 import { kinds } from "nostr-tools";
 
 import { blueprint } from "../event-factory.js";
-import { MetaTagOptions, setMetaTags } from "../operations/event/common.js";
-import { setShortTextContent, TextContentOptions } from "../operations/event/content.js";
-import { setZapSplit, ZapOptions } from "../operations/event/zap.js";
+import { MetaTagOptions, setMetaTags } from "../operations/common.js";
+import { setShortTextContent, TextContentOptions } from "../operations/content.js";
+import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
 
 export type NoteBlueprintOptions = TextContentOptions & MetaTagOptions & ZapOptions;
 

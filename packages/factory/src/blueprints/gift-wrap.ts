@@ -1,7 +1,7 @@
 import { EventTemplate, NostrEvent, UnsignedEvent } from "nostr-tools";
 import { build } from "../event-factory.js";
-import { MetaTagOptions } from "../operations/event/common.js";
-import { giftWrap } from "../operations/event/gift-wrap.js";
+import { MetaTagOptions } from "../operations/common.js";
+import { giftWrap } from "../operations/gift-wrap.js";
 import { EventBlueprint } from "../types.js";
 
 /** Creates a gift wrapped event based on a blueprint */

@@ -1,4 +1,4 @@
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations/event";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
 import { addPubkeyTag, removePubkeyTag } from "applesauce-factory/operations/tag";
 import { EventTemplate, kinds } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";

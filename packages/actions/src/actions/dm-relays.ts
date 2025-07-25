@@ -1,5 +1,5 @@
 import { IEventStoreRead } from "applesauce-core/event-store";
-import { modifyPublicTags } from "applesauce-factory/operations/event";
+import { modifyPublicTags } from "applesauce-factory/operations";
 import { addRelayTag, removeRelayTag } from "applesauce-factory/operations/tag/relay";
 import { kinds } from "nostr-tools";
 

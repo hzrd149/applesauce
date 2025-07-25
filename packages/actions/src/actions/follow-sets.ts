@@ -1,11 +1,5 @@
 import { IEventStoreRead } from "applesauce-core/event-store";
-import {
-  modifyHiddenTags,
-  modifyPublicTags,
-  setListDescription,
-  setListImage,
-  setListTitle,
-} from "applesauce-factory/operations/event";
+import { modifyHiddenTags, modifyPublicTags, List } from "applesauce-factory/operations";
 import { addPubkeyTag, removePubkeyTag } from "applesauce-factory/operations/tag";
 import { kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -37,9 +31,9 @@ export function CreateFollowSet(
       { kind: kinds.Followsets },
 
       // set list information
-      setListTitle(title),
-      options?.description ? setListDescription(options.description) : undefined,
-      options?.image ? setListImage(options.image) : undefined,
+      List.setTitle(title),
+      options?.description ? List.setDescription(options.description) : undefined,
+      options?.image ? List.setImage(options.image) : undefined,
 
       // add pubkey tags
       options?.public ? modifyPublicTags(...options.public.map((p) => addPubkeyTag(p))) : undefined,
@@ -114,9 +108,9 @@ export function UpdateFollowSetInformation(
     const draft = await factory.modify(
       follows,
 
-      info?.title ? setListTitle(info.title) : undefined,
-      info?.description ? setListDescription(info.description) : undefined,
-      info?.image ? setListImage(info.image) : undefined,
+      info?.title ? List.setTitle(info.title) : undefined,
+      info?.description ? List.setDescription(info.description) : undefined,
+      info?.image ? List.setImage(info.image) : undefined,
     );
 
     yield await factory.sign(draft);

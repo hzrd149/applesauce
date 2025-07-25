@@ -5,7 +5,7 @@ import {
   WrappedMessageBlueprintOptions,
   WrappedMessageReplyBlueprint,
 } from "applesauce-factory/blueprints";
-import { GiftWrapOptions } from "applesauce-factory/operations/event";
+import { GiftWrapOptions } from "applesauce-factory/operations/event/gift-wrap";
 
 import { Action } from "../action-hub.js";
 

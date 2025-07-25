@@ -2,8 +2,8 @@ import { EncryptedContentSymbol, unixNow } from "applesauce-core/helpers";
 import { describe, expect, it } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { setEncryptedContent } from "../../operations/event/encryption.js";
-import { includeAltTag } from "../../operations/event/tags.js";
+import { includeAltTag } from "../../operations";
+import { setEncryptedContent } from "../../operations/content";
 import { eventPipe } from "../pipeline.js";
 
 const user = new FakeUser();

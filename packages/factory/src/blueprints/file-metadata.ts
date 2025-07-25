@@ -3,10 +3,10 @@ import { kinds } from "nostr-tools";
 
 import { blueprint } from "../event-factory.js";
 import { skip } from "../helpers/pipeline.js";
-import { MetaTagOptions, setMetaTags } from "../operations/event/common.js";
-import { setShortTextContent, TextContentOptions } from "../operations/event/content.js";
-import { includeFileMetadataTags } from "../operations/event/file-metadata.js";
-import { includeHashtags } from "../operations/event/hashtags.js";
+import { MetaTagOptions, setMetaTags } from "../operations/common.js";
+import { setShortTextContent, TextContentOptions } from "../operations/content.js";
+import { setFileMetadata } from "../operations/file-metadata.js";
+import { includeHashtags } from "../operations/hashtags.js";
 
 export type FileMetadataBlueprintOptions = TextContentOptions & MetaTagOptions & { hashtags?: string[] };
 
@@ -18,7 +18,7 @@ export function FileMetadataBlueprint(
 ) {
   return blueprint(
     kinds.FileMetadata,
-    includeFileMetadataTags(metadata),
+    setFileMetadata(metadata),
     description ? setShortTextContent(description, options) : skip(),
     options?.hashtags ? includeHashtags(options.hashtags) : skip(),
     setMetaTags(options),

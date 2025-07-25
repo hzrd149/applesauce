@@ -3,10 +3,7 @@ import { NostrEvent } from "nostr-tools";
 import { EventFactory } from "applesauce-factory";
 import { IEventStoreActions, IEventStoreRead } from "applesauce-core";
 
-/**
- * A callback used to tell the upstream app to publish an event
- * @param label a label describing what
- */
+/** A callback used to tell the upstream app to publish an event */
 export type PublishMethod = (event: NostrEvent) => void | Promise<void>;
 
 /** The context that is passed to actions for them to use to preform actions */

@@ -1,8 +1,8 @@
 import { kinds, NostrEvent } from "nostr-tools";
 import { blueprint } from "../event-factory.js";
-import { MetaTagOptions, setMetaTags } from "../operations/event/common.js";
-import { setShortTextContent, TextContentOptions } from "../operations/event/content.js";
-import { includeLiveStreamTag } from "../operations/event/live-stream.js";
+import { MetaTagOptions, setMetaTags } from "../operations/common.js";
+import { setShortTextContent, TextContentOptions } from "../operations/content.js";
+import { includeLiveStreamTag } from "../operations/live-stream.js";
 
 export type LiveChatMessageBlueprintOptions = TextContentOptions & MetaTagOptions;
 

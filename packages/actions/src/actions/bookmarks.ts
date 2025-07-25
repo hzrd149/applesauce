@@ -1,10 +1,4 @@
-import {
-  modifyHiddenTags,
-  modifyPublicTags,
-  setListDescription,
-  setListImage,
-  setListTitle,
-} from "applesauce-factory/operations/event";
+import { modifyHiddenTags, modifyPublicTags, List } from "applesauce-factory/operations";
 import { addEventBookmarkTag, removeEventBookmarkTag } from "applesauce-factory/operations/tag";
 import { EventTemplate, kinds, NostrEvent } from "nostr-tools";
 
@@ -102,9 +96,9 @@ export function CreateBookmarkSet(
   return async function* ({ factory }) {
     const draft = await factory.build(
       { kind: kinds.BookmarkList },
-      setListTitle(title),
-      setListDescription(description),
-      additional.image ? setListImage(additional.image) : undefined,
+      List.setTitle(title),
+      List.setDescription(description),
+      additional.image ? List.setImage(additional.image) : undefined,
       additional.public ? modifyPublicTags(...additional.public.map(addEventBookmarkTag)) : undefined,
       additional.hidden ? modifyHiddenTags(...additional.hidden.map(addEventBookmarkTag)) : undefined,
     );

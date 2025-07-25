@@ -1,8 +1,8 @@
 import { kinds, NostrEvent } from "nostr-tools";
 import { blueprint } from "../event-factory.js";
-import { setEncryptedContent } from "../operations/event/encryption.js";
-import { includeLegacyMessageAddressTag, includeLegacyMessageParentTag } from "../operations/event/legacy-message.js";
-import { MetaTagOptions, setMetaTags } from "../operations/event/common.js";
+import { setEncryptedContent } from "../operations/content.js";
+import { setMessageAddress, setMessageParent } from "../operations/legacy-message.js";
+import { MetaTagOptions, setMetaTags } from "../operations/common.js";
 
 export type LegacyMessageBlueprintOptions = MetaTagOptions;
 
@@ -13,7 +13,7 @@ export function LegacyMessageBlueprint(recipient: string, message: string, opts?
     // Encrypt the contents of the message to the recipient
     setEncryptedContent(recipient, message),
     // Include the nessiary "p" tag of the recipient
-    includeLegacyMessageAddressTag(recipient),
+    setMessageAddress(recipient),
     // Include the meta tags
     setMetaTags(opts),
   );
@@ -28,9 +28,9 @@ export function LegacyMessageReplyBlueprint(parent: NostrEvent, message: string,
     // Encrypt the contents of the message to the recipient
     setEncryptedContent(parent.pubkey, message),
     // Include the nessiary "p" tag of the recipient
-    includeLegacyMessageAddressTag(parent.pubkey),
+    setMessageAddress(parent.pubkey),
     // Include the parent message id
-    includeLegacyMessageParentTag(parent),
+    setMessageParent(parent),
     // Include the meta tags
     setMetaTags(opts),
   );

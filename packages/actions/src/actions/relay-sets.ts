@@ -1,11 +1,5 @@
 import { IEventStoreRead } from "applesauce-core/event-store";
-import {
-  modifyHiddenTags,
-  modifyPublicTags,
-  setListDescription,
-  setListImage,
-  setListTitle,
-} from "applesauce-factory/operations/event";
+import { modifyHiddenTags, modifyPublicTags, List } from "applesauce-factory/operations";
 import { addRelayTag, removeRelayTag } from "applesauce-factory/operations/tag";
 import { kinds, NostrEvent } from "nostr-tools";
 
@@ -60,9 +54,9 @@ export function CreateRelaySet(
     const draft = await factory.build(
       { kind: kinds.Relaysets },
 
-      setListTitle(title),
-      options?.description ? setListDescription(options.description) : undefined,
-      options?.image ? setListImage(options.image) : undefined,
+      List.setTitle(title),
+      options?.description ? List.setDescription(options.description) : undefined,
+      options?.image ? List.setImage(options.image) : undefined,
 
       options?.public ? modifyPublicTags(...options.public.map((r) => addRelayTag(r))) : undefined,
       options?.hidden ? modifyHiddenTags(...options.hidden.map((r) => addRelayTag(r))) : undefined,
@@ -87,9 +81,9 @@ export function UpdateRelaySetInformation(
     const draft = await factory.modify(
       relays,
 
-      info?.title ? setListTitle(info.title) : undefined,
-      info?.description ? setListDescription(info.description) : undefined,
-      info?.image ? setListImage(info.image) : undefined,
+      info?.title ? List.setTitle(info.title) : undefined,
+      info?.description ? List.setDescription(info.description) : undefined,
+      info?.image ? List.setImage(info.image) : undefined,
     );
 
     yield await factory.sign(draft);

@@ -2,11 +2,10 @@ import { EncryptedContentSymbol, getHiddenTags, unlockHiddenTags } from "applesa
 import { finalizeEvent, kinds, nip04 } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EventFactory, modify } from "../event-factory.js";
-import { setEncryptedContent } from "../operations/event/encryption.js";
-import { setListTitle } from "../operations/event/list.js";
-import { includeAltTag } from "../operations/event/tags.js";
 import { addEventTag, removeEventTag } from "../operations/tag/common.js";
 import { FakeUser } from "./fake-user.js";
+import { includeAltTag, List } from "../operations";
+import { setEncryptedContent } from "../operations/content";
 
 let factory = new EventFactory();
 let user = new FakeUser();
@@ -29,7 +28,7 @@ beforeEach(() => {
 describe("modify", () => {
   it('should ensure addressabel events have "d" tags', async () => {
     expect(
-      await modify({ kind: kinds.Bookmarksets, tags: [], content: "", created_at: 0 }, {}, setListTitle("testing")),
+      await modify({ kind: kinds.Bookmarksets, tags: [], content: "", created_at: 0 }, {}, List.setTitle("testing")),
     ).toEqual({
       content: "",
       tags: [
@@ -42,7 +41,7 @@ describe("modify", () => {
   });
 
   it("should apply operations to event", async () => {
-    expect(await modify(user.list([["e", "event-id"]]), {}, setListTitle("read later"))).toEqual(
+    expect(await modify(user.list([["e", "event-id"]]), {}, List.setTitle("read later"))).toEqual(
       expect.objectContaining({ tags: expect.arrayContaining([["title", "read later"]]) }),
     );
   });

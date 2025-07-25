@@ -20,6 +20,7 @@ import { UserBlossomServersModel } from "../models/blossom.js";
 import { CommentsModel, ThreadModel } from "../models/index.js";
 import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 
+/** An extended {@link EventSet} that handles replaceable events, delets, and models */
 export class EventStore implements IEventStore {
   database: EventSet;
 

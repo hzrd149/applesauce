@@ -1,11 +1,11 @@
 import { MediaAttachment, PICTURE_POST_KIND } from "applesauce-core/helpers";
 
 import { blueprint } from "../event-factory.js";
-import { MetaTagOptions, setMetaTags } from "../operations/event/common.js";
-import { setShortTextContent, TextContentOptions } from "../operations/event/content.js";
-import { includeHashtags } from "../operations/event/hashtags.js";
-import { includeMediaAttachmentTags } from "../operations/event/media-attachment.js";
-import { includePicturePostImageTags } from "../operations/event/picture-post.js";
+import { MetaTagOptions, setMetaTags } from "../operations/common.js";
+import { setShortTextContent, TextContentOptions } from "../operations/content.js";
+import { includeHashtags } from "../operations/hashtags.js";
+import { addMediaAttachments } from "../operations/media-attachment.js";
+import { setImageMetadata } from "../operations/picture-post.js";
 
 export type PicturePostBlueprintOptions = TextContentOptions &
   MetaTagOptions & {
@@ -27,8 +27,8 @@ export function PicturePostBlueprint(
 
   return blueprint(
     PICTURE_POST_KIND,
-    includeMediaAttachmentTags(pictures),
-    includePicturePostImageTags(pictures),
+    addMediaAttachments(pictures),
+    setImageMetadata(pictures),
     setShortTextContent(content, options),
     setMetaTags(options),
     options?.hashtags ? includeHashtags(options.hashtags) : undefined,

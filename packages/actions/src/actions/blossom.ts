@@ -1,6 +1,6 @@
 import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-core/helpers/blossom";
 import { TagOperation } from "applesauce-factory";
-import { modifyPublicTags, modifyTags } from "applesauce-factory/operations/event";
+import { modifyPublicTags, modifyTags } from "applesauce-factory/operations";
 import { addBlossomServerTag, removeBlossomServerTag } from "applesauce-factory/operations/tag/blossom";
 
 import { Action } from "../action-hub.js";

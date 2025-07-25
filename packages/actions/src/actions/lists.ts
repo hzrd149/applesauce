@@ -1,6 +1,6 @@
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { isAddressPointer } from "applesauce-core/helpers";
-import { setListDescription, setListImage, setListTitle } from "applesauce-factory/operations/event";
+import { List } from "applesauce-factory/operations";
 import { NostrEvent } from "nostr-tools";
 import { AddressPointer } from "nostr-tools/nip19";
 
@@ -28,9 +28,9 @@ export function SetListMetadata(
 
     const draft = await factory.modify(
       list,
-      setListTitle(info.title ?? null),
-      setListDescription(info.description ?? null),
-      setListImage(info.image ?? null),
+      List.setTitle(info.title ?? null),
+      List.setDescription(info.description ?? null),
+      List.setImage(info.image ?? null),
     );
 
     yield await factory.sign(draft);

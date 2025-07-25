@@ -5,23 +5,17 @@ import { NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 
 import { NUTZAP_KIND } from "../helpers/zaps.js";
-import {
-  setNutzapComment,
-  setNutzapEvent,
-  setNutzapMint,
-  setNutzapProofs,
-  setNutzapRecipient,
-} from "../operations/event/zaps.js";
+import { setComment, setEvent, setMint, setProofs, setRecipient } from "../operations/nut-zap.js";
 
 /** A blueprint to create a NIP-61 nutzap event for an event */
 export function NutzapBlueprint(event: NostrEvent, token: Token, comment?: string): EventBlueprint {
   return blueprint(
     NUTZAP_KIND,
-    setNutzapProofs(token.proofs),
-    setNutzapMint(token.mint),
-    setNutzapEvent(event),
-    setNutzapRecipient(event.pubkey),
-    comment ? setNutzapComment(comment) : skip(),
+    setProofs(token.proofs),
+    setMint(token.mint),
+    setEvent(event),
+    setRecipient(event.pubkey),
+    comment ? setComment(comment) : skip(),
   );
 }
 
@@ -29,9 +23,9 @@ export function NutzapBlueprint(event: NostrEvent, token: Token, comment?: strin
 export function ProfileNutzapBlueprint(user: string | ProfilePointer, token: Token, comment?: string): EventBlueprint {
   return blueprint(
     NUTZAP_KIND,
-    setNutzapProofs(token.proofs),
-    setNutzapMint(token.mint),
-    setNutzapRecipient(user),
-    comment ? setNutzapComment(comment) : skip(),
+    setProofs(token.proofs),
+    setMint(token.mint),
+    setRecipient(user),
+    comment ? setComment(comment) : skip(),
   );
 }
