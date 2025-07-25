@@ -1,8 +1,9 @@
-import { EncryptedContentSymbol, unixNow } from "applesauce-core/helpers";
+import { EncryptedContentSymbol, getHiddenTags, unixNow } from "applesauce-core/helpers";
 import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user";
 import { modifyHiddenTags } from "../tags.js";
+import { build } from "../../../dist";
 
 describe("modifyHiddenTags", () => {
   let user: FakeUser;
@@ -51,5 +52,19 @@ describe("modifyHiddenTags", () => {
 
     expect(Reflect.get(result, EncryptedContentSymbol)).toBe(JSON.stringify([["e", "new-id"]]));
     expect(Reflect.get(result, EncryptedContentSymbol)).not.toBe(Reflect.get(draft, EncryptedContentSymbol));
+  });
+
+  it("should work multiple times", async () => {
+    const draft = await build(
+      { kind: 30000 },
+      { signer: user },
+      modifyHiddenTags((tags) => [...tags, ["e", "test-id"]]),
+      modifyHiddenTags((tags) => [...tags, ["e", "second-id"]]),
+    );
+
+    expect(getHiddenTags(draft)).toEqual([
+      ["e", "test-id"],
+      ["e", "second-id"],
+    ]);
   });
 });

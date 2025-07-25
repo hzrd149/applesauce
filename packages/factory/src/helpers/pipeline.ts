@@ -28,10 +28,10 @@ export function skip<T>(): (value: T) => T {
 
 /**
  * @param fns - An array of operations to pipe together
- * @param preserve - An array of symbols to copy from each operation to the next
+ * @param preserve - If set an array of symbols to keep, all other symbols will be removed
  * @internal
  */
-export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?: (symbol | string)[]): Operation<T, R> {
+export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?: symbol[]): Operation<T, R> {
   if (fns.length === 0) return identity as Operation<any, any>;
 
   return async function piped(input: T, context: EventFactoryContext): Promise<R> {
@@ -40,8 +40,10 @@ export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?:
 
       // Copy the symbols and fields if result is an object
       if (preserve && typeof result === "object" && result !== null && typeof prev === "object" && prev !== null) {
-        for (const symbol of preserve) {
-          if (Reflect.has(prev, symbol)) Reflect.set(result, symbol, Reflect.get(prev, symbol));
+        const keys = Reflect.ownKeys(result).filter((key) => typeof key === "symbol");
+
+        for (const symbol of keys) {
+          if (!preserve.includes(symbol)) Reflect.deleteProperty(result, symbol);
         }
       }
 
