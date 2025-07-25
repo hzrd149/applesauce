@@ -3,6 +3,7 @@ import { ensureMarkedEventPointerTag, Nip10TagMarker } from "applesauce-factory/
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
 import { setSingletonTag } from "applesauce-factory/operations/tag";
 import { EventPointer } from "nostr-tools/nip19";
+
 import { HistoryContent } from "../helpers/history.js";
 
 /** Includes "e" "created" tags in wallet history tags */

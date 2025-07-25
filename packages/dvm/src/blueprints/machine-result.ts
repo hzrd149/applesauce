@@ -1,7 +1,7 @@
 import { EventOperation } from "applesauce-factory";
 import { blueprint } from "applesauce-factory/event-factory";
-import { setContent } from "applesauce-factory/operations/event/content";
-import { includeNameValueTag } from "applesauce-factory/operations/event/tags";
+import { setContent } from "applesauce-factory/operations/content";
+import { includeNameValueTag } from "applesauce-factory/operations/tags";
 import { NostrEvent } from "nostr-tools";
 
 // include copied "i" tags from request

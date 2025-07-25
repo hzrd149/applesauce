@@ -1,6 +1,6 @@
 import { blueprint } from "applesauce-factory/event-factory";
-import { setContent } from "applesauce-factory/operations/event/content";
-import { includeNameValueTag, includeSingletonTag } from "applesauce-factory/operations/event/tags";
+import { setContent } from "applesauce-factory/operations/content";
+import { includeNameValueTag, includeSingletonTag } from "applesauce-factory/operations/tags";
 import { NostrEvent } from "nostr-tools";
 
 import { DVM_STATUS_KIND } from "../helpers/kinds.js";
