@@ -1,5 +1,24 @@
 # applesauce-factory
 
+## 3.0.0
+
+### Major Changes
+
+- a9838cf: Reorganize exports and rename event operations
+
+### Minor Changes
+
+- f137e71: Add NIP-52 calendar event operations
+- b681e97: Rename `removeCoordinateTag` to `removeAddressTag` and deprecate old export
+- b681e97: Rename `addCoordinateTag` to `addAddressTag` and deprecate old export
+
+### Patch Changes
+
+- af4442b: Fix `pipeFromAsyncArray` not correctly preserving Symbols
+- Updated dependencies
+  - applesauce-core@3.0.0
+  - applesauce-content@3.0.0
+
 ## 2.3.0
 
 ### Patch Changes
