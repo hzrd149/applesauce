@@ -11,6 +11,7 @@ describe("exports", () => {
         "NUTZAP_INFO_KIND",
         "NUTZAP_KIND",
         "NutzapAmountSymbol",
+        "NutzapMintSymbol",
         "NutzapMintsSymbol",
         "NutzapProofsSymbol",
         "NutzapRelaysSymbol",
