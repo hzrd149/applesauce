@@ -1,5 +1,12 @@
 # applesauce-core
 
+## 3.0.0
+
+### Minor Changes
+
+- a470c69: Add exparimental `eventLoader`, `replaceableLoader`, and `addressableLoader` methods to event store
+- f137e71: Add NIP-52 calendar event helpers
+
 ## 2.3.0
 
 ### Minor Changes
