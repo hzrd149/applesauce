@@ -2,4 +2,4 @@
 "applesauce-factory": minor
 ---
 
-rename `removeCoordinateTag` to `removeAddressTag` and deprecate old export
+Rename `removeCoordinateTag` to `removeAddressTag` and deprecate old export
