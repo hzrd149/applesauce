@@ -1,7 +1,7 @@
 import { ISigner } from "applesauce-signers";
 import { nanoid } from "nanoid";
 import { BehaviorSubject } from "rxjs";
-import { NostrEvent } from "nostr-tools";
+import { getEventHash, NostrEvent, UnsignedEvent } from "nostr-tools";
 
 import { EventTemplate, IAccount, IAccountConstructor, SerializedAccount } from "./types.js";
 
@@ -112,11 +112,16 @@ export class BaseAccount<Signer extends ISigner, SignerData, Metadata extends un
 
   /** sign the event and make sure its signed with the correct pubkey */
   signEvent(template: EventTemplate): Promise<NostrEvent> {
+    // If the template does not have a pubkey, set it to the accounts pubkey
     if (!Reflect.has(template, "pubkey")) Reflect.set(template, "pubkey", this.pubkey);
 
     return this.operation(async () => {
+      const id = getEventHash(template as UnsignedEvent);
       const result = await this.signer.signEvent(template);
+
       if (result.pubkey !== this.pubkey) throw new SignerMismatchError("Signer signed with wrong pubkey");
+      if (result.id !== id) throw new SignerMismatchError("Signer modified event");
+
       return result;
     });
   }
