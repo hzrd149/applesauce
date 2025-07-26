@@ -1,22 +1,23 @@
-import { SimpleSigner } from "applesauce-signers";
+import { ISigner, SimpleSigner } from "applesauce-signers";
 import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAccount, SignerMismatchError } from "../account.js";
 import { SimpleAccount } from "../accounts/simple-account.js";
 
+let signer: SimpleSigner;
+beforeEach(() => {
+  signer = new SimpleSigner();
+});
+
 describe("request queue", () => {
-  let signer: SimpleSigner;
-  beforeEach(() => {
-    signer = new SimpleSigner();
-  });
   it("should queue signing requests by default", async () => {
     const account = new BaseAccount(await signer.getPublicKey(), signer);
 
     let resolve: (() => void)[] = [];
-    vi.spyOn(signer, "signEvent").mockImplementation(() => {
+    vi.spyOn(signer, "signEvent").mockImplementation((template) => {
       return new Promise((res) => {
-        resolve.push(() => res(finalizeEvent({ kind: 1, content: "mock", created_at: 0, tags: [] }, signer.key)));
+        resolve.push(() => res(finalizeEvent(template, signer.key)));
       });
     });
 
@@ -55,9 +56,9 @@ describe("request queue", () => {
     account.disableQueue = true;
 
     let resolve: (() => void)[] = [];
-    vi.spyOn(signer, "signEvent").mockImplementation(() => {
+    vi.spyOn(signer, "signEvent").mockImplementation((template) => {
       return new Promise((res) => {
-        resolve.push(() => res(finalizeEvent({ kind: 1, content: "mock", created_at: 0, tags: [] }, signer.key)));
+        resolve.push(() => res(finalizeEvent(template, signer.key)));
       });
     });
 
@@ -89,7 +90,7 @@ describe("type", () => {
 
 describe("nip04 and nip44", () => {
   it("should return undefined when signer does not support nip04/nip44", () => {
-    const signer: Nip07Interface = {
+    const signer: ISigner = {
       getPublicKey: async () => "test-pubkey",
       signEvent: async () => ({
         id: "",
@@ -109,7 +110,7 @@ describe("nip04 and nip44", () => {
   });
 
   it("should return nip04/nip44 interface when signer supports them", async () => {
-    const signer: Nip07Interface = {
+    const signer: ISigner = {
       getPublicKey: async () => "test-pubkey",
       signEvent: async () => ({
         id: "",
@@ -143,7 +144,7 @@ describe("nip04 and nip44", () => {
   });
 
   it("should reflect changes in signer nip04/nip44 support", () => {
-    const signer: Nip07Interface = {
+    const signer: ISigner = {
       getPublicKey: async () => "test-pubkey",
       signEvent: async () => ({
         id: "",
@@ -185,7 +186,6 @@ describe("nip04 and nip44", () => {
 
 describe("signEvent", () => {
   it("should set pubkey if not present", async () => {
-    const signer = new SimpleSigner();
     const account = new BaseAccount(await signer.getPublicKey(), signer);
     vi.spyOn(signer, "signEvent");
 
@@ -194,7 +194,6 @@ describe("signEvent", () => {
   });
 
   it("should throw if signer returns an event with the wrong pubkey", async () => {
-    const signer = new SimpleSigner();
     const account = new BaseAccount(await signer.getPublicKey(), signer);
 
     // Mock return wrong pubkey
@@ -208,7 +207,6 @@ describe("signEvent", () => {
   });
 
   it("should throw if signer returns an event with the wrong id", async () => {
-    const signer = new SimpleSigner();
     const account = new BaseAccount(await signer.getPublicKey(), signer);
 
     // Mock return wrong pubkey
