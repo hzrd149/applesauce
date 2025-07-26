@@ -43,6 +43,11 @@ const PRESET_NPUBS = [
     pubkey: "7fa56f5d6962ab1e3cd424e758c3002b8665f7b0d8dcee9fe9e288d7751ac194",
     relays: ["wss://frens.nostr1.com/", "wss://pyramid.fiatjaf.com/"],
   },
+  {
+    name: "calle",
+    pubkey: "50d94fc2d8580c682b071a542f8b1e31a200b0508bab95a33bef0855df281d63",
+    relays: ["wss://relay.damus.io/", "wss://relay.primal.net/"],
+  },
 ];
 
 // Global state

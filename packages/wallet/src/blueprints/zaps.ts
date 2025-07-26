@@ -4,8 +4,8 @@ import { skip } from "applesauce-factory/helpers";
 import { NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 
-import { NUTZAP_KIND } from "../helpers/zaps.js";
-import { setComment, setEvent, setMint, setProofs, setRecipient } from "../operations/nut-zap.js";
+import { NUTZAP_KIND } from "../helpers/nutzap.js";
+import { setComment, setEvent, setMint, setProofs, setRecipient } from "../operations/nutzap.js";
 
 /** A blueprint to create a NIP-61 nutzap event for an event */
 export function NutzapBlueprint(event: NostrEvent, token: Token, comment?: string): EventBlueprint {

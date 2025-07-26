@@ -3,7 +3,7 @@ import { getReplaceableAddress, isReplaceable } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
 import { map } from "rxjs";
 
-import { getNutzapPointer, NUTZAP_KIND } from "../helpers/zaps.js";
+import { getNutzapPointer, NUTZAP_KIND } from "../helpers/nutzap.js";
 
 /** A model that returns all nutzap events for an event */
 export function EventNutZapzModel(event: NostrEvent): Model<NostrEvent[]> {

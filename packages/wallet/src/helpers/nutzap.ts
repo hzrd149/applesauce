@@ -3,6 +3,7 @@ import {
   getAddressPointerFromATag,
   getEventPointerFromETag,
   getOrComputeCachedValue,
+  getTagValue,
   processTags,
   safeParse,
 } from "applesauce-core/helpers";
@@ -15,6 +16,7 @@ export const NUTZAP_KIND = 9321;
 // Symbols for caching computed values
 export const NutzapProofsSymbol = Symbol.for("nutzap-proofs");
 export const NutzapAmountSymbol = Symbol.for("nutzap-amount");
+export const NutzapMintSymbol = Symbol.for("nutzap-mint");
 
 /** Returns the cashu proofs from a kind:9321 nutzap event */
 export function getNutzapProofs(event: NostrEvent): Proof[] {
@@ -25,12 +27,15 @@ export function getNutzapProofs(event: NostrEvent): Proof[] {
 
 /** Returns the mint URL from a kind:9321 nutzap event */
 export function getNutzapMint(event: NostrEvent): string | undefined {
-  return event.tags.find((t) => t[0] === "u")?.[1];
+  return getOrComputeCachedValue(event, NutzapMintSymbol, () => {
+    const url = getTagValue(event, "u");
+    return url && URL.canParse(url) ? url : undefined;
+  });
 }
 
 /** Returns the recipient pubkey from a kind:9321 nutzap event */
 export function getNutzapRecipient(event: NostrEvent): string | undefined {
-  return event.tags.find((t) => t[0] === "p")?.[1];
+  return getTagValue(event, "p");
 }
 
 /** Returns the event ID being nutzapped from a kind:9321 nutzap event */
