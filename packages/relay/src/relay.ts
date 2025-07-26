@@ -56,6 +56,9 @@ export class ReqCloseError extends Error {}
 
 export type RelayOptions = {
   WebSocket?: WebSocketSubjectConfig<any>["WebSocketCtor"];
+  eoseTimeout?: number;
+  eventTimeout?: number;
+  keepAlive?: number;
 };
 
 export class Relay implements IRelay {
@@ -121,12 +124,12 @@ export class Relay implements IRelay {
     return this._nip11;
   }
 
-  /** If an EOSE message is not seen in this time, emit one locally  */
+  /** If an EOSE message is not seen in this time, emit one locally (default 10s)  */
   eoseTimeout = 10_000;
-  /** How long to wait for an OK message from the relay */
+  /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout = 10_000;
 
-  /** How long to keep the connection alive after nothing is subscribed */
+  /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive = 30_000;
 
   // Subjects that track if an "auth-required" message has been received for REQ or EVENT
@@ -155,6 +158,11 @@ export class Relay implements IRelay {
     opts?: RelayOptions,
   ) {
     this.log = this.log.extend(url);
+
+    // Set common options
+    if (opts?.eoseTimeout !== undefined) this.eoseTimeout = opts.eoseTimeout;
+    if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
+    if (opts?.keepAlive !== undefined) this.keepAlive = opts.keepAlive;
 
     // Create an observable that tracks boolean authentication state
     this.authenticated$ = this.authenticationResponse$.pipe(map((response) => response?.ok === true));
