@@ -7,9 +7,8 @@ import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { SocialGraph } from "nostr-social-graph";
 import { Filter, kinds } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
-import { bufferTime, EMPTY, filter, ignoreElements, iif, map, mergeWith, startWith, tap } from "rxjs";
+import { bufferTime, filter, map, startWith, tap } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 const eventStore = new EventStore();
@@ -35,6 +34,11 @@ const addressLoader = createAddressLoader(pool, {
   cacheRequest,
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
+
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
 
 const graphLoader = createSocialGraphLoader(addressLoader, {
   eventStore,
@@ -66,24 +70,9 @@ function FollowDistanceModel(root: string, distance: number): Model<Set<string>>
   return (events) => events.model(SocialGraphModel, root).pipe(map((g) => g.getUsersByFollowDistance(distance)));
 }
 
-/** A model that returns the users distance from the root */
-// function UserFollowDistanceModel(root: string, pubkey: string): Model<number> {
-//   return (events) => events.model(SocialGraphModel, root).pipe(map((g) => g.getFollowDistance(pubkey)));
-// }
-
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    iif(
-      // If the profile is not found in the event store, request it
-      () => !events.hasReplaceable(kinds.Metadata, user.pubkey),
-      addressLoader({ kind: kinds.Metadata, ...user }),
-      EMPTY,
-    ).pipe(ignoreElements(), mergeWith(events.profile(user.pubkey)));
-}
-
 function useProfile(pubkey: string, relays?: string[]): ProfileContent | undefined {
   const user = useMemo(() => ({ pubkey, relays }), [pubkey, relays?.join("|")]);
-  return useObservableMemo(() => eventStore.model(ProfileQuery, user), [pubkey, relays?.join("|")]);
+  return useObservableMemo(() => eventStore.profile(user), [pubkey, relays?.join("|")]);
 }
 
 function UserAvatar({ pubkey }: { pubkey: string }) {

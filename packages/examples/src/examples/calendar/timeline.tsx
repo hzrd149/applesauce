@@ -1,4 +1,4 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline, Model } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
   getCalendarEventEnd,
@@ -11,17 +11,16 @@ import {
   getDisplayName,
   getProfilePicture,
   getSeenRelays,
-  ProfileContent,
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-core/helpers";
 import { CalendarEventRSVPsModel } from "applesauce-core/models";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
-import { kinds, NostrEvent } from "nostr-tools";
+import { NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
-import { EMPTY, ignoreElements, iif, map, mergeWith } from "rxjs";
+import { map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -39,20 +38,14 @@ const addressLoader = createAddressLoader(pool, {
   lookupRelays: ["wss://purplepag.es"],
 });
 
-/** A model that loads the profile if its not found in the event store */
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    iif(
-      // If the profile is not found in the event store, request it
-      () => !events.hasReplaceable(kinds.Metadata, user.pubkey),
-      addressLoader({ kind: kinds.Metadata, ...user }),
-      EMPTY,
-    ).pipe(ignoreElements(), mergeWith(events.profile(user.pubkey)));
-}
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
 
 // Helper components
 function Avatar({ user }: { user: ProfilePointer }) {
-  const profile = useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey]);
+  const profile = useObservableMemo(() => eventStore.profile(user), [user.pubkey]);
   const picture = getProfilePicture(profile, `https://robohash.org/${user.pubkey}`);
 
   return (
@@ -71,7 +64,7 @@ function Avatar({ user }: { user: ProfilePointer }) {
 }
 
 function Username({ user }: { user: ProfilePointer }) {
-  const profile = useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey]);
+  const profile = useObservableMemo(() => eventStore.profile(user), [user.pubkey]);
   return <span>{getDisplayName(profile, "anon")}</span>;
 }
 

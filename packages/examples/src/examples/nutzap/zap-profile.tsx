@@ -1,13 +1,7 @@
 import { CashuMint, CashuWallet, MintQuoteResponse } from "@cashu/cashu-ts";
 import { ActionHub } from "applesauce-actions";
-import { EventStore, Model } from "applesauce-core";
-import {
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
-  mergeRelaySets,
-  ProfileContent,
-} from "applesauce-core/helpers";
+import { EventStore } from "applesauce-core";
+import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { EventFactory } from "applesauce-factory";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
@@ -20,11 +14,10 @@ import {
   getNutzapInfoRelays,
   NUTZAP_INFO_KIND,
 } from "applesauce-wallet/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
-import { npubEncode, ProfilePointer } from "nostr-tools/nip19";
+import { NostrEvent } from "nostr-tools";
+import { npubEncode } from "nostr-tools/nip19";
 import { useState } from "react";
-import { EMPTY, ignoreElements, iif } from "rxjs";
-import { mergeWith, startWith } from "rxjs/operators";
+import { startWith } from "rxjs/operators";
 
 // Preset list of npubs that can be zapped
 const PRESET_NPUBS = [
@@ -65,15 +58,10 @@ const addressLoader = createAddressLoader(pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
 
-/** A model that loads the profile if its not found in the event store */
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    iif(
-      () => !events.hasReplaceable(kinds.Metadata, user.pubkey),
-      addressLoader({ kind: kinds.Metadata, ...user }),
-      EMPTY,
-    ).pipe(ignoreElements(), mergeWith(events.profile(user.pubkey)));
-}
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
 
 // Profile card component
 function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
@@ -83,8 +71,7 @@ function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
 
   // Load the actual profile data
   const profile = useObservableEagerMemo(
-    () =>
-      eventStore.model(ProfileQuery, { pubkey: nutzapInfo.pubkey, relays: mergeRelaySets(getSeenRelays(nutzapInfo)) }),
+    () => eventStore.profile({ pubkey: nutzapInfo.pubkey, relays: mergeRelaySets(getSeenRelays(nutzapInfo)) }),
     [nutzapInfo],
   );
 

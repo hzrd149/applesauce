@@ -1,11 +1,5 @@
 import { EventStore, mapEventsToStore, mapEventsToTimeline, Model } from "applesauce-core";
-import {
-  addRelayHintsToPointer,
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
-  ProfileContent,
-} from "applesauce-core/helpers";
+import { addRelayHintsToPointer, getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
@@ -18,8 +12,8 @@ import {
   isValidNutzap,
   NUTZAP_KIND,
 } from "applesauce-wallet/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
-import { EventPointer, ProfilePointer } from "nostr-tools/nip19";
+import { NostrEvent } from "nostr-tools";
+import { EventPointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
 import { EMPTY, ignoreElements, iif, map, mergeWith } from "rxjs";
 
@@ -38,16 +32,10 @@ const addressLoader = createAddressLoader(pool, {
 });
 const eventLoader = createEventLoader(pool, { eventStore });
 
-/** A model that loads the profile if its not found in the event store */
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    iif(
-      // If the profile is not found in the event store, request it
-      () => !events.hasReplaceable(kinds.Metadata, user.pubkey),
-      addressLoader({ kind: kinds.Metadata, ...user }),
-      EMPTY,
-    ).pipe(ignoreElements(), mergeWith(events.profile(user.pubkey)));
-}
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
 
 function EventQuery(pointer: EventPointer): Model<NostrEvent | undefined> {
   return (events) =>
@@ -59,10 +47,7 @@ function EventQuery(pointer: EventPointer): Model<NostrEvent | undefined> {
 
 /** A component for rendering user avatars */
 function Avatar({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
-  const profile = useObservableEagerMemo(
-    () => eventStore.model(ProfileQuery, { pubkey, relays }),
-    [pubkey, relays?.join("|")],
-  );
+  const profile = useObservableEagerMemo(() => eventStore.profile({ pubkey, relays }), [pubkey, relays?.join("|")]);
 
   return (
     <div className="avatar">
@@ -75,10 +60,7 @@ function Avatar({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
 
 /** A component for rendering usernames */
 function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
-  const profile = useObservableEagerMemo(
-    () => eventStore.model(ProfileQuery, { pubkey, relays }),
-    [pubkey, relays?.join("|")],
-  );
+  const profile = useObservableEagerMemo(() => eventStore.profile({ pubkey, relays }), [pubkey, relays?.join("|")]);
 
   return <>{getDisplayName(profile, "unknown")}</>;
 }

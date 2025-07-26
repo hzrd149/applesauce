@@ -1,4 +1,4 @@
-import { EventStore, Model } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import {
   getDisplayName,
   getOrComputeCachedValue,
@@ -10,10 +10,10 @@ import {
 import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { kinds, NostrEvent } from "nostr-tools";
+import { NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { EMPTY, ignoreElements, iif, map, mergeWith } from "rxjs";
+import { map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -28,6 +28,11 @@ const addressLoader = createAddressLoader(pool, {
   eventStore,
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
+
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
 
 // NIP-13 Proof of Work calculation
 const PoWDifficultySymbol = Symbol.for("pow-difficulty");
@@ -71,20 +76,9 @@ function getTargetDifficulty(event: NostrEvent): number | undefined {
   return isNaN(target) ? undefined : target;
 }
 
-/** A model that loads the profile if its not found in the event store */
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    iif(
-      // If the profile is not found in the event store, request it
-      () => !events.hasReplaceable(kinds.Metadata, user.pubkey),
-      addressLoader({ kind: kinds.Metadata, ...user }),
-      EMPTY,
-    ).pipe(ignoreElements(), mergeWith(events.profile(user.pubkey)));
-}
-
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey, user.relays?.join("|")]);
+  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function Note({ note }: { note: NostrEvent }) {

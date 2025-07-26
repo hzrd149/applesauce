@@ -74,23 +74,23 @@ export interface IEventStoreSubscriptions {
 
 /** Methods for creating common models */
 export interface IEventStoreModels {
+  // Core model method
+  model<T extends unknown, Args extends Array<any>>(
+    constructor: ModelConstructor<T, Args>,
+    ...args: Args
+  ): Observable<T>;
+
   // Base models
   event(id: string): Observable<NostrEvent | undefined>;
-  events(ids: string[]): Observable<Record<string, NostrEvent>>;
-  replaceable(kind: number, pubkey: string, identifier?: string): Observable<NostrEvent | undefined>;
-  replaceableSet(
-    pointers: { kind: number; pubkey: string; identifier?: string }[],
-  ): Observable<Record<string, NostrEvent>>;
+  replaceable(pointer: AddressPointerWithoutD): Observable<NostrEvent | undefined>;
+  addressable(pointer: AddressPointer): Observable<NostrEvent | undefined>;
   timeline(filters: Filter | Filter[], includeOldVersion?: boolean): Observable<NostrEvent[]>;
 
-  // Common models
-  profile(pubkey: string): Observable<ProfileContent | undefined>;
-  contacts(pubkey: string): Observable<ProfilePointer[]>;
-  mutes(pubkey: string): Observable<Mutes | undefined>;
-  reactions(event: NostrEvent): Observable<NostrEvent[]>;
-  mailboxes(pubkey: string): Observable<{ inboxes: string[]; outboxes: string[] } | undefined>;
-  blossomServers(pubkey: string): Observable<URL[]>;
-  thread(root: string | EventPointer | AddressPointer): Observable<Thread>;
+  // Deprecated models
+  events(ids: string[]): Observable<Record<string, NostrEvent | undefined>>;
+  replaceableSet(
+    pointers: (AddressPointer | AddressPointerWithoutD)[],
+  ): Observable<Record<string, NostrEvent | undefined>>;
 }
 
 /** A computed view of an event set or event store */
@@ -116,8 +116,23 @@ export interface IEventStore
   updated(id: string | NostrEvent): Observable<NostrEvent>;
   removed(id: string): Observable<never>;
 
-  model<T extends unknown, Args extends Array<any>>(
-    constructor: ModelConstructor<T, Args>,
-    ...args: Args
-  ): Observable<T>;
+  // Legacy arguments
+  replaceable(kind: number, pubkey: string, identifier?: string): Observable<NostrEvent | undefined>;
+  replaceable(pointer: AddressPointerWithoutD): Observable<NostrEvent | undefined>;
+
+  // Experimental loaders
+  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent>;
+  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent>;
+  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent>;
+
+  // Common user models
+  profile(user: string | ProfilePointer): Observable<ProfileContent | undefined>;
+  contacts(user: string | ProfilePointer): Observable<ProfilePointer[]>;
+  mutes(user: string | ProfilePointer): Observable<Mutes | undefined>;
+  mailboxes(user: string | ProfilePointer): Observable<{ inboxes: string[]; outboxes: string[] } | undefined>;
+  blossomServers(user: string | ProfilePointer): Observable<URL[]>;
+
+  // Common event models
+  reactions(event: NostrEvent): Observable<NostrEvent[]>;
+  thread(root: string | EventPointer | AddressPointer): Observable<Thread>;
 }

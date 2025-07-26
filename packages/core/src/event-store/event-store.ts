@@ -3,22 +3,22 @@ import { isAddressableKind } from "nostr-tools/kinds";
 import { EMPTY, filter, finalize, from, merge, mergeMap, Observable, ReplaySubject, share, take, timer } from "rxjs";
 
 import hash_sum from "hash-sum";
+import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
 import { EventStoreSymbol, FromCacheSymbol, getReplaceableAddress, isReplaceable } from "../helpers/event.js";
 import { matchFilters } from "../helpers/filter.js";
-import { parseCoordinate } from "../helpers/pointers.js";
+import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
+import { UserBlossomServersModel } from "../models/blossom.js";
 import { EventModel, EventsModel, ReplaceableModel, ReplaceableSetModel, TimelineModel } from "../models/common.js";
+import { ContactsModel } from "../models/contacts.js";
+import { CommentsModel, ThreadModel } from "../models/index.js";
+import { MailboxesModel } from "../models/mailboxes.js";
+import { MuteModel } from "../models/mutes.js";
+import { ProfileModel } from "../models/profile.js";
+import { ReactionsModel } from "../models/reactions.js";
 import { EventSet } from "./event-set.js";
 import { IEventStore, ModelConstructor } from "./interface.js";
-import { ProfileModel } from "../models/profile.js";
-import { ContactsModel } from "../models/contacts.js";
-import { MuteModel } from "../models/mutes.js";
-import { ReactionsModel } from "../models/reactions.js";
-import { MailboxesModel } from "../models/mailboxes.js";
-import { UserBlossomServersModel } from "../models/blossom.js";
-import { CommentsModel, ThreadModel } from "../models/index.js";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 
 /** An extended {@link EventSet} that handles replaceable events, delets, and models */
 export class EventStore implements IEventStore {
@@ -41,6 +41,24 @@ export class EventStore implements IEventStore {
 
   /** A stream of events that have been removed */
   remove$: Observable<NostrEvent>;
+
+  /**
+   * A method that will be called when an event isn't found in the store
+   * @experimental
+   */
+  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent>;
+
+  /**
+   * A method that will be called when a replaceable event isn't found in the store
+   * @experimental
+   */
+  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent>;
+
+  /**
+   * A method that will be called when an addressable event isn't found in the store
+   * @experimental
+   */
+  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent>;
 
   constructor() {
     this.database = new EventSet();
@@ -334,13 +352,34 @@ export class EventStore implements IEventStore {
   // Helper methods for creating models
 
   /** Creates a {@link EventModel} */
-  event(id: string): Observable<NostrEvent | undefined> {
-    return this.model(EventModel, id);
+  event(pointer: string | EventPointer): Observable<NostrEvent | undefined> {
+    if (typeof pointer === "string") pointer = { id: pointer };
+
+    return this.model(EventModel, pointer);
   }
 
   /** Creates a {@link ReplaceableModel} */
-  replaceable(kind: number, pubkey: string, identifier?: string): Observable<NostrEvent | undefined> {
-    return this.model(ReplaceableModel, kind, pubkey, identifier);
+  replaceable(pointer: AddressPointer | AddressPointerWithoutD): Observable<NostrEvent | undefined>;
+  replaceable(kind: number, pubkey: string, identifier?: string): Observable<NostrEvent | undefined>;
+  replaceable(...args: any[]): Observable<NostrEvent | undefined> {
+    let pointer: AddressPointer | AddressPointerWithoutD | undefined;
+
+    // Parse arguments
+    if (args.length === 1) {
+      pointer = args[0] as AddressPointer | AddressPointerWithoutD;
+    } else if (args.length === 3 || args.length === 2) {
+      let [kind, pubkey, identifier] = args as [number, string, string | undefined];
+      pointer = { kind, pubkey, identifier };
+    }
+
+    if (!pointer) throw new Error("Invalid arguments, expected address pointer or kind, pubkey, identifier");
+
+    return this.model(ReplaceableModel, pointer);
+  }
+
+  /** Subscribe to an addressable event by pointer */
+  addressable(pointer: AddressPointer): Observable<NostrEvent | undefined> {
+    return this.model(ReplaceableModel, pointer);
   }
 
   /** Creates a {@link TimelineModel} */
@@ -348,55 +387,59 @@ export class EventStore implements IEventStore {
     return this.model(TimelineModel, filters, includeOldVersion);
   }
 
-  /** Creates a {@link EventsModel} */
-  events(ids: string[]): Observable<Record<string, NostrEvent>> {
-    return this.model(EventsModel, ids);
+  /** Subscribe to a users profile */
+  profile(user: string | ProfilePointer) {
+    return this.model(ProfileModel, user);
   }
 
-  /** Creates a {@link ReplaceableSetModel} */
-  replaceableSet(
-    pointers: { kind: number; pubkey: string; identifier?: string }[],
-  ): Observable<Record<string, NostrEvent>> {
-    return this.model(ReplaceableSetModel, pointers);
+  /** Subscribe to a users contacts */
+  contacts(user: string | ProfilePointer) {
+    if (typeof user === "string") user = { pubkey: user };
+    return this.model(ContactsModel, user);
   }
 
-  /** Creates a {@link ProfileModel} */
-  profile(pubkey: string) {
-    return this.model(ProfileModel, pubkey);
+  /** Subscribe to a users mutes */
+  mutes(user: string | ProfilePointer) {
+    if (typeof user === "string") user = { pubkey: user };
+    return this.model(MuteModel, user);
   }
 
-  /** Creates a {@link ContactsModel} */
-  contacts(pubkey: string) {
-    return this.model(ContactsModel, pubkey);
+  /** Subscribe to a users NIP-65 mailboxes */
+  mailboxes(user: string | ProfilePointer) {
+    if (typeof user === "string") user = { pubkey: user };
+    return this.model(MailboxesModel, user);
   }
 
-  /** Creates a {@link MuteModel} */
-  mutes(pubkey: string) {
-    return this.model(MuteModel, pubkey);
+  /** Subscribe to a users blossom servers */
+  blossomServers(user: string | ProfilePointer) {
+    if (typeof user === "string") user = { pubkey: user };
+    return this.model(UserBlossomServersModel, user);
   }
 
-  /** Creates a {@link ReactionsModel} */
+  /** Subscribe to an event's reactions */
   reactions(event: NostrEvent) {
     return this.model(ReactionsModel, event);
   }
 
-  /** Creates a {@link MailboxesModel} */
-  mailboxes(pubkey: string) {
-    return this.model(MailboxesModel, pubkey);
-  }
-
-  /** Creates a {@link UserBlossomServersModel} */
-  blossomServers(pubkey: string) {
-    return this.model(UserBlossomServersModel, pubkey);
-  }
-
-  /** Creates a {@link ThreadModel} */
+  /** Subscribe to a thread */
   thread(root: string | EventPointer | AddressPointer) {
     return this.model(ThreadModel, root);
   }
 
-  /** Creates a {@link CommentsModel} */
+  /** Subscribe to a event's comments */
   comments(event: NostrEvent) {
     return this.model(CommentsModel, event);
+  }
+
+  /** @deprecated use multiple {@link EventModel} instead */
+  events(ids: string[]): Observable<Record<string, NostrEvent | undefined>> {
+    return this.model(EventsModel, ids);
+  }
+
+  /** @deprecated use multiple {@link ReplaceableModel} instead */
+  replaceableSet(
+    pointers: { kind: number; pubkey: string; identifier?: string }[],
+  ): Observable<Record<string, NostrEvent | undefined>> {
+    return this.model(ReplaceableSetModel, pointers);
   }
 }

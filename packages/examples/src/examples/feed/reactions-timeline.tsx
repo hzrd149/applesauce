@@ -1,4 +1,4 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline, Model } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   addRelayHintsToPointer,
   getDisplayName,
@@ -9,15 +9,14 @@ import {
   mergeRelaySets,
   ProfileContent,
 } from "applesauce-core/helpers";
-import { EventModel } from "applesauce-core/models";
 import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
-import { useEffect, useMemo, useState } from "react";
-import { bufferTime, EMPTY, filter, ignoreElements, iif, map, mergeWith } from "rxjs";
+import { useMemo, useState } from "react";
+import { bufferTime, filter, map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -57,24 +56,19 @@ eventStore.insert$
 const addressLoader = createAddressLoader(pool, {
   eventStore,
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/"],
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 const eventLoader = createEventLoader(pool, { eventStore, cacheRequest });
 
-/** A model that loads the profile if its not found in the event store */
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    iif(
-      // If the profile is not found in the event store, request it
-      () => !events.hasReplaceable(kinds.Metadata, user.pubkey),
-      addressLoader({ kind: kinds.Metadata, ...user }),
-      EMPTY,
-    ).pipe(ignoreElements(), mergeWith(events.profile(user.pubkey)));
-}
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
+eventStore.eventLoader = eventLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey, user.relays?.join("|")]);
+  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 /** A component for rendering user avatars */
@@ -98,23 +92,16 @@ function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
 }
 
 function ReactionEvent({ event }: { event: NostrEvent }) {
-  const pointer = getReactionEventPointer(event);
+  const pointer = useMemo(() => getReactionEventPointer(event), [event]);
 
   const relays = useMemo(() => {
     return mergeRelaySets(getSeenRelays(event), pointer?.relays);
   }, [event, pointer]);
 
-  // Load the shared event from the pointer
-  useEffect(() => {
-    if (!pointer) return;
-    const sub = eventLoader(
-      // Add extra relay hints to the pointer to load
-      addRelayHintsToPointer(pointer, getSeenRelays(event)),
-    ).subscribe();
-    return () => sub.unsubscribe();
-  }, [pointer, event]);
-
-  const reactedTo = useObservableMemo(() => pointer && eventStore.model(EventModel, pointer.id), [pointer?.id]);
+  const reactedTo = useObservableMemo(
+    () => pointer && eventStore.event(addRelayHintsToPointer(pointer, getSeenRelays(event))),
+    [pointer?.id],
+  );
 
   return (
     <div className="flex flex-col gap-2">

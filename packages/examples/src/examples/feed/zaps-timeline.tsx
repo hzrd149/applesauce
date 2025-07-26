@@ -1,4 +1,4 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline, Model } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   addRelayHintsToPointer,
   getDisplayName,
@@ -18,7 +18,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useState } from "react";
-import { bufferTime, EMPTY, filter, ignoreElements, iif, map, mergeWith } from "rxjs";
+import { bufferTime, filter, map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -60,20 +60,15 @@ const addressLoader = createAddressLoader(pool, {
 });
 const eventLoader = createEventLoader(pool, { eventStore, cacheRequest });
 
-/** A model that loads the profile if its not found in the event store */
-function ProfileQuery(user: ProfilePointer): Model<ProfileContent | undefined> {
-  return (events) =>
-    iif(
-      // If the profile is not found in the event store, request it
-      () => !events.hasReplaceable(kinds.Metadata, user.pubkey),
-      addressLoader({ kind: kinds.Metadata, ...user }),
-      EMPTY,
-    ).pipe(ignoreElements(), mergeWith(events.profile(user.pubkey)));
-}
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
+eventStore.eventLoader = eventLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.model(ProfileQuery, user), [user.pubkey, user.relays?.join("|")]);
+  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 /** A component for rendering user avatars */
