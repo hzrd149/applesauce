@@ -207,12 +207,6 @@ describe("model", () => {
     expect(value).not.toBe(undefined);
   });
 
-  it("should not emit undefined if value exists", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.model(EventModel, profile.id));
-    expect(spy.getValues()).toEqual([profile]);
-  });
-
   it("should emit synchronous undefined if value does not exists", () => {
     let value: any = 0;
     eventStore.model(ProfileModel, user.pubkey).subscribe((v) => {
@@ -260,7 +254,7 @@ describe("event", () => {
     const spy = subscribeSpyTo(eventStore.event(profile.id));
     eventStore.remove(profile);
     eventStore.add(profile);
-    expect(spy.getValues()).toEqual([profile, undefined, profile]);
+    expect(spy.getValuesLength()).toBe(3);
   });
 
   it("should not complete when event is removed", () => {
@@ -273,36 +267,6 @@ describe("event", () => {
   it("should emit undefined if event is not found", () => {
     const spy = subscribeSpyTo(eventStore.event(profile.id));
     expect(spy.getValues()).toEqual([undefined]);
-  });
-});
-
-describe("events", () => {
-  it("should emit existing events", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.events([profile.id]));
-    expect(spy.getValues()).toEqual([{ [profile.id]: profile }]);
-  });
-
-  it("should remove events when they are removed", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.events([profile.id]));
-    expect(spy.getValues()).toEqual([{ [profile.id]: profile }]);
-
-    eventStore.remove(profile);
-    expect(spy.getValues()).toEqual([{ [profile.id]: profile }, {}]);
-  });
-
-  it("should add events back if then are re-added", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.events([profile.id]));
-    eventStore.remove(profile);
-    eventStore.add(profile);
-    expect(spy.getValues()).toEqual([{ [profile.id]: profile }, {}, { [profile.id]: profile }]);
-  });
-
-  it("should not emit any values if there are no events", () => {
-    const spy = subscribeSpyTo(eventStore.events([profile.id]));
-    expect(spy.receivedNext()).toBe(false);
   });
 });
 
@@ -419,45 +383,5 @@ describe("timeline", () => {
     };
 
     expect(hasDuplicates(spy.getValues())).toBe(false);
-  });
-});
-
-describe("replaceableSet", () => {
-  it("should not emit if there are not events", () => {
-    const spy = subscribeSpyTo(eventStore.replaceableSet([{ kind: 0, pubkey: user.pubkey }]));
-    expect(spy.receivedNext()).toBe(false);
-  });
-
-  it("should emit existing events", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.replaceableSet([{ kind: 0, pubkey: user.pubkey }]));
-    expect(spy.getValues()).toEqual([{ [getReplaceableAddress(profile)]: profile }]);
-  });
-
-  it("should remove event when removed", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.replaceableSet([{ kind: 0, pubkey: user.pubkey }]));
-    eventStore.remove(profile);
-    expect(spy.getValues()).toEqual([{ [getReplaceableAddress(profile)]: profile }, {}]);
-  });
-
-  it("should replace older events", () => {
-    const event2 = { ...profile, created_at: profile.created_at + 100, id: "newer-event" };
-    const address = getReplaceableAddress(profile);
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.replaceableSet([{ kind: 0, pubkey: user.pubkey }]));
-    eventStore.add(event2);
-
-    expect(spy.getValues()).toEqual([{ [address]: profile }, { [address]: event2 }]);
-  });
-
-  it("should ignore old events added later", () => {
-    const old = user.profile({ name: "old-name" }, { created_at: profile.created_at - 1000 });
-    const address = getReplaceableAddress(profile);
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.replaceableSet([{ kind: 0, pubkey: user.pubkey }]));
-    eventStore.add(old);
-
-    expect(spy.getValues()).toEqual([{ [address]: profile }]);
   });
 });

@@ -33,7 +33,9 @@ import { claimLatest } from "../observable/claim-latest.js";
 import { withImmediateValueOrDefault } from "../observable/with-immediate-value.js";
 
 /** A model that returns a single event or undefined when its removed */
-export function EventModel(pointer: EventPointer): Model<NostrEvent | undefined> {
+export function EventModel(pointer: string | EventPointer): Model<NostrEvent | undefined> {
+  if (typeof pointer === "string") pointer = { id: pointer };
+
   return (events) =>
     merge(
       // get current event and ignore if there is none
@@ -41,19 +43,18 @@ export function EventModel(pointer: EventPointer): Model<NostrEvent | undefined>
         let event = events.getEvent(pointer.id);
         if (event) return of(event);
 
-        // Create an observable for new events
-        const new$ = events.insert$.pipe(filter((e) => e.id === pointer.id));
-
         // If there is a loader, use it to get the event
-        if (events.eventLoader)
-          return merge(new$, events.eventLoader(pointer)).pipe(distinctUntilChanged((a, b) => a.id === b.id));
-        else return new$;
+        return events.eventLoader?.(pointer) ?? EMPTY;
       }),
+      // Listen for new events
+      events.insert$.pipe(filter((e) => e.id === pointer.id)),
       // emit undefined when deleted
       events.removed(pointer.id).pipe(endWith(undefined)),
     ).pipe(
       // claim all events
       claimLatest(events),
+      // ignore duplicate events
+      distinctUntilChanged((a, b) => a?.id === b?.id),
       // always emit undefined so the observable is synchronous
       withImmediateValueOrDefault(undefined),
     );
