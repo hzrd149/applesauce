@@ -72,7 +72,7 @@ const manager = new AccountManager();
 // register common account types
 registerCommonAccountTypes(manager);
 
-// first load all accounts from
+// first load all accounts from localStorage
 const json = JSON.parse(localStorage.getItem("accounts") || "[]");
 await manager.fromJSON(json);
 
@@ -83,9 +83,8 @@ manager.accounts$.subscribe((accounts) => {
 });
 
 // load active account from storage
-if (localStorage.hasItem("active")) {
-  manger.setActive(localStorage.getItem("active"));
-}
+const active = localStorage.getItem("active");
+if (active) manager.setActive(active);
 
 // subscribe to active changes
 manager.active$.subscribe((account) => {
