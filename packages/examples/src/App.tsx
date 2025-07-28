@@ -54,7 +54,7 @@ function ExampleView({ example }: { example?: Example }) {
   }, [example]);
 
   return (
-    <div className="drawer lg:drawer-open">
+    <div className="drawer lg:drawer-open h-full min-h-screen">
       <input id="drawer" type="checkbox" className="drawer-toggle" />
 
       {/* Main content */}
