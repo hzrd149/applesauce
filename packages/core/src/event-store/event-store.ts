@@ -5,7 +5,7 @@ import { EMPTY, filter, finalize, from, merge, mergeMap, Observable, ReplaySubje
 import hash_sum from "hash-sum";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
-import { EventStoreSymbol, FromCacheSymbol, getReplaceableAddress, isReplaceable } from "../helpers/event.js";
+import { createReplaceableAddress, EventStoreSymbol, FromCacheSymbol, isReplaceable } from "../helpers/event.js";
 import { matchFilters } from "../helpers/filter.js";
 import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
@@ -94,12 +94,13 @@ export class EventStore implements IEventStore {
       if (this.deletedIds.has(event.id)) return true;
 
       if (isAddressableKind(event.kind)) {
-        const deleted = this.deletedCoords.get(getReplaceableAddress(event));
+        const identifier = event.tags.find((t) => t[0] === "d")?.[1];
+        const deleted = this.deletedCoords.get(createReplaceableAddress(event.kind, event.pubkey, identifier));
         if (deleted) return deleted > event.created_at;
       }
-
-      return false;
     }
+
+    return false;
   }
 
   // handling delete events
@@ -152,11 +153,11 @@ export class EventStore implements IEventStore {
     if (this.checkDeleted(event)) return event;
 
     // Get the replaceable identifier
-    const d = isReplaceable(event.kind) ? event.tags.find((t) => t[0] === "d")?.[1] : undefined;
+    const identifier = isReplaceable(event.kind) ? event.tags.find((t) => t[0] === "d")?.[1] : undefined;
 
     // Don't insert the event if there is already a newer version
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
-      const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, d);
+      const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
       // If there is already a newer version, copy cached symbols and return existing event
       if (existing && existing.length > 0 && existing[0].created_at >= event.created_at) {
@@ -186,7 +187,7 @@ export class EventStore implements IEventStore {
 
     // remove all old version of the replaceable event
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
-      const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, d);
+      const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
       if (existing) {
         const older = Array.from(existing).filter((e) => e.created_at < event.created_at);

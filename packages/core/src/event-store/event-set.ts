@@ -3,7 +3,7 @@ import { binarySearch, insertEventIntoDescendingList } from "nostr-tools/utils";
 import { Subject } from "rxjs";
 
 import { getIndexableTags, INDEXABLE_TAGS } from "../helpers/event-tags.js";
-import { createReplaceableAddress, getReplaceableAddress, isReplaceable } from "../helpers/event.js";
+import { createReplaceableAddress, isReplaceable } from "../helpers/event.js";
 import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
 import { IEventSet } from "./interface.js";
@@ -112,7 +112,8 @@ export class EventSet implements IEventSet {
 
     // Insert into replaceable index
     if (isReplaceable(event.kind)) {
-      const address = getReplaceableAddress(event);
+      const identifier = event.tags.find((t) => t[0] === "d")?.[1];
+      const address = createReplaceableAddress(event.kind, event.pubkey, identifier);
 
       let array = this.replaceable.get(address)!;
       if (!this.replaceable.has(address)) {
@@ -165,7 +166,8 @@ export class EventSet implements IEventSet {
 
     // remove from replaceable index
     if (isReplaceable(event.kind)) {
-      const address = getReplaceableAddress(event);
+      const identifier = event.tags.find((t) => t[0] === "d")?.[1];
+      const address = createReplaceableAddress(event.kind, event.pubkey, identifier);
       const array = this.replaceable.get(address);
       if (array && array.includes(event)) {
         const idx = array.indexOf(event);

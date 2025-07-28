@@ -135,7 +135,7 @@ describe("add", () => {
   });
 });
 
-describe("inserts", () => {
+describe("add", () => {
   it("should emit newer replaceable events", () => {
     const spy = subscribeSpyTo(eventStore.insert$);
     eventStore.add(profile);
@@ -149,6 +149,10 @@ describe("inserts", () => {
     eventStore.add(profile);
     eventStore.add(user.profile({ name: "new name" }, { created_at: profile.created_at - 1000 }));
     expect(spy.getValues()).toEqual([profile]);
+  });
+
+  it("should handle addressable events without an identifier", () => {
+    expect(() => eventStore.add(user.event({ kind: 30000 }))).not.toThrow();
   });
 });
 

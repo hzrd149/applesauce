@@ -102,7 +102,7 @@ export function notifyEventUpdate(event: NostrEvent) {
 
 /**
  * Returns the replaceable identifier for a replaceable event
- * @throws
+ * @throws {Error} if the event is not addressable or missing the "d" tag
  */
 export function getReplaceableIdentifier(event: NostrEvent): string {
   if (!isAddressableKind(event.kind)) throw new Error("Event is not addressable");
