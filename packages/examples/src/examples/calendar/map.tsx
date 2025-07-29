@@ -9,12 +9,13 @@ import {
   getCalendarEventSummary,
   getCalendarEventTitle,
   TIME_BASED_CALENDAR_EVENT_KIND,
+  unixNow,
 } from "applesauce-core/helpers";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { NostrEvent } from "nostr-tools";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import { map } from "rxjs";
 
@@ -133,36 +134,67 @@ function CalendarEventPopup({ event }: { event: CalendarEventWithLocation }) {
 }
 
 export default function CalendarMap() {
-  const [selectedRelay, setSelectedRelay] = useState<string>("wss://relay.damus.io/");
+  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
+  const [showPastEvents, setShowPastEvents] = useState(false);
+
+  const timeline = useMemo(
+    () =>
+      createTimelineLoader(
+        pool,
+        [relay],
+        { kinds: [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND] },
+        {
+          eventStore,
+        },
+      ),
+    [pool, eventStore, relay],
+  );
+
+  const [loading, setLoading] = useState(false);
+  const loadMore = useCallback(() => {
+    setLoading(true);
+    timeline().subscribe({
+      error: () => setLoading(false),
+      complete: () => setLoading(false),
+    });
+  }, [timeline]);
+
+  // Load first page of events
+  useEffect(() => {
+    loadMore();
+  }, [loadMore]);
 
   // Load calendar events from selected relay (following timeline.tsx pattern)
   const events = useObservableMemo(
     () =>
-      pool
-        .relay(selectedRelay)
-        .subscription({
+      eventStore
+        .timeline({
           kinds: [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND],
         })
         .pipe(
-          // Only get events from relay (ignore EOSE)
-          onlyEvents(),
-          // deduplicate events using the event store
-          mapEventsToStore(eventStore),
-          // collect all events into a timeline
-          mapEventsToTimeline(),
           // Duplicate the timeline array to make react happy
           map((t) => [...t]),
         ),
-    [selectedRelay],
+    [relay],
   );
+
+  const filteredEvents = useMemo(() => {
+    if (!events) return;
+
+    const now = unixNow();
+    return events.filter((event) => {
+      const start = getCalendarEventStart(event);
+      return showPastEvents ? true : start ? start < now : false;
+    });
+  }, [events, showPastEvents]);
 
   // Filter events that have location data (separate from loading)
   const eventsWithLocation = useMemo(() => {
-    if (!events) return [];
+    if (!filteredEvents) return [];
 
     const eventsWithLocation: CalendarEventWithLocation[] = [];
 
-    for (const event of events) {
+    for (const event of filteredEvents) {
       const geohash = getCalendarEventGeohash(event);
       const locations = getCalendarEventLocations(event);
 
@@ -185,10 +217,10 @@ export default function CalendarMap() {
     }
 
     return eventsWithLocation;
-  }, [events]);
+  }, [filteredEvents]);
 
   const handleRelayChange = (relay: string) => {
-    setSelectedRelay(relay);
+    setRelay(relay);
   };
 
   // Default map center (San Francisco)
@@ -203,13 +235,28 @@ export default function CalendarMap() {
           data will appear as markers.
         </p>
 
-        <RelayPicker value={selectedRelay} onChange={handleRelayChange} />
+        <div className="flex gap-2 flex-wrap items-center">
+          <RelayPicker value={relay} onChange={handleRelayChange} />
+          <button className="btn btn-sm btn-primary" onClick={loadMore} disabled={loading}>
+            {loading ? "Loading..." : "Load more"}
+          </button>
 
-        {events && (
-          <p className="text-sm text-base-content/70">
-            {eventsWithLocation.length} events with location out of {events.length} total events
-          </p>
-        )}
+          <label className="label">
+            <input
+              type="checkbox"
+              checked={showPastEvents}
+              onChange={() => setShowPastEvents(!showPastEvents)}
+              className="toggle"
+            />
+            Show past events
+          </label>
+
+          {events && (
+            <p className="text-sm text-base-content/70 ms-auto">
+              {eventsWithLocation.length} events with location out of {events.length} total events
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex-1">
