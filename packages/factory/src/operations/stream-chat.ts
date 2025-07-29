@@ -5,13 +5,13 @@ import { AddressPointer } from "nostr-tools/nip19";
 import { ensureAddressPointerTag } from "../helpers/common-tags.js";
 import { eventPipe, skip } from "../helpers/pipeline.js";
 import {
-	includeEmojis,
-	includeQuoteTags,
-	repairNostrLinks,
-	setContent,
-	setContentWarning,
-	tagPubkeyMentions,
-	TextContentOptions,
+  includeEmojis,
+  includeQuoteTags,
+  repairNostrLinks,
+  setContent,
+  setContentWarning,
+  tagPubkeyMentions,
+  TextContentOptions,
 } from "./content.js";
 import { modifyPublicTags } from "./tags.js";
 
