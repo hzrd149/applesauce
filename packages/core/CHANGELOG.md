@@ -1,5 +1,17 @@
 # applesauce-core
 
+## 3.0.0
+
+### Minor Changes
+
+- 49b9c30: Add NIP-53 stream helper methods
+- a470c69: Add experimental `eventLoader`, `replaceableLoader`, and `addressableLoader` methods to event store
+- f137e71: Add NIP-52 calendar event helpers
+
+### Patch Changes
+
+- 42be033: Fix error from adding addressable event without an identifier (`d` tag) to event store
+
 ## 2.3.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # applesauce-dvm
 
+## 3.0.0
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-factory@3.0.0
+  - applesauce-core@3.0.0
+
 ## 2.0.0
 
 ### Minor Changes
