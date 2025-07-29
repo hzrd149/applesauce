@@ -19,6 +19,7 @@ describe("exports", () => {
         "ensureKTag",
         "ensureMarkedAddressPointerTag",
         "ensureMarkedEventPointerTag",
+        "ensureMarkedProfilePointerTag",
         "ensureNamedValueTag",
         "ensureProfilePointerTag",
         "ensureQuoteEventPointerTag",

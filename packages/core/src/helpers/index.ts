@@ -43,6 +43,8 @@ export * from "./reactions.js";
 export * from "./relays.js";
 export * from "./reports.js";
 export * from "./share.js";
+export * from "./stream-chat.js";
+export * from "./stream.js";
 export * from "./string.js";
 export * from "./tags.js";
 export * from "./threading.js";

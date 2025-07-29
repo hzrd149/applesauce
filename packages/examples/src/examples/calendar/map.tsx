@@ -1,4 +1,4 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
   getCalendarEventEnd,
@@ -13,7 +13,7 @@ import {
 } from "applesauce-core/helpers";
 import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "nostr-tools";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";

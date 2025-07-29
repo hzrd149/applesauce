@@ -22,6 +22,7 @@ describe("exports", () => {
         "PicturePostBlueprint",
         "ReactionBlueprint",
         "ShareBlueprint",
+        "StreamChatMessage",
         "WrappedMessageBlueprint",
         "WrappedMessageReplyBlueprint",
       ]

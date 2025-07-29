@@ -13,4 +13,5 @@ export * from "./picture-post.js";
 export * from "./reaction.js";
 export * from "./reply.js";
 export * from "./share.js";
+export * from "./stream.js";
 export * from "./wrapped-messages.js";

@@ -25,6 +25,8 @@ describe("exports", () => {
         "PicturePost",
         "Profile",
         "Reaction",
+        "Stream",
+        "StreamChat",
         "TagOperations",
         "WrappedMessage",
         "Zap",

@@ -48,6 +48,25 @@ export function ensureEventPointerTag(tags: string[][], pointer: EventPointer): 
 }
 
 /** Adds or merges an ProfilePointer into a tags list */
+export function ensureMarkedProfilePointerTag(tags: string[][], pointer: ProfilePointer, marker: string): string[][] {
+  const existing = tags.find((t) => t[0] === "p" && t[1] === pointer.pubkey && (t[3] ?? "") === (marker ?? ""));
+
+  if (existing) {
+    const merged = fillAndTrimTag([
+      "p",
+      pointer.pubkey,
+      existing[2] || pointer.relays?.[0],
+      // markers should always be equal
+      marker,
+    ]);
+
+    // replace tag
+    return tags.map((t) => (t === existing ? merged : t));
+  }
+  return [...tags, fillAndTrimTag(["p", pointer.pubkey, pointer.relays?.[0], marker])];
+}
+
+/** Adds or merges an ProfilePointer into a tags list */
 export function ensureProfilePointerTag(tags: string[][], pointer: ProfilePointer): string[][] {
   const existing = tags.find((t) => t[0] === "p" && t[1] === pointer.pubkey);
 
