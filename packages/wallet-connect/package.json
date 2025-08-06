@@ -1,5 +1,5 @@
 {
-  "name": "applesauce-wallet",
+  "name": "applesauce-wallet-connect",
   "version": "2.0.0",
   "description": "",
   "type": "module",
@@ -13,7 +13,8 @@
   },
   "keywords": [
     "nostr",
-    "applesauce"
+    "applesauce",
+    "nwc"
   ],
   "author": "hzrd149",
   "license": "MIT",
@@ -26,6 +27,11 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./wallet-connect": {
+      "import": "./dist/wallet-connect.js",
+      "require": "./dist/wallet-connect.js",
+      "types": "./dist/wallet-connect.d.ts"
+    },
     "./helpers": {
       "import": "./dist/helpers/index.js",
       "require": "./dist/helpers/index.js",
@@ -36,16 +42,6 @@
       "require": "./dist/helpers/*.js",
       "types": "./dist/helpers/*.d.ts"
     },
-    "./models": {
-      "import": "./dist/models/index.js",
-      "require": "./dist/models/index.js",
-      "types": "./dist/models/index.d.ts"
-    },
-    "./models/*": {
-      "import": "./dist/models/*.js",
-      "require": "./dist/models/*.js",
-      "types": "./dist/models/*.d.ts"
-    },
     "./blueprints": {
       "import": "./dist/blueprints/index.js",
       "require": "./dist/blueprints/index.js",
@@ -55,42 +51,18 @@
       "import": "./dist/blueprints/*.js",
       "require": "./dist/blueprints/*.js",
       "types": "./dist/blueprints/*.d.ts"
-    },
-    "./operations": {
-      "import": "./dist/operations/index.js",
-      "require": "./dist/operations/index.js",
-      "types": "./dist/operations/index.d.ts"
-    },
-    "./operations/*": {
-      "import": "./dist/operations/*.js",
-      "require": "./dist/operations/*.js",
-      "types": "./dist/operations/*.d.ts"
-    },
-    "./actions": {
-      "import": "./dist/actions/index.js",
-      "require": "./dist/actions/index.js",
-      "types": "./dist/actions/index.d.ts"
-    },
-    "./actions/*": {
-      "import": "./dist/actions/*.js",
-      "require": "./dist/actions/*.js",
-      "types": "./dist/actions/*.d.ts"
     }
   },
   "dependencies": {
-    "@cashu/cashu-ts": "2.0.0-rc1",
-    "@gandlaf21/bc-ur": "^1.1.12",
-    "@noble/hashes": "^1.7.1",
-    "applesauce-actions": "^2.0.0",
     "applesauce-core": "^2.0.0",
     "applesauce-factory": "^2.0.0",
     "nostr-tools": "^2.13",
+    "@noble/hashes": "^1.7.1",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/debug": "^4.1.12",
-    "applesauce-signers": "^2.0.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3"
   },

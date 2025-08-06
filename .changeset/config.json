@@ -16,7 +16,8 @@
       "applesauce-relay",
       "applesauce-signers",
       "applesauce-solidjs",
-      "applesauce-wallet"
+      "applesauce-wallet",
+      "applesauce-wallet-connect"
     ]
   ],
   "access": "public",
