@@ -188,6 +188,91 @@ fetchEvents({ kinds: [1, 0] }, (event) => {
 });
 ```
 
+## Fallback event loaders
+
+The event store has three optional loader methods that act as fallbacks when events are not found in the store. These loaders are particularly useful for loading user profiles or other single events on-demand when the UI needs them.
+
+### Setting up custom loaders
+
+You can implement your own loader methods using any Nostr library or relay connection approach:
+
+```ts
+import { EventStore } from "applesauce-core";
+
+const eventStore = new EventStore();
+
+// Event loader - loads events by ID
+eventStore.eventLoader = async (pointer) => {
+  console.log("loading event", pointer);
+  const event = await cache.getEventById(pointer.id);
+
+  if (event) return event;
+};
+
+// Replaceable loader - loads kind 0, 3, 1xxxx events
+eventStore.replaceableLoader = async (pointer) => {
+  console.log("loading replaceable event", pointer);
+  return await loadReplaceableEvent(pointer.kind, pointer.pubkey);
+};
+
+// Addressable loader - loads kind 3xxxx events
+eventStore.addressableLoader = async (pointer) => {
+  console.log("loading addressable event", pointer);
+  const event = await fetchAddressableEvent(pointer.kind, pointer.pubkey, pointer.identifier);
+  if (event) return event;
+};
+```
+
+Now if events are subscribed to and they don't exist in the store, the loaders will be called.
+
+```ts
+const sub = eventStore
+  .profile("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
+  .subscribe((profile) => {
+    if (profile) console.log("Profile loaded:", profile);
+  });
+
+// Console:
+// loading replaceable event { kind: 0, pubkey: '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d' }
+// Profile loaded: { name: 'fiatjaf', ... }
+```
+
+The loaders are called automatically and the loaded events are added to the store, making them available for future requests and updating any active subscriptions.
+
+### Using with applesauce-loaders
+
+While you can implement loaders with any Nostr library, the `applesauce-relay` and `applesauce-loaders` packages make it much simpler:
+
+```ts
+import { EventStore } from "applesauce-core";
+import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { RelayPool } from "applesauce-relay";
+
+const eventStore = new EventStore();
+const pool = new RelayPool();
+
+// Create an address loader that handles all addressable and replaceable events
+const addressLoader = createAddressLoader(pool, {
+  // Try a local relay first for caching
+  cacheRequest: (filters) => pool.relay("ws://localhost:4869").request(filters),
+  // Fallback to public relays
+  lookupRelays: ["wss://purplepag.es", "wss://relay.damus.io"],
+});
+
+// Set loaders on event store
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
+
+// Create an event loader that loads events by ID
+const eventLoader = createEventLoader(pool, {
+  // Try a local relay first for caching
+  cacheRequest: (filters) => pool.relay("ws://localhost:4869").request(filters),
+});
+
+// Set loader on event store
+eventStore.eventLoader = eventLoader;
+```
+
 ## Static Methods
 
 The event store provides several methods to directly access events without creating subscriptions. These methods are useful when you need to check for or retrieve events synchronously.

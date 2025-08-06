@@ -46,19 +46,19 @@ export class EventStore implements IEventStore {
    * A method that will be called when an event isn't found in the store
    * @experimental
    */
-  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent>;
+  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
   /**
    * A method that will be called when a replaceable event isn't found in the store
    * @experimental
    */
-  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent>;
+  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
   /**
    * A method that will be called when an addressable event isn't found in the store
    * @experimental
    */
-  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent>;
+  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
   constructor() {
     this.database = new EventSet();

@@ -7,6 +7,7 @@ import {
   endWith,
   filter,
   finalize,
+  from,
   map,
   merge,
   mergeWith,
@@ -44,7 +45,8 @@ export function EventModel(pointer: string | EventPointer): Model<NostrEvent | u
         if (event) return of(event);
 
         // If there is a loader, use it to get the event
-        return events.eventLoader?.(pointer) ?? EMPTY;
+        if (!events.eventLoader) return EMPTY;
+        return from(events.eventLoader(pointer)).pipe(filter((e) => !!e));
       }),
       // Listen for new events
       events.insert$.pipe(filter((e) => e.id === pointer.id)),
@@ -71,9 +73,13 @@ export function ReplaceableModel(pointer: AddressPointer | AddressPointerWithout
         let event = events.getReplaceable(pointer.kind, pointer.pubkey, pointer.identifier);
 
         if (event) return of(event);
-        else if (pointer.identifier !== undefined)
-          return events.addressableLoader?.(pointer as AddressPointer) ?? EMPTY;
-        else return events.replaceableLoader?.(pointer) ?? EMPTY;
+        else if (pointer.identifier !== undefined) {
+          if (!events.addressableLoader) return EMPTY;
+          return from(events.addressableLoader(pointer as AddressPointer)).pipe(filter((e) => !!e));
+        } else {
+          if (!events.replaceableLoader) return EMPTY;
+          return from(events.replaceableLoader(pointer)).pipe(filter((e) => !!e));
+        }
       }),
       // subscribe to new events
       events.insert$.pipe(

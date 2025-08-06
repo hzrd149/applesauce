@@ -121,9 +121,9 @@ export interface IEventStore
   replaceable(pointer: AddressPointerWithoutD): Observable<NostrEvent | undefined>;
 
   // Experimental loaders
-  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent>;
-  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent>;
-  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent>;
+  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
+  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
+  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
   // Common user models
   profile(user: string | ProfilePointer): Observable<ProfileContent | undefined>;

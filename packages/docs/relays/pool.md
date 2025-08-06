@@ -41,8 +41,7 @@ pool
       if (response === "EOSE") {
         console.log("End of stored events from all relays");
       } else {
-        console.log("Event from relay:", response.from);
-        console.log("Event content:", response.content);
+        console.log("Event", response);
       }
     },
     error: (error) => {
