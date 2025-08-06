@@ -17,6 +17,7 @@ export * from "./emoji.js";
 export * from "./encrypted-content-cache.js";
 export * from "./encrypted-content.js";
 export * from "./encryption.js";
+export * from "./event-cache.js";
 export * from "./event-tags.js";
 export * from "./event.js";
 export * from "./expiration.js";

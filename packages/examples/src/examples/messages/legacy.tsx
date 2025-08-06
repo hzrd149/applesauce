@@ -4,10 +4,10 @@ import { SendLegacyMessage } from "applesauce-actions/actions";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import {
   getTagValue,
-  isFromCache,
   isLegacyMessageLocked,
   lockEncryptedContent,
   persistEncryptedContent,
+  presistEventsToCache,
   unixNow,
   unlockLegacyMessage,
 } from "applesauce-core/helpers";
@@ -23,7 +23,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { npubEncode } from "nostr-tools/nip19";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, bufferTime, filter } from "rxjs";
+import { BehaviorSubject } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -56,19 +56,7 @@ const cache = await openDB();
 const cacheRequest: CacheRequest = (filters) => getEventsForFilters(cache, filters);
 
 // Save all new events to the cache
-eventStore.insert$
-  .pipe(
-    // Only select events that are not from the cache
-    filter((e) => !isFromCache(e)),
-    // Buffer events for 5 seconds
-    bufferTime(5_000),
-    // Only select buffers with events
-    filter((b) => b.length > 0),
-  )
-  .subscribe((events) => {
-    // Save all new events to the cache
-    addEvents(cache, events);
-  });
+presistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 function ContactList({
   events,

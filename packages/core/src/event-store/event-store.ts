@@ -6,9 +6,11 @@ import hash_sum from "hash-sum";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
 import { createReplaceableAddress, EventStoreSymbol, FromCacheSymbol, isReplaceable } from "../helpers/event.js";
+import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { matchFilters } from "../helpers/filter.js";
 import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
+import { unixNow } from "../helpers/time.js";
 import { UserBlossomServersModel } from "../models/blossom.js";
 import { EventModel, EventsModel, ReplaceableModel, ReplaceableSetModel, TimelineModel } from "../models/common.js";
 import { ContactsModel } from "../models/contacts.js";
@@ -26,6 +28,9 @@ export class EventStore implements IEventStore {
 
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions = false;
+
+  /** Enable this to keep expired events */
+  keepExpired = false;
 
   /**
    * A method used to verify new events before added them
@@ -103,6 +108,49 @@ export class EventStore implements IEventStore {
     return false;
   }
 
+  protected expirations = new Map<string, number>();
+
+  /** Adds an event to the expiration map */
+  protected addExpiration(event: NostrEvent) {
+    const expiration = getExpirationTimestamp(event);
+    if (expiration && Number.isFinite(expiration)) this.expirations.set(event.id, expiration);
+  }
+
+  protected expirationTimeout: number | null = null;
+  protected nextExpirationCheck: number | null = null;
+  protected handleExpiringEvent(event: NostrEvent) {
+    const expiration = getExpirationTimestamp(event);
+    if (!expiration) return;
+
+    // Add event to expiration map
+    this.expirations.set(event.id, expiration);
+
+    // Exit if the next check is already less than the next expiration
+    if (this.expirationTimeout && this.nextExpirationCheck && this.nextExpirationCheck < expiration) return;
+
+    // Set timeout to prune expired events
+    if (this.expirationTimeout) clearTimeout(this.expirationTimeout);
+    const timeout = expiration - unixNow();
+    this.expirationTimeout = setTimeout(this.pruneExpired.bind(this), timeout * 1000 + 10);
+    this.nextExpirationCheck = expiration;
+  }
+
+  /** Remove expired events from the store */
+  protected pruneExpired() {
+    const now = unixNow();
+    for (const [id, expiration] of this.expirations) {
+      if (expiration <= now) {
+        this.expirations.delete(id);
+        this.remove(id);
+      }
+    }
+
+    // Cleanup timers
+    if (this.expirationTimeout) clearTimeout(this.expirationTimeout);
+    this.nextExpirationCheck = null;
+    this.expirationTimeout = null;
+  }
+
   // handling delete events
   protected handleDeleteEvent(deleteEvent: NostrEvent) {
     const ids = getDeleteIds(deleteEvent);
@@ -152,6 +200,10 @@ export class EventStore implements IEventStore {
     // Ignore if the event was deleted
     if (this.checkDeleted(event)) return event;
 
+    // Reject expired events if keepExpired is false
+    const expiration = getExpirationTimestamp(event);
+    if (this.keepExpired === false && expiration && expiration <= unixNow()) return null;
+
     // Get the replaceable identifier
     const identifier = isReplaceable(event.kind) ? event.tags.find((t) => t[0] === "d")?.[1] : undefined;
 
@@ -198,6 +250,9 @@ export class EventStore implements IEventStore {
         if (existing.length !== older.length) return existing[0];
       }
     }
+
+    // Add event to expiration map
+    if (this.keepExpired === false && expiration) this.handleExpiringEvent(inserted);
 
     return inserted;
   }

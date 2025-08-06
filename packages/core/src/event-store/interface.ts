@@ -106,12 +106,18 @@ export interface IEventSet extends IEventStoreRead, IEventStoreStreams, IEventSt
   events: LRU<NostrEvent>;
 }
 
+// TODO: this interface should be removed, or broken into smaller interfaces
 export interface IEventStore
   extends IEventStoreRead,
     IEventStoreStreams,
     IEventStoreActions,
     IEventStoreModels,
     IEventClaims {
+  /** Enable this to keep old versions of replaceable events */
+  keepOldVersions: boolean;
+  /** Enable this to keep expired events */
+  keepExpired: boolean;
+
   filters(filters: Filter | Filter[]): Observable<NostrEvent>;
   updated(id: string | NostrEvent): Observable<NostrEvent>;
   removed(id: string): Observable<never>;

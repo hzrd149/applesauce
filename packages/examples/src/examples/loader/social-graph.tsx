@@ -1,5 +1,5 @@
 import { EventStore, Model } from "applesauce-core";
-import { getDisplayName, getProfilePicture, isFromCache, ProfileContent } from "applesauce-core/helpers";
+import { getDisplayName, getProfilePicture, presistEventsToCache, ProfileContent } from "applesauce-core/helpers";
 import { createAddressLoader, createSocialGraphLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -21,13 +21,7 @@ function cacheRequest(filters: Filter[]) {
 }
 
 // Save all new events to the cache
-eventStore.insert$
-  .pipe(
-    filter((e) => !isFromCache(e)),
-    bufferTime(5_000),
-    filter((b) => b.length > 0),
-  )
-  .subscribe((events) => addEvents(cache, events));
+presistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 const addressLoader = createAddressLoader(pool, {
   eventStore,

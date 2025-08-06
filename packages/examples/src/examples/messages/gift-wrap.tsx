@@ -8,11 +8,11 @@ import {
   getGiftWrapRumor,
   getGiftWrapSeal,
   groupMessageEvents,
-  isFromCache,
   persistEncryptedContent,
+  presistEventsToCache,
   Rumor,
   unixNow,
-  unlockGiftWrap,
+  unlockGiftWrap
 } from "applesauce-core/helpers";
 import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "applesauce-core/models";
 import { EventFactory } from "applesauce-factory";
@@ -25,7 +25,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { kinds, NostrEvent } from "nostr-tools";
 import { npubEncode } from "nostr-tools/nip19";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, bufferTime, filter, map } from "rxjs";
+import { BehaviorSubject, map } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -58,19 +58,7 @@ const cache = await openDB();
 const cacheRequest: CacheRequest = (filters) => getEventsForFilters(cache, filters);
 
 // Save all new events to the cache
-eventStore.insert$
-  .pipe(
-    // Only select events that are not from the cache
-    filter((e) => !isFromCache(e)),
-    // Buffer events for 5 seconds
-    bufferTime(5_000),
-    // Only select buffers with events
-    filter((b) => b.length > 0),
-  )
-  .subscribe((events) => {
-    // Save all new events to the cache
-    addEvents(cache, events);
-  });
+presistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Debug modal
 const debug$ = new BehaviorSubject<NostrEvent | null>(null);

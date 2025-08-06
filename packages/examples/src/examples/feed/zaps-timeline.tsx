@@ -7,8 +7,8 @@ import {
   getZapEventPointer,
   getZapPayment,
   getZapSender,
-  isFromCache,
   mergeRelaySets,
+  presistEventsToCache,
   ProfileContent,
 } from "applesauce-core/helpers";
 import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
@@ -18,7 +18,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useState } from "react";
-import { bufferTime, filter, map } from "rxjs";
+import { map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -36,21 +36,7 @@ function cacheRequest(filters: Filter[]) {
 }
 
 // Save all new events to the cache
-eventStore.insert$
-  .pipe(
-    // Only select events that are not from the cache
-    filter((e) => !isFromCache(e)),
-    // Buffer events for 5 seconds
-    bufferTime(5_000),
-    // Only select buffers with events
-    filter((b) => b.length > 0),
-  )
-  .subscribe((events) => {
-    // Save all new events to the cache
-    addEvents(cache, events).then(() => {
-      console.log("Saved events to cache", events.length);
-    });
-  });
+presistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Create loaders that load events from relays and cache
 const addressLoader = createAddressLoader(pool, {
