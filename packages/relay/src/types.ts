@@ -41,6 +41,9 @@ export interface IRelay extends MultiplexWebSocket {
   readonly challenge: string | null;
   readonly notices: string[];
 
+  /** Force close the connection */
+  close(): void;
+
   /** Send a REQ message */
   req(filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
   /** Send an EVENT message */
@@ -75,6 +78,9 @@ export interface IPool {
   relay(url: string): IRelay;
   /** Create a relay group */
   group(relays: string[]): IGroup;
+
+  /** Removes a relay from the pool and defaults to closing the connection */
+  remove(relay: string | IRelay, close?: boolean): void;
 
   /** Send a REQ message */
   req(relays: string[], filters: FilterInput, id?: string): Observable<SubscriptionResponse>;

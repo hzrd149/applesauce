@@ -488,6 +488,11 @@ export class Relay implements IRelay {
     );
   }
 
+  /** Force close the connection */
+  close() {
+    this.socket.unsubscribe();
+  }
+
   /** Static method to fetch the NIP-11 information document for a relay */
   static fetchInformationDocument(url: string): Observable<RelayInformation | null> {
     return from(

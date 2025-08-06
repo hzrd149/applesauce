@@ -915,6 +915,17 @@ describe("authenticate", () => {
   });
 });
 
+describe("close", () => {
+  it("should close the socket", async () => {
+    subscribeSpyTo(relay.req([{ kinds: [1] }]));
+    await server.connected;
+
+    relay.close();
+    await server.closed;
+    expect(relay.connected).toBe(false);
+  });
+});
+
 // describe("keepAlive", () => {
 //   it("should close the socket connection after keepAlive timeout", async () => {
 //     vi.useFakeTimers();

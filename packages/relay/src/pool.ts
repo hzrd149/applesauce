@@ -11,6 +11,7 @@ import {
   SubscriptionOptions,
   SubscriptionResponse,
   FilterInput,
+  IRelay,
 } from "./types.js";
 import { normalizeURL } from "applesauce-core/helpers";
 
@@ -48,7 +49,8 @@ export class RelayPool implements IPool {
 
     // Create a new relay
     relay = new Relay(url, this.options);
-    this.relays$.next(this.relays.set(url, relay));
+    this.relays.set(url, relay);
+    this.relays$.next(this.relays);
     return relay;
   }
 
@@ -67,6 +69,21 @@ export class RelayPool implements IPool {
     group = new RelayGroup(relays.map((url) => this.relay(url)));
     this.groups$.next(this.groups.set(key, group));
     return group;
+  }
+
+  /** Removes a relay from the pool and defaults to closing the connection */
+  remove(relay: string | IRelay, close = true): void {
+    let instance: IRelay | undefined;
+    if (typeof relay === "string") {
+      instance = this.relays.get(relay);
+      if (!instance) return;
+    } else if (Array.from(this.relays.values()).some((r) => r === relay)) {
+      instance = relay;
+    } else return;
+
+    if (close) instance?.close();
+    this.relays.delete(instance.url);
+    this.relays$.next(this.relays);
   }
 
   /** Make a REQ to multiple relays that does not deduplicate events */
