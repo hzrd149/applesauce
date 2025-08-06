@@ -123,7 +123,10 @@ export default defineConfig({
       },
       {
         text: "Migration",
-        items: [{ text: "v1 to v2", link: "/migration/v1-v2" }],
+        items: [
+          { text: "v2 to v3", link: "/migration/v2-v3" },
+          { text: "v1 to v2", link: "/migration/v1-v2" },
+        ],
       },
     ],
 
