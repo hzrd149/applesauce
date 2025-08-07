@@ -5,7 +5,7 @@ import { includeSingletonTag } from "applesauce-factory/operations";
 import { WALLET_INFO_KIND, WalletSupport } from "../helpers/support.js";
 
 /** Creates a wallet info event */
-export function WalletInfoBlueprint(info: WalletSupport): EventBlueprint {
+export function WalletSupportBlueprint(info: WalletSupport): EventBlueprint {
   return blueprint(
     WALLET_INFO_KIND,
     setContent(info.methods.join(" ")),
