@@ -13,6 +13,7 @@ import {
   unlockHiddenContent,
 } from "./hidden-content.js";
 import { GROUPS_LIST_KIND } from "./groups.js";
+import { EncryptionMethod } from "./encrypted-content.js";
 
 export const HiddenTagsSymbol = Symbol.for("hidden-tags");
 
@@ -40,7 +41,7 @@ export function canHaveHiddenTags(kind: number): boolean {
 }
 
 /** Sets the type of encryption to use for hidden tags on a kind */
-export function setHiddenTagsEncryptionMethod(kind: number, method: "nip04" | "nip44") {
+export function setHiddenTagsEncryptionMethod(kind: number, method: EncryptionMethod) {
   HiddenTagsKinds.add(setHiddenContentEncryptionMethod(kind, method));
   return kind;
 }
@@ -79,17 +80,18 @@ export function getHiddenTagsEncryptionMethods(kind: number, signer: HiddenConte
  * Decrypts the private list
  * @param event The list event to decrypt
  * @param signer A signer to use to decrypt the tags
- * @param store An optional EventStore to notify about the update
+ * @param override The encryption method to use instead of the default
  * @throws
  */
 export async function unlockHiddenTags<T extends { kind: number; pubkey: string; content: string }>(
   event: T,
   signer: HiddenContentSigner,
+  override?: EncryptionMethod,
 ): Promise<string[][]> {
   if (!canHaveHiddenTags(event.kind)) throw new Error("Event kind does not support hidden tags");
 
   // unlock hidden content is needed
-  if (isHiddenContentLocked(event)) await unlockHiddenContent(event, signer);
+  if (isHiddenContentLocked(event)) await unlockHiddenContent(event, signer, override);
 
   return getHiddenTags(event)!;
 }

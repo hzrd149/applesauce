@@ -3,6 +3,7 @@ import {
   canHaveEncryptedContent,
   EncryptedContentSigner,
   EncryptedContentSymbol,
+  EncryptionMethod,
   getEncryptedContent,
   getEncryptedContentEncryptionMethods,
   hasEncryptedContent,
@@ -21,7 +22,7 @@ export const getHiddenContentEncryptionMethods = getEncryptedContentEncryptionMe
 export const HiddenContentKinds = new Set<number>([setEncryptedContentEncryptionMethod(kinds.DraftLong, "nip04")]);
 
 /** Sets the encryption method for hidden content on a kind */
-export function setHiddenContentEncryptionMethod(kind: number, method: "nip04" | "nip44") {
+export function setHiddenContentEncryptionMethod(kind: number, method: EncryptionMethod) {
   HiddenContentKinds.add(setEncryptedContentEncryptionMethod(kind, method));
   return kind;
 }
@@ -56,9 +57,10 @@ export function getHiddenContent<T extends { kind: number; content: string }>(ev
 export async function unlockHiddenContent<T extends { kind: number; pubkey: string; content: string }>(
   event: T,
   signer: EncryptedContentSigner,
+  override?: EncryptionMethod,
 ): Promise<string> {
   if (!canHaveHiddenContent(event.kind)) throw new Error("Event kind does not support hidden content");
-  const encryption = getEncryptedContentEncryptionMethods(event.kind, signer);
+  const encryption = getEncryptedContentEncryptionMethods(event.kind, signer, override);
   const plaintext = await encryption.decrypt(event.pubkey, event.content);
 
   setHiddenContentCache(event, plaintext);

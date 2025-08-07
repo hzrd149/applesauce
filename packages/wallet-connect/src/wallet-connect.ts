@@ -25,11 +25,11 @@ import {
 import { WalletRequestBlueprint } from "./blueprints/index.js";
 import { createWalletError } from "./helpers/error.js";
 import {
-  EncryptionMethods,
+  WalletConnectEncryptionMethod,
   GetBalanceResult,
   GetInfoResult,
   getPreferredEncryption,
-  getWalletInfo,
+  getWalletSupport,
   getWalletNotification,
   getWalletResponse,
   getWalletResponseRequestId,
@@ -48,12 +48,14 @@ import {
   WALLET_NOTIFICATION_KIND,
   WALLET_RESPONSE_KIND,
   WalletConnectURI,
-  WalletInfo,
+  WalletSupport,
   WalletNotification,
   WalletRequest,
   WalletResponse,
+  getWalletRequestEncryption,
 } from "./helpers/index.js";
 import { NostrPublishMethod, NostrSubscriptionMethod } from "./interface.js";
+import { EncryptionMethod } from "applesauce-core/helpers";
 
 export type SerializedWalletConnect = WalletConnectURI;
 
@@ -91,10 +93,10 @@ export class WalletConnect {
   defaultTimeout: number;
 
   /** Observable for wallet info updates */
-  wallet$: Observable<WalletInfo | null>;
+  support$: Observable<WalletSupport | null>;
 
   /** The preferred encryption method for the wallet */
-  protected encryption$: Observable<EncryptionMethods>;
+  encryption$: Observable<WalletConnectEncryptionMethod>;
 
   /** Shared observable for all wallet response events and notifications */
   protected events$: Observable<NostrEvent>;
@@ -156,16 +158,16 @@ export class WalletConnect {
       }),
     );
 
-    this.wallet$ = this.events$.pipe(
+    this.support$ = this.events$.pipe(
       filter((event) => event.kind === WALLET_INFO_KIND),
-      map((event) => getWalletInfo(event)),
+      map((event) => getWalletSupport(event)),
       share({
-        connector: () => new ReplaySubject<WalletInfo | null>(1),
+        connector: () => new ReplaySubject<WalletSupport | null>(1),
         resetOnRefCountZero: () => timer(60000), // Keep info observable around for 1 minute after last unsubscribe
       }),
     );
 
-    this.encryption$ = this.wallet$.pipe(map((info) => (info ? getPreferredEncryption(info) : "nip04")));
+    this.encryption$ = this.support$.pipe(map((info) => (info ? getPreferredEncryption(info) : "nip04")));
 
     this.notifications$ = this.events$.pipe(
       filter((event) => event.kind === WALLET_NOTIFICATION_KIND),
@@ -174,14 +176,14 @@ export class WalletConnect {
   }
 
   /** Process response events and return WalletResponse or throw error */
-  protected async handleResponseEvent(event: NostrEvent): Promise<WalletResponse> {
+  protected async handleResponseEvent(event: NostrEvent, encryption?: EncryptionMethod): Promise<WalletResponse> {
     if (!verifyEvent(event)) throw new Error("Invalid response event signature");
 
     const requestId = getWalletResponseRequestId(event);
     if (!requestId) throw new Error("Response missing request ID");
 
     let response: WalletResponse | undefined | null;
-    if (isWalletResponseLocked(event)) response = await unlockWalletResponse(event, this.signer);
+    if (isWalletResponseLocked(event)) response = await unlockWalletResponse(event, this.signer, encryption);
     else response = getWalletResponse(event);
 
     if (!response) throw new Error("Failed to decrypt or parse response");
@@ -221,6 +223,8 @@ export class WalletConnect {
     }).pipe(
       // Then switch to the request observable
       switchMap((requestEvent) => {
+        const encryption = getWalletRequestEncryption(requestEvent) === "nip44_v2" ? "nip44" : "nip04";
+
         // Create an observable that publishes the request event when subscribed to
         const request$ = defer(() => from(this.publishMethod(this.relays, requestEvent))).pipe(ignoreElements());
 
@@ -230,7 +234,7 @@ export class WalletConnect {
             (response) =>
               response.kind === WALLET_RESPONSE_KIND && getWalletResponseRequestId(response) === requestEvent.id,
           ),
-          mergeMap((response) => this.handleResponseEvent(response)),
+          mergeMap((response) => this.handleResponseEvent(response, encryption)),
           // Set timeout for response events
           simpleTimeout(options.timeout || this.defaultTimeout),
         );
@@ -241,9 +245,9 @@ export class WalletConnect {
   }
 
   /** Wait for wallet info to be available */
-  waitForInfo(timeoutMs: number = 10000): Promise<WalletInfo> {
+  waitForInfo(timeoutMs: number = 10000): Promise<WalletSupport> {
     return firstValueFrom(
-      this.wallet$.pipe(
+      this.support$.pipe(
         filter((info) => info !== null),
         take(1),
         timeout(timeoutMs),

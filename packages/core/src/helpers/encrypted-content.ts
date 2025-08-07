@@ -15,22 +15,40 @@ export interface EncryptedContentSigner {
   };
 }
 
+export type EncryptionMethod = "nip04" | "nip44";
+
+/** A pair of encryption methods for encrypting and decrypting event content */
+export interface EncryptionMethods {
+  encrypt: (pubkey: string, plaintext: string) => Promise<string> | string;
+  decrypt: (pubkey: string, ciphertext: string) => Promise<string> | string;
+}
+
 /** Various event kinds that can have encrypted content and which encryption method they use */
-export const EventContentEncryptionMethod: Record<number, "nip04" | "nip44"> = {
+export const EventContentEncryptionMethod: Record<number, EncryptionMethod> = {
   [kinds.EncryptedDirectMessage]: "nip04",
   [kinds.Seal]: "nip44",
   [kinds.GiftWrap]: "nip44",
 };
 
 /** Sets the encryption method that is used for the contents of a specific event kind */
-export function setEncryptedContentEncryptionMethod(kind: number, method: "nip04" | "nip44"): number {
+export function setEncryptedContentEncryptionMethod(kind: number, method: EncryptionMethod): number {
   EventContentEncryptionMethod[kind] = method;
   return kind;
 }
 
-/** Returns either nip04 or nip44 encryption methods depending on event kind */
-export function getEncryptedContentEncryptionMethods(kind: number, signer: EncryptedContentSigner) {
-  const method = EventContentEncryptionMethod[kind];
+/**
+ * Returns either nip04 or nip44 encryption methods depending on event kind
+ * @param kind The event kind to get the encryption method for
+ * @param signer The signer to use to get the encryption methods
+ * @param override The encryption method to use instead of the default
+ * @returns The encryption methods for the event kind
+ */
+export function getEncryptedContentEncryptionMethods(
+  kind: number,
+  signer: EncryptedContentSigner,
+  override?: EncryptionMethod,
+): EncryptionMethods {
+  const method = override ?? EventContentEncryptionMethod[kind];
   if (!method) throw new Error(`Event kind ${kind} does not support encrypted content`);
   const encryption = signer[method];
   if (!encryption) throw new Error(`Signer does not support ${method} encryption`);

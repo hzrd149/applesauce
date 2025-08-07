@@ -11,8 +11,8 @@ import {
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
 
-import { WalletMethods } from "./methods.js";
-import { EncryptionMethods } from "./encryption.js";
+import { WalletConnectEncryptionMethod } from "./encryption.js";
+import { WalletMethod } from "./support.js";
 
 export const WALLET_REQUEST_KIND = 23194;
 
@@ -31,7 +31,7 @@ export interface TLVRecord {
 }
 
 /** Base request structure for all NIP-47 requests */
-export interface BaseWalletRequest<TMethod extends WalletMethods, TParams> {
+export interface BaseWalletRequest<TMethod extends WalletMethod, TParams> {
   /** The method to call */
   method: TMethod;
   /** Parameters for the method */
@@ -209,7 +209,11 @@ export function isWalletRequestExpired(request: NostrEvent): boolean {
 }
 
 /** Gets the encryption method used for a request */
-export function getWalletRequestEncryption(request: NostrEvent): EncryptionMethods {
+export function getWalletRequestEncryption(request: NostrEvent): WalletConnectEncryptionMethod {
   const encryption = getTagValue(request, "encryption");
-  return encryption ? (encryption as EncryptionMethods) : isNIP04Encrypted(request.content) ? "nip04" : "nip44_v2";
+  return encryption
+    ? (encryption as WalletConnectEncryptionMethod)
+    : isNIP04Encrypted(request.content)
+      ? "nip04"
+      : "nip44_v2";
 }

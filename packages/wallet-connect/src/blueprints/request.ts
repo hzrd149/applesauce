@@ -3,7 +3,7 @@ import { includeSingletonTag } from "applesauce-factory/operations";
 import { setEncryptedContent } from "applesauce-factory/operations/content";
 
 import { WALLET_REQUEST_KIND, WalletRequest } from "../helpers/request.js";
-import { EncryptionMethods } from "../helpers/encryption.js";
+import { WalletConnectEncryptionMethod } from "../helpers/encryption.js";
 
 /**
  * Creates a walelt request event
@@ -13,7 +13,7 @@ import { EncryptionMethods } from "../helpers/encryption.js";
 export function WalletRequestBlueprint<TRequest extends WalletRequest>(
   service: string,
   request: TRequest,
-  encryption: EncryptionMethods = "nip44_v2",
+  encryption: WalletConnectEncryptionMethod = "nip44_v2",
 ): EventBlueprint {
   return blueprint(
     WALLET_REQUEST_KIND,

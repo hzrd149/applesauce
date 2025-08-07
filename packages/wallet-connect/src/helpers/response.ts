@@ -1,21 +1,24 @@
 import {
+  EncryptionMethod,
   getHiddenContent,
   getOrComputeCachedValue,
   getTagValue,
   HiddenContentSigner,
   isHiddenContentLocked,
+  isNIP04Encrypted,
   setHiddenContentEncryptionMethod,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
 
 import { WalletErrorCode } from "./error.js";
-import { WalletMethods } from "./methods.js";
+import { WalletMethod } from "./support.js";
+import { NotificationType } from "./notification.js";
 
 export const WALLET_RESPONSE_KIND = 23195;
 
 // Set the encryption method to use for response kind
-setHiddenContentEncryptionMethod(WALLET_RESPONSE_KIND, "nip44");
+setHiddenContentEncryptionMethod(WALLET_RESPONSE_KIND, "nip04");
 
 /** A symbol used to cache the wallet response on the event */
 export const WalletResponseSymbol = Symbol("wallet-response");
@@ -27,7 +30,7 @@ export interface WalletResponseError {
 }
 
 /** Base response structure for all NIP-47 responses */
-export type BaseWalletResponse<TResultType extends WalletMethods, TResult> =
+export type BaseWalletResponse<TResultType extends WalletMethod, TResult> =
   | {
       /** Indicates the structure of the result field */
       result_type: TResultType;
@@ -156,9 +159,9 @@ export interface GetInfoResult {
   /** Current block hash as hex string */
   block_hash: string;
   /** List of supported methods for this connection */
-  methods: string[];
+  methods: WalletMethod[];
   /** List of supported notifications for this connection, optional */
-  notifications?: string[];
+  notifications?: NotificationType[];
 }
 
 export type GetInfoResponse = BaseWalletResponse<"get_info", GetInfoResult>;
@@ -184,8 +187,10 @@ export function isWalletResponseLocked(response: NostrEvent) {
 export async function unlockWalletResponse(
   response: NostrEvent,
   signer: HiddenContentSigner,
+  override?: EncryptionMethod,
 ): Promise<WalletResponse | undefined | null> {
-  await unlockHiddenContent(response, signer);
+  const encryption = override ?? (!isNIP04Encrypted(response.content) ? "nip44" : "nip04");
+  await unlockHiddenContent(response, signer, encryption);
 
   return getWalletResponse(response);
 }

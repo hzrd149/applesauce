@@ -9,11 +9,11 @@ import {
   getPreferredEncryption,
   getSupportedMethods,
   getSupportedNotifications,
-  WalletInfo,
-  WalletMethods,
-  EncryptionMethods,
-  NotificationTypes,
+  WalletSupport,
+  NotificationType,
   WalletConnectURI,
+  WalletConnectEncryptionMethod,
+  WalletMethod,
 } from "applesauce-wallet-connect/helpers";
 import { hexToBytes } from "@noble/hashes/utils";
 import { useMemo, useState } from "react";
@@ -22,7 +22,7 @@ import { useMemo, useState } from "react";
 const pool = new RelayPool();
 
 // Method descriptions for better UX
-const METHOD_DESCRIPTIONS: Record<WalletMethods, string> = {
+const METHOD_DESCRIPTIONS: Record<WalletMethod, string> = {
   pay_invoice: "Pay Lightning invoices",
   multi_pay_invoice: "Pay multiple Lightning invoices at once",
   pay_keysend: "Send keysend payments",
@@ -34,12 +34,12 @@ const METHOD_DESCRIPTIONS: Record<WalletMethods, string> = {
   get_info: "Get wallet information",
 };
 
-const ENCRYPTION_DESCRIPTIONS: Record<EncryptionMethods, string> = {
+const ENCRYPTION_DESCRIPTIONS: Record<WalletConnectEncryptionMethod, string> = {
   nip04: "Legacy NIP-04 encryption (less secure)",
   nip44_v2: "Modern NIP-44 v2 encryption (recommended)",
 };
 
-const NOTIFICATION_DESCRIPTIONS: Record<NotificationTypes, string> = {
+const NOTIFICATION_DESCRIPTIONS: Record<NotificationType, string> = {
   payment_received: "Notify when payments are received",
   payment_sent: "Notify when payments are sent",
 };
@@ -76,13 +76,13 @@ function ParsedUriDisplay({ parsedUri }: { parsedUri?: WalletConnectURI | null }
   );
 }
 
-function MethodsSeciton({ walletInfo }: { walletInfo: WalletInfo }) {
+function MethodsSeciton({ walletInfo }: { walletInfo: WalletSupport }) {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Supported Methods</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Object.entries(METHOD_DESCRIPTIONS).map(([method, description]) => {
-          const isSupported = supportsMethod(walletInfo, method as WalletMethods);
+          const isSupported = supportsMethod(walletInfo, method as WalletMethod);
           return (
             <div key={method} className="card card-compact card-border bg-base-200">
               <div className="card-body">
@@ -102,7 +102,7 @@ function MethodsSeciton({ walletInfo }: { walletInfo: WalletInfo }) {
   );
 }
 
-function EncryptionSection({ walletInfo }: { walletInfo: WalletInfo }) {
+function EncryptionSection({ walletInfo }: { walletInfo: WalletSupport }) {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Encryption Support</h2>
@@ -114,12 +114,12 @@ function EncryptionSection({ walletInfo }: { walletInfo: WalletInfo }) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Object.entries(ENCRYPTION_DESCRIPTIONS).map(([method, description]) => {
-          const isSupported = supportsEncryption(walletInfo, method as EncryptionMethods);
+          const isSupported = supportsEncryption(walletInfo, method as WalletConnectEncryptionMethod);
           const isPreferred = getPreferredEncryption(walletInfo) === method;
           return (
             <div key={method} className="card card-compact card-border bg-base-200">
               <div className="card-body">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between">
                   <code className="text-sm font-mono">{method}</code>
                   <div className="flex gap-2">
                     {isPreferred && <span className="badge badge-primary">Preferred</span>}
@@ -138,7 +138,7 @@ function EncryptionSection({ walletInfo }: { walletInfo: WalletInfo }) {
   );
 }
 
-function NotificationsSection({ walletInfo }: { walletInfo: WalletInfo }) {
+function NotificationsSection({ walletInfo }: { walletInfo: WalletSupport }) {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Notification Support</h2>
@@ -147,11 +147,11 @@ function NotificationsSection({ walletInfo }: { walletInfo: WalletInfo }) {
           {Object.entries(NOTIFICATION_DESCRIPTIONS).map(([notification, description]) => {
             const isSupported = walletInfo.notifications?.includes(notification as any) ?? false;
             return (
-              <div key={notification} className="card card-compact bordered">
+              <div key={notification} className="card card-compact card-border bg-base-200">
                 <div className="card-body">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between">
                     <code className="text-sm font-mono">{notification}</code>
-                    <span className={`badge ${isSupported ? "badge-secondary" : "badge-neutral"}`}>
+                    <span className={`badge ${isSupported ? "badge-success" : "badge-neutral"}`}>
                       {isSupported ? "Supported" : "Not Supported"}
                     </span>
                   </div>
@@ -170,7 +170,7 @@ function NotificationsSection({ walletInfo }: { walletInfo: WalletInfo }) {
   );
 }
 
-function WalletSummary({ walletInfo }: { walletInfo: WalletInfo }) {
+function WalletSummary({ walletInfo }: { walletInfo: WalletSupport }) {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Wallet Summary</h2>
@@ -182,13 +182,27 @@ function WalletSummary({ walletInfo }: { walletInfo: WalletInfo }) {
             <div className="stat-desc">Payment Methods</div>
           </div>
           <div className="stat">
-            <div className="stat-value text-secondary">{walletInfo.encryption_methods.length}</div>
+            <div className="stat-value text-secondary">{walletInfo.encryption.length}</div>
             <div className="stat-desc">Encryption Methods</div>
           </div>
           <div className="stat">
             <div className="stat-value text-accent">{getSupportedNotifications(walletInfo).length}</div>
             <div className="stat-desc">Notification Types</div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RawWalletInfo({ walletInfo }: { walletInfo: WalletSupport }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-2xl font-bold">Raw Wallet Support</h2>
+
+      <div className="card card-border bg-base-200">
+        <div className="card-body">
+          <code className="text-sm font-mono whitespace-pre">{JSON.stringify(walletInfo, null, 2)}</code>
         </div>
       </div>
     </div>
@@ -236,7 +250,7 @@ export default function WalletConnectExample() {
   }, [parsed]);
 
   // Create WalletConnect instance and get wallet info using the public getter
-  const walletInfo = useObservableMemo(() => wallet?.wallet$, [wallet]);
+  const support = useObservableMemo(() => wallet?.support$, [wallet]);
 
   return (
     <div className="container mx-auto my-8 px-4">
@@ -266,23 +280,24 @@ export default function WalletConnectExample() {
           {/* Wallet Info Display */}
           {parsed && (
             <>
-              {walletInfo === undefined ? (
+              {support === undefined ? (
                 <div className="alert alert-info">
                   <div className="flex items-center">
                     <span className="loading loading-spinner loading-sm mr-3"></span>
                     <p>Loading wallet information...</p>
                   </div>
                 </div>
-              ) : walletInfo === null ? (
+              ) : support === null ? (
                 <div className="alert alert-warning">
                   <p>No wallet information found or wallet is offline.</p>
                 </div>
               ) : (
                 <>
-                  <MethodsSeciton walletInfo={walletInfo} />
-                  <EncryptionSection walletInfo={walletInfo} />
-                  <NotificationsSection walletInfo={walletInfo} />
-                  <WalletSummary walletInfo={walletInfo} />
+                  <MethodsSeciton walletInfo={support} />
+                  <EncryptionSection walletInfo={support} />
+                  <NotificationsSection walletInfo={support} />
+                  <WalletSummary walletInfo={support} />
+                  <RawWalletInfo walletInfo={support} />
                 </>
               )}
             </>
