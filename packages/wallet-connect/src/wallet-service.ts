@@ -49,6 +49,7 @@ import {
 } from "./helpers/response.js";
 import { WalletMethod, WalletSupport } from "./helpers/support.js";
 import { NostrPublishMethod, NostrSubscriptionMethod } from "./interface.js";
+import { bytesToHex } from "@noble/hashes/utils";
 
 /** Handler function for pay_invoice method */
 export type PayInvoiceHandler = (params: PayInvoiceParams) => Promise<PayInvoiceResult>;
@@ -240,6 +241,19 @@ export class WalletService {
   /** Check if the service is running */
   isRunning(): boolean {
     return this.running;
+  }
+
+  /** Get the connection string for the service */
+  getConnectionString(): string {
+    if (!this.pubkey) throw new Error("Service is not running");
+    if (!this.relays.length) throw new Error("No relays configured");
+    const url = new URL(`nostr+walletconnect://${this.pubkey}`);
+    for (const relay of this.relays) {
+      url.searchParams.append("relay", relay);
+    }
+    url.searchParams.set("secret", bytesToHex(this.secret));
+
+    return url.toString();
   }
 
   /** Send a notification to the client */
