@@ -52,6 +52,13 @@ export interface Transaction {
   type: "incoming" | "outgoing";
   /** State of the transaction */
   state: "pending" | "settled" | "expired" | "failed";
+  /** Value in msats */
+  amount: number;
+  /** Value in msats */
+  fees_paid: number;
+  /** Invoice/payment creation time */
+  created_at: number;
+
   /** Encoded invoice, optional */
   invoice?: string;
   /** Invoice's description, optional */
@@ -60,14 +67,8 @@ export interface Transaction {
   description_hash?: string;
   /** Payment's preimage, optional if unpaid */
   preimage?: string;
-  /** Payment hash for the payment */
-  payment_hash: string;
-  /** Value in msats */
-  amount: number;
-  /** Value in msats */
-  fees_paid: number;
-  /** Invoice/payment creation time */
-  created_at: number;
+  /** Payment hash for the payment, optional */
+  payment_hash?: string;
   /** Invoice expiration time, optional if not applicable */
   expires_at?: number;
   /** Invoice/payment settlement time, optional if unpaid */

@@ -255,8 +255,8 @@ export default function WalletConnectExample() {
   return (
     <div className="container mx-auto my-8 px-4">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Nostr Wallet Connect</h1>
-        <p className="mb-8 opacity-70">Enter a nostr+walletconnect URI to parse it and fetch wallet information.</p>
+        <h1 className="text-3xl font-bold mb-2">Nostr Wallet Connect</h1>
+        <p className="mb-4 opacity-70">Enter a nostr+walletconnect URI to parse it and fetch wallet information.</p>
 
         {/* URI Input */}
         <div className="mb-8">
