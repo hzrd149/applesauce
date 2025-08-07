@@ -21,10 +21,10 @@ setHiddenContentEncryptionMethod(WALLET_NOTIFICATION_KIND, "nip44");
 setHiddenContentEncryptionMethod(WALLET_LEGACY_NOTIFICATION_KIND, "nip04");
 
 /** Supported notification types */
-export type NotificationType = "payment_received" | "payment_sent";
+export type NotificationTypes = "payment_received" | "payment_sent";
 
 /** Base notification structure */
-export interface BaseNotification<TNotificationType extends NotificationType, TNotification> {
+export interface BaseNotification<TNotificationType extends NotificationTypes, TNotification> {
   /** Indicates the structure of the notification field */
   notification_type: TNotificationType;
   /** Notification data */

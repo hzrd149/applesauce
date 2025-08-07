@@ -1,9 +1,9 @@
 import { getOrComputeCachedValue, getTagValue, isEvent } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
 
-import { EncryptionMethod } from "./encryption.js";
+import { EncryptionMethods } from "./encryption.js";
 import { WalletMethods } from "./methods.js";
-import { NotificationType } from "./notification.js";
+import { NotificationTypes } from "./notification.js";
 
 export const WALLET_INFO_KIND = 13194;
 
@@ -15,9 +15,9 @@ export interface WalletInfo {
   /** List of supported methods for this wallet service */
   methods: WalletMethods[];
   /** List of supported encryption methods */
-  encryption_methods: EncryptionMethod[];
+  encryption_methods: EncryptionMethods[];
   /** List of supported notifications, optional */
-  notifications?: NotificationType[];
+  notifications?: NotificationTypes[];
 }
 
 /** Gets the wallet info from a kind 13194 event */
@@ -49,18 +49,18 @@ export function getWalletInfo(info: NostrEvent): WalletInfo | null {
 
     // Parse encryption methods from encryption tag
     const encryptionTag = getTagValue(info, "encryption");
-    const encryption_methods: EncryptionMethod[] = encryptionTag
+    const encryption_methods: EncryptionMethods[] = encryptionTag
       ? encryptionTag
           .split(/\s+/)
-          .filter((method): method is EncryptionMethod => method === "nip44_v2" || method === "nip04")
+          .filter((method): method is EncryptionMethods => method === "nip44_v2" || method === "nip04")
       : ["nip04"]; // Default to nip04 if no encryption tag is present
 
     // Parse notifications from notifications tag
     const notificationsTag = getTagValue(info, "notifications");
-    const notifications: NotificationType[] | undefined = notificationsTag
+    const notifications: NotificationTypes[] | undefined = notificationsTag
       ? notificationsTag
           .split(/\s+/)
-          .filter((notif): notif is NotificationType => notif === "payment_received" || notif === "payment_sent")
+          .filter((notif): notif is NotificationTypes => notif === "payment_received" || notif === "payment_sent")
       : undefined;
 
     return {
@@ -72,19 +72,19 @@ export function getWalletInfo(info: NostrEvent): WalletInfo | null {
 }
 
 /** Gets the encryption methods from a wallet info event */
-export function getEncryptionMethods(info: NostrEvent | WalletInfo): EncryptionMethod[] {
+export function getEncryptionMethods(info: NostrEvent | WalletInfo): EncryptionMethods[] {
   const walletInfo = isEvent(info) ? getWalletInfo(info) : (info as WalletInfo);
   return walletInfo?.encryption_methods ?? [];
 }
 
 /** Checks if the wallet service supports a specific encryption method */
-export function supportsEncryption(info: NostrEvent | WalletInfo, encryption: EncryptionMethod): boolean {
+export function supportsEncryption(info: NostrEvent | WalletInfo, encryption: EncryptionMethods): boolean {
   const encryptionMethods = getEncryptionMethods(info);
   return encryptionMethods.includes(encryption);
 }
 
 /** Gets the preferred encryption method (nip44_v2 preferred over nip04) */
-export function getPreferredEncryption(info: NostrEvent | WalletInfo): EncryptionMethod {
+export function getPreferredEncryption(info: NostrEvent | WalletInfo): EncryptionMethods {
   const encryptionMethods = getEncryptionMethods(info);
   if (encryptionMethods.length === 0) return "nip04";
 
@@ -109,7 +109,7 @@ export function supportsNotifications(info: NostrEvent | WalletInfo): boolean {
 }
 
 /** Checks if the wallet service supports a specific notification type */
-export function supportsNotificationType(info: NostrEvent | WalletInfo, notificationType: NotificationType): boolean {
+export function supportsNotificationType(info: NostrEvent | WalletInfo, notificationType: NotificationTypes): boolean {
   const walletInfo = isEvent(info) ? getWalletInfo(info) : (info as WalletInfo);
   return walletInfo?.notifications?.includes(notificationType) ?? false;
 }
@@ -121,7 +121,7 @@ export function getSupportedMethods(info: NostrEvent | WalletInfo): WalletMethod
 }
 
 /** Gets all supported notifications from the wallet info */
-export function getSupportedNotifications(info: NostrEvent | WalletInfo): NotificationType[] {
+export function getSupportedNotifications(info: NostrEvent | WalletInfo): NotificationTypes[] {
   const walletInfo = isEvent(info) ? getWalletInfo(info) : (info as WalletInfo);
   return walletInfo?.notifications ?? [];
 }

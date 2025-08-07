@@ -25,7 +25,7 @@ import {
 import { WalletRequestBlueprint } from "./blueprints/index.js";
 import { createWalletError } from "./helpers/error.js";
 import {
-  EncryptionMethod,
+  EncryptionMethods,
   GetBalanceResult,
   GetInfoResult,
   getPreferredEncryption,
@@ -91,10 +91,10 @@ export class WalletConnect {
   defaultTimeout: number;
 
   /** Observable for wallet info updates */
-  protected wallet$: Observable<WalletInfo | null>;
+  wallet$: Observable<WalletInfo | null>;
 
   /** The preferred encryption method for the wallet */
-  protected encryption$: Observable<EncryptionMethod>;
+  protected encryption$: Observable<EncryptionMethods>;
 
   /** Shared observable for all wallet response events and notifications */
   protected events$: Observable<NostrEvent>;

@@ -25,6 +25,7 @@
     "applesauce-relay": "workspace:^",
     "applesauce-signers": "workspace:^",
     "applesauce-wallet": "workspace:^",
+    "applesauce-wallet-connect": "workspace:^",
     "chart.js": "^4.5.0",
     "clsx": "^2.1.1",
     "daisyui": "^5.0.49",

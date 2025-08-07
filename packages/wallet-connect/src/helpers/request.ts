@@ -12,7 +12,7 @@ import {
 import { NostrEvent } from "nostr-tools";
 
 import { WalletMethods } from "./methods.js";
-import { EncryptionMethod } from "./encryption.js";
+import { EncryptionMethods } from "./encryption.js";
 
 export const WALLET_REQUEST_KIND = 23194;
 
@@ -209,7 +209,7 @@ export function isWalletRequestExpired(request: NostrEvent): boolean {
 }
 
 /** Gets the encryption method used for a request */
-export function getWalletRequestEncryption(request: NostrEvent): EncryptionMethod {
+export function getWalletRequestEncryption(request: NostrEvent): EncryptionMethods {
   const encryption = getTagValue(request, "encryption");
-  return encryption ? (encryption as EncryptionMethod) : isNIP04Encrypted(request.content) ? "nip04" : "nip44_v2";
+  return encryption ? (encryption as EncryptionMethods) : isNIP04Encrypted(request.content) ? "nip04" : "nip44_v2";
 }
