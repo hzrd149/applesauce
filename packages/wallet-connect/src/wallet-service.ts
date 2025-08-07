@@ -93,9 +93,9 @@ export interface WalletServiceHandlers {
 /** Options for creating a WalletService */
 export interface WalletServiceOptions {
   /** A method for subscribing to relays */
-  subscriptionMethod: NostrSubscriptionMethod;
+  subscriptionMethod?: NostrSubscriptionMethod;
   /** A method for publishing events */
-  publishMethod: NostrPublishMethod;
+  publishMethod?: NostrPublishMethod;
   /** The relays to use for the service */
   relays: string[];
   /** The signer to use for creating and unlocking events */
@@ -110,6 +110,16 @@ export interface WalletServiceOptions {
 
 /** NIP-47 Wallet Service implementation */
 export class WalletService {
+  /** A fallback method to use for subscriptionMethod if none is passed in when creating the client */
+  static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
+  /** A fallback method to use for publishMethod if none is passed in when creating the client */
+  static publishMethod: NostrPublishMethod | undefined = undefined;
+
+  /** A method for subscribing to relays */
+  protected readonly subscriptionMethod: NostrSubscriptionMethod;
+  /** A method for publishing events */
+  protected readonly publishMethod: NostrPublishMethod;
+
   protected log = logger.extend("WalletService");
 
   /** The relays to use for the service */
@@ -123,12 +133,6 @@ export class WalletService {
 
   /** Wallet support information */
   protected readonly support: WalletSupport;
-
-  /** A method for subscribing to relays */
-  protected readonly subscriptionMethod: NostrSubscriptionMethod;
-
-  /** A method for publishing events */
-  protected readonly publishMethod: NostrPublishMethod;
 
   /** The service's public key */
   public pubkey: string | null = null;
@@ -155,8 +159,16 @@ export class WalletService {
     this.signer = options.signer;
     this.handlers = options.handlers;
     this.secret = options.secret ?? generateSecretKey();
-    this.subscriptionMethod = options.subscriptionMethod;
-    this.publishMethod = options.publishMethod;
+
+    const subscriptionMethod = options.subscriptionMethod || WalletService.subscriptionMethod;
+    if (!subscriptionMethod)
+      throw new Error("Missing subscriptionMethod, either pass a method or set WalletService.subscriptionMethod");
+    const publishMethod = options.publishMethod || WalletService.publishMethod;
+    if (!publishMethod)
+      throw new Error("Missing publishMethod, either pass a method or set WalletService.publishMethod");
+
+    this.subscriptionMethod = subscriptionMethod;
+    this.publishMethod = publishMethod;
 
     const encryption: WalletConnectEncryptionMethod[] = [];
     if (options.signer.nip04) encryption.push("nip04");
