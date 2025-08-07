@@ -15,48 +15,52 @@ import {
   Observable,
   ReplaySubject,
   share,
+  Subscription,
   switchMap,
-  take,
-  timeout,
   timer,
   toArray,
 } from "rxjs";
 
+import { EncryptionMethod } from "applesauce-core/helpers";
 import { WalletRequestBlueprint } from "./blueprints/index.js";
 import { createWalletError } from "./helpers/error.js";
 import {
-  WalletConnectEncryptionMethod,
   GetBalanceResult,
   GetInfoResult,
   getPreferredEncryption,
-  getWalletSupport,
   getWalletNotification,
+  getWalletRequestEncryption,
   getWalletResponse,
   getWalletResponseRequestId,
+  getWalletSupport,
   isWalletNotificationLocked,
   isWalletResponseLocked,
   ListTransactionsResult,
   LookupInvoiceResult,
+  MakeInvoiceParams,
   MakeInvoiceResult,
+  NotificationType,
   parseWalletConnectURI,
   PayInvoiceResult,
   PayKeysendResult,
+  supportsMethod,
+  supportsNotifications,
+  supportsNotificationType,
   unlockWalletNotification,
   unlockWalletResponse,
   WALLET_INFO_KIND,
   WALLET_LEGACY_NOTIFICATION_KIND,
   WALLET_NOTIFICATION_KIND,
   WALLET_RESPONSE_KIND,
+  WalletConnectEncryptionMethod,
   WalletConnectURI,
-  WalletSupport,
+  WalletMethod,
   WalletNotification,
   WalletRequest,
   WalletResponse,
-  getWalletRequestEncryption,
-  MakeInvoiceParams,
+  WalletSupport,
 } from "./helpers/index.js";
 import { NostrPublishMethod, NostrSubscriptionMethod } from "./interface.js";
-import { EncryptionMethod } from "applesauce-core/helpers";
 
 export type SerializedWalletConnect = WalletConnectURI;
 
@@ -188,10 +192,6 @@ export class WalletConnect {
     else response = getWalletResponse(event);
 
     if (!response) throw new Error("Failed to decrypt or parse response");
-
-    // Check for errors and throw if present
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
-
     return response;
   }
 
@@ -209,7 +209,7 @@ export class WalletConnect {
     return notification;
   }
 
-  /** Core RPC method that returns an Observable for streaming responses */
+  /** Core RPC method that makes a request and returns the response */
   request(request: WalletRequest, options: { timeout?: number } = {}): Observable<WalletResponse> {
     // Create the request evnet
     return defer(async () => {
@@ -245,39 +245,69 @@ export class WalletConnect {
     );
   }
 
-  /** Wait for wallet info to be available */
-  waitForInfo(timeoutMs: number = 10000): Promise<WalletSupport> {
-    return firstValueFrom(
-      this.support$.pipe(
-        filter((info) => info !== null),
-        take(1),
-        timeout(timeoutMs),
-      ),
-    );
+  /**
+   * Listen for a type of notification
+   * @returns a method to unsubscribe the listener
+   */
+  notification<T extends WalletNotification>(
+    type: T["notification_type"],
+    listener: (notification: T["notification"]) => any,
+  ): Subscription {
+    return this.notifications$.subscribe((notification) => {
+      if (notification.notification_type === type) listener(notification.notification);
+    });
   }
 
   // Convenience methods that return promises for easy API usage
 
+  /** Get the wallet support info */
+  getSupport(): Promise<WalletSupport | null> {
+    return firstValueFrom(this.support$);
+  }
+
+  /** Check if the wallet supports a method */
+  async supportsMethod(method: WalletMethod): Promise<boolean> {
+    const support = await this.getSupport();
+    return support ? supportsMethod(support, method) : false;
+  }
+
+  /** Check if the wallet supports notifications */
+  async supportsNotifications(): Promise<boolean> {
+    const support = await this.getSupport();
+    return support ? supportsNotifications(support) : false;
+  }
+
+  /** Check if the wallet supports a notification type */
+  async supportsNotificationType(type: NotificationType): Promise<boolean> {
+    const support = await this.getSupport();
+    return support ? supportsNotificationType(support, type) : false;
+  }
+
   /** Pay a lightning invoice */
   async payInvoice(invoice: string, amount?: number): Promise<PayInvoiceResult> {
     const response = await firstValueFrom(this.request({ method: "pay_invoice", params: { invoice, amount } }));
-    if (response.result_type !== "pay_invoice") {
-      throw new Error(`Unexpected response type: ${response.result_type}`);
-    }
-    return response.result as PayInvoiceResult;
+    if (response.result_type !== "pay_invoice") throw new Error(`Unexpected response type: ${response.result_type}`);
+    if (response.error) throw createWalletError(response.error.type, response.error.message);
+
+    return response.result;
   }
 
   /** Pay multiple lightning invoices */
-  payMultipleInvoices(
+  async payMultipleInvoices(
     invoices: Array<{ id?: string; invoice: string; amount?: number }>,
-  ): Observable<PayInvoiceResult> {
-    return this.request({ method: "multi_pay_invoice", params: { invoices } }).pipe(
-      map((response) => {
-        if (response.result_type !== "multi_pay_invoice") {
-          throw new Error(`Unexpected response type: ${response.result_type}`);
-        }
-        return response.result as PayInvoiceResult;
-      }),
+  ): Promise<PayInvoiceResult[]> {
+    return await lastValueFrom(
+      this.request({ method: "multi_pay_invoice", params: { invoices } })
+        .pipe(
+          map((response) => {
+            if (response.result_type !== "multi_pay_invoice")
+              throw new Error(`Unexpected response type: ${response.result_type}`);
+            if (response.error) throw createWalletError(response.error.type, response.error.message);
+
+            return response.result;
+          }),
+        )
+        .pipe(toArray()),
     );
   }
 
@@ -292,8 +322,9 @@ export class WalletConnect {
       this.request({ method: "pay_keysend", params: { pubkey, amount, preimage, tlv_records } }),
     );
     if (response.result_type !== "pay_keysend") throw new Error(`Unexpected response type: ${response.result_type}`);
+    if (response.error) throw createWalletError(response.error.type, response.error.message);
 
-    return response.result as PayKeysendResult;
+    return response.result;
   }
 
   /** Send multiple keysend payments */
@@ -311,8 +342,9 @@ export class WalletConnect {
         map((response) => {
           if (response.result_type !== "multi_pay_keysend")
             throw new Error(`Unexpected response type: ${response.result_type}`);
+          if (response.error) throw createWalletError(response.error.type, response.error.message);
 
-          return response.result as PayKeysendResult;
+          return response.result;
         }),
         toArray(),
       ),
@@ -322,10 +354,10 @@ export class WalletConnect {
   /** Create a new invoice */
   async makeInvoice(amount: number, options?: Omit<MakeInvoiceParams, "amount">): Promise<MakeInvoiceResult> {
     const response = await firstValueFrom(this.request({ method: "make_invoice", params: { amount, ...options } }));
-    if (response.result_type !== "make_invoice") {
-      throw new Error(`Unexpected response type: ${response.result_type}`);
-    }
-    return response.result as MakeInvoiceResult;
+    if (response.result_type !== "make_invoice") throw new Error(`Unexpected response type: ${response.result_type}`);
+    if (response.error) throw createWalletError(response.error.type, response.error.message);
+
+    return response.result;
   }
 
   /** Look up an invoice by payment hash or invoice string */
@@ -334,8 +366,9 @@ export class WalletConnect {
       this.request({ method: "lookup_invoice", params: { payment_hash, invoice } }),
     );
     if (response.result_type !== "lookup_invoice") throw new Error(`Unexpected response type: ${response.result_type}`);
+    if (response.error) throw createWalletError(response.error.type, response.error.message);
 
-    return response.result as LookupInvoiceResult;
+    return response.result;
   }
 
   /** List transactions */
@@ -348,19 +381,20 @@ export class WalletConnect {
     type?: "incoming" | "outgoing";
   }): Promise<ListTransactionsResult> {
     const response = await firstValueFrom(this.request({ method: "list_transactions", params: params || {} }));
-    if (response.result_type !== "list_transactions") {
+    if (response.result_type !== "list_transactions")
       throw new Error(`Unexpected response type: ${response.result_type}`);
-    }
-    return response.result as ListTransactionsResult;
+    if (response.error) throw createWalletError(response.error.type, response.error.message);
+
+    return response.result;
   }
 
   /** Get wallet balance */
   async getBalance(): Promise<GetBalanceResult> {
     const response = await firstValueFrom(this.request({ method: "get_balance", params: {} }));
-    if (response.result_type !== "get_balance") {
-      throw new Error(`Unexpected response type: ${response.result_type}`);
-    }
-    return response.result as GetBalanceResult;
+    if (response.result_type !== "get_balance") throw new Error(`Unexpected response type: ${response.result_type}`);
+    if (response.error) throw createWalletError(response.error.type, response.error.message);
+
+    return response.result;
   }
 
   /** Get wallet info */
@@ -368,8 +402,9 @@ export class WalletConnect {
     const response = await firstValueFrom(this.request({ method: "get_info", params: {} }));
 
     if (response.result_type !== "get_info") throw new Error(`Unexpected response type: ${response.result_type}`);
+    if (response.error) throw createWalletError(response.error.type, response.error.message);
 
-    return response.result as GetInfoResult;
+    return response.result;
   }
 
   /** Serialize the WalletConnect instance */

@@ -192,7 +192,7 @@ export default function WalletInfoExample() {
   return (
     <div className="container mx-auto my-8 px-4">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Wallet Info Fetcher</h1>
+        <h1 className="text-3xl font-bold mb-2">Wallet Info</h1>
         <p className="mb-4 opacity-70">
           Enter a nostr+walletconnect URI to connect to a wallet and fetch its information using the get_info method.
         </p>
