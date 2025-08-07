@@ -2,15 +2,8 @@ import { hexToBytes } from "@noble/hashes/utils";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
-import {
-  getPreferredEncryption,
-  parseWalletConnectURI,
-  supportsMethod,
-  Transaction,
-  WalletConnectURI,
-  WalletSupport,
-} from "applesauce-wallet-connect/helpers";
-import { useMemo, useState, useCallback } from "react";
+import { parseWalletConnectURI, supportsMethod, Transaction } from "applesauce-wallet-connect/helpers";
+import { useCallback, useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
