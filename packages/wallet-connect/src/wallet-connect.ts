@@ -53,6 +53,7 @@ import {
   WalletRequest,
   WalletResponse,
   getWalletRequestEncryption,
+  MakeInvoiceParams,
 } from "./helpers/index.js";
 import { NostrPublishMethod, NostrSubscriptionMethod } from "./interface.js";
 import { EncryptionMethod } from "applesauce-core/helpers";
@@ -319,15 +320,8 @@ export class WalletConnect {
   }
 
   /** Create a new invoice */
-  async makeInvoice(
-    amount: number,
-    description?: string,
-    description_hash?: string,
-    expiry?: number,
-  ): Promise<MakeInvoiceResult> {
-    const response = await firstValueFrom(
-      this.request({ method: "make_invoice", params: { amount, description, description_hash, expiry } }),
-    );
+  async makeInvoice(amount: number, options?: Omit<MakeInvoiceParams, "amount">): Promise<MakeInvoiceResult> {
+    const response = await firstValueFrom(this.request({ method: "make_invoice", params: { amount, ...options } }));
     if (response.result_type !== "make_invoice") {
       throw new Error(`Unexpected response type: ${response.result_type}`);
     }

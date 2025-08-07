@@ -1,15 +1,18 @@
 import { hexToBytes } from "@noble/hashes/utils";
+import { parseBolt11, ParsedInvoice } from "applesauce-core/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
   GetBalanceResult,
-  Transaction,
   MakeInvoiceResult,
   parseWalletConnectURI,
+  PayInvoiceResult,
   supportsMethod,
+  Transaction,
+  WalletSupport,
 } from "applesauce-wallet-connect/helpers";
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -81,8 +84,8 @@ function CreateInvoiceModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  wallet: WalletConnect | undefined;
-  support: any;
+  wallet?: WalletConnect;
+  support?: WalletSupport | null;
 }) {
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
@@ -130,12 +133,10 @@ function CreateInvoiceModal({
 
     try {
       const amountMsats = parseInt(amount) * 1000; // Convert sats to msats
-      const result = await wallet.makeInvoice(
-        amountMsats,
-        description || undefined,
-        undefined, // description_hash
-        3600, // 1 hour expiry
-      );
+      const result = await wallet.makeInvoice(amountMsats, {
+        description: description || undefined,
+        expiry: 3600, // 1 hour expiry
+      });
       setInvoice(result);
     } catch (err) {
       console.error("Failed to create invoice:", err);
@@ -287,6 +288,209 @@ function CreateInvoiceModal({
   );
 }
 
+function PayInvoiceModal({
+  isOpen,
+  onClose,
+  wallet,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  wallet: WalletConnect | undefined;
+}) {
+  const [invoiceString, setInvoiceString] = useState("");
+  const [parsedInvoice, setParsedInvoice] = useState<ParsedInvoice | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<PayInvoiceResult | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      setInvoiceString("");
+      setParsedInvoice(null);
+      setParseError(null);
+      setPaymentResult(null);
+      setPaymentError(null);
+      setLoading(false);
+    }
+  }, [isOpen]);
+
+  // Parse invoice when input changes
+  useEffect(() => {
+    if (!invoiceString.trim()) {
+      setParsedInvoice(null);
+      setParseError(null);
+      return;
+    }
+
+    try {
+      const parsed = parseBolt11(invoiceString.trim());
+      setParsedInvoice(parsed);
+      setParseError(null);
+    } catch (err) {
+      console.error("Failed to parse invoice:", err);
+      setParsedInvoice(null);
+      setParseError(err instanceof Error ? err.message : "Invalid invoice format");
+    }
+  }, [invoiceString]);
+
+  const handlePayInvoice = async () => {
+    if (!wallet || !parsedInvoice) return;
+
+    setLoading(true);
+    setPaymentError(null);
+
+    try {
+      const result = await wallet.payInvoice(invoiceString.trim());
+      setPaymentResult(result);
+    } catch (err) {
+      console.error("Failed to pay invoice:", err);
+      setPaymentError(err instanceof Error ? err.message : "Failed to pay invoice");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setPaymentResult(null);
+    onClose();
+  };
+
+  const isExpired = parsedInvoice ? Date.now() / 1000 > parsedInvoice.expiry : false;
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal modal-open">
+      <div className="modal-box max-w-md">
+        <h3 className="font-bold text-lg mb-4">Pay Invoice</h3>
+
+        {!paymentResult ? (
+          <div className="space-y-4">
+            {/* Invoice Input */}
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Lightning Invoice</span>
+              </label>
+              <textarea
+                placeholder="Paste Lightning invoice (lnbc...)"
+                className="textarea textarea-bordered w-full"
+                rows={4}
+                value={invoiceString}
+                onChange={(e) => setInvoiceString(e.target.value)}
+              />
+            </div>
+
+            {/* Parse Error */}
+            {parseError && (
+              <div className="alert alert-error">
+                <span className="text-sm">{parseError}</span>
+              </div>
+            )}
+
+            {/* Invoice Details */}
+            {parsedInvoice && !parseError && (
+              <div className="card card-border bg-base-200">
+                <div className="card-body p-4">
+                  <h4 className="font-semibold mb-2">Invoice Details</h4>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="font-medium">Amount:</span>
+                      <span className="ml-2">
+                        {parsedInvoice.amount ? `${formatMsats(parsedInvoice.amount)} sats` : "No amount specified"}
+                      </span>
+                    </div>
+                    {parsedInvoice.description && (
+                      <div>
+                        <span className="font-medium">Description:</span>
+                        <span className="ml-2">{parsedInvoice.description}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="font-medium">Created:</span>
+                      <span className="ml-2">{formatDate(parsedInvoice.timestamp)}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium">Expires:</span>
+                      <span className={`ml-2 ${isExpired ? "text-error" : ""}`}>
+                        {formatDate(parsedInvoice.expiry)}
+                        {isExpired && " (Expired)"}
+                      </span>
+                    </div>
+                    {parsedInvoice.paymentHash && (
+                      <div>
+                        <span className="font-medium">Payment Hash:</span>
+                        <code className="ml-2 text-xs break-all">{parsedInvoice.paymentHash}</code>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Expiry Warning */}
+            {parsedInvoice && isExpired && (
+              <div className="alert alert-warning">This invoice has expired and cannot be paid.</div>
+            )}
+
+            {/* Payment Error */}
+            {paymentError && (
+              <div className="alert alert-error">
+                <span className="text-sm">{paymentError}</span>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="modal-action">
+              <button className="btn btn-ghost" onClick={handleClose}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-warning"
+                onClick={handlePayInvoice}
+                disabled={loading || !parsedInvoice || parseError !== null || isExpired}
+              >
+                {loading ? <span className="loading loading-spinner loading-sm"></span> : "Pay Invoice"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          // Payment Success
+          <div className="space-y-4">
+            <div className="alert alert-success">Payment successful!</div>
+
+            <div className="card card-border bg-base-200">
+              <div className="card-body p-4">
+                <h4 className="font-semibold mb-2">Payment Details</h4>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="font-medium">Preimage:</span>
+                    <code className="ml-2 text-xs break-all">{paymentResult.preimage}</code>
+                  </div>
+                  {paymentResult.fees_paid && paymentResult.fees_paid > 0 && (
+                    <div>
+                      <span className="font-medium">Fees Paid:</span>
+                      <span className="ml-2">{formatMsats(paymentResult.fees_paid)} sats</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-action">
+              <button className="btn btn-primary" onClick={handleClose}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="modal-backdrop" onClick={handleClose}></div>
+    </div>
+  );
+}
+
 export default function SimpleWalletExample() {
   const [uri, setUri] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -296,6 +500,7 @@ export default function SimpleWalletExample() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
+  const [showPayInvoiceModal, setShowPayInvoiceModal] = useState(false);
 
   // Handle URI input and parsing
   const handleUriChange = (value: string) => {
@@ -341,9 +546,7 @@ export default function SimpleWalletExample() {
   const fetchBalance = async () => {
     if (!wallet || !support) return;
 
-    if (!supportsMethod(support, "get_balance")) {
-      return;
-    }
+    if (!supportsMethod(support, "get_balance")) return;
 
     setBalanceLoading(true);
     try {
@@ -361,9 +564,7 @@ export default function SimpleWalletExample() {
   const fetchTransactions = async () => {
     if (!wallet || !support) return;
 
-    if (!supportsMethod(support, "list_transactions")) {
-      return;
-    }
+    if (!supportsMethod(support, "list_transactions")) return;
 
     setTransactionsLoading(true);
     try {
@@ -483,14 +684,7 @@ export default function SimpleWalletExample() {
             >
               Create Invoice
             </button>
-            <button
-              className="btn btn-warning"
-              disabled={!canPayInvoice}
-              onClick={() => {
-                // TODO: Implement pay invoice
-                console.log("Pay invoice clicked");
-              }}
-            >
+            <button className="btn btn-warning" disabled={!canPayInvoice} onClick={() => setShowPayInvoiceModal(true)}>
               Pay Invoice
             </button>
           </div>
@@ -536,6 +730,20 @@ export default function SimpleWalletExample() {
           }}
           wallet={wallet}
           support={support}
+        />
+
+        {/* Pay Invoice Modal */}
+        <PayInvoiceModal
+          isOpen={showPayInvoiceModal}
+          onClose={() => {
+            setShowPayInvoiceModal(false);
+            // Refresh balance and transactions when modal closes
+            if (wallet && support) {
+              fetchBalance();
+              fetchTransactions();
+            }
+          }}
+          wallet={wallet}
         />
       </div>
     </div>
