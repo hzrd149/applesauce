@@ -8,6 +8,7 @@ describe("exports", () => {
         "Blueprints",
         "Helpers",
         "WalletConnect",
+        "WalletService",
       ]
     `);
   });
