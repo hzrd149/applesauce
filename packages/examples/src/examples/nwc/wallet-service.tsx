@@ -1,9 +1,10 @@
-import { unixNow } from "applesauce-core/helpers";
+import { parseBolt11, unixNow } from "applesauce-core/helpers";
 import { useObservableEagerState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { SimpleSigner } from "applesauce-signers";
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
 import { Transaction as WalletTransaction, WalletMethod, GetInfoResult } from "applesauce-wallet-connect/helpers";
+import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
 import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
 
@@ -64,13 +65,13 @@ function BalanceCard({ balance, setBalance }: { balance: number; setBalance: (ba
         get_balance
       </h3>
       <div className="text-center space-y-4">
-        <div className="text-3xl font-bold text-blue-600">{balance.toLocaleString()} sats</div>
-        <div className="text-sm text-gray-600">{(balance * 1000).toLocaleString()} msat</div>
+        <div className="text-3xl font-bold text-blue-600">{(balance / 1000).toLocaleString()} sats</div>
+        <div className="text-sm text-gray-600">{balance.toLocaleString()} msat</div>
         <div className="flex gap-2">
-          <button onClick={() => setBalance(balance + 10000)} className="btn btn-success flex-1">
+          <button onClick={() => setBalance(balance + 10000 * 1000)} className="btn btn-success flex-1">
             Add 10k sats
           </button>
-          <button onClick={() => setBalance(Math.max(0, balance - 10000))} className="btn btn-error flex-1 ">
+          <button onClick={() => setBalance(Math.max(0, balance - 10000 * 1000))} className="btn btn-error flex-1 ">
             Remove 10k sats
           </button>
         </div>
@@ -142,6 +143,7 @@ function TransactionsCard({
   setNewTransaction,
   addTransaction,
   removeTransaction,
+  settleTransaction,
 }: {
   transactions: Transaction[];
   newTransaction: Partial<Transaction>;
@@ -150,6 +152,7 @@ function TransactionsCard({
   ) => void;
   addTransaction: () => void;
   removeTransaction: (id: string) => void;
+  settleTransaction: (id: string) => void;
 }) {
   return (
     <div className="bg-base-100 rounded-lg shadow p-6 xl:col-span-1 lg:col-span-2">
@@ -248,9 +251,20 @@ function TransactionsCard({
                 {Math.round(tx.amount / 1000).toLocaleString()} sats | Fees: {Math.round(tx.fees_paid / 1000)} sats
               </div>
             </div>
-            <button onClick={() => removeTransaction(tx.id)} className="btn btn-sm btn-error">
-              Remove
-            </button>
+            <div className="flex space-x-2">
+              {tx.state === "pending" && (
+                <button
+                  onClick={() => settleTransaction(tx.id)}
+                  className="btn btn-sm btn-success"
+                  title="Mark as settled"
+                >
+                  Settle
+                </button>
+              )}
+              <button onClick={() => removeTransaction(tx.id)} className="btn btn-sm btn-error">
+                Remove
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -284,7 +298,7 @@ function MethodCard({
 }
 
 // Create global state (easier to manage outside of the component)
-const balance$ = new BehaviorSubject<number>(100000); // Default balance in sats
+const balance$ = new BehaviorSubject<number>(50000 * 1000);
 const walletInfo$ = new BehaviorSubject<Omit<GetInfoResult, "methods" | "pubkey">>({
   alias: "Example Wallet",
   color: "#3b82f6",
@@ -319,7 +333,13 @@ const transactions$ = new BehaviorSubject<Transaction[]>([
 
 export default function WalletServiceExample() {
   const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
-  const [supportedMethods, setSupportedMethods] = useState<WalletMethod[]>(["get_balance", "get_info"]);
+  const [supportedMethods, setSupportedMethods] = useState<WalletMethod[]>([
+    "get_balance",
+    "get_info",
+    "make_invoice",
+    "pay_invoice",
+    "list_transactions",
+  ]);
   const [walletService, setWalletService] = useState<WalletService | null>(null);
   const [newRelay, setNewRelay] = useState<string>("");
 
@@ -341,7 +361,7 @@ export default function WalletServiceExample() {
     const handlers: WalletServiceHandlers = {};
 
     if (supportedMethods.includes("get_balance")) {
-      handlers.get_balance = async () => ({ balance: balance$.value * 1000 }); // Convert to msat
+      handlers.get_balance = async () => ({ balance: balance$.value }); // Convert to msat
     }
 
     if (supportedMethods.includes("get_info")) {
@@ -362,8 +382,8 @@ export default function WalletServiceExample() {
       handlers.make_invoice = async (params) => {
         const transaction: Transaction = {
           id: `tx${Date.now() + Math.round(Math.random() * 10000)}`,
-          type: "incoming" as const,
-          state: "pending" as const,
+          type: "incoming",
+          state: "pending",
           invoice: "lnbc" + Math.random().toString(36).substring(7),
           description: params.description,
           description_hash: undefined,
@@ -382,14 +402,51 @@ export default function WalletServiceExample() {
     }
 
     if (supportedMethods.includes("pay_invoice")) {
-      handlers.pay_invoice = async (params: any) => {
-        // Simulate payment
-        balance$.next(balance$.value - Math.floor(params.amount / 1000)); // Convert from msat to sat
+      handlers.pay_invoice = async (params) => {
+        const parsed = parseBolt11(params.invoice);
+        const amount = params.amount ?? parsed.amount;
+        if (!amount) throw new Error("Missing amount");
+
+        if (balance$.value < amount) throw new InsufficientBalanceError("Insufficient balance");
+
+        const transaction: Transaction = {
+          id: `tx${Date.now() + Math.round(Math.random() * 10000)}`,
+          type: "outgoing",
+          state: "settled",
+          description: parsed.description,
+          amount,
+          fees_paid: Math.floor(Math.random() * 2000),
+          created_at: unixNow(),
+          expires_at: parsed.expiry,
+          payment_hash: parsed.paymentHash,
+        };
+
+        transactions$.next([transaction, ...transactions$.value]);
+        balance$.next(balance$.value - amount);
+
         return {
           preimage: Math.random().toString(36).substring(7),
-          payment_hash: Math.random().toString(36).substring(7),
+          fees_paid: transaction.fees_paid,
         };
       };
+
+      if (supportedMethods.includes("lookup_invoice")) {
+        handlers.lookup_invoice = async (params) => {
+          if (params.payment_hash) {
+            const transaction = transactions$.value.find((tx) => tx.payment_hash === params.payment_hash);
+            if (!transaction) throw new NotFoundError("Invoice with payment hash not found");
+            return transaction;
+          }
+
+          if (params.invoice) {
+            const transaction = transactions$.value.find((tx) => tx.invoice === params.invoice);
+            if (!transaction) throw new NotFoundError("Invoice not found");
+            return transaction;
+          }
+
+          throw new NotFoundError("Invoice not found");
+        };
+      }
     }
 
     return handlers;
@@ -462,6 +519,46 @@ export default function WalletServiceExample() {
   const removeTransaction = useCallback((id: string) => {
     transactions$.next(transactions$.value.filter((tx) => tx.id !== id));
   }, []);
+
+  const settleTransaction = useCallback(
+    async (id: string) => {
+      const currentTransactions = transactions$.value;
+      const transaction = currentTransactions.find((tx) => tx.id === id);
+
+      if (!transaction || transaction.state !== "pending") {
+        return;
+      }
+
+      // Update transaction state
+      const updatedTransaction: Transaction = {
+        ...transaction,
+        state: "settled",
+        settled_at: unixNow(),
+        preimage: Math.random().toString(36).substring(7), // Generate a random preimage
+      };
+
+      // Update the transactions list
+      transactions$.next(currentTransactions.map((tx) => (tx.id === id ? updatedTransaction : tx)));
+
+      // Update the balance
+      balance$.next(balance$.value + updatedTransaction.amount);
+
+      // Send notification if wallet service is running
+      if (walletService) {
+        try {
+          const notificationType = updatedTransaction.type === "incoming" ? "payment_received" : "payment_sent";
+          // Send NIP-44 notification
+          await walletService.notify(notificationType, updatedTransaction);
+          // Send legacy notification
+          await walletService.notify(notificationType, updatedTransaction, true);
+          console.log(`Sent ${notificationType} notification for transaction ${id}`);
+        } catch (error) {
+          console.error("Failed to send notification:", error);
+        }
+      }
+    },
+    [walletService],
+  );
 
   const updateWalletInfo = useCallback((field: string, value: any) => {
     walletInfo$.next({ ...walletInfo$.value, [field]: value });
@@ -586,6 +683,7 @@ export default function WalletServiceExample() {
                 setNewTransaction={setNewTransaction}
                 addTransaction={addTransaction}
                 removeTransaction={removeTransaction}
+                settleTransaction={settleTransaction}
               />
             )}
 
@@ -605,6 +703,15 @@ export default function WalletServiceExample() {
                 color="bg-red-500"
                 description="Payments are simulated and will deduct from the balance above."
                 details="Returns random payment data for testing."
+              />
+            )}
+
+            {supportedMethods.includes("lookup_invoice") && (
+              <MethodCard
+                method="lookup_invoice"
+                color="bg-purple-500"
+                description="Lookup invoices by payment hash or invoice string."
+                details="Returns transaction data for testing."
               />
             )}
           </div>
