@@ -3,7 +3,7 @@ import { useObservableEagerState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { SimpleSigner } from "applesauce-signers";
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
-import { Transaction as WalletTransaction, WalletMethod, GetInfoResult } from "applesauce-wallet-connect/helpers";
+import { GetInfoResult, WalletMethod, Transaction as WalletTransaction } from "applesauce-wallet-connect/helpers";
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
 import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";

@@ -1,4 +1,4 @@
-# @applesauce/wallet-connect
+# applesauce-wallet-connect
 
 NIP-47 Nostr Wallet Connect implementation for both clients and services.
 
@@ -14,7 +14,7 @@ NIP-47 Nostr Wallet Connect implementation for both clients and services.
 ## Installation
 
 ```bash
-npm install @applesauce/wallet-connect
+npm install applesauce-wallet-connect
 ```
 
 ## WalletConnect (Client)
@@ -22,7 +22,7 @@ npm install @applesauce/wallet-connect
 Connect to a wallet service using a connection string:
 
 ```typescript
-import { WalletConnect } from "@applesauce/wallet-connect";
+import { WalletConnect } from "applesauce-wallet-connect";
 
 const wallet = WalletConnect.fromConnectionString("nostr+walletconnect://relay.example.com?secret=...&pubkey=...");
 
@@ -40,8 +40,8 @@ console.log("Balance:", balance.balance, "msats");
 Create a wallet service that handles NIP-47 requests:
 
 ```typescript
-import { WalletService } from "@applesauce/wallet-connect";
-import { SimpleSigner } from "@applesauce/signers";
+import { WalletService } from "applesauce-wallet-connect";
+import { SimpleSigner } from "applesauce-signers";
 
 // Create a signer for the service
 const signer = new SimpleSigner();
@@ -79,15 +79,15 @@ const service = new WalletService({
   relays: ["wss://relay.example.com"],
   signer,
   handlers,
-  support: {
-    methods: ["get_info", "get_balance", "pay_invoice"],
-    encryption: ["nip44_v2", "nip04"],
-  },
+  // Supported encryption methods will be set based on the signer
 });
 
 // Start the service
 await service.start();
 console.log("Wallet service started");
+
+// Get the connection string for the wallet service
+console.log(service.getConnectionString());
 
 // Stop the service when done
 // service.stop();
