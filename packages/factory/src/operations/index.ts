@@ -10,6 +10,7 @@ export * as Geohash from "./geohash.js";
 export * as GiftWrap from "./gift-wrap.js";
 export * as Groups from "./group.js";
 export * as Hashtags from "./hashtags.js";
+export * as Highlight from "./highlight.js";
 export * as LegacyMessage from "./legacy-message.js";
 export * as List from "./list.js";
 export * as LiveStream from "./live-stream.js";

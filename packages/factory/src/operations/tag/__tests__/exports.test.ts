@@ -17,6 +17,7 @@ describe("exports", () => {
         "GiftWrap",
         "Groups",
         "Hashtags",
+        "Highlight",
         "LegacyMessage",
         "List",
         "LiveStream",

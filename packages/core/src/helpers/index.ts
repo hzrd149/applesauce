@@ -29,6 +29,7 @@ export * from "./groups.js";
 export * from "./hashtag.js";
 export * from "./hidden-content.js";
 export * from "./hidden-tags.js";
+export * from "./highlight.js";
 export * from "./json.js";
 export * from "./legacy-messages.js";
 export * from "./lists.js";

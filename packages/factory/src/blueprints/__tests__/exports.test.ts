@@ -14,6 +14,7 @@ describe("exports", () => {
         "FollowSetBlueprint",
         "GiftWrapBlueprint",
         "GroupMessageBlueprint",
+        "HighlightBlueprint",
         "LegacyMessageBlueprint",
         "LegacyMessageReplyBlueprint",
         "LiveChatMessageBlueprint",
