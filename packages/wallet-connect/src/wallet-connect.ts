@@ -60,7 +60,7 @@ import {
   WalletResponse,
   WalletSupport,
 } from "./helpers/index.js";
-import { NostrPublishMethod, NostrSubscriptionMethod } from "./interface.js";
+import { NostrPublishMethod, NostrSubscriptionMethod } from "./types.js";
 
 export type SerializedWalletConnect = WalletConnectURI;
 

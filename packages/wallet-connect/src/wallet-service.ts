@@ -48,7 +48,7 @@ import {
   WalletResponse,
 } from "./helpers/response.js";
 import { WalletMethod, WalletSupport } from "./helpers/support.js";
-import { NostrPublishMethod, NostrSubscriptionMethod } from "./interface.js";
+import { NostrPublishMethod, NostrSubscriptionMethod } from "./types.js";
 import { bytesToHex } from "@noble/hashes/utils";
 
 /** Handler function for pay_invoice method */
@@ -93,10 +93,6 @@ export interface WalletServiceHandlers {
 
 /** Options for creating a WalletService */
 export interface WalletServiceOptions {
-  /** A method for subscribing to relays */
-  subscriptionMethod?: NostrSubscriptionMethod;
-  /** A method for publishing events */
-  publishMethod?: NostrPublishMethod;
   /** The relays to use for the service */
   relays: string[];
   /** The signer to use for creating and unlocking events */
@@ -106,7 +102,11 @@ export interface WalletServiceOptions {
   /** Map of method handlers */
   handlers: WalletServiceHandlers;
   /** An array of notifications this wallet supports */
-  notifications: NotificationType[];
+  notifications?: NotificationType[];
+  /** An optional method for subscribing to relays */
+  subscriptionMethod?: NostrSubscriptionMethod;
+  /** An optional method for publishing events */
+  publishMethod?: NostrPublishMethod;
 }
 
 /** NIP-47 Wallet Service implementation */

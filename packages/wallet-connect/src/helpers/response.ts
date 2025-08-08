@@ -56,7 +56,7 @@ export interface Transaction {
   amount: number;
   /** Value in msats */
   fees_paid: number;
-  /** Invoice/payment creation time */
+  /** Invoice/payment creation unix timestamp */
   created_at: number;
 
   /** Encoded invoice, optional */
@@ -69,9 +69,9 @@ export interface Transaction {
   preimage?: string;
   /** Payment hash for the payment, optional */
   payment_hash?: string;
-  /** Invoice expiration time, optional if not applicable */
+  /** Invoice expiration unix timestamp, optional if not applicable */
   expires_at?: number;
-  /** Invoice/payment settlement time, optional if unpaid */
+  /** Invoice/payment settlement unix timestamp, optional if unpaid */
   settled_at?: number;
   /** Generic metadata that can be used to add things like zap/boostagram details */
   metadata?: Record<string, any>;

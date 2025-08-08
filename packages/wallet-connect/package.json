@@ -32,6 +32,16 @@
       "require": "./dist/wallet-connect.js",
       "types": "./dist/wallet-connect.d.ts"
     },
+    "./wallet-service": {
+      "import": "./dist/wallet-service.js",
+      "require": "./dist/wallet-service.js",
+      "types": "./dist/wallet-service.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "require": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    },
     "./helpers": {
       "import": "./dist/helpers/index.js",
       "require": "./dist/helpers/index.js",
