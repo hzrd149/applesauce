@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 import { EMPTY } from "rxjs";
 
-import RelayPicker from "../components/relay-picker";
+import RelayPicker from "../../components/relay-picker";
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, BarElement, Title, Tooltip, Legend);

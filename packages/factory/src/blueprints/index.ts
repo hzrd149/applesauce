@@ -11,6 +11,7 @@ export * from "./legacy-message.js";
 export * from "./live-stream.js";
 export * from "./note.js";
 export * from "./picture-post.js";
+export * from "./poll.js";
 export * from "./reaction.js";
 export * from "./reply.js";
 export * from "./share.js";

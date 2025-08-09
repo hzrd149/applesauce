@@ -85,8 +85,12 @@ export function setProtected(set = true): EventOperation {
 
 /** Options for {@link setMetaTags} */
 export type MetaTagOptions = {
-  protected?: boolean;
+  /** Unix timestamp when the event expires */
   expiration?: number;
+  /** Whether the event is protected (can only be published by author) */
+  protected?: boolean;
+  /** Alt description for clients that can't render the event */
+  alt?: string;
 };
 
 /** Creates the necessary operations for meta tag options */
@@ -94,5 +98,6 @@ export function setMetaTags(options?: MetaTagOptions): EventOperation {
   return eventPipe(
     options?.protected ? setProtected(true) : skip(),
     options?.expiration ? setExpirationTimestamp(options.expiration) : skip(),
+    options?.alt ? includeAltTag(options.alt) : skip(),
   );
 }

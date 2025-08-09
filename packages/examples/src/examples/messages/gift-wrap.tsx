@@ -12,7 +12,7 @@ import {
   presistEventsToCache,
   Rumor,
   unixNow,
-  unlockGiftWrap
+  unlockGiftWrap,
 } from "applesauce-core/helpers";
 import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "applesauce-core/models";
 import { EventFactory } from "applesauce-factory";
