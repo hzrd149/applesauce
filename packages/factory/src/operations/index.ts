@@ -18,6 +18,7 @@ export * as Mailboxes from "./mailboxes.js";
 export * as Note from "./note.js";
 export * as PicturePost from "./picture-post.js";
 export * as Poll from "./poll.js";
+export * as PollResponse from "./poll-response.js";
 export * as Profile from "./profile.js";
 export * as Reaction from "./reaction.js";
 export * as StreamChat from "./stream-chat.js";

@@ -5,17 +5,8 @@ import { EventPointer } from "nostr-tools/nip19";
 import { blueprint } from "../event-factory.js";
 import { MetaTagOptions, setMetaTags } from "../operations/common.js";
 import { setContent } from "../operations/content.js";
-import {
-  setPollEndsAt,
-  setPollOptions,
-  setPollQuestion,
-  setPollRelays,
-  setPollResponseChoice,
-  setPollResponsePoll,
-  setPollResponses,
-  setPollType,
-} from "../operations/poll.js";
 import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
+import { PollResponse, Poll } from "../operations/index.js";
 
 export interface PollOption {
   id: string;
@@ -39,11 +30,11 @@ export type PollBlueprintOptions = MetaTagOptions &
 export function PollBlueprint(question: string, options: PollOption[], opts?: PollBlueprintOptions) {
   return blueprint(
     POLL_KIND,
-    setPollQuestion(question),
-    setPollOptions(options),
-    opts?.pollType ? setPollType(opts.pollType) : undefined,
-    opts?.endsAt ? setPollEndsAt(opts.endsAt) : undefined,
-    opts?.relays ? setPollRelays(opts.relays) : undefined,
+    Poll.setQuestion(question),
+    Poll.setOptions(options),
+    opts?.pollType ? Poll.setType(opts.pollType) : undefined,
+    opts?.endsAt ? Poll.setEndsAt(opts.endsAt) : undefined,
+    opts?.relays ? Poll.setRelays(opts.relays) : undefined,
     setZapSplit(opts),
     setMetaTags({ ...opts, alt: opts?.alt ?? `Poll: ${question}` }),
   );
@@ -62,8 +53,8 @@ export function PollResponseBlueprint(
 ) {
   return blueprint(
     POLL_RESPONSE_KIND,
-    setPollResponsePoll(poll),
-    setPollResponses(optionIds),
+    PollResponse.setPollEvent(poll),
+    PollResponse.setChoices(optionIds),
     opts?.comment ? setContent(opts.comment) : undefined,
     setMetaTags({ ...opts, alt: opts?.alt ?? "Poll response" }),
   );
@@ -80,8 +71,8 @@ export function SingleChoicePollResponseBlueprint(
 ) {
   return blueprint(
     POLL_RESPONSE_KIND,
-    setPollResponsePoll(poll),
-    setPollResponseChoice(optionId),
+    PollResponse.setPollEvent(poll),
+    PollResponse.setChoice(optionId),
     opts?.comment ? setContent(opts.comment) : undefined,
     setMetaTags({ ...opts, alt: opts?.alt ?? "Poll response" }),
   );

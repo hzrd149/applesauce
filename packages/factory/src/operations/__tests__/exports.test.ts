@@ -25,6 +25,7 @@ describe("exports", () => {
         "Note",
         "PicturePost",
         "Poll",
+        "PollResponse",
         "Profile",
         "Reaction",
         "Stream",
