@@ -1,5 +1,18 @@
 # applesauce-actions
 
+## 3.0.0
+
+### Minor Changes
+
+- b681e97: Allow article kinds to be added and removed from pin list
+- f137e71: Add NIP-52 calendar actions
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@3.0.0
+  - applesauce-factory@3.0.0
+
 ## 2.3.0
 
 ### Minor Changes
