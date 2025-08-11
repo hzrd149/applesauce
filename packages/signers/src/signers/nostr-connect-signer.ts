@@ -7,6 +7,7 @@ import { getPublicKey } from "nostr-tools";
 import { nanoid } from "nanoid";
 
 import { isNIP04 } from "../helpers/encryption.js";
+import { Subscribable, Unsubscribable } from "../types/observable.js";
 
 export function isErrorResponse(response: any): response is NostrConnectErrorResponse {
   return !!response.error;
@@ -31,7 +32,7 @@ export enum NostrConnectMethod {
   Nip44Encrypt = "nip44_encrypt",
   Nip44Decrypt = "nip44_decrypt",
 }
-type RequestParams = {
+export type ConnectRequestParams = {
   [NostrConnectMethod.Connect]: [string] | [string, string] | [string, string, string];
   [NostrConnectMethod.CreateAccount]: [string, string] | [string, string, string] | [string, string, string, string];
   [NostrConnectMethod.GetPublicKey]: [];
@@ -41,8 +42,8 @@ type RequestParams = {
   [NostrConnectMethod.Nip44Encrypt]: [string, string];
   [NostrConnectMethod.Nip44Decrypt]: [string, string];
 };
-type ResponseResults = {
-  [NostrConnectMethod.Connect]: "ack";
+export type ConnectResponseResults = {
+  [NostrConnectMethod.Connect]: "ack" | string;
   [NostrConnectMethod.CreateAccount]: string;
   [NostrConnectMethod.GetPublicKey]: string;
   [NostrConnectMethod.SignEvent]: string;
@@ -52,10 +53,14 @@ type ResponseResults = {
   [NostrConnectMethod.Nip44Decrypt]: string;
 };
 
-export type NostrConnectRequest<N extends NostrConnectMethod> = { id: string; method: N; params: RequestParams[N] };
+export type NostrConnectRequest<N extends NostrConnectMethod> = {
+  id: string;
+  method: N;
+  params: ConnectRequestParams[N];
+};
 export type NostrConnectResponse<N extends NostrConnectMethod> = {
   id: string;
-  result: ResponseResults[N];
+  result: ConnectResponseResults[N];
   error?: string;
 };
 export type NostrConnectErrorResponse = {
@@ -83,19 +88,6 @@ export type NostrConnectSignerOptions = {
   subscriptionMethod?: NostrSubscriptionMethod;
   /** A method for publishing events */
   publishMethod?: NostrPublishMethod;
-};
-
-// Simple types copied from rxjs
-interface Unsubscribable {
-  unsubscribe(): void;
-}
-interface Observer<T> {
-  next: (value: T) => void;
-  error: (err: any) => void;
-  complete: () => void;
-}
-type Subscribable<T extends unknown> = {
-  subscribe: (observer: Partial<Observer<T>>) => Unsubscribable;
 };
 
 /** A method used to subscribe to events on a set of relays */
@@ -301,9 +293,9 @@ export class NostrConnectSigner implements ISigner {
 
   private async makeRequest<T extends NostrConnectMethod>(
     method: T,
-    params: RequestParams[T],
+    params: ConnectRequestParams[T],
     kind = kinds.NostrConnect,
-  ): Promise<ResponseResults[T]> {
+  ): Promise<ConnectResponseResults[T]> {
     // Talk to the remote signer or the users pubkey
     if (!this.remote) throw new Error("Missing remote signer pubkey");
 
@@ -313,7 +305,7 @@ export class NostrConnectSigner implements ISigner {
     const event = await this.createRequestEvent(encrypted, this.remote, kind);
     this.log(`Sending ${id} (${method}) ${JSON.stringify(params)}`);
 
-    const p = createDefer<ResponseResults[T]>();
+    const p = createDefer<ConnectResponseResults[T]>();
     this.requests.set(id, p);
 
     const result = this.publishMethod?.(this.relays, event);
