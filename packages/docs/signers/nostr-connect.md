@@ -50,16 +50,20 @@ import { RelayPool } from "applesauce-relay";
 
 const pool = new RelayPool();
 
-// Set methods using arrow functions
-NostrConnectSigner.subscriptionMethod = (relays, filters) => pool.subscription(relays, filters);
-NostrConnectSigner.publishMethod = (relays, event) => pool.publish(relays, event);
+// Set the pool globally
+NostrConnectSigner.pool = pool;
 
-// Or using .bind
-NostrConnectSigner.subscriptionMethod = pool.subscription.bind(pool);
-NostrConnectSigner.publishMethod = pool.publish.bind(pool);
+// Or pass the pool as an option when creating a signer
+const signer = new NostrConnectSigner({
+  relays: ["wss://relay.example.com"],
+  pool,
+  // ... other options
+});
 ```
 
 ## Connecting to a remote signer
+
+The `NostrConnectSigner` can be created with a remote signer's public key, and will automatically connect to it.
 
 ```js
 import { NostrConnectSigner } from "applesauce-signers";
@@ -79,7 +83,7 @@ const signer = new NostrConnectSigner({
 });
 
 // start the connection process
-await signer.connect();
+await signer.connect(/* optional secret */, /* optional requested permissions */);
 console.log("Connected!");
 
 // get the users pubkey
@@ -131,7 +135,7 @@ setTimeout(() => {
 
 ## Handling bunker URIs
 
-You can use `NostrConnectSigner.fromBunkerURI` to create a new signer from a bunker URI:
+The `NostrConnectSigner.fromBunkerURI` method can be used to create a new signer from a `bunker://` URI, it will return a promise that will resolve when the signer is connected.
 
 ```js
 const signer = await NostrConnectSigner.fromBunkerURI(
@@ -143,7 +147,7 @@ const signer = await NostrConnectSigner.fromBunkerURI(
 );
 ```
 
-You can also parse a bunker URI separately using `NostrConnectSigner.parseBunkerURI`:
+You can also parse a bunker URI manually using `NostrConnectSigner.parseBunkerURI`:
 
 ```js
 const { remote, relays, secret } = NostrConnectSigner.parseBunkerURI(uri);

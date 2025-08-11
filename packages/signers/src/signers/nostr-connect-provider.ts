@@ -25,6 +25,7 @@ import {
 import { ISigner } from "../interface.js";
 import { Unsubscribable } from "../helpers/observable.js";
 import { NostrPool, NostrPublishMethod, NostrSubscriptionMethod } from "./nostr-connect-signer.js";
+import { SimpleSigner } from "./simple-signer.js";
 
 export interface ProviderAuthorization {
   /** A method used to accept or reject `connect` requests */
@@ -46,7 +47,7 @@ export type NostrConnectProviderOptions = ProviderAuthorization & {
   relays: string[];
   /** The signer to use for signing events and encryption */
   upstream: ISigner;
-  /** Optional signer for provider identity (if different from upstream) */
+  /** Optional signer for provider identity */
   signer?: ISigner;
   /** A random secret used to authorize clients to connect */
   secret?: string;
@@ -123,7 +124,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
   constructor(opts: NostrConnectProviderOptions) {
     this.relays = opts.relays;
     this.upstream = opts.upstream;
-    this.signer = opts.signer || opts.upstream;
+    this.signer = opts.signer ?? new SimpleSigner();
     this.secret = opts.secret;
 
     // Get the subscription and publish methods

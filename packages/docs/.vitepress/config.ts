@@ -88,6 +88,7 @@ export default defineConfig({
           { text: "Package", link: "/signers/package" },
           { text: "Signers", link: "/signers/signers" },
           { text: "Nostr Connect", link: "/signers/nostr-connect" },
+          { text: "Bunker Provider", link: "/signers/bunker-provider" },
         ],
       },
       {
