@@ -9,14 +9,12 @@ describe("exports", () => {
         "ExtensionMissingError",
         "ExtensionSigner",
         "Helpers",
-        "NostrConnectMethod",
+        "NostrConnectProvider",
         "NostrConnectSigner",
         "PasswordSigner",
-        "Permission",
         "ReadonlySigner",
         "SerialPortSigner",
         "SimpleSigner",
-        "isErrorResponse",
       ]
     `);
   });

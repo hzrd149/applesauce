@@ -41,6 +41,8 @@ export function setEncryptedContentEncryptionMethod(kind: number, method: Encryp
  * @param kind The event kind to get the encryption method for
  * @param signer The signer to use to get the encryption methods
  * @param override The encryption method to use instead of the default
+ * @throws If the event kind does not support encrypted content
+ * @throws If the signer does not support the encryption method
  * @returns The encryption methods for the event kind
  */
 export function getEncryptedContentEncryptionMethods(

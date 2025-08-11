@@ -1,73 +1,24 @@
-import { EventTemplate, Filter, kinds, NostrEvent, verifyEvent } from "nostr-tools";
-import { ISigner, SimpleSigner } from "applesauce-signers";
-import { Deferred, createDefer } from "applesauce-core/promise";
-import { isHexKey, unixNow } from "applesauce-core/helpers";
 import { logger } from "applesauce-core";
-import { getPublicKey } from "nostr-tools";
+import { getHiddenContent, unixNow } from "applesauce-core/helpers";
+import { Deferred, createDefer } from "applesauce-core/promise";
+import { ISigner, SimpleSigner } from "applesauce-signers";
 import { nanoid } from "nanoid";
+import { EventTemplate, Filter, NostrEvent, getPublicKey, kinds, verifyEvent } from "nostr-tools";
 
 import { isNIP04 } from "../helpers/encryption.js";
-import { Subscribable, Unsubscribable } from "../types/observable.js";
-
-export function isErrorResponse(response: any): response is NostrConnectErrorResponse {
-  return !!response.error;
-}
-
-export enum Permission {
-  GetPublicKey = "get_pubic_key",
-  SignEvent = "sign_event",
-  Nip04Encrypt = "nip04_encrypt",
-  Nip04Decrypt = "nip04_decrypt",
-  Nip44Encrypt = "nip44_encrypt",
-  Nip44Decrypt = "nip44_decrypt",
-}
-
-export enum NostrConnectMethod {
-  Connect = "connect",
-  CreateAccount = "create_account",
-  GetPublicKey = "get_public_key",
-  SignEvent = "sign_event",
-  Nip04Encrypt = "nip04_encrypt",
-  Nip04Decrypt = "nip04_decrypt",
-  Nip44Encrypt = "nip44_encrypt",
-  Nip44Decrypt = "nip44_decrypt",
-}
-export type ConnectRequestParams = {
-  [NostrConnectMethod.Connect]: [string] | [string, string] | [string, string, string];
-  [NostrConnectMethod.CreateAccount]: [string, string] | [string, string, string] | [string, string, string, string];
-  [NostrConnectMethod.GetPublicKey]: [];
-  [NostrConnectMethod.SignEvent]: [string];
-  [NostrConnectMethod.Nip04Encrypt]: [string, string];
-  [NostrConnectMethod.Nip04Decrypt]: [string, string];
-  [NostrConnectMethod.Nip44Encrypt]: [string, string];
-  [NostrConnectMethod.Nip44Decrypt]: [string, string];
-};
-export type ConnectResponseResults = {
-  [NostrConnectMethod.Connect]: "ack" | string;
-  [NostrConnectMethod.CreateAccount]: string;
-  [NostrConnectMethod.GetPublicKey]: string;
-  [NostrConnectMethod.SignEvent]: string;
-  [NostrConnectMethod.Nip04Encrypt]: string;
-  [NostrConnectMethod.Nip04Decrypt]: string;
-  [NostrConnectMethod.Nip44Encrypt]: string;
-  [NostrConnectMethod.Nip44Decrypt]: string;
-};
-
-export type NostrConnectRequest<N extends NostrConnectMethod> = {
-  id: string;
-  method: N;
-  params: ConnectRequestParams[N];
-};
-export type NostrConnectResponse<N extends NostrConnectMethod> = {
-  id: string;
-  result: ConnectResponseResults[N];
-  error?: string;
-};
-export type NostrConnectErrorResponse = {
-  id: string;
-  result: string;
-  error: string;
-};
+import {
+  BunkerURI,
+  ConnectRequestParams,
+  ConnectResponseResults,
+  NostrConnectAppMetadata,
+  NostrConnectMethod,
+  NostrConnectRequest,
+  NostrConnectResponse,
+  buildSigningPermissions,
+  createNostrConnectURI,
+  parseBunkerURI,
+} from "../helpers/nostr-connect.js";
+import { Subscribable, Unsubscribable } from "../helpers/observable.js";
 
 async function defaultHandleAuth(url: string) {
   window.open(url, "auth", "width=400,height=600,resizable=no,status=no,location=no,toolbar=no,menubar=no");
@@ -82,33 +33,39 @@ export type NostrConnectSignerOptions = {
   remote?: string;
   /** Users pubkey */
   pubkey?: string;
+  /** A secret used when initalizing the connection from the client side */
+  secret?: string;
   /** A method for handling "auth" requests */
   onAuth?: (url: string) => Promise<void>;
   /** A method for subscribing to relays */
   subscriptionMethod?: NostrSubscriptionMethod;
   /** A method for publishing events */
   publishMethod?: NostrPublishMethod;
+  /** A pool of methods to use if none are passed in when creating the signer */
+  pool?: NostrPool;
 };
 
 /** A method used to subscribe to events on a set of relays */
 export type NostrSubscriptionMethod = (relays: string[], filters: Filter[]) => Subscribable<NostrEvent | string>;
-
 /** A method used for publishing an event, can return a Promise that completes when published or an Observable that completes when published*/
 export type NostrPublishMethod = (relays: string[], event: NostrEvent) => Promise<any> | Subscribable<any>;
-
-export type NostrConnectAppMetadata = {
-  name?: string;
-  image?: string;
-  url?: string | URL;
-  permissions?: string[];
+/** A simple pool type that combines the subscription and publish methods */
+export type NostrPool = {
+  subscription: NostrSubscriptionMethod;
+  publish: NostrPublishMethod;
 };
 
 export class NostrConnectSigner implements ISigner {
   /** A method that is called when an event needs to be published */
   protected publishMethod: NostrPublishMethod;
-
   /** The active nostr subscription */
   protected subscriptionMethod: NostrSubscriptionMethod;
+  /** A fallback method to use for subscriptionMethod if none is pass in when creating the signer */
+  static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
+  /** A fallback method to use for publishMethod if none is pass in when creating the signer */
+  static publishMethod: NostrPublishMethod | undefined = undefined;
+  /** A fallback pool to use if none is pass in when creating the signer */
+  static pool: NostrPool | undefined = undefined;
 
   protected log = logger.extend("NostrConnectSigner");
   /** The local client signer */
@@ -138,7 +95,7 @@ export class NostrConnectSigner implements ISigner {
   verifyEvent: typeof verifyEvent = verifyEvent;
 
   /** A secret used when initiating a connection from the client side */
-  protected clientSecret = nanoid(12);
+  public secret: string;
 
   nip04?:
     | {
@@ -153,24 +110,28 @@ export class NostrConnectSigner implements ISigner {
       }
     | undefined;
 
-  /** A fallback method to use for subscriptionMethod if none is pass in when creating the signer */
-  static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
-  /** A fallback method to use for publishMethod if none is pass in when creating the signer */
-  static publishMethod: NostrPublishMethod | undefined = undefined;
-
   constructor(opts: NostrConnectSignerOptions) {
     this.relays = opts.relays;
     this.pubkey = opts.pubkey;
     this.remote = opts.remote;
-    const subscriptionMethod = opts.subscriptionMethod || NostrConnectSigner.subscriptionMethod;
+    this.secret = opts.secret || nanoid(12);
+
+    // Get the subscription and publish methods
+    const subscriptionMethod =
+      opts.subscriptionMethod ||
+      opts.pool?.subscription ||
+      NostrConnectSigner.subscriptionMethod ||
+      NostrConnectSigner.pool?.subscription;
     if (!subscriptionMethod)
       throw new Error("Missing subscriptionMethod, either pass a method or set NostrConnectSigner.subscriptionMethod");
-    const publishMethod = opts.publishMethod || NostrConnectSigner.publishMethod;
+    const publishMethod =
+      opts.publishMethod || opts.pool?.publish || NostrConnectSigner.publishMethod || NostrConnectSigner.pool?.publish;
     if (!publishMethod)
       throw new Error("Missing publishMethod, either pass a method or set NostrConnectSigner.publishMethod");
 
-    this.subscriptionMethod = subscriptionMethod;
-    this.publishMethod = publishMethod;
+    // Use arrow functions so "this" isn't bound to the signer
+    this.subscriptionMethod = (relays, filters) => subscriptionMethod(relays, filters);
+    this.publishMethod = (relays, event) => publishMethod(relays, event);
 
     if (opts.onAuth) this.onAuth = opts.onAuth;
 
@@ -240,13 +201,17 @@ export class NostrConnectSigner implements ISigner {
     if (this.remote && event.pubkey !== this.remote) return;
 
     try {
-      const responseStr = isNIP04(event.content)
-        ? await this.signer.nip04.decrypt(event.pubkey, event.content)
-        : await this.signer.nip44.decrypt(event.pubkey, event.content);
-      const response = JSON.parse(responseStr);
+      const responseStr =
+        getHiddenContent(event) ??
+        (isNIP04(event.content)
+          ? await this.signer.nip04.decrypt(event.pubkey, event.content)
+          : await this.signer.nip44.decrypt(event.pubkey, event.content));
+      if (!responseStr) return;
+
+      const response = JSON.parse(responseStr) as NostrConnectResponse<any>;
 
       // handle remote signer connection
-      if (!this.remote && (response.result === "ack" || (this.clientSecret && response.result === this.clientSecret))) {
+      if (!this.remote && (response.result === "ack" || (this.secret && response.result === this.secret))) {
         this.log("Got ack response from", event.pubkey, response.result);
         this.isConnected = true;
         this.remote = event.pubkey;
@@ -441,37 +406,22 @@ export class NostrConnectSigner implements ISigner {
 
   /** Returns the nostrconnect:// URI for this signer */
   getNostrConnectURI(metadata?: NostrConnectAppMetadata) {
-    const params = new URLSearchParams();
-
-    params.set("secret", this.clientSecret);
-    if (metadata?.name) params.set("name", metadata.name);
-    if (metadata?.url) params.set("url", String(metadata.url));
-    if (metadata?.image) params.set("image", metadata.image);
-    if (metadata?.permissions) params.set("perms", metadata.permissions.join(","));
-    for (const relay of this.relays) params.append("relay", relay);
-
-    const client = getPublicKey(this.signer.key);
-    return `nostrconnect://${client}?` + params.toString();
+    return createNostrConnectURI({
+      client: getPublicKey(this.signer.key),
+      secret: this.secret,
+      relays: this.relays,
+      metadata,
+    });
   }
 
   /** Parses a bunker:// URI */
-  static parseBunkerURI(uri: string): { remote: string; relays: string[]; secret?: string } {
-    const url = new URL(uri);
-
-    // firefox puts pubkey part in host, chrome puts pubkey in pathname
-    const remote = url.host || url.pathname.replace("//", "");
-    if (!isHexKey(remote)) throw new Error("Invalid connection URI");
-
-    const relays = url.searchParams.getAll("relay");
-    if (relays.length === 0) throw new Error("Missing relays");
-    const secret = url.searchParams.get("secret") ?? undefined;
-
-    return { remote, relays, secret };
+  static parseBunkerURI(uri: string): BunkerURI {
+    return parseBunkerURI(uri);
   }
 
   /** Builds an array of signing permissions for event kinds */
   static buildSigningPermissions(kinds: number[]) {
-    return [Permission.GetPublicKey, ...kinds.map((k) => `${Permission.SignEvent}:${k}`)];
+    return buildSigningPermissions(kinds);
   }
 
   /** Create a {@link NostrConnectSigner} from a bunker:// URI */

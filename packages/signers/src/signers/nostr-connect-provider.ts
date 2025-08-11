@@ -1,45 +1,76 @@
-import { EventTemplate, kinds, NostrEvent, verifyEvent } from "nostr-tools";
-import { ISigner } from "../interface.js";
-import { Deferred, createDefer } from "applesauce-core/promise";
-import { unixNow } from "applesauce-core/helpers";
 import { logger } from "applesauce-core";
+import {
+  EncryptionMethods,
+  getEncryptedContentEncryptionMethods,
+  getHiddenContent,
+  isEvent,
+  unixNow,
+  unlockHiddenContent,
+} from "applesauce-core/helpers";
+import { createDefer, Deferred } from "applesauce-core/promise";
+import { EventTemplate, kinds, NostrEvent, verifyEvent } from "nostr-tools";
+import { nanoid } from "nanoid";
 
 import { isNIP04 } from "../helpers/encryption.js";
 import {
+  ConnectRequestParams,
+  ConnectResponseResults,
+  createBunkerURI,
   NostrConnectMethod,
   NostrConnectRequest,
   NostrConnectResponse,
-  NostrSubscriptionMethod,
-  NostrPublishMethod,
-  ConnectResponseResults,
-  ConnectRequestParams,
-} from "./nostr-connect-signer.js";
-import { Unsubscribable } from "../types/observable.js";
+  NostrConnectURI,
+  parseNostrConnectURI,
+} from "../helpers/nostr-connect.js";
+import { ISigner } from "../interface.js";
+import { Unsubscribable } from "../helpers/observable.js";
+import { NostrPool, NostrPublishMethod, NostrSubscriptionMethod } from "./nostr-connect-signer.js";
 
-export type NostrConnectProviderOptions = {
+export interface ProviderAuthorization {
+  /** A method used to accept or reject `connect` requests */
+  onConnect?: (client: string, permissions: string[]) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `sign_event` requests */
+  onSignEvent?: (draft: EventTemplate, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip04_encrypt` requests */
+  onNip04Encrypt?: (pubkey: string, plaintext: string, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip04_decrypt` requests */
+  onNip04Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip44_encrypt` requests */
+  onNip44Encrypt?: (pubkey: string, plaintext: string, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip44_decrypt` requests */
+  onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
+}
+
+export type NostrConnectProviderOptions = ProviderAuthorization & {
   /** The relays to communicate over */
   relays: string[];
   /** The signer to use for signing events and encryption */
   upstream: ISigner;
   /** Optional signer for provider identity (if different from upstream) */
   signer?: ISigner;
+  /** A random secret used to authorize clients to connect */
+  secret?: string;
+  /** Callback for when a client connects (receives a `connect` request) */
+  onClientConnect?: (clientPubkey: string) => any;
+  /** Callback for when a client disconnects (previously connected and the provider stops) */
+  onClientDisconnect?: (clientPubkey: string) => void;
+
   /** A method for subscribing to relays */
   subscriptionMethod?: NostrSubscriptionMethod;
   /** A method for publishing events */
   publishMethod?: NostrPublishMethod;
-  /** Callback for when a client connects */
-  onClientConnect?: (clientPubkey: string) => void;
-  /** Callback for when a client disconnects */
-  onClientDisconnect?: (clientPubkey: string) => void;
-  /** Callback for authorization requests */
-  onAuth?: (clientPubkey: string, permissions: string[]) => Promise<boolean>;
+  /** A pool of methods to use if none are passed in when creating the provider */
+  pool?: NostrPool;
 };
 
-export class NostrConnectProvider {
+export class NostrConnectProvider implements ProviderAuthorization {
   /** A fallback method to use for subscriptionMethod if none is passed in when creating the provider */
   static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
   /** A fallback method to use for publishMethod if none is passed in when creating the provider */
   static publishMethod: NostrPublishMethod | undefined = undefined;
+  /** A fallback pool to use if none is pass in when creating the provider */
+  static pool: NostrPool | undefined = undefined;
+
   /** A method that is called when an event needs to be published */
   protected publishMethod: NostrPublishMethod;
   /** The active nostr subscription */
@@ -48,7 +79,10 @@ export class NostrConnectProvider {
   /** Internal logger */
   protected log = logger.extend("NostrConnectProvider");
 
-  /** The main signer for actual signing operations */
+  /** A set of nostr requests that have been seen */
+  protected seen = new Set<string>();
+
+  /** The main signer for the actual signing operations */
   public upstream: ISigner;
 
   /** The identity signer (provider's identity) */
@@ -60,71 +94,122 @@ export class NostrConnectProvider {
   /** The connected client's public key */
   public client?: string;
 
+  /** The secret used to authorize clients to connect */
+  public secret?: string;
+
   /** Relays to communicate over */
   public readonly relays: string[];
 
-  /** Whether a client is connected */
-  get connected() {
-    return !!this.client;
-  }
-
-  /** Provider's public key */
-  async getProviderPubkey() {
-    return await this.signer.getPublicKey();
-  }
+  /** Whether a client is connected (received a `connect` request) */
+  public connected = false;
 
   /** Callbacks */
-  public onClientConnect?: (clientPubkey: string) => void;
-  public onClientDisconnect?: (clientPubkey: string) => void;
-  public onAuth?: (clientPubkey: string, permissions: string[]) => Promise<boolean>;
+  public onClientConnect?: (clientPubkey: string) => any;
+  public onClientDisconnect?: (clientPubkey: string) => any;
+
+  /** A method used to accept or reject `connect` requests */
+  public onConnect?: (clientPubkey: string, permissions: string[]) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `sign_event` requests */
+  public onSignEvent?: (draft: EventTemplate, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip04_encrypt` requests */
+  public onNip04Encrypt?: (pubkey: string, plaintext: string, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip04_decrypt` requests */
+  public onNip04Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip44_encrypt` requests */
+  public onNip44Encrypt?: (pubkey: string, plaintext: string, client: string) => boolean | Promise<boolean>;
+  /** A method used to accept or reject `nip44_decrypt` requests */
+  public onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
 
   constructor(opts: NostrConnectProviderOptions) {
     this.relays = opts.relays;
     this.upstream = opts.upstream;
     this.signer = opts.signer || opts.upstream;
+    this.secret = opts.secret;
 
-    const subscriptionMethod = opts.subscriptionMethod || NostrConnectProvider.subscriptionMethod;
+    // Get the subscription and publish methods
+    const subscriptionMethod =
+      opts.subscriptionMethod ||
+      opts.pool?.subscription ||
+      NostrConnectProvider.subscriptionMethod ||
+      NostrConnectProvider.pool?.subscription;
     if (!subscriptionMethod)
       throw new Error(
         "Missing subscriptionMethod, either pass a method or set NostrConnectProvider.subscriptionMethod",
       );
-    const publishMethod = opts.publishMethod || NostrConnectProvider.publishMethod;
+    const publishMethod =
+      opts.publishMethod ||
+      opts.pool?.publish ||
+      NostrConnectProvider.publishMethod ||
+      NostrConnectProvider.pool?.publish;
     if (!publishMethod)
       throw new Error("Missing publishMethod, either pass a method or set NostrConnectProvider.publishMethod");
 
-    this.subscriptionMethod = subscriptionMethod;
-    this.publishMethod = publishMethod;
+    // Use arrow functions so "this" isn't bound to the signer
+    this.subscriptionMethod = (relays, filters) => subscriptionMethod(relays, filters);
+    this.publishMethod = (relays, event) => publishMethod(relays, event);
 
+    // Set client connection callbacks
     if (opts.onClientConnect) this.onClientConnect = opts.onClientConnect;
     if (opts.onClientDisconnect) this.onClientDisconnect = opts.onClientDisconnect;
-    if (opts.onAuth) this.onAuth = opts.onAuth;
+
+    // Set authorization callbacks
+    if (opts.onConnect) this.onConnect = opts.onConnect;
+    if (opts.onSignEvent) this.onSignEvent = opts.onSignEvent;
+    if (opts.onNip04Encrypt) this.onNip04Encrypt = opts.onNip04Encrypt;
+    if (opts.onNip04Decrypt) this.onNip04Decrypt = opts.onNip04Decrypt;
+    if (opts.onNip44Encrypt) this.onNip44Encrypt = opts.onNip44Encrypt;
+    if (opts.onNip44Decrypt) this.onNip44Decrypt = opts.onNip44Decrypt;
   }
 
   /** The currently active REQ subscription */
   protected req?: Unsubscribable;
 
-  /** Open the connection */
-  async open() {
-    if (this.listening) return;
+  /** Updates the relay subscription to listen for request events */
+  protected async updateSubscription() {
+    if (this.req) this.req.unsubscribe();
 
-    this.listening = true;
-    const pubkey = await this.getProviderPubkey();
+    const pubkey = await this.signer.getPublicKey();
 
     // Setup subscription to listen for requests
     this.req = this.subscriptionMethod(this.relays, [
-      {
-        kinds: [kinds.NostrConnect],
-        "#p": [pubkey],
-      },
+      // If client is known, only listen for requests from the client
+      this.client
+        ? {
+            kinds: [kinds.NostrConnect],
+            "#p": [pubkey],
+            authors: [this.client],
+          }
+        : // Otherwise listen for all requests (waiting for a `connect` request)
+          {
+            kinds: [kinds.NostrConnect],
+            "#p": [pubkey],
+          },
     ]).subscribe({
       next: (event) => typeof event !== "string" && this.handleEvent(event),
     });
-
-    this.log("Opened", this.relays);
   }
 
-  /** Close the connection */
-  async close() {
+  /**
+   * Start the provider
+   * @param request - An inital `connect` request to respond to or a {@link NostrConnectURI}
+   */
+  async start(request?: NostrEvent | NostrConnectURI | string) {
+    if (this.listening) return;
+    this.listening = true;
+
+    // Handle first request if provided (e.g. from a `connect` request)
+    if (isEvent(request)) await this.handleEvent(request);
+    // Handle NostrConnectURI
+    else if (request) await this.handleNostrConnectURI(request);
+
+    // Start the subscription (if its not already started)
+    if (!this.req) await this.updateSubscription();
+
+    this.log("Started", this.relays);
+  }
+
+  /** Stop the provider */
+  async stop() {
     this.listening = false;
 
     // Close the current subscription
@@ -140,28 +225,30 @@ export class NostrConnectProvider {
     }
 
     // Notify client disconnect
-    if (this.client && this.onClientDisconnect) {
-      this.onClientDisconnect(this.client);
-    }
+    if (this.client && this.connected && this.onClientDisconnect) this.onClientDisconnect(this.client);
+
+    // Forget all seen requests
+    this.seen.clear();
 
     this.client = undefined;
-    this.log("Closed");
+    this.connected = false;
+    this.log("Stopped");
   }
 
-  private waitingPromise: Deferred<void> | null = null;
+  private waitingPromise: Deferred<string> | null = null;
 
   /** Wait for a client to connect */
-  waitForClient(abort?: AbortSignal): Promise<void> {
-    if (this.isClientConnected) return Promise.resolve();
+  waitForClient(abort?: AbortSignal): Promise<string> {
+    if (this.client) return Promise.resolve(this.client);
 
-    this.open();
-    this.waitingPromise = createDefer();
+    this.start();
+    this.waitingPromise = createDefer<string>();
     abort?.addEventListener(
       "abort",
       () => {
         this.waitingPromise?.reject(new Error("Aborted"));
         this.waitingPromise = null;
-        this.close();
+        this.stop();
       },
       true,
     );
@@ -173,64 +260,86 @@ export class NostrConnectProvider {
   public async handleEvent(event: NostrEvent) {
     if (!verifyEvent(event)) return;
 
-    // Only accept requests from the connected client (or allow new connections)
-    if (this.client && event.pubkey !== this.client) return;
+    // Do nothing if this request has already been seen
+    if (this.seen.has(event.id)) return;
+    this.seen.add(event.id);
 
     try {
-      const requestStr = isNIP04(event.content)
-        ? await this.signer.nip04!.decrypt(event.pubkey, event.content)
-        : await this.signer.nip44!.decrypt(event.pubkey, event.content);
-      const request = JSON.parse(requestStr) as NostrConnectRequest<any>;
+      const content =
+        getHiddenContent(event) ||
+        // Support legacy NIP-04 encryption
+        (isNIP04(event.content)
+          ? await unlockHiddenContent(event, this.signer, "nip04")
+          : await unlockHiddenContent(event, this.signer, "nip44"));
+      const request = JSON.parse(content) as NostrConnectRequest<any>;
+
+      // If the client isn't known, reject the request
+      if (!this.client && request.method !== NostrConnectMethod.Connect)
+        throw new Error("Received request from unknown client");
+      else if (this.client && event.pubkey !== this.client) throw new Error("Received request from wrong client");
 
       // Process the request
-      await this.processRequest(event.pubkey, request);
-    } catch (e) {
-      this.log("Error handling request:", e);
+      this.log(`Processing ${request.method} from ${event.pubkey}`);
+
+      try {
+        let result: any;
+
+        switch (request.method) {
+          case NostrConnectMethod.Connect:
+            result = await this.handleConnect(
+              event.pubkey,
+              request.params as [string] | [string, string] | [string, string, string],
+            );
+            break;
+          case NostrConnectMethod.GetPublicKey:
+            result = await this.upstream.getPublicKey();
+            break;
+          case NostrConnectMethod.SignEvent:
+            result = await this.handleSignEvent(request.params as [string]);
+            break;
+          case NostrConnectMethod.Nip04Encrypt:
+            result = await this.handleNip04Encrypt(request.params as [string, string]);
+            break;
+          case NostrConnectMethod.Nip04Decrypt:
+            result = await this.handleNip04Decrypt(request.params as [string, string]);
+            break;
+          case NostrConnectMethod.Nip44Encrypt:
+            result = await this.handleNip44Encrypt(request.params as [string, string]);
+            break;
+          case NostrConnectMethod.Nip44Decrypt:
+            result = await this.handleNip44Decrypt(request.params as [string, string]);
+            break;
+          default:
+            throw new Error(`Unsupported method: ${request.method}`);
+        }
+
+        // Send success response
+        await this.sendResponse(event, request.id, result);
+      } catch (error) {
+        this.log(`Error processing ${request.method}:`, error);
+        await this.sendErrorResponse(event, request.id, error instanceof Error ? error.message : "Unknown error");
+      }
+    } catch (err) {
+      this.log("Error handling request:", err);
     }
   }
 
-  /** Process a decrypted NostrConnect request */
-  protected async processRequest(clientPubkey: string, request: NostrConnectRequest<any>) {
-    this.log(`Processing ${request.method} from ${clientPubkey}`);
+  /** Handle an initial NostrConnectURI */
+  public async handleNostrConnectURI(uri: NostrConnectURI | string) {
+    if (this.client) throw new Error("Already connected to a client");
 
-    try {
-      let result: any;
+    // Parse the URI
+    if (typeof uri === "string") uri = parseNostrConnectURI(uri);
 
-      switch (request.method) {
-        case NostrConnectMethod.Connect:
-          result = await this.handleConnect(
-            clientPubkey,
-            request.params as [string] | [string, string] | [string, string, string],
-          );
-          break;
-        case NostrConnectMethod.GetPublicKey:
-          result = await this.upstream.getPublicKey();
-          break;
-        case NostrConnectMethod.SignEvent:
-          result = await this.handleSignEvent(request.params as [string]);
-          break;
-        case NostrConnectMethod.Nip04Encrypt:
-          result = await this.handleNip04Encrypt(request.params as [string, string]);
-          break;
-        case NostrConnectMethod.Nip04Decrypt:
-          result = await this.handleNip04Decrypt(request.params as [string, string]);
-          break;
-        case NostrConnectMethod.Nip44Encrypt:
-          result = await this.handleNip44Encrypt(request.params as [string, string]);
-          break;
-        case NostrConnectMethod.Nip44Decrypt:
-          result = await this.handleNip44Decrypt(request.params as [string, string]);
-          break;
-        default:
-          throw new Error(`Unsupported method: ${request.method}`);
-      }
+    // Get a response to a fake initial `connect` request
+    const response = await this.handleConnect(uri.client, [
+      await this.signer.getPublicKey(),
+      uri.secret,
+      uri.metadata?.permissions?.join(",") ?? "",
+    ]);
 
-      // Send success response
-      await this.sendResponse(clientPubkey, request.id, result);
-    } catch (error) {
-      this.log(`Error processing ${request.method}:`, error);
-      await this.sendErrorResponse(clientPubkey, request.id, error instanceof Error ? error.message : "Unknown error");
-    }
+    // Send `connect` response with random id
+    await this.sendResponse(uri.client, nanoid(8), response);
   }
 
   /** Handle connect request */
@@ -241,29 +350,35 @@ export class NostrConnectProvider {
     const permissions = permissionsStr ? permissionsStr.split(",") : [];
 
     // Check if this is a connection to our provider
-    const providerPubkey = await this.getProviderPubkey();
-    if (target !== providerPubkey) {
-      throw new Error("Invalid target pubkey");
-    }
+    const providerPubkey = await this.signer.getPublicKey();
+    if (target !== providerPubkey) throw new Error("Invalid target pubkey");
+
+    // If a secret is set, check that if matches
+    if (this.secret && this.secret !== secret) throw new Error("Invalid secret");
 
     // Handle authorization if callback is provided
-    if (this.onAuth) {
-      const authorized = await this.onAuth(clientPubkey, permissions);
-      if (!authorized) {
-        throw new Error("Authorization denied");
-      }
+    if (this.onConnect) {
+      const authorized = await this.onConnect(clientPubkey, permissions);
+      if (authorized === false) throw new Error("Authorization denied");
     }
+
+    // If the client isn't set yet, this if the first `connect` request
+    const isFirstRequest = !this.client;
 
     // Establish connection
     this.client = clientPubkey;
-    this.isClientConnected = true;
+    this.connected = true;
+    if (!this.secret) this.secret = secret;
+
+    // Update the subscription since we now know the client pubkey
+    if (isFirstRequest) await this.updateSubscription();
 
     // Notify connection
     if (this.onClientConnect) this.onClientConnect(clientPubkey);
 
     // Resolve waiting promise
     if (this.waitingPromise) {
-      this.waitingPromise.resolve();
+      this.waitingPromise.resolve(clientPubkey);
       this.waitingPromise = null;
     }
 
@@ -276,6 +391,13 @@ export class NostrConnectProvider {
     ConnectResponseResults[NostrConnectMethod.SignEvent]
   > {
     const template = JSON.parse(eventJson) as EventTemplate;
+
+    // Check if the sign event is allowed
+    if (this.onSignEvent) {
+      const result = await this.onSignEvent(template, this.client!);
+      if (result === false) throw new Error("Sign event denied");
+    }
+
     const signedEvent = await this.upstream.signEvent(template);
     return JSON.stringify(signedEvent);
   }
@@ -289,6 +411,12 @@ export class NostrConnectProvider {
   > {
     if (!this.upstream.nip04) throw new Error("NIP-04 not supported");
 
+    // Check if the nip04 encryption is allowed
+    if (this.onNip04Encrypt) {
+      const result = await this.onNip04Encrypt(pubkey, plaintext, this.client!);
+      if (result === false) throw new Error("NIP-04 encryption denied");
+    }
+
     return await this.upstream.nip04.encrypt(pubkey, plaintext);
   }
 
@@ -300,6 +428,12 @@ export class NostrConnectProvider {
     ConnectResponseResults[NostrConnectMethod.Nip04Decrypt]
   > {
     if (!this.upstream.nip04) throw new Error("NIP-04 not supported");
+
+    // Check if the nip04 decryption is allowed
+    if (this.onNip04Decrypt) {
+      const result = await this.onNip04Decrypt(pubkey, ciphertext, this.client!);
+      if (result === false) throw new Error("NIP-04 decryption denied");
+    }
 
     return await this.upstream.nip04.decrypt(pubkey, ciphertext);
   }
@@ -313,6 +447,12 @@ export class NostrConnectProvider {
   > {
     if (!this.upstream.nip44) throw new Error("NIP-44 not supported");
 
+    // Check if the nip44 encryption is allowed
+    if (this.onNip44Encrypt) {
+      const result = await this.onNip44Encrypt(pubkey, plaintext, this.client!);
+      if (result === false) throw new Error("NIP-44 encryption denied");
+    }
+
     return await this.upstream.nip44.encrypt(pubkey, plaintext);
   }
 
@@ -325,12 +465,23 @@ export class NostrConnectProvider {
   > {
     if (!this.upstream.nip44) throw new Error("NIP-44 not supported");
 
+    // Check if the nip44 decryption is allowed
+    if (this.onNip44Decrypt) {
+      const result = await this.onNip44Decrypt(pubkey, ciphertext, this.client!);
+      if (result === false) throw new Error("NIP-44 decryption denied");
+    }
+
     return await this.upstream.nip44.decrypt(pubkey, ciphertext);
   }
 
-  /** Send a response to the client */
+  /**
+   * Send a response to the client
+   * @param clientOrRequest - The client pubkey or request event
+   * @param requestId - The id of the request
+   * @param result - The result of the request
+   */
   protected async sendResponse<T extends NostrConnectMethod>(
-    clientPubkey: string,
+    clientOrRequest: NostrEvent | string,
     requestId: string,
     result: ConnectResponseResults[T],
   ) {
@@ -339,41 +490,47 @@ export class NostrConnectProvider {
       result,
     };
 
-    await this.sendMessage(clientPubkey, response);
+    await this.sendMessage(clientOrRequest, response);
   }
 
   /** Send an error response to the client */
-  protected async sendErrorResponse(clientPubkey: string, requestId: string, error: string) {
+  protected async sendErrorResponse(event: NostrEvent, requestId: string, error: string) {
     const response = {
       id: requestId,
       result: "",
       error,
     };
 
-    await this.sendMessage(clientPubkey, response);
+    await this.sendMessage(event, response);
   }
 
   /** Send an encrypted message to the client */
-  protected async sendMessage(clientPubkey: string, message: NostrConnectResponse<any>) {
-    const messageStr = JSON.stringify(message);
+  protected async sendMessage(clientOrRequest: string | NostrEvent, message: NostrConnectResponse<any>) {
+    // Get the pubkey of the client
+    const clientPubkey = typeof clientOrRequest === "string" ? clientOrRequest : clientOrRequest.pubkey;
 
     // Try NIP-44 first, fallback to NIP-04
-    let encrypted: string;
-    if (this.signer.nip44) {
-      encrypted = await this.signer.nip44.encrypt(clientPubkey, messageStr);
-    } else if (this.signer.nip04) {
-      encrypted = await this.signer.nip04.encrypt(clientPubkey, messageStr);
-    } else {
-      throw new Error("No encryption methods available");
-    }
+    let encryption: EncryptionMethods;
 
+    // If responding to a request, try to use the same encryption
+    if (typeof clientOrRequest !== "string")
+      encryption = getEncryptedContentEncryptionMethods(
+        clientOrRequest.kind,
+        this.signer,
+        isNIP04(clientOrRequest.content) ? "nip04" : "nip44",
+      );
+    // Get default encryption method (nip44)
+    else encryption = getEncryptedContentEncryptionMethods(kinds.NostrConnect, this.signer);
+
+    const content = JSON.stringify(message);
     const event = await this.signer.signEvent({
       kind: kinds.NostrConnect,
       created_at: unixNow(),
       tags: [["p", clientPubkey]],
-      content: encrypted,
+      content: await encryption.encrypt(clientPubkey, content),
     });
 
+    // Publish the event
     const result = this.publishMethod(this.relays, event);
 
     // Handle returned Promise or Observable
@@ -385,28 +542,11 @@ export class NostrConnectProvider {
   }
 
   /** Get the connection string that clients can use to connect */
-  async getBunkerURI(secret?: string): Promise<string> {
-    const params = new URLSearchParams();
-
-    if (secret) params.set("secret", secret);
-    for (const relay of this.relays) params.append("relay", relay);
-
-    const providerPubkey = await this.getProviderPubkey();
-    return `bunker://${providerPubkey}?` + params.toString();
-  }
-
-  /** Check if the provider is listening */
-  isListening(): boolean {
-    return this.listening;
-  }
-
-  /** Check if a client is connected */
-  hasClientConnected(): boolean {
-    return this.isClientConnected;
-  }
-
-  /** Get the connected client's public key */
-  getClientPubkey(): string | undefined {
-    return this.client;
+  async getBunkerURI(): Promise<string> {
+    return createBunkerURI({
+      remote: await this.signer.getPublicKey(),
+      relays: this.relays,
+      secret: this.secret,
+    });
   }
 }

@@ -8,14 +8,12 @@ describe("exports", () => {
         "AmberClipboardSigner",
         "ExtensionMissingError",
         "ExtensionSigner",
-        "NostrConnectMethod",
+        "NostrConnectProvider",
         "NostrConnectSigner",
         "PasswordSigner",
-        "Permission",
         "ReadonlySigner",
         "SerialPortSigner",
         "SimpleSigner",
-        "isErrorResponse",
       ]
     `);
   });
