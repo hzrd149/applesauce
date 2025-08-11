@@ -51,9 +51,9 @@ export type NostrConnectProviderOptions = ProviderAuthorization & {
   /** A random secret used to authorize clients to connect */
   secret?: string;
   /** Callback for when a client connects (receives a `connect` request) */
-  onClientConnect?: (clientPubkey: string) => any;
+  onClientConnect?: (client: string) => any;
   /** Callback for when a client disconnects (previously connected and the provider stops) */
-  onClientDisconnect?: (clientPubkey: string) => void;
+  onClientDisconnect?: (client: string) => void;
 
   /** A method for subscribing to relays */
   subscriptionMethod?: NostrSubscriptionMethod;
@@ -104,11 +104,11 @@ export class NostrConnectProvider implements ProviderAuthorization {
   public connected = false;
 
   /** Callbacks */
-  public onClientConnect?: (clientPubkey: string) => any;
-  public onClientDisconnect?: (clientPubkey: string) => any;
+  public onClientConnect?: (client: string) => any;
+  public onClientDisconnect?: (client: string) => any;
 
   /** A method used to accept or reject `connect` requests */
-  public onConnect?: (clientPubkey: string, permissions: string[]) => boolean | Promise<boolean>;
+  public onConnect?: (client: string, permissions: string[]) => boolean | Promise<boolean>;
   /** A method used to accept or reject `sign_event` requests */
   public onSignEvent?: (draft: EventTemplate, client: string) => boolean | Promise<boolean>;
   /** A method used to accept or reject `nip04_encrypt` requests */
@@ -344,7 +344,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
 
   /** Handle connect request */
   protected async handleConnect(
-    clientPubkey: string,
+    client: string,
     [target, secret, permissionsStr]: ConnectRequestParams[NostrConnectMethod.Connect],
   ): Promise<ConnectResponseResults[NostrConnectMethod.Connect]> {
     const permissions = permissionsStr ? permissionsStr.split(",") : [];
@@ -358,7 +358,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
 
     // Handle authorization if callback is provided
     if (this.onConnect) {
-      const authorized = await this.onConnect(clientPubkey, permissions);
+      const authorized = await this.onConnect(client, permissions);
       if (authorized === false) throw new Error("Authorization denied");
     }
 
@@ -366,7 +366,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     const isFirstRequest = !this.client;
 
     // Establish connection
-    this.client = clientPubkey;
+    this.client = client;
     this.connected = true;
     if (!this.secret) this.secret = secret;
 
@@ -374,11 +374,11 @@ export class NostrConnectProvider implements ProviderAuthorization {
     if (isFirstRequest) await this.updateSubscription();
 
     // Notify connection
-    if (this.onClientConnect) this.onClientConnect(clientPubkey);
+    if (this.onClientConnect) this.onClientConnect(client);
 
     // Resolve waiting promise
     if (this.waitingPromise) {
-      this.waitingPromise.resolve(clientPubkey);
+      this.waitingPromise.resolve(client);
       this.waitingPromise = null;
     }
 
@@ -507,7 +507,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
   /** Send an encrypted message to the client */
   protected async sendMessage(clientOrRequest: string | NostrEvent, message: NostrConnectResponse<any>) {
     // Get the pubkey of the client
-    const clientPubkey = typeof clientOrRequest === "string" ? clientOrRequest : clientOrRequest.pubkey;
+    const client = typeof clientOrRequest === "string" ? clientOrRequest : clientOrRequest.pubkey;
 
     // Try NIP-44 first, fallback to NIP-04
     let encryption: EncryptionMethods;
@@ -526,8 +526,8 @@ export class NostrConnectProvider implements ProviderAuthorization {
     const event = await this.signer.signEvent({
       kind: kinds.NostrConnect,
       created_at: unixNow(),
-      tags: [["p", clientPubkey]],
-      content: await encryption.encrypt(clientPubkey, content),
+      tags: [["p", client]],
+      content: await encryption.encrypt(client, content),
     });
 
     // Publish the event
