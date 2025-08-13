@@ -20,8 +20,8 @@ relay.notices$.subscribe((notices) => console.log("Relay notices:", notices));
 
 The `req` or `subscription` methods returns an observable that emits events from the relay.
 
-:::info
-The `subscription` method is a wrapper around the `req` method that automatically handles reconnection and retries.
+:::warning
+The `req` method will `complete` when the connection is closed or `error` when the connection has an error. for Persistent subscriptions you should use the `subscription` method.
 :::
 
 ```typescript
@@ -153,10 +153,14 @@ relay.challenge$.subscribe(async (challenge) => {
 
 ## Persistent Subscriptions
 
-The `subscription` method can be used to create persistent subscriptions that automatically reconnect after connection issues.
+The `subscription` method can be used to create persistent subscriptions that automatically reconnect after connection issues. It provides two key options for handling failures:
+
+### Retry Options
+
+The `retries` option controls how many times the subscription will retry when encountering errors. It accepts either a number or a full RxJS `RetryConfig` object.
 
 ```typescript
-// Create a persistent subscription
+// Basic retry with number of attempts
 const subscription = relay
   .subscription({ kinds: [1, 6], since: Math.floor(Date.now() / 1000) }, { id: "feed", retries: 3 })
   .subscribe({
@@ -167,9 +171,63 @@ const subscription = relay
     },
   });
 
-// Later, to unsubscribe
-subscription.unsubscribe();
+// Advanced retry with custom configuration
+const subscription = relay
+  .subscription(
+    { kinds: [1] },
+    {
+      id: "advanced-feed",
+      retries: {
+        count: 5,
+        delay: 1000,
+        resetOnSuccess: true,
+      },
+    },
+  )
+  .subscribe(console.log);
 ```
+
+### Reconnection Options
+
+The `reconnect` option controls whether the subscription should automatically reconnect when the WebSocket connection is closed. It accepts:
+
+- `true` - Reconnect infinitely
+- `false` (default) - Don't reconnect
+- `number` - Reconnect a specific number of times
+- `RepeatConfig` - Full RxJS repeat configuration
+
+```typescript
+// Infinite reconnection
+const subscription = relay
+  .subscription({ kinds: [1] }, { id: "persistent-feed", reconnect: true })
+  .subscribe(console.log);
+
+// Limited reconnection attempts
+const subscription = relay.subscription({ kinds: [1] }, { id: "limited-feed", reconnect: 5 }).subscribe(console.log);
+
+// Custom reconnection with delay
+const subscription = relay
+  .subscription(
+    { kinds: [1] },
+    {
+      id: "custom-feed",
+      reconnect: {
+        count: 10,
+        delay: 2000,
+      },
+    },
+  )
+  .subscribe(console.log);
+```
+
+### How It Works
+
+Under the hood, the `subscription` method uses RxJS operators to implement retry and reconnection logic:
+
+1. **Retry Logic**: Uses the [`retry()`](https://rxjs.dev/api/operators/retry) operator to retry failed subscriptions based on the `retries` option
+2. **Reconnection Logic**: Uses the [`repeat()`](https://rxjs.dev/api/operators/repeat) operator to restart the subscription when the connection is lost based on the `reconnect` option
+
+The default behavior provides 3 retries and no automatic reconnection, but you can customize these values based on your application's needs.
 
 ## Dynamic Filters
 

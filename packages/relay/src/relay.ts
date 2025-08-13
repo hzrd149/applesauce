@@ -1,7 +1,9 @@
 import { logger } from "applesauce-core";
+import { ensureHttpURL } from "applesauce-core/helpers";
 import { simpleTimeout } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
 import { nip42, type Filter, type NostrEvent } from "nostr-tools";
+import { RelayInformation } from "nostr-tools/nip11";
 import {
   BehaviorSubject,
   catchError,
@@ -11,6 +13,7 @@ import {
   filter,
   finalize,
   from,
+  identity,
   ignoreElements,
   isObservable,
   lastValueFrom,
@@ -18,10 +21,14 @@ import {
   merge,
   mergeMap,
   mergeWith,
+  MonoTypeOperatorFunction,
   NEVER,
   Observable,
   of,
+  repeat,
+  RepeatConfig,
   retry,
+  RetryConfig,
   scan,
   share,
   shareReplay,
@@ -36,8 +43,6 @@ import {
 } from "rxjs";
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
-import { ensureHttpURL } from "applesauce-core/helpers";
-import { RelayInformation } from "nostr-tools/nip11";
 import { completeOnEose } from "./operators/complete-on-eose.js";
 import { markFromRelay } from "./operators/mark-from-relay.js";
 import {
@@ -55,9 +60,13 @@ import {
 export class ReqCloseError extends Error {}
 
 export type RelayOptions = {
+  /** Custom WebSocket implementation */
   WebSocket?: WebSocketSubjectConfig<any>["WebSocketCtor"];
+  /** How long to wait for an EOSE message (default 10s) */
   eoseTimeout?: number;
+  /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout?: number;
+  /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive?: number;
 };
 
@@ -103,6 +112,15 @@ export class Relay implements IRelay {
 
   /** An observable that emits the limitations for the relay */
   limitations$: Observable<RelayInformation["limitation"] | null>;
+
+  /** An observable that emits when underlying websocket is opened */
+  open$ = new Subject<Event>();
+
+  /** An observable that emits when underlying websocket is closed */
+  close$ = new Subject<CloseEvent>();
+
+  /** An observable that emits when underlying websocket is closing due to unsubscription */
+  closing$ = new Subject<void>();
 
   // sync state
   get connected() {
@@ -170,28 +188,29 @@ export class Relay implements IRelay {
     /** Use the static method to create a new reconnect method for this relay */
     this.reconnectTimer = Relay.createReconnectTimer(url);
 
+    // Subscribe to open and close events
+    this.open$.subscribe(() => {
+      this.log("Connected");
+      this.connected$.next(true);
+      this.attempts$.next(0);
+      this.error$.next(null);
+      this.resetState();
+    });
+    this.close$.subscribe((event) => {
+      this.log("Disconnected");
+      this.connected$.next(false);
+      this.attempts$.next(this.attempts$.value + 1);
+      this.resetState();
+
+      // Start the reconnect timer if the connection was not closed cleanly
+      if (!event.wasClean) this.startReconnectTimer(event);
+    });
+
     this.socket = webSocket({
       url,
-      openObserver: {
-        next: () => {
-          this.log("Connected");
-          this.connected$.next(true);
-          this.attempts$.next(0);
-          this.error$.next(null);
-          this.resetState();
-        },
-      },
-      closeObserver: {
-        next: (event) => {
-          this.log("Disconnected");
-          this.connected$.next(false);
-          this.attempts$.next(this.attempts$.value + 1);
-          this.resetState();
-
-          // Start the reconnect timer if the connection was not closed cleanly
-          if (!event.wasClean) this.startReconnectTimer(event);
-        },
-      },
+      openObserver: this.open$,
+      closeObserver: this.close$,
+      closingObserver: this.closing$,
       WebSocketCtor: opts?.WebSocket,
     });
 
@@ -292,7 +311,7 @@ export class Relay implements IRelay {
 
   /** Wait for authentication state, make connection and then wait for authentication if required */
   protected waitForAuth<T extends unknown = unknown>(
-    // NOTE: require BehaviorSubject so it always has a value
+    // NOTE: require BehaviorSubject or shareReplay so it always has a value
     requireAuth: Observable<boolean>,
     observable: Observable<T>,
   ): Observable<T> {
@@ -338,18 +357,20 @@ export class Relay implements IRelay {
     const input = isObservable(filters) ? filters : merge(of(filters), NEVER);
 
     // Create an observable that completes when the upstream observable completes
-    const complete = input.pipe(ignoreElements(), endWith(null));
+    const filtersComplete = input.pipe(ignoreElements(), endWith(null));
 
     // Create an observable that filters responses from the relay to just the ones for this REQ
     const messages: Observable<any[]> = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
+      // Singleton (prevents the .pipe() operator later from sending two REQ messages )
+      share(),
     );
 
     // Create an observable that controls sending the filters and closing the REQ
     const control = input.pipe(
       // Send the filters when they change
       tap((filters) => this.socket.next(Array.isArray(filters) ? ["REQ", id, ...filters] : ["REQ", id, filters])),
-      // Close the req when unsubscribed
+      // Send the CLOSE message when unsubscribed or input completes
       finalize(() => this.socket.next(["CLOSE", id])),
       // Once filters have been sent, switch to listening for messages
       switchMap(() => messages),
@@ -357,8 +378,11 @@ export class Relay implements IRelay {
 
     // Start the watch tower with the observables
     const observable = merge(this.watchTower, control).pipe(
+      // Complete the subscription when the control observable completes
+      // This is to work around the fact that merge() waits for both observables to complete
+      takeUntil(messages.pipe(ignoreElements(), endWith(true))),
       // Complete the subscription when the input is completed
-      takeUntil(complete),
+      takeUntil(filtersComplete),
       // Map the messages to events, EOSE, or throw an error
       map<any[], SubscriptionResponse>((message) => {
         if (message[0] === "EOSE") return "EOSE";
@@ -397,7 +421,7 @@ export class Relay implements IRelay {
 
   /** Send an EVENT or AUTH message and return an observable of PublishResponse that completes or errors */
   event(event: NostrEvent, verb: "EVENT" | "AUTH" = "EVENT"): Observable<PublishResponse> {
-    const base: Observable<PublishResponse> = defer(() => {
+    const messages: Observable<PublishResponse> = defer(() => {
       // Send event when subscription starts
       this.socket.next([verb, event]);
 
@@ -406,10 +430,16 @@ export class Relay implements IRelay {
         // format OK message
         map((m) => ({ ok: m[2] as boolean, message: m[3] as string, from: this.url })),
       );
-    });
+    }).pipe(
+      // Singleton (prevents the .pipe() operator later from sending two EVENT messages )
+      share(),
+    );
 
     // Start the watch tower and add complete operators
-    const observable = merge(this.watchTower, base).pipe(
+    const observable = merge(this.watchTower, messages).pipe(
+      // Complete the subscription when the messages observable completes
+      // This is to work around the fact that merge() waits for both observables to complete
+      takeUntil(messages.pipe(ignoreElements(), endWith(true))),
       // complete on first value
       take(1),
       // listen for OK auth-required
@@ -453,11 +483,31 @@ export class Relay implements IRelay {
     return lastValueFrom(start.pipe(switchMap((event) => this.auth(event))));
   }
 
+  /** Internal operator for creating the retry() operator */
+  protected customRetryOperator<T extends unknown = unknown>(times: number | RetryConfig): MonoTypeOperatorFunction<T> {
+    if (typeof times === "number") return retry(times);
+    else return retry(times);
+  }
+
+  /** Internal operator for creating the repeat() operator */
+  protected customRepeatOperator<T extends unknown = unknown>(
+    times: boolean | number | RepeatConfig | undefined,
+  ): MonoTypeOperatorFunction<T> {
+    if (times === false || times === undefined) return identity;
+    else if (times === true) return repeat();
+    else if (typeof times === "number") return repeat(times);
+    else return repeat(times);
+  }
+
   /** Creates a REQ that retries when relay errors ( default 3 retries ) */
   subscription(filters: Filter | Filter[], opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
-      retry({ count: opts?.retries ?? 3, resetOnSuccess: true }),
+      this.customRetryOperator(opts?.retries ?? 3),
+      // Create reconnect logic (repeat operator)
+      this.customRepeatOperator(opts?.reconnect),
+      // Single subscription
+      share(),
     );
   }
 
@@ -465,9 +515,13 @@ export class Relay implements IRelay {
   request(filters: Filter | Filter[], opts?: RequestOptions): Observable<NostrEvent> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
-      retry(opts?.retries ?? 3),
+      this.customRetryOperator(opts?.retries ?? 3),
+      // Create reconnect logic (repeat operator)
+      this.customRepeatOperator(opts?.reconnect),
       // Complete when EOSE is received
       completeOnEose(),
+      // Single subscription
+      share(),
     );
   }
 
@@ -483,7 +537,11 @@ export class Relay implements IRelay {
           return of(result);
         }),
         // Retry the publish until it succeeds or the number of retries is reached
-        retry(opts?.retries ?? 3),
+        this.customRetryOperator(opts?.retries ?? 3),
+        // Create reconnect logic (repeat operator)
+        this.customRepeatOperator(opts?.reconnect),
+        // Single subscription
+        share(),
       ),
     );
   }

@@ -1,5 +1,5 @@
 import { type EventTemplate, type Filter, type NostrEvent } from "nostr-tools";
-import { Observable } from "rxjs";
+import { Observable, repeat, retry } from "rxjs";
 import { WebSocketSubject } from "rxjs/webSocket";
 
 export type SubscriptionResponse = NostrEvent | "EOSE";
@@ -7,16 +7,37 @@ export type PublishResponse = { ok: boolean; message?: string; from: string };
 
 export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">;
 
+/** Options for the publish method on the pool and relay */
 export type PublishOptions = {
-  retries?: number;
+  /**
+   * Number of times to retry the publish. default is 3
+   * @see https://rxjs.dev/api/index/function/retry
+   */
+  retries?: number | Parameters<typeof retry>[0];
+  /**
+   * Whether to reconnect when socket is closed. A number of times or true for infinite. default is false
+   * @see https://rxjs.dev/api/index/function/repeat
+   */
+  reconnect?: boolean | Parameters<typeof repeat>[0];
 };
-export type RequestOptions = {
-  id?: string;
-  retries?: number;
-};
+
+/** Options for the request method on the pool and relay */
+export type RequestOptions = SubscriptionOptions;
+
+/** Options for the subscription method on the pool and relay */
 export type SubscriptionOptions = {
+  /** Custom REQ id for the subscription */
   id?: string;
-  retries?: number;
+  /**
+   * Number of times to retry a request. default is 3
+   * @see https://rxjs.dev/api/index/function/retry
+   */
+  retries?: number | Parameters<typeof retry>[0];
+  /**
+   * Whether to reconnect when socket is closed. A number of times or true for infinite. default is false
+   * @see https://rxjs.dev/api/index/function/repeat
+   */
+  reconnect?: boolean | Parameters<typeof repeat>[0];
 };
 
 export type AuthSigner = {
@@ -53,11 +74,11 @@ export interface IRelay extends MultiplexWebSocket {
   /** Authenticate with the relay using a signer */
   authenticate(signer: AuthSigner): Promise<PublishResponse>;
   /** Send an EVENT message with retries */
-  publish(event: NostrEvent, opts?: { retries?: number }): Promise<PublishResponse>;
+  publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse>;
   /** Send a REQ message with retries */
-  request(filters: FilterInput, opts?: { id?: string; retries?: number }): Observable<NostrEvent>;
+  request(filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent>;
   /** Open a subscription with retries */
-  subscription(filters: FilterInput, opts?: { id?: string; retries?: number }): Observable<SubscriptionResponse>;
+  subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
 }
 
 export interface IGroup {
@@ -66,11 +87,11 @@ export interface IGroup {
   /** Send an EVENT message */
   event(event: NostrEvent): Observable<PublishResponse>;
   /** Send an EVENT message with retries */
-  publish(event: NostrEvent, opts?: { retries?: number }): Promise<PublishResponse[]>;
+  publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse[]>;
   /** Send a REQ message with retries */
-  request(filters: FilterInput, opts?: { id?: string; retries?: number }): Observable<NostrEvent>;
+  request(filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent>;
   /** Open a subscription with retries */
-  subscription(filters: FilterInput, opts?: { id?: string; retries?: number }): Observable<SubscriptionResponse>;
+  subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
 }
 
 export interface IPool {
@@ -87,13 +108,9 @@ export interface IPool {
   /** Send an EVENT message */
   event(relays: string[], event: NostrEvent): Observable<PublishResponse>;
   /** Send an EVENT message to relays with retries */
-  publish(relays: string[], event: NostrEvent, opts?: { retries?: number }): Promise<PublishResponse[]>;
+  publish(relays: string[], event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse[]>;
   /** Send a REQ message to relays with retries */
-  request(relays: string[], filters: FilterInput, opts?: { id?: string; retries?: number }): Observable<NostrEvent>;
+  request(relays: string[], filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent>;
   /** Open a subscription to relays with retries */
-  subscription(
-    relays: string[],
-    filters: FilterInput,
-    opts?: { id?: string; retries?: number },
-  ): Observable<SubscriptionResponse>;
+  subscription(relays: string[], filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
 }

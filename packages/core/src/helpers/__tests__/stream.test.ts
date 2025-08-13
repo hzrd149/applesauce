@@ -1,7 +1,7 @@
 const TEST_EVENTS: Record<string, NostrEvent> = {
   radio: {
     content: "",
-    created_at: 1753793483,
+    created_at: unixNow() - 60 * 20, // 20 minutes ago
     id: "a5183a031ddd91b5fcd8b8cabd42b4bcae8357a9f5ce7b428d65b529db4d5ef6",
     kind: 30311,
     pubkey: "cf45a6ba1363ad7ed213a078e710d24115ae721c9b47bd1ebf4458eaefb4c2a5",
@@ -32,7 +32,7 @@ const TEST_EVENTS: Record<string, NostrEvent> = {
         "wss://nostr.oxtr.dev",
         "wss://relay.fountain.fm",
       ],
-      ["starts", "1753783798"],
+      ["starts", String(unixNow() - 60 * 25)], // 25 minutes ago
       ["service", "https://api.zap.stream/api/nostr"],
       ["streaming", "https://data.zap.stream/stream/ce8c44dd-7a4b-4c03-a7a9-a0498aab81ae.m3u8"],
       ["current_participants", "0"],
@@ -43,7 +43,7 @@ const TEST_EVENTS: Record<string, NostrEvent> = {
   },
   simple: {
     content: "",
-    created_at: 1753794823,
+    created_at: unixNow() - 60 * 20, // 20 minutes ago
     id: "ecff7f978bf7a4f3411a0ab4065e9f4857827cbb3df5f42e7a74cb51ccf27814",
     kind: 30311,
     pubkey: "88cc134b1a65f54ef48acc1df3665063d3ea45f04eab8af4646e561c5ae99079",
@@ -51,7 +51,7 @@ const TEST_EVENTS: Record<string, NostrEvent> = {
     tags: [
       ["d", "1752870546"],
       ["image", ""],
-      ["starts", "1752870546"],
+      ["starts", String(unixNow() - 60 * 25)], // 25 minutes ago
       ["status", "live"],
       [
         "streaming",
@@ -120,6 +120,7 @@ import {
   getStreamHashtags,
 } from "../stream.js";
 import { NostrEvent } from "nostr-tools";
+import { unixNow } from "../time";
 
 describe("getStreamTitle", () => {
   it("should return the title from title tag", () => {
@@ -335,9 +336,15 @@ describe("getStreamRelays", () => {
 
 describe("getStreamStartTime", () => {
   it("should return start time as number from starts tag", () => {
-    expect(getStreamStartTime(TEST_EVENTS.radio)).toBe(1753783798);
-    expect(getStreamStartTime(TEST_EVENTS.simple)).toBe(1752870546);
-    expect(getStreamStartTime(TEST_EVENTS.ended)).toBe(1749478022);
+    expect(getStreamStartTime(TEST_EVENTS.radio)).toBe(
+      parseInt(TEST_EVENTS.radio.tags.find((t) => t[0] === "starts")?.[1] ?? "0"),
+    );
+    expect(getStreamStartTime(TEST_EVENTS.simple)).toBe(
+      parseInt(TEST_EVENTS.simple.tags.find((t) => t[0] === "starts")?.[1] ?? "0"),
+    );
+    expect(getStreamStartTime(TEST_EVENTS.ended)).toBe(
+      parseInt(TEST_EVENTS.ended.tags.find((t) => t[0] === "starts")?.[1] ?? "0"),
+    );
   });
 
   it("should return undefined when no starts tag exists", () => {

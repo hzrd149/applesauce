@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { getSeenRelays } from "applesauce-core/helpers";
 import { Filter, NostrEvent } from "nostr-tools";
-import { WS } from "vitest-websocket-mock";
-import { filter } from "rxjs/operators";
-import { firstValueFrom, of, Subject, throwError, timer } from "rxjs";
 import { RelayInformation } from "nostr-tools/nip11";
+import { firstValueFrom, of, Subject, throwError, timer } from "rxjs";
+import { filter, repeat } from "rxjs/operators";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WS } from "vitest-websocket-mock";
 
-import { FakeUser } from "./fake-user.js";
 import { Relay } from "../relay.js";
+import { FakeUser } from "./fake-user.js";
 
 const defaultMockInfo: RelayInformation = {
   name: "Test Relay",
@@ -98,14 +98,19 @@ describe("req", () => {
     await expect(server).toReceiveMessage(["CLOSE", "sub1"]);
   });
 
+  it("should close connection when unsubscribed", async () => {
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    await server.connected;
+    sub.unsubscribe();
+    await server.closed;
+    expect(relay.connected).toBe(false);
+  });
+
   it("should emit nostr event and EOSE", async () => {
     const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
     await server.connected;
 
-    // Send EVENT message
     server.send(["EVENT", "sub1", mockEvent]);
-
-    // Send EOSE message
     server.send(["EOSE", "sub1"]);
 
     expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent), "EOSE"]);
@@ -197,62 +202,6 @@ describe("req", () => {
     // Verify the second subscription received the event and EOSE
     expect(secondSub.getValues()).toEqual([expect.objectContaining(mockEvent), "EOSE"]);
   });
-
-  // Skipped test because it no longer waits for NIP-11 information document
-  // it("should open connection and wait for authentication if relay info document has limitations.auth_required = true", async () => {
-  //   // Mock the fetchInformationDocument method to return a document with auth_required = true
-  //   vi.spyOn(Relay, "fetchInformationDocument").mockImplementation(() =>
-  //     of({
-  //       name: "Auth Required Relay",
-  //       description: "A relay that requires authentication",
-  //       pubkey: "",
-  //       contact: "",
-  //       supported_nips: [1, 2, 4],
-  //       software: "",
-  //       version: "",
-  //       limitation: {
-  //         auth_required: true,
-  //       },
-  //     } satisfies RelayInformation),
-  //   );
-
-  //   // Create a subscription that should wait for auth
-  //   const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
-
-  //   // Wait 10ms to ensure the information document is fetched
-  //   await new Promise((resolve) => setTimeout(resolve, 10));
-
-  //   // Wait for connection
-  //   await server.connected;
-
-  //   // Verify no REQ message was sent yet (waiting for auth)
-  //   expect(server).not.toHaveReceivedMessages(["REQ", "sub1", { kinds: [1] }]);
-
-  //   // Send AUTH challenge
-  //   server.send(["AUTH", "challenge"]);
-
-  //   // Send auth response
-  //   subscribeSpyTo(relay.auth(mockEvent));
-
-  //   // Verify the auth event was sent
-  //   await expect(server.nextMessage).resolves.toEqual(["AUTH", mockEvent]);
-
-  //   // Accept auth
-  //   server.send(["OK", mockEvent.id, true, ""]);
-
-  //   // Simulate successful authentication
-  //   expect(relay.authenticated).toBe(true);
-
-  //   // Now the REQ should be sent
-  //   await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
-
-  //   // Send EVENT and EOSE to complete the subscription
-  //   server.send(["EVENT", "sub1", mockEvent]);
-  //   server.send(["EOSE", "sub1"]);
-
-  //   // Verify the subscription received the event and EOSE
-  //   expect(sub.getValues()).toEqual([expect.objectContaining(mockEvent), "EOSE"]);
-  // });
 
   it("should throw error if relay closes connection with error", async () => {
     const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
@@ -350,12 +299,55 @@ describe("req", () => {
 
     expect(sub.receivedComplete()).toBe(true);
   });
+
+  it("should complete observable when relay closes connection", async () => {
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    await server.connected;
+
+    // Send CLOSE message
+    server.close();
+
+    expect(sub.receivedComplete()).toBe(true);
+  });
+
+  it("should error observable when relay closes connection with error", async () => {
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
+    await server.connected;
+
+    // Send an error
+    server.error({
+      reason: "error message",
+      code: 1000,
+      wasClean: false,
+    });
+
+    expect(sub.receivedError()).toBe(true);
+  });
+
+  it("should reconnect when repeat operator is used", async () => {
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1").pipe(repeat()));
+
+    // First connection
+    await server.connected;
+    server.close();
+    await server.closed;
+
+    // Should not complete
+    expect(sub.receivedComplete()).toBe(false);
+
+    // Should reconnect
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    sub.unsubscribe();
+    await server.closed;
+  });
 });
 
 describe("event", () => {
   it("should wait for authentication if relay responds with auth-required", async () => {
     // First event to trigger auth-required
-    const firstSpy = subscribeSpyTo(relay.event(mockEvent));
+    const firstSpy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
 
     // Send OK with auth-required message
@@ -363,7 +355,7 @@ describe("event", () => {
     await firstSpy.onComplete();
 
     // Create a second event that should wait for auth
-    const secondSpy = subscribeSpyTo(relay.event(mockEvent));
+    const secondSpy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
 
     // Verify no EVENT message was sent yet (waiting for auth)
     expect(server).not.toHaveReceivedMessages(["EVENT", mockEvent]);
@@ -381,47 +373,6 @@ describe("event", () => {
     await secondSpy.onComplete();
     expect(secondSpy.receivedComplete()).toBe(true);
   });
-
-  // Skipped test because it no longer waits for NIP-11 information document
-  // it("should wait for authentication if relay info document has limitations.auth_required = true", async () => {
-  //   // Mock the fetchInformationDocument method to return a document with auth_required = true
-  //   vi.spyOn(Relay, "fetchInformationDocument").mockImplementation(() =>
-  //     of({
-  //       name: "Auth Required Relay",
-  //       description: "A relay that requires authentication",
-  //       pubkey: "",
-  //       contact: "",
-  //       supported_nips: [1, 2, 4],
-  //       software: "",
-  //       version: "",
-  //       limitation: {
-  //         auth_required: true,
-  //       },
-  //     } satisfies RelayInformation),
-  //   );
-
-  //   // Create a subscription that should wait for auth
-  //   const sub = subscribeSpyTo(relay.event(mockEvent));
-
-  //   // Wait 10ms to ensure the information document is fetched
-  //   await new Promise((resolve) => setTimeout(resolve, 10));
-
-  //   // Verify no REQ message was sent yet (waiting for auth)
-  //   expect(server).not.toHaveReceivedMessages(["EVENT", mockEvent]);
-
-  //   // Simulate successful authentication
-  //   relay.authenticated$.next(true);
-
-  //   // Now the REQ should be sent
-  //   await expect(server).toReceiveMessage(["EVENT", mockEvent]);
-
-  //   // Send EVENT and EOSE to complete the subscription
-  //   server.send(["OK", mockEvent.id, true, ""]);
-
-  //   // Verify the subscription completed
-  //   await sub.onComplete();
-  //   expect(sub.receivedComplete()).toBe(true);
-  // });
 
   it("should trigger connection to relay", async () => {
     subscribeSpyTo(relay.event(mockEvent));
@@ -467,10 +418,10 @@ describe("event", () => {
     expect(await server.nextMessage).toEqual(["EVENT", mockEvent]);
   });
 
-  it("should complete with error if no OK received within 10s", async () => {
+  it("should error if no OK received within 10s", async () => {
     vi.useFakeTimers();
 
-    const spy = subscribeSpyTo(relay.event(mockEvent));
+    const spy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
 
     // Fast-forward time by 10 seconds
     await vi.advanceTimersByTimeAsync(10000);
@@ -479,11 +430,18 @@ describe("event", () => {
     expect(spy.getLastValue()).toEqual({ ok: false, from: "wss://test", message: "Timeout" });
   });
 
+  it("should complete when connection is closed", async () => {
+    const spy = subscribeSpyTo(relay.event(mockEvent));
+    await server.connected;
+    server.close();
+    expect(spy.receivedComplete()).toBe(true);
+  });
+
   it("should throw error if relay closes connection with error", async () => {
     const spy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
     await server.connected;
 
-    // Send CLOSE message with error
+    // Send an error
     server.error({
       reason: "error message",
       code: 1000,
@@ -507,6 +465,25 @@ describe("event", () => {
 
     expect(spy.receivedComplete()).toBe(false);
     expect(spy.receivedError()).toBe(false);
+  });
+
+  it("should reconnect when repeat operator is used", async () => {
+    const sub = subscribeSpyTo(relay.event(mockEvent).pipe(repeat()));
+
+    // First connection
+    await server.connected;
+    server.close();
+    await server.closed;
+
+    // Wait for close complete
+    expect(sub.receivedComplete()).toBe(false);
+
+    // Should reconnect
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    sub.unsubscribe();
+    await server.closed;
   });
 
   it("should wait when relay isn't ready", async () => {
@@ -706,7 +683,7 @@ describe("createReconnectTimer", () => {
     relay = new Relay("wss://test");
     const spy = subscribeSpyTo(relay.req([{ kinds: [1] }]), { expectErrors: true });
 
-    // Send CLOSE message with error
+    // Send an error
     server.error({
       reason: "error message",
       code: 1000,
@@ -727,7 +704,7 @@ describe("createReconnectTimer", () => {
 
     subscribeSpyTo(relay.req([{ kinds: [1] }]), { expectErrors: true });
 
-    // Send CLOSE message with error
+    // Send an error
     server.error({
       reason: "error message",
       code: 1000,
@@ -748,7 +725,7 @@ describe("createReconnectTimer", () => {
 describe("publish", () => {
   it("should retry when auth-required is received and authentication is completed", async () => {
     // First attempt to publish
-    const spy = relay.publish(mockEvent);
+    const spy = relay.publish(mockEvent).catch(() => {});
 
     // Verify EVENT was sent
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
@@ -776,6 +753,34 @@ describe("publish", () => {
     // Verify the final result is successful
     await expect(spy).resolves.toEqual({ ok: true, message: "", from: "wss://test" });
   });
+
+  it("should support reconnection", async () => {
+    const spy = relay.publish(mockEvent, { reconnect: true }).catch(() => {});
+
+    await server.connected;
+    server.close();
+    await server.closed;
+
+    // Should reconnect
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    await spy;
+  });
+
+  it("should support retries on connection errors", async () => {
+    const spy = relay.publish(mockEvent, { retries: 2 }).catch(() => {});
+
+    await server.connected;
+    server.close({ wasClean: false, code: 1000, reason: "error message" });
+    await server.closed;
+
+    // Should retry
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    await spy;
+  });
 });
 
 describe("request", () => {
@@ -790,8 +795,10 @@ describe("request", () => {
     server.send(["AUTH", "challenge-string"]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
 
+    await server.nextMessage;
+
     // Wait for subscription to close
-    await expect(server).toReceiveMessage(["CLOSE", "sub1"]);
+    await expect(server).toHaveReceivedMessages([["CLOSE", "sub1"]]);
 
     // Send auth event
     const authEvent = { ...mockEvent, id: "auth-id" };
@@ -814,6 +821,38 @@ describe("request", () => {
     // Verify the final result is successful
     expect(spy.getLastValue()).toEqual(expect.objectContaining(mockEvent));
     expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("should support reconnection", async () => {
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { reconnect: true }));
+
+    await server.connected;
+    server.close();
+    await server.closed;
+
+    expect(spy.receivedComplete()).toBe(false);
+
+    // Should reconnect
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    spy.unsubscribe();
+    await server.closed;
+  });
+
+  it("should support retries on connection errors", async () => {
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { retries: 5 }), { expectErrors: true });
+
+    await server.connected;
+    server.close({ wasClean: false, code: 1000, reason: "error message" });
+    await server.closed;
+
+    // Should retry
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    spy.unsubscribe();
+    await server.closed;
   });
 });
 
@@ -853,6 +892,38 @@ describe("subscription", () => {
     // Verify the final result is successful
     expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent), "EOSE"]);
     expect(spy.receivedComplete()).toBe(false);
+  });
+
+  it("should support reconnection", async () => {
+    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { reconnect: true }));
+
+    await server.connected;
+    server.close();
+    await server.closed;
+
+    expect(spy.receivedComplete()).toBe(false);
+
+    // Should reconnect
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    spy.unsubscribe();
+    await server.closed;
+  });
+
+  it("should support retries on connection errors", async () => {
+    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { retries: 5 }), { expectErrors: true });
+
+    await server.connected;
+    server.close({ wasClean: false, code: 1000, reason: "error message" });
+    await server.closed;
+
+    // Should retry
+    await expect(server.connected).resolves.toBeDefined();
+
+    // Cleanup to prevent retries breaking other tests
+    spy.unsubscribe();
+    await server.closed;
   });
 });
 
