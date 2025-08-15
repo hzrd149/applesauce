@@ -1,6 +1,6 @@
 {
   "name": "applesauce-actions",
-  "version": "2.3.0",
+  "version": "3.0.0",
   "description": "A package for performing common nostr actions",
   "type": "module",
   "main": "dist/index.js",
@@ -38,15 +38,15 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^2.3.0",
-    "applesauce-factory": "^2.3.0",
+    "applesauce-core": "^3.0.0",
+    "applesauce-factory": "^3.0.0",
     "nostr-tools": "^2.13",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/debug": "^4.1.12",
-    "applesauce-signers": "^2.0.0",
+    "applesauce-signers": "^3.0.0",
     "nanoid": "^5.1.5",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3"

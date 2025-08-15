@@ -1,5 +1,23 @@
 # applesauce-wallet
 
+## 3.0.0
+
+### Major Changes
+
+- a9838cf: Reorganize exports and rename event operations
+
+### Minor Changes
+
+- 2517962: Add NIP-61 nutzap helpers, operations, blueprints, models, and actions
+
+### Patch Changes
+
+- 1420273: Make `getNutzapMint` return undefined on invalid URL
+- Updated dependencies
+  - applesauce-core@3.0.0
+  - applesauce-factory@3.0.0
+  - applesauce-actions@3.0.0
+
 ## 2.0.0
 
 ### Major Changes

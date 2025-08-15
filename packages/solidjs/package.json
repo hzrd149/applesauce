@@ -1,6 +1,6 @@
 {
   "name": "applesauce-solidjs",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "SolidJS utilities for applesauce",
   "type": "module",
   "main": "dist/index.js",
@@ -50,7 +50,7 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^2.0.0",
+    "applesauce-core": "^3.0.0",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
