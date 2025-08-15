@@ -1,6 +1,6 @@
 {
   "name": "applesauce-content",
-  "version": "2.3.0",
+  "version": "3.0.0",
   "description": "Unified plugins for processing event content",
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +58,7 @@
     "@types/hast": "^3.0.4",
     "@types/mdast": "^4.0.4",
     "@types/unist": "^3.0.3",
-    "applesauce-core": "^2.3.0",
+    "applesauce-core": "^3.0.0",
     "mdast-util-find-and-replace": "^3.0.2",
     "nostr-tools": "^2.13",
     "remark": "^15.0.1",
@@ -68,7 +68,7 @@
   },
   "devDependencies": {
     "typescript": "^5.8.3",
-    "applesauce-signers": "^2.0.0",
+    "applesauce-signers": "^3.0.0",
     "vitest": "^3.2.3"
   },
   "funding": {

@@ -1,5 +1,22 @@
 # applesauce-signer
 
+## 3.0.0
+
+### Major Changes
+
+- 7b469b5: Remove `getRelays` method since its not longer listed in NIP-07
+- 7b469b5: Remove syncronus API on some signers and accounts. every method now returns a Promise
+
+### Minor Changes
+
+- 4728e12: Add `NostrConnectProvider` class for the "remote signer" part of NIP-46
+- 4728e12: Add `pool` option for nostr connect signer and provider to make it easier to use with `applesauce-relay`
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@3.0.0
+
 ## 2.0.0
 
 ### Minor Changes

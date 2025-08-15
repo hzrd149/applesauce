@@ -1,5 +1,28 @@
 # applesauce-relay
 
+## 3.0.0
+
+### Major Changes
+
+- eaf8bc7: Update `relay.publish` return `Promise<PublishResponse>` so `lastValueFrom` does not need to be used.
+- eaf8bc7: Removed `IRelayState` and `Nip01Actions` interfaces
+- eaf8bc7: Update `pool.publish` and `group.publish` to return `Promise<PublishResponse[]>` so `lastValueFrom` does not need to be used.
+- eaf8bc7: Update `relay.authenticate` to return `Promise<PublishResponse>` so `lastValueFrom` does not need to be used.
+- eaf8bc7: Update `relay.auth` to return `Promise<PublishResponse>` so `lastValueFrom` does not need to be used.
+
+### Minor Changes
+
+- 58659a8: Add `Relay.close` method for closing the socket
+- 970fb03: Add `reconnect` option to `publish`, `request`, and `subscription` methods
+- 58659a8: Add `RelayPool.remove` method for removing relays
+- b4943cb: Allow `keepAlive`, `eoseTimeout`, and `eventTimeout` to be set when creating a `Relay` or `RelayPool`
+
+### Patch Changes
+
+- 970fb03: Fix `Relay.req` and `Relay.event` not completing when socket closed
+- Updated dependencies
+  - applesauce-core@3.0.0
+
 ## 2.3.0
 
 ### Minor Changes
