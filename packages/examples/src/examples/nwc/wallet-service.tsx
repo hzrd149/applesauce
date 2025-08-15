@@ -458,7 +458,6 @@ export default function WalletServiceExample() {
         relays,
         signer,
         handlers,
-        notifications: [],
       });
 
       await service.start();
@@ -661,7 +660,7 @@ export default function WalletServiceExample() {
         /* Dashboard View */
         <div className="p-6 space-y-6">
           {/* Connection Info Bar */}
-          {walletService.running && <ConnectionInfo connectionString={walletService.getConnectionString()} />}
+          {walletService.running && <ConnectionInfo connectionString={walletService.getConnectURI()} />}
 
           {/* Dashboard Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">

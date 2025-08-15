@@ -10,7 +10,7 @@ describe("parseWalletConnectURI", () => {
 
     expect(result).toEqual({
       service: "b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4",
-      relays: ["wss://relay.damus.io"],
+      relays: ["wss://relay.damus.io/"],
       secret: "71a8c14c1407c113601079c4302dab36460f0ccd0ad506f1f2dc73b5100e4f3c",
     });
   });
@@ -23,7 +23,7 @@ describe("parseWalletConnectURI", () => {
 
     expect(result).toEqual({
       service: "b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4",
-      relays: ["wss://relay.damus.io", "wss://relay.snort.social"],
+      relays: ["wss://relay.damus.io/", "wss://relay.snort.social/"],
       secret: "71a8c14c1407c113601079c4302dab36460f0ccd0ad506f1f2dc73b5100e4f3c",
     });
   });

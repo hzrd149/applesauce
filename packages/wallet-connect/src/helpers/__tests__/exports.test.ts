@@ -14,6 +14,7 @@ describe("exports", () => {
         "WalletNotificationSymbol",
         "WalletRequestSymbol",
         "WalletResponseSymbol",
+        "createWalletAuthURI",
         "createWalletConnectURI",
         "getEncryptionMethods",
         "getPreferredEncryption",
@@ -32,6 +33,7 @@ describe("exports", () => {
         "isWalletRequestExpired",
         "isWalletRequestLocked",
         "isWalletResponseLocked",
+        "parseWalletAuthURI",
         "parseWalletConnectURI",
         "supportsEncryption",
         "supportsMethod",
@@ -40,6 +42,7 @@ describe("exports", () => {
         "unlockWalletNotification",
         "unlockWalletRequest",
         "unlockWalletResponse",
+        "validateWalletAuthURI",
       ]
     `);
   });

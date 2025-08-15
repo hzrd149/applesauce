@@ -167,7 +167,9 @@ export default function TransactionsExample() {
 
     try {
       const secret = hexToBytes(parsed.secret);
-      const walletConnect = new WalletConnect(secret, parsed.service, parsed.relays, {
+      const walletConnect = new WalletConnect({
+        ...parsed,
+        secret,
         subscriptionMethod: pool.subscription.bind(pool),
         publishMethod: pool.publish.bind(pool),
       });

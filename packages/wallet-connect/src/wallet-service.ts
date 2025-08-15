@@ -48,8 +48,9 @@ import {
   WalletResponse,
 } from "./helpers/response.js";
 import { WalletMethod, WalletSupport } from "./helpers/support.js";
-import { NostrPublishMethod, NostrSubscriptionMethod } from "./types.js";
+import { NostrPool, NostrPublishMethod, NostrSubscriptionMethod } from "./types.js";
 import { bytesToHex } from "@noble/hashes/utils";
+import { parseWalletAuthURI, WalletAuthURI } from "./helpers/auth-uri.js";
 
 /** Handler function for pay_invoice method */
 export type PayInvoiceHandler = (params: PayInvoiceParams) => Promise<PayInvoiceResult>;
@@ -91,6 +92,13 @@ export interface WalletServiceHandlers {
   get_info?: GetInfoHandler;
 }
 
+export type SerializedWalletService = {
+  /** The client's public key */
+  client: string;
+  /** The relays to use for the service */
+  relays: string[];
+};
+
 /** Options for creating a WalletService */
 export interface WalletServiceOptions {
   /** The relays to use for the service */
@@ -99,6 +107,8 @@ export interface WalletServiceOptions {
   signer: EventSigner;
   /** The client's secret key */
   secret?: Uint8Array;
+  /** The client's public key (used for restoring the service) */
+  client?: string;
   /** Map of method handlers */
   handlers: WalletServiceHandlers;
   /** An array of notifications this wallet supports */
@@ -107,6 +117,8 @@ export interface WalletServiceOptions {
   subscriptionMethod?: NostrSubscriptionMethod;
   /** An optional method for publishing events */
   publishMethod?: NostrPublishMethod;
+  /** An optional pool for connection methods */
+  pool?: NostrPool;
 }
 
 /** NIP-47 Wallet Service implementation */
@@ -115,6 +127,8 @@ export class WalletService {
   static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
   /** A fallback method to use for publishMethod if none is passed in when creating the client */
   static publishMethod: NostrPublishMethod | undefined = undefined;
+  /** A fallback pool to use if none is pass in when creating the signer */
+  static pool: NostrPool | undefined = undefined;
 
   /** A method for subscribing to relays */
   protected readonly subscriptionMethod: NostrSubscriptionMethod;
@@ -141,6 +155,9 @@ export class WalletService {
   /** The client's secret key */
   protected secret: Uint8Array;
 
+  /** The client's public key */
+  public client: string;
+
   /** Shared observable for all wallet request events */
   protected events$: Observable<NostrEvent> | null = null;
 
@@ -150,26 +167,36 @@ export class WalletService {
   /** Whether the service is currently running */
   public running: boolean = false;
 
-  /** Get the clients public key */
-  get client() {
-    return getPublicKey(this.secret);
-  }
-
   constructor(options: WalletServiceOptions) {
     this.relays = options.relays;
     this.signer = options.signer;
     this.handlers = options.handlers;
-    this.secret = options.secret ?? generateSecretKey();
 
-    const subscriptionMethod = options.subscriptionMethod || WalletService.subscriptionMethod;
+    // Set the client's secret and public key
+    if (options.secret) {
+      this.secret = options.secret;
+      this.client = getPublicKey(this.secret);
+    } else {
+      this.secret = generateSecretKey();
+      this.client = getPublicKey(this.secret);
+    }
+
+    // Get the subscription and publish methods
+    const subscriptionMethod =
+      options.subscriptionMethod ||
+      options.pool?.subscription ||
+      WalletService.subscriptionMethod ||
+      WalletService.pool?.subscription;
     if (!subscriptionMethod)
       throw new Error("Missing subscriptionMethod, either pass a method or set WalletService.subscriptionMethod");
-    const publishMethod = options.publishMethod || WalletService.publishMethod;
+    const publishMethod =
+      options.publishMethod || options.pool?.publish || WalletService.publishMethod || WalletService.pool?.publish;
     if (!publishMethod)
       throw new Error("Missing publishMethod, either pass a method or set WalletService.publishMethod");
 
-    this.subscriptionMethod = subscriptionMethod;
-    this.publishMethod = publishMethod;
+    // Use arrow functions so "this" isn't bound to the signer
+    this.subscriptionMethod = (relays, filters) => subscriptionMethod(relays, filters);
+    this.publishMethod = (relays, event) => publishMethod(relays, event);
 
     const encryption: WalletConnectEncryptionMethod[] = [];
     if (options.signer.nip04) encryption.push("nip04");
@@ -243,8 +270,8 @@ export class WalletService {
     return this.running;
   }
 
-  /** Get the connection string for the service */
-  getConnectionString(): string {
+  /** Get the connection URI for the service */
+  getConnectURI(): string {
     if (!this.pubkey) throw new Error("Service is not running");
     if (!this.relays.length) throw new Error("No relays configured");
     const url = new URL(`nostr+walletconnect://${this.pubkey}`);
@@ -279,7 +306,7 @@ export class WalletService {
   /** Publish the wallet support event */
   protected async publishSupportEvent(): Promise<void> {
     try {
-      const draft = await create({ signer: this.signer }, WalletSupportBlueprint, this.support);
+      const draft = await create({ signer: this.signer }, WalletSupportBlueprint, this.support, this.client);
       const event = await this.signer.signEvent(draft);
       await this.publishMethod(this.relays, event);
     } catch (error) {
@@ -422,5 +449,16 @@ export class WalletService {
       this.log("Failed to send response:", error);
       throw error;
     }
+  }
+
+  /** Creates a service for a nostr+walletauth URI */
+  static fromAuthURI(uri: string | WalletAuthURI, options: Omit<WalletServiceOptions, "relays">): WalletService {
+    const { client, relays } = typeof uri === "string" ? parseWalletAuthURI(uri) : uri;
+
+    return new WalletService({
+      ...options,
+      client,
+      relays,
+    });
   }
 }

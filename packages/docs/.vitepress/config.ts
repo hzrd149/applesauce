@@ -123,6 +123,14 @@ export default defineConfig({
         ],
       },
       {
+        text: "Wallet Connect",
+        items: [
+          { text: "Package", link: "/wallet-connect/package" },
+          { text: "Connect", link: "/wallet-connect/wallet-connect" },
+          { text: "Service", link: "/wallet-connect/wallet-service" },
+        ],
+      },
+      {
         text: "Migration",
         items: [
           { text: "v2 to v3", link: "/migration/v2-v3" },
