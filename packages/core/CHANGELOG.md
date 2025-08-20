@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 3.0.1
+
+### Patch Changes
+
+- 7e72533: Return "" when event missing "d" tag
+
 ## 3.0.0
 
 ### Minor Changes
