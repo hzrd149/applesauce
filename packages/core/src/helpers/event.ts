@@ -100,17 +100,10 @@ export function notifyEventUpdate(event: NostrEvent) {
   if (eventStore) eventStore.update(event);
 }
 
-/**
- * Returns the replaceable identifier for a replaceable event
- * @throws {Error} if the event is not addressable or missing the "d" tag
- */
+/** Returns the replaceable identifier for a replaceable event */
 export function getReplaceableIdentifier(event: NostrEvent): string {
-  if (!isAddressableKind(event.kind)) throw new Error("Event is not addressable");
-
   return getOrComputeCachedValue(event, ReplaceableIdentifierSymbol, () => {
-    const d = event.tags.find((t) => t[0] === "d")?.[1];
-    if (d === undefined) throw new Error("Event missing identifier");
-    return d;
+    return event.tags.find((t) => t[0] === "d")?.[1] ?? "";
   });
 }
 
