@@ -1,11 +1,13 @@
 import { logger } from "applesauce-core";
 import { create, EventSigner } from "applesauce-factory";
 import { generateSecretKey, getPublicKey, NostrEvent, verifyEvent } from "nostr-tools";
-import { filter, mergeMap, Observable, share, Subscription } from "rxjs";
+import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription } from "rxjs";
 
+import { bytesToHex } from "@noble/hashes/utils";
 import { WalletLegacyNotificationBlueprint, WalletNotificationBlueprint } from "./blueprints/notification.js";
 import { WalletResponseBlueprint } from "./blueprints/response.js";
 import { WalletSupportBlueprint } from "./blueprints/support.js";
+import { parseWalletAuthURI, WalletAuthURI } from "./helpers/auth-uri.js";
 import { WalletConnectEncryptionMethod } from "./helpers/encryption.js";
 import { WalletBaseError, WalletErrorCode } from "./helpers/error.js";
 import { NotificationType, WalletNotification } from "./helpers/notification.js";
@@ -48,9 +50,13 @@ import {
   WalletResponse,
 } from "./helpers/response.js";
 import { WalletMethod, WalletSupport } from "./helpers/support.js";
-import { NostrPool, NostrPublishMethod, NostrSubscriptionMethod } from "./types.js";
-import { bytesToHex } from "@noble/hashes/utils";
-import { parseWalletAuthURI, WalletAuthURI } from "./helpers/auth-uri.js";
+import {
+  getConnectionMethods,
+  NostrConnectionMethodsOptions,
+  NostrPool,
+  NostrPublishMethod,
+  NostrSubscriptionMethod,
+} from "./interop.js";
 
 /** Handler function for pay_invoice method */
 export type PayInvoiceHandler = (params: PayInvoiceParams) => Promise<PayInvoiceResult>;
@@ -100,7 +106,7 @@ export type SerializedWalletService = {
 };
 
 /** Options for creating a WalletService */
-export interface WalletServiceOptions {
+export interface WalletServiceOptions extends NostrConnectionMethodsOptions {
   /** The relays to use for the service */
   relays: string[];
   /** The signer to use for creating and unlocking events */
@@ -113,12 +119,6 @@ export interface WalletServiceOptions {
   handlers: WalletServiceHandlers;
   /** An array of notifications this wallet supports */
   notifications?: NotificationType[];
-  /** An optional method for subscribing to relays */
-  subscriptionMethod?: NostrSubscriptionMethod;
-  /** An optional method for publishing events */
-  publishMethod?: NostrPublishMethod;
-  /** An optional pool for connection methods */
-  pool?: NostrPool;
 }
 
 /** NIP-47 Wallet Service implementation */
@@ -182,17 +182,7 @@ export class WalletService {
     }
 
     // Get the subscription and publish methods
-    const subscriptionMethod =
-      options.subscriptionMethod ||
-      options.pool?.subscription ||
-      WalletService.subscriptionMethod ||
-      WalletService.pool?.subscription;
-    if (!subscriptionMethod)
-      throw new Error("Missing subscriptionMethod, either pass a method or set WalletService.subscriptionMethod");
-    const publishMethod =
-      options.publishMethod || options.pool?.publish || WalletService.publishMethod || WalletService.pool?.publish;
-    if (!publishMethod)
-      throw new Error("Missing publishMethod, either pass a method or set WalletService.publishMethod");
+    const { subscriptionMethod, publishMethod } = getConnectionMethods(options, WalletService);
 
     // Use arrow functions so "this" isn't bound to the signer
     this.subscriptionMethod = (relays, filters) => subscriptionMethod(relays, filters);
@@ -223,13 +213,19 @@ export class WalletService {
     this.pubkey = await this.signer.getPublicKey();
 
     // Create shared request observable with ref counting and timer
-    this.events$ = this.subscriptionMethod(this.relays, [
-      {
-        kinds: [WALLET_REQUEST_KIND],
-        "#p": [this.pubkey], // Only requests directed to us
-        authors: [this.client], // Only requests from the client
-      },
-    ]).pipe(
+    this.events$ = from(
+      this.subscriptionMethod(this.relays, [
+        {
+          kinds: [WALLET_REQUEST_KIND],
+          "#p": [this.pubkey], // Only requests directed to us
+          authors: [this.client], // Only requests from the client
+        },
+      ]),
+    ).pipe(
+      // Keep the connection open indefinitely
+      repeat(),
+      // Retry on connection failure
+      retry(),
       // Ignore strings (support for applesauce-relay)
       filter((event) => typeof event !== "string"),
       // Only include valid wallet request events

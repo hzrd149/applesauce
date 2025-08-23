@@ -15,6 +15,7 @@ describe("exports", () => {
         "ReadonlySigner",
         "SerialPortSigner",
         "SimpleSigner",
+        "getConnectionMethods",
       ]
     `);
   });

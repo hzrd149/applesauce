@@ -9,6 +9,7 @@ describe("exports", () => {
         "Helpers",
         "WalletConnect",
         "WalletService",
+        "getConnectionMethods",
       ]
     `);
   });

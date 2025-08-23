@@ -1,5 +1,5 @@
 import { Rumor } from "./gift-wraps.js";
-import { getTagValue } from "./index.js";
+import { getConversationParticipants, getTagValue } from "./index.js";
 
 /** Returns the subject of a warpped direct message */
 export function getWrappedMessageSubject(message: Rumor): string | undefined {
@@ -9,4 +9,17 @@ export function getWrappedMessageSubject(message: Rumor): string | undefined {
 /** Returns the parent id of a wrapped direct message */
 export function getWrappedMessageParent(message: Rumor): string | undefined {
   return getTagValue(message, "e");
+}
+
+/** Returns the sender of a wrapped direct message */
+export function getWrappedMesssageSender(message: Rumor): string {
+  return message.pubkey;
+}
+
+/**
+ * Returns the frist participant in a conversation that is not the sender
+ * @see getConversationParticipants
+ */
+export function getWrappedMessageReceiver(message: Rumor): string {
+  return getConversationParticipants(message).filter((p) => p !== message.pubkey)[0];
 }

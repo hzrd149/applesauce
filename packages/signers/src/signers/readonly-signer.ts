@@ -1,6 +1,6 @@
 import { isHexKey, normalizeToPubkey } from "applesauce-core/helpers";
 import { VerifiedEvent } from "nostr-tools";
-import { ISigner } from "../interface.js";
+import { ISigner } from "../interop.js";
 
 /** A signer that only implements getPublicKey and throws on ever other method */
 export class ReadonlySigner implements ISigner {

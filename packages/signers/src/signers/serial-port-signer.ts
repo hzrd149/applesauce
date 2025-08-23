@@ -6,7 +6,7 @@ import { logger } from "applesauce-core";
 import { createDefer, Deferred } from "applesauce-core/promise";
 import { EventTemplate, getEventHash, NostrEvent, verifyEvent } from "nostr-tools";
 
-import { ISigner } from "../interface.js";
+import { ISigner } from "../interop.js";
 
 type Callback = () => void;
 type DeviceOpts = {

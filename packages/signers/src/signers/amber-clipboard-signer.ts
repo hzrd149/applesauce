@@ -2,7 +2,7 @@ import { EventTemplate, NostrEvent, VerifiedEvent, getEventHash, nip19, verifyEv
 import { getPubkeyFromDecodeResult, isHexKey, isHex } from "applesauce-core/helpers";
 import { createDefer, Deferred } from "applesauce-core/promise";
 
-import { ISigner } from "../interface.js";
+import { ISigner } from "../interop.js";
 
 /**
  * A Signer for [amber](https://github.com/greenart7c3/Amber) clipboard API

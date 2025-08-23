@@ -1,4 +1,4 @@
-import { ISigner } from "../interface.ts";
+import { ISigner } from "../interop.ts";
 
 declare global {
   interface Window {

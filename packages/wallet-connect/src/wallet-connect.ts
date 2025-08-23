@@ -17,7 +17,9 @@ import {
   merge,
   mergeMap,
   Observable,
+  repeat,
   ReplaySubject,
+  retry,
   share,
   Subscription,
   switchMap,
@@ -67,11 +69,17 @@ import {
   WalletResponse,
   WalletSupport,
 } from "./helpers/index.js";
-import { NostrPool, NostrPublishMethod, NostrSubscriptionMethod } from "./types.js";
+import {
+  getConnectionMethods,
+  NostrConnectionMethodsOptions,
+  NostrPool,
+  NostrPublishMethod,
+  NostrSubscriptionMethod,
+} from "./interop.js";
 
 export type SerializedWalletConnect = WalletConnectURI;
 
-export type WalletConnectOptions = {
+export type WalletConnectOptions = NostrConnectionMethodsOptions & {
   /** The secret to use for the connection */
   secret: Uint8Array;
   /** The relays to use for the connection */
@@ -80,12 +88,6 @@ export type WalletConnectOptions = {
   service?: string;
   /** Default timeout for RPC requests in milliseconds */
   timeout?: number;
-  /** A method for subscribing to relays */
-  subscriptionMethod?: NostrSubscriptionMethod;
-  /** A method for publishing events */
-  publishMethod?: NostrPublishMethod;
-  /** An optional pool for connection methods */
-  pool?: NostrPool;
 };
 
 export class WalletConnect {
@@ -153,17 +155,7 @@ export class WalletConnect {
     };
 
     // Get the subscription and publish methods
-    const subscriptionMethod =
-      options.subscriptionMethod ||
-      options.pool?.subscription ||
-      WalletConnect.subscriptionMethod ||
-      WalletConnect.pool?.subscription;
-    if (!subscriptionMethod)
-      throw new Error("Missing subscriptionMethod, either pass a method or set WalletConnect.subscriptionMethod");
-    const publishMethod =
-      options.publishMethod || options.pool?.publish || WalletConnect.publishMethod || WalletConnect.pool?.publish;
-    if (!publishMethod)
-      throw new Error("Missing publishMethod, either pass a method or set WalletConnect.publishMethod");
+    const { subscriptionMethod, publishMethod } = getConnectionMethods(options, WalletConnect);
 
     // Use arrow functions so "this" isn't bound to the signer
     this.subscriptionMethod = (relays, filters) => subscriptionMethod(relays, filters);
@@ -176,21 +168,31 @@ export class WalletConnect {
 
         // If the service is not known yet, subscribe to a wallet info event tagging the client
         if (!service)
-          return this.subscriptionMethod(this.relays, [{ kinds: [WALLET_INFO_KIND], "#p": [client] }]).pipe(
+          return from(this.subscriptionMethod(this.relays, [{ kinds: [WALLET_INFO_KIND], "#p": [client] }])).pipe(
+            // Keep the connection open indefinitely
+            repeat(),
+            // Retry on connection failure
+            retry(),
             // Ignore strings (support for applesauce-relay)
             filter((event) => typeof event !== "string"),
           );
 
-        return this.subscriptionMethod(this.relays, [
-          // Subscribe to response events
-          {
-            kinds: [WALLET_RESPONSE_KIND, WALLET_NOTIFICATION_KIND, WALLET_LEGACY_NOTIFICATION_KIND],
-            "#p": [client],
-            authors: [service],
-          },
-          // Subscribe to wallet info events
-          { kinds: [WALLET_INFO_KIND], authors: [service] },
-        ]).pipe(
+        return from(
+          this.subscriptionMethod(this.relays, [
+            // Subscribe to response events
+            {
+              kinds: [WALLET_RESPONSE_KIND, WALLET_NOTIFICATION_KIND, WALLET_LEGACY_NOTIFICATION_KIND],
+              "#p": [client],
+              authors: [service],
+            },
+            // Subscribe to wallet info events
+            { kinds: [WALLET_INFO_KIND], authors: [service] },
+          ]),
+        ).pipe(
+          // Keep the connection open indefinitely
+          repeat(),
+          // Retry on connection failure
+          retry(),
           // Ignore strings (support for applesauce-relay)
           filter((event) => typeof event !== "string"),
           // Only include events from the wallet service

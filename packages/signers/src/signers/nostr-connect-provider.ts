@@ -8,9 +8,10 @@ import {
   unlockHiddenContent,
 } from "applesauce-core/helpers";
 import { createDefer, Deferred } from "applesauce-core/promise";
-import { EventTemplate, kinds, NostrEvent, verifyEvent } from "nostr-tools";
 import { nanoid } from "nanoid";
+import { EventTemplate, kinds, NostrEvent, verifyEvent } from "nostr-tools";
 
+import { filter, from, repeat, retry, Subscription } from "rxjs";
 import { isNIP04 } from "../helpers/encryption.js";
 import {
   ConnectRequestParams,
@@ -22,9 +23,14 @@ import {
   NostrConnectURI,
   parseNostrConnectURI,
 } from "../helpers/nostr-connect.js";
-import { ISigner } from "../interface.js";
-import { Unsubscribable } from "../helpers/observable.js";
-import { NostrPool, NostrPublishMethod, NostrSubscriptionMethod } from "./nostr-connect-signer.js";
+import {
+  getConnectionMethods,
+  ISigner,
+  NostrConnectionMethodsOptions,
+  NostrPool,
+  NostrPublishMethod,
+  NostrSubscriptionMethod,
+} from "../interop.js";
 import { SimpleSigner } from "./simple-signer.js";
 
 export interface ProviderAuthorization {
@@ -42,27 +48,21 @@ export interface ProviderAuthorization {
   onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
 }
 
-export type NostrConnectProviderOptions = ProviderAuthorization & {
-  /** The relays to communicate over */
-  relays: string[];
-  /** The signer to use for signing events and encryption */
-  upstream: ISigner;
-  /** Optional signer for provider identity */
-  signer?: ISigner;
-  /** A random secret used to authorize clients to connect */
-  secret?: string;
-  /** Callback for when a client connects (receives a `connect` request) */
-  onClientConnect?: (client: string) => any;
-  /** Callback for when a client disconnects (previously connected and the provider stops) */
-  onClientDisconnect?: (client: string) => void;
-
-  /** A method for subscribing to relays */
-  subscriptionMethod?: NostrSubscriptionMethod;
-  /** A method for publishing events */
-  publishMethod?: NostrPublishMethod;
-  /** A pool of methods to use if none are passed in when creating the provider */
-  pool?: NostrPool;
-};
+export type NostrConnectProviderOptions = ProviderAuthorization &
+  NostrConnectionMethodsOptions & {
+    /** The relays to communicate over */
+    relays: string[];
+    /** The signer to use for signing events and encryption */
+    upstream: ISigner;
+    /** Optional signer for provider identity */
+    signer?: ISigner;
+    /** A random secret used to authorize clients to connect */
+    secret?: string;
+    /** Callback for when a client connects (receives a `connect` request) */
+    onClientConnect?: (client: string) => any;
+    /** Callback for when a client disconnects (previously connected and the provider stops) */
+    onClientDisconnect?: (client: string) => void;
+  };
 
 export class NostrConnectProvider implements ProviderAuthorization {
   /** A fallback method to use for subscriptionMethod if none is passed in when creating the provider */
@@ -121,49 +121,34 @@ export class NostrConnectProvider implements ProviderAuthorization {
   /** A method used to accept or reject `nip44_decrypt` requests */
   public onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
 
-  constructor(opts: NostrConnectProviderOptions) {
-    this.relays = opts.relays;
-    this.upstream = opts.upstream;
-    this.signer = opts.signer ?? new SimpleSigner();
-    this.secret = opts.secret;
+  constructor(options: NostrConnectProviderOptions) {
+    this.relays = options.relays;
+    this.upstream = options.upstream;
+    this.signer = options.signer ?? new SimpleSigner();
+    this.secret = options.secret;
 
     // Get the subscription and publish methods
-    const subscriptionMethod =
-      opts.subscriptionMethod ||
-      opts.pool?.subscription ||
-      NostrConnectProvider.subscriptionMethod ||
-      NostrConnectProvider.pool?.subscription;
-    if (!subscriptionMethod)
-      throw new Error(
-        "Missing subscriptionMethod, either pass a method or set NostrConnectProvider.subscriptionMethod",
-      );
-    const publishMethod =
-      opts.publishMethod ||
-      opts.pool?.publish ||
-      NostrConnectProvider.publishMethod ||
-      NostrConnectProvider.pool?.publish;
-    if (!publishMethod)
-      throw new Error("Missing publishMethod, either pass a method or set NostrConnectProvider.publishMethod");
+    const { subscriptionMethod, publishMethod } = getConnectionMethods(options, NostrConnectProvider);
 
     // Use arrow functions so "this" isn't bound to the signer
     this.subscriptionMethod = (relays, filters) => subscriptionMethod(relays, filters);
     this.publishMethod = (relays, event) => publishMethod(relays, event);
 
     // Set client connection callbacks
-    if (opts.onClientConnect) this.onClientConnect = opts.onClientConnect;
-    if (opts.onClientDisconnect) this.onClientDisconnect = opts.onClientDisconnect;
+    if (options.onClientConnect) this.onClientConnect = options.onClientConnect;
+    if (options.onClientDisconnect) this.onClientDisconnect = options.onClientDisconnect;
 
     // Set authorization callbacks
-    if (opts.onConnect) this.onConnect = opts.onConnect;
-    if (opts.onSignEvent) this.onSignEvent = opts.onSignEvent;
-    if (opts.onNip04Encrypt) this.onNip04Encrypt = opts.onNip04Encrypt;
-    if (opts.onNip04Decrypt) this.onNip04Decrypt = opts.onNip04Decrypt;
-    if (opts.onNip44Encrypt) this.onNip44Encrypt = opts.onNip44Encrypt;
-    if (opts.onNip44Decrypt) this.onNip44Decrypt = opts.onNip44Decrypt;
+    if (options.onConnect) this.onConnect = options.onConnect;
+    if (options.onSignEvent) this.onSignEvent = options.onSignEvent;
+    if (options.onNip04Encrypt) this.onNip04Encrypt = options.onNip04Encrypt;
+    if (options.onNip04Decrypt) this.onNip04Decrypt = options.onNip04Decrypt;
+    if (options.onNip44Encrypt) this.onNip44Encrypt = options.onNip44Encrypt;
+    if (options.onNip44Decrypt) this.onNip44Decrypt = options.onNip44Decrypt;
   }
 
   /** The currently active REQ subscription */
-  protected req?: Unsubscribable;
+  protected req?: Subscription;
 
   /** Updates the relay subscription to listen for request events */
   protected async updateSubscription() {
@@ -172,22 +157,31 @@ export class NostrConnectProvider implements ProviderAuthorization {
     const pubkey = await this.signer.getPublicKey();
 
     // Setup subscription to listen for requests
-    this.req = this.subscriptionMethod(this.relays, [
-      // If client is known, only listen for requests from the client
-      this.client
-        ? {
-            kinds: [kinds.NostrConnect],
-            "#p": [pubkey],
-            authors: [this.client],
-          }
-        : // Otherwise listen for all requests (waiting for a `connect` request)
-          {
-            kinds: [kinds.NostrConnect],
-            "#p": [pubkey],
-          },
-    ]).subscribe({
-      next: (event) => typeof event !== "string" && this.handleEvent(event),
-    });
+    this.req = from(
+      this.subscriptionMethod(this.relays, [
+        // If client is known, only listen for requests from the client
+        this.client
+          ? {
+              kinds: [kinds.NostrConnect],
+              "#p": [pubkey],
+              authors: [this.client],
+            }
+          : // Otherwise listen for all requests (waiting for a `connect` request)
+            {
+              kinds: [kinds.NostrConnect],
+              "#p": [pubkey],
+            },
+      ]),
+    )
+      .pipe(
+        // Keep the connection open indefinitely
+        repeat(),
+        // Retry on connection failure
+        retry(),
+        // Ignore strings (support for applesauce-relay)
+        filter((event) => typeof event !== "string"),
+      )
+      .subscribe(this.handleEvent.bind(this));
   }
 
   /**
@@ -201,7 +195,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     // Handle first request if provided (e.g. from a `connect` request)
     if (isEvent(request)) await this.handleEvent(request);
     // Handle NostrConnectURI
-    else if (request) await this.handleNostrConnectURI(request);
+    else if (request) await this.handleNostrConnectURI(request as NostrConnectURI | string);
 
     // Start the subscription (if its not already started)
     if (!this.req) await this.updateSubscription();

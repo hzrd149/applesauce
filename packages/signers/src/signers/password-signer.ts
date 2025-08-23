@@ -2,7 +2,7 @@ import { EventTemplate, finalizeEvent, getPublicKey, nip04, nip44 } from "nostr-
 import { encrypt, decrypt } from "nostr-tools/nip49";
 import { createDefer, Deferred } from "applesauce-core/promise";
 
-import { ISigner } from "../interface.js";
+import { ISigner } from "../interop.js";
 import { normalizeToSecretKey } from "applesauce-core/helpers";
 
 /** A NIP-49 (Private Key Encryption) signer */

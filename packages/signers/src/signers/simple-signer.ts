@@ -1,6 +1,6 @@
 import { normalizeToSecretKey } from "applesauce-core/helpers";
 import { EventTemplate, finalizeEvent, generateSecretKey, getPublicKey, nip04, nip44 } from "nostr-tools";
-import { ISigner } from "../interface.js";
+import { ISigner } from "../interop.js";
 
 /** A Simple NIP-07 signer class */
 export class SimpleSigner implements ISigner {

@@ -1,29 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { WS } from "vitest-websocket-mock";
-import { kinds } from "nostr-tools";
 import { nanoid } from "nanoid";
+import { kinds } from "nostr-tools";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WS } from "vitest-websocket-mock";
 
+import { NEVER } from "rxjs";
 import { FakeUser } from "../../__tests__/fake-user";
-import { NostrConnectProvider } from "../nostr-connect-provider";
-import { SimpleSigner } from "../simple-signer";
-import { NostrPool } from "../nostr-connect-signer";
 import {
   buildSigningPermissions,
   createNostrConnectURI,
   NostrConnectMethod,
   NostrConnectRequest,
 } from "../../helpers/nostr-connect";
+import { NostrPool } from "../../interop";
+import { NostrConnectProvider } from "../nostr-connect-provider";
+import { SimpleSigner } from "../simple-signer";
 
 let relay: WS;
 let pool: NostrPool;
 beforeEach(async () => {
   relay = new WS("wss://test", { jsonProtocol: true });
   pool = {
-    subscription: vi.fn().mockReturnValue({
-      subscribe: vi.fn().mockReturnValue({
-        unsubscribe: vi.fn(),
-      }),
-    }),
+    subscription: vi.fn().mockReturnValue(NEVER),
     publish: vi.fn().mockResolvedValue(undefined),
   };
 

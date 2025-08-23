@@ -23,6 +23,17 @@ export function getLegacyMessageCorraspondant(message: NostrEvent, self: string)
   return corraspondant;
 }
 
+/**
+ * Returns the receiver of a legacy direct message
+ * @throws if no receiver is found
+ */
+export const getLegacyMessageReceiver = getLegacyMessageCorraspondant;
+
+/** Returns the sender of a legacy direct message */
+export function getLegacyMessageSender(message: NostrEvent): string {
+  return message.pubkey;
+}
+
 /** Returns the parent message id of a legacy message */
 export function getLegacyMessageParent(message: NostrEvent): string | undefined {
   return getTagValue(message, "e");

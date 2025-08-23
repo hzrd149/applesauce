@@ -1,5 +1,5 @@
 import { EventTemplate, VerifiedEvent, verifyEvent } from "nostr-tools";
-import { ISigner } from "../interface.js";
+import { ISigner } from "../interop.js";
 
 /** AN error that is throw when the window.nostr extension is missing */
 export class ExtensionMissingError extends Error {}

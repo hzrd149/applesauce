@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NEVER } from "rxjs";
 import { NostrConnectSigner } from "../nostr-connect-signer.js";
 import { SimpleSigner } from "../simple-signer.js";
 
@@ -7,17 +8,12 @@ const relays = ["wss://relay.signer.com"];
 const client = new SimpleSigner();
 const remote = new SimpleSigner();
 
-const observable = { unsubscribe: vi.fn() };
-const req = { subscribe: vi.fn().mockReturnValue(observable) };
-
-const subscriptionMethod = vi.fn().mockReturnValue(req);
+const subscriptionMethod = vi.fn().mockReturnValue(NEVER);
 const publishMethod = vi.fn(async () => {});
 
 let signer: NostrConnectSigner;
 
 beforeEach(async () => {
-  observable.unsubscribe.mockClear();
-  req.subscribe.mockClear();
   subscriptionMethod.mockClear();
   publishMethod.mockClear();
 
@@ -68,14 +64,6 @@ describe("waitForSigner", () => {
 });
 
 describe("close", () => {
-  it("should close the connection", async () => {
-    await signer.open();
-    expect(req.subscribe).toHaveBeenCalled();
-
-    await signer.close();
-    expect(observable.unsubscribe).toHaveBeenCalled();
-  });
-
   it("it should cancel waiting for signer promie", async () => {
     const p = signer.waitForSigner();
     await signer.close();

@@ -1,10 +1,19 @@
 import { logger } from "applesauce-core";
 import { getHiddenContent, unixNow } from "applesauce-core/helpers";
 import { Deferred, createDefer } from "applesauce-core/promise";
-import { ISigner, SimpleSigner } from "applesauce-signers";
+import {
+  ISigner,
+  NostrConnectionMethodsOptions,
+  NostrPool,
+  NostrPublishMethod,
+  NostrSubscriptionMethod,
+  SimpleSigner,
+  getConnectionMethods,
+} from "applesauce-signers";
 import { nanoid } from "nanoid";
-import { EventTemplate, Filter, NostrEvent, getPublicKey, kinds, verifyEvent } from "nostr-tools";
+import { EventTemplate, NostrEvent, getPublicKey, kinds, verifyEvent } from "nostr-tools";
 
+import { Subscription, filter, from, repeat, retry } from "rxjs";
 import { isNIP04 } from "../helpers/encryption.js";
 import {
   BunkerURI,
@@ -18,13 +27,12 @@ import {
   createNostrConnectURI,
   parseBunkerURI,
 } from "../helpers/nostr-connect.js";
-import { Subscribable, Unsubscribable } from "../helpers/observable.js";
 
 async function defaultHandleAuth(url: string) {
   window.open(url, "auth", "width=400,height=600,resizable=no,status=no,location=no,toolbar=no,menubar=no");
 }
 
-export type NostrConnectSignerOptions = {
+export type NostrConnectSignerOptions = NostrConnectionMethodsOptions & {
   /** The relays to communicate over */
   relays: string[];
   /** A {@link SimpleSigner} for this client */
@@ -37,35 +45,20 @@ export type NostrConnectSignerOptions = {
   secret?: string;
   /** A method for handling "auth" requests */
   onAuth?: (url: string) => Promise<void>;
-  /** A method for subscribing to relays */
-  subscriptionMethod?: NostrSubscriptionMethod;
-  /** A method for publishing events */
-  publishMethod?: NostrPublishMethod;
-  /** A pool of methods to use if none are passed in when creating the signer */
-  pool?: NostrPool;
-};
-
-/** A method used to subscribe to events on a set of relays */
-export type NostrSubscriptionMethod = (relays: string[], filters: Filter[]) => Subscribable<NostrEvent | string>;
-/** A method used for publishing an event, can return a Promise that completes when published or an Observable that completes when published*/
-export type NostrPublishMethod = (relays: string[], event: NostrEvent) => Promise<any> | Subscribable<any>;
-/** A simple pool type that combines the subscription and publish methods */
-export type NostrPool = {
-  subscription: NostrSubscriptionMethod;
-  publish: NostrPublishMethod;
 };
 
 export class NostrConnectSigner implements ISigner {
-  /** A method that is called when an event needs to be published */
-  protected publishMethod: NostrPublishMethod;
-  /** The active nostr subscription */
-  protected subscriptionMethod: NostrSubscriptionMethod;
   /** A fallback method to use for subscriptionMethod if none is pass in when creating the signer */
   static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
   /** A fallback method to use for publishMethod if none is pass in when creating the signer */
   static publishMethod: NostrPublishMethod | undefined = undefined;
   /** A fallback pool to use if none is pass in when creating the signer */
   static pool: NostrPool | undefined = undefined;
+
+  /** A method that is called when an event needs to be published */
+  protected publishMethod: NostrPublishMethod;
+  /** The active nostr subscription */
+  protected subscriptionMethod: NostrSubscriptionMethod;
 
   protected log = logger.extend("NostrConnectSigner");
   /** The local client signer */
@@ -110,32 +103,23 @@ export class NostrConnectSigner implements ISigner {
       }
     | undefined;
 
-  constructor(opts: NostrConnectSignerOptions) {
-    this.relays = opts.relays;
-    this.pubkey = opts.pubkey;
-    this.remote = opts.remote;
-    this.secret = opts.secret || nanoid(12);
+  constructor(options: NostrConnectSignerOptions) {
+    this.relays = options.relays;
+    this.pubkey = options.pubkey;
+    this.remote = options.remote;
+    this.secret = options.secret || nanoid(12);
 
     // Get the subscription and publish methods
-    const subscriptionMethod =
-      opts.subscriptionMethod ||
-      opts.pool?.subscription ||
-      NostrConnectSigner.subscriptionMethod ||
-      NostrConnectSigner.pool?.subscription;
-    if (!subscriptionMethod)
-      throw new Error("Missing subscriptionMethod, either pass a method or set NostrConnectSigner.subscriptionMethod");
-    const publishMethod =
-      opts.publishMethod || opts.pool?.publish || NostrConnectSigner.publishMethod || NostrConnectSigner.pool?.publish;
-    if (!publishMethod)
-      throw new Error("Missing publishMethod, either pass a method or set NostrConnectSigner.publishMethod");
+    const { subscriptionMethod, publishMethod } = getConnectionMethods(options, NostrConnectSigner);
 
     // Use arrow functions so "this" isn't bound to the signer
     this.subscriptionMethod = (relays, filters) => subscriptionMethod(relays, filters);
     this.publishMethod = (relays, event) => publishMethod(relays, event);
 
-    if (opts.onAuth) this.onAuth = opts.onAuth;
+    if (options.onAuth) this.onAuth = options.onAuth;
 
-    this.signer = opts?.signer || new SimpleSigner();
+    // Get or create the local signer
+    this.signer = options?.signer || new SimpleSigner();
 
     this.nip04 = {
       encrypt: this.nip04Encrypt.bind(this),
@@ -148,7 +132,7 @@ export class NostrConnectSigner implements ISigner {
   }
 
   /** The currently active REQ subscription */
-  protected req?: Unsubscribable;
+  protected req?: Subscription;
 
   /** Open the connection */
   async open() {
@@ -158,14 +142,23 @@ export class NostrConnectSigner implements ISigner {
     const pubkey = await this.signer.getPublicKey();
 
     // Setup subscription
-    this.req = this.subscriptionMethod(this.relays, [
-      {
-        kinds: [kinds.NostrConnect],
-        "#p": [pubkey],
-      },
-    ]).subscribe({
-      next: (event) => typeof event !== "string" && this.handleEvent(event),
-    });
+    this.req = from(
+      this.subscriptionMethod(this.relays, [
+        {
+          kinds: [kinds.NostrConnect],
+          "#p": [pubkey],
+        },
+      ]),
+    )
+      .pipe(
+        // Keep the connection open indefinitely
+        repeat(),
+        // Retry on connection failure
+        retry(),
+        // Ignore strings (support for applesauce-relay)
+        filter((event) => typeof event !== "string"),
+      )
+      .subscribe(this.handleEvent.bind(this));
 
     this.log("Opened", this.relays);
   }

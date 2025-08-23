@@ -47,7 +47,8 @@
     "applesauce-core": "^3.0.0",
     "debug": "^4.4.0",
     "nanoid": "^5.0.9",
-    "nostr-tools": "^2.13"
+    "nostr-tools": "^2.13",
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@types/debug": "^4.1.12",
