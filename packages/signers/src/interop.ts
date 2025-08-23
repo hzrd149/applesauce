@@ -1,5 +1,5 @@
 import { EventTemplate, Filter, NostrEvent } from "nostr-tools";
-import { ObservableInput, Subscribable } from "rxjs";
+import { ObservableInput } from "rxjs";
 
 export type ISigner = {
   getPublicKey: () => Promise<string>;

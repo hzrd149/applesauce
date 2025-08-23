@@ -3,7 +3,7 @@ import { DecodeResult } from "applesauce-core/helpers";
 import { nip19 } from "nostr-tools";
 
 /** Returns all NIP-19 pointers in a content string */
-export function getContentPointers(content: string) {
+export function getContentPointers(content: string): DecodeResult[] {
   const mentions = content.matchAll(Tokens.nostrLink);
 
   const pointers: DecodeResult[] = [];
