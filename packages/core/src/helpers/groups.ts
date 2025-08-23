@@ -2,6 +2,7 @@ import { NostrEvent } from "nostr-tools";
 import { getOrComputeCachedValue } from "./cache.js";
 import { getHiddenTags } from "./hidden-tags.js";
 import { processTags } from "./tags.js";
+import { normalizeURL } from "./url.js";
 
 export const GROUPS_LIST_KIND = 10009;
 export const GROUP_MESSAGE_KIND = 9;
@@ -26,6 +27,9 @@ export function decodeGroupPointer(str: string): GroupPointer {
 
   // Prepend wss:// if missing
   if (!relay.match(/^wss?:/)) relay = `wss://${relay}`;
+
+  // Normalize the relay url
+  relay = normalizeURL(relay);
 
   return { relay, id: id || "_" };
 }
