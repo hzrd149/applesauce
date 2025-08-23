@@ -1,5 +1,16 @@
 # applesauce-core
 
+## 3.1.0
+
+### Minor Changes
+
+- 3ede999: Bump `nostr-tools` to `2.15`
+- e6d5613: Add a few more wrapped and legacy direct message helpers
+
+### Patch Changes
+
+- d8915de: Fix `decodeGroupPointer` not normalizing the relay URL
+
 ## 3.0.1
 
 ### Patch Changes
