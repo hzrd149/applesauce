@@ -171,7 +171,11 @@ export default function ZapsTimeline() {
         <RelayPicker value={relay} onChange={setRelay} />
       </div>
 
-      <div className="flex flex-col gap-4">{zaps?.map((event) => <ZapEvent key={event.id} event={event} />)}</div>
+      <div className="flex flex-col gap-4">
+        {zaps?.map((event) => (
+          <ZapEvent key={event.id} event={event} />
+        ))}
+      </div>
     </div>
   );
 }

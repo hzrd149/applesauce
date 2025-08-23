@@ -227,7 +227,11 @@ export default function ZapFeed() {
         <ZapSummaryCard summary={summary} />
       </div>
 
-      <div className="flex flex-col gap-4">{nutzaps?.map((event) => <NutzapEvent key={event.id} event={event} />)}</div>
+      <div className="flex flex-col gap-4">
+        {nutzaps?.map((event) => (
+          <NutzapEvent key={event.id} event={event} />
+        ))}
+      </div>
     </div>
   );
 }

@@ -196,7 +196,9 @@ function LiveFeed() {
   return (
     <div className="feed">
       <h2>Latest Notes ({timeline?.length || 0})</h2>
-      {timeline?.map((note) => <NoteCard key={note.id} note={note} />)}
+      {timeline?.map((note) => (
+        <NoteCard key={note.id} note={note} />
+      ))}
     </div>
   );
 }

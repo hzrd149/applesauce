@@ -91,7 +91,11 @@ export default function RelayTimeline() {
     <div className="container mx-auto my-8 px-4">
       <RelayPicker value={relay} onChange={setRelay} />
 
-      <div className="flex flex-col gap-4 py-4">{events?.map((event) => <Note key={event.id} note={event} />)}</div>
+      <div className="flex flex-col gap-4 py-4">
+        {events?.map((event) => (
+          <Note key={event.id} note={event} />
+        ))}
+      </div>
     </div>
   );
 }

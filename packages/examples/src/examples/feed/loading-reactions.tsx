@@ -160,7 +160,9 @@ export default function FeedWithReactions() {
       </div>
 
       <div className="flex flex-col gap-4 py-4">
-        {feed?.map((event) => <Note key={event.id} note={event} />)}
+        {feed?.map((event) => (
+          <Note key={event.id} note={event} />
+        ))}
         <button className="btn btn-primary mx-auto" onClick={() => timeline().subscribe()}>
           Load More
         </button>
