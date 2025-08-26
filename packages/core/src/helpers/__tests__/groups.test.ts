@@ -6,28 +6,28 @@ describe("Group pointer utilities", () => {
     it("should decode a valid group pointer", () => {
       const pointer = decodeGroupPointer("relay.example.com'group123");
       expect(pointer).toEqual({
-        relay: "wss://relay.example.com",
+        relay: "wss://relay.example.com/",
         id: "group123",
       });
     });
 
     it("should add wss:// protocol if missing", () => {
       const pointer = decodeGroupPointer("relay.example.com'group123");
-      expect(pointer.relay).toBe("wss://relay.example.com");
+      expect(pointer.relay).toBe("wss://relay.example.com/");
     });
 
     it("should preserve existing protocol if present", () => {
       const pointer = decodeGroupPointer("wss://relay.example.com'group123");
-      expect(pointer.relay).toBe("wss://relay.example.com");
+      expect(pointer.relay).toBe("wss://relay.example.com/");
 
       const wsPointer = decodeGroupPointer("ws://relay.example.com'group123");
-      expect(wsPointer.relay).toBe("ws://relay.example.com");
+      expect(wsPointer.relay).toBe("ws://relay.example.com/");
     });
 
     it("should handle default group id", () => {
       const pointer = decodeGroupPointer("relay.example.com'");
       expect(pointer).toEqual({
-        relay: "wss://relay.example.com",
+        relay: "wss://relay.example.com/",
         id: "_",
       });
     });
