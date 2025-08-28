@@ -155,7 +155,6 @@ relay.challenge$.subscribe(async (challenge) => {
 
 The `subscription` method can be used to create persistent subscriptions that automatically reconnect after connection issues. It provides two key options for handling failures:
 
-
 ### Reconnection Options
 
 The `reconnect` option controls whether the subscription should automatically reconnect when the WebSocket connection is closed. It accepts:

@@ -1,6 +1,6 @@
 {
   "name": "applesauce-relay",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "nostr relay communication framework built on rxjs",
   "type": "module",
   "main": "dist/index.js",
@@ -60,14 +60,14 @@
   },
   "dependencies": {
     "@noble/hashes": "^1.7.1",
-    "applesauce-core": "^3.0.0",
+    "applesauce-core": "^3.1.0",
     "nanoid": "^5.0.9",
     "nostr-tools": "~2.15",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
-    "applesauce-signers": "^3.0.0",
+    "applesauce-signers": "^3.1.0",
     "@vitest/expect": "^3.1.1",
     "typescript": "^5.7.3",
     "vitest": "^3.2.3",

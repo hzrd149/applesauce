@@ -163,7 +163,9 @@ export default function ReactionsTimeline() {
       </div>
 
       <div className="flex flex-col gap-4">
-        {reactions?.map((event) => <ReactionEvent key={event.id} event={event} />)}
+        {reactions?.map((event) => (
+          <ReactionEvent key={event.id} event={event} />
+        ))}
       </div>
     </div>
   );

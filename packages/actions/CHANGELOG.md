@@ -1,5 +1,17 @@
 # applesauce-actions
 
+## 3.1.0
+
+### Minor Changes
+
+- 3ede999: Bump `nostr-tools` to `2.15`
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@3.1.0
+  - applesauce-factory@3.1.0
+
 ## 3.0.0
 
 ### Minor Changes

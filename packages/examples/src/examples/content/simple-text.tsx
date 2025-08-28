@@ -125,7 +125,9 @@ export default function ContentRenderingExample() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {events?.map((event) => <EventCard key={event.id} event={event} />)}
+        {events?.map((event) => (
+          <EventCard key={event.id} event={event} />
+        ))}
       </div>
     </div>
   );
