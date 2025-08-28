@@ -348,8 +348,11 @@ export class NostrConnectProvider implements ProviderAuthorization {
     const providerPubkey = await this.signer.getPublicKey();
     if (target !== providerPubkey) throw new Error("Invalid target pubkey");
 
-    // If a secret is set, check that if matches
-    if (this.secret && this.secret !== secret) throw new Error("Invalid secret");
+    // If the client is already known, ensure that it matches the new client
+    if (this.client && this.client !== client) throw new Error("Only one client can connect at a time");
+
+    // If this is the first `connect` request, check that the secret matches
+    if (this.secret && !this.client && this.secret !== secret) throw new Error("Invalid connection secret");
 
     // Handle authorization if callback is provided
     if (this.onConnect) {
