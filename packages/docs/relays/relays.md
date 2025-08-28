@@ -155,57 +155,27 @@ relay.challenge$.subscribe(async (challenge) => {
 
 The `subscription` method can be used to create persistent subscriptions that automatically reconnect after connection issues. It provides two key options for handling failures:
 
-### Retry Options
-
-The `retries` option controls how many times the subscription will retry when encountering errors. It accepts either a number or a full RxJS `RetryConfig` object.
-
-```typescript
-// Basic retry with number of attempts
-const subscription = relay
-  .subscription({ kinds: [1, 6], since: Math.floor(Date.now() / 1000) }, { id: "feed", retries: 3 })
-  .subscribe({
-    next: (response) => {
-      if (response !== "EOSE") {
-        console.log("New event:", response.content);
-      }
-    },
-  });
-
-// Advanced retry with custom configuration
-const subscription = relay
-  .subscription(
-    { kinds: [1] },
-    {
-      id: "advanced-feed",
-      retries: {
-        count: 5,
-        delay: 1000,
-        resetOnSuccess: true,
-      },
-    },
-  )
-  .subscribe(console.log);
-```
 
 ### Reconnection Options
 
 The `reconnect` option controls whether the subscription should automatically reconnect when the WebSocket connection is closed. It accepts:
 
-- `true` - Reconnect infinitely
-- `false` (default) - Don't reconnect
+- `true` - Reconnect 10 times with 1 second delay (default)
+- `false` Don't reconnect
 - `number` - Reconnect a specific number of times
-- `RepeatConfig` - Full RxJS repeat configuration
+- `Infinity` - Reconnect infinite times with default delay (1s)
+- `RetryConfig` - Full RxJS retry configuration
 
 ```typescript
-// Infinite reconnection
+// Infinite reconnection with default delay (1s)
 const subscription = relay
-  .subscription({ kinds: [1] }, { id: "persistent-feed", reconnect: true })
+  .subscription({ kinds: [1] }, { id: "persistent-feed", reconnect: Infinity })
   .subscribe(console.log);
 
-// Limited reconnection attempts
+// Only reconnect 5 times
 const subscription = relay.subscription({ kinds: [1] }, { id: "limited-feed", reconnect: 5 }).subscribe(console.log);
 
-// Custom reconnection with delay
+// Custom reconnection with 2 second delay
 const subscription = relay
   .subscription(
     { kinds: [1] },
@@ -220,14 +190,43 @@ const subscription = relay
   .subscribe(console.log);
 ```
 
+### Resubscribe Options
+
+The `resubscribe` option controls how many times the subscription will resubscribe if the relay explicitly closes the subscription (`CLOSE`). use `reconnect` for websocket connection errors.
+
+```typescript
+// Basic resubscribe with number of attempts
+const subscription = relay
+  .subscription({ kinds: [1, 6], since: Math.floor(Date.now() / 1000) }, { id: "feed", resubscribe: 3 })
+  .subscribe({
+    next: (response) => {
+      if (response !== "EOSE") {
+        console.log("New event:", response.content);
+      }
+    },
+  });
+
+// Advanced resubscribe with custom configuration
+const subscription = relay
+  .subscription(
+    { kinds: [1] },
+    {
+      id: "advanced-feed",
+      resubscribe: {
+        count: 5,
+        delay: 1000,
+      },
+    },
+  )
+  .subscribe(console.log);
+```
+
 ### How It Works
 
 Under the hood, the `subscription` method uses RxJS operators to implement retry and reconnection logic:
 
-1. **Retry Logic**: Uses the [`retry()`](https://rxjs.dev/api/operators/retry) operator to retry failed subscriptions based on the `retries` option
-2. **Reconnection Logic**: Uses the [`repeat()`](https://rxjs.dev/api/operators/repeat) operator to restart the subscription when the connection is lost based on the `reconnect` option
-
-The default behavior provides 3 retries and no automatic reconnection, but you can customize these values based on your application's needs.
+1. **Resubscribe Logic**: Uses the [`repeat()`](https://rxjs.dev/api/operators/repeat) operator to resubscribe when the subscription is closed based on the `resubscribe` option
+2. **Reconnection Logic**: Uses the [`retry()`](https://rxjs.dev/api/operators/retry) operator to restart the subscription when the connection is lost based on the `reconnect` option
 
 ## Dynamic Filters
 

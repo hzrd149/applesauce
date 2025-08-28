@@ -725,7 +725,7 @@ describe("createReconnectTimer", () => {
 describe("publish", () => {
   it("should retry when auth-required is received and authentication is completed", async () => {
     // First attempt to publish
-    const spy = relay.publish(mockEvent).catch(() => {});
+    const spy = relay.publish(mockEvent, { reconnect: { count: Infinity, delay: 0 } }).catch(() => {});
 
     // Verify EVENT was sent
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
@@ -823,8 +823,8 @@ describe("request", () => {
     expect(spy.receivedComplete()).toBe(true);
   });
 
-  it("should support reconnection", async () => {
-    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { reconnect: true }));
+  it("should support resubscribe", async () => {
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { resubscribe: true }));
 
     await server.connected;
     server.close();
@@ -894,8 +894,8 @@ describe("subscription", () => {
     expect(spy.receivedComplete()).toBe(false);
   });
 
-  it("should support reconnection", async () => {
-    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { reconnect: true }));
+  it("should support resubscribe", async () => {
+    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { resubscribe: true }));
 
     await server.connected;
     server.close();
@@ -906,22 +906,22 @@ describe("subscription", () => {
     // Should reconnect
     await expect(server.connected).resolves.toBeDefined();
 
-    // Cleanup to prevent retries breaking other tests
+    // Cleanup to prevent resubscribe breaking other tests
     spy.unsubscribe();
     await server.closed;
   });
 
-  it("should support retries on connection errors", async () => {
-    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { retries: 5 }), { expectErrors: true });
+  it("should support reconnection on connection errors", async () => {
+    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { reconnect: 5 }), { expectErrors: true });
 
     await server.connected;
-    server.close({ wasClean: false, code: 1000, reason: "error message" });
+    server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
     await server.closed;
 
     // Should retry
     await expect(server.connected).resolves.toBeDefined();
 
-    // Cleanup to prevent retries breaking other tests
+    // Cleanup to prevent reconnection breaking other tests
     spy.unsubscribe();
     await server.closed;
   });

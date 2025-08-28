@@ -56,6 +56,8 @@ import {
   SubscriptionResponse,
 } from "./types.js";
 
+const DEFAULT_RETRY_CONFIG: RetryConfig = { count: 10, delay: 1000, resetOnSuccess: true };
+
 /** An error that is thrown when a REQ is closed from the relay side */
 export class ReqCloseError extends Error {}
 
@@ -484,14 +486,19 @@ export class Relay implements IRelay {
   }
 
   /** Internal operator for creating the retry() operator */
-  protected customRetryOperator<T extends unknown = unknown>(times: number | RetryConfig): MonoTypeOperatorFunction<T> {
-    if (typeof times === "number") return retry(times);
-    else return retry(times);
+  protected customRetryOperator<T extends unknown = unknown>(
+    times: undefined | boolean | number | RetryConfig,
+    base?: RetryConfig,
+  ): MonoTypeOperatorFunction<T> {
+    if (times === false) return identity;
+    else if (typeof times === "number") return retry({ ...base, count: times });
+    else if (times === true) return base ? retry(base) : retry();
+    else return retry({ ...base, ...times });
   }
 
   /** Internal operator for creating the repeat() operator */
   protected customRepeatOperator<T extends unknown = unknown>(
-    times: boolean | number | RepeatConfig | undefined,
+    times: undefined | boolean | number | RepeatConfig | undefined,
   ): MonoTypeOperatorFunction<T> {
     if (times === false || times === undefined) return identity;
     else if (times === true) return repeat();
@@ -503,9 +510,9 @@ export class Relay implements IRelay {
   subscription(filters: Filter | Filter[], opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
-      this.customRetryOperator(opts?.retries ?? 3),
-      // Create reconnect logic (repeat operator)
-      this.customRepeatOperator(opts?.reconnect),
+      this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
+      // Create resubscribe logic (repeat operator)
+      this.customRepeatOperator(opts?.resubscribe),
       // Single subscription
       share(),
     );
@@ -515,9 +522,9 @@ export class Relay implements IRelay {
   request(filters: Filter | Filter[], opts?: RequestOptions): Observable<NostrEvent> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
-      this.customRetryOperator(opts?.retries ?? 3),
-      // Create reconnect logic (repeat operator)
-      this.customRepeatOperator(opts?.reconnect),
+      this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
+      // Create resubscribe logic (repeat operator)
+      this.customRepeatOperator(opts?.resubscribe),
       // Complete when EOSE is received
       completeOnEose(),
       // Single subscription
@@ -537,9 +544,7 @@ export class Relay implements IRelay {
           return of(result);
         }),
         // Retry the publish until it succeeds or the number of retries is reached
-        this.customRetryOperator(opts?.retries ?? 3),
-        // Create reconnect logic (repeat operator)
-        this.customRepeatOperator(opts?.reconnect),
+        this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
         // Single subscription
         share(),
       ),
