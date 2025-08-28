@@ -1,5 +1,18 @@
 # applesauce-signer
 
+## 3.1.0
+
+### Minor Changes
+
+- 3ede999: Bump `nostr-tools` to `2.15`
+
+### Patch Changes
+
+- e6d5613: Fix nostr connect signers not reconnecting to relays
+- 5285ee8: Fix `NostrConnectProvider` requiring secret on reconnect
+- Updated dependencies
+  - applesauce-core@3.1.0
+
 ## 3.0.0
 
 ### Major Changes

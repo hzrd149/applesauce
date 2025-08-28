@@ -386,7 +386,9 @@ export default function CalendarTimeline() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredEvents?.map((event) => <CalendarEventCard key={event.id} event={event} onSelect={setSelectedEvent} />)}
+        {filteredEvents?.map((event) => (
+          <CalendarEventCard key={event.id} event={event} onSelect={setSelectedEvent} />
+        ))}
       </div>
 
       {filteredEvents?.length === 0 && events && (

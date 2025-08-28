@@ -174,7 +174,11 @@ function ThreadView({ event, pointer }: { event: NostrEvent; pointer: GroupPoint
   return (
     <div>
       <ThreadCard event={event} />
-      <div className="mt-8 space-y-4">{replies?.map((reply) => <ThreadReply key={reply.id} event={reply} />)}</div>
+      <div className="mt-8 space-y-4">
+        {replies?.map((reply) => (
+          <ThreadReply key={reply.id} event={reply} />
+        ))}
+      </div>
 
       <ReplyForm event={event} pointer={pointer} />
     </div>
@@ -273,7 +277,9 @@ function ThreadsList({ pointer, onSelect }: { pointer: GroupPointer; onSelect: (
 
   return (
     <div className="space-y-4">
-      {threads?.map((thread) => <ThreadCard key={thread.id} event={thread} onSelect={onSelect} />)}
+      {threads?.map((thread) => (
+        <ThreadCard key={thread.id} event={thread} onSelect={onSelect} />
+      ))}
     </div>
   );
 }
