@@ -10,8 +10,8 @@ import { kinds, NostrEvent } from "nostr-tools";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
-import RelayPicker from "../components/relay-picker";
-import SecureStorage from "../extra/encrypted-storage";
+import RelayPicker from "../../components/relay-picker";
+import SecureStorage from "../../extra/encrypted-storage";
 
 const storage = new SecureStorage(localforage);
 const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);

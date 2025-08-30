@@ -26,9 +26,11 @@ describe("exports", () => {
         "EventContentEncryptionMethod",
         "EventIndexableTagsSymbol",
         "EventStoreSymbol",
+        "EventTemplate",
         "EventUIDSymbol",
         "ExpirationTimestampSymbol",
         "FAVORITE_RELAYS_KIND",
+        "Filter",
         "FromCacheSymbol",
         "GROUPS_LIST_KIND",
         "GROUP_MESSAGE_KIND",
@@ -53,6 +55,7 @@ describe("exports", () => {
         "MutePublicSymbol",
         "NIP05_REGEX",
         "Nip10ThreadRefsSymbol",
+        "NostrEvent",
         "PICTURE_POST_KIND",
         "POLL_KIND",
         "POLL_RESPONSE_KIND",
@@ -73,6 +76,7 @@ describe("exports", () => {
         "SharedEventPointerSymbol",
         "SharedEventSymbol",
         "TIME_BASED_CALENDAR_EVENT_KIND",
+        "UnsignedEvent",
         "UserStatusPointerSymbol",
         "VIDEO_EXT",
         "ZapAddressPointerSymbol",
@@ -320,6 +324,7 @@ describe("exports", () => {
         "isValidProfile",
         "isValidZap",
         "isVideoURL",
+        "kinds",
         "lockEncryptedContent",
         "lockGiftWrap",
         "lockHiddenContent",
@@ -372,6 +377,7 @@ describe("exports", () => {
         "unlockHiddenTags",
         "unlockLegacyMessage",
         "unlockSeal",
+        "verifiedSymbol",
       ]
     `);
   });

@@ -2,6 +2,9 @@ import equal from "fast-deep-equal";
 import { Filter, NostrEvent } from "nostr-tools";
 import { getIndexableTags } from "./event-tags.js";
 
+// Re-export type Filter from nostr-tools
+export { Filter } from "nostr-tools/filter";
+
 /**
  * Copied from nostr-tools and modified to use getIndexableTags
  * @see https://github.com/nbd-wtf/nostr-tools/blob/a61cde77eacc9518001f11d7f67f1a50ae05fd80/filter.ts

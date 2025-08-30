@@ -61,6 +61,7 @@ describe("exports", () => {
         "UnmuteUser",
         "UnmuteWord",
         "UnpinNote",
+        "UpdateAppData",
         "UpdateFollowSetInformation",
         "UpdateProfile",
         "UpdateRelaySetInformation",

@@ -15,7 +15,7 @@ import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19"
 import { useEffect, useRef, useState } from "react";
 import { map } from "rxjs";
 
-import RelayPicker from "../components/relay-picker";
+import RelayPicker from "../../components/relay-picker";
 
 // Create stores and relay pool
 const eventStore = new EventStore();

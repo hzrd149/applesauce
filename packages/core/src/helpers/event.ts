@@ -3,6 +3,10 @@ import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
 import { IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
+// Re-export types from nostr-tools
+export { NostrEvent, EventTemplate, UnsignedEvent, verifiedSymbol } from "nostr-tools/pure";
+export * as kinds from "nostr-tools/kinds";
+
 /** A symbol on an event that marks which event store its part of */
 export const EventStoreSymbol = Symbol.for("event-store");
 export const EventUIDSymbol = Symbol.for("event-uid");

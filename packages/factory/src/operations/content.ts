@@ -161,11 +161,11 @@ export function setEncryptedContent(pubkey: string, content: string, override?: 
 }
 
 /** Sets the hidden content on an event */
-export function setHiddenContent(content: string): EventOperation {
+export function setHiddenContent(content: string, override?: EncryptionMethod): EventOperation {
   return async (draft, ctx) => {
     if (!ctx.signer) throw new Error("Signer required for encrypted content");
 
     const pubkey = await ctx.signer.getPublicKey();
-    return setEncryptedContent(pubkey, content)(draft, ctx);
+    return setEncryptedContent(pubkey, content, override)(draft, ctx);
   };
 }
