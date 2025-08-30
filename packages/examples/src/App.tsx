@@ -59,6 +59,52 @@ function ExampleView({ example }: { example?: Example }) {
 
       {/* Main content */}
       <div className="drawer-content flex flex-col relative">
+        {/* Navbar */}
+        <div className="navbar bg-base-300 w-full">
+          <div className="flex-none lg:hidden">
+            <label htmlFor="drawer" aria-label="open sidebar" className="btn btn-square btn-ghost">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                className="inline-block h-6 w-6 stroke-current"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            </label>
+          </div>
+          <div className="mx-2 flex-1 px-2">
+            <span className="font-bold text-lg">{example?.name ?? "Examples"}</span>
+          </div>
+          <div className="flex-none">
+            <button
+              className={`btn btn-sm ${mode === "code" ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => setMode(mode === "code" ? "preview" : "code")}
+            >
+              <CodeIcon /> Source
+            </button>
+
+            <a
+              target="_blank"
+              className="btn btn-sm btn-ghost btn-square"
+              href={`https://github.com/hzrd149/applesauce/tree/master/packages/examples/src/${path}`}
+            >
+              <ExternalLinkIcon />
+            </a>
+          </div>
+          <div className="hidden flex-none lg:block">
+            <ul className="menu menu-horizontal">
+              <li>
+                <a href="https://hzrd149.github.io/applesauce">Documentation</a>
+              </li>
+              <li>
+                <a href="https://hzrd149.github.io/applesauce/typedoc/">Reference</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Page content */}
         {mode === "preview" ? (
           Component ? (
             <Component />
@@ -70,25 +116,6 @@ function ExampleView({ example }: { example?: Example }) {
         ) : (
           <CodeBlock code={source} language="tsx" />
         )}
-
-        {/* Floating button group */}
-        <div className="join fixed top-4 right-4 shadow-md">
-          <div className="join-item font-bold m-2">{example?.name ?? "Examples"}</div>
-          <button
-            className={`join-item btn ${mode === "code" ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setMode(mode === "code" ? "preview" : "code")}
-          >
-            <CodeIcon /> Source
-          </button>
-
-          <a
-            target="_blank"
-            className="join-item btn btn-ghost"
-            href={`https://github.com/hzrd149/applesauce/tree/master/packages/examples/src/${path}`}
-          >
-            <ExternalLinkIcon />
-          </a>
-        </div>
       </div>
 
       {/* Sidebar */}

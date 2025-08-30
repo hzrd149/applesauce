@@ -9,7 +9,7 @@ import {
   getGiftWrapSeal,
   groupMessageEvents,
   persistEncryptedContent,
-  presistEventsToCache,
+  persistEventsToCache,
   Rumor,
   unixNow,
   unlockGiftWrap,
@@ -58,7 +58,7 @@ const cache = await openDB();
 const cacheRequest: CacheRequest = (filters) => getEventsForFilters(cache, filters);
 
 // Save all new events to the cache
-presistEventsToCache(eventStore, (events) => addEvents(cache, events));
+persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Debug modal
 const debug$ = new BehaviorSubject<NostrEvent | null>(null);

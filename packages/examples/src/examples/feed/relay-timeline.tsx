@@ -29,7 +29,7 @@ const addressLoader = createAddressLoader(pool, {
   // Make the cache requests attempt to load from a local relay
   cacheRequest: (filters) => pool.relay("ws://localhost:4869").request(filters),
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es"],
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
 // Add loaders to event store

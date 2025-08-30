@@ -303,7 +303,7 @@ export default function ThreadsExample() {
   );
 
   return (
-    <div className="container mx-auto my-8">
+    <div className="container mx-auto p-2 h-full">
       <div className="mb-4 flex w-full  gap-2">
         <GroupPicker identifier={identifier} setIdentifier={setGroup} />
 

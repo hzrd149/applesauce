@@ -359,7 +359,7 @@ describe("exports", () => {
         "parseNIP05Address",
         "parseSharedEvent",
         "persistEncryptedContent",
-        "presistEventsToCache",
+        "persistEventsToCache",
         "processTags",
         "safeParse",
         "setCachedValue",

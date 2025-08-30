@@ -77,7 +77,7 @@ function StreamCard({ stream }: { stream: NostrEvent }) {
   }[status];
 
   return (
-    <div className="card bg-base-100 shadow-xl">
+    <div className="card bg-base-100 shadow-md">
       {image && (
         <figure>
           <img src={image} alt={title} className="h-48 w-full object-cover" />

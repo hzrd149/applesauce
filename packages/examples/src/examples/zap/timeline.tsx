@@ -8,7 +8,7 @@ import {
   getZapPayment,
   getZapSender,
   mergeRelaySets,
-  presistEventsToCache,
+  persistEventsToCache,
   ProfileContent,
 } from "applesauce-core/helpers";
 import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
@@ -36,7 +36,7 @@ function cacheRequest(filters: Filter[]) {
 }
 
 // Save all new events to the cache
-presistEventsToCache(eventStore, (events) => addEvents(cache, events));
+persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Create loaders that load events from relays and cache
 const addressLoader = createAddressLoader(pool, {
@@ -166,7 +166,7 @@ export default function ZapsTimeline() {
   );
 
   return (
-    <div className="container mx-auto my-8">
+    <div className="container mx-auto p-2 h-full max-w-4xl">
       <div className="flex gap-2 mb-4">
         <RelayPicker value={relay} onChange={setRelay} />
       </div>

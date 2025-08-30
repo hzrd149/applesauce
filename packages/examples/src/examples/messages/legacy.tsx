@@ -7,7 +7,7 @@ import {
   isLegacyMessageLocked,
   lockEncryptedContent,
   persistEncryptedContent,
-  presistEventsToCache,
+  persistEventsToCache,
   unixNow,
   unlockLegacyMessage,
 } from "applesauce-core/helpers";
@@ -56,7 +56,7 @@ const cache = await openDB();
 const cacheRequest: CacheRequest = (filters) => getEventsForFilters(cache, filters);
 
 // Save all new events to the cache
-presistEventsToCache(eventStore, (events) => addEvents(cache, events));
+persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 function ContactList({
   events,

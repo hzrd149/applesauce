@@ -53,7 +53,7 @@ function AccountCard({ account }: { account: SimpleAccount<AccountMetadata> }) {
   }, [account]);
 
   return (
-    <div className={`card bg-base-100 shadow-xl ${activeAccount?.id === account.id ? "border-primary border-2" : ""}`}>
+    <div className={`card bg-base-100 shadow-md ${activeAccount?.id === account.id ? "border-primary border-2" : ""}`}>
       <figure className="px-4 pt-4">
         <img
           src={`https://robohash.org/${account.pubkey}.png`}
@@ -98,7 +98,7 @@ export default function AccountManagerExample() {
   }, [accounts.length]);
 
   return (
-    <div className="container mx-auto my-8 p-4">
+    <div className="container mx-auto p-2 h-full">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Account Manager</h1>
         <button className="btn btn-primary" onClick={createNewAccount}>

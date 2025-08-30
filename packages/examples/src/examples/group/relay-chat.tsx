@@ -165,7 +165,7 @@ export default function RelayGroupExample() {
   );
 
   return (
-    <div className="container mx-auto my-8">
+    <div className="container mx-auto p-2 h-full overflow-hidden">
       <div className="flex w-full max-w-xl mb-4">
         <GroupPicker identifier={identifier} setIdentifier={setGroup} />
       </div>

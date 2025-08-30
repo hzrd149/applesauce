@@ -15,7 +15,7 @@ const log = logger.extend("event-cache");
  * @param opts.maxBatchSize - The maximum number of events to write in a batch
  * @returns A function to stop the process
  */
-export function presistEventsToCache(
+export function persistEventsToCache(
   eventStore: IEventStoreStreams,
   write: (events: NostrEvent[]) => Promise<void>,
   opts?: { maxBatchSize?: number; batchTime?: number },
@@ -41,3 +41,6 @@ export function presistEventsToCache(
 
   return () => sub.unsubscribe();
 }
+
+/** @deprecated Use persistEventsToCache instead */
+export const presistEventsToCache = persistEventsToCache;

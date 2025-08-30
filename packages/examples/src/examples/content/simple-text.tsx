@@ -118,7 +118,7 @@ export default function ContentRenderingExample() {
   const events = useObservableMemo(() => eventStore.timeline({ kinds: [1] }), []);
 
   return (
-    <div className="container mx-auto my-8 p-4">
+    <div className="container mx-auto p-2 h-full">
       <div className="flex gap-2 justify-between">
         <h1 className="text-2xl font-bold mb-4">Content Rendering</h1>
         <RelayPicker value={relay} onChange={setRelay} />

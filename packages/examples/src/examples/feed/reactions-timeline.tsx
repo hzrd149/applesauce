@@ -6,7 +6,7 @@ import {
   getReactionEventPointer,
   getSeenRelays,
   mergeRelaySets,
-  presistEventsToCache,
+  persistEventsToCache,
   ProfileContent,
 } from "applesauce-core/helpers";
 import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
@@ -36,7 +36,7 @@ function cacheRequest(filters: Filter[]) {
 }
 
 // Save all new events to the cache
-presistEventsToCache(eventStore, (events) => addEvents(cache, events));
+persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Create some loaders using the cache method and the event store
 const addressLoader = createAddressLoader(pool, {
@@ -157,7 +157,7 @@ export default function ReactionsTimeline() {
   );
 
   return (
-    <div className="container mx-auto my-8">
+    <div className="max-w-4xl mx-auto my-8">
       <div className="flex gap-2 mb-4">
         <RelayPicker value={relay} onChange={setRelay} />
       </div>

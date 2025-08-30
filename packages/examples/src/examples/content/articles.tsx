@@ -141,7 +141,7 @@ export default function ArticleViewer() {
   }
 
   return (
-    <div className="container mx-auto my-8 max-w-6xl px-4">
+    <div className="container mx-auto max-w-6xl p-4">
       <div className="py-8">
         <h1 className="text-4xl font-bold mb-8">Articles</h1>
         <RelayPicker value={relay} onChange={setRelay} />
