@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 3.2.0
+
+### Minor Changes
+
+- d802905: Add helpers for NIP-78 app data events
+
 ## 3.1.0
 
 ### Minor Changes
