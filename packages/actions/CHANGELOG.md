@@ -1,5 +1,17 @@
 # applesauce-actions
 
+## 3.2.0
+
+### Minor Changes
+
+- d802905: Add actions for NIP-78 app data events
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-factory@3.2.0
+  - applesauce-core@3.2.0
+
 ## 3.1.0
 
 ### Minor Changes
