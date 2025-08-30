@@ -360,6 +360,7 @@ describe("exports", () => {
         "parseSharedEvent",
         "persistEncryptedContent",
         "persistEventsToCache",
+        "presistEventsToCache",
         "processTags",
         "safeParse",
         "setCachedValue",
