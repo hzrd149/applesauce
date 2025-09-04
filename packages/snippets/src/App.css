@@ -1,0 +1,242 @@
+/* Custom styles for the TypeScript snippets app */
+
+/* Code snippet card styling */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Syntax highlighting for code blocks */
+pre code {
+  font-family: "Fira Code", "Monaco", "Consolas", monospace;
+  line-height: 1.5;
+  font-size: 0.75rem;
+  border-radius: 0.5rem;
+}
+
+/* Override highlight.js theme for better integration with DaisyUI */
+.hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Custom syntax highlighting colors for dark theme */
+[data-theme="dark"] .hljs-keyword,
+[data-theme="dark"] .hljs-selector-tag,
+[data-theme="dark"] .hljs-built_in {
+  color: #569cd6;
+}
+
+[data-theme="dark"] .hljs-string,
+[data-theme="dark"] .hljs-attr {
+  color: #ce9178;
+}
+
+[data-theme="dark"] .hljs-number,
+[data-theme="dark"] .hljs-literal {
+  color: #b5cea8;
+}
+
+[data-theme="dark"] .hljs-comment {
+  color: #6a9955;
+  font-style: italic;
+}
+
+[data-theme="dark"] .hljs-title,
+[data-theme="dark"] .hljs-class .hljs-title {
+  color: #4ec9b0;
+}
+
+[data-theme="dark"] .hljs-variable,
+[data-theme="dark"] .hljs-template-variable {
+  color: #9cdcfe;
+}
+
+/* Light theme syntax highlighting */
+[data-theme="light"] .hljs-keyword,
+[data-theme="light"] .hljs-selector-tag,
+[data-theme="light"] .hljs-built_in {
+  color: #0000ff;
+}
+
+[data-theme="light"] .hljs-string,
+[data-theme="light"] .hljs-attr {
+  color: #a31515;
+}
+
+[data-theme="light"] .hljs-number,
+[data-theme="light"] .hljs-literal {
+  color: #098658;
+}
+
+[data-theme="light"] .hljs-comment {
+  color: #008000;
+  font-style: italic;
+}
+
+[data-theme="light"] .hljs-title,
+[data-theme="light"] .hljs-class .hljs-title {
+  color: #267f99;
+}
+
+[data-theme="light"] .hljs-variable,
+[data-theme="light"] .hljs-template-variable {
+  color: #001080;
+}
+
+/* Custom scrollbar for code blocks */
+pre {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+pre::-webkit-scrollbar {
+  height: 4px;
+}
+
+pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+pre::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+/* Card hover effects */
+.card {
+  transition: all 0.2s ease-in-out;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+}
+
+/* Badge styling */
+.badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* Loading animation */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Custom theme overrides */
+[data-theme="dark"] pre {
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+[data-theme="dark"] pre::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .stats {
+    flex-direction: column;
+  }
+
+  .stat {
+    text-align: center;
+  }
+
+  .navbar {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .navbar .flex-1,
+  .navbar .flex-none {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Animation for cards appearing */
+.card {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stagger animation for grid items */
+.grid > .card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+.grid > .card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.grid > .card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.grid > .card:nth-child(4) {
+  animation-delay: 0.4s;
+}
+.grid > .card:nth-child(5) {
+  animation-delay: 0.5s;
+}
+.grid > .card:nth-child(6) {
+  animation-delay: 0.6s;
+}
+
+/* Enhanced code block styling */
+.code-preview {
+  position: relative;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.code-preview::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+}
+
+/* Better button styling */
+.btn-primary {
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Tooltip-like styling for truncated text */
+[title] {
+  cursor: help;
+}
+
+/* Better focus states */
+.select:focus,
+.btn:focus {
+  outline: 2px solid hsl(var(--p));
+  outline-offset: 2px;
+}

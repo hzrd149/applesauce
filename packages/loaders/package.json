@@ -69,7 +69,6 @@
     "applesauce-signers": "^3.1.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3",
-    "vitest-nostr": "^0.4.1",
     "vitest-websocket-mock": "^0.5.0"
   },
   "funding": {
