@@ -2,11 +2,12 @@ import { useEffect, useRef } from "react";
 import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { type NostrEvent } from "nostr-tools";
+import { nip19 } from "nostr-tools";
 import hljs from "highlight.js/lib/core";
 import typescript from "highlight.js/lib/languages/typescript";
 import javascript from "highlight.js/lib/languages/javascript";
 import "highlight.js/styles/github-dark.css";
-import type { IEventStore } from "applesauce-core";
+import { eventStore } from "../helpers/nostr";
 
 // Register languages
 hljs.registerLanguage("typescript", typescript);
@@ -27,11 +28,10 @@ function getCodePreview(content: string, maxLines: number = 6): string {
 
 interface CodeSnippetCardProps {
   event: NostrEvent;
-  eventStore: IEventStore;
-  onViewFull?: (event: NostrEvent) => void;
+  onViewFull?: (nevent: string) => void;
 }
 
-export default function CodeSnippetCard({ event, eventStore, onViewFull }: CodeSnippetCardProps) {
+export default function CodeSnippetCard({ event, onViewFull }: CodeSnippetCardProps) {
   const codeRef = useRef<HTMLElement>(null);
 
   // Get profile for the author
@@ -75,7 +75,14 @@ export default function CodeSnippetCard({ event, eventStore, onViewFull }: CodeS
 
   const handleViewFull = () => {
     if (onViewFull) {
-      onViewFull(event);
+      // Create nevent with relay hints
+      const relayHints = Array.from(getSeenRelays(event) || []).slice(0, 3); // Limit to 3 relays
+      const nevent = nip19.neventEncode({
+        id: event.id,
+        relays: relayHints,
+        author: event.pubkey,
+      });
+      onViewFull(nevent);
     } else {
       console.log("View full code:", event.id);
     }

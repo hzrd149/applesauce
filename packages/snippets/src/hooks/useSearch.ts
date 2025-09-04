@@ -26,7 +26,6 @@ export function useSearch(events: NostrEvent[] | null) {
     return new Index({
       tokenize: "full",
       context: true,
-      optimize: true,
     });
   }, []);
 
