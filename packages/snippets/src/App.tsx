@@ -5,8 +5,8 @@ import { type NostrEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
 import { map, Observable } from "rxjs";
 import "./App.css";
-import { CodeSnippetDetails, HomeView } from "./components";
-import { useSearch } from "./hooks";
+import { CodeSnippetDetails, HomeView, PocketDrawer } from "./components";
+import { useSearch, usePocket } from "./hooks";
 import { eventStore, pool, CODE_SNIPPET_KIND, DEFAULT_RELAYS, isValidEventId } from "./helpers/nostr";
 
 function App() {
@@ -60,6 +60,10 @@ function App() {
   // Initialize search functionality
   const { searchQuery, updateSearchQuery, filteredEvents, hasActiveSearch } = useSearch(events || null);
 
+  // Initialize pocket functionality
+  const { pocketItems, addToPocket, removeFromPocket, clearPocket, isInPocket, copyAsMarkdown, downloadAsMarkdown } =
+    usePocket();
+
   // Handle hash-based routing
   useEffect(() => {
     const handleHashChange = () => {
@@ -93,23 +97,58 @@ function App() {
     window.location.hash = "";
   };
 
+  // Handle viewing pocket item by navigating to details
+  const handleViewPocketItem = (eventId: string) => {
+    navigateToDetails(eventId);
+  };
+
   // Render details view if hash is present
   if (currentView === "details" && selectedEventId) {
-    return <CodeSnippetDetails eventId={selectedEventId} relays={relays} onBack={navigateToHome} />;
+    return (
+      <>
+        <CodeSnippetDetails
+          eventId={selectedEventId}
+          relays={relays}
+          onBack={navigateToHome}
+          onAddToPocket={addToPocket}
+          isInPocket={isInPocket(selectedEventId)}
+        />
+        <PocketDrawer
+          pocketItems={pocketItems}
+          onRemoveItem={removeFromPocket}
+          onClearPocket={clearPocket}
+          onCopyAsMarkdown={copyAsMarkdown}
+          onDownloadAsMarkdown={downloadAsMarkdown}
+          onViewItem={handleViewPocketItem}
+        />
+      </>
+    );
   }
 
   return (
-    <HomeView
-      events={events || null}
-      relays={relays}
-      onAddRelay={addRelay}
-      onRemoveRelay={removeRelay}
-      searchQuery={searchQuery}
-      updateSearchQuery={updateSearchQuery}
-      filteredEvents={filteredEvents}
-      hasActiveSearch={hasActiveSearch}
-      onViewFull={navigateToDetails}
-    />
+    <>
+      <HomeView
+        events={events || null}
+        relays={relays}
+        onAddRelay={addRelay}
+        onRemoveRelay={removeRelay}
+        searchQuery={searchQuery}
+        updateSearchQuery={updateSearchQuery}
+        filteredEvents={filteredEvents}
+        hasActiveSearch={hasActiveSearch}
+        onViewFull={navigateToDetails}
+        onAddToPocket={addToPocket}
+        isInPocket={isInPocket}
+      />
+      <PocketDrawer
+        pocketItems={pocketItems}
+        onRemoveItem={removeFromPocket}
+        onClearPocket={clearPocket}
+        onCopyAsMarkdown={copyAsMarkdown}
+        onDownloadAsMarkdown={downloadAsMarkdown}
+        onViewItem={handleViewPocketItem}
+      />
+    </>
   );
 }
 

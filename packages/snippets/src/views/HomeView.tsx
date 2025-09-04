@@ -11,6 +11,8 @@ interface HomeViewProps {
   filteredEvents: NostrEvent[] | null;
   hasActiveSearch: boolean;
   onViewFull: (eventId: string) => void;
+  onAddToPocket?: (event: NostrEvent) => boolean;
+  isInPocket?: (eventId: string) => boolean;
 }
 
 export default function HomeView({
@@ -23,6 +25,8 @@ export default function HomeView({
   filteredEvents,
   hasActiveSearch,
   onViewFull,
+  onAddToPocket,
+  isInPocket,
 }: HomeViewProps) {
   // Use filtered events for display
   const displayEvents = filteredEvents;
@@ -82,7 +86,13 @@ export default function HomeView({
         {displayEvents && displayEvents.length > 0 && (
           <div className="grid grid-cols-1 xl:grid-cols-2 x2l:grid-cols-3 gap-6">
             {displayEvents.map((event) => (
-              <CodeSnippetCard key={event.id} event={event} onViewFull={(nevent) => onViewFull(nevent)} />
+              <CodeSnippetCard
+                key={event.id}
+                event={event}
+                onViewFull={(nevent) => onViewFull(nevent)}
+                onAddToPocket={onAddToPocket}
+                isInPocket={isInPocket ? isInPocket(event.id) : false}
+              />
             ))}
           </div>
         )}

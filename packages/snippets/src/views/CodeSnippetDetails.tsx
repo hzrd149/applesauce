@@ -25,6 +25,8 @@ interface CodeSnippetDetailsProps {
   eventId: string;
   relays: string[];
   onBack: () => void;
+  onAddToPocket?: (event: NostrEvent) => boolean;
+  isInPocket?: boolean;
 }
 
 interface Comment {
@@ -33,7 +35,13 @@ interface Comment {
   replies?: Comment[];
 }
 
-export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnippetDetailsProps) {
+export default function CodeSnippetDetails({
+  eventId,
+  relays,
+  onBack,
+  onAddToPocket,
+  isInPocket,
+}: CodeSnippetDetailsProps) {
   const codeRef = useRef<HTMLElement>(null);
   const [event, setEvent] = useState<NostrEvent | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -173,6 +181,12 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
     }
   };
 
+  const handleAddToPocket = () => {
+    if (event && onAddToPocket && !isInPocket) {
+      onAddToPocket(event);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-base-200 flex items-center justify-center">
@@ -236,17 +250,48 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
         </div>
 
         <div className="navbar-end">
-          <button className="btn btn-primary btn-sm" onClick={copyCode}>
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-              />
-            </svg>
-            Copy
-          </button>
+          <div className="flex gap-2">
+            {onAddToPocket && (
+              <button
+                className={`btn btn-sm ${isInPocket ? "btn-success" : "btn-ghost"}`}
+                onClick={handleAddToPocket}
+                disabled={isInPocket}
+                title={isInPocket ? "Already in pocket" : "Add to pocket"}
+              >
+                {isInPocket ? (
+                  <>
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    In Pocket
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                      />
+                    </svg>
+                    Add to Pocket
+                  </>
+                )}
+              </button>
+            )}
+            <button className="btn btn-primary btn-sm" onClick={copyCode}>
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+              Copy
+            </button>
+          </div>
         </div>
       </div>
 
