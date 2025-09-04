@@ -126,7 +126,7 @@ export function giftWrap(
 ): EventOperation<EventTemplate | UnsignedEvent | NostrEvent, NostrEvent> {
   return eventPipe(
     toRumor(),
-    /** @ts-expect-error */
+    // @ts-expect-error
     sealRumor(pubkey),
     wrapSeal(pubkey, opts),
   ) as EventOperation<EventTemplate | UnsignedEvent | NostrEvent, NostrEvent>;

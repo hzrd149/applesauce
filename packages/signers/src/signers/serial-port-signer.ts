@@ -201,7 +201,7 @@ export class SerialPortSigner implements ISigner {
 
     let iv = Uint8Array.from(randomBytes(16));
     let plaintext = utf8Encoder.encode(text);
-    // @ts-expect-error
+    // @ts-ignore
     let cryptoKey = await crypto.subtle.importKey("raw", sharedSecret, { name: "AES-CBC" }, false, ["encrypt"]);
     let ciphertext = await crypto.subtle.encrypt({ name: "AES-CBC", iv }, cryptoKey, plaintext);
     let ctb64 = base64.encode(new Uint8Array(ciphertext));
@@ -215,12 +215,12 @@ export class SerialPortSigner implements ISigner {
     const sharedSecretStr = await this.callMethodOnDevice(SerialPortSigner.METHOD_SHARED_SECRET, [xOnlyToXY(pubkey)]);
     const sharedSecret = hexToBytes(sharedSecretStr);
 
-    // @ts-expect-error
+    // @ts-ignore
     let cryptoKey = await crypto.subtle.importKey("raw", sharedSecret, { name: "AES-CBC" }, false, ["decrypt"]);
     let ciphertext = base64.decode(ctb64);
     let iv = base64.decode(ivb64);
 
-    // @ts-expect-error
+    // @ts-ignore
     let plaintext = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, cryptoKey, ciphertext);
 
     let text = utf8Decoder.decode(plaintext);
