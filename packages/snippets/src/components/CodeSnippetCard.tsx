@@ -6,6 +6,7 @@ import hljs from "highlight.js/lib/core";
 import typescript from "highlight.js/lib/languages/typescript";
 import javascript from "highlight.js/lib/languages/javascript";
 import "highlight.js/styles/github-dark.css";
+import type { IEventStore } from "applesauce-core";
 
 // Register languages
 hljs.registerLanguage("typescript", typescript);
@@ -26,7 +27,7 @@ function getCodePreview(content: string, maxLines: number = 6): string {
 
 interface CodeSnippetCardProps {
   event: NostrEvent;
-  eventStore: any;
+  eventStore: IEventStore;
   onViewFull?: (event: NostrEvent) => void;
 }
 
@@ -41,14 +42,14 @@ export default function CodeSnippetCard({ event, eventStore, onViewFull }: CodeS
 
   // Extract metadata from tags
   const language = getTagValue(event, "l") || "typescript";
-  const name = getTagValue(event, "name") || "untitled.ts";
+  const name = getTagValue(event, "name") || "unknown.txt";
   const description = getTagValue(event, "description") || "";
   const extension = getTagValue(event, "extension") || "ts";
   const runtime = getTagValue(event, "runtime") || "";
   const license = getTagValue(event, "license") || "";
 
-  // Get code preview
-  const codePreview = getCodePreview(event.content, 6);
+  // Get code preview - show more lines
+  const codePreview = getCodePreview(event.content, 10);
 
   // Format creation date
   const createdDate = new Date(event.created_at * 1000).toLocaleDateString();
@@ -82,17 +83,19 @@ export default function CodeSnippetCard({ event, eventStore, onViewFull }: CodeS
 
   return (
     <div className="card bg-base-100 shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
-      <div className="card-body">
-        {/* Header with title and author */}
-        <div className="flex justify-between items-start mb-3">
-          <div className="flex-1">
-            <h3 className="card-title text-lg mb-1 truncate" title={name}>
+      <div className="card-body p-3 flex flex-col gap-2">
+        {/* Compact Header with title, metadata and author */}
+        <div className="flex justify-between items-start">
+          <div className="flex-1 min-w-0">
+            <h3 className="card-title mb-1 truncate" title={name}>
               {name}
             </h3>
-            <div className="flex items-center gap-2 text-sm opacity-70">
+            <div className="flex items-center gap-2 text-sm opacity-70 flex-wrap">
               <span className="badge badge-outline badge-sm">{language}</span>
               <span className="badge badge-ghost badge-sm">{extension}</span>
-              <span className="text-xs">{createdDate}</span>
+              <span>{createdDate}</span>
+              <span>•</span>
+              <span className="opacity-60">{getDisplayName(profile, "Anonymous")}</span>
             </div>
           </div>
           <div className="avatar">
@@ -106,21 +109,15 @@ export default function CodeSnippetCard({ event, eventStore, onViewFull }: CodeS
           </div>
         </div>
 
-        {/* Author info */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-sm opacity-60">by</span>
-          <span className="text-sm font-medium">{getDisplayName(profile, "Anonymous")}</span>
-        </div>
-
-        {/* Description */}
+        {/* Description - more compact */}
         {description && (
-          <p className="text-sm opacity-80 mb-3 line-clamp-2" title={description}>
+          <p className="text-sm opacity-80 line-clamp-2 grow-0" title={description}>
             {description}
           </p>
         )}
 
-        {/* Code Preview with Syntax Highlighting */}
-        <div className="bg-base-300 rounded-lg p-3 mb-3 overflow-hidden code-preview">
+        {/* Code Preview with Syntax Highlighting - larger area, less padding */}
+        <div className="bg-base-500 rounded p-2 overflow-hidden code-preview flex-1">
           <pre className="text-xs overflow-x-auto">
             <code ref={codeRef} className={`language-${language.toLowerCase()}`}>
               {codePreview}
@@ -128,22 +125,22 @@ export default function CodeSnippetCard({ event, eventStore, onViewFull }: CodeS
           </pre>
         </div>
 
-        {/* Metadata */}
-        <div className="flex flex-wrap gap-2 text-xs opacity-60 mb-3">
-          {runtime && <span className="badge badge-ghost badge-sm">{runtime}</span>}
-          {license && <span className="badge badge-ghost badge-sm">{license}</span>}
-          <span className="badge badge-ghost badge-sm">{event.content.length} chars</span>
-          <span className="badge badge-ghost badge-sm">{event.content.split("\n").length} lines</span>
-        </div>
-
-        {/* Actions */}
-        <div className="card-actions justify-end">
-          <button className="btn btn-primary btn-sm" onClick={copyCode} title="Copy code to clipboard">
-            📋 Copy
-          </button>
-          <button className="btn btn-outline btn-sm" onClick={handleViewFull} title="View full code">
-            👁️ View Full
-          </button>
+        {/* Compact Metadata and Actions */}
+        <div className="flex justify-between items-center">
+          <div className="flex flex-wrap gap-2 text-xs opacity-60">
+            {runtime && <span className="badge badge-ghost badge-sm">{runtime}</span>}
+            {license && <span className="badge badge-ghost badge-sm">{license}</span>}
+            <span>{event.content.length} chars</span>
+            <span>{event.content.split("\n").length} lines</span>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-primary btn-sm" onClick={copyCode} title="Copy code to clipboard">
+              Copy
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={handleViewFull} title="View full code">
+              View Full
+            </button>
+          </div>
         </div>
       </div>
     </div>

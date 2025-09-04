@@ -3,10 +3,11 @@ import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { type NostrEvent } from "nostr-tools";
-import { useMemo, useState } from "react";
-import { map } from "rxjs";
-import { CodeSnippetCard, StatsDisplay, RelaySelector, LoadingSpinner, EmptyState } from "./components";
+import { useState } from "react";
+import { map, Observable } from "rxjs";
 import "./App.css";
+import { CodeSnippetCard, EmptyState, LoadingSpinner, RelaySelector } from "./components";
+import { useSearch } from "./hooks";
 
 // NIP-C0 Code Snippet Kind
 const CODE_SNIPPET_KIND = 1337;
@@ -27,35 +28,46 @@ const addressLoader = createAddressLoader(pool, {
 eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
 
-// Helper function to get tag value
-function getTagValue(event: NostrEvent, tagName: string): string | null {
-  const tag = event.tags.find((t) => t[0] === tagName);
-  return tag ? tag[1] : null;
-}
-
 function App() {
-  // Relay options
-  const relays = [
+  // Relay state management
+  const [relays, setRelays] = useState([
     "wss://relay.damus.io",
     "wss://nos.lol",
     "wss://nostr.land",
     "wss://relay.snort.social",
     "wss://relay.nostr.band",
-  ];
+  ]);
 
-  const [selectedRelay, setSelectedRelay] = useState(relays[0]);
+  // Relay management functions
+  const addRelay = (newRelay: string) => {
+    const trimmedRelay = newRelay.trim();
+    if (trimmedRelay && !relays.includes(trimmedRelay)) {
+      setRelays((prev) => [...prev, trimmedRelay]);
+    }
+  };
 
-  // Create a timeline observable for code snippets
+  const removeRelay = (relayToRemove: string) => {
+    setRelays((prev) => prev.filter((relay) => relay !== relayToRemove));
+  };
+
+  // Create a timeline observable for code snippets from all relays
   const events = useObservableMemo(() => {
+    if (relays.length === 0) {
+      // Return an observable that emits an empty array when there are no relays
+      return new Observable<NostrEvent[]>((subscriber) => {
+        subscriber.next([]);
+        subscriber.complete();
+      });
+    }
+
     return pool
-      .relay(selectedRelay)
-      .subscription({
+      .subscription(relays, {
         kinds: [CODE_SNIPPET_KIND],
         // Filter for TypeScript snippets
         "#l": ["typescript"],
       })
       .pipe(
-        // Only get events from relay (ignore EOSE)
+        // Only get events from relays (ignore EOSE)
         onlyEvents(),
         // deduplicate events using the event store
         mapEventsToStore(eventStore),
@@ -64,63 +76,83 @@ function App() {
         // Duplicate the timeline array to make react happy
         map((timeline) => [...timeline]),
       );
-  }, [selectedRelay]);
+  }, [relays]);
 
-  // Helper function to get unique languages
-  const uniqueLanguages = useMemo(() => {
-    if (!events) return [];
-    const languages = events
-      .map((event) => getTagValue(event, "l"))
-      .filter(Boolean)
-      .filter((lang) => lang?.toLowerCase() === "typescript");
-    return [...new Set(languages)];
-  }, [events]);
+  // Initialize search functionality
+  const { searchQuery, updateSearchQuery, filteredEvents, hasActiveSearch } = useSearch(events || null);
+
+  // Use filtered events for display
+  const displayEvents = filteredEvents;
 
   return (
     <div className="min-h-screen bg-base-200">
       {/* Header */}
-      <div className="navbar bg-base-100 shadow-lg">
+      <div className="navbar bg-base-100 shadow-sm">
         <div className="flex-1">
-          <h1 className="text-xl font-bold">Applesauce Code Snippets</h1>
+          <a className="btn btn-ghost text-xl">Applesauce Code Snippets</a>
         </div>
-        <div className="flex-none">
-          <RelaySelector relays={relays} selectedRelay={selectedRelay} onRelayChange={setSelectedRelay} />
+        <div className="flex gap-2">
+          <RelaySelector relays={relays} onAddRelay={addRelay} onRemoveRelay={removeRelay} />
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-6">
         {/* Description */}
-        <p className="text-lg opacity-70 mb-6 text-center">
-          Discover and explore Applesauce code snippets shared on Nostr
-        </p>
+        <div className="text-center mb-8">
+          <p className="text-lg opacity-70">Discover and explore Applesauce code snippets shared on Nostr</p>
+        </div>
 
-        {/* Stats */}
-        {events && events.length > 0 && (
-          <StatsDisplay
-            totalSnippets={events.length}
-            uniqueLanguages={uniqueLanguages.length}
-            selectedRelay={selectedRelay}
-          />
-        )}
+        {/* Beautiful Search Bar */}
+        <div className="max-w-2xl mx-auto mb-8">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search code snippets..."
+              className="input input-bordered input-lg w-full pl-4 pr-12 text-lg shadow-md focus:shadow-xl transition-all duration-200 bg-base-100 border-2 focus:border-primary"
+              value={searchQuery}
+              onChange={(e) => updateSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => updateSearchQuery("")}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-base-content/40 hover:text-base-content/80 focus:outline-none transition-colors duration-200 p-1 rounded-full hover:bg-base-200"
+                title="Clear search"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {hasActiveSearch && displayEvents && (
+            <p className="text-sm opacity-60 mt-3 text-center">
+              Showing {displayEvents.length} result{displayEvents.length !== 1 ? "s" : ""} for "{searchQuery}"
+            </p>
+          )}
+        </div>
 
         {/* Loading State */}
         {!events && <LoadingSpinner message="Loading TypeScript snippets..." />}
 
         {/* Snippets Grid */}
-        {events && events.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {events.map((event) => (
+        {displayEvents && displayEvents.length > 0 && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 x2l:grid-cols-3 gap-6">
+            {displayEvents.map((event) => (
               <CodeSnippetCard key={event.id} event={event} eventStore={eventStore} />
             ))}
           </div>
         )}
 
         {/* Empty State */}
-        {events && events.length === 0 && (
+        {displayEvents && displayEvents.length === 0 && (
           <EmptyState
-            title="No TypeScript snippets found"
-            description="Try selecting a different relay or check back later for new snippets."
+            title={hasActiveSearch ? "No snippets found" : "No TypeScript snippets found"}
+            description={
+              hasActiveSearch
+                ? `No snippets match your search for "${searchQuery}". Try different keywords or clear the search.`
+                : "Try selecting a different relay or check back later for new snippets."
+            }
             icon="📝"
           />
         )}

@@ -1,10 +1,10 @@
 interface StatsDisplayProps {
   totalSnippets: number;
   uniqueLanguages: number;
-  selectedRelay: string;
+  relayCount: number;
 }
 
-export default function StatsDisplay({ totalSnippets, uniqueLanguages, selectedRelay }: StatsDisplayProps) {
+export default function StatsDisplay({ totalSnippets, uniqueLanguages, relayCount }: StatsDisplayProps) {
   return (
     <div className="stats shadow mb-6 w-full">
       <div className="stat">
@@ -65,9 +65,9 @@ export default function StatsDisplay({ totalSnippets, uniqueLanguages, selectedR
             ></path>
           </svg>
         </div>
-        <div className="stat-title">Current Relay</div>
-        <div className="stat-value text-lg text-accent">{selectedRelay.split("/")[2]}</div>
-        <div className="stat-desc">Active connection</div>
+        <div className="stat-title">Connected Relays</div>
+        <div className="stat-value text-lg text-accent">{relayCount}</div>
+        <div className="stat-desc">Active connections</div>
       </div>
     </div>
   );

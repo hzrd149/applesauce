@@ -51,9 +51,13 @@ jobs:
 
       - name: Build examples
         run: VITE_BASE=/applesauce/examples pnpm build --filter applesauce-examples
-
       - name: Copy examples
         run: mkdir -p docs/examples && cp -r packages/examples/dist/* docs/examples
+
+      - name: Build snippets
+        run: VITE_BASE=/applesauce/snippets pnpm build --filter applesauce-snippets
+      - name: Copy snippets
+        run: mkdir -p docs/snippets && cp -r packages/snippets/dist/* docs/snippets
 
       - name: Build vitepress
         run: pnpm build --filter applesauce-docs -- --base /applesauce/

@@ -1,9 +1,8 @@
-/* Custom styles for the TypeScript snippets app */
-
 /* Code snippet card styling */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -11,9 +10,6 @@
 /* Syntax highlighting for code blocks */
 pre code {
   font-family: "Fira Code", "Monaco", "Consolas", monospace;
-  line-height: 1.5;
-  font-size: 0.75rem;
-  border-radius: 0.5rem;
 }
 
 /* Override highlight.js theme for better integration with DaisyUI */
@@ -227,11 +223,6 @@ pre::-webkit-scrollbar-thumb {
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* Tooltip-like styling for truncated text */
-[title] {
-  cursor: help;
 }
 
 /* Better focus states */
