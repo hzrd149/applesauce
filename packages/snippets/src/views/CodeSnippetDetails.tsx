@@ -9,7 +9,8 @@ import "highlight.js/styles/github-dark.css";
 import { nip19, type NostrEvent } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
 import { map, NEVER } from "rxjs";
-import { eventStore, pool, COMMENT_KIND } from "../helpers/nostr";
+import { COMMENT_KIND, eventStore, pool } from "../helpers/nostr";
+import { usePocketContext } from "../contexts/PocketContext";
 
 // Register languages
 hljs.registerLanguage("typescript", typescript);
@@ -25,8 +26,6 @@ interface CodeSnippetDetailsProps {
   eventId: string;
   relays: string[];
   onBack: () => void;
-  onAddToPocket?: (event: NostrEvent) => boolean;
-  isInPocket?: boolean;
 }
 
 interface Comment {
@@ -35,18 +34,15 @@ interface Comment {
   replies?: Comment[];
 }
 
-export default function CodeSnippetDetails({
-  eventId,
-  relays,
-  onBack,
-  onAddToPocket,
-  isInPocket,
-}: CodeSnippetDetailsProps) {
+export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnippetDetailsProps) {
   const codeRef = useRef<HTMLElement>(null);
   const [event, setEvent] = useState<NostrEvent | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(true);
+
+  // Get pocket functionality from context
+  const { addToPocket, isInPocket } = usePocketContext();
 
   // Get profile for the author
   const profile = useObservableMemo(() => {
@@ -182,8 +178,8 @@ export default function CodeSnippetDetails({
   };
 
   const handleAddToPocket = () => {
-    if (event && onAddToPocket && !isInPocket) {
-      onAddToPocket(event);
+    if (event && !isInPocket(event.id)) {
+      addToPocket(event);
     }
   };
 
@@ -216,7 +212,6 @@ export default function CodeSnippetDetails({
   const language = getTagValue(event, "l") || "typescript";
   const name = getTagValue(event, "name") || "unknown.txt";
   const description = getTagValue(event, "description") || "";
-  const extension = getTagValue(event, "extension") || "ts";
   const runtime = getTagValue(event, "runtime") || "";
   const license = getTagValue(event, "license") || "";
 
@@ -226,7 +221,7 @@ export default function CodeSnippetDetails({
   return (
     <div className="min-h-screen bg-base-200">
       {/* Header */}
-      <div className="navbar bg-base-100 shadow-sm sticky top-0 z-50 min-h-16">
+      <div className="navbar bg-base-100 shadow-sm sticky top-0 z-50">
         <div className="navbar-start">
           <button className="btn btn-ghost btn-sm" onClick={onBack}>
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -241,45 +236,38 @@ export default function CodeSnippetDetails({
             <h1 className="text-lg font-bold truncate mb-1" title={name}>
               {name}
             </h1>
-            <div className="flex items-center justify-center gap-2 text-xs">
-              <span className="badge badge-outline badge-xs">{language}</span>
-              <span className="badge badge-ghost badge-xs">{extension}</span>
-              <span className="text-base-content/60">{createdDate.toLocaleDateString()}</span>
-            </div>
           </div>
         </div>
 
         <div className="navbar-end">
           <div className="flex gap-2">
-            {onAddToPocket && (
-              <button
-                className={`btn btn-sm ${isInPocket ? "btn-success" : "btn-ghost"}`}
-                onClick={handleAddToPocket}
-                disabled={isInPocket}
-                title={isInPocket ? "Already in pocket" : "Add to pocket"}
-              >
-                {isInPocket ? (
-                  <>
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    In Pocket
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                      />
-                    </svg>
-                    Add to Pocket
-                  </>
-                )}
-              </button>
-            )}
+            <button
+              className={`btn btn-sm ${isInPocket(event.id) ? "btn-success" : "btn-ghost"}`}
+              onClick={handleAddToPocket}
+              disabled={isInPocket(event.id)}
+              title={isInPocket(event.id) ? "Already in pocket" : "Add to pocket"}
+            >
+              {isInPocket(event.id) ? (
+                <>
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  In Pocket
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                    />
+                  </svg>
+                  Add to Pocket
+                </>
+              )}
+            </button>
             <button className="btn btn-primary btn-sm" onClick={copyCode}>
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -339,7 +327,7 @@ export default function CodeSnippetDetails({
             <span className="text-sm opacity-70">{language}</span>
           </div>
           <div className="p-4 overflow-x-auto" style={{ minHeight: "50vh" }}>
-            <pre className="text-sm leading-relaxed">
+            <pre className="text-xs leading-relaxed">
               <code ref={codeRef} className={`language-${language.toLowerCase()}`}>
                 {event.content}
               </code>

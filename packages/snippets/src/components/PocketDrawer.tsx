@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { nip19 } from "nostr-tools";
+import { getSeenRelays } from "applesauce-core/helpers";
 import { type PocketItem } from "../hooks/usePocket";
+import { AddressIcon, CheckIcon, ClearIcon, CloseIcon, CopyIcon, DownloadIcon, PocketIcon } from "./icons";
 
 interface PocketDrawerProps {
   pocketItems: PocketItem[];
@@ -20,12 +23,35 @@ export default function PocketDrawer({
 }: PocketDrawerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [copyAddressesSuccess, setCopyAddressesSuccess] = useState(false);
 
   const handleCopy = async () => {
     const success = await onCopyAsMarkdown();
     if (success) {
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
+    }
+  };
+
+  const handleCopyAddresses = async () => {
+    if (pocketItems.length === 0) return;
+
+    try {
+      const addresses = pocketItems.map((item) => {
+        const relayHints = Array.from(getSeenRelays(item.event) || []).slice(0, 3);
+        return nip19.neventEncode({
+          id: item.event.id,
+          relays: relayHints,
+          author: item.event.pubkey,
+        });
+      });
+
+      const addressList = addresses.join("\n");
+      await navigator.clipboard.writeText(addressList);
+      setCopyAddressesSuccess(true);
+      setTimeout(() => setCopyAddressesSuccess(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy addresses to clipboard:", error);
     }
   };
 
@@ -68,69 +94,79 @@ export default function PocketDrawer({
               <span className="badge badge-outline">{pocketItems.length} items</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="join flex-wrap">
               {pocketItems.length > 0 && (
                 <>
                   <button
                     onClick={handleCopy}
-                    className={`btn btn-sm ${copySuccess ? "btn-success" : "btn-ghost"}`}
+                    className={`btn btn-sm join-item ${copySuccess ? "btn-success" : "btn-ghost"}`}
                     title="Copy as Markdown"
                   >
                     {copySuccess ? (
                       <>
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Copied!
+                        <CheckIcon />
+                        <span className="hidden sm:inline">Copied!</span>
                       </>
                     ) : (
                       <>
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                          />
-                        </svg>
-                        Copy
+                        <CopyIcon />
+                        <span className="hidden sm:inline">Copy</span>
                       </>
                     )}
                   </button>
 
-                  <button onClick={onDownloadAsMarkdown} className="btn btn-sm btn-ghost" title="Download as Markdown">
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                    Download
+                  <button
+                    onClick={handleCopyAddresses}
+                    className={`btn btn-sm join-item ${copyAddressesSuccess ? "btn-success" : "btn-ghost"}`}
+                    title="Copy nevent addresses"
+                  >
+                    {copyAddressesSuccess ? (
+                      <>
+                        <CheckIcon />
+                        <span className="hidden sm:inline">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <AddressIcon />
+                        <span className="hidden sm:inline">Addresses</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={onDownloadAsMarkdown}
+                    className="btn btn-sm join-item btn-ghost"
+                    title="Download as Markdown"
+                  >
+                    <DownloadIcon />
+                    <span className="hidden sm:inline">Download</span>
                   </button>
 
                   <button
                     onClick={onClearPocket}
-                    className="btn btn-sm btn-ghost text-error hover:btn-error"
+                    className="btn btn-sm join-item btn-soft btn-error"
                     title="Clear all items"
                   >
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                    Clear
+                    <ClearIcon />
+                    <span className="hidden sm:inline">Clear</span>
                   </button>
                 </>
               )}
 
-              <button onClick={() => setIsExpanded(false)} className="btn btn-sm btn-ghost" title="Close pocket">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="btn btn-sm join-item btn-ghost ml-auto btn-square"
+                title="Close pocket"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="size-6"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
                 </svg>
               </button>
             </div>
@@ -173,41 +209,21 @@ export default function PocketDrawer({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1">
+                        <div className="join">
                           <button
                             onClick={() => onViewItem(item.event.id)}
-                            className="btn btn-xs btn-ghost"
+                            className="btn btn-sm join-item"
                             title="View snippet"
                           >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                              />
-                            </svg>
+                            View code
                           </button>
 
                           <button
                             onClick={() => onRemoveItem(item.event.id)}
-                            className="btn btn-xs btn-ghost text-error hover:btn-error"
+                            className="btn btn-sm btn-soft btn-error btn-square join-item"
                             title="Remove from pocket"
                           >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M6 18L18 6M6 6l12 12"
-                              />
-                            </svg>
+                            <CloseIcon />
                           </button>
                         </div>
                       </div>
@@ -224,25 +240,25 @@ export default function PocketDrawer({
       <div className="fixed bottom-4 right-4 z-50">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className={`btn btn-circle btn-lg shadow-lg transition-all duration-300 ${
+          className={`btn btn-circle btn-lg shadow-lg transition-all duration-300  ${
             pocketItems.length > 0 ? "btn-primary" : "btn-ghost"
           } ${isExpanded ? "btn-outline" : ""}`}
           title={`${isExpanded ? "Close" : "Open"} pocket (${pocketItems.length} items)`}
         >
           {isExpanded ? (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="size-6"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
             </svg>
           ) : (
             <div className="relative">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                />
-              </svg>
+              <PocketIcon />
               {pocketItems.length > 0 && (
                 <span className="absolute -top-2 -right-2 bg-accent text-accent-content text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                   {pocketItems.length > 9 ? "9+" : pocketItems.length}

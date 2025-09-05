@@ -2,7 +2,7 @@ import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "applesauce",
+  title: "AppleSauce",
   description: "Utilities for nostr apps",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config

@@ -32,7 +32,7 @@ export default function RelaySelector({ relays, onAddRelay, onRemoveRelay }: Rel
 
   return (
     <div className="dropdown dropdown-end">
-      <div tabIndex={0} role="button" className="btn btn-outline">
+      <div tabIndex={0} role="button" className="btn btn-neutral">
         <span className="hidden sm:inline">Relays:</span>
         <span className="text-sm">{relays.length}</span>
         <svg className="fill-current" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
@@ -44,7 +44,7 @@ export default function RelaySelector({ relays, onAddRelay, onRemoveRelay }: Rel
           <h3 className="font-semibold text-sm mb-2 px-2 py-1">Manage Relays</h3>
 
           {/* Relay List */}
-          <div className="max-h-48 overflow-y-auto">
+          <div className="max-h-48 overflow-y-auto overscroll-contain">
             {relays.map((relay) => (
               <div key={relay} className="flex items-center justify-between px-2 py-2 hover:bg-base-200">
                 <div className="avatar">

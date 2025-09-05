@@ -8,6 +8,8 @@ import typescript from "highlight.js/lib/languages/typescript";
 import javascript from "highlight.js/lib/languages/javascript";
 import "highlight.js/styles/github-dark.css";
 import { eventStore } from "../helpers/nostr";
+import { CheckIcon, PocketIcon } from "./icons";
+import { usePocketContext } from "../contexts/PocketContext";
 
 // Register languages
 hljs.registerLanguage("typescript", typescript);
@@ -29,12 +31,13 @@ function getCodePreview(content: string, maxLines: number = 6): string {
 interface CodeSnippetCardProps {
   event: NostrEvent;
   onViewFull?: (nevent: string) => void;
-  onAddToPocket?: (event: NostrEvent) => boolean;
-  isInPocket?: boolean;
 }
 
-export default function CodeSnippetCard({ event, onViewFull, onAddToPocket, isInPocket }: CodeSnippetCardProps) {
+export default function CodeSnippetCard({ event, onViewFull }: CodeSnippetCardProps) {
   const codeRef = useRef<HTMLElement>(null);
+
+  // Get pocket functionality from context
+  const { addToPocket, isInPocket } = usePocketContext();
 
   // Get profile for the author
   const profile = useObservableMemo(() => {
@@ -91,10 +94,12 @@ export default function CodeSnippetCard({ event, onViewFull, onAddToPocket, isIn
   };
 
   const handleAddToPocket = () => {
-    if (onAddToPocket && !isInPocket) {
-      onAddToPocket(event);
+    if (!isInPocket(event.id)) {
+      addToPocket(event);
     }
   };
+
+  const isEventInPocket = isInPocket(event.id);
 
   return (
     <div className="card bg-base-100 shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
@@ -149,33 +154,18 @@ export default function CodeSnippetCard({ event, onViewFull, onAddToPocket, isIn
             <span>{event.content.split("\n").length} lines</span>
           </div>
           <div className="flex gap-2">
-            {onAddToPocket && (
-              <button
-                className={`btn btn-sm ${isInPocket ? "btn-success" : "btn-ghost"}`}
-                onClick={handleAddToPocket}
-                disabled={isInPocket}
-                title={isInPocket ? "Already in pocket" : "Add to pocket"}
-              >
-                {isInPocket ? (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                )}
-              </button>
-            )}
-            <button className="btn btn-primary btn-sm" onClick={copyCode} title="Copy code to clipboard">
+            <button
+              className={`btn btn-sm ${isEventInPocket ? "btn-success" : "btn-ghost"} btn-square`}
+              onClick={handleAddToPocket}
+              disabled={isEventInPocket}
+              title={isEventInPocket ? "Already in pocket" : "Add to pocket"}
+            >
+              {isEventInPocket ? <CheckIcon /> : <PocketIcon />}
+            </button>
+            <button className="btn btn-neutral btn-sm" onClick={copyCode} title="Copy code to clipboard">
               Copy
             </button>
-            <button className="btn btn-outline btn-sm" onClick={handleViewFull} title="View full code">
+            <button className="btn btn-primary btn-sm" onClick={handleViewFull} title="View full code">
               View Full
             </button>
           </div>

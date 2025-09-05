@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { map, Observable } from "rxjs";
 import "./App.css";
 import { CodeSnippetDetails, HomeView, PocketDrawer } from "./components";
-import { useSearch, usePocket } from "./hooks";
+import { useSearch } from "./hooks";
+import { usePocketContext } from "./contexts/PocketContext";
 import { eventStore, pool, CODE_SNIPPET_KIND, DEFAULT_RELAYS, isValidEventId } from "./helpers/nostr";
 
 function App() {
@@ -60,9 +61,8 @@ function App() {
   // Initialize search functionality
   const { searchQuery, updateSearchQuery, filteredEvents, hasActiveSearch } = useSearch(events || null);
 
-  // Initialize pocket functionality
-  const { pocketItems, addToPocket, removeFromPocket, clearPocket, isInPocket, copyAsMarkdown, downloadAsMarkdown } =
-    usePocket();
+  // Get pocket functionality from context
+  const { pocketItems, removeFromPocket, clearPocket, copyAsMarkdown, downloadAsMarkdown } = usePocketContext();
 
   // Handle hash-based routing
   useEffect(() => {
@@ -106,13 +106,7 @@ function App() {
   if (currentView === "details" && selectedEventId) {
     return (
       <>
-        <CodeSnippetDetails
-          eventId={selectedEventId}
-          relays={relays}
-          onBack={navigateToHome}
-          onAddToPocket={addToPocket}
-          isInPocket={isInPocket(selectedEventId)}
-        />
+        <CodeSnippetDetails eventId={selectedEventId} relays={relays} onBack={navigateToHome} />
         <PocketDrawer
           pocketItems={pocketItems}
           onRemoveItem={removeFromPocket}
@@ -137,8 +131,6 @@ function App() {
         filteredEvents={filteredEvents}
         hasActiveSearch={hasActiveSearch}
         onViewFull={navigateToDetails}
-        onAddToPocket={addToPocket}
-        isInPocket={isInPocket}
       />
       <PocketDrawer
         pocketItems={pocketItems}
