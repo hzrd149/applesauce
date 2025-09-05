@@ -74,10 +74,10 @@ importers:
   packages/actions:
     dependencies:
       applesauce-core:
-        specifier: ^3.1.0
+        specifier: ^3.2.0
         version: link:../core
       applesauce-factory:
-        specifier: ^3.1.0
+        specifier: ^3.2.0
         version: link:../factory
       nostr-tools:
         specifier: ~2.15
@@ -395,7 +395,7 @@ importers:
         specifier: ^3.1.0
         version: link:../content
       applesauce-core:
-        specifier: ^3.1.0
+        specifier: ^3.2.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
