@@ -35,6 +35,9 @@ export default function HomeView({
           <a className="btn btn-ghost text-xl">Applesauce Code Snippets</a>
         </div>
         <div className="flex gap-2">
+          <a className="btn btn-ghost" href="https://github.com/hzrd149/nostr-code-snippets" target="_blank">
+            MCP code snippets
+          </a>
           <RelaySelector relays={relays} onAddRelay={onAddRelay} onRemoveRelay={onRemoveRelay} />
         </div>
       </div>
