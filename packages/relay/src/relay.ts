@@ -12,6 +12,7 @@ import {
   endWith,
   filter,
   finalize,
+  firstValueFrom,
   from,
   identity,
   ignoreElements,
@@ -223,10 +224,10 @@ export class Relay implements IRelay {
     }).pipe(
       // if the fetch fails, return null
       catchError(() => of(null)),
-      // cache the result
-      shareReplay(1),
       // update the internal state
       tap((info) => (this._nip11 = info)),
+      // cache the result
+      shareReplay(1),
     );
     this.limitations$ = this.information$.pipe(map((info) => info?.limitation));
 
@@ -554,6 +555,16 @@ export class Relay implements IRelay {
   /** Force close the connection */
   close() {
     this.socket.unsubscribe();
+  }
+
+  /** An async method that returns the NIP-11 information document for the relay */
+  async getInformation(): Promise<RelayInformation | null> {
+    return firstValueFrom(this.information$);
+  }
+
+  /** An async method that returns the NIP-11 limitations for the relay */
+  async getLimitations(): Promise<RelayInformation["limitation"] | null> {
+    return firstValueFrom(this.limitations$);
   }
 
   /** Static method to fetch the NIP-11 information document for a relay */

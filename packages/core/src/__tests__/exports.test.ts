@@ -11,6 +11,7 @@ describe("exports", () => {
         "Models",
         "TimeoutError",
         "defined",
+        "filterDuplicateEvents",
         "firstValueFrom",
         "getObservableValue",
         "lastValueFrom",

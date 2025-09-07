@@ -7,6 +7,7 @@ describe("exports", () => {
       [
         "TimeoutError",
         "defined",
+        "filterDuplicateEvents",
         "firstValueFrom",
         "getObservableValue",
         "lastValueFrom",

@@ -616,9 +616,9 @@ export default function WalletServiceExample() {
                   </div>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {relays.map((relay) => (
-                      <div key={relay} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <div key={relay} className="flex justify-between items-center p-2 bg-base-200 rounded">
                         <span className="font-mono text-sm">{relay}</span>
-                        <button onClick={() => removeRelay(relay)} className="text-red-500 hover:text-red-700 text-sm">
+                        <button onClick={() => removeRelay(relay)} className="btn btn-error btn-sm btn-ghost">
                           Remove
                         </button>
                       </div>
@@ -632,7 +632,7 @@ export default function WalletServiceExample() {
                 <h3 className="text-lg font-semibold mb-4">Supported Methods</h3>
                 <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
                   {AVAILABLE_METHODS.map((method) => (
-                    <label key={method} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                    <label key={method} className="flex items-center space-x-2 p-2 hover:bg-base-200 rounded">
                       <input
                         type="checkbox"
                         checked={supportedMethods.includes(method)}
@@ -647,10 +647,7 @@ export default function WalletServiceExample() {
             </div>
 
             <div className="text-center">
-              <button
-                onClick={startWalletService}
-                className="px-8 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 text-lg"
-              >
+              <button onClick={startWalletService} className="btn btn-success btn-lg">
                 Start Wallet Service
               </button>
             </div>

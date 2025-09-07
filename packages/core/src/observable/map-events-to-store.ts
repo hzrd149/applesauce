@@ -1,14 +1,17 @@
-import { distinct, filter, identity, map, MonoTypeOperatorFunction } from "rxjs";
 import { NostrEvent } from "nostr-tools";
+import { distinct, filter, identity, map, MonoTypeOperatorFunction } from "rxjs";
 
-import { IEventStore } from "../event-store/interface.js";
+import { IEventStoreActions } from "../event-store/interface.js";
 
 /** Saves all events to an event store and filters out invalid events */
-export function mapEventsToStore(store: IEventStore, removeDuplicates = true): MonoTypeOperatorFunction<NostrEvent> {
+export function mapEventsToStore(
+  store: IEventStoreActions,
+  removeDuplicates = true,
+): MonoTypeOperatorFunction<NostrEvent> {
   return (source) =>
     source.pipe(
       // Map all events to the store
-      // NOTE: map is used here because we want to return the single cononical version of the event so that distinct() can be used later
+      // NOTE: map is used here because we want to return the single instance of the event so that distinct() can be used later
       map((event) => store.add(event)),
       // Ignore invalid events
       filter((e) => e !== null),
@@ -16,3 +19,6 @@ export function mapEventsToStore(store: IEventStore, removeDuplicates = true): M
       removeDuplicates ? distinct() : identity,
     );
 }
+
+/** Alias for {@link mapEventsToStore} */
+export const filterDuplicateEvents = (store: IEventStoreActions) => mapEventsToStore(store, true);

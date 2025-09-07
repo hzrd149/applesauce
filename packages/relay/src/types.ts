@@ -115,9 +115,21 @@ export interface IPool {
   /** Send an EVENT message */
   event(relays: string[], event: NostrEvent): Observable<PublishResponse>;
   /** Send an EVENT message to relays with retries */
-  publish(relays: string[], event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse[]>;
+  publish(
+    relays: string[],
+    event: Parameters<IGroup["publish"]>[0],
+    opts?: Parameters<IGroup["publish"]>[1],
+  ): Promise<PublishResponse[]>;
   /** Send a REQ message to relays with retries */
-  request(relays: string[], filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent>;
+  request(
+    relays: string[],
+    filters: Parameters<IGroup["request"]>[0],
+    opts?: Parameters<IGroup["request"]>[1],
+  ): Observable<NostrEvent>;
   /** Open a subscription to relays with retries */
-  subscription(relays: string[], filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
+  subscription(
+    relays: string[],
+    filters: Parameters<IGroup["subscription"]>[0],
+    opts?: Parameters<IGroup["subscription"]>[1],
+  ): Observable<SubscriptionResponse>;
 }

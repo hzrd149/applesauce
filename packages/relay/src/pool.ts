@@ -1,19 +1,10 @@
 import { type NostrEvent } from "nostr-tools";
 import { BehaviorSubject, Observable } from "rxjs";
 
+import { normalizeURL } from "applesauce-core/helpers";
 import { RelayGroup } from "./group.js";
 import { Relay, RelayOptions } from "./relay.js";
-import {
-  IPool,
-  PublishResponse,
-  PublishOptions,
-  RequestOptions,
-  SubscriptionOptions,
-  SubscriptionResponse,
-  FilterInput,
-  IRelay,
-} from "./types.js";
-import { normalizeURL } from "applesauce-core/helpers";
+import { FilterInput, IPool, IRelay, PublishResponse, SubscriptionResponse } from "./types.js";
 
 export class RelayPool implements IPool {
   groups$ = new BehaviorSubject<Map<string, RelayGroup>>(new Map());
@@ -97,17 +88,29 @@ export class RelayPool implements IPool {
   }
 
   /** Publish an event to multiple relays */
-  publish(relays: string[], event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse[]> {
+  publish(
+    relays: string[],
+    event: Parameters<RelayGroup["publish"]>[0],
+    opts?: Parameters<RelayGroup["publish"]>[1],
+  ): Promise<PublishResponse[]> {
     return this.group(relays).publish(event, opts);
   }
 
   /** Request events from multiple relays */
-  request(relays: string[], filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent> {
+  request(
+    relays: string[],
+    filters: Parameters<RelayGroup["request"]>[0],
+    opts?: Parameters<RelayGroup["request"]>[1],
+  ): Observable<NostrEvent> {
     return this.group(relays).request(filters, opts);
   }
 
   /** Open a subscription to multiple relays */
-  subscription(relays: string[], filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
+  subscription(
+    relays: string[],
+    filters: Parameters<RelayGroup["subscription"]>[0],
+    opts?: Parameters<RelayGroup["subscription"]>[1],
+  ): Observable<SubscriptionResponse> {
     return this.group(relays).subscription(filters, opts);
   }
 }
