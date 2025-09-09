@@ -21,6 +21,15 @@ export function getTagValue<T extends { kind: number; tags: string[][]; content:
   return event.tags.find((t) => t[0] === name)?.[1];
 }
 
+/** Checks if an event has a public name / value tag*/
+export function hasNameValueTag<T extends { kind: number; tags: string[][]; content: string }>(
+  event: T,
+  name: string,
+  value: string,
+): boolean {
+  return event.tags.some((t) => t[0] === name && t[1] === value);
+}
+
 /** Returns a Set of tag names and values that are indexable */
 export function getIndexableTags(event: NostrEvent): Set<string> {
   let indexable = Reflect.get(event, EventIndexableTagsSymbol) as Set<string> | undefined;

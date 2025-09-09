@@ -279,6 +279,7 @@ describe("exports", () => {
         "hasHiddenContent",
         "hasHiddenTags",
         "hasHighlightSource",
+        "hasNameValueTag",
         "internalGiftWrapEvents",
         "interpretThreadTags",
         "isATag",
