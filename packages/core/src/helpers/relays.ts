@@ -32,20 +32,35 @@ export function isSafeRelayURL(relay: string) {
 }
 
 /** Merge multiple sets of relays and remove duplicates (ignores invalid URLs) */
-export function mergeRelaySets(...sources: (Iterable<string> | undefined)[]) {
+export function mergeRelaySets(...sources: (Iterable<string> | string | undefined)[]) {
   const set = new Set<string>();
 
   for (const src of sources) {
     if (!src) continue;
-    for (const url of src) {
+
+    if (typeof src === "string") {
+      // Source is a string
       try {
-        const safe = normalizeURL(url).toString();
+        const safe = normalizeURL(src).toString();
         if (safe) set.add(safe);
       } catch (error) {
         // failed to parse URL, ignore
+      }
+    } else {
+      // Source is iterable
+      for (const url of src) {
+        try {
+          const safe = normalizeURL(url).toString();
+          if (safe) set.add(safe);
+        } catch (error) {
+          // failed to parse URL, ignore
+        }
       }
     }
   }
 
   return Array.from(set);
 }
+
+/** Alias for {@link mergeRelaySets} */
+export const relaySet = mergeRelaySets;
