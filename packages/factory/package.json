@@ -85,7 +85,7 @@
     "@vitest/coverage-v8": "2.1.8",
     "applesauce-signers": "^3.1.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.4"
   },
   "funding": {
     "type": "lightning",

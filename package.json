@@ -13,8 +13,8 @@
     "test:browser": "vitest"
   },
   "dependencies": {
-    "@changesets/cli": "^2.29.6",
-    "typedoc": "^0.28.10"
+    "@changesets/cli": "^2.29.7",
+    "typedoc": "^0.28.12"
   },
   "devDependencies": {
     "@changesets/changelog-git": "^0.2.1",

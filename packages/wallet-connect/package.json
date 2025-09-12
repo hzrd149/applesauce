@@ -74,7 +74,7 @@
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/debug": "^4.1.12",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.4"
   },
   "funding": {
     "type": "lightning",

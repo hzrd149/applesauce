@@ -363,6 +363,7 @@ describe("exports", () => {
         "persistEventsToCache",
         "presistEventsToCache",
         "processTags",
+        "relaySet",
         "safeParse",
         "setCachedValue",
         "setEncryptedContentCache",

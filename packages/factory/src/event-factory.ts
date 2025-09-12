@@ -114,10 +114,8 @@ export class EventFactory {
     blueprint: EventBlueprint<T> | ((...args: Args) => EventBlueprint<T>),
     ...args: Args
   ): Promise<T> {
-    // NOTE: reimplementing the create() method because of typescript's type inference
-
     // Context, blueprint(context)
-    if (arguments.length === 2) {
+    if (arguments.length === 1) {
       return (await blueprint(this.context)) as T;
     }
     // Context, blueprintConstructor(...args)(context), ...args
