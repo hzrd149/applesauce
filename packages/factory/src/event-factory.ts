@@ -62,12 +62,29 @@ export function blueprint(kind: number, ...operations: (EventOperation | undefin
 }
 
 /** Creates an event from a context and a blueprint */
-export async function create<Args extends Array<any>, T extends EventTemplate | UnsignedEvent | NostrEvent>(
+export async function create<T extends EventTemplate | UnsignedEvent | NostrEvent>(
+  context: EventFactoryContext,
+  blueprint: EventBlueprint<T>,
+): Promise<T>;
+export async function create<T extends EventTemplate | UnsignedEvent | NostrEvent, Args extends Array<any>>(
   context: EventFactoryContext,
   blueprintConstructor: (...args: Args) => EventBlueprint<T>,
   ...args: Args
+): Promise<T>;
+export async function create<T extends EventTemplate | UnsignedEvent | NostrEvent, Args extends Array<any>>(
+  context: EventFactoryContext,
+  blueprint: EventBlueprint<T> | ((...args: Args) => EventBlueprint<T>),
+  ...args: Args
 ): Promise<T> {
-  return await blueprintConstructor(...args)(context);
+  // Context, blueprint(context)
+  if (arguments.length === 2) {
+    return (await blueprint(context)) as T;
+  }
+  // Context, blueprintConstructor(...args)(context), ...args
+  else {
+    const constructor = blueprint as (...args: Args) => EventBlueprint<T>;
+    return await constructor(...args)(context);
+  }
 }
 
 /** Modifies an event using a context and a set of operations */
@@ -88,11 +105,26 @@ export class EventFactory {
   }
 
   /** Create an event from a blueprint */
-  async create<Args extends Array<any>, T extends EventTemplate | UnsignedEvent | NostrEvent>(
-    blueprintConstructor: (...args: Args) => EventBlueprint<T>,
+  async create<T extends EventTemplate | UnsignedEvent | NostrEvent>(blueprint: EventBlueprint<T>): Promise<T>;
+  async create<T extends EventTemplate | UnsignedEvent | NostrEvent, Args extends Array<any>>(
+    blueprint: (...args: Args) => EventBlueprint<T>,
+    ...args: Args
+  ): Promise<T>;
+  async create<T extends EventTemplate | UnsignedEvent | NostrEvent, Args extends Array<any>>(
+    blueprint: EventBlueprint<T> | ((...args: Args) => EventBlueprint<T>),
     ...args: Args
   ): Promise<T> {
-    return await blueprintConstructor(...args)(this.context);
+    // NOTE: reimplementing the create() method because of typescript's type inference
+
+    // Context, blueprint(context)
+    if (arguments.length === 2) {
+      return (await blueprint(this.context)) as T;
+    }
+    // Context, blueprintConstructor(...args)(context), ...args
+    else {
+      const constructor = blueprint as (...args: Args) => EventBlueprint<T>;
+      return await constructor(...args)(this.context);
+    }
   }
 
   /** Modify an existing event with operations and updated the created_at */
@@ -131,6 +163,26 @@ export class EventFactory {
   }
 
   // Helpers
+
+  /** Sets the signer in the context */
+  setSigner(signer: EventFactoryContext["signer"]) {
+    this.context.signer = signer;
+  }
+
+  /** clears the signer in the context */
+  clearSigner() {
+    this.context.signer = undefined;
+  }
+
+  /** sets the client in the context */
+  setClient(client: EventFactoryContext["client"]) {
+    this.context.client = client;
+  }
+
+  /** clears the client in the context */
+  clearClient() {
+    this.context.client = undefined;
+  }
 
   /** Creates a short text note */
   note(...args: Parameters<typeof NoteBlueprint>) {
