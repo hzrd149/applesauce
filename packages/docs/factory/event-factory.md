@@ -55,6 +55,10 @@ const factory = new EventFactory({
 
 The `create()` method uses pre-built blueprints to create common event types. Blueprints are pre-built sets of operations that can be used to create events.
 
+There are two ways to call blueprints:
+
+**Method 1: Pass blueprint constructor and arguments separately**
+
 ```typescript
 // Create a short text note (kind 1)
 const noteEvent = await factory.create(NoteBlueprint, "Hello Nostr!");
@@ -67,6 +71,22 @@ const replyEvent = await factory.create(NoteReplyBlueprint, noteToReplyTo, "Hell
 
 // Create a comment (NIP-22)
 const commentEvent = await factory.create(CommentBlueprint, articleToCommentOn, "Great article!");
+```
+
+**Method 2: Call blueprint method directly**
+
+```typescript
+// Create a short text note (kind 1)
+const noteEvent = await factory.create(NoteBlueprint("Hello Nostr!"));
+
+// Create a reaction event (kind 7)
+const reactionEvent = await factory.create(ReactionBlueprint(eventToReactTo, "+"));
+
+// Create a reply to a note
+const replyEvent = await factory.create(NoteReplyBlueprint(noteToReplyTo, "Hello back!"));
+
+// Create a comment (NIP-22)
+const commentEvent = await factory.create(CommentBlueprint(articleToCommentOn, "Great article!"));
 ```
 
 ### `build()` - Build an event using operations

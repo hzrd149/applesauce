@@ -22,15 +22,24 @@ const factory = new EventFactory({
 const note = await factory.note("Hello, Nostr!");
 const reaction = await factory.reaction(someEvent, "🔥");
 
-// Or use the generic create method with any blueprint
+// Or use the generic create method with any blueprint (Method 1)
 const customNote = await factory.create(NoteBlueprint, "Custom note content #nostr", {
   zapSplit: [{ pubkey: "pubkey...", weight: 100 }],
 });
+
+// Alternative calling pattern (Method 2)
+const customNote2 = await factory.create(
+  NoteBlueprint("Custom note content #nostr", {
+    zapSplit: [{ pubkey: "pubkey...", weight: 100 }],
+  }),
+);
 ```
 
 ### With One-off Context
 
-For one-time event creation, you can use the `create` function with a context and blueprint:
+For one-time event creation, you can use the `create` function with a context and blueprint. Both calling patterns are supported:
+
+**Method 1: Pass blueprint constructor and arguments separately**
 
 ```typescript
 import { create } from "applesauce-factory";
@@ -45,6 +54,19 @@ const note = await create(
 
 // Create a comment on an existing event
 const comment = await create({ signer: mySigner }, CommentBlueprint, parentEvent, "Great post!");
+```
+
+**Method 2: Call blueprint method directly and pass result**
+
+```typescript
+// Create a single event with a one-off context
+const note = await create(
+  { signer: mySigner }, // context
+  NoteBlueprint("Hello, world!"), // blueprint called directly
+);
+
+// Create a comment on an existing event
+const comment = await create({ signer: mySigner }, CommentBlueprint(parentEvent, "Great post!"));
 ```
 
 ## Available Blueprints
@@ -88,11 +110,17 @@ export function AppConfigBlueprint(config: Record<string, any>) {
 Once created, use your custom blueprint just like the built-in ones:
 
 ```typescript
-// With EventFactory
+// With EventFactory (Method 1)
 const customEvent = await factory.create(AppConfigBlueprint, { theme: "light" });
 
-// With one-off context
+// With EventFactory (Method 2)
+const customEvent2 = await factory.create(AppConfigBlueprint({ theme: "light" }));
+
+// With one-off context (Method 1)
 const advancedEvent = await create({ signer: mySigner }, AppConfigBlueprint, { theme: "light" });
+
+// With one-off context (Method 2)
+const advancedEvent2 = await create({ signer: mySigner }, AppConfigBlueprint({ theme: "light" }));
 ```
 
 ## Blueprint Patterns
