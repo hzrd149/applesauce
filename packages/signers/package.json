@@ -38,6 +38,16 @@
       "import": "./dist/signers/*.js",
       "require": "./dist/signers/*.js",
       "types": "./dist/signers/*.d.ts"
+    },
+    "./helpers": {
+      "import": "./dist/helpers/index.js",
+      "require": "./dist/helpers/index.js",
+      "types": "./dist/helpers/index.d.ts"
+    },
+    "./helpers/*": {
+      "import": "./dist/helpers/*.js",
+      "require": "./dist/helpers/*.js",
+      "types": "./dist/helpers/*.d.ts"
     }
   },
   "dependencies": {
