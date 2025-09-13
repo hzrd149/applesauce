@@ -125,19 +125,19 @@ export class SqliteEventDatabase implements IEventDatabase {
 
   // Claim methods (mirror in memory database)
   touch(event: NostrEvent): void {
-    this.memory.touch(event);
+    return this.memory.touch(event);
   }
   claim(event: NostrEvent, claim: any): void {
-    this.memory.claim(event, claim);
+    return this.memory.claim(event, claim);
   }
   isClaimed(event: NostrEvent): boolean {
     return this.memory.isClaimed(event);
   }
   removeClaim(event: NostrEvent, claim: any): void {
-    this.memory.removeClaim(event, claim);
+    return this.memory.removeClaim(event, claim);
   }
   clearClaim(event: NostrEvent): void {
-    this.memory.clearClaim(event);
+    return this.memory.clearClaim(event);
   }
   unclaimed(): Generator<NostrEvent> {
     return this.memory.unclaimed();
