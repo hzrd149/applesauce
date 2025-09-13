@@ -2,21 +2,20 @@ import { Filter, NostrEvent } from "nostr-tools";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { Observable } from "rxjs";
 
-import { LRU } from "../helpers/lru.js";
 import { Mutes } from "../helpers/mutes.js";
+import { AddressPointerWithoutD } from "../helpers/pointers.js";
 import { ProfileContent } from "../helpers/profile.js";
 import { Thread } from "../models/thread.js";
-import { AddressPointerWithoutD } from "../helpers/pointers.js";
 
 /** The read interface for an event store */
 export interface IEventStoreRead {
   /** Check if the event store has an event with id */
   hasEvent(id: string): boolean;
-  /** Check if the event store has a replaceable event */
-  hasReplaceable(kind: number, pubkey: string, identifier?: string): boolean;
-
   /** Get an event by id */
   getEvent(id: string): NostrEvent | undefined;
+
+  /** Check if the event store has a replaceable event */
+  hasReplaceable(kind: number, pubkey: string, identifier?: string): boolean;
   /** Get a replaceable event */
   getReplaceable(kind: number, pubkey: string, identifier?: string): NostrEvent | undefined;
   /** Get the history of a replaceable event */
@@ -50,6 +49,8 @@ export interface IEventStoreActions {
 
 /** The claim interface for an event store */
 export interface IEventClaims {
+  /** Tell the store that this event was used */
+  touch(event: NostrEvent): void;
   /** Sets the claim on the event and touches it */
   claim(event: NostrEvent, claim: any): void;
   /** Checks if an event is claimed by anything */
@@ -58,10 +59,12 @@ export interface IEventClaims {
   removeClaim(event: NostrEvent, claim: any): void;
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void;
+  /** Returns a generator of unclaimed events in order of least used */
+  unclaimed(): Generator<NostrEvent>;
 }
 
 /** An event store that can be subscribed to */
-export interface IEventStoreSubscriptions {
+export interface IEventSubscriptions {
   /** Susbscribe to an event by id */
   event(id: string | EventPointer): Observable<NostrEvent | undefined>;
   /** Subscribe to a replaceable event by pointer */
@@ -71,6 +74,9 @@ export interface IEventStoreSubscriptions {
   /** Subscribe to a batch of events that match the filters */
   filter(filters: Filter | Filter[]): Observable<NostrEvent[]>;
 }
+
+/** @deprecated use {@link IEventSubscriptions} instead */
+export interface IEventStoreSubscriptions extends IEventSubscriptions {}
 
 /** Methods for creating common models */
 export interface IEventStoreModels {
@@ -102,9 +108,10 @@ export type ModelConstructor<T extends unknown, Args extends Array<any>> = ((...
 };
 
 /** The base interface for a set of events */
-export interface IEventSet extends IEventStoreRead, IEventStoreStreams, IEventStoreActions, IEventClaims {
-  events: LRU<NostrEvent>;
-}
+export interface IEventDatabase extends IEventStoreRead, IEventStoreActions, IEventClaims {}
+
+/** @deprecated use {@link IEventDatabase} instead */
+export interface IEventSet extends IEventDatabase {}
 
 // TODO: this interface should be removed, or broken into smaller interfaces
 export interface IEventStore

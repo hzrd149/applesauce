@@ -1,5 +1,7 @@
+import { NostrEvent } from "nostr-tools";
+import { Subject } from "rxjs";
 import { describe, expect, it } from "vitest";
-import { EventSet } from "../../event-store/event-set.js";
+import { InMemoryEventDatabase } from "../../event-store/event-database.js";
 import { claimEvents } from "../claim-events.js";
 
 const event = {
@@ -16,9 +18,10 @@ const event = {
 
 describe("claimEvents", () => {
   it("it should claim events", () => {
-    const database = new EventSet();
-    const sub = database.insert$.pipe(claimEvents(database)).subscribe();
-    database.add(event);
+    const database = new InMemoryEventDatabase();
+    const subject = new Subject<NostrEvent>();
+    const sub = subject.pipe(claimEvents(database)).subscribe();
+    subject.next(database.add(event)!);
     expect(database.isClaimed(event)).toBe(true);
     sub.unsubscribe();
     expect(database.isClaimed(event)).toBe(false);

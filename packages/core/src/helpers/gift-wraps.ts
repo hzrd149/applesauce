@@ -1,5 +1,5 @@
 import { NostrEvent, UnsignedEvent, verifyEvent } from "nostr-tools";
-import { EventSet } from "../event-store/event-set.js";
+import { InMemoryEventDatabase } from "../event-store/event-database.js";
 import {
   EncryptedContentSigner,
   getEncryptedContent,
@@ -11,9 +11,9 @@ import { notifyEventUpdate } from "./event.js";
 
 /**
  * An internal event set to keep track of seals and rumors
- * This is intentially isolated from the main applications event store so to prevent seals and rumors from being leaked
+ * This is intentionally isolated from the main applications event store so to prevent seals and rumors from being leaked
  */
-export const internalGiftWrapEvents = new EventSet();
+export const internalGiftWrapEvents = new InMemoryEventDatabase();
 
 export type Rumor = UnsignedEvent & {
   id: string;

@@ -1,19 +1,15 @@
 import { Filter, NostrEvent } from "nostr-tools";
 import { binarySearch, insertEventIntoDescendingList } from "nostr-tools/utils";
-import { Subject } from "rxjs";
 
 import { getIndexableTags, INDEXABLE_TAGS } from "../helpers/event-tags.js";
 import { createReplaceableAddress, isReplaceable } from "../helpers/event.js";
 import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
-import { IEventSet } from "./interface.js";
+import { IEventDatabase } from "./interface.js";
 
-/**
- * A set of nostr events that can be queried and subscribed to
- * NOTE: does not handle replaceable events or any deletion logic
- */
-export class EventSet implements IEventSet {
-  protected log = logger.extend("EventSet");
+/** An in-memory database of events */
+export class InMemoryEventDatabase implements IEventDatabase {
+  protected log = logger.extend("InMemoryEventDatabase");
 
   /** Indexes */
   protected kinds = new Map<number, Set<NostrEvent>>();
@@ -27,26 +23,9 @@ export class EventSet implements IEventSet {
   /** A sorted array of replaceable events by address */
   protected replaceable = new Map<string, NostrEvent[]>();
 
-  /** A stream of events inserted into the database */
-  insert$ = new Subject<NostrEvent>();
-
-  /** A stream of events that have been updated */
-  update$ = new Subject<NostrEvent>();
-
-  /** A stream of events removed from the database */
-  remove$ = new Subject<NostrEvent>();
-
-  /** A method thats called before a new event is inserted */
-  onBeforeInsert?: (event: NostrEvent) => boolean;
-
   /** The number of events in the event set */
   get size() {
     return this.events.size;
-  }
-
-  /** Moves an event to the top of the LRU cache */
-  touch(event: NostrEvent): void {
-    this.events.set(event.id, event);
   }
 
   /** Checks if the database contains an event without touching it */
@@ -79,11 +58,10 @@ export class EventSet implements IEventSet {
   getByFilters(filters: Filter | Filter[]): Set<NostrEvent> {
     return this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]);
   }
-
   /** Gets a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): NostrEvent[] {
     const timeline: NostrEvent[] = [];
-    const events = this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]);
+    const events = this.getByFilters(filters);
     for (const event of events) insertEventIntoDescendingList(timeline, event);
     return timeline;
   }
@@ -94,9 +72,6 @@ export class EventSet implements IEventSet {
 
     const current = this.events.get(id);
     if (current) return current;
-
-    // Ignore events if before insert returns false
-    if (this.onBeforeInsert?.(event) === false) return null;
 
     this.events.set(id, event);
     this.getKindIndex(event.kind).add(event);
@@ -126,17 +101,7 @@ export class EventSet implements IEventSet {
       insertEventIntoDescendingList(array, event);
     }
 
-    // Notify subscribers that the event was inserted
-    this.insert$.next(event);
-
     return event;
-  }
-
-  /** Inserts and event into the database and notifies all subscriptions that the event has updated */
-  update(event: NostrEvent): boolean {
-    const inserted = this.add(event);
-    if (inserted) this.update$.next(inserted);
-    return inserted !== null;
   }
 
   /** Removes an event from the database and notifies all subscriptions */
@@ -178,14 +143,25 @@ export class EventSet implements IEventSet {
     // remove any claims this event has
     this.claims.delete(event);
 
-    // notify subscribers this event was removed
-    this.remove$.next(event);
-
     return true;
+  }
+
+  /** Notify the database that an event has updated */
+  update(_event: NostrEvent) {
+    // Do nothing
   }
 
   /** A weak map of events that are claimed by other things */
   protected claims = new WeakMap<NostrEvent, any>();
+
+  /** Moves an event to the top of the LRU cache */
+  touch(event: NostrEvent): void {
+    // Make sure the event is in the database before adding it to the LRU
+    if (!this.events.has(event.id)) return;
+
+    // Move to the top of the LRU
+    this.events.set(event.id, event);
+  }
 
   /** Sets the claim on the event and touches it */
   claim(event: NostrEvent, claim: any): void {
@@ -208,6 +184,19 @@ export class EventSet implements IEventSet {
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void {
     this.claims.delete(event);
+  }
+  /** Returns a generator of unclaimed events in order of least used */
+  *unclaimed(): Generator<NostrEvent> {
+    let removed = 0;
+
+    let cursor = this.events.first;
+    while (cursor) {
+      const event = cursor.value;
+      if (!this.isClaimed(event)) yield event;
+      cursor = cursor.next;
+    }
+
+    return removed;
   }
 
   /** Index helper methods */
@@ -376,27 +365,6 @@ export class EventSet implements IEventSet {
     return events;
   }
 
-  /** Remove the oldest events that are not claimed */
-  prune(limit = 1000): number {
-    let removed = 0;
-
-    let cursor = this.events.first;
-    while (cursor) {
-      const event = cursor.value;
-
-      if (!this.isClaimed(event)) {
-        this.remove(event);
-        removed++;
-
-        if (removed >= limit) break;
-      }
-
-      cursor = cursor.next;
-    }
-
-    return removed;
-  }
-
   /** Resets the event set */
   reset(): void {
     this.events.clear();
@@ -408,3 +376,6 @@ export class EventSet implements IEventSet {
     this.claims = new WeakMap();
   }
 }
+
+/** @deprecated use {@link InMemoryEventDatabase} instead */
+export const EventSet = InMemoryEventDatabase;

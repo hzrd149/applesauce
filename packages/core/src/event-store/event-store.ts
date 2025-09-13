@@ -1,9 +1,22 @@
+import hash_sum from "hash-sum";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { isAddressableKind } from "nostr-tools/kinds";
-import { EMPTY, filter, finalize, from, merge, mergeMap, Observable, ReplaySubject, share, take, timer } from "rxjs";
-
-import hash_sum from "hash-sum";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
+import {
+  EMPTY,
+  filter,
+  finalize,
+  from,
+  merge,
+  mergeMap,
+  Observable,
+  ReplaySubject,
+  share,
+  Subject,
+  take,
+  timer,
+} from "rxjs";
+
 import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
 import { createReplaceableAddress, EventStoreSymbol, FromCacheSymbol, isReplaceable } from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
@@ -11,6 +24,9 @@ import { matchFilters } from "../helpers/filter.js";
 import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
+import { IEventDatabase, IEventStore, ModelConstructor } from "./interface.js";
+
+// Import common models
 import { UserBlossomServersModel } from "../models/blossom.js";
 import { EventModel, EventsModel, ReplaceableModel, ReplaceableSetModel, TimelineModel } from "../models/common.js";
 import { ContactsModel } from "../models/contacts.js";
@@ -19,12 +35,11 @@ import { MailboxesModel } from "../models/mailboxes.js";
 import { MuteModel } from "../models/mutes.js";
 import { ProfileModel } from "../models/profile.js";
 import { ReactionsModel } from "../models/reactions.js";
-import { EventSet } from "./event-set.js";
-import { IEventStore, ModelConstructor } from "./interface.js";
+import { InMemoryEventDatabase } from "./event-database.js";
 
-/** An extended {@link EventSet} that handles replaceable events, delets, and models */
+/** An extended {@link InMemoryEventDatabase} that handles replaceable events, delets, and models */
 export class EventStore implements IEventStore {
-  database: EventSet;
+  database: IEventDatabase;
 
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions = false;
@@ -39,13 +54,13 @@ export class EventStore implements IEventStore {
   verifyEvent?: (event: NostrEvent) => boolean;
 
   /** A stream of new events added to the store */
-  insert$: Observable<NostrEvent>;
+  insert$ = new Subject<NostrEvent>();
 
   /** A stream of events that have been updated */
-  update$: Observable<NostrEvent>;
+  update$ = new Subject<NostrEvent>();
 
   /** A stream of events that have been removed */
-  remove$: Observable<NostrEvent>;
+  remove$ = new Subject<NostrEvent>();
 
   /**
    * A method that will be called when an event isn't found in the store
@@ -65,29 +80,18 @@ export class EventStore implements IEventStore {
    */
   addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
-  constructor() {
-    this.database = new EventSet();
-
-    // verify events before they are added to the database
-    this.database.onBeforeInsert = (event) => {
-      // Ignore events that are invalid
-      if (this.verifyEvent && this.verifyEvent(event) === false) return false;
-      else return true;
-    };
+  constructor(database = new InMemoryEventDatabase()) {
+    this.database = database;
 
     // when events are added to the database, add the symbol
-    this.database.insert$.subscribe((event) => {
+    this.insert$.subscribe((event) => {
       Reflect.set(event, EventStoreSymbol, this);
     });
 
     // when events are removed from the database, remove the symbol
-    this.database.remove$.subscribe((event) => {
+    this.remove$.subscribe((event) => {
       Reflect.deleteProperty(event, EventStoreSymbol);
     });
-
-    this.insert$ = this.database.insert$;
-    this.update$ = this.database.update$;
-    this.remove$ = this.database.remove$;
   }
 
   // delete state
@@ -158,8 +162,7 @@ export class EventStore implements IEventStore {
       this.deletedIds.add(id);
 
       // remove deleted events in the database
-      const event = this.database.getEvent(id);
-      if (event) this.database.remove(event);
+      this.remove(id);
     }
 
     const coords = getDeleteCoordinates(deleteEvent);
@@ -173,7 +176,7 @@ export class EventStore implements IEventStore {
       // Remove older versions of replaceable events
       const events = this.database.getReplaceableHistory(parsed.kind, parsed.pubkey, parsed.identifier) ?? [];
       for (const event of events) {
-        if (event.created_at < deleteEvent.created_at) this.database.remove(event);
+        if (event.created_at < deleteEvent.created_at) this.remove(event);
       }
     }
   }
@@ -195,6 +198,7 @@ export class EventStore implements IEventStore {
    * @returns The existing event or the event that was added, if it was ignored returns null
    */
   add(event: NostrEvent, fromRelay?: string): NostrEvent | null {
+    // Handle delete events differently
     if (event.kind === kinds.EventDeletion) this.handleDeleteEvent(event);
 
     // Ignore if the event was deleted
@@ -225,6 +229,9 @@ export class EventStore implements IEventStore {
       }
     }
 
+    // Verify event before inserting into the database
+    if (this.verifyEvent && this.verifyEvent(event) === false) return null;
+
     // Insert event into database
     const inserted = this.database.add(event);
 
@@ -237,13 +244,16 @@ export class EventStore implements IEventStore {
     // attach relay this event was from
     if (fromRelay) addSeenRelay(inserted, fromRelay);
 
+    // Emit insert$ signal
+    if (inserted === event) this.insert$.next(inserted);
+
     // remove all old version of the replaceable event
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
       const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
       if (existing) {
         const older = Array.from(existing).filter((e) => e.created_at < event.created_at);
-        for (const old of older) this.database.remove(old);
+        for (const old of older) this.remove(old);
 
         // return the newest version of the replaceable event
         // most of the time this will be === event, but not always
@@ -257,19 +267,51 @@ export class EventStore implements IEventStore {
     return inserted;
   }
 
-  /** Removes an event from the database and updates subscriptions */
+  /** Removes an event from the store and updates subscriptions */
   remove(event: string | NostrEvent): boolean {
-    return this.database.remove(event);
+    // Get the current instance from the database
+    const e = this.database.getEvent(typeof event === "string" ? event : event.id);
+    if (!e) return false;
+
+    const removed = this.database.remove(event);
+    if (removed && e) this.remove$.next(e);
+    return removed;
   }
 
   /** Add an event to the store and notifies all subscribes it has updated */
   update(event: NostrEvent): boolean {
-    return this.database.update(event);
+    // Map the event to the current instance in the database
+    const e = this.database.add(event);
+    if (!e) return false;
+
+    this.database.update(event);
+    this.update$.next(event);
+    return true;
+  }
+
+  /** Passthrough method for the database.touch */
+  touch(event: NostrEvent) {
+    this.database.touch(event);
+  }
+
+  /** Pass through method for the database.unclaimed */
+  unclaimed(): Generator<NostrEvent> {
+    return this.database.unclaimed();
   }
 
   /** Removes any event that is not being used by a subscription */
-  prune(max?: number): number {
-    return this.database.prune(max);
+  prune(limit?: number): number {
+    let removed = 0;
+
+    const unclaimed = this.database.unclaimed();
+    for (const event of unclaimed) {
+      this.remove(event);
+
+      removed++;
+      if (limit && removed >= limit) break;
+    }
+
+    return removed;
   }
 
   /** Check if the store has an event by id */
@@ -402,7 +444,7 @@ export class EventStore implements IEventStore {
 
   /** Creates an observable that emits when event is updated */
   updated(event: string | NostrEvent): Observable<NostrEvent> {
-    return this.database.update$.pipe(filter((e) => e.id === event || e === event));
+    return this.update$.pipe(filter((e) => e.id === event || e === event));
   }
 
   // Helper methods for creating models

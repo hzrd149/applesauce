@@ -8,6 +8,7 @@ describe("exports", () => {
         "EventSet",
         "EventStore",
         "Helpers",
+        "InMemoryEventDatabase",
         "Models",
         "TimeoutError",
         "defined",
