@@ -1,7 +1,7 @@
 import { Rumor } from "./gift-wraps.js";
 import { getConversationParticipants, getTagValue } from "./index.js";
 
-/** Returns the subject of a warpped direct message */
+/** Returns the subject of a wrapped direct message */
 export function getWrappedMessageSubject(message: Rumor): string | undefined {
   return getTagValue(message, "subject");
 }
@@ -12,12 +12,15 @@ export function getWrappedMessageParent(message: Rumor): string | undefined {
 }
 
 /** Returns the sender of a wrapped direct message */
-export function getWrappedMesssageSender(message: Rumor): string {
+export function getWrappedMessageSender(message: Rumor): string {
   return message.pubkey;
 }
 
+/** @deprecated use {@link getWrappedMessageSender} instead */
+export const getWrappedMesssageSender = getWrappedMessageSender;
+
 /**
- * Returns the frist participant in a conversation that is not the sender
+ * Returns the first participant in a conversation that is not the sender
  * @see getConversationParticipants
  */
 export function getWrappedMessageReceiver(message: Rumor): string {

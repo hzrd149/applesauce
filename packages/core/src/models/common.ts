@@ -8,19 +8,24 @@ import {
   filter,
   finalize,
   from,
+  ignoreElements,
   map,
   merge,
   mergeWith,
+  MonoTypeOperatorFunction,
+  Observable,
   of,
   repeat,
   scan,
+  switchMap,
+  take,
   takeUntil,
   tap,
 } from "rxjs";
 
 import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 import { insertEventIntoDescendingList } from "nostr-tools/utils";
-import { Model } from "../event-store/interface.js";
+import { IAsyncEventStore, IEventFallbackLoaders, IEventStore, Model } from "../event-store/interface.js";
 import {
   AddressPointerWithoutD,
   createReplaceableAddress,
@@ -31,30 +36,90 @@ import {
 } from "../helpers/index.js";
 import { claimEvents } from "../observable/claim-events.js";
 import { claimLatest } from "../observable/claim-latest.js";
+import { defined } from "../observable/defined.js";
 import { withImmediateValueOrDefault } from "../observable/with-immediate-value.js";
 
+/** Gets a single event from both types of event stores and returns an observable that completes */
+function getEventFromStores(
+  store: IEventStore | IAsyncEventStore,
+  pointer: EventPointer,
+): Observable<NostrEvent | undefined> {
+  const r = store.getEvent(pointer.id);
+
+  if (r instanceof Promise) return from(r);
+  else return of(r);
+}
+
+/** Gets a single replaceable event from both types of event stores and returns an observable that completes */
+function getReplaceableFromStores(
+  store: IEventStore | IAsyncEventStore,
+  pointer: AddressPointer | AddressPointerWithoutD,
+): Observable<NostrEvent | undefined> {
+  const r = store.getReplaceable(pointer.kind, pointer.pubkey, pointer.identifier);
+
+  if (r instanceof Promise) return from(r);
+  else return of(r);
+}
+
+/** If event is undefined, attempt to load using the fallback loader */
+function loadEventUsingFallback(
+  store: IEventFallbackLoaders,
+  pointer: EventPointer,
+): MonoTypeOperatorFunction<NostrEvent | undefined> {
+  return switchMap((event) => {
+    if (event) return of(event);
+
+    // If event was not found, attempt to load
+    if (!store.eventLoader) return EMPTY;
+    return from(store.eventLoader(pointer));
+  });
+}
+
+/** If replaceable event is undefined, attempt to load using the fallback loader */
+function loadReplaceableUsingFallback(
+  store: IEventFallbackLoaders,
+  pointer: AddressPointer | AddressPointerWithoutD,
+): MonoTypeOperatorFunction<NostrEvent | undefined> {
+  return switchMap((event) => {
+    if (event) return of(event);
+    else if (pointer.identifier !== undefined) {
+      if (!store.addressableLoader) return EMPTY;
+      return from(store.addressableLoader(pointer as AddressPointer)).pipe(filter((e) => !!e));
+    } else {
+      if (!store.replaceableLoader) return EMPTY;
+      return from(store.replaceableLoader(pointer)).pipe(filter((e) => !!e));
+    }
+  });
+}
+
 /** A model that returns a single event or undefined when its removed */
-export function EventModel(pointer: string | EventPointer): Model<NostrEvent | undefined> {
+export function EventModel(
+  pointer: string | EventPointer,
+): Model<NostrEvent | undefined, IEventStore | IAsyncEventStore> {
   if (typeof pointer === "string") pointer = { id: pointer };
 
-  return (events) =>
+  return (store) =>
     merge(
       // get current event and ignore if there is none
-      defer(() => {
-        let event = events.getEvent(pointer.id);
-        if (event) return of(event);
-
-        // If there is a loader, use it to get the event
-        if (!events.eventLoader) return EMPTY;
-        return from(events.eventLoader(pointer)).pipe(filter((e) => !!e));
-      }),
+      defer(() => getEventFromStores(store, pointer)).pipe(
+        // If the event isn't found, attempt to load using the fallback loader
+        loadEventUsingFallback(store, pointer),
+        // Only emit found events
+        defined(),
+      ),
       // Listen for new events
-      events.insert$.pipe(filter((e) => e.id === pointer.id)),
+      store.insert$.pipe(filter((e) => e.id === pointer.id)),
       // emit undefined when deleted
-      events.removed(pointer.id).pipe(endWith(undefined)),
+      store.remove$.pipe(
+        filter((e) => e.id === pointer.id),
+        take(1),
+        ignoreElements(),
+        // Emit undefined when deleted
+        endWith(undefined),
+      ),
     ).pipe(
       // claim all events
-      claimLatest(events),
+      claimLatest(store),
       // ignore duplicate events
       distinctUntilChanged((a, b) => a?.id === b?.id),
       // always emit undefined so the observable is synchronous
@@ -63,26 +128,22 @@ export function EventModel(pointer: string | EventPointer): Model<NostrEvent | u
 }
 
 /** A model that returns the latest version of a replaceable event or undefined if its removed */
-export function ReplaceableModel(pointer: AddressPointer | AddressPointerWithoutD): Model<NostrEvent | undefined> {
-  return (events) => {
+export function ReplaceableModel(
+  pointer: AddressPointer | AddressPointerWithoutD,
+): Model<NostrEvent | undefined, IEventStore | IAsyncEventStore> {
+  return (store) => {
     let current: NostrEvent | undefined = undefined;
 
     return merge(
       // lazily get current event
-      defer(() => {
-        let event = events.getReplaceable(pointer.kind, pointer.pubkey, pointer.identifier);
-
-        if (event) return of(event);
-        else if (pointer.identifier !== undefined) {
-          if (!events.addressableLoader) return EMPTY;
-          return from(events.addressableLoader(pointer as AddressPointer)).pipe(filter((e) => !!e));
-        } else {
-          if (!events.replaceableLoader) return EMPTY;
-          return from(events.replaceableLoader(pointer)).pipe(filter((e) => !!e));
-        }
-      }),
-      // subscribe to new events
-      events.insert$.pipe(
+      defer(() => getReplaceableFromStores(store, pointer)).pipe(
+        // If the event isn't found, attempt to load using the fallback loader
+        loadReplaceableUsingFallback(store, pointer),
+        // Only emit found events
+        defined(),
+      ),
+      // Subscribe to new events that match the pointer
+      store.insert$.pipe(
         filter(
           (e) =>
             e.pubkey == pointer.pubkey &&
@@ -99,13 +160,13 @@ export function ReplaceableModel(pointer: AddressPointer | AddressPointerWithout
       // Hacky way to extract the current event so takeUntil can access it
       tap((event) => (current = event)),
       // complete when event is removed
-      takeUntil(events.remove$.pipe(filter((e) => e.id === current?.id))),
+      takeUntil(store.remove$.pipe(filter((e) => e.id === current?.id))),
       // emit undefined when removed
       endWith(undefined),
       // keep the observable hot
       repeat(),
       // claim latest event
-      claimLatest(events),
+      claimLatest(store),
       // always emit undefined so the observable is synchronous
       withImmediateValueOrDefault(undefined),
     );
@@ -113,27 +174,34 @@ export function ReplaceableModel(pointer: AddressPointer | AddressPointerWithout
 }
 
 /** A model that returns an array of sorted events matching the filters */
-export function TimelineModel(filters: Filter | Filter[], includeOldVersion?: boolean): Model<NostrEvent[]> {
+export function TimelineModel(
+  filters: Filter | Filter[],
+  includeOldVersion?: boolean,
+): Model<NostrEvent[], IEventStore | IAsyncEventStore> {
   filters = Array.isArray(filters) ? filters : [filters];
 
-  return (events) => {
+  return (store) => {
     const seen = new Map<string, NostrEvent>();
 
     // get current events
-    return defer(() => of(Array.from(events.getTimeline(filters)))).pipe(
+    return defer(() => {
+      const r = store.getTimeline(filters);
+      if (r instanceof Promise) return from(r);
+      else return of(r);
+    }).pipe(
       // claim existing events
-      claimEvents(events),
+      claimEvents(store),
       // subscribe to newer events
       mergeWith(
-        events.insert$.pipe(
+        store.insert$.pipe(
           filter((e) => matchFilters(filters, e)),
           // claim all new events
-          claimEvents(events),
+          claimEvents(store),
         ),
       ),
       // subscribe to delete events
       mergeWith(
-        events.remove$.pipe(
+        store.remove$.pipe(
           filter((e) => matchFilters(filters, e)),
           map((e) => e.id),
         ),

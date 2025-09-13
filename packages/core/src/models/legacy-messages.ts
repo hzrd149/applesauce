@@ -1,8 +1,9 @@
 import { kinds, NostrEvent } from "nostr-tools";
 import { Model } from "../event-store/interface.js";
-import { getLegacyMessageCorraspondant, getLegacyMessageParent } from "../helpers/legacy-messages.js";
+import { getLegacyMessageCorrespondent, getLegacyMessageParent } from "../helpers/legacy-messages.js";
 import { map } from "rxjs";
 import { getConversationIdentifierFromMessage, getConversationParticipants } from "../helpers/messages.js";
+import { hasNameValueTag } from "../helpers/event-tags.js";
 
 /** A model that returns all legacy message groups (1-1) that a pubkey is participating in */
 export function LegacyMessagesGroups(
@@ -27,33 +28,33 @@ export function LegacyMessagesGroups(
 }
 
 /** Returns all legacy direct messages in a group */
-export function LegacyMessagesGroup(self: string, corraspondant: string): Model<NostrEvent[]> {
+export function LegacyMessagesGroup(self: string, correspondent: string): Model<NostrEvent[]> {
   return (store) =>
     store.timeline([
       {
         kinds: [kinds.EncryptedDirectMessage],
         "#p": [self],
-        authors: [corraspondant],
+        authors: [correspondent],
       },
       {
         kinds: [kinds.EncryptedDirectMessage],
-        "#p": [corraspondant],
+        "#p": [correspondent],
         authors: [self],
       },
     ]);
 }
 
 /** Returns an array of legacy messages that have replies */
-export function LegacyMessageThreads(self: string, corraspondant: string): Model<NostrEvent[]> {
+export function LegacyMessageThreads(self: string, correspondent: string): Model<NostrEvent[]> {
   return (store) =>
-    store.model(LegacyMessagesGroup, self, corraspondant).pipe(
+    store.model(LegacyMessagesGroup, self, correspondent).pipe(
       map((messages) =>
         messages.filter(
           (message) =>
             // Only select messages that are not replies
             !getLegacyMessageParent(message) &&
             // Check if message has any replies
-            store.getByFilters({ "#e": [message.id], kinds: [kinds.EncryptedDirectMessage] }).size > 0,
+            messages.some((m) => hasNameValueTag(m, "e", message.id)),
         ),
       ),
     );
@@ -61,19 +62,19 @@ export function LegacyMessageThreads(self: string, corraspondant: string): Model
 
 /** Returns all the legacy direct messages that are replies to a given message */
 export function LegacyMessageReplies(self: string, message: NostrEvent): Model<NostrEvent[]> {
-  const corraspondant = getLegacyMessageCorraspondant(message, self);
+  const correspondent = getLegacyMessageCorrespondent(message, self);
 
   return (store) =>
     store.timeline([
       {
         kinds: [kinds.EncryptedDirectMessage],
         "#p": [self],
-        authors: [corraspondant],
+        authors: [correspondent],
         "#e": [message.id],
       },
       {
         kinds: [kinds.EncryptedDirectMessage],
-        "#p": [corraspondant],
+        "#p": [correspondent],
         authors: [self],
         "#e": [message.id],
       },

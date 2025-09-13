@@ -1,11 +1,11 @@
 import { NostrEvent } from "nostr-tools";
 import { finalize, MonoTypeOperatorFunction, tap } from "rxjs";
 
-import { IEventClaims } from "../event-store/interface.js";
+import { IAsyncEventClaims, IEventClaims } from "../event-store/interface.js";
 
 /** keep a claim on any event that goes through this observable, claims are removed when the observable completes */
 export function claimEvents<T extends NostrEvent[] | NostrEvent | undefined>(
-  claims: IEventClaims,
+  claims: IEventClaims | IAsyncEventClaims,
 ): MonoTypeOperatorFunction<T> {
   return (source) => {
     const seen = new Set<NostrEvent>();
