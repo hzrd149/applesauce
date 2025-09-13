@@ -1,5 +1,18 @@
 # applesauce-core
 
+## 3.2.0
+
+### Minor Changes
+
+- fba497a: Rename `EventSet` to `InMemoryEventDatabase`
+- fba497a: Allow `EventStore` to use custom event database
+- 7cd3ae6: Add `hasNameValueTag` helper method
+- d802905: Add helpers for NIP-78 app data events
+
+### Patch Changes
+
+- 846b877: Fix `mergeRelaySets` only working with arrays
+
 ## 3.1.0
 
 ### Minor Changes

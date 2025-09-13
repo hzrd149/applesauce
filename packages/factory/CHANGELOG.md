@@ -1,5 +1,18 @@
 # applesauce-factory
 
+## 3.2.0
+
+### Minor Changes
+
+- f78ed9e: Add `setSigner`, `clearSigner`, `setClient`, `clearClient` methods to `EventFactory`
+- d802905: Add operations and blueprints for NIP-78 app data events
+- f78ed9e: Support alternative blueprint argument signature in the `EventFactory.create` and `create` methods
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@3.2.0
+
 ## 3.1.0
 
 ### Minor Changes

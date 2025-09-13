@@ -1,5 +1,13 @@
 # applesauce-relay
 
+## 3.2.0
+
+### Patch Changes
+
+- 9e13abf: Add `eventStore` option to `RelayPool.request` and `RelayPool.subscription` to filter duplicate events
+- Updated dependencies
+  - applesauce-core@3.2.0
+
 ## 3.1.0
 
 ### Minor Changes
