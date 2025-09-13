@@ -37,7 +37,7 @@ import { ProfileModel } from "../models/profile.js";
 import { ReactionsModel } from "../models/reactions.js";
 import { InMemoryEventDatabase } from "./event-database.js";
 
-/** An extended {@link InMemoryEventDatabase} that handles replaceable events, delets, and models */
+/** A wrapper around an event database that handles replaceable events, deletes, and models */
 export class EventStore implements IEventStore {
   database: IEventDatabase;
 
@@ -80,7 +80,7 @@ export class EventStore implements IEventStore {
    */
   addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
-  constructor(database = new InMemoryEventDatabase()) {
+  constructor(database: IEventDatabase = new InMemoryEventDatabase()) {
     this.database = database;
 
     // when events are added to the database, add the symbol

@@ -103,7 +103,6 @@ export class InMemoryEventDatabase implements IEventDatabase {
 
     return event;
   }
-
   /** Removes an event from the database and notifies all subscriptions */
   remove(eventOrId: string | NostrEvent): boolean {
     let event = typeof eventOrId === "string" ? this.events.get(eventOrId) : eventOrId;
@@ -145,7 +144,6 @@ export class InMemoryEventDatabase implements IEventDatabase {
 
     return true;
   }
-
   /** Notify the database that an event has updated */
   update(_event: NostrEvent) {
     // Do nothing

@@ -79,6 +79,7 @@ describe("exports", () => {
         "UnsignedEvent",
         "UserStatusPointerSymbol",
         "VIDEO_EXT",
+        "VerifiedEvent",
         "ZapAddressPointerSymbol",
         "ZapEventPointerSymbol",
         "ZapInvoiceSymbol",
@@ -88,6 +89,8 @@ describe("exports", () => {
         "addRelayHintsToPointer",
         "addSeenRelay",
         "areBlossomServersEqual",
+        "binarySearch",
+        "bytesToHex",
         "canHaveEncryptedContent",
         "canHaveHiddenContent",
         "canHaveHiddenTags",
@@ -280,6 +283,9 @@ describe("exports", () => {
         "hasHiddenTags",
         "hasHighlightSource",
         "hasNameValueTag",
+        "hexToBytes",
+        "insertEventIntoAscendingList",
+        "insertEventIntoDescendingList",
         "internalGiftWrapEvents",
         "interpretThreadTags",
         "isATag",
@@ -381,6 +387,7 @@ describe("exports", () => {
         "unlockLegacyMessage",
         "unlockSeal",
         "verifiedSymbol",
+        "verifyEvent",
       ]
     `);
   });

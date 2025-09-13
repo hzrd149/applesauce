@@ -20,8 +20,7 @@
   "author": "hzrd149",
   "license": "MIT",
   "files": [
-    "dist",
-    "applesauce"
+    "dist"
   ],
   "exports": {
     ".": {

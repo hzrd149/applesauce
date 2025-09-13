@@ -7,6 +7,7 @@
     [
       "applesauce-accounts",
       "applesauce-actions",
+      "applesauce-better-sqlite3",
       "applesauce-content",
       "applesauce-core",
       "applesauce-dvm",
@@ -16,8 +17,8 @@
       "applesauce-relay",
       "applesauce-signers",
       "applesauce-solidjs",
-      "applesauce-wallet",
-      "applesauce-wallet-connect"
+      "applesauce-wallet-connect",
+      "applesauce-wallet"
     ]
   ],
   "access": "public",

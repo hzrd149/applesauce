@@ -12,14 +12,12 @@
     "watch:test": "vitest"
   },
   "keywords": [
-    "nostr",
-    "applesauce"
+    "nostr"
   ],
   "author": "hzrd149",
   "license": "MIT",
   "files": [
-    "dist",
-    "applesauce"
+    "dist"
   ],
   "exports": {
     ".": {
@@ -68,7 +66,6 @@
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "applesauce-signers": "^3.1.0",
-    "@vitest/expect": "^3.1.1",
     "typescript": "^5.7.3",
     "vitest": "^3.2.4",
     "vitest-websocket-mock": "^0.5.0"

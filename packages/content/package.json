@@ -12,14 +12,12 @@
     "watch:test": "vitest"
   },
   "keywords": [
-    "nostr",
-    "applesauce"
+    "nostr"
   ],
   "author": "hzrd149",
   "license": "MIT",
   "files": [
-    "dist",
-    "applesauce"
+    "dist"
   ],
   "exports": {
     ".": {

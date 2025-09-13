@@ -4,7 +4,14 @@ import { IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
-export { NostrEvent, EventTemplate, UnsignedEvent, verifiedSymbol } from "nostr-tools/pure";
+export { NostrEvent, EventTemplate, UnsignedEvent, verifiedSymbol, verifyEvent, VerifiedEvent } from "nostr-tools/pure";
+export {
+  bytesToHex,
+  hexToBytes,
+  insertEventIntoAscendingList,
+  insertEventIntoDescendingList,
+  binarySearch,
+} from "nostr-tools/utils";
 export * as kinds from "nostr-tools/kinds";
 
 /** A symbol on an event that marks which event store its part of */
