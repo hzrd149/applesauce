@@ -1,12 +1,10 @@
 import { NostrEvent } from "nostr-tools";
 import { finalize, MonoTypeOperatorFunction, tap } from "rxjs";
 
-import { IAsyncEventClaims, IEventClaims } from "../event-store/interface.js";
+import { IEventClaims } from "../event-store/interface.js";
 
 /** An operator that claims the latest event with the database */
-export function claimLatest<T extends NostrEvent | undefined>(
-  claims: IEventClaims | IAsyncEventClaims,
-): MonoTypeOperatorFunction<T> {
+export function claimLatest<T extends NostrEvent | undefined>(claims: IEventClaims): MonoTypeOperatorFunction<T> {
   return (source) => {
     let latest: NostrEvent | undefined = undefined;
 

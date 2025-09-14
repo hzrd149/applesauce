@@ -5,11 +5,11 @@ import { getIndexableTags, INDEXABLE_TAGS } from "../helpers/event-tags.js";
 import { createReplaceableAddress, isReplaceable } from "../helpers/event.js";
 import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
-import { IEventDatabase } from "./interface.js";
+import { IEventMemory } from "./interface.js";
 
 /** An in-memory database of events */
-export class InMemoryEventDatabase implements IEventDatabase {
-  protected log = logger.extend("InMemoryEventDatabase");
+export class EventMemory implements IEventMemory {
+  protected log = logger.extend("EventMemory");
 
   /** Indexes */
   protected kinds = new Map<number, Set<NostrEvent>>();
@@ -67,7 +67,7 @@ export class InMemoryEventDatabase implements IEventDatabase {
   }
 
   /** Inserts an event into the database and notifies all subscriptions */
-  add(event: NostrEvent): NostrEvent | null {
+  add(event: NostrEvent): NostrEvent {
     const id = event.id;
 
     const current = this.events.get(id);
@@ -192,6 +192,20 @@ export class InMemoryEventDatabase implements IEventDatabase {
       const event = cursor.value;
       if (!this.isClaimed(event)) yield event;
       cursor = cursor.next;
+    }
+
+    return removed;
+  }
+  /** Removes events that are not claimed (free up memory) */
+  prune(limit?: number): number {
+    let removed = 0;
+
+    const unclaimed = this.unclaimed();
+    for (const event of unclaimed) {
+      this.remove(event);
+
+      removed++;
+      if (limit && removed >= limit) break;
     }
 
     return removed;
@@ -375,5 +389,5 @@ export class InMemoryEventDatabase implements IEventDatabase {
   }
 }
 
-/** @deprecated use {@link InMemoryEventDatabase} instead */
-export const EventSet = InMemoryEventDatabase;
+/** @deprecated use {@link EventMemory} instead */
+export const EventSet = EventMemory;

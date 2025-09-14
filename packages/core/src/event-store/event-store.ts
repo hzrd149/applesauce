@@ -9,15 +9,16 @@ import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
+import { EventMemory } from "./event-memory.js";
 import { IEventDatabase, IEventStore } from "./interface.js";
-
-// Import common models
-import { InMemoryEventDatabase } from "./event-database.js";
 import { EventStoreModelMixin } from "./model-mixin.js";
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
 export class EventStore extends EventStoreModelMixin(class {}) implements IEventStore {
   database: IEventDatabase;
+
+  /** Optional memory database for ensuring single event instances */
+  memory?: EventMemory;
 
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions = false;
@@ -58,9 +59,15 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
    */
   addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
-  constructor(database: IEventDatabase = new InMemoryEventDatabase()) {
+  constructor(database: IEventDatabase = new EventMemory()) {
     super();
-    this.database = database;
+    if (database) {
+      this.database = database;
+      this.memory = new EventMemory();
+    } else {
+      // If no database is provided, its the same as having a memory database
+      this.database = this.memory = new EventMemory();
+    }
 
     // when events are added to the database, add the symbol
     this.insert$.subscribe((event) => {
@@ -71,6 +78,15 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     this.remove$.subscribe((event) => {
       Reflect.deleteProperty(event, EventStoreSymbol);
     });
+  }
+
+  /** A method to add all events to memory to ensure there is only ever a single instance of an event */
+  private mapToMemory(event: NostrEvent): NostrEvent;
+  private mapToMemory(event: NostrEvent | undefined): NostrEvent | undefined;
+  private mapToMemory(event: NostrEvent | undefined): NostrEvent | undefined {
+    if (event === undefined) return undefined;
+    if (!this.memory) return event;
+    return this.memory.add(event);
   }
 
   // delete state
@@ -187,6 +203,20 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     const expiration = getExpirationTimestamp(event);
     if (this.keepExpired === false && expiration && expiration <= unixNow()) return null;
 
+    // Add the event to memory and get the cached instance if memory is enabled
+    if (this.memory) {
+      const cached = this.memory.add(event);
+      // If its not a new event, return the cached event instance
+      if (cached !== event) {
+        // Copy cached symbols and return existing event
+        EventStore.mergeDuplicateEvent(event, cached);
+        // attach relay this event was from
+        if (fromRelay) addSeenRelay(cached, fromRelay);
+
+        return cached;
+      }
+    }
+
     // Get the replaceable identifier
     const identifier = isReplaceable(event.kind) ? event.tags.find((t) => t[0] === "d")?.[1] : undefined;
 
@@ -217,14 +247,17 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     // If the event was ignored, return null
     if (inserted === null) return null;
 
+    // Map to memory if available
+    const mappedEvent = this.mapToMemory(inserted);
+
     // Copy cached data if its a duplicate event
-    if (event !== inserted) EventStore.mergeDuplicateEvent(event, inserted);
+    if (event !== mappedEvent) EventStore.mergeDuplicateEvent(event, mappedEvent);
 
     // attach relay this event was from
-    if (fromRelay) addSeenRelay(inserted, fromRelay);
+    if (fromRelay) addSeenRelay(mappedEvent, fromRelay);
 
     // Emit insert$ signal
-    if (inserted === event) this.insert$.next(inserted);
+    if (inserted === event) this.insert$.next(mappedEvent);
 
     // remove all old version of the replaceable event
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
@@ -241,9 +274,9 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     }
 
     // Add event to expiration map
-    if (this.keepExpired === false && expiration) this.handleExpiringEvent(inserted);
+    if (this.keepExpired === false && expiration) this.handleExpiringEvent(mappedEvent);
 
-    return inserted;
+    return mappedEvent;
   }
 
   /** Removes an event from the store and updates subscriptions */
@@ -251,6 +284,9 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     // Get the current instance from the database
     const e = this.database.getEvent(typeof event === "string" ? event : event.id);
     if (!e) return false;
+
+    // Remove from memory if available
+    if (this.memory) this.memory.remove(typeof event === "string" ? event : event.id);
 
     const removed = this.database.remove(event);
     if (removed && e) this.remove$.next(e);
@@ -263,64 +299,53 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     const e = this.database.add(event);
     if (!e) return false;
 
-    this.database.update(event);
     this.update$.next(event);
     return true;
   }
 
-  /** Passthrough method for the database.touch */
-  touch(event: NostrEvent) {
-    this.database.touch(event);
-  }
-
-  /** Pass through method for the database.unclaimed */
-  unclaimed(): Generator<NostrEvent> {
-    return this.database.unclaimed();
-  }
-
-  /** Removes any event that is not being used by a subscription */
-  prune(limit?: number): number {
-    let removed = 0;
-
-    const unclaimed = this.database.unclaimed();
-    for (const event of unclaimed) {
-      this.remove(event);
-
-      removed++;
-      if (limit && removed >= limit) break;
-    }
-
-    return removed;
-  }
-
   /** Check if the store has an event by id */
   hasEvent(id: string): boolean {
-    return this.database.hasEvent(id);
+    // Check if the event exists in memory first, then in the database
+    return this.memory?.hasEvent(id) || this.database.hasEvent(id);
   }
 
   /** Get an event by id from the store */
   getEvent(id: string): NostrEvent | undefined {
-    return this.database.getEvent(id);
+    // Get the event from memory first, then from the database
+    return this.memory?.getEvent(id) ?? this.mapToMemory(this.database.getEvent(id));
   }
 
   /** Check if the store has a replaceable event */
   hasReplaceable(kind: number, pubkey: string, d?: string): boolean {
-    return this.database.hasReplaceable(kind, pubkey, d);
+    // Check if the event exists in memory first, then in the database
+    return this.memory?.hasReplaceable(kind, pubkey, d) || this.database.hasReplaceable(kind, pubkey, d);
   }
 
   /** Gets the latest version of a replaceable event */
   getReplaceable(kind: number, pubkey: string, identifier?: string): NostrEvent | undefined {
-    return this.database.getReplaceable(kind, pubkey, identifier);
+    // Get the event from memory first, then from the database
+    return (
+      this.memory?.getReplaceable(kind, pubkey, identifier) ??
+      this.mapToMemory(this.database.getReplaceable(kind, pubkey, identifier))
+    );
   }
 
   /** Returns all versions of a replaceable event */
   getReplaceableHistory(kind: number, pubkey: string, identifier?: string): NostrEvent[] | undefined {
-    return this.database.getReplaceableHistory(kind, pubkey, identifier);
+    // Get the events from memory first, then from the database
+    return (
+      this.memory?.getReplaceableHistory(kind, pubkey, identifier) ??
+      this.database.getReplaceableHistory(kind, pubkey, identifier)?.map((e) => this.mapToMemory(e) ?? e)
+    );
   }
 
   /** Get all events matching a filter */
   getByFilters(filters: Filter | Filter[]): Set<NostrEvent> {
-    return this.database.getByFilters(filters);
+    // NOTE: no way to read from memory since memory won't have the full set of events
+    const events = this.database.getByFilters(filters);
+    // Map events to memory if available for better performance
+    if (this.memory) return new Set(Array.from(events).map((e) => this.mapToMemory(e) ?? e));
+    return events;
   }
 
   /** Returns a timeline of events that match filters */
@@ -328,21 +353,33 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     return this.database.getTimeline(filters);
   }
 
+  /** Passthrough method for the database.touch */
+  touch(event: NostrEvent) {
+    return this.memory?.touch(event);
+  }
   /** Sets the claim on the event and touches it */
   claim(event: NostrEvent, claim: any): void {
-    return this.database.claim(event, claim);
+    return this.memory?.claim(event, claim);
   }
   /** Checks if an event is claimed by anything */
   isClaimed(event: NostrEvent): boolean {
-    return this.database.isClaimed(event);
+    return this.memory?.isClaimed(event) ?? false;
   }
   /** Removes a claim from an event */
   removeClaim(event: NostrEvent, claim: any): void {
-    return this.database.removeClaim(event, claim);
+    return this.memory?.removeClaim(event, claim);
   }
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void {
-    return this.database.clearClaim(event);
+    return this.memory?.clearClaim(event);
+  }
+  /** Pass through method for the database.unclaimed */
+  unclaimed(): Generator<NostrEvent> {
+    return this.memory?.unclaimed() || (function* () {})();
+  }
+  /** Removes any event that is not being used by a subscription */
+  prune(limit?: number): number {
+    return this.memory?.prune(limit) ?? 0;
   }
 
   /** Returns an observable that completes when an event is removed */

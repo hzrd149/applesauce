@@ -9,14 +9,16 @@ import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
+import { EventMemory } from "./event-memory.js";
 import { IAsyncEventDatabase, IAsyncEventStore } from "./interface.js";
-
-// Import common models
 import { EventStoreModelMixin } from "./model-mixin.js";
 
 /** An async wrapper around an async event database that handles replaceable events, deletes, and models */
 export class AsyncEventStore extends EventStoreModelMixin(class {}) implements IAsyncEventStore {
   database: IAsyncEventDatabase;
+
+  /** Optional memory database for ensuring single event instances */
+  memory?: EventMemory;
 
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions = false;
@@ -60,6 +62,7 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
   constructor(database: IAsyncEventDatabase) {
     super();
     this.database = database;
+    this.memory = new EventMemory();
 
     // when events are added to the database, add the symbol
     this.insert$.subscribe((event) => {
@@ -70,6 +73,15 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     this.remove$.subscribe((event) => {
       Reflect.deleteProperty(event, EventStoreSymbol);
     });
+  }
+
+  /** A method to add all events to memory to ensure there is only ever a single instance of an event */
+  private mapToMemory(event: NostrEvent): NostrEvent;
+  private mapToMemory(event: NostrEvent | undefined): NostrEvent | undefined;
+  private mapToMemory(event: NostrEvent | undefined): NostrEvent | undefined {
+    if (event === undefined) return undefined;
+    if (!this.memory) return event;
+    return this.memory.add(event);
   }
 
   // delete state
@@ -188,6 +200,21 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     const expiration = getExpirationTimestamp(event);
     if (this.keepExpired === false && expiration && expiration <= unixNow()) return null;
 
+    // Add the event to memory and get the cached instance if memory is enabled
+    if (this.memory) {
+      const cached = this.memory.add(event);
+      // If its not a new event, return the cached event instance
+      if (cached !== event) {
+        // Copy cached data if its a duplicate event
+        if (event !== cached) AsyncEventStore.mergeDuplicateEvent(event, cached);
+
+        // attach relay this event was from
+        if (fromRelay) addSeenRelay(cached, fromRelay);
+
+        return cached;
+      }
+    }
+
     // Get the replaceable identifier
     const identifier = isReplaceable(event.kind) ? event.tags.find((t) => t[0] === "d")?.[1] : undefined;
 
@@ -215,17 +242,17 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     // Insert event into database
     const inserted = await this.database.add(event);
 
-    // If the event was ignored, return null
-    if (inserted === null) return null;
+    // Map to memory if available
+    const mappedEvent = this.mapToMemory(inserted) ?? inserted;
 
     // Copy cached data if its a duplicate event
-    if (event !== inserted) AsyncEventStore.mergeDuplicateEvent(event, inserted);
+    if (event !== mappedEvent) AsyncEventStore.mergeDuplicateEvent(event, mappedEvent);
 
     // attach relay this event was from
-    if (fromRelay) addSeenRelay(inserted, fromRelay);
+    if (fromRelay) addSeenRelay(mappedEvent, fromRelay);
 
     // Emit insert$ signal
-    if (inserted === event) this.insert$.next(inserted);
+    if (inserted === event) this.insert$.next(mappedEvent);
 
     // remove all old version of the replaceable event
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
@@ -242,9 +269,9 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     }
 
     // Add event to expiration map
-    if (this.keepExpired === false && expiration) this.handleExpiringEvent(inserted);
+    if (this.keepExpired === false && expiration) this.handleExpiringEvent(mappedEvent);
 
-    return inserted;
+    return mappedEvent;
   }
 
   /** Removes an event from the store and updates subscriptions */
@@ -252,6 +279,9 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     // Get the current instance from the database
     const e = await this.database.getEvent(typeof event === "string" ? event : event.id);
     if (!e) return false;
+
+    // Remove from memory if available
+    if (this.memory) this.memory.remove(event);
 
     const removed = await this.database.remove(event);
     if (removed && e) this.remove$.next(e);
@@ -264,62 +294,57 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     const e = await this.database.add(event);
     if (!e) return;
 
-    await this.database.update(event);
     this.update$.next(event);
-  }
-
-  /** Passthrough method for the database.touch */
-  async touch(event: NostrEvent): Promise<void> {
-    return await this.database.touch(event);
-  }
-
-  /** Pass through method for the database.unclaimed */
-  unclaimed(): AsyncGenerator<NostrEvent> {
-    return this.database.unclaimed();
-  }
-
-  /** Removes any event that is not being used by a subscription */
-  async prune(limit?: number): Promise<number> {
-    let removed = 0;
-    const generator = this.database.unclaimed();
-
-    for await (const event of generator) {
-      await this.remove(event);
-      removed++;
-
-      if (limit && removed >= limit) break;
-    }
-    return removed;
   }
 
   /** Check if the store has an event by id */
   async hasEvent(id: string): Promise<boolean> {
-    return await this.database.hasEvent(id);
+    // Check if the event exists in memory first, then in the database
+    return (this.memory?.hasEvent(id) ?? false) || (await this.database.hasEvent(id));
   }
 
   /** Get an event by id from the store */
   async getEvent(id: string): Promise<NostrEvent | undefined> {
-    return await this.database.getEvent(id);
+    // Get the event from memory first, then from the database
+    return this.memory?.getEvent(id) ?? this.mapToMemory(await this.database.getEvent(id));
   }
 
   /** Check if the store has a replaceable event */
   async hasReplaceable(kind: number, pubkey: string, d?: string): Promise<boolean> {
-    return await this.database.hasReplaceable(kind, pubkey, d);
+    // Check if the event exists in memory first, then in the database
+    return (
+      (this.memory?.hasReplaceable(kind, pubkey, d) ?? false) || (await this.database.hasReplaceable(kind, pubkey, d))
+    );
   }
 
   /** Gets the latest version of a replaceable event */
   async getReplaceable(kind: number, pubkey: string, identifier?: string): Promise<NostrEvent | undefined> {
-    return await this.database.getReplaceable(kind, pubkey, identifier);
+    // Get the event from memory first, then from the database
+    return (
+      this.memory?.getReplaceable(kind, pubkey, identifier) ??
+      this.mapToMemory(await this.database.getReplaceable(kind, pubkey, identifier))
+    );
   }
 
   /** Returns all versions of a replaceable event */
   async getReplaceableHistory(kind: number, pubkey: string, identifier?: string): Promise<NostrEvent[] | undefined> {
-    return await this.database.getReplaceableHistory(kind, pubkey, identifier);
+    // Get the events from memory first, then from the database
+    const memoryEvents = this.memory?.getReplaceableHistory(kind, pubkey, identifier);
+    if (memoryEvents) return memoryEvents;
+
+    const dbEvents = await this.database.getReplaceableHistory(kind, pubkey, identifier);
+    return dbEvents?.map((e) => this.mapToMemory(e) ?? e);
   }
 
   /** Get all events matching a filter */
   async getByFilters(filters: Filter | Filter[]): Promise<Set<NostrEvent>> {
-    return await this.database.getByFilters(filters);
+    // NOTE: no way to read from memory since memory won't have the full set of events
+    const events = await this.database.getByFilters(filters);
+    // Map events to memory if available for better performance
+    if (this.memory) {
+      return new Set(Array.from(events).map((e) => this.mapToMemory(e) ?? e));
+    }
+    return events;
   }
 
   /** Returns a timeline of events that match filters */
@@ -327,21 +352,33 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     return await this.database.getTimeline(filters);
   }
 
+  /** Passthrough method for the database.touch */
+  touch(event: NostrEvent) {
+    return this.memory?.touch(event);
+  }
   /** Sets the claim on the event and touches it */
-  async claim(event: NostrEvent, claim: any): Promise<void> {
-    return await this.database.claim(event, claim);
+  claim(event: NostrEvent, claim: any): void {
+    return this.memory?.claim(event, claim);
   }
   /** Checks if an event is claimed by anything */
-  async isClaimed(event: NostrEvent): Promise<boolean> {
-    return await this.database.isClaimed(event);
+  isClaimed(event: NostrEvent): boolean {
+    return this.memory?.isClaimed(event) ?? false;
   }
   /** Removes a claim from an event */
-  async removeClaim(event: NostrEvent, claim: any): Promise<void> {
-    return await this.database.removeClaim(event, claim);
+  removeClaim(event: NostrEvent, claim: any): void {
+    return this.memory?.removeClaim(event, claim);
   }
   /** Removes all claims on an event */
-  async clearClaim(event: NostrEvent): Promise<void> {
-    return await this.database.clearClaim(event);
+  clearClaim(event: NostrEvent): void {
+    return this.memory?.clearClaim(event);
+  }
+  /** Pass through method for the database.unclaimed */
+  unclaimed(): Generator<NostrEvent> {
+    return this.memory?.unclaimed() || (function* () {})();
+  }
+  /** Removes any event that is not being used by a subscription */
+  prune(limit?: number): number {
+    return this.memory?.prune(limit) ?? 0;
   }
 
   /** Returns an observable that completes when an event is removed */

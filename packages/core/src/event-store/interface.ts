@@ -93,22 +93,6 @@ export interface IEventClaims {
   unclaimed(): Generator<NostrEvent>;
 }
 
-/** The async claim interface for an event store */
-export interface IAsyncEventClaims {
-  /** Tell the store that this event was used */
-  touch(event: NostrEvent): Promise<void>;
-  /** Sets the claim on the event and touches it */
-  claim(event: NostrEvent, claim: any): Promise<void>;
-  /** Checks if an event is claimed by anything */
-  isClaimed(event: NostrEvent): Promise<boolean>;
-  /** Removes a claim from an event */
-  removeClaim(event: NostrEvent, claim: any): Promise<void>;
-  /** Removes all claims on an event */
-  clearClaim(event: NostrEvent): Promise<void>;
-  /** Returns a generator of unclaimed events in order of least used */
-  unclaimed(): AsyncGenerator<NostrEvent>;
-}
-
 /** An event store that can be subscribed to */
 export interface IEventSubscriptions {
   /** Subscribe to an event by id */
@@ -188,11 +172,29 @@ export type ModelConstructor<
   getKey?: (...args: Args) => string;
 };
 
-/** The base interface for a set of events */
-export interface IEventDatabase extends IEventStoreRead, IEventStoreActions, IEventClaims {}
+/** The base interface for a database of events */
+export interface IEventDatabase extends IEventStoreRead {
+  /** Add an event to the database */
+  add(event: NostrEvent): NostrEvent;
+  /** Remove an event from the database */
+  remove(event: string | NostrEvent): boolean;
+}
 
 /** The async base interface for a set of events */
-export interface IAsyncEventDatabase extends IAsyncEventStoreRead, IAsyncEventStoreActions, IAsyncEventClaims {}
+export interface IAsyncEventDatabase extends IAsyncEventStoreRead {
+  /** Add an event to the database */
+  add(event: NostrEvent): Promise<NostrEvent>;
+  /** Remove an event from the database */
+  remove(event: string | NostrEvent): Promise<boolean>;
+}
+
+/** The base interface for the in-memory database of events */
+export interface IEventMemory extends IEventStoreRead, IEventClaims {
+  /** Add an event to the store */
+  add(event: NostrEvent): NostrEvent;
+  /** Remove an event from the store */
+  remove(event: string | NostrEvent): boolean;
+}
 
 /** @deprecated use {@link IEventDatabase} instead */
 export interface IEventSet extends IEventDatabase {}
@@ -215,7 +217,7 @@ export interface IAsyncEventStore
     IAsyncEventStoreActions,
     IEventModelMixin<IAsyncEventStore>,
     IEventHelpfulSubscriptions,
-    IAsyncEventClaims,
+    IEventClaims,
     IEventFallbackLoaders {}
 
 /** The sync event store interface */

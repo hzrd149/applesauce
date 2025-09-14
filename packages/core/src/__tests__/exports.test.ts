@@ -6,10 +6,10 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "AsyncEventStore",
+        "EventMemory",
         "EventSet",
         "EventStore",
         "Helpers",
-        "InMemoryEventDatabase",
         "Models",
         "TimeoutError",
         "defined",
