@@ -50,15 +50,16 @@ describe("add", () => {
     expect(database.getEvent(event2.id)).toBe(event2);
   });
 
-  it("should return null for invalid events", () => {
+  it("should store events without validation (validation is done at EventStore level)", () => {
     const invalidEvent = {
       ...profile(),
       sig: "invalid_signature",
     };
 
+    // SqliteEventDatabase is a raw database layer - it doesn't validate signatures
     const result = database.add(invalidEvent);
-    expect(result).toBeNull();
-    expect(database.hasEvent(invalidEvent.id)).toBe(false);
+    expect(result).toBe(invalidEvent);
+    expect(database.hasEvent(invalidEvent.id)).toBe(true);
   });
 });
 
@@ -294,8 +295,7 @@ describe("error handling", () => {
     const event = profile();
     database.close(); // Close database to simulate error
 
-    const result = database.add(event);
-    expect(result).toBeNull();
+    expect(() => database.add(event)).toThrow();
   });
 
   it("should handle errors in remove method", () => {

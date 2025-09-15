@@ -29,6 +29,17 @@ CREATE TABLE IF NOT EXISTS event_tags (
 );
 `;
 
+// SQL schema for FTS5 search table - stores formatted searchable content directly
+export const CREATE_SEARCH_TABLE = `
+CREATE VIRTUAL TABLE IF NOT EXISTS events_search USING fts5(
+  event_id UNINDEXED,
+  content,
+  kind UNINDEXED,
+  pubkey UNINDEXED,
+  created_at UNINDEXED
+);
+`;
+
 export const CREATE_INDEXES = [
   // Events table indexes
   `CREATE INDEX IF NOT EXISTS kind_idx ON events(kind);`,
@@ -51,8 +62,59 @@ export type EventRow = {
   sig: string;
 };
 
-/** Create and migrate the `events` and `event_tags` tables */
-export function createTables(db: Database): void {
+/** Filter with search field */
+export type FilterWithSearch = Filter & { search?: string; order?: "created_at" | "rank" };
+
+/** Content formatter function type for search indexing */
+export type SearchContentFormatter = (event: NostrEvent) => string;
+
+/** Default search content formatter - returns the raw content */
+export const defaultSearchContentFormatter: SearchContentFormatter = (event: NostrEvent) => {
+  return event.content;
+};
+
+/** Enhanced search content formatter that includes tags and special handling for kind 0 events */
+export const enhancedSearchContentFormatter: SearchContentFormatter = (event: NostrEvent) => {
+  let searchableContent = event.content;
+
+  // Special handling for kind 0 (profile metadata) events
+  if (event.kind === 0) {
+    try {
+      const profile = JSON.parse(event.content);
+      const profileFields = [];
+
+      // Include common profile fields in search
+      if (profile.name) profileFields.push(profile.name);
+      if (profile.display_name) profileFields.push(profile.display_name);
+      if (profile.about) profileFields.push(profile.about);
+      if (profile.nip05) profileFields.push(profile.nip05);
+      if (profile.lud16) profileFields.push(profile.lud16);
+
+      searchableContent = profileFields.join(" ");
+    } catch (e) {
+      // If JSON parsing fails, use the raw content
+      searchableContent = event.content;
+    }
+  }
+
+  // Include relevant tags in the searchable content
+  const relevantTags = ["t", "subject", "title", "summary", "description", "d"];
+  const tagContent: string[] = [];
+
+  for (const tag of event.tags) {
+    if (tag.length >= 2 && relevantTags.includes(tag[0])) tagContent.push(tag[1]);
+  }
+
+  // Combine content with tag content
+  if (tagContent.length > 0) {
+    searchableContent += " " + tagContent.join(" ");
+  }
+
+  return searchableContent;
+};
+
+/** Create and migrate the `events`, `event_tags`, and search tables */
+export function createTables(db: Database, search: boolean = true): void {
   // Create the events table
   log("Creating events table");
   db.exec(CREATE_EVENTS_TABLE);
@@ -61,6 +123,12 @@ export function createTables(db: Database): void {
   log("Creating event_tags table");
   db.exec(CREATE_EVENT_TAGS_TABLE);
 
+  // Create the FTS5 search table
+  if (search) {
+    log("Creating events_search FTS5 table");
+    db.exec(CREATE_SEARCH_TABLE);
+  }
+
   // Create indexes
   log("Creating indexes");
   CREATE_INDEXES.forEach((indexSql) => {
@@ -68,8 +136,27 @@ export function createTables(db: Database): void {
   });
 }
 
-/** Inserts an event into the `events` and `event_tags` tables of a database */
-export function insertEvent(db: Database, event: NostrEvent): boolean {
+/** Inserts search content for an event */
+export function insertSearchContent(db: Database, event: NostrEvent, contentFormatter: SearchContentFormatter): void {
+  const searchableContent = contentFormatter(event);
+
+  // Insert/update directly into the FTS5 table
+  const stmt = db.prepare<[string, string, number, string, number]>(`
+    INSERT OR REPLACE INTO events_search (event_id, content, kind, pubkey, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(event.id, searchableContent, event.kind, event.pubkey, event.created_at);
+}
+
+/** Removes search content for an event */
+export function deleteSearchContent(db: Database, eventId: string): void {
+  const stmt = db.prepare<[string]>(`DELETE FROM events_search WHERE event_id = ?`);
+  stmt.run(eventId);
+}
+
+/** Inserts an event into the `events`, `event_tags`, and search tables of a database */
+export function insertEvent(db: Database, event: NostrEvent, contentFormatter?: SearchContentFormatter): boolean {
   const identifier = getReplaceableIdentifier(event);
 
   return db.transaction(() => {
@@ -92,6 +179,9 @@ export function insertEvent(db: Database, event: NostrEvent): boolean {
 
     // Insert indexable tags into the event_tags table
     insertEventTags(db, event);
+
+    // Insert searchable content into the search tables
+    if (contentFormatter) insertSearchContent(db, event, contentFormatter);
 
     return result.changes > 0;
   })();
@@ -119,12 +209,15 @@ export function insertEventTags(db: Database, event: NostrEvent): void {
   }
 }
 
-/** Removes an event by id from the `events` and `event_tags` tables of a database */
+/** Removes an event by id from the `events`, `event_tags`, and search tables of a database */
 export function deleteEvent(db: Database, id: string): boolean {
   return db.transaction(() => {
     // Delete from event_tags first (foreign key constraint)
     const deleteTagsStmt = db.prepare<[string]>(`DELETE FROM event_tags WHERE event_id = ?`);
     deleteTagsStmt.run(id);
+
+    // Delete from search tables
+    deleteSearchContent(db, id);
 
     // Delete from events table
     const deleteEventStmt = db.prepare<[string]>(`DELETE FROM events WHERE id = ?`);
@@ -189,43 +282,52 @@ export function rowToEvent(row: EventRow): NostrEvent {
 }
 
 /** Builds conditions for a single filter */
-export function buildFilterConditions(filter: Filter): {
+export function buildFilterConditions(filter: FilterWithSearch): {
   conditions: string[];
   params: any[];
+  search: boolean;
 } {
   const conditions: string[] = [];
   const params: any[] = [];
+  let search = false;
+
+  // Handle NIP-50 search filter
+  if (filter.search && filter.search.trim()) {
+    conditions.push(`events_search MATCH ?`);
+    params.push(filter.search.trim());
+    search = true;
+  }
 
   // Handle IDs filter
   if (filter.ids && filter.ids.length > 0) {
     const placeholders = filter.ids.map(() => `?`).join(", ");
-    conditions.push(`id IN (${placeholders})`);
+    conditions.push(`events.id IN (${placeholders})`);
     params.push(...filter.ids);
   }
 
   // Handle kinds filter
   if (filter.kinds && filter.kinds.length > 0) {
     const placeholders = filter.kinds.map(() => `?`).join(", ");
-    conditions.push(`kind IN (${placeholders})`);
+    conditions.push(`events.kind IN (${placeholders})`);
     params.push(...filter.kinds);
   }
 
   // Handle authors filter (pubkeys)
   if (filter.authors && filter.authors.length > 0) {
     const placeholders = filter.authors.map(() => `?`).join(", ");
-    conditions.push(`pubkey IN (${placeholders})`);
+    conditions.push(`events.pubkey IN (${placeholders})`);
     params.push(...filter.authors);
   }
 
   // Handle since filter (timestamp >= since)
   if (filter.since !== undefined) {
-    conditions.push(`created_at >= ?`);
+    conditions.push(`events.created_at >= ?`);
     params.push(filter.since);
   }
 
   // Handle until filter (timestamp <= until)
   if (filter.until !== undefined) {
-    conditions.push(`created_at <= ?`);
+    conditions.push(`events.created_at <= ?`);
     params.push(filter.until);
   }
 
@@ -236,7 +338,7 @@ export function buildFilterConditions(filter: Filter): {
 
       // Use the event_tags table for efficient tag filtering
       const placeholders = values.map(() => "?").join(", ");
-      conditions.push(`id IN (
+      conditions.push(`events.id IN (
         SELECT DISTINCT event_id
         FROM event_tags
         WHERE tag_name = ? AND tag_value IN (${placeholders})
@@ -247,10 +349,10 @@ export function buildFilterConditions(filter: Filter): {
     }
   }
 
-  return { conditions, params };
+  return { conditions, params, search };
 }
 
-export function buildFiltersQuery(filters: Filter | Filter[]): {
+export function buildFiltersQuery(filters: FilterWithSearch | FilterWithSearch[]): {
   sql: string;
   params: any[];
 } | null {
@@ -262,8 +364,27 @@ export function buildFiltersQuery(filters: Filter | Filter[]): {
   const allParams: any[] = [];
   let globalLimit: number | undefined;
 
+  // Build the final query with proper ordering and limit
+  let fromClause = "events";
+  let orderBy = "events.created_at DESC, events.id ASC";
+
   for (const filter of filterArray) {
-    const { conditions, params } = buildFilterConditions(filter);
+    const { conditions, params, search } = buildFilterConditions(filter);
+
+    if (search) {
+      // Override the from clause to join the events_search table
+      fromClause = "events INNER JOIN events_search ON events.id = events_search.event_id";
+
+      // Set the order by clause based on the filter order
+      switch (filter.order) {
+        case "created_at":
+          orderBy = "events.created_at DESC, events.id ASC";
+          break;
+        case "rank":
+          orderBy = "events_search.rank, events.created_at DESC";
+          break;
+      }
+    }
 
     if (conditions.length === 0) {
       // If no conditions, this filter matches all events
@@ -284,11 +405,10 @@ export function buildFiltersQuery(filters: Filter | Filter[]): {
   // Combine all filter conditions with OR logic
   const whereClause = filterQueries.length > 0 ? `WHERE ${filterQueries.join(" OR ")}` : "";
 
-  // Build the final query with proper ordering and limit
   let query = `
-      SELECT DISTINCT * FROM events
+      SELECT DISTINCT events.* FROM ${fromClause}
       ${whereClause}
-      ORDER BY created_at DESC, id ASC
+      ORDER BY ${orderBy}
     `;
 
   // Apply global limit if specified
@@ -300,8 +420,8 @@ export function buildFiltersQuery(filters: Filter | Filter[]): {
   return { sql: query, params: allParams };
 }
 
-/** Get all events that match the filters */
-export function getEventsByFilters(db: Database, filters: Filter | Filter[]): Set<NostrEvent> {
+/** Get all events that match the filters (includes NIP-50 search support) */
+export function getEventsByFilters(db: Database, filters: FilterWithSearch | FilterWithSearch[]): Set<NostrEvent> {
   const query = buildFiltersQuery(filters);
   if (!query) return new Set();
 
@@ -314,4 +434,35 @@ export function getEventsByFilters(db: Database, filters: Filter | Filter[]): Se
   for (const row of rows) eventSet.add(rowToEvent(row));
 
   return eventSet;
+}
+
+/** Search events using FTS5 full-text search (convenience wrapper around getEventsByFilters) */
+export function searchEvents(db: Database, search: string, options?: Filter): NostrEvent[] {
+  if (!search.trim()) return [];
+
+  // Build filter with search and other options
+  const filter: FilterWithSearch = {
+    search: search.trim(),
+    ...options,
+  };
+
+  // Use the main filter system which now supports search
+  const results = getEventsByFilters(db, filter);
+  return Array.from(results);
+}
+
+/** Rebuild the FTS5 search index for all events */
+export function rebuildSearchIndex(db: Database, contentFormatter: SearchContentFormatter): void {
+  db.transaction(() => {
+    // Clear existing search data
+    db.exec(`DELETE FROM events_search;`);
+
+    // Rebuild from all events
+    const stmt = db.prepare<[], EventRow>(`SELECT * FROM events`);
+    const events = stmt.all().map(rowToEvent);
+
+    for (const event of events) {
+      insertSearchContent(db, event, contentFormatter);
+    }
+  })();
 }

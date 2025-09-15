@@ -1,7 +1,8 @@
 import { EventStore } from "applesauce-core";
-import { Filter, NostrEvent, fakeVerifyEvent, matchFilter } from "applesauce-core/helpers";
+import { NostrEvent, fakeVerifyEvent, matchFilter } from "applesauce-core/helpers";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
+import { FilterWithSearch } from "./helpers/sqlite.js";
 import { SqliteEventDatabase } from "./sqlite-event-database.js";
 
 // Create the event store with SQLite backend
@@ -14,7 +15,7 @@ eventStore.verifyEvent = fakeVerifyEvent;
 // Subscription management
 interface Subscription {
   id: string;
-  filters: Filter[];
+  filters: FilterWithSearch[];
   ws: WebSocket;
 }
 
@@ -113,7 +114,7 @@ async function handleEvent(ws: WebSocket, event: any) {
 }
 
 // Handle REQ messages
-async function handleReq(ws: WebSocket, subscriptionId: string, filters: Filter[]) {
+async function handleReq(ws: WebSocket, subscriptionId: string, filters: FilterWithSearch[]) {
   try {
     // Store subscription
     subscriptions.set(subscriptionId, {
@@ -150,6 +151,9 @@ function handleClose(ws: WebSocket, subscriptionId: string) {
 function broadcastToSubscribers(event: NostrEvent) {
   for (const [subId, sub] of subscriptions.entries()) {
     if (sub.ws.readyState === WebSocket.OPEN) {
+      // Skip this subscription if it has a search filter (cant match search filters)
+      if (sub.filters.some((filter) => filter.search)) continue;
+
       // Check if event matches any of the subscription filters
       const matches = sub.filters.some((filter) => matchFilter(filter, event));
 

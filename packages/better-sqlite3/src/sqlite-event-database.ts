@@ -3,7 +3,9 @@ import { Filter, insertEventIntoDescendingList, NostrEvent } from "applesauce-co
 import Database, { type Database as TDatabase } from "better-sqlite3";
 import {
   createTables,
+  defaultSearchContentFormatter,
   deleteEvent,
+  enhancedSearchContentFormatter,
   getEvent,
   getEventsByFilters,
   getReplaceable,
@@ -11,24 +13,43 @@ import {
   hasEvent,
   hasReplaceable,
   insertEvent,
+  rebuildSearchIndex,
+  type SearchContentFormatter,
 } from "./helpers/sqlite.js";
 
 const log = logger.extend("SqliteEventDatabase");
 
+// Export the search content formatters and types for external use
+export { defaultSearchContentFormatter, enhancedSearchContentFormatter, type SearchContentFormatter };
+
+/** Options for the SqliteEventDatabase */
+export type SqliteEventDatabaseOptions = {
+  search?: boolean;
+  searchContentFormatter?: SearchContentFormatter;
+};
+
 export class SqliteEventDatabase implements IEventDatabase {
   db: TDatabase;
 
-  constructor(database: string | TDatabase = ":memory:") {
+  /** If search is enabled */
+  private search: boolean;
+  /** The search content formatter */
+  private searchContentFormatter: SearchContentFormatter;
+
+  constructor(database: string | TDatabase = ":memory:", options?: SqliteEventDatabaseOptions) {
     this.db = typeof database === "string" ? new Database(database) : database;
 
+    this.search = options?.search ?? true;
+    this.searchContentFormatter = options?.searchContentFormatter ?? enhancedSearchContentFormatter;
+
     // Setup the database tables and indexes
-    createTables(this.db);
+    createTables(this.db, this.search);
   }
 
   /** Store a Nostr event in the database */
   add(event: NostrEvent): NostrEvent {
     try {
-      insertEvent(this.db, event);
+      insertEvent(this.db, event, this.search ? this.searchContentFormatter : undefined);
       return event;
     } catch (error) {
       log("Error inserting event:", error);
@@ -67,20 +88,42 @@ export class SqliteEventDatabase implements IEventDatabase {
     return getReplaceableHistory(this.db, kind, pubkey, identifier);
   }
 
-  /** Get all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): Set<NostrEvent> {
+  /** Get all events that match the filters (supports NIP-50 search field) */
+  getByFilters(filters: (Filter & { search?: string }) | (Filter & { search?: string })[]): Set<NostrEvent> {
     try {
+      // If search is disabled, remove the search field from the filters
+      if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
+        throw new Error("Search is disabled");
+
       return getEventsByFilters(this.db, filters);
     } catch (error) {
       return new Set();
     }
   }
-  /** Get a timeline of events that match the filters (returns array in chronological order) */
-  getTimeline(filters: Filter | Filter[]): NostrEvent[] {
+  /** Get a timeline of events that match the filters (returns array in chronological order, supports NIP-50 search) */
+  getTimeline(filters: (Filter & { search?: string }) | (Filter & { search?: string })[]): NostrEvent[] {
     const events = this.getByFilters(filters);
     const timeline: NostrEvent[] = [];
     for (const event of events) insertEventIntoDescendingList(timeline, event);
     return timeline;
+  }
+
+  /** Set the search content formatter */
+  setSearchContentFormatter(formatter: SearchContentFormatter): void {
+    this.searchContentFormatter = formatter;
+  }
+
+  /** Get the current search content formatter */
+  getSearchContentFormatter(): SearchContentFormatter {
+    return this.searchContentFormatter;
+  }
+
+  /** Rebuild the search index for all events */
+  rebuildSearchIndex(): void {
+    if (!this.search) throw new Error("Search is disabled");
+
+    rebuildSearchIndex(this.db, this.searchContentFormatter);
+    log("Search index rebuilt successfully");
   }
 
   /** Close the database connection */
