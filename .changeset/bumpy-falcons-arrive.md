@@ -2,4 +2,4 @@
 "applesauce-core": minor
 ---
 
-Rename `EventSet` to `InMemoryEventDatabase`
+Rename `EventSet` to `EventMemory`

@@ -203,20 +203,6 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     const expiration = getExpirationTimestamp(event);
     if (this.keepExpired === false && expiration && expiration <= unixNow()) return null;
 
-    // Add the event to memory and get the cached instance if memory is enabled
-    if (this.memory) {
-      const cached = this.memory.add(event);
-      // If its not a new event, return the cached event instance
-      if (cached !== event) {
-        // Copy cached symbols and return existing event
-        EventStore.mergeDuplicateEvent(event, cached);
-        // attach relay this event was from
-        if (fromRelay) addSeenRelay(cached, fromRelay);
-
-        return cached;
-      }
-    }
-
     // Get the replaceable identifier
     const identifier = isReplaceable(event.kind) ? event.tags.find((t) => t[0] === "d")?.[1] : undefined;
 
@@ -229,35 +215,35 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
         EventStore.mergeDuplicateEvent(event, existing[0]);
         return existing[0];
       }
-    } else if (this.database.hasEvent(event.id)) {
-      // Duplicate event, copy symbols and return existing event
-      const existing = this.database.getEvent(event.id);
-      if (existing) {
-        EventStore.mergeDuplicateEvent(event, existing);
-        return existing;
-      }
     }
 
     // Verify event before inserting into the database
     if (this.verifyEvent && this.verifyEvent(event) === false) return null;
 
+    // Always add event to memory
+    const existing = this.memory?.add(event);
+
+    // If the memory returned a different instance, this is a duplicate event
+    if (existing && existing !== event) {
+      // Copy cached symbols and return existing event
+      EventStore.mergeDuplicateEvent(event, existing);
+      // attach relay this event was from
+      if (fromRelay) addSeenRelay(existing, fromRelay);
+
+      return existing;
+    }
+
     // Insert event into database
-    const inserted = this.database.add(event);
-
-    // If the event was ignored, return null
-    if (inserted === null) return null;
-
-    // Map to memory if available
-    const mappedEvent = this.mapToMemory(inserted);
+    const inserted = this.mapToMemory(this.database.add(event));
 
     // Copy cached data if its a duplicate event
-    if (event !== mappedEvent) EventStore.mergeDuplicateEvent(event, mappedEvent);
+    if (event !== inserted) EventStore.mergeDuplicateEvent(event, inserted);
 
     // attach relay this event was from
-    if (fromRelay) addSeenRelay(mappedEvent, fromRelay);
+    if (fromRelay) addSeenRelay(inserted, fromRelay);
 
     // Emit insert$ signal
-    if (inserted === event) this.insert$.next(mappedEvent);
+    if (inserted === event) this.insert$.next(inserted);
 
     // remove all old version of the replaceable event
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
@@ -274,9 +260,9 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     }
 
     // Add event to expiration map
-    if (this.keepExpired === false && expiration) this.handleExpiringEvent(mappedEvent);
+    if (this.keepExpired === false && expiration) this.handleExpiringEvent(inserted);
 
-    return mappedEvent;
+    return inserted;
   }
 
   /** Removes an event from the store and updates subscriptions */
@@ -286,7 +272,7 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     if (!e) return false;
 
     // Remove from memory if available
-    if (this.memory) this.memory.remove(typeof event === "string" ? event : event.id);
+    if (this.memory) this.memory.remove(event);
 
     const removed = this.database.remove(event);
     if (removed && e) this.remove$.next(e);
