@@ -304,14 +304,14 @@ describe("replaceable", () => {
   it("should claim event", () => {
     eventStore.add(profile);
     eventStore.replaceable(0, user.pubkey).subscribe();
-    expect(eventStore.database.isClaimed(profile)).toBe(true);
+    expect(eventStore.memory!.isClaimed(profile)).toBe(true);
   });
 
   it("should remove claim when event is removed", () => {
     eventStore.add(profile);
     eventStore.replaceable(0, user.pubkey).subscribe();
     eventStore.remove(profile);
-    expect(eventStore.database.isClaimed(profile)).toBe(false);
+    expect(eventStore.memory!.isClaimed(profile)).toBe(false);
   });
 
   it("should ignore older events added later", () => {
