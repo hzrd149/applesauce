@@ -7,7 +7,7 @@
     [
       "applesauce-accounts",
       "applesauce-actions",
-      "applesauce-better-sqlite3",
+      "applesauce-sqlite",
       "applesauce-content",
       "applesauce-core",
       "applesauce-dvm",

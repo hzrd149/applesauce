@@ -178,6 +178,8 @@ export interface IEventDatabase extends IEventStoreRead {
   add(event: NostrEvent): NostrEvent;
   /** Remove an event from the database */
   remove(event: string | NostrEvent): boolean;
+  /** Notifies the database that an event has updated */
+  update?: (event: NostrEvent) => void;
 }
 
 /** The async base interface for a set of events */
@@ -186,6 +188,8 @@ export interface IAsyncEventDatabase extends IAsyncEventStoreRead {
   add(event: NostrEvent): Promise<NostrEvent>;
   /** Remove an event from the database */
   remove(event: string | NostrEvent): Promise<boolean>;
+  /** Notifies the database that an event has updated */
+  update?: (event: NostrEvent) => void;
 }
 
 /** The base interface for the in-memory database of events */

@@ -1,4 +1,4 @@
-# applesauce-better-sqlite3
+# applesauce-sqlite
 
 A SQLite3 event database implementation for AppleSauce, providing persistent storage for Nostr events. This package extends the core `applesauce-core` functionality by replacing the default in-memory event database with a persistent SQLite database.
 
@@ -13,19 +13,26 @@ A SQLite3 event database implementation for AppleSauce, providing persistent sto
 ## Installation
 
 ```bash
-npm install applesauce-better-sqlite3
+# For better-sqlite3
+npm install applesauce-sqlite better-sqlite3
+
+# For libsql
+npm install applesauce-sqlite @libsql/client
+
+# For bun / deno / native sqlite
+bun add applesauce-sqlite
 ```
 
 ## Basic Usage
 
-### Using SqliteEventDatabase with EventStore
+### Using an event database with EventStore
 
 ```js
 import { EventStore } from "applesauce-core";
-import { SqliteEventDatabase } from "applesauce-better-sqlite3";
+import { BetterSqlite3EventDatabase } from "applesauce-sqlite/better-sqlite3";
 
 // Create a SQLite database (file-based or in-memory)
-const database = new SqliteEventDatabase("./events.db"); // or ":memory:" for in-memory
+const database = new BetterSqlite3EventDatabase("./events.db"); // or ":memory:" for in-memory
 
 // Create EventStore with SQLite backend
 const eventStore = new EventStore(database);
@@ -36,31 +43,16 @@ eventStore.add(someNostrEvent);
 // The events are now persisted to SQLite!
 ```
 
-### Database Options
-
-```js
-// File-based database (recommended for production)
-const database = new SqliteEventDatabase("./nostr-events.db");
-
-// In-memory database (faster, but data is lost on restart)
-const database = new SqliteEventDatabase(":memory:");
-
-// Use an existing better-sqlite3 database instance
-import Database from "better-sqlite3";
-const db = new Database("./events.db");
-const database = new SqliteEventDatabase(db);
-```
-
 ### With Models and Subscriptions
 
 ```js
 import { EventStore } from "applesauce-core";
 import { ProfileModel, TimelineModel } from "applesauce-core/models";
-import { SqliteEventDatabase } from "applesauce-better-sqlite3";
+import { BetterSqlite3EventDatabase } from "applesauce-better-sqlite3";
 import { Relay } from "nostr-tools/relay";
 
 // Create persistent event store
-const database = new SqliteEventDatabase("./events.db");
+const database = new BetterSqlite3EventDatabase("./events.db");
 const eventStore = new EventStore(database);
 
 // Connect to a relay and store events
@@ -90,11 +82,11 @@ timeline.subscribe((events) => {
 
 ```js
 import { EventStore } from "applesauce-core";
-import { SqliteEventDatabase } from "applesauce-better-sqlite3";
+import { BetterSqlite3EventDatabase } from "applesauce-better-sqlite3";
 import { WebSocketServer } from "ws";
 
 // Create your own relay with custom logic
-const database = new SqliteEventDatabase("./custom-relay.db");
+const database = new BetterSqlite3EventDatabase("./custom-relay.db");
 const eventStore = new EventStore(database);
 
 const wss = new WebSocketServer({ port: 8080 });

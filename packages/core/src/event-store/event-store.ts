@@ -285,6 +285,9 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     const e = this.database.add(event);
     if (!e) return false;
 
+    // Notify the database that the event has updated
+    this.database.update?.(event);
+
     this.update$.next(event);
     return true;
   }

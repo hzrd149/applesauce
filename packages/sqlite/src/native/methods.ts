@@ -1,0 +1,249 @@
+import { logger } from "applesauce-core";
+import { Filter, getIndexableTags, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
+import { DatabaseSync } from "node:sqlite";
+import {
+  CREATE_SEARCH_TABLE_STATEMENT,
+  DELETE_SEARCH_CONTENT_STATEMENT,
+  FilterWithSearch,
+  INSERT_SEARCH_CONTENT_STATEMENT,
+  SearchContentFormatter,
+} from "../helpers/search.js";
+import { buildFiltersQuery, rowToEvent } from "../helpers/sql.js";
+import {
+  CREATE_EVENT_TAGS_TABLE_STATEMENT,
+  CREATE_EVENTS_TABLE_STATEMENT,
+  CREATE_INDEXES_STATEMENTS,
+  DELETE_EVENT_STATEMENT,
+  DELETE_EVENT_TAGS_STATEMENT,
+  EventRow,
+  GET_ALL_EVENTS_STATEMENT,
+  GET_EVENT_STATEMENT,
+  GET_REPLACEABLE_HISTORY_STATEMENT,
+  GET_REPLACEABLE_STATEMENT,
+  HAS_EVENT_STATEMENT,
+  HAS_REPLACEABLE_STATEMENT,
+  INSERT_EVENT_STATEMENT,
+  INSERT_EVENT_TAG_STATEMENT,
+} from "../helpers/statements.js";
+
+const log = logger.extend("sqlite:tables");
+
+/** Create and migrate the `events`, `event_tags`, and search tables */
+export function createTables(db: DatabaseSync, search: boolean = true): void {
+  // Create the events table
+  log("Creating events table");
+  db.exec(CREATE_EVENTS_TABLE_STATEMENT.sql);
+
+  // Create the event_tags table
+  log("Creating event_tags table");
+  db.exec(CREATE_EVENT_TAGS_TABLE_STATEMENT.sql);
+
+  // Create the FTS5 search table
+  if (search) {
+    log("Creating events_search FTS5 table");
+    db.exec(CREATE_SEARCH_TABLE_STATEMENT.sql);
+  }
+
+  // Create indexes
+  log("Creating indexes");
+  CREATE_INDEXES_STATEMENTS.forEach((indexStatement) => {
+    db.exec(indexStatement.sql);
+  });
+}
+
+/** Inserts search content for an event */
+export function insertSearchContent(
+  db: DatabaseSync,
+  event: NostrEvent,
+  contentFormatter: SearchContentFormatter,
+): void {
+  const searchableContent = contentFormatter(event);
+
+  // Insert/update directly into the FTS5 table
+  const stmt = db.prepare(INSERT_SEARCH_CONTENT_STATEMENT.sql);
+
+  stmt.run(event.id, searchableContent, event.kind, event.pubkey, event.created_at);
+}
+
+/** Removes search content for an event */
+export function deleteSearchContent(db: DatabaseSync, eventId: string): void {
+  const stmt = db.prepare(DELETE_SEARCH_CONTENT_STATEMENT.sql);
+  stmt.run(eventId);
+}
+
+/** Inserts an event into the `events`, `event_tags`, and search tables of a database */
+export function insertEvent(db: DatabaseSync, event: NostrEvent, contentFormatter?: SearchContentFormatter): boolean {
+  const identifier = getReplaceableIdentifier(event);
+
+  // Node.js sqlite doesn't have a transaction method like better-sqlite3, so we use BEGIN/COMMIT
+  db.exec("BEGIN");
+  try {
+    // Insert/update the main event
+    const stmt = db.prepare(INSERT_EVENT_STATEMENT.sql);
+
+    const result = stmt.run(
+      event.id,
+      event.kind,
+      event.pubkey,
+      event.created_at,
+      event.content,
+      JSON.stringify(event.tags),
+      event.sig,
+      identifier,
+    );
+
+    // Insert indexable tags into the event_tags table
+    insertEventTags(db, event);
+
+    // Insert searchable content into the search tables
+    if (contentFormatter) insertSearchContent(db, event, contentFormatter);
+
+    db.exec("COMMIT");
+    return result.changes > 0;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** Insert indexable tags for an event into the event_tags table */
+export function insertEventTags(db: DatabaseSync, event: NostrEvent): void {
+  // Clear existing tags for this event first
+  const deleteStmt = db.prepare(DELETE_EVENT_TAGS_STATEMENT.sql);
+  deleteStmt.run(event.id);
+
+  // Get only the indexable tags using applesauce-core helper
+  const indexableTags = getIndexableTags(event);
+
+  if (indexableTags && indexableTags.size > 0) {
+    const insertStmt = db.prepare(INSERT_EVENT_TAG_STATEMENT.sql);
+
+    for (const tagString of indexableTags) {
+      // Parse the "tagName:tagValue" format
+      const [name, value] = tagString.split(":");
+      if (name && value) insertStmt.run(event.id, name, value);
+    }
+  }
+}
+
+/** Removes an event by id from the `events`, `event_tags`, and search tables of a database */
+export function deleteEvent(db: DatabaseSync, id: string): boolean {
+  db.exec("BEGIN");
+  try {
+    // Delete from event_tags first (foreign key constraint)
+    const deleteTagsStmt = db.prepare(DELETE_EVENT_TAGS_STATEMENT.sql);
+    deleteTagsStmt.run(id);
+
+    // Delete from search tables
+    deleteSearchContent(db, id);
+
+    // Delete from events table
+    const deleteEventStmt = db.prepare(DELETE_EVENT_STATEMENT.sql);
+    const result = deleteEventStmt.run(id);
+
+    db.exec("COMMIT");
+    return result.changes > 0;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** Checks if an event exists */
+export function hasEvent(db: DatabaseSync, id: string): boolean {
+  const stmt = db.prepare(HAS_EVENT_STATEMENT.sql);
+  const result = stmt.get(id) as { count: number } | undefined;
+  if (!result) return false;
+  return result.count > 0;
+}
+
+/** Gets a single event from a database */
+export function getEvent(db: DatabaseSync, id: string): NostrEvent | undefined {
+  const stmt = db.prepare(GET_EVENT_STATEMENT.sql);
+  const row = stmt.get(id) as EventRow | undefined;
+  return row && rowToEvent(row);
+}
+
+/** Gets the latest replaceable event from a database */
+export function getReplaceable(
+  db: DatabaseSync,
+  kind: number,
+  pubkey: string,
+  identifier: string,
+): NostrEvent | undefined {
+  const stmt = db.prepare(GET_REPLACEABLE_STATEMENT.sql);
+  const row = stmt.get(kind, pubkey, identifier) as EventRow | undefined;
+  return row && rowToEvent(row);
+}
+
+/** Gets the history of a replaceable event from a database */
+export function getReplaceableHistory(
+  db: DatabaseSync,
+  kind: number,
+  pubkey: string,
+  identifier: string,
+): NostrEvent[] {
+  const stmt = db.prepare(GET_REPLACEABLE_HISTORY_STATEMENT.sql);
+  return (stmt.all(kind, pubkey, identifier) as EventRow[]).map(rowToEvent);
+}
+
+/** Checks if a replaceable event exists in a database */
+export function hasReplaceable(db: DatabaseSync, kind: number, pubkey: string, identifier: string = ""): boolean {
+  const stmt = db.prepare(HAS_REPLACEABLE_STATEMENT.sql);
+  const result = stmt.get(kind, pubkey, identifier) as { count: number } | undefined;
+  if (!result) return false;
+  return result.count > 0;
+}
+
+/** Get all events that match the filters (includes NIP-50 search support) */
+export function getEventsByFilters(db: DatabaseSync, filters: FilterWithSearch | FilterWithSearch[]): Set<NostrEvent> {
+  const query = buildFiltersQuery(filters);
+  if (!query) return new Set();
+
+  const eventSet = new Set<NostrEvent>();
+
+  const stmt = db.prepare(query.sql);
+  const rows = stmt.all(...query.params) as EventRow[];
+
+  // Convert rows to events and add to set
+  for (const row of rows) eventSet.add(rowToEvent(row));
+
+  return eventSet;
+}
+
+/** Search events using FTS5 full-text search (convenience wrapper around getEventsByFilters) */
+export function searchEvents(db: DatabaseSync, search: string, options?: Filter): NostrEvent[] {
+  if (!search.trim()) return [];
+
+  // Build filter with search and other options
+  const filter: FilterWithSearch = {
+    search: search.trim(),
+    ...options,
+  };
+
+  // Use the main filter system which now supports search
+  const results = getEventsByFilters(db, filter);
+  return Array.from(results);
+}
+
+/** Rebuild the FTS5 search index for all events */
+export function rebuildSearchIndex(db: DatabaseSync, contentFormatter: SearchContentFormatter): void {
+  db.exec("BEGIN");
+  try {
+    // Clear existing search data
+    db.exec(`DELETE FROM events_search;`);
+
+    // Rebuild from all events
+    const stmt = db.prepare(GET_ALL_EVENTS_STATEMENT.sql);
+    const events = (stmt.all() as EventRow[]).map(rowToEvent);
+
+    for (const event of events) {
+      insertSearchContent(db, event, contentFormatter);
+    }
+
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}

@@ -5,13 +5,10 @@ describe("exports", () => {
   it("should export the expected functions", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
-        "CREATE_EVENTS_TABLE",
-        "CREATE_EVENT_TAGS_TABLE",
-        "CREATE_INDEXES",
-        "buildFilterConditions",
-        "buildFiltersQuery",
+        "BetterSqlite3EventDatabase",
         "createTables",
         "deleteEvent",
+        "deleteSearchContent",
         "getEvent",
         "getEventsByFilters",
         "getReplaceable",
@@ -20,7 +17,9 @@ describe("exports", () => {
         "hasReplaceable",
         "insertEvent",
         "insertEventTags",
-        "rowToEvent",
+        "insertSearchContent",
+        "rebuildSearchIndex",
+        "searchEvents",
       ]
     `);
   });

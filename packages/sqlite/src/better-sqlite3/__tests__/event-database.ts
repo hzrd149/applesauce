@@ -1,14 +1,14 @@
 import { kinds } from "applesauce-core/helpers";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { SqliteEventDatabase } from "../sqlite-event-database.js";
-import { FakeUser } from "./fake-user.js";
+import { BetterSqlite3EventDatabase } from "../event-database.js";
+import { FakeUser } from "../../__tests__/fake-user.js";
 
-let database: SqliteEventDatabase;
+let database: BetterSqlite3EventDatabase;
 let user: FakeUser;
 
 beforeEach(() => {
-  database = new SqliteEventDatabase(":memory:");
+  database = new BetterSqlite3EventDatabase(":memory:");
   user = new FakeUser();
 });
 
@@ -56,7 +56,7 @@ describe("add", () => {
       sig: "invalid_signature",
     };
 
-    // SqliteEventDatabase is a raw database layer - it doesn't validate signatures
+    // BetterSqlite3EventDatabase is a raw database layer - it doesn't validate signatures
     const result = database.add(invalidEvent);
     expect(result).toBe(invalidEvent);
     expect(database.hasEvent(invalidEvent.id)).toBe(true);
@@ -266,7 +266,7 @@ describe("database lifecycle", () => {
 
   it("should work with persistent database file", () => {
     // Create a temporary database file
-    const tempDb = new SqliteEventDatabase("test.db");
+    const tempDb = new BetterSqlite3EventDatabase("test.db");
     const event = profile();
 
     tempDb.add(event);
@@ -275,7 +275,7 @@ describe("database lifecycle", () => {
     tempDb.close();
 
     // Reopen the same database file
-    const reopenedDb = new SqliteEventDatabase("test.db");
+    const reopenedDb = new BetterSqlite3EventDatabase("test.db");
     expect(reopenedDb.hasEvent(event.id)).toBe(true);
     expect(reopenedDb.getEvent(event.id)?.id).toBe(event.id);
 

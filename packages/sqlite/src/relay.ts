@@ -1,16 +1,16 @@
 import { EventStore } from "applesauce-core";
-import { NostrEvent, fakeVerifyEvent, matchFilter } from "applesauce-core/helpers";
+import { NostrEvent, matchFilter, verifyEvent } from "applesauce-core/helpers";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { FilterWithSearch } from "./helpers/sqlite.js";
-import { SqliteEventDatabase } from "./sqlite-event-database.js";
+import { BetterSqlite3EventDatabase } from "./better-sqlite3/event-database.js";
+import { FilterWithSearch } from "./helpers/search.js";
 
 // Create the event store with SQLite backend
-const database = new SqliteEventDatabase(process.env.DATABASE_PATH || ":memory:");
+const database = new BetterSqlite3EventDatabase(process.env.DATABASE_PATH || ":memory:");
 const eventStore = new EventStore(database);
 
 // Set validation method for event store
-eventStore.verifyEvent = fakeVerifyEvent;
+eventStore.verifyEvent = verifyEvent;
 
 // Subscription management
 interface Subscription {

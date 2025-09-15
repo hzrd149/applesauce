@@ -1,11 +1,10 @@
 import { IEventDatabase, logger } from "applesauce-core";
 import { Filter, insertEventIntoDescendingList, NostrEvent } from "applesauce-core/helpers";
-import Database, { type Database as TDatabase } from "better-sqlite3";
+// @ts-ignore - bun:sqlite is a built-in module in Bun
+import { Database } from "bun:sqlite";
 import {
   createTables,
-  defaultSearchContentFormatter,
   deleteEvent,
-  enhancedSearchContentFormatter,
   getEvent,
   getEventsByFilters,
   getReplaceable,
@@ -14,32 +13,29 @@ import {
   hasReplaceable,
   insertEvent,
   rebuildSearchIndex,
-  type SearchContentFormatter,
-} from "./helpers/sqlite.js";
+} from "./methods.js";
+import { enhancedSearchContentFormatter, SearchContentFormatter } from "../helpers/search.js";
 
-const log = logger.extend("SqliteEventDatabase");
+const log = logger.extend("BunSqliteEventDatabase");
 
-// Export the search content formatters and types for external use
-export { defaultSearchContentFormatter, enhancedSearchContentFormatter, type SearchContentFormatter };
-
-/** Options for the SqliteEventDatabase */
-export type SqliteEventDatabaseOptions = {
+/** Options for the {@link BunSqliteEventDatabase} */
+export type BunSqliteEventDatabaseOptions = {
   search?: boolean;
   searchContentFormatter?: SearchContentFormatter;
 };
 
-export class SqliteEventDatabase implements IEventDatabase {
-  db: TDatabase;
+export class BunSqliteEventDatabase implements IEventDatabase {
+  db: Database;
 
   /** If search is enabled */
   private search: boolean;
   /** The search content formatter */
   private searchContentFormatter: SearchContentFormatter;
 
-  constructor(database: string | TDatabase = ":memory:", options?: SqliteEventDatabaseOptions) {
+  constructor(database: string | Database = ":memory:", options?: BunSqliteEventDatabaseOptions) {
     this.db = typeof database === "string" ? new Database(database) : database;
 
-    this.search = options?.search ?? true;
+    this.search = options?.search ?? false;
     this.searchContentFormatter = options?.searchContentFormatter ?? enhancedSearchContentFormatter;
 
     // Setup the database tables and indexes

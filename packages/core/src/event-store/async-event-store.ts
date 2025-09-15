@@ -282,6 +282,9 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     const e = await this.database.add(event);
     if (!e) return;
 
+    // Notify the database that the event has updated
+    this.database.update?.(event);
+
     this.update$.next(event);
   }
 
