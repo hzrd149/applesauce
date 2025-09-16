@@ -329,17 +329,19 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
   }
 
   /** Get all events matching a filter */
-  getByFilters(filters: Filter | Filter[]): Set<NostrEvent> {
+  getByFilters(filters: Filter | Filter[]): NostrEvent[] {
     // NOTE: no way to read from memory since memory won't have the full set of events
     const events = this.database.getByFilters(filters);
     // Map events to memory if available for better performance
-    if (this.memory) return new Set(Array.from(events).map((e) => this.mapToMemory(e) ?? e));
-    return events;
+    if (this.memory) return events.map((e) => this.mapToMemory(e));
+    else return events;
   }
 
   /** Returns a timeline of events that match filters */
   getTimeline(filters: Filter | Filter[]): NostrEvent[] {
-    return this.database.getTimeline(filters);
+    const events = this.database.getTimeline(filters);
+    if (this.memory) return events.map((e) => this.mapToMemory(e));
+    else return events;
   }
 
   /** Passthrough method for the database.touch */

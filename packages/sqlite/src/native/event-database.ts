@@ -1,7 +1,7 @@
 import { IEventDatabase, logger } from "applesauce-core";
-import { Filter, insertEventIntoDescendingList, NostrEvent } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers";
 import { DatabaseSync } from "node:sqlite";
-import { enhancedSearchContentFormatter, SearchContentFormatter } from "../helpers/search.js";
+import { enhancedSearchContentFormatter, FilterWithSearch, SearchContentFormatter } from "../helpers/search.js";
 import {
   createTables,
   deleteEvent,
@@ -84,23 +84,17 @@ export class NativeSqliteEventDatabase implements IEventDatabase {
   }
 
   /** Get all events that match the filters (supports NIP-50 search field) */
-  getByFilters(filters: (Filter & { search?: string }) | (Filter & { search?: string })[]): Set<NostrEvent> {
-    try {
-      // If search is disabled, remove the search field from the filters
-      if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
-        throw new Error("Search is disabled");
+  getByFilters(filters: FilterWithSearch | FilterWithSearch[]): NostrEvent[] {
+    // If search is disabled, remove the search field from the filters
+    if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
+      throw new Error("Search is disabled");
 
-      return getEventsByFilters(this.db, filters);
-    } catch (error) {
-      return new Set();
-    }
+    return getEventsByFilters(this.db, filters);
   }
   /** Get a timeline of events that match the filters (returns array in chronological order, supports NIP-50 search) */
-  getTimeline(filters: (Filter & { search?: string }) | (Filter & { search?: string })[]): NostrEvent[] {
-    const events = this.getByFilters(filters);
-    const timeline: NostrEvent[] = [];
-    for (const event of events) insertEventIntoDescendingList(timeline, event);
-    return timeline;
+  getTimeline(filters: FilterWithSearch | FilterWithSearch[]): NostrEvent[] {
+    // No need to sort since query defaults to created_at descending order
+    return this.getByFilters(filters);
   }
 
   /** Set the search content formatter */

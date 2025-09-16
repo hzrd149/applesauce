@@ -1,5 +1,5 @@
 ---
-"applesauce-core": minor
+"applesauce-core": major
 ---
 
 Rename `EventSet` to `EventMemory`

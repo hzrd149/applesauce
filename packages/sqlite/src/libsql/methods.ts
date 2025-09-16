@@ -256,11 +256,11 @@ export async function hasReplaceable(
 export async function getEventsByFilters(
   db: Client,
   filters: FilterWithSearch | FilterWithSearch[],
-): Promise<Set<NostrEvent>> {
+): Promise<NostrEvent[]> {
   const query = buildFiltersQuery(filters);
-  if (!query) return new Set();
+  if (!query) return [];
 
-  const eventSet = new Set<NostrEvent>();
+  const events: NostrEvent[] = [];
 
   const result = await db.execute({
     sql: query.sql,
@@ -269,7 +269,7 @@ export async function getEventsByFilters(
 
   // Convert rows to events and add to set
   for (const row of result.rows) {
-    eventSet.add(
+    events.push(
       rowToEvent({
         id: row[0] as string,
         kind: row[1] as number,
@@ -282,7 +282,7 @@ export async function getEventsByFilters(
     );
   }
 
-  return eventSet;
+  return events;
 }
 
 /** Search events using FTS5 full-text search (convenience wrapper around getEventsByFilters) */
@@ -296,8 +296,7 @@ export async function searchEvents(db: Client, search: string, options?: Filter)
   };
 
   // Use the main filter system which now supports search
-  const results = await getEventsByFilters(db, filter);
-  return Array.from(results);
+  return await getEventsByFilters(db, filter);
 }
 
 /** Rebuild the FTS5 search index for all events */

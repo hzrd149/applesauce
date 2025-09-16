@@ -1,5 +1,5 @@
 ---
-"applesauce-core": minor
+"applesauce-core": major
 ---
 
-Allow `EventStore` to use custom event database
+Add support for custom databases to `EventStore`

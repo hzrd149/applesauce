@@ -168,19 +168,15 @@ export function hasReplaceable(db: Database, kind: number, pubkey: string, ident
 }
 
 /** Get all events that match the filters (includes NIP-50 search support) */
-export function getEventsByFilters(db: Database, filters: FilterWithSearch | FilterWithSearch[]): Set<NostrEvent> {
+export function getEventsByFilters(db: Database, filters: FilterWithSearch | FilterWithSearch[]): NostrEvent[] {
   const query = buildFiltersQuery(filters);
-  if (!query) return new Set();
-
-  const eventSet = new Set<NostrEvent>();
+  if (!query) return [];
 
   const stmt = db.query(query.sql);
   const rows = stmt.all(...query.params) as EventRow[];
 
-  // Convert rows to events and add to set
-  for (const row of rows) eventSet.add(rowToEvent(row));
-
-  return eventSet;
+  // Map rows to events
+  return rows.map(rowToEvent);
 }
 
 /** Search events using FTS5 full-text search (convenience wrapper around getEventsByFilters) */
@@ -194,8 +190,7 @@ export function searchEvents(db: Database, search: string, options?: Filter): No
   };
 
   // Use the main filter system which now supports search
-  const results = getEventsByFilters(db, filter);
-  return Array.from(results);
+  return getEventsByFilters(db, filter);
 }
 
 /** Rebuild the FTS5 search index for all events */

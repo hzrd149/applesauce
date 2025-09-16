@@ -55,8 +55,8 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Gets all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): Set<NostrEvent> {
-    return this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]);
+  getByFilters(filters: Filter | Filter[]): NostrEvent[] {
+    return Array.from(this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]));
   }
   /** Gets a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): NostrEvent[] {
@@ -388,6 +388,3 @@ export class EventMemory implements IEventMemory {
     this.claims = new WeakMap();
   }
 }
-
-/** @deprecated use {@link EventMemory} instead */
-export const EventSet = EventMemory;

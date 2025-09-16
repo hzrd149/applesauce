@@ -22,7 +22,7 @@ export interface IEventStoreRead {
   getReplaceableHistory(kind: number, pubkey: string, identifier?: string): NostrEvent[] | undefined;
 
   /** Get all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): Set<NostrEvent>;
+  getByFilters(filters: Filter | Filter[]): NostrEvent[];
   /** Get a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): NostrEvent[];
 }
@@ -42,7 +42,7 @@ export interface IAsyncEventStoreRead {
   getReplaceableHistory(kind: number, pubkey: string, identifier?: string): Promise<NostrEvent[] | undefined>;
 
   /** Get all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): Promise<Set<NostrEvent>>;
+  getByFilters(filters: Filter | Filter[]): Promise<NostrEvent[]>;
   /** Get a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): Promise<NostrEvent[]>;
 }
@@ -199,9 +199,6 @@ export interface IEventMemory extends IEventStoreRead, IEventClaims {
   /** Remove an event from the store */
   remove(event: string | NostrEvent): boolean;
 }
-
-/** @deprecated use {@link IEventDatabase} instead */
-export interface IEventSet extends IEventDatabase {}
 
 /** A set of methods that an event store will use to load single events it does not have */
 export interface IEventFallbackLoaders {

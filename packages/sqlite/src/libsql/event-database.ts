@@ -1,6 +1,7 @@
-import { IAsyncEventDatabase, logger } from "applesauce-core";
-import { Filter, insertEventIntoDescendingList, NostrEvent } from "applesauce-core/helpers";
 import { Client, createClient } from "@libsql/client";
+import { IAsyncEventDatabase, logger } from "applesauce-core";
+import { NostrEvent } from "applesauce-core/helpers";
+import { enhancedSearchContentFormatter, FilterWithSearch, SearchContentFormatter } from "../helpers/search.js";
 import {
   createTables,
   deleteEvent,
@@ -13,7 +14,6 @@ import {
   insertEvent,
   rebuildSearchIndex,
 } from "./methods.js";
-import { enhancedSearchContentFormatter, SearchContentFormatter } from "../helpers/search.js";
 
 const log = logger.extend("LibsqlEventDatabase");
 
@@ -90,25 +90,17 @@ export class LibsqlEventDatabase implements IAsyncEventDatabase {
   }
 
   /** Get all events that match the filters (supports NIP-50 search field) */
-  async getByFilters(
-    filters: (Filter & { search?: string }) | (Filter & { search?: string })[],
-  ): Promise<Set<NostrEvent>> {
-    try {
-      // If search is disabled, remove the search field from the filters
-      if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
-        throw new Error("Search is disabled");
+  async getByFilters(filters: FilterWithSearch | FilterWithSearch[]): Promise<NostrEvent[]> {
+    // If search is disabled, remove the search field from the filters
+    if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
+      throw new Error("Search is disabled");
 
-      return await getEventsByFilters(this.db, filters);
-    } catch (error) {
-      return new Set();
-    }
+    return await getEventsByFilters(this.db, filters);
   }
   /** Get a timeline of events that match the filters (returns array in chronological order, supports NIP-50 search) */
-  async getTimeline(filters: (Filter & { search?: string }) | (Filter & { search?: string })[]): Promise<NostrEvent[]> {
-    const events = await this.getByFilters(filters);
-    const timeline: NostrEvent[] = [];
-    for (const event of events) insertEventIntoDescendingList(timeline, event);
-    return timeline;
+  async getTimeline(filters: FilterWithSearch | FilterWithSearch[]): Promise<NostrEvent[]> {
+    // No need to sort since query defaults to created_at descending order
+    return await this.getByFilters(filters);
   }
 
   /** Set the search content formatter */
