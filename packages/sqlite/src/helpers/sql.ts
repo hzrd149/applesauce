@@ -28,7 +28,7 @@ export function buildFilterConditions(filter: FilterWithSearch): {
   // Handle NIP-50 search filter
   if (filter.search && filter.search.trim()) {
     conditions.push(`events_search MATCH ?`);
-    params.push(filter.search.trim());
+    params.push('"' + filter.search.replace(/"/g, '""') + '"');
     search = true;
   }
 
