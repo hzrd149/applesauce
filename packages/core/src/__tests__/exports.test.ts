@@ -7,7 +7,6 @@ describe("exports", () => {
       [
         "AsyncEventStore",
         "EventMemory",
-        "EventSet",
         "EventStore",
         "Helpers",
         "Models",
