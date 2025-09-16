@@ -69,6 +69,8 @@ export type RelayOptions = {
   eoseTimeout?: number;
   /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout?: number;
+  /** How long to wait for a publish to complete (default 30s) */
+  publishTimeout?: number;
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive?: number;
 };
@@ -149,6 +151,8 @@ export class Relay implements IRelay {
   eoseTimeout = 10_000;
   /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout = 10_000;
+  /** How long to wait for a publish to complete (default 30s) */
+  publishTimeout = 30_000;
 
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive = 30_000;
@@ -183,6 +187,7 @@ export class Relay implements IRelay {
     // Set common options
     if (opts?.eoseTimeout !== undefined) this.eoseTimeout = opts.eoseTimeout;
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
+    if (opts?.publishTimeout !== undefined) this.publishTimeout = opts.publishTimeout;
     if (opts?.keepAlive !== undefined) this.keepAlive = opts.keepAlive;
 
     // Create an observable that tracks boolean authentication state
@@ -507,6 +512,19 @@ export class Relay implements IRelay {
     else return repeat(times);
   }
 
+  /** Internal operator for creating the timeout() operator */
+  protected customTimeoutOperator<T extends unknown = unknown>(
+    timeout: undefined | boolean | number,
+    defaultTimeout: number,
+  ): MonoTypeOperatorFunction<T> {
+    // Do nothing if disabled
+    if (timeout === false) return identity;
+    // If true default to 30 seconds
+    else if (timeout === true) return simpleTimeout(defaultTimeout);
+    // Otherwise use the timeout value or default to 30 seconds
+    else return simpleTimeout(timeout ?? defaultTimeout);
+  }
+
   /** Creates a REQ that retries when relay errors ( default 3 retries ) */
   subscription(filters: Filter | Filter[], opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
     return this.req(filters, opts?.id).pipe(
@@ -546,6 +564,8 @@ export class Relay implements IRelay {
         }),
         // Retry the publish until it succeeds or the number of retries is reached
         this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
+        // Add timeout for publishing
+        this.customTimeoutOperator(opts?.timeout, this.publishTimeout),
         // Single subscription
         share(),
       ),

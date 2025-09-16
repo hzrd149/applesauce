@@ -20,6 +20,8 @@ export type PublishOptions = {
    * @see https://rxjs.dev/api/index/function/retry
    */
   reconnect?: boolean | number | Parameters<typeof retry>[0];
+  /** Timeout for publish in milliseconds (default 30 seconds) */
+  timeout?: number | boolean;
 };
 
 /** Options for the request method on the pool and relay */
