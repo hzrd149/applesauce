@@ -9,10 +9,10 @@ import {
   sortRelaysByPopularity,
 } from "applesauce-loaders/operators";
 import { selectOptimalRelays } from "applesauce-loaders/operators/outbox-selection";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { npubEncode, ProfilePointer } from "nostr-tools/nip19";
 import React, { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, EMPTY, map, shareReplay, switchMap, timeout } from "rxjs";
 
@@ -33,10 +33,7 @@ const eventStore = new EventStore();
 // Setup a local event cache
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters).then((events) => {
-    console.log("loaded events from cache", events.length);
-    return events;
-  });
+  return getEventsForFilters(cache, filters);
 }
 
 // Save all new events to the cache
@@ -46,7 +43,13 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 const addressLoader = createAddressLoader(pool, {
   eventStore,
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: [
+    "wss://purplepag.es/",
+    "wss://index.hzrd149.com/",
+    "wss://indexer.coracle.social/",
+    "wss://relay.primal.net/",
+    "wss://relay.damus.io/",
+  ],
 });
 
 // Add loaders to event store
@@ -95,6 +98,8 @@ const outboxes$ = contacts$.pipe(
   includeOutboxes(loader),
   // Load the legacy write relays for contacts missing the NIP-65 outboxes
   includeLegacyWriteRelays(loader),
+  // Ignore blacklisted relays
+  ignoreBlacklistedRelays(blacklist$),
   // Prioritize relays by popularity
   sortRelaysByPopularity(),
   // Only calculate it once
@@ -102,26 +107,36 @@ const outboxes$ = contacts$.pipe(
 );
 
 // User Avatar Component
-function UserAvatar({ pubkey }: { pubkey: string }) {
-  const profile = useObservableMemo(() => eventStore.profile(pubkey), [pubkey]);
+function UserAvatar({ user }: { user: ProfilePointer }) {
+  const profile = useObservableMemo(() => eventStore.profile(user.pubkey), [user.pubkey]);
 
-  const displayName = getDisplayName(profile, pubkey.slice(0, 8) + "...");
-  const avatarUrl = getProfilePicture(profile, `https://robohash.org/${pubkey}.png`);
+  const displayName = getDisplayName(profile, user.pubkey.slice(0, 8) + "...");
+  const avatarUrl = getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`);
+
+  const mailboxes = useObservableMemo(() => eventStore.mailboxes(user.pubkey), [user.pubkey]);
 
   return (
-    <div className="flex flex-col items-center gap-1 p-2 hover:bg-base-200 rounded-lg transition-colors">
+    <a
+      className="flex flex-col items-center gap-1 p-2 hover:bg-base-200 rounded-lg transition-colors"
+      href={`https://njump.me/${npubEncode(user.pubkey)}`}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
       <div className="avatar">
         <div className="w-10 h-10 rounded-full">
           <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
         </div>
       </div>
-      <div className="text-xs text-center max-w-16 truncate">{displayName}</div>
-    </div>
+      <div className="text-xs max-w-16 overflow-hidden flex items-center justify-center gap-1">
+        <div className="truncate">{displayName}</div>
+        <div className="text-base-content/60">({mailboxes?.outboxes.length || 0})</div>
+      </div>
+    </a>
   );
 }
 
 // Relay Row Component
-function RelayRow({ relay, pubkeys, totalUsers }: { relay: string; pubkeys: string[]; totalUsers: number }) {
+function RelayRow({ relay, users, totalUsers }: { relay: string; users: ProfilePointer[]; totalUsers: number }) {
   const [expanded, setExpanded] = useState(false);
   const [infoLoadAttempted, setInfoLoadAttempted] = useState(false);
   const info = useObservableMemo(() => pool.relay(relay).information$, [relay]);
@@ -180,9 +195,9 @@ function RelayRow({ relay, pubkeys, totalUsers }: { relay: string; pubkeys: stri
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="badge badge-primary">{pubkeys.length} users</div>
+              <div className="badge badge-primary">{users.length} users</div>
               <div className="badge badge-outline">
-                {totalUsers > 0 ? Math.round((pubkeys.length / totalUsers) * 100) : 0}%
+                {totalUsers > 0 ? Math.round((users.length / totalUsers) * 100) : 0}%
               </div>
             </div>
           </div>
@@ -191,8 +206,8 @@ function RelayRow({ relay, pubkeys, totalUsers }: { relay: string; pubkeys: stri
           {expanded && (
             <div className="px-4 pb-4">
               <div className="flex flex-wrap gap-2 max-h-96 overflow-y-auto">
-                {pubkeys.map((pubkey) => (
-                  <UserAvatar key={pubkey} pubkey={pubkey} />
+                {users.map((user) => (
+                  <UserAvatar key={user.pubkey} user={user} />
                 ))}
               </div>
             </div>
@@ -248,9 +263,9 @@ function SettingsPanel({
           </label>
           <input
             type="range"
-            min="10"
+            min="1"
             max="200"
-            step="10"
+            step="1"
             value={maxConnections}
             onChange={(e) => setMaxConnections(Number(e.target.value))}
             className="range range-primary range-sm w-full"
@@ -323,8 +338,44 @@ function SettingsPanel({
 }
 
 // Users by Relay Count Component
-function UsersByRelayCount({ contacts }: { contacts: ProfilePointer[] | null | undefined }) {
+function UsersByRelayCount({
+  contacts,
+  originalContacts,
+}: {
+  contacts: ProfilePointer[] | null | undefined;
+  originalContacts: ProfilePointer[] | null | undefined;
+}) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  // Calculate missing relays users - users who never had any relays (no NIP-65 relay list)
+  const missingRelaysUsers = useMemo(() => {
+    if (!originalContacts || !contacts) return [];
+
+    const originalMap = new Map(originalContacts.map((user) => [user.pubkey, user]));
+
+    return contacts.filter((selectedUser) => {
+      const originalUser = originalMap.get(selectedUser.pubkey);
+      const hasNoRelaysInOriginal = !originalUser?.relays || originalUser.relays.length === 0;
+      const hasNoRelaysInSelected = !selectedUser.relays || selectedUser.relays.length === 0;
+
+      return hasNoRelaysInOriginal && hasNoRelaysInSelected;
+    });
+  }, [originalContacts, contacts]);
+
+  // Calculate orphaned users - users who had relays originally but have none after selection
+  const orphanedUsers = useMemo(() => {
+    if (!originalContacts || !contacts) return [];
+
+    const selectedMap = new Map(contacts.map((user) => [user.pubkey, user]));
+
+    return originalContacts.filter((originalUser) => {
+      const hasOriginalRelays = originalUser.relays && originalUser.relays.length > 0;
+      const selectedUser = selectedMap.get(originalUser.pubkey);
+      const hasSelectedRelays = selectedUser?.relays && selectedUser.relays.length > 0;
+
+      return hasOriginalRelays && !hasSelectedRelays;
+    });
+  }, [originalContacts, contacts]);
 
   // Group users by relay count - always call this hook
   const usersByRelayCount = useMemo(() => {
@@ -397,45 +448,34 @@ function UsersByRelayCount({ contacts }: { contacts: ProfilePointer[] | null | u
                 </td>
               </tr>
             ) : (
-              sortedRelayCounts.map((relayCount) => {
-                const users = usersByRelayCount[relayCount];
-                const sectionId = `relay-count-${relayCount}`;
-                const isExpanded = expandedSections.has(sectionId);
-
-                const getDescription = (count: number): string => {
-                  if (count === 0) return "Cannot be reached - need to publish outbox relays (NIP-65)";
-                  if (count === 1) return "High risk - single point of failure";
-                  if (count <= 3) return "Limited redundancy - may have connectivity issues";
-                  if (count <= 5) return "Good coverage with reasonable redundancy";
-                  return "Excellent coverage with high redundancy";
-                };
-
-                return (
-                  <React.Fragment key={relayCount}>
-                    <tr className="hover:bg-base-200 cursor-pointer" onClick={() => toggleSection(sectionId)}>
+              <>
+                {/* Missing Relays Section */}
+                {missingRelaysUsers.length > 0 && (
+                  <React.Fragment>
+                    <tr className="hover:bg-base-200 cursor-pointer" onClick={() => toggleSection("missing-relays")}>
                       <td>
                         <div className="flex items-center gap-2">
-                          <div className="text-lg">{isExpanded ? "▼" : "▶"}</div>
-                          <span className="font-medium">
-                            {relayCount === 0 ? "No Relays" : relayCount === 1 ? "1 Relay" : `${relayCount} Relays`}
-                          </span>
+                          <div className="text-lg">{expandedSections.has("missing-relays") ? "▼" : "▶"}</div>
+                          <span className="font-medium text-warning">Missing Relays</span>
                         </div>
                       </td>
                       <td>
-                        <div className="badge badge-neutral">{users.length}</div>
+                        <div className="badge badge-warning">{missingRelaysUsers.length}</div>
                       </td>
                       <td>
-                        <span className="text-sm text-base-content/80">{getDescription(relayCount)}</span>
+                        <span className="text-sm text-base-content/80">
+                          Users without any relays (no NIP-65 relay list published)
+                        </span>
                       </td>
                     </tr>
 
-                    {isExpanded && (
+                    {expandedSections.has("missing-relays") && (
                       <tr>
                         <td colSpan={3} className="p-0">
-                          <div className="bg-base-100">
+                          <div className="bg-base-100 p-4">
                             <div className="flex flex-wrap gap-2 max-h-96 overflow-y-auto">
-                              {users.map((user) => (
-                                <UserAvatar key={user.pubkey} pubkey={user.pubkey} />
+                              {missingRelaysUsers.map((user) => (
+                                <UserAvatar key={user.pubkey} user={user} />
                               ))}
                             </div>
                           </div>
@@ -443,8 +483,95 @@ function UsersByRelayCount({ contacts }: { contacts: ProfilePointer[] | null | u
                       </tr>
                     )}
                   </React.Fragment>
-                );
-              })
+                )}
+
+                {/* Orphaned Users Section */}
+                {orphanedUsers.length > 0 && (
+                  <React.Fragment>
+                    <tr className="hover:bg-base-200 cursor-pointer" onClick={() => toggleSection("orphaned-users")}>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <div className="text-lg">{expandedSections.has("orphaned-users") ? "▼" : "▶"}</div>
+                          <span className="font-medium text-error">Orphaned Users</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="badge badge-error">{orphanedUsers.length}</div>
+                      </td>
+                      <td>
+                        <span className="text-sm text-base-content/80">
+                          Users who lost all relays after selection process
+                        </span>
+                      </td>
+                    </tr>
+
+                    {expandedSections.has("orphaned-users") && (
+                      <tr>
+                        <td colSpan={3} className="p-0">
+                          <div className="bg-base-100 p-4">
+                            <div className="flex flex-wrap gap-2 max-h-96 overflow-y-auto">
+                              {orphanedUsers.map((user) => (
+                                <UserAvatar key={user.pubkey} user={user} />
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )}
+
+                {/* Regular Relay Count Sections */}
+                {sortedRelayCounts
+                  .filter((relayCount) => relayCount > 0) // Exclude 0 relay count since we handle it separately
+                  .map((relayCount) => {
+                    const users = usersByRelayCount[relayCount];
+                    const sectionId = `relay-count-${relayCount}`;
+                    const isExpanded = expandedSections.has(sectionId);
+
+                    const getDescription = (count: number): string => {
+                      if (count === 1) return "High risk - single point of failure";
+                      if (count <= 3) return "Limited redundancy - may have connectivity issues";
+                      if (count <= 5) return "Good coverage with reasonable redundancy";
+                      return "Excellent coverage with high redundancy";
+                    };
+
+                    return (
+                      <React.Fragment key={relayCount}>
+                        <tr className="hover:bg-base-200 cursor-pointer" onClick={() => toggleSection(sectionId)}>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <div className="text-lg">{isExpanded ? "▼" : "▶"}</div>
+                              <span className="font-medium">
+                                {relayCount === 1 ? "1 Relay" : `${relayCount} Relays`}
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="badge badge-neutral">{users.length}</div>
+                          </td>
+                          <td>
+                            <span className="text-sm text-base-content/80">{getDescription(relayCount)}</span>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={3} className="p-0">
+                              <div className="bg-base-100 p-4">
+                                <div className="flex flex-wrap gap-2 max-h-96 overflow-y-auto">
+                                  {users.map((user) => (
+                                    <UserAvatar key={user.pubkey} user={user} />
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+              </>
             )}
           </tbody>
         </table>
@@ -453,12 +580,28 @@ function UsersByRelayCount({ contacts }: { contacts: ProfilePointer[] | null | u
       {/* Summary at the bottom */}
       <div className="mt-6 p-4 bg-base-200 rounded-lg">
         <div className="text-sm text-base-content/70">
-          <strong>{contacts.length}</strong> total users distributed across <strong>{sortedRelayCounts.length}</strong>{" "}
-          different relay count groups
+          <strong>{contacts.length}</strong> total users distributed across relay count groups
         </div>
+        {(missingRelaysUsers.length > 0 || orphanedUsers.length > 0) && (
+          <div className="text-xs text-base-content/60 mt-2">
+            <div className="flex flex-wrap gap-4">
+              {missingRelaysUsers.length > 0 && (
+                <span className="text-warning">
+                  <strong>{missingRelaysUsers.length}</strong> users missing relays (no NIP-65 published)
+                </span>
+              )}
+              {orphanedUsers.length > 0 && (
+                <span className="text-error">
+                  <strong>{orphanedUsers.length}</strong> users orphaned (lost relays after selection)
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         {sortedRelayCounts.length > 0 && (
           <div className="text-xs text-base-content/60 mt-1">
-            Range: {Math.min(...sortedRelayCounts)} - {Math.max(...sortedRelayCounts)} relays per user
+            Active relay range: {Math.min(...sortedRelayCounts.filter((c) => c > 0))} - {Math.max(...sortedRelayCounts)}{" "}
+            relays per user
           </div>
         )}
       </div>
@@ -469,19 +612,18 @@ function UsersByRelayCount({ contacts }: { contacts: ProfilePointer[] | null | u
 // Main Component
 export default function OutboxTable() {
   const [pubkey, setPubkey] = useState<string>("");
-  const [maxConnections, setMaxConnections] = useState(100);
+  const [maxConnections, setMaxConnections] = useState(30);
   const [maxRelaysPerUser, setMaxRelaysPerUser] = useState(8);
-  const [minRelaysPerUser, setMinRelaysPerUser] = useState(1);
-  const [maxRelayCoverage, setMaxRelayCoverage] = useState(50);
+  const [minRelaysPerUser, setMinRelaysPerUser] = useState(2);
+  const [maxRelayCoverage, setMaxRelayCoverage] = useState(35);
 
-  // Get processed contacts data (removed unused outboxes variable)
+  // Get original outboxes data (before selection)
+  const originalOutboxes = useObservableState(outboxes$, []);
 
   // Get grouped outbox data
   const selection = useObservableMemo(
     () =>
       outboxes$.pipe(
-        // Ignore blacklisted relays
-        ignoreBlacklistedRelays(blacklist$),
         // Select outboxes
         map((users) => selectOptimalRelays(users, { maxConnections, maxRelayCoverage, maxRelaysPerUser })),
       ),
@@ -516,7 +658,7 @@ export default function OutboxTable() {
       />
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
         <table className="table w-full">
           <thead>
             <tr>
@@ -534,7 +676,12 @@ export default function OutboxTable() {
               </tr>
             ) : (
               sortedRelays.map(([relay, pubkeys]) => (
-                <RelayRow key={relay} relay={relay} pubkeys={pubkeys} totalUsers={selection?.length || 0} />
+                <RelayRow
+                  key={relay}
+                  relay={relay}
+                  users={pubkeys.map((pubkey) => ({ pubkey }))}
+                  totalUsers={selection?.length || 0}
+                />
               ))
             )}
           </tbody>
@@ -542,7 +689,7 @@ export default function OutboxTable() {
       </div>
 
       {/* Users by Relay Count Report */}
-      <UsersByRelayCount contacts={selection} />
+      <UsersByRelayCount contacts={selection} originalContacts={originalOutboxes} />
     </div>
   );
 }

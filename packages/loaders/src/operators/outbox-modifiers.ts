@@ -96,11 +96,12 @@ export function sortRelaysByPopularity(): MonoTypeOperatorFunction<ProfilePointe
     const relayUsageCount = new Map<string, number>();
 
     // Count the times the relays are used
-    for (const element of users) {
-      if (!element.relays) continue;
-      element.relays.forEach((relay) => {
+    for (const user of users) {
+      if (!user.relays) continue;
+
+      for (const relay of user.relays) {
         relayUsageCount.set(relay, (relayUsageCount.get(relay) || 0) + 1);
-      });
+      }
     }
 
     return users.map((user) => {
@@ -109,7 +110,7 @@ export function sortRelaysByPopularity(): MonoTypeOperatorFunction<ProfilePointe
       // Sort the user's relays by popularity
       return {
         ...user,
-        relays: user.relays?.sort((a, b) => {
+        relays: user.relays.sort((a, b) => {
           const countA = relayUsageCount.get(a) || 0;
           const countB = relayUsageCount.get(b) || 0;
           return countB - countA;
