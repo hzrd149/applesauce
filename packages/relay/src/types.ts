@@ -65,6 +65,7 @@ export interface IRelay extends MultiplexWebSocket {
   challenge$: Observable<string | null>;
   authenticated$: Observable<boolean>;
   notices$: Observable<string[]>;
+  error$: Observable<Error | null>;
 
   readonly connected: boolean;
   readonly authenticated: boolean;
@@ -103,7 +104,13 @@ export interface IGroup {
   subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
 }
 
-export interface IPool {
+/** Signals emitted by the pool */
+export interface IPoolSignals {
+  add$: Observable<IRelay>;
+  remove$: Observable<IRelay>;
+}
+
+export interface IPool extends IPoolSignals {
   /** Get or create a relay */
   relay(url: string): IRelay;
   /** Create a relay group */

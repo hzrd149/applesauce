@@ -1,5 +1,5 @@
 import { type NostrEvent } from "nostr-tools";
-import { BehaviorSubject, Observable } from "rxjs";
+import { BehaviorSubject, Observable, Subject } from "rxjs";
 
 import { normalizeURL } from "applesauce-core/helpers";
 import { RelayGroup } from "./group.js";
@@ -17,10 +17,29 @@ export class RelayPool implements IPool {
     return this.relays$.value;
   }
 
+  /** A signal when a relay is added */
+  add$ = new Subject<IRelay>();
+  /** A signal when a relay is removed */
+  remove$ = new Subject<IRelay>();
+
   /** An array of relays to never connect to */
   blacklist = new Set<string>();
 
-  constructor(public options?: RelayOptions) {}
+  constructor(public options?: RelayOptions) {
+    // Listen for relays being added and removed to emit connect / disconnect signals
+    // const listeners = new Map<IRelay, Subscription>();
+    // this.add$.subscribe((relay) =>
+    //   listeners.set(
+    //     relay,
+    //     relay.connected$.subscribe((conn) => (conn ? this.connect$.next(relay) : this.disconnect$.next(relay))),
+    //   ),
+    // );
+    // this.remove$.subscribe((relay) => {
+    //   const listener = listeners.get(relay);
+    //   if (listener) listener.unsubscribe();
+    //   listeners.delete(relay);
+    // });
+  }
 
   protected filterBlacklist(urls: string[]) {
     return urls.filter((url) => !this.blacklist.has(url));
@@ -42,6 +61,7 @@ export class RelayPool implements IPool {
     relay = new Relay(url, this.options);
     this.relays.set(url, relay);
     this.relays$.next(this.relays);
+    this.add$.next(relay);
     return relay;
   }
 
@@ -75,6 +95,7 @@ export class RelayPool implements IPool {
     if (close) instance?.close();
     this.relays.delete(instance.url);
     this.relays$.next(this.relays);
+    this.remove$.next(instance);
   }
 
   /** Make a REQ to multiple relays that does not deduplicate events */

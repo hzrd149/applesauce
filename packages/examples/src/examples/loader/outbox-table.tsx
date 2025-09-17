@@ -1,24 +1,22 @@
 import { defined, EventStore } from "applesauce-core";
-import {
-  Filter,
-  getDisplayName,
-  getProfilePicture,
-  normalizeToPubkey,
-  persistEventsToCache,
-} from "applesauce-core/helpers";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { Filter, getDisplayName, getProfilePicture, persistEventsToCache } from "applesauce-core/helpers";
+import { AddressPointerLoader, createAddressLoader } from "applesauce-loaders/loaders";
 import {
   groupPubkeysByRelay,
+  ignoreBlacklistedRelays,
   includeLegacyWriteRelays,
   includeOutboxes,
-  selectOutboxes,
+  sortRelaysByPopularity,
 } from "applesauce-loaders/operators";
+import { selectOptimalRelays } from "applesauce-loaders/operators/outbox-selection";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useCallback, useEffect, useState } from "react";
-import { BehaviorSubject, shareReplay, switchMap } from "rxjs";
+import { ProfilePointer } from "nostr-tools/nip19";
+import React, { useEffect, useMemo, useState } from "react";
+import { BehaviorSubject, EMPTY, map, shareReplay, switchMap, timeout } from "rxjs";
+
+import PubkeyPicker from "../../components/pubkey-picker";
 
 // Extend Window interface to include nostr property
 declare global {
@@ -48,7 +46,7 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 const addressLoader = createAddressLoader(pool, {
   eventStore,
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
 // Add loaders to event store
@@ -56,17 +54,49 @@ const addressLoader = createAddressLoader(pool, {
 eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
 
+/** Keep a list of relays to never connect to */
+const blacklist$ = new BehaviorSubject<string[]>([]);
+
+// Listen for relay errors and add them to the blacklist
+const listeners = new Map();
+pool.add$.subscribe((relay) => {
+  const sub = relay.error$.pipe(defined()).subscribe((error) => {
+    console.error("Relay error", error);
+    if (blacklist$.value.includes(relay.url)) return;
+
+    console.error(`Adding ${relay.url} to blacklist`);
+    blacklist$.next([...blacklist$.value, relay.url]);
+  });
+  listeners.set(relay, sub);
+});
+pool.remove$.subscribe((relay) => {
+  const sub = listeners.get(relay);
+  if (sub) sub.unsubscribe();
+  listeners.delete(relay);
+});
+
+/** A list of users contacts */
 const contacts$ = pubkey$.pipe(
   defined(),
   switchMap((pubkey) => eventStore.contacts(pubkey)),
 );
 
+const loader: AddressPointerLoader = (p) =>
+  eventStore.replaceable(p).pipe(
+    defined(),
+    // Timeout the request if it takes too long
+    timeout({ first: 2_000, with: () => EMPTY }),
+  );
+
+/** Add outbox relays to contacts */
 const outboxes$ = contacts$.pipe(
   defined(),
   // Load the NIP-65 outboxes for all contacts
-  includeOutboxes(addressLoader),
+  includeOutboxes(loader),
   // Load the legacy write relays for contacts missing the NIP-65 outboxes
-  includeLegacyWriteRelays(addressLoader),
+  includeLegacyWriteRelays(loader),
+  // Prioritize relays by popularity
+  sortRelaysByPopularity(),
   // Only calculate it once
   shareReplay(1),
 );
@@ -91,9 +121,38 @@ function UserAvatar({ pubkey }: { pubkey: string }) {
 }
 
 // Relay Row Component
-function RelayRow({ relay, pubkeys }: { relay: string; pubkeys: string[] }) {
+function RelayRow({ relay, pubkeys, totalUsers }: { relay: string; pubkeys: string[]; totalUsers: number }) {
   const [expanded, setExpanded] = useState(false);
+  const [infoLoadAttempted, setInfoLoadAttempted] = useState(false);
   const info = useObservableMemo(() => pool.relay(relay).information$, [relay]);
+
+  // Attempt to load relay information when component mounts or when info is null
+  useEffect(() => {
+    if (!infoLoadAttempted && info === null) {
+      setInfoLoadAttempted(true);
+
+      const relayInstance = pool.relay(relay);
+
+      // Try to get relay information with timeout
+      Promise.race([
+        relayInstance.getInformation(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000)),
+      ])
+        .then((relayInfo) => {
+          console.log(`✅ Relay ${relay} responded:`, relayInfo?.name || "No name");
+        })
+        .catch((error) => {
+          console.error(`❌ Relay ${relay} failed to load information:`, error);
+
+          // Add to blacklist if not already there
+          const currentBlacklist = blacklist$.value;
+          if (!currentBlacklist.includes(relay)) {
+            console.log(`Adding ${relay} to blacklist due to info loading failure`);
+            blacklist$.next([...currentBlacklist, relay]);
+          }
+        });
+    }
+  }, [relay, info, infoLoadAttempted]);
 
   const relayDisplayName = info?.name || relay.replace("wss://", "").replace("ws://", "");
   const icon =
@@ -120,7 +179,12 @@ function RelayRow({ relay, pubkeys }: { relay: string; pubkeys: string[] }) {
                 <div className="text-sm text-base-content/60">{relay}</div>
               </div>
             </div>
-            <div className="badge badge-primary">{pubkeys.length} users</div>
+            <div className="flex items-center gap-2">
+              <div className="badge badge-primary">{pubkeys.length} users</div>
+              <div className="badge badge-outline">
+                {totalUsers > 0 ? Math.round((pubkeys.length / totalUsers) * 100) : 0}%
+              </div>
+            </div>
           </div>
 
           {/* Expanded user avatars */}
@@ -143,110 +207,260 @@ function RelayRow({ relay, pubkeys }: { relay: string; pubkeys: string[] }) {
 function SettingsPanel({
   pubkey,
   setPubkey,
-  maxPerPubkey,
-  setMaxPerPubkey,
-  minPerRelay,
-  setMinPerRelay,
+  maxRelaysPerUser,
+  setMaxRelaysPerUser,
+  minRelaysPerUser,
+  setMinRelaysPerUser,
+  maxConnections,
+  setMaxConnections,
+  maxRelayCoverage,
+  setMaxRelayCoverage,
 }: {
   pubkey: string;
   setPubkey: (value: string) => void;
-  maxPerPubkey: number;
-  setMaxPerPubkey: (value: number) => void;
-  minPerRelay: number;
-  setMinPerRelay: (value: number) => void;
+  maxRelaysPerUser: number;
+  setMaxRelaysPerUser: (value: number) => void;
+  maxRelayCoverage: number;
+  setMaxRelayCoverage: (value: number) => void;
+  maxConnections: number;
+  setMaxConnections: (value: number) => void;
+  minRelaysPerUser: number;
+  setMinRelaysPerUser: (value: number) => void;
 }) {
-  const [inputValue, setInputValue] = useState(pubkey);
-  const [isValidPubkey, setIsValidPubkey] = useState(false);
-
-  // Automatically validate and set pubkey when input changes
-  useEffect(() => {
-    if (!inputValue.trim()) {
-      setIsValidPubkey(false);
-      return;
-    }
-
-    try {
-      const normalizedPubkey = normalizeToPubkey(inputValue.trim());
-      setIsValidPubkey(true);
-      setPubkey(normalizedPubkey);
-      pubkey$.next(normalizedPubkey);
-    } catch (error) {
-      setIsValidPubkey(false);
-      pubkey$.next(null);
-    }
-  }, [inputValue, setPubkey]);
-
-  // Get pubkey from extension
-  const handleGetFromExtension = useCallback(async () => {
-    try {
-      if (typeof window !== "undefined" && window.nostr) {
-        const signer = new ExtensionSigner();
-        const extensionPubkey = await signer.getPublicKey();
-        setInputValue(extensionPubkey);
-      } else {
-        alert("Nostr extension not found. Please install a browser extension like nos2x or Alby.");
-      }
-    } catch (error) {
-      console.error("Failed to get pubkey from extension:", error);
-      alert("Failed to get pubkey from extension. Please check your extension settings.");
-    }
-  }, []);
+  const handlePubkeyChange = (normalizedPubkey: string) => {
+    setPubkey(normalizedPubkey);
+    pubkey$.next(normalizedPubkey);
+  };
 
   return (
-    <div className="space-y-4 mb-6">
-      <div className="flex flex-col max-w-lg w-full">
-        <label className="label pb-1">
-          <span className="label-text">Pubkey (hex, npub, or nprofile)</span>
-        </label>
-        <div className="join">
-          <input
-            type="text"
-            placeholder="Enter pubkey or nostr identifier..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            className={`input input-bordered join-item flex-1 ${
-              inputValue.trim() && !isValidPubkey ? "input-error" : isValidPubkey ? "input-success" : ""
-            }`}
-          />
-          {typeof window !== "undefined" && window.nostr && (
-            <button onClick={handleGetFromExtension} className="btn btn-outline join-item">
-              Extension
-            </button>
-          )}
-        </div>
-        {inputValue.trim() && !isValidPubkey && (
-          <label className="label pt-1">
-            <span className="label-text-alt text-error">Invalid pubkey format</span>
+    <div className="space-y-4">
+      <PubkeyPicker
+        value={pubkey}
+        onChange={handlePubkeyChange}
+        label="Pubkey (hex, npub, or nprofile)"
+        placeholder="Enter pubkey or nostr identifier..."
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex flex-col w-full">
+          <label className="label pb-1">
+            <span className="label-text">Max connections: {maxConnections}</span>
           </label>
+          <input
+            type="range"
+            min="10"
+            max="200"
+            step="10"
+            value={maxConnections}
+            onChange={(e) => setMaxConnections(Number(e.target.value))}
+            className="range range-primary range-sm w-full"
+          />
+          <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
+            <span>1</span>
+            <span>100</span>
+            <span>200</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col w-full">
+          <label className="label pb-1">
+            <span className="label-text">Max relay coverage: {maxRelayCoverage}%</span>
+          </label>
+          <input
+            type="range"
+            min="10"
+            max="100"
+            value={maxRelayCoverage}
+            onChange={(e) => setMaxRelayCoverage(Number(e.target.value))}
+            className="range range-primary range-sm w-full"
+          />
+          <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
+            <span>10%</span>
+            <span>100%</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col w-full">
+          <label className="label pb-1">
+            <span className="label-text">Min relays per user: {minRelaysPerUser}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="10"
+            value={minRelaysPerUser}
+            onChange={(e) => setMinRelaysPerUser(Number(e.target.value))}
+            className="range range-primary range-sm w-full"
+          />
+          <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
+            <span>0</span>
+            <span>5</span>
+            <span>10</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col w-full">
+          <label className="label pb-1">
+            <span className="label-text">Max relays per user: {maxRelaysPerUser}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="30"
+            value={maxRelaysPerUser}
+            onChange={(e) => setMaxRelaysPerUser(Number(e.target.value))}
+            className="range range-primary range-sm w-full"
+          />
+          <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
+            <span>0</span>
+            <span>15</span>
+            <span>30</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Users by Relay Count Component
+function UsersByRelayCount({ contacts }: { contacts: ProfilePointer[] | null | undefined }) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  // Group users by relay count - always call this hook
+  const usersByRelayCount = useMemo(() => {
+    if (!contacts) return {};
+
+    const groups: { [relayCount: number]: ProfilePointer[] } = {};
+
+    contacts.forEach((user) => {
+      const relayCount = user.relays?.length || 0;
+      if (!groups[relayCount]) groups[relayCount] = [];
+
+      groups[relayCount].push(user);
+    });
+
+    // Sort users within each group by pubkey for consistent ordering
+    Object.values(groups).forEach((group) => {
+      group.sort((a, b) => a.pubkey.localeCompare(b.pubkey));
+    });
+
+    return groups;
+  }, [contacts]);
+
+  // Sort relay counts ascending (users with least relays first) - always call this hook
+  const sortedRelayCounts = useMemo(() => {
+    return Object.keys(usersByRelayCount)
+      .map(Number)
+      .sort((a, b) => a - b);
+  }, [usersByRelayCount]);
+
+  const toggleSection = (sectionId: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(sectionId)) {
+      newExpanded.delete(sectionId);
+    } else {
+      newExpanded.add(sectionId);
+    }
+    setExpandedSections(newExpanded);
+  };
+
+  if (!contacts) {
+    return (
+      <div className="mt-8">
+        <h2 className="text-xl font-bold mb-4">Users by Relay Count</h2>
+        <p className="text-base-content/60">No data available</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-8">
+      <h2 className="text-xl font-bold mb-4">Users by Relay Count</h2>
+      <p className="text-base-content/60 mb-6">
+        All users grouped by how many relays have been selected for them. Click rows to expand and see users.
+      </p>
+
+      <div className="overflow-x-auto">
+        <table className="table w-full">
+          <thead>
+            <tr>
+              <th>Relay Count</th>
+              <th>Users</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRelayCounts.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="text-center py-12 text-base-content/60">
+                  No relay count data available
+                </td>
+              </tr>
+            ) : (
+              sortedRelayCounts.map((relayCount) => {
+                const users = usersByRelayCount[relayCount];
+                const sectionId = `relay-count-${relayCount}`;
+                const isExpanded = expandedSections.has(sectionId);
+
+                const getDescription = (count: number): string => {
+                  if (count === 0) return "Cannot be reached - need to publish outbox relays (NIP-65)";
+                  if (count === 1) return "High risk - single point of failure";
+                  if (count <= 3) return "Limited redundancy - may have connectivity issues";
+                  if (count <= 5) return "Good coverage with reasonable redundancy";
+                  return "Excellent coverage with high redundancy";
+                };
+
+                return (
+                  <React.Fragment key={relayCount}>
+                    <tr className="hover:bg-base-200 cursor-pointer" onClick={() => toggleSection(sectionId)}>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <div className="text-lg">{isExpanded ? "▼" : "▶"}</div>
+                          <span className="font-medium">
+                            {relayCount === 0 ? "No Relays" : relayCount === 1 ? "1 Relay" : `${relayCount} Relays`}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="badge badge-neutral">{users.length}</div>
+                      </td>
+                      <td>
+                        <span className="text-sm text-base-content/80">{getDescription(relayCount)}</span>
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={3} className="p-0">
+                          <div className="bg-base-100">
+                            <div className="flex flex-wrap gap-2 max-h-96 overflow-y-auto">
+                              {users.map((user) => (
+                                <UserAvatar key={user.pubkey} pubkey={user.pubkey} />
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Summary at the bottom */}
+      <div className="mt-6 p-4 bg-base-200 rounded-lg">
+        <div className="text-sm text-base-content/70">
+          <strong>{contacts.length}</strong> total users distributed across <strong>{sortedRelayCounts.length}</strong>{" "}
+          different relay count groups
+        </div>
+        {sortedRelayCounts.length > 0 && (
+          <div className="text-xs text-base-content/60 mt-1">
+            Range: {Math.min(...sortedRelayCounts)} - {Math.max(...sortedRelayCounts)} relays per user
+          </div>
         )}
-      </div>
-
-      <div className="flex flex-col max-w-lg w-full">
-        <label className="label pb-1">
-          <span className="label-text">Max relays per user: {maxPerPubkey}</span>
-        </label>
-        <input
-          type="range"
-          min="1"
-          max="10"
-          value={maxPerPubkey}
-          onChange={(e) => setMaxPerPubkey(Number(e.target.value))}
-          className="range range-primary range-sm w-full"
-        />
-      </div>
-
-      <div className="flex flex-col max-w-lg w-full">
-        <label className="label pb-1">
-          <span className="label-text">Min relays per user: {minPerRelay}</span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="10"
-          value={minPerRelay}
-          onChange={(e) => setMinPerRelay(Number(e.target.value))}
-          className="range range-primary range-sm w-full"
-        />
       </div>
     </div>
   );
@@ -255,30 +469,32 @@ function SettingsPanel({
 // Main Component
 export default function OutboxTable() {
   const [pubkey, setPubkey] = useState<string>("");
-  const [maxPerPubkey, setMaxPerPubkey] = useState(5);
-  const [minPerRelay, setMinPerRelay] = useState(0);
+  const [maxConnections, setMaxConnections] = useState(100);
+  const [maxRelaysPerUser, setMaxRelaysPerUser] = useState(8);
+  const [minRelaysPerUser, setMinRelaysPerUser] = useState(1);
+  const [maxRelayCoverage, setMaxRelayCoverage] = useState(50);
 
-  // Get processed contacts data
-  const contacts = useObservableMemo(() => outboxes$, []);
+  // Get processed contacts data (removed unused outboxes variable)
 
   // Get grouped outbox data
-  const outboxMap = useObservableMemo(
-    () => outboxes$.pipe(selectOutboxes({ maxPerPubkey, minPerRelay }), groupPubkeysByRelay()),
-    [maxPerPubkey, minPerRelay],
+  const selection = useObservableMemo(
+    () =>
+      outboxes$.pipe(
+        // Ignore blacklisted relays
+        ignoreBlacklistedRelays(blacklist$),
+        // Select outboxes
+        map((users) => selectOptimalRelays(users, { maxConnections, maxRelayCoverage, maxRelaysPerUser })),
+      ),
+    [maxConnections, maxRelayCoverage, maxRelaysPerUser],
   );
 
-  // Find users without relays
-  const usersWithoutRelays = contacts
-    ? contacts.filter((contact) => !contact.relays || contact.relays.length === 0)
-    : [];
+  const outboxMap = useMemo(() => selection && groupPubkeysByRelay(selection), [selection]);
 
   // Sort relays by popularity (number of users) in descending order
-  const sortedRelays = outboxMap
-    ? Object.entries(outboxMap).sort(([, pubkeysA], [, pubkeysB]) => pubkeysB.length - pubkeysA.length)
-    : [];
+  const sortedRelays = outboxMap ? Object.entries(outboxMap).sort(([, a], [, b]) => b.length - a.length) : [];
 
   return (
-    <div className="min-h-screen bg-base-100 p-6">
+    <div className="min-h-screen p-4">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Outbox Relay Table</h1>
@@ -289,10 +505,14 @@ export default function OutboxTable() {
       <SettingsPanel
         pubkey={pubkey}
         setPubkey={setPubkey}
-        maxPerPubkey={maxPerPubkey}
-        setMaxPerPubkey={setMaxPerPubkey}
-        minPerRelay={minPerRelay}
-        setMinPerRelay={setMinPerRelay}
+        maxRelaysPerUser={maxRelaysPerUser}
+        setMaxRelaysPerUser={setMaxRelaysPerUser}
+        minRelaysPerUser={minRelaysPerUser}
+        setMinRelaysPerUser={setMinRelaysPerUser}
+        maxConnections={maxConnections}
+        setMaxConnections={setMaxConnections}
+        maxRelayCoverage={maxRelayCoverage}
+        setMaxRelayCoverage={setMaxRelayCoverage}
       />
 
       {/* Table */}
@@ -313,26 +533,16 @@ export default function OutboxTable() {
                 </td>
               </tr>
             ) : (
-              sortedRelays.map(([relay, pubkeys]) => <RelayRow key={relay} relay={relay} pubkeys={pubkeys} />)
+              sortedRelays.map(([relay, pubkeys]) => (
+                <RelayRow key={relay} relay={relay} pubkeys={pubkeys} totalUsers={selection?.length || 0} />
+              ))
             )}
           </tbody>
         </table>
-
-        {/* Users without relays section */}
-        {usersWithoutRelays.length > 0 && (
-          <>
-            <h3 className="text-left text-lg pt-8">Users without relays ({usersWithoutRelays.length})</h3>
-            <p className="text-left text-sm text-gray-500">
-              These users have not published their list of outboxes relays they write to.
-            </p>
-            <div className="flex flex-wrap gap-2 max-h-96 overflow-y-auto">
-              {usersWithoutRelays.map((contact) => (
-                <UserAvatar key={contact.pubkey} pubkey={contact.pubkey} />
-              ))}
-            </div>
-          </>
-        )}
       </div>
+
+      {/* Users by Relay Count Report */}
+      <UsersByRelayCount contacts={selection} />
     </div>
   );
 }
