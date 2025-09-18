@@ -1,4 +1,4 @@
-import { defined, EventStore, includeLegacyAppRelays, includeMailboxes, mapEventsToStore } from "applesauce-core";
+import { defined, EventStore, includeMailboxes, mapEventsToStore } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
@@ -63,8 +63,6 @@ const outboxes$ = contacts$.pipe(
   defined(),
   // Load the NIP-65 outboxes for all contacts
   includeMailboxes(eventStore),
-  // Load the legacy write relays for contacts missing the NIP-65 outboxes
-  includeLegacyAppRelays(eventStore),
   // Prioritize relays by popularity
   map(sortRelaysByPopularity),
   // Only calculate it once

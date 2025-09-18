@@ -1,9 +1,9 @@
-import { ProfilePointer } from "nostr-tools/nip19";
-import { Model } from "../event-store/interface.js";
-import { ignoreBlacklistedRelays, includeLegacyAppRelays, includeMailboxes } from "../observable/relay-selection.js";
-import { selectOptimalRelays, SelectOptimalRelaysOptions, sortRelaysByPopularity } from "../helpers/relay-selection.js";
-import { identity, map } from "rxjs";
 import hash_sum from "hash-sum";
+import { ProfilePointer } from "nostr-tools/nip19";
+import { identity, map } from "rxjs";
+import { Model } from "../event-store/interface.js";
+import { selectOptimalRelays, SelectOptimalRelaysOptions, sortRelaysByPopularity } from "../helpers/relay-selection.js";
+import { ignoreBlacklistedRelays, includeMailboxes } from "../observable/relay-selection.js";
 
 export type OutboxModelOptions = SelectOptimalRelaysOptions & {
   type?: "inbox" | "outbox";
@@ -18,8 +18,6 @@ export function OutboxModel(user: string | ProfilePointer, opts: OutboxModelOpti
       opts?.blacklist ? ignoreBlacklistedRelays(opts.blacklist) : identity,
       /** Include mailboxes */
       includeMailboxes(store, opts.type),
-      /** Include legacy app relays */
-      includeLegacyAppRelays(store, opts.type),
       /** Sort the relays by popularity */
       map(sortRelaysByPopularity),
       /** Select the optimal relays */

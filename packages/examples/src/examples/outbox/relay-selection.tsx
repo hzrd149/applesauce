@@ -1,20 +1,17 @@
-import { defined, EventStore, includeLegacyAppRelays, includeMailboxes } from "applesauce-core";
+import { defined, EventStore, ignoreBlacklistedRelays, includeMailboxes } from "applesauce-core";
 import {
-  Filter,
   getDisplayName,
   getProfilePicture,
   groupPubkeysByRelay,
-  persistEventsToCache,
   sortRelaysByPopularity,
 } from "applesauce-core/helpers";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { selectOptimalRelays } from "applesauce-loaders/operators/outbox-selection";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { npubEncode, ProfilePointer } from "nostr-tools/nip19";
-import { Fragment, useMemo, useState } from "react";
-import { BehaviorSubject, map, shareReplay, switchMap } from "rxjs";
+import { ProfilePointer } from "nostr-tools/nip19";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import { BehaviorSubject, firstValueFrom, map, shareReplay, switchMap, throttleTime } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 
@@ -25,25 +22,18 @@ declare global {
   }
 }
 
+// The pubkey of the user to view
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
+// Create an event store and event pool
 const pool = new RelayPool();
 const eventStore = new EventStore();
-
-// Setup a local event cache
-const cache = await openDB();
-function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters);
-}
-
-// Save all new events to the cache
-persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Create some loaders using the cache method and the event store
 const addressLoader = createAddressLoader(pool, {
   eventStore,
-  cacheRequest,
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
+  extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
 
 // Add loaders to event store
@@ -51,27 +41,153 @@ const addressLoader = createAddressLoader(pool, {
 eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
 
+// Keep a global list of blacklisted relays
+const blacklist$ = new BehaviorSubject<string[]>([]);
+
+// Add relays to blacklisted if they fail to connect
+pool.add$.subscribe((relay) => {
+  relay.error$.subscribe((error) => {
+    if (error && !blacklist$.value.includes(relay.url)) {
+      console.info(`${relay.url} failed to connect. Adding to blacklist`);
+      blacklist$.next([...blacklist$.value, relay.url]);
+    }
+  });
+});
+
+/** Subject for previewing a user */
+const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
+
 /** A list of users contacts */
 const contacts$ = pubkey$.pipe(
   defined(),
   switchMap((pubkey) => eventStore.contacts(pubkey)),
 );
 
+// User Preview Modal Component
+function UserPreviewModal() {
+  const previewUser = useObservableState(preview$);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const profile = useObservableMemo(
+    () => (previewUser ? eventStore.profile(previewUser) : undefined),
+    [previewUser?.pubkey],
+  );
+  const mailboxes = useObservableMemo(
+    () => (previewUser ? eventStore.mailboxes(previewUser) : undefined),
+    [previewUser?.pubkey],
+  );
+
+  const displayName = profile ? getDisplayName(profile, previewUser?.pubkey.slice(0, 8) + "...") : "";
+  const avatarUrl = profile ? getProfilePicture(profile, `https://robohash.org/${previewUser?.pubkey}.png`) : "";
+
+  const refresh = useCallback(async () => {
+    if (!previewUser) return;
+
+    setRefreshing(true);
+    try {
+      await firstValueFrom(addressLoader({ kind: 10002, pubkey: previewUser.pubkey, relays: previewUser.relays }));
+    } catch (error) {
+      console.error("Failed to refresh mailboxes for user", previewUser.pubkey);
+    }
+    setRefreshing(false);
+  }, [previewUser]);
+
+  const closeModal = () => {
+    preview$.next(null);
+  };
+
+  if (!previewUser) return null;
+
+  return (
+    <div className="modal modal-open">
+      <div className="modal-box">
+        <form method="dialog">
+          <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={closeModal}>
+            ✕
+          </button>
+        </form>
+
+        <div className="flex flex-col items-center gap-4">
+          {/* User Avatar and Name */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="avatar">
+              <div className="w-24 h-24 rounded-full">
+                <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+              </div>
+            </div>
+            <h3 className="font-bold text-lg">{displayName}</h3>
+            <div className="text-sm text-base-content/60 font-mono">{previewUser.pubkey.slice(0, 16)}...</div>
+          </div>
+
+          {/* Refresh Button */}
+          <button
+            className={`btn btn-primary btn-sm ${refreshing ? "loading" : ""}`}
+            onClick={refresh}
+            disabled={refreshing}
+          >
+            {refreshing ? "Refreshing..." : "Refresh Mailboxes"}
+          </button>
+
+          {/* Inbox Relays */}
+          <div className="w-full">
+            <h4 className="font-semibold mb-2 flex items-center gap-2">
+              <span>Inbox Relays</span>
+              <div className="badge badge-primary">{mailboxes?.inboxes.length || 0}</div>
+            </h4>
+            <div className="space-y-1">
+              {mailboxes?.inboxes && mailboxes.inboxes.length > 0 ? (
+                mailboxes.inboxes.map((relay) => (
+                  <div key={relay} className="text-sm bg-base-200 rounded px-2 py-1 font-mono">
+                    {relay}
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-base-content/60">No inbox relays found</div>
+              )}
+            </div>
+          </div>
+
+          {/* Outbox Relays */}
+          <div className="w-full">
+            <h4 className="font-semibold mb-2 flex items-center gap-2">
+              <span>Outbox Relays</span>
+              <div className="badge badge-secondary">{mailboxes?.outboxes.length || 0}</div>
+            </h4>
+            <div className="space-y-1">
+              {mailboxes?.outboxes && mailboxes.outboxes.length > 0 ? (
+                mailboxes.outboxes.map((relay) => (
+                  <div key={relay} className="text-sm bg-base-200 rounded px-2 py-1 font-mono">
+                    {relay}
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-base-content/60">No outbox relays found</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop" onClick={closeModal}></div>
+    </div>
+  );
+}
+
 // User Avatar Component
 function UserAvatar({ user }: { user: ProfilePointer }) {
-  const profile = useObservableMemo(() => eventStore.profile(user.pubkey), [user.pubkey]);
+  const profile = useObservableMemo(() => eventStore.profile(user), [user.pubkey]);
+  const mailboxes = useObservableMemo(() => eventStore.mailboxes(user), [user.pubkey]);
 
   const displayName = getDisplayName(profile, user.pubkey.slice(0, 8) + "...");
   const avatarUrl = getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`);
 
-  const mailboxes = useObservableMemo(() => eventStore.mailboxes(user.pubkey), [user.pubkey]);
+  const handleClick = () => {
+    preview$.next(user);
+  };
 
   return (
-    <a
-      className="flex flex-col items-center gap-1 p-2 hover:bg-base-200 rounded-lg transition-colors"
-      href={`https://njump.me/${npubEncode(user.pubkey)}`}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
+      className="flex flex-col items-center gap-1 p-2 hover:bg-base-200 rounded-lg transition-colors cursor-pointer"
+      onClick={handleClick}
     >
       <div className="avatar">
         <div className="w-10 h-10 rounded-full">
@@ -80,9 +196,11 @@ function UserAvatar({ user }: { user: ProfilePointer }) {
       </div>
       <div className="text-xs max-w-16 overflow-hidden flex items-center justify-center gap-1">
         <div className="truncate">{displayName}</div>
-        <div className="text-base-content/60">({mailboxes?.outboxes.length || 0})</div>
+        <div className="text-base-content/60">
+          {mailboxes?.inboxes.length || 0}/{mailboxes?.outboxes.length || 0}
+        </div>
       </div>
-    </a>
+    </div>
   );
 }
 
@@ -140,53 +258,69 @@ function RelayRow({ relay, users, totalUsers }: { relay: string; users: ProfileP
   );
 }
 
+// Blacklisted Relays Component
+function BlacklistedRelays() {
+  const blacklistedRelays = useObservableState(blacklist$);
+
+  if (!blacklistedRelays || blacklistedRelays.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-8">
+      <h3 className="text-lg font-bold mb-2">Blacklisted Relays ({blacklistedRelays.length})</h3>
+      <div className="text-sm text-base-content/60 font-mono">{blacklistedRelays.join(", ")}</div>
+    </div>
+  );
+}
+
 // Users by Relay Count Component
 function UsersByRelayCount({
+  selection,
   contacts,
-  originalContacts,
 }: {
+  selection: ProfilePointer[] | null | undefined;
   contacts: ProfilePointer[] | null | undefined;
-  originalContacts: ProfilePointer[] | null | undefined;
 }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Calculate missing relays users - users who never had any relays (no NIP-65 relay list)
   const missingRelaysUsers = useMemo(() => {
-    if (!originalContacts || !contacts) return [];
+    if (!contacts || !selection) return [];
 
-    const originalMap = new Map(originalContacts.map((user) => [user.pubkey, user]));
+    const originalMap = new Map(contacts.map((user) => [user.pubkey, user]));
 
-    return contacts.filter((selectedUser) => {
+    return selection.filter((selectedUser) => {
       const originalUser = originalMap.get(selectedUser.pubkey);
       const hasNoRelaysInOriginal = !originalUser?.relays || originalUser.relays.length === 0;
       const hasNoRelaysInSelected = !selectedUser.relays || selectedUser.relays.length === 0;
 
       return hasNoRelaysInOriginal && hasNoRelaysInSelected;
     });
-  }, [originalContacts, contacts]);
+  }, [contacts, selection]);
 
   // Calculate orphaned users - users who had relays originally but have none after selection
   const orphanedUsers = useMemo(() => {
-    if (!originalContacts || !contacts) return [];
+    if (!contacts || !selection) return [];
 
-    const selectedMap = new Map(contacts.map((user) => [user.pubkey, user]));
+    const selectedMap = new Map(selection.map((user) => [user.pubkey, user]));
 
-    return originalContacts.filter((originalUser) => {
+    return contacts.filter((originalUser) => {
       const hasOriginalRelays = originalUser.relays && originalUser.relays.length > 0;
       const selectedUser = selectedMap.get(originalUser.pubkey);
       const hasSelectedRelays = selectedUser?.relays && selectedUser.relays.length > 0;
 
       return hasOriginalRelays && !hasSelectedRelays;
     });
-  }, [originalContacts, contacts]);
+  }, [contacts, selection]);
 
   // Group users by relay count - always call this hook
   const usersByRelayCount = useMemo(() => {
-    if (!contacts) return {};
+    if (!selection) return {};
 
     const groups: { [relayCount: number]: ProfilePointer[] } = {};
 
-    contacts.forEach((user) => {
+    selection.forEach((user) => {
       const relayCount = user.relays?.length || 0;
       if (!groups[relayCount]) groups[relayCount] = [];
 
@@ -199,7 +333,7 @@ function UsersByRelayCount({
     });
 
     return groups;
-  }, [contacts]);
+  }, [selection]);
 
   // Sort relay counts ascending (users with least relays first) - always call this hook
   const sortedRelayCounts = useMemo(() => {
@@ -218,7 +352,7 @@ function UsersByRelayCount({
     setExpandedSections(newExpanded);
   };
 
-  if (!contacts) {
+  if (!selection) {
     return (
       <div className="mt-8">
         <h2 className="text-xl font-bold mb-4">Users by Relay Count</h2>
@@ -383,7 +517,7 @@ function UsersByRelayCount({
       {/* Summary at the bottom */}
       <div className="mt-6 p-4 bg-base-200 rounded-lg">
         <div className="text-sm text-base-content/70">
-          <strong>{contacts.length}</strong> total users distributed across relay count groups
+          <strong>{selection.length}</strong> total users distributed across relay count groups
         </div>
         {(missingRelaysUsers.length > 0 || orphanedUsers.length > 0) && (
           <div className="text-xs text-base-content/60 mt-2">
@@ -422,33 +556,33 @@ export default function RelaySelectionExample() {
   const [maxRelayCoverage, setMaxRelayCoverage] = useState(35);
 
   // Create an observable for adding relays to the contacts
-  const contactsWithRelays$ = useMemo(
+  const outboxes$ = useMemo(
     () =>
       contacts$.pipe(
         defined(),
         // Load the NIP-65 outboxes for all contacts
         includeMailboxes(eventStore, type),
-        // Load the legacy write relays for contacts missing the NIP-65 outboxes
-        includeLegacyAppRelays(eventStore, type),
+        // Watch the blacklist and ignore relays
+        ignoreBlacklistedRelays(blacklist$),
         // Prioritize relays by popularity
         map(sortRelaysByPopularity),
+        // Only recalculate every 200ms
+        throttleTime(200),
         // Only calculate it once
         shareReplay(1),
       ),
-    [type, eventStore],
+    [type, eventStore, blacklist$],
   );
 
-  const original = useObservableState(contactsWithRelays$);
+  const original = useObservableState(outboxes$);
 
   // Get grouped outbox data
-  const selection = useObservableMemo(
-    () =>
-      contactsWithRelays$.pipe(
-        // Select outboxes
-        map((users) => selectOptimalRelays(users, { maxConnections, maxRelayCoverage, maxRelaysPerUser })),
-      ),
-    [maxConnections, maxRelayCoverage, maxRelaysPerUser, contactsWithRelays$],
-  );
+  const selection = useMemo(() => {
+    if (!original) return [];
+
+    console.info("Selecting optimal relays", original.length);
+    return selectOptimalRelays(original, { maxConnections, maxRelayCoverage, maxRelaysPerUser });
+  }, [original, maxConnections, maxRelayCoverage, maxRelaysPerUser]);
 
   const outboxMap = useMemo(() => selection && groupPubkeysByRelay(selection), [selection]);
 
@@ -457,6 +591,9 @@ export default function RelaySelectionExample() {
 
   return (
     <div className="min-h-screen p-4">
+      {/* User Preview Modal */}
+      <UserPreviewModal />
+
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Outbox Relay Selection</h1>
@@ -587,8 +724,12 @@ export default function RelaySelectionExample() {
           </tbody>
         </table>
       </div>
+
       {/* Users by Relay Count Report */}
-      <UsersByRelayCount contacts={selection} originalContacts={original} />
+      <UsersByRelayCount selection={selection} contacts={original} />
+
+      {/* Blacklisted Relays Section */}
+      <BlacklistedRelays />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { getDisplayName, getProfilePicture, mergeRelaySets, normalizeToPubkey } 
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NostrEvent } from "nostr-tools";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RelayPicker from "./relay-picker";
 
 // Common relay URLs that support NIP-50 search
@@ -248,21 +248,21 @@ export default function PubkeyPicker({
   const [isValidPubkey, setIsValidPubkey] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
+  const changeRef = useRef(onChange);
+  changeRef.current = onChange;
+
   // Automatically validate and set pubkey when input changes
   useEffect(() => {
-    if (!inputValue.trim()) {
-      setIsValidPubkey(false);
-      return;
-    }
+    if (!inputValue.trim()) return setIsValidPubkey(false);
 
     try {
       const normalizedPubkey = normalizeToPubkey(inputValue.trim());
       setIsValidPubkey(true);
-      onChange(normalizedPubkey);
+      changeRef.current(normalizedPubkey);
     } catch (error) {
       setIsValidPubkey(false);
     }
-  }, [inputValue, onChange]);
+  }, [inputValue]);
 
   // Update input value when external value changes
   useEffect(() => {
