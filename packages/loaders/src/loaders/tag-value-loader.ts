@@ -1,4 +1,4 @@
-import { IEventStore, mapEventsToStore } from "applesauce-core";
+import { mapEventsToStore } from "applesauce-core";
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { Filter, NostrEvent } from "nostr-tools";
 import { bufferTime, EMPTY, merge, Observable } from "rxjs";
@@ -34,7 +34,7 @@ export type TagValueLoaderOptions = {
   /** An array of relays to always fetch from */
   extraRelays?: string[] | Observable<string[]>;
   /** An event store used to deduplicate events */
-  eventStore?: IEventStore;
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
 };
 
 export type TagValueLoader = (pointer: TagValuePointer) => Observable<NostrEvent>;

@@ -249,7 +249,7 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
       const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
-      if (existing) {
+      if (existing && existing.length > 0) {
         const older = Array.from(existing).filter((e) => e.created_at < event.created_at);
         for (const old of older) this.remove(old);
 
@@ -267,15 +267,19 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
 
   /** Removes an event from the store and updates subscriptions */
   remove(event: string | NostrEvent): boolean {
-    // Get the current instance from the database
-    const e = this.database.getEvent(typeof event === "string" ? event : event.id);
-    if (!e) return false;
+    let instance = this.memory?.getEvent(typeof event === "string" ? event : event.id);
 
     // Remove from memory if available
     if (this.memory) this.memory.remove(event);
 
+    // Remove the event from the database
     const removed = this.database.remove(event);
-    if (removed && e) this.remove$.next(e);
+
+    // If the event was removed, notify the subscriptions
+    if (removed && instance) {
+      this.remove$.next(instance);
+    }
+
     return removed;
   }
 

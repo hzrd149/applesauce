@@ -7,7 +7,7 @@ import hash_sum from "hash-sum";
 
 export type OutboxModelOptions = SelectOptimalRelaysOptions & {
   type?: "inbox" | "outbox";
-  blacklist: Parameters<typeof ignoreBlacklistedRelays>[0];
+  blacklist?: Parameters<typeof ignoreBlacklistedRelays>[0];
 };
 
 /** A model that returns the users contacts with the relays to connect to */

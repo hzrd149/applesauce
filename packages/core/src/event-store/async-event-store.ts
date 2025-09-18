@@ -246,7 +246,7 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     if (!this.keepOldVersions && isReplaceable(event.kind)) {
       const existing = await this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
-      if (existing) {
+      if (existing && existing.length > 0) {
         const older = Array.from(existing).filter((e) => e.created_at < event.created_at);
         for (const old of older) await this.remove(old);
 
@@ -264,15 +264,19 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
 
   /** Removes an event from the store and updates subscriptions */
   async remove(event: string | NostrEvent): Promise<boolean> {
-    // Get the current instance from the database
-    const e = await this.database.getEvent(typeof event === "string" ? event : event.id);
-    if (!e) return false;
+    let instance = this.memory?.getEvent(typeof event === "string" ? event : event.id);
 
     // Remove from memory if available
-    if (this.memory) this.memory.remove(typeof event === "string" ? event : event.id);
+    if (this.memory) this.memory.remove(event);
 
+    // Remove the event from the database
     const removed = await this.database.remove(event);
-    if (removed && e) this.remove$.next(e);
+
+    // If the event was removed, notify the subscriptions
+    if (removed && instance) {
+      this.remove$.next(instance);
+    }
+
     return removed;
   }
 

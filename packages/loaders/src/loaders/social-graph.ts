@@ -1,4 +1,4 @@
-import { IEventStore, mapEventsToStore } from "applesauce-core";
+import { mapEventsToStore } from "applesauce-core";
 import { getProfilePointersFromList, mergeRelaySets } from "applesauce-core/helpers";
 import { kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -12,7 +12,7 @@ export type SocialGraphLoader = (user: ProfilePointer & { distance: number }) =>
 
 export type SocialGraphLoaderOptions = Partial<{
   /** An event store to send all the events to */
-  eventStore: IEventStore;
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
   /** The number of parallel requests to make (default 300) */
   parallel: number;
   /** Extra relays to load from */

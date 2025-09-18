@@ -1,4 +1,4 @@
-import { IEventStore, mapEventsToStore } from "applesauce-core";
+import { mapEventsToStore } from "applesauce-core";
 import {
   createReplaceableAddress,
   getReplaceableAddress,
@@ -145,7 +145,7 @@ export type AddressLoaderOptions = Partial<{
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
   /** An event store used to deduplicate events */
-  eventStore: IEventStore;
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
   /** A method used to load events from a local cache */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */

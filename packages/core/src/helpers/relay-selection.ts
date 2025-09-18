@@ -6,18 +6,18 @@ const log = logger.extend("relay-selection");
 export type SelectOptimalRelaysOptions = {
   /** Maximum number of connections (relays) to select */
   maxConnections: number;
-  /** Maximum coverage percentage a single relay can have (0-100) */
-  maxRelayCoverage: number;
-  /** Maximum number of relays per user */
+  /** Maximum coverage percentage a single relay can have (0-100 default 50) */
+  maxRelayCoverage?: number;
+  /** Maximum number of relays per user (default 8) */
   maxRelaysPerUser?: number;
-  /** Minimum number of relays per user (ensure coverage) */
+  /** Minimum number of relays per user (default 2) */
   minRelaysPerUser?: number;
 };
 
 /** Selects the optimal relays for a list of ProfilePointers */
 export function selectOptimalRelays(
   users: ProfilePointer[],
-  { maxConnections, maxRelayCoverage, maxRelaysPerUser, minRelaysPerUser }: SelectOptimalRelaysOptions,
+  { maxConnections, maxRelayCoverage = 50, maxRelaysPerUser, minRelaysPerUser }: SelectOptimalRelaysOptions,
 ): ProfilePointer[] {
   if (!users.length) return [];
 

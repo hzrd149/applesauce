@@ -106,7 +106,7 @@ export class EventMemory implements IEventMemory {
   /** Removes an event from the database and notifies all subscriptions */
   remove(eventOrId: string | NostrEvent): boolean {
     let event = typeof eventOrId === "string" ? this.events.get(eventOrId) : eventOrId;
-    if (!event) throw new Error("Missing event");
+    if (!event) return false;
 
     const id = event.id;
 
@@ -306,7 +306,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Returns all events that match the filter */
-  getEventsForFilter(filter: Filter): Set<NostrEvent> {
+  protected getEventsForFilter(filter: Filter): Set<NostrEvent> {
     // search is not supported, return an empty set
     if (filter.search) return new Set();
 
@@ -364,8 +364,8 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Returns all events that match the filters */
-  getEventsForFilters(filters: Filter[]): Set<NostrEvent> {
-    if (filters.length === 0) throw new Error("No Filters");
+  protected getEventsForFilters(filters: Filter[]): Set<NostrEvent> {
+    if (filters.length === 0) return new Set();
 
     let events = new Set<NostrEvent>();
 

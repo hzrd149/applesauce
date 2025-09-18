@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { type NostrEvent } from "nostr-tools";
 import { catchError, EMPTY, endWith, identity, ignoreElements, merge, Observable, of } from "rxjs";
 
-import { filterDuplicateEvents, IEventStoreActions } from "applesauce-core";
+import { filterDuplicateEvents, IAsyncEventStoreActions, IEventStoreActions } from "applesauce-core";
 import { completeOnEose } from "./operators/complete-on-eose.js";
 import { onlyEvents } from "./operators/only-events.js";
 import {
@@ -20,7 +20,10 @@ export class RelayGroup implements IGroup {
   constructor(public relays: IRelay[]) {}
 
   /** Takes an array of observables and only emits EOSE when all observables have emitted EOSE */
-  protected mergeEOSE(requests: Observable<SubscriptionResponse>[], eventStore?: IEventStoreActions) {
+  protected mergeEOSE(
+    requests: Observable<SubscriptionResponse>[],
+    eventStore?: IEventStoreActions | IAsyncEventStoreActions,
+  ) {
     // Create stream of events only
     const events = merge(...requests).pipe(
       // Ignore non event responses

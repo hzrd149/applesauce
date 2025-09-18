@@ -1,4 +1,4 @@
-import { IEventStore, mapEventsToStore } from "applesauce-core";
+import { mapEventsToStore } from "applesauce-core";
 import { NostrEvent } from "nostr-tools";
 import { EMPTY, finalize, identity, merge, Observable, tap } from "rxjs";
 
@@ -75,7 +75,7 @@ export type TimelineLoaderOptions = Partial<{
   /** A method used to load the timeline from the cache */
   cache: CacheRequest;
   /** An event store to pass all the events to */
-  eventStore: IEventStore;
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
 }> &
   CommonTimelineLoaderOptions;
 

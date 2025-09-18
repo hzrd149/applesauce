@@ -1,4 +1,4 @@
-import { IEventStore, mapEventsToStore } from "applesauce-core";
+import { mapEventsToStore } from "applesauce-core";
 import { NostrEvent } from "nostr-tools";
 import { EventPointer } from "nostr-tools/nip19";
 import { bufferTime, catchError, EMPTY, merge, Observable, tap } from "rxjs";
@@ -102,7 +102,7 @@ export type EventPointerLoaderOptions = Partial<{
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
   /** An event store used to deduplicate events */
-  eventStore: IEventStore;
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
   /** A method used to load events from a local cache */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */

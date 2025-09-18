@@ -1,4 +1,4 @@
-import { IEventStore, mapEventsToStore } from "applesauce-core";
+import { mapEventsToStore } from "applesauce-core";
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -26,7 +26,7 @@ export type UserListsLoaderOptions = Partial<{
   /** An array of extra relay to load from */
   extraRelays?: string[] | Observable<string[]>;
   /** An event store used to deduplicate events */
-  eventStore: IEventStore;
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
 }>;
 
 /**
