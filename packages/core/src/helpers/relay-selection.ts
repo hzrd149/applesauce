@@ -1,7 +1,7 @@
-import { logger } from "applesauce-core";
 import { ProfilePointer } from "nostr-tools/nip19";
+import { logger } from "../logger.js";
 
-const log = logger.extend("outbox-selection");
+const log = logger.extend("relay-selection");
 
 export type SelectOptimalRelaysOptions = {
   /** Maximum number of connections (relays) to select */
@@ -14,6 +14,7 @@ export type SelectOptimalRelaysOptions = {
   minRelaysPerUser?: number;
 };
 
+/** Selects the optimal relays for a list of ProfilePointers */
 export function selectOptimalRelays(
   users: ProfilePointer[],
   { maxConnections, maxRelayCoverage, maxRelaysPerUser, minRelaysPerUser }: SelectOptimalRelaysOptions,
@@ -109,4 +110,54 @@ export function selectOptimalRelays(
   log(`Relay distribution:`, Array.from(relayUserCounts.entries()));
 
   return result;
+}
+
+/** Sorts each ProfilePointer's relays by popularity */
+export function sortRelaysByPopularity(users: ProfilePointer[]): ProfilePointer[] {
+  const relayUsageCount = new Map<string, number>();
+
+  // Count the times the relays are used
+  for (const user of users) {
+    if (!user.relays) continue;
+
+    for (const relay of user.relays) {
+      relayUsageCount.set(relay, (relayUsageCount.get(relay) || 0) + 1);
+    }
+  }
+
+  return users.map((user) => {
+    if (!user.relays) return user;
+
+    // Sort the user's relays by popularity
+    return {
+      ...user,
+      relays: user.relays.sort((a, b) => {
+        const countA = relayUsageCount.get(a) || 0;
+        const countB = relayUsageCount.get(b) || 0;
+        return countB - countA;
+      }),
+    };
+  });
+}
+
+/** A map of pubkeys by relay */
+export type OutboxMap = Record<string, string[]>;
+
+/** RxJS operator that aggregates contacts with outboxes into a relay -> pubkeys map */
+export function groupPubkeysByRelay(pointers: ProfilePointer[]): OutboxMap {
+  const outbox: OutboxMap = {};
+
+  for (const pointer of pointers) {
+    if (!pointer.relays) continue;
+
+    for (const relay of pointer.relays) {
+      if (!outbox[relay]) outbox[relay] = [];
+
+      if (!outbox[relay]!.includes(pointer.pubkey)) {
+        outbox[relay]!.push(pointer.pubkey);
+      }
+    }
+  }
+
+  return outbox;
 }

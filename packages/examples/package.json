@@ -35,6 +35,7 @@
     "nostr-idb": "^2.4.0",
     "nostr-social-graph": "^1.0.33",
     "nostr-tools": "^2.15.2",
+    "pastellify": "^0.1.4",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
     "react-chartjs-2": "^5.3.0",

@@ -68,7 +68,7 @@ function ResponseItem({ response, options }: ResponseItemProps) {
   const displayName = getDisplayName(profile) || npubEncode(response.pubkey).slice(0, 12) + "...";
 
   return (
-    <li className="border-b border-base-200 last:border-b-0">
+    <li className="border-b last:border-b-0">
       <div className="flex items-start gap-3 p-2">
         <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></div>
         <div className="flex-1 min-w-0">
@@ -165,7 +165,7 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
   }
 
   return (
-    <div className="card border bg-base-100 shadow-md">
+    <div className="card bg-base-100 shadow-md">
       <div className="card-body">
         <h3 className="card-title text-lg mb-4">Cast Your Vote</h3>
 

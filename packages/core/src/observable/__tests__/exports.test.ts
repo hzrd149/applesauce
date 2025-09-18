@@ -5,14 +5,23 @@ describe("exports", () => {
   it("should export the expected functions", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
+        "BehaviorSubject",
+        "Observable",
+        "ReplaySubject",
+        "Subject",
         "TimeoutError",
+        "combineLatest",
         "defined",
         "filterDuplicateEvents",
         "firstValueFrom",
         "getObservableValue",
+        "ignoreBlacklistedRelays",
+        "includeLegacyAppRelays",
+        "includeMailboxes",
         "lastValueFrom",
         "mapEventsToStore",
         "mapEventsToTimeline",
+        "merge",
         "simpleTimeout",
         "watchEventUpdates",
         "watchEventsUpdates",

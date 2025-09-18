@@ -2,4 +2,4 @@
 "applesauce-loaders": minor
 ---
 
-Add `includeOutboxes` operator for adding outbox relays to contacts
+Add `includeMailboxes` operator for adding outbox or inbox relays to contacts

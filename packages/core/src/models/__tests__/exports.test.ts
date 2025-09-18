@@ -30,6 +30,7 @@ describe("exports", () => {
         "LegacyMessagesGroups",
         "MailboxesModel",
         "MuteModel",
+        "OutboxModel",
         "ProfileModel",
         "PublicContactsModel",
         "PublicMuteModel",

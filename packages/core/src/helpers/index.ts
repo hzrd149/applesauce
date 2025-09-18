@@ -43,6 +43,7 @@ export * from "./pointers.js";
 export * from "./poll.js";
 export * from "./profile.js";
 export * from "./reactions.js";
+export * from "./relay-selection.js";
 export * from "./relays.js";
 export * from "./reports.js";
 export * from "./share.js";

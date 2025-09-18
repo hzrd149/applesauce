@@ -17,3 +17,4 @@ export * from "./relays.js";
 export * from "./thread.js";
 export * from "./wrapped-messages.js";
 export * from "./zaps.js";
+export * from "./outbox.js";

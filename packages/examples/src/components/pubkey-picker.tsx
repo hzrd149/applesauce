@@ -1,8 +1,9 @@
-import { getDisplayName, getProfilePicture, normalizeToPubkey, mergeRelaySets } from "applesauce-core/helpers";
-import { ExtensionSigner } from "applesauce-signers";
+import { getDisplayName, getProfilePicture, mergeRelaySets, normalizeToPubkey } from "applesauce-core/helpers";
 import { RelayPool } from "applesauce-relay";
+import { ExtensionSigner } from "applesauce-signers";
 import { NostrEvent } from "nostr-tools";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import RelayPicker from "./relay-picker";
 
 // Common relay URLs that support NIP-50 search
 const SEARCH_RELAYS = mergeRelaySets(["wss://relay.nostr.band", "wss://search.nos.today"]);
@@ -118,46 +119,14 @@ function ProfileSearchModal({
 
   return (
     <dialog className={`modal ${isOpen ? "modal-open" : ""}`}>
-      <div className="modal-box max-w-2xl">
+      <div className="modal-box max-w-4xl">
         <h3 className="font-bold text-lg mb-4">Search Profiles</h3>
 
-        {/* Search relay selection */}
-        <div className="form-control mb-4">
-          <label className="label">
-            <span className="label-text">Search Relay</span>
-          </label>
-          <div className="join w-full">
-            <select
-              className="select select-bordered join-item flex-1"
-              value={selectedRelay}
-              onChange={(e) => setSelectedRelay(e.target.value)}
-            >
-              {SEARCH_RELAYS.map((relay) => (
-                <option key={relay} value={relay}>
-                  {relay}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn join-item"
-              onClick={() => {
-                const modal = document.getElementById("custom-relay-modal") as HTMLDialogElement;
-                modal?.showModal();
-              }}
-            >
-              Custom
-            </button>
-          </div>
-        </div>
-
-        {/* Search input */}
-        <div className="form-control mb-4">
-          <label className="label">
-            <span className="label-text">Search Query</span>
-          </label>
-          <div className="join w-full">
+        <div className="flex flex-wrap gap-2">
+          {/* Search input */}
+          <div className="join flex-1">
             <input
-              type="text"
+              type="search"
               placeholder="Search for profiles..."
               className="input input-bordered join-item flex-1"
               value={searchQuery}
@@ -172,6 +141,9 @@ function ProfileSearchModal({
               {isSearching ? <span className="loading loading-spinner loading-sm"></span> : "Search"}
             </button>
           </div>
+
+          {/* Search relay selection */}
+          <RelayPicker value={selectedRelay} onChange={setSelectedRelay} common={SEARCH_RELAYS} />
         </div>
 
         {/* Search results */}
@@ -265,13 +237,11 @@ export default function PubkeyPicker({
   value,
   onChange,
   className,
-  label = "Pubkey (hex, npub, or nprofile)",
   placeholder = "Enter pubkey or nostr identifier...",
 }: {
   value: string;
   onChange: (pubkey: string) => void;
   className?: string;
-  label?: string;
   placeholder?: string;
 }) {
   const [inputValue, setInputValue] = useState(value);
@@ -322,9 +292,6 @@ export default function PubkeyPicker({
 
   return (
     <div className={`flex flex-col w-full ${className}`}>
-      <label className="label pb-1">
-        <span className="label-text">{label}</span>
-      </label>
       <div className="join">
         <input
           type="text"
@@ -335,11 +302,7 @@ export default function PubkeyPicker({
             inputValue.trim() && !isValidPubkey ? "input-error" : isValidPubkey ? "input-success" : ""
           }`}
         />
-        <button
-          className="btn btn-outline join-item"
-          onClick={() => setIsSearchModalOpen(true)}
-          title="Search profiles"
-        >
+        <button className="btn join-item" onClick={() => setIsSearchModalOpen(true)} title="Search profiles">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-4 w-4"
@@ -356,7 +319,7 @@ export default function PubkeyPicker({
           </svg>
         </button>
         {typeof window !== "undefined" && window.nostr && (
-          <button onClick={handleGetFromExtension} className="btn btn-outline join-item">
+          <button onClick={handleGetFromExtension} className="btn join-item">
             Extension
           </button>
         )}
