@@ -98,7 +98,6 @@
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/bun": "^1.2.22",
     "@types/ws": "^8.5.13",
     "applesauce-signers": "^3.1.0",
     "typescript": "^5.7.3",
