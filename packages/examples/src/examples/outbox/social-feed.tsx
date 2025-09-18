@@ -1,4 +1,4 @@
-import { defined, EventStore, includeMailboxes, mapEventsToStore } from "applesauce-core";
+import { defined, EventStore, ignoreBlacklistedRelays, includeMailboxes, mapEventsToStore } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
@@ -16,7 +16,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { NostrEvent } from "nostr-tools";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, map, merge, of, shareReplay, switchMap } from "rxjs";
+import { BehaviorSubject, map, merge, of, shareReplay, switchMap, throttleTime } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 
@@ -52,6 +52,19 @@ const addressLoader = createAddressLoader(pool, {
 eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
 
+// Keep a global list of blacklisted relays
+const blacklist$ = new BehaviorSubject<string[]>([]);
+
+// Add relays to blacklisted if they fail to connect
+pool.add$.subscribe((relay) => {
+  relay.error$.subscribe((error) => {
+    if (error && !blacklist$.value.includes(relay.url)) {
+      console.info(`${relay.url} failed to connect. Adding to blacklist`);
+      blacklist$.next([...blacklist$.value, relay.url]);
+    }
+  });
+});
+
 /** A list of users contacts */
 const contacts$ = pubkey$.pipe(
   defined(),
@@ -63,8 +76,12 @@ const outboxes$ = contacts$.pipe(
   defined(),
   // Load the NIP-65 outboxes for all contacts
   includeMailboxes(eventStore),
+  // Watch the blacklist and ignore relays
+  ignoreBlacklistedRelays(blacklist$),
   // Prioritize relays by popularity
   map(sortRelaysByPopularity),
+  // Only recalculate every 200ms
+  throttleTime(200),
   // Only calculate it once
   shareReplay(1),
 );
@@ -176,7 +193,10 @@ export default function SocialFeedExample() {
     () =>
       outboxes$.pipe(
         // Select outboxes
-        map((users) => selectOptimalRelays(users, { maxConnections, maxRelayCoverage, maxRelaysPerUser })),
+        map((users) => {
+          console.log("Selecting optimal relays");
+          return selectOptimalRelays(users, { maxConnections, maxRelayCoverage, maxRelaysPerUser });
+        }),
       ),
     [maxConnections, maxRelayCoverage, maxRelaysPerUser],
   );
@@ -201,6 +221,8 @@ export default function SocialFeedExample() {
   // Create feed subscription for selected relays and contacts
   useObservableMemo(() => {
     if (!outboxMap || Object.keys(outboxMap).length === 0) return undefined;
+
+    console.log("Creating relay subscriptions");
 
     // Create subscriptions for each relay with the pubkeys that use it
     const relaySubscriptions = Object.entries(outboxMap).map(([relayUrl, pubkeys]) =>
