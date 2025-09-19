@@ -17,6 +17,7 @@ import { isAddressableKind } from "nostr-tools/kinds";
 import { isSafeRelayURL, mergeRelaySets } from "./relays.js";
 import { isHexKey } from "./string.js";
 import { hexToBytes } from "@noble/hashes/utils";
+import { normalizeURL } from "./url.js";
 
 export type DecodeResult = ReturnType<typeof decode>;
 
@@ -137,7 +138,7 @@ export function getProfilePointerFromPTag(tag: string[]): ProfilePointer {
   if (!tag[1]) throw new Error("Missing pubkey in tag");
   if (!isHexKey(tag[1])) throw new Error("Invalid pubkey");
   const pointer: ProfilePointer = { pubkey: tag[1] };
-  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [tag[2]];
+  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [normalizeURL(tag[2])];
   return pointer;
 }
 

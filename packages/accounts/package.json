@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "prebuild": "rimraf dist",
     "build": "tsc",
     "watch:build": "tsc --watch > /dev/null",
     "test": "vitest run --passWithNoTests",
@@ -39,13 +40,14 @@
   },
   "dependencies": {
     "@noble/hashes": "^1.7.1",
-    "applesauce-signers": "^3.1.0",
     "applesauce-core": "^3.1.0",
+    "applesauce-signers": "^3.1.0",
     "nanoid": "^5.1.5",
     "nostr-tools": "~2.15",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },

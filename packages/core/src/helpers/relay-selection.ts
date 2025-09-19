@@ -1,147 +1,95 @@
 import { ProfilePointer } from "nostr-tools/nip19";
-import { logger } from "../logger.js";
-
-const log = logger.extend("relay-selection");
 
 export type SelectOptimalRelaysOptions = {
   /** Maximum number of connections (relays) to select */
   maxConnections: number;
-  /** Maximum coverage percentage a single relay can have (0-100 default 50) */
-  maxRelayCoverage?: number;
-  /** Maximum number of relays per user (default 8) */
+  /** Cap the number of relays a user can have */
   maxRelaysPerUser?: number;
-  /** Minimum number of relays per user (default 2) */
-  minRelaysPerUser?: number;
 };
 
 /** Selects the optimal relays for a list of ProfilePointers */
 export function selectOptimalRelays(
   users: ProfilePointer[],
-  { maxConnections, maxRelayCoverage = 50, maxRelaysPerUser, minRelaysPerUser }: SelectOptimalRelaysOptions,
+  { maxConnections, maxRelaysPerUser }: SelectOptimalRelaysOptions,
 ): ProfilePointer[] {
-  if (!users.length) return [];
+  const usersWithRelays = users.filter((user) => user.relays && user.relays.length > 0);
 
-  // Initialize result array and tracking structures
-  const result: ProfilePointer[] = [];
-  const selectedRelays = new Set<string>();
-  const relayUserCounts = new Map<string, number>();
-  const totalUsers = users.length;
-  const maxUsersPerRelay = Math.ceil((totalUsers * maxRelayCoverage) / 100);
-
-  // Process each user to select optimal relays
-  for (const user of users) {
-    const userRelays: string[] = [];
-    const availableRelays = user.relays || [];
-
-    // If user has no relays, add them with empty relays
-    if (availableRelays.length === 0) {
-      result.push({ ...user, relays: [] });
-      continue;
-    }
-
-    // Try to select relays for this user, respecting priority order
-    let attempts = 0;
-    const maxAttempts = availableRelays.length * 2; // Prevent infinite loops
-
-    while (
-      userRelays.length < (maxRelaysPerUser || availableRelays.length) &&
-      selectedRelays.size < maxConnections &&
-      attempts < maxAttempts
-    ) {
-      attempts++;
-      let foundRelay = false;
-
-      // Try each relay in priority order (first = highest priority)
-      for (const relay of availableRelays) {
-        // Skip if we already selected this relay for this user
-        if (userRelays.includes(relay)) continue;
-
-        // Check if this relay would exceed coverage limit
-        const currentRelayUsers = relayUserCounts.get(relay) || 0;
-        if (currentRelayUsers >= maxUsersPerRelay) continue;
-
-        // Select this relay
-        userRelays.push(relay);
-        selectedRelays.add(relay);
-        relayUserCounts.set(relay, currentRelayUsers + 1);
-        foundRelay = true;
-
-        // Stop if we've reached maxRelaysPerUser for this user
-        if (maxRelaysPerUser && userRelays.length >= maxRelaysPerUser) break;
-
-        // Stop if we've reached maxConnections globally
-        if (selectedRelays.size >= maxConnections) break;
-      }
-
-      // If we couldn't find any more suitable relays, break
-      if (!foundRelay) break;
-    }
-
-    // Ensure minimum relays per user if specified
-    if (minRelaysPerUser && userRelays.length < minRelaysPerUser) {
-      // Try to add more relays even if they exceed coverage limits
-      let minAttempts = 0;
-      const maxMinAttempts = availableRelays.length;
-
-      while (userRelays.length < minRelaysPerUser && minAttempts < maxMinAttempts) {
-        minAttempts++;
-
-        for (const relay of availableRelays) {
-          if (userRelays.includes(relay)) continue;
-          if (selectedRelays.size >= maxConnections) break;
-
-          userRelays.push(relay);
-          selectedRelays.add(relay);
-          relayUserCounts.set(relay, (relayUserCounts.get(relay) || 0) + 1);
-
-          if (userRelays.length >= minRelaysPerUser) break;
-        }
-
-        if (selectedRelays.size >= maxConnections) break;
-      }
-    }
-
-    // Add user with selected relays (maintaining original relay order)
-    const finalRelays = availableRelays.filter((relay) => userRelays.includes(relay));
-    result.push({ ...user, relays: finalRelays });
-  }
-
-  log(`Selected ${selectedRelays.size} relays for ${result.length} users`);
-  log(`Relay distribution:`, Array.from(relayUserCounts.entries()));
-
-  return result;
-}
-
-/** Sorts each ProfilePointer's relays by popularity */
-export function sortRelaysByPopularity(users: ProfilePointer[]): ProfilePointer[] {
-  const relayUsageCount = new Map<string, number>();
-
-  // Count the times the relays are used
-  for (const user of users) {
+  // create map of popular relays
+  const popular = new Map<string, number>();
+  for (const user of usersWithRelays) {
     if (!user.relays) continue;
-
-    for (const relay of user.relays) {
-      relayUsageCount.set(relay, (relayUsageCount.get(relay) || 0) + 1);
-    }
+    for (const relay of user.relays) popular.set(relay, (popular.get(relay) || 0) + 1);
   }
 
-  return users.map((user) => {
-    if (!user.relays) return user;
+  // sort users relays by popularity
+  for (const user of usersWithRelays) {
+    if (!user.relays) continue;
+    user.relays = Array.from(user.relays).sort((a, b) => popular.get(b)! - popular.get(a)!);
+  }
 
-    // Sort the user's relays by popularity
-    return {
-      ...user,
-      relays: user.relays.sort((a, b) => {
-        const countA = relayUsageCount.get(a) || 0;
-        const countB = relayUsageCount.get(b) || 0;
-        return countB - countA;
-      }),
-    };
-  });
+  // Create a pool of users to calculate relay coverage from
+  let selectionPool = Array.from(usersWithRelays);
+
+  // Create map of times a users relay has been selected
+  const selectionCount = new Map<string, number>();
+
+  let selection = new Set<string>();
+  while (selectionPool.length > 0 && selection.size < maxConnections) {
+    // Create map of number of pool users per relay
+    const relayUserCount = new Map<string, number>();
+    for (const user of selectionPool) {
+      if (!user.relays) continue;
+      for (const relay of user.relays) {
+        // Skip relays that are already selected
+        if (selection.has(relay)) continue;
+
+        // Increment relay user count
+        relayUserCount.set(relay, (relayUserCount.get(relay) || 0) + 1);
+      }
+    }
+
+    // Sort relays by coverage
+    const byCoverage = Array.from(relayUserCount.entries()).sort((a, b) => b[1] - a[1]);
+
+    // No more relays to select, exit loop
+    if (byCoverage.length === 0) break;
+
+    // Pick the most popular relay
+    const relay = byCoverage[0][0];
+
+    // Add relay to selection
+    selection.add(relay);
+
+    // Increment user relay count and remove users over the limit
+    selectionPool = selectionPool.filter((user) => {
+      // Ignore users that don't have the relay
+      if (!user.relays || !user.relays.includes(relay)) return true;
+
+      // Increment user relay count
+      let count = selectionCount.get(relay) || 0;
+      selectionCount.set(relay, count++);
+
+      // Remove user if they their relay has been selected more than minRelaysPerUser times
+      if (count >= 1) return false;
+
+      return true;
+    });
+  }
+
+  // Take the original users and only include relays that where selected
+  return users.map((user) => ({
+    ...user,
+    relays: maxRelaysPerUser
+      ? user.relays
+          ?.filter((relay) => selection.has(relay))
+          .sort((a, b) => (popular.get(a) ?? 0) - (popular.get(b) ?? 0))
+          .slice(0, maxRelaysPerUser)
+      : user.relays?.filter((relay) => selection.has(relay)),
+  }));
 }
 
 /** A map of pubkeys by relay */
-export type OutboxMap = Record<string, string[]>;
+export type OutboxMap = Record<string, ProfilePointer[]>;
 
 /** RxJS operator that aggregates contacts with outboxes into a relay -> pubkeys map */
 export function groupPubkeysByRelay(pointers: ProfilePointer[]): OutboxMap {
@@ -153,9 +101,7 @@ export function groupPubkeysByRelay(pointers: ProfilePointer[]): OutboxMap {
     for (const relay of pointer.relays) {
       if (!outbox[relay]) outbox[relay] = [];
 
-      if (!outbox[relay]!.includes(pointer.pubkey)) {
-        outbox[relay]!.push(pointer.pubkey);
-      }
+      outbox[relay]!.push(pointer);
     }
   }
 

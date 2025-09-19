@@ -2,7 +2,7 @@ import hash_sum from "hash-sum";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { identity, map } from "rxjs";
 import { Model } from "../event-store/interface.js";
-import { selectOptimalRelays, SelectOptimalRelaysOptions, sortRelaysByPopularity } from "../helpers/relay-selection.js";
+import { selectOptimalRelays, SelectOptimalRelaysOptions } from "../helpers/relay-selection.js";
 import { ignoreBlacklistedRelays, includeMailboxes } from "../observable/relay-selection.js";
 
 export type OutboxModelOptions = SelectOptimalRelaysOptions & {
@@ -18,8 +18,6 @@ export function OutboxModel(user: string | ProfilePointer, opts: OutboxModelOpti
       opts?.blacklist ? ignoreBlacklistedRelays(opts.blacklist) : identity,
       /** Include mailboxes */
       includeMailboxes(store, opts.type),
-      /** Sort the relays by popularity */
-      map(sortRelaysByPopularity),
       /** Select the optimal relays */
       map((users) => selectOptimalRelays(users, opts)),
     );
@@ -27,12 +25,5 @@ export function OutboxModel(user: string | ProfilePointer, opts: OutboxModelOpti
 
 OutboxModel.getKey = (user: string | ProfilePointer, opts: OutboxModelOptions) => {
   const p = typeof user === "string" ? user : user.pubkey;
-  return hash_sum([
-    p,
-    opts.type,
-    opts.maxConnections,
-    opts.maxRelayCoverage,
-    opts.maxRelaysPerUser,
-    opts.minRelaysPerUser,
-  ]);
+  return hash_sum([p, opts.type, opts.maxConnections, opts.maxRelaysPerUser]);
 };

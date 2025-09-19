@@ -382,7 +382,6 @@ describe("exports", () => {
         "setHiddenContentEncryptionMethod",
         "setHiddenTagsCache",
         "setHiddenTagsEncryptionMethod",
-        "sortRelaysByPopularity",
         "stripInvisibleChar",
         "unixNow",
         "unlockEncryptedContent",

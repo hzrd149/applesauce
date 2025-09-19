@@ -16,7 +16,6 @@ describe("exports", () => {
         "firstValueFrom",
         "getObservableValue",
         "ignoreBlacklistedRelays",
-        "includeLegacyAppRelays",
         "includeMailboxes",
         "lastValueFrom",
         "mapEventsToStore",

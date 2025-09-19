@@ -84,16 +84,16 @@ export function ensureHttpURL<T extends string | URL>(url: T): T {
  */
 export function normalizeURL<T extends string | URL>(url: T): T {
   let p = new URL(url);
-  // remove any double slashes
+  // Remove any double slashes
   p.pathname = p.pathname.replace(/\/+/g, "/");
-  // drop the port if its not needed
+  // Remove the port if its not needed
   if (
     (p.port === "80" && (p.protocol === "ws:" || p.protocol === "http:")) ||
     (p.port === "443" && (p.protocol === "wss:" || p.protocol === "https:"))
   )
     p.port = "";
 
-  // return a string if a string was passed in
+  // Return a string if a string was passed in
   // @ts-expect-error
   return typeof url === "string" ? p.toString() : p;
 }

@@ -198,7 +198,7 @@ describe("getStreamHost", () => {
   it("should return host from p tag with host role", () => {
     const host = getStreamHost(TEST_EVENTS.radio);
     expect(host.pubkey).toBe("e774934cb65e2b29e3b34f8b2132df4492bc346ba656cc8dc2121ff407688de0");
-    expect(host.relays).toEqual(["wss://relay.zap.stream"]);
+    expect(host.relays).toEqual(["wss://relay.zap.stream/"]);
   });
 
   it("should prioritize p tag with 'host' role over other p tags", () => {

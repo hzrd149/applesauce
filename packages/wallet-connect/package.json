@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "prebuild": "rimraf dist",
     "build": "tsc",
     "watch:build": "tsc --watch > /dev/null",
     "test": "vitest run --passWithNoTests",
@@ -64,15 +65,16 @@
     }
   },
   "dependencies": {
+    "@noble/hashes": "^1.7.1",
     "applesauce-core": "^3.1.0",
     "applesauce-factory": "^3.1.0",
     "nostr-tools": "~2.15",
-    "@noble/hashes": "^1.7.1",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/debug": "^4.1.12",
+    "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },

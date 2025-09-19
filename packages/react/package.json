@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "prebuild": "rimraf dist",
     "build": "tsc",
     "watch:build": "tsc --watch > /dev/null",
     "test": "vitest run --passWithNoTests",
@@ -68,6 +69,7 @@
   "devDependencies": {
     "@types/hash-sum": "^1.0.2",
     "@types/react": "^18.3.18",
+    "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },

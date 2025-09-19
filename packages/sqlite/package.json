@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "prebuild": "rimraf dist",
     "build": "tsc",
     "watch:build": "tsc --watch > /dev/null",
     "test": "vitest run --passWithNoTests",
@@ -92,14 +93,15 @@
     "applesauce-core": "^3.1.0"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^12.2.0",
-    "@libsql/client": "^0.15.15"
+    "@libsql/client": "^0.15.15",
+    "better-sqlite3": "^12.2.0"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.5.13",
     "applesauce-signers": "^3.1.0",
+    "rimraf": "^6.0.1",
     "typescript": "^5.7.3",
     "vitest": "^3.2.4",
     "vitest-websocket-mock": "^0.5.0",
