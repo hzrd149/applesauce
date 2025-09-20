@@ -1,5 +1,13 @@
 # applesauce-signer
 
+## 4.0.0
+
+### Patch Changes
+
+- 2d31507: fix `applesauce-signers` not exposing helpers
+- Updated dependencies
+  - applesauce-core@4.0.0
+
 ## 3.1.0
 
 ### Minor Changes
