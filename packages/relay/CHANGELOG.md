@@ -1,5 +1,21 @@
 # applesauce-relay
 
+## 4.0.0
+
+### Major Changes
+
+- 997326a: Add `publishTimeout` to `Relay` and default to 30 seconds
+
+### Minor Changes
+
+- 7ac7b0c: Add `add$`, `remove$` signals to `RelayPool`
+
+### Patch Changes
+
+- 9e13abf: Add `eventStore` option to `RelayPool.request` and `RelayPool.subscription` to filter duplicate events
+- Updated dependencies
+  - applesauce-core@4.0.0
+
 ## 3.1.0
 
 ### Minor Changes

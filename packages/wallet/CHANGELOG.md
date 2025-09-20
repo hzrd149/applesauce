@@ -1,5 +1,14 @@
 # applesauce-wallet
 
+## 4.0.0
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.0.0
+  - applesauce-actions@4.0.0
+  - applesauce-factory@4.0.0
+
 ## 3.1.0
 
 ### Minor Changes

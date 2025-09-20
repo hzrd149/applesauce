@@ -1,5 +1,24 @@
 # applesauce-core
 
+## 4.0.0
+
+### Major Changes
+
+- fba497a: Rename `EventSet` to `EventMemory`
+- fba497a: Add support for custom databases to `EventStore`
+- 688f126: Add `AsyncEventStore` and async interfaces for event store and event database
+- 1a7a4e1: Change `EventStore.getByFilters` to return `NostrEvent[]` instead of `Set<NostrEvent>`
+
+### Minor Changes
+
+- 7cd3ae6: Add `hasNameValueTag` helper method
+- e2f0ecc: Add `OutboxModel` for subscribing to contacts with outbox relays
+- d802905: Add helpers for NIP-78 app data events
+
+### Patch Changes
+
+- 846b877: Fix `mergeRelaySets` only working with arrays
+
 ## 3.1.0
 
 ### Minor Changes
