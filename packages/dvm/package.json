@@ -65,11 +65,11 @@
     }
   },
   "dependencies": {
-    "@cashu/cashu-ts": "^2.4.1",
+    "@cashu/cashu-ts": "^2.7.2",
     "@noble/hashes": "^1.7.1",
     "applesauce-core": "^3.1.0",
     "applesauce-factory": "^3.1.0",
-    "nostr-tools": "~2.15",
+    "nostr-tools": "~2.17",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {

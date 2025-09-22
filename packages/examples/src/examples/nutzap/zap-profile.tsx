@@ -200,12 +200,12 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
           const quoteStatus = await wallet.checkMintQuote(quote.quote);
           if (quoteStatus.state === "PAID") {
             // Mint proofs with P2PK lock
-            const result = await wallet.mintProofs(amount, quote.quote, {
+            const proofs = await wallet.mintProofs(amount, quote.quote, {
               pubkey: nutzapPubkey,
             });
 
             // Create token from proofs
-            const tokens = { mint: firstMint, proofs: result.proofs, unit: "sat" };
+            const tokens = { mint: firstMint, proofs: proofs, unit: "sat" };
 
             // Create nutzap event
             await actionHub.exec(NutzapProfile, nutzapInfo.pubkey, tokens, comment).forEach(async (event) => {

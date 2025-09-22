@@ -36,7 +36,7 @@ describe("sendAnimated", () => {
     expect(spy.getValues()).toEqual(
       Array(6)
         .fill(0)
-        .map((_, i) => expect.stringContaining(`ur:bytes/${i + 1}-6/`)),
+        .map((_, i) => expect.stringContaining(`ur:bytes/${i + 1}-10/`)),
     );
   });
 });
@@ -51,6 +51,10 @@ describe("receiveAnimated", () => {
 
     await lastValueFrom(qr$);
     expect(spy.getValues()).toEqual([
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
       expect.any(Number),
       expect.any(Number),
       expect.any(Number),
