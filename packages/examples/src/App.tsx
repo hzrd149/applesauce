@@ -2,6 +2,8 @@ import Prism from "prismjs";
 import "prismjs/themes/prism.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import SideNav from "./components/Nav";
+import { ErrorBoundary } from "react-error-boundary";
+import "@xterm/xterm/css/xterm.css";
 
 import "prismjs/components/prism-javascript";
 import "prismjs/components/prism-jsx";
@@ -12,6 +14,8 @@ Prism.manual = true;
 
 import examples, { Example } from "./examples";
 import { CodeIcon, ExternalLinkIcon } from "./components/items";
+import { BrowserTerminalInterface, setTerminalInterface, TerminalInterface } from "./cli/terminal-interface";
+import { useMount, useUnmount } from "react-use";
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const ref = useRef<HTMLElement | null>(null);
@@ -29,10 +33,44 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   );
 }
 
+/** Browser terminal container */
+function CliExample({ app }: { app: () => Promise<void> }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const term = useRef<TerminalInterface | null>(null);
+
+  // Create the terminal when component mounts
+  useEffect(() => {
+    if (!ref.current) throw new Error("Container element not found");
+
+    term.current = new BrowserTerminalInterface(ref.current);
+    setTerminalInterface(term.current);
+  });
+
+  // Start the app
+  useEffect(() => {
+    if (app) {
+      // Wait for the terminal to be initialized
+      setTimeout(() => {
+        console.log("Starting app", app);
+
+        app();
+      }, 100);
+    }
+  }, [app]);
+
+  // Dispose the terminal when component unmounts
+  useUnmount(() => {
+    if (term.current) term.current.dispose();
+  });
+
+  return <div className="w-full h-full" ref={ref}></div>;
+}
+
 function ExampleView({ example }: { example?: Example }) {
   const [path, setPath] = useState("");
   const [source, setSource] = useState("");
   const [Component, setComponent] = useState<(() => JSX.Element) | null>();
+  const [CliApp, setCliApp] = useState<(() => Promise<void>) | null>();
   const [mode, setMode] = useState<"code" | "preview">("preview");
 
   // set mode to preview when example changes
@@ -44,8 +82,17 @@ function ExampleView({ example }: { example?: Example }) {
 
     setPath(example.path.replace(/^\.\//, ""));
     example.load().then((module: any) => {
-      console.log("loaded", module.default);
-      setComponent(() => module.default);
+      if (typeof module.default !== "function") throw new Error("Example must be a function");
+
+      if (module.default.terminal) {
+        console.log("Loaded CLI App", module.default);
+        setCliApp(() => module.default);
+        setComponent(null);
+      } else {
+        console.log("Loaded React App", module.default);
+        setComponent(() => module.default);
+        setCliApp(null);
+      }
     });
 
     example.source().then((source: string) => {
@@ -106,8 +153,14 @@ function ExampleView({ example }: { example?: Example }) {
 
         {/* Page content */}
         {mode === "preview" ? (
-          Component ? (
-            <Component />
+          CliApp ? (
+            <ErrorBoundary fallbackRender={({ error }) => <div className="text-red-500">{error.message}</div>}>
+              <CliExample app={CliApp} />
+            </ErrorBoundary>
+          ) : Component ? (
+            <ErrorBoundary fallbackRender={({ error }) => <div className="text-red-500">{error.message}</div>}>
+              <Component />
+            </ErrorBoundary>
           ) : (
             <div className="flex justify-center items-center h-full">
               <span className="loading loading-dots loading-xl"></span>

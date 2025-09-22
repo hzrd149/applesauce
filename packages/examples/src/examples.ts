@@ -1,5 +1,5 @@
-const modules = import.meta.glob("./examples/**/*.tsx");
-const sources = import.meta.glob("./examples/**/*.tsx", { query: "?raw" }) as Record<
+const modules = import.meta.glob("./examples/**/*.(tsx|ts)");
+const sources = import.meta.glob("./examples/**/*.(tsx|ts)", { query: "?raw" }) as Record<
   string,
   () => Promise<{ default: string }>
 >;
@@ -17,7 +17,7 @@ const examples: Example[] = [];
 for (const [path, load] of Object.entries(modules)) {
   const source = async () => (await sources[path]()).default as string;
 
-  const id = path.replace(/^.*\/examples\/|\.tsx$/g, "");
+  const id = path.replace(/^.*\/examples\/|\.(tsx|ts)$/g, "");
   const name = id.replace(/\//g, " / ").replace(/[-_]/g, " ");
 
   examples.push({ id, name, path, load, source });
