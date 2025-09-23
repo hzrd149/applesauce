@@ -4,12 +4,12 @@ import { createAddressLoader, createEventLoader } from "applesauce-loaders/loade
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
 import { npubEncode } from "nostr-tools/nip19";
-import * as qrcodeTerminal from "qrcode-terminal";
 import { getTerminalInterface } from "../../cli/terminal-interface";
 
-async function qrcode(uri: string): Promise<string> {
+async function qrcode(_uri: string): Promise<string> {
   return new Promise((resolve) => {
-    qrcodeTerminal.generate(uri, { small: true }, (qrcode) => resolve(qrcode));
+    resolve("");
+    // qrcodeTerminal.generate(uri, { small: true }, (qrcode) => resolve(qrcode));
   });
 }
 

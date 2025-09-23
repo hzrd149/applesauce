@@ -331,6 +331,7 @@ describe("exports", () => {
         "isSha256",
         "isStreamURL",
         "isTTag",
+        "isValidComment",
         "isValidLegacyMessage",
         "isValidList",
         "isValidProfile",

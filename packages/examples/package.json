@@ -41,7 +41,6 @@
     "nostr-tools": "^2.15.2",
     "pastellify": "^0.1.4",
     "prismjs": "^1.30.0",
-    "qrcode-terminal": "^0.12.0",
     "react": "^18.3.1",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^18.3.1",

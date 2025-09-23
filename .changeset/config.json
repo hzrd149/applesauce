@@ -10,7 +10,6 @@
       "applesauce-sqlite",
       "applesauce-content",
       "applesauce-core",
-      "applesauce-dvm",
       "applesauce-factory",
       "applesauce-loaders",
       "applesauce-react",

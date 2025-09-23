@@ -11,7 +11,6 @@
 "applesauce-react": minor
 "applesauce-relay": minor
 "applesauce-core": minor
-"applesauce-dvm": minor
 ---
 
 Bump `nostr-tools` to `2.17`
