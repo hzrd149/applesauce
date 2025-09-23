@@ -1,5 +1,6 @@
 import { hexToBytes } from "@noble/hashes/utils";
 import {
+  getHiddenTags,
   HiddenContentSigner,
   isHiddenTagsUnlocked,
   lockHiddenTags,
@@ -30,9 +31,49 @@ export type UnlockedWallet = UnlockedHiddenTags & {
 export function isWalletUnlocked<T extends NostrEvent>(wallet: T): wallet is T & UnlockedWallet {
   return (
     isHiddenTagsUnlocked(wallet) &&
-    Reflect.has(wallet, WalletPrivateKeySymbol) === true &&
-    Reflect.has(wallet, WalletMintsSymbol) === true
+    Reflect.has(wallet, WalletPrivateKeySymbol) &&
+    Reflect.has(wallet, WalletMintsSymbol)
   );
+}
+
+/** Returns the wallets mints */
+export function getWalletMints(wallet: UnlockedWallet): string[];
+export function getWalletMints(wallet: NostrEvent): string[];
+export function getWalletMints<T extends NostrEvent>(wallet: T): string[] | undefined {
+  // Return cached value if it exists
+  if (Reflect.has(wallet, WalletMintsSymbol)) return Reflect.get(wallet, WalletMintsSymbol) as string[];
+
+  // Get hidden tags
+  const tags = getHiddenTags(wallet);
+  if (!tags) return undefined;
+
+  // Get mints
+  const mints = tags.filter((t) => t[0] === "mint").map((t) => t[1]);
+
+  // Set the cached value
+  Reflect.set(wallet, WalletMintsSymbol, mints);
+
+  return mints;
+}
+
+/** Returns the wallets private key as a string */
+export function getWalletPrivateKey(wallet: UnlockedWallet): Uint8Array;
+export function getWalletPrivateKey(wallet: NostrEvent): Uint8Array | undefined;
+export function getWalletPrivateKey<T extends NostrEvent>(wallet: T): Uint8Array | undefined {
+  if (Reflect.has(wallet, WalletPrivateKeySymbol)) return Reflect.get(wallet, WalletPrivateKeySymbol) as Uint8Array;
+
+  // Get hidden tags
+  const tags = getHiddenTags(wallet);
+  if (!tags) return undefined;
+
+  // Parse private key
+  const privkey = tags.find((t) => t[0] === "privkey" && t[1])?.[1];
+  const key = privkey ? hexToBytes(privkey) : undefined;
+
+  // Set the cached value
+  Reflect.set(wallet, WalletPrivateKeySymbol, key);
+
+  return key;
 }
 
 /** Unlocks a wallet and returns the hidden tags */
@@ -40,17 +81,15 @@ export async function unlockWallet(
   wallet: NostrEvent,
   signer: HiddenContentSigner,
 ): Promise<{ mints: string[]; privateKey?: Uint8Array }> {
-  if (isWalletUnlocked(wallet)) return { mints: wallet[WalletMintsSymbol], privateKey: wallet[WalletPrivateKeySymbol] };
+  if (isWalletUnlocked(wallet)) return { mints: getWalletMints(wallet), privateKey: getWalletPrivateKey(wallet) };
 
-  const tags = await unlockHiddenTags(wallet, signer);
+  // Unlock hidden tags if needed
+  await unlockHiddenTags(wallet, signer);
 
-  const mints = tags.filter((t) => t[0] === "mint").map((t) => t[1]);
-  const privkey = tags.find((t) => t[0] === "privkey" && t[1])?.[1];
-  const key = privkey ? hexToBytes(privkey) : undefined;
-
-  // Set the cached values
-  Reflect.set(wallet, WalletMintsSymbol, mints);
-  Reflect.set(wallet, WalletPrivateKeySymbol, key);
+  // Read the wallet mints and private key
+  const mints = getWalletMints(wallet);
+  if (!mints) throw new Error("Failed to unlock wallet mints");
+  const key = getWalletPrivateKey(wallet);
 
   // Notify the event store
   notifyEventUpdate(wallet);
@@ -63,18 +102,4 @@ export function lockWallet(wallet: NostrEvent) {
   Reflect.deleteProperty(wallet, WalletPrivateKeySymbol);
   Reflect.deleteProperty(wallet, WalletMintsSymbol);
   lockHiddenTags(wallet);
-}
-
-/** Returns the wallets mints */
-export function getWalletMints(wallet: NostrEvent): string[] {
-  if (isWalletUnlocked(wallet)) return wallet[WalletMintsSymbol];
-  else return [];
-}
-
-/** Returns the wallets private key as a string */
-export function getWalletPrivateKey(wallet: UnlockedWallet): Uint8Array;
-export function getWalletPrivateKey(wallet: NostrEvent): Uint8Array | undefined;
-export function getWalletPrivateKey<T extends NostrEvent>(wallet: T): Uint8Array | undefined {
-  if (isWalletUnlocked(wallet)) return wallet[WalletPrivateKeySymbol];
-  else return undefined;
 }

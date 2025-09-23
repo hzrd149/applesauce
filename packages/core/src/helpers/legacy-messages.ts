@@ -67,6 +67,7 @@ export async function unlockLegacyMessage(
   const cached = getEncryptedContent(message);
   if (cached) return cached;
 
+  // Get the correspondent
   const correspondent = getLegacyMessageCorrespondent(message, self);
   if (!correspondent) throw new Error("No correspondent found");
 

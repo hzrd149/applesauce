@@ -14,7 +14,7 @@ import {
   UnlockedEncryptedContent,
 } from "./encrypted-content.js";
 
-// reexport from encrypted-content
+/** Symbol for caching hidden content. Alias for {@link EncryptedContentSymbol} */
 export const HiddenContentSymbol = EncryptedContentSymbol;
 
 /** Alias for {@link EncryptedContentSigner} */
@@ -23,7 +23,7 @@ export interface HiddenContentSigner extends EncryptedContentSigner {}
 /** Alias for {@link getEncryptedContentEncryptionMethods} */
 export const getHiddenContentEncryptionMethods = getEncryptedContentEncryptionMethods;
 
-/** Type for events with unlocked hidden content */
+/** Type for events with unlocked hidden content. alias for {@link UnlockedEncryptedContent} */
 export type UnlockedHiddenContent = UnlockedEncryptedContent;
 
 /** Various event kinds that can have hidden content */
@@ -48,7 +48,7 @@ export function hasHiddenContent<T extends { kind: number; content: string }>(ev
 /** Checks if the hidden content is unlocked and casts it to the {@link UnlockedEncryptedContent} type */
 export function isHiddenContentUnlocked<T extends { kind: number }>(event: T): event is T & UnlockedEncryptedContent {
   if (!canHaveHiddenContent(event.kind)) return false;
-  return isEncryptedContentUnlocked(event) === true;
+  return isEncryptedContentUnlocked(event) && Reflect.has(event, HiddenContentSymbol) === true;
 }
 
 /** Returns the hidden content for an event if they are unlocked */
@@ -56,7 +56,7 @@ export function getHiddenContent<T extends { kind: number } & UnlockedHiddenCont
 export function getHiddenContent<T extends { kind: number }>(event: T): string | undefined;
 export function getHiddenContent<T extends { kind: number }>(event: T): string | undefined {
   if (!canHaveHiddenContent(event.kind)) return undefined;
-  if (isHiddenContentUnlocked(event) === false) return undefined;
+  if (isHiddenContentUnlocked(event)) return event[EncryptedContentSymbol];
   return getEncryptedContent(event);
 }
 

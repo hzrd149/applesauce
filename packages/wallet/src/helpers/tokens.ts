@@ -1,10 +1,8 @@
 import { getDecodedToken, getEncodedToken, Proof, Token } from "@cashu/cashu-ts";
 import {
   getHiddenContent,
-  getOrComputeCachedValue,
   HiddenContentSigner,
   isHiddenContentUnlocked,
-  isHiddenTagsUnlocked,
   lockHiddenContent,
   notifyEventUpdate,
   setHiddenContentEncryptionMethod,
@@ -46,6 +44,7 @@ export type TokenContent = {
   del: string[];
 };
 
+/** Symbol for caching token content */
 export const TokenContentSymbol = Symbol.for("token-content");
 
 /** Type for token events with unlocked content */
@@ -53,22 +52,31 @@ export type UnlockedTokenContent = UnlockedHiddenContent & {
   [TokenContentSymbol]: TokenContent;
 };
 
-/** Returns the decrypted and parsed details of a 7375 token event */
-export function getTokenContent(token: NostrEvent): TokenContent | undefined {
-  if (isHiddenTagsUnlocked(token) === false) return undefined;
+/**
+ * Returns the decrypted and parsed details of a 7375 token event
+ * @throws {Error} If the token content is invalid
+ */
+export function getTokenContent(token: UnlockedTokenContent): TokenContent;
+export function getTokenContent(token: NostrEvent): TokenContent | undefined;
+export function getTokenContent<T extends NostrEvent>(token: T): TokenContent | undefined {
+  if (isTokenContentUnlocked(token)) return token[TokenContentSymbol];
 
-  return getOrComputeCachedValue(token, TokenContentSymbol, () => {
-    const plaintext = getHiddenContent(token);
-    if (!plaintext) throw new Error("Token is locked");
+  // Get the hidden content
+  const plaintext = getHiddenContent(token);
+  if (!plaintext) return undefined;
 
-    const details = JSON.parse(plaintext) as TokenContent;
+  // Parse the content as a token content
+  const details = JSON.parse(plaintext) as TokenContent;
 
-    if (!details.mint) throw new Error("Token missing mint");
-    if (!details.proofs) throw new Error("Token missing proofs");
-    if (!details.del) details.del = [];
+  // Throw an error if the token content is invalid
+  if (!details.mint) throw new Error("Token missing mint");
+  if (!details.proofs) throw new Error("Token missing proofs");
+  if (!details.del) details.del = [];
 
-    return details;
-  });
+  // Set the cached value
+  Reflect.set(token, TokenContentSymbol, details);
+
+  return details;
 }
 
 /** Returns if token details are locked */
@@ -78,11 +86,14 @@ export function isTokenContentUnlocked<T extends NostrEvent>(token: T): token is
 
 /** Decrypts a k:7375 token event */
 export async function unlockTokenContent(token: NostrEvent, signer: HiddenContentSigner): Promise<TokenContent> {
-  const content = await unlockHiddenContent(token, signer);
-  const parsed = JSON.parse(content) as TokenContent;
+  if (isTokenContentUnlocked(token)) return token[TokenContentSymbol];
 
-  // Save the parsed content
-  Reflect.set(token, TokenContentSymbol, parsed);
+  // Unlock the hidden content
+  await unlockHiddenContent(token, signer);
+
+  // Parse the content as a token content
+  const parsed = getTokenContent(token);
+  if (!parsed) throw new Error("Failed to unlock token content");
 
   // Trigger update for event
   notifyEventUpdate(token);
@@ -100,16 +111,17 @@ export function lockTokenContent(token: NostrEvent) {
  * Gets the totaled amount of proofs in a token event
  * @param token The token event to calculate the total
  */
-export function getTokenProofsTotal(token: NostrEvent): number | undefined {
-  if (isTokenContentUnlocked(token)) return undefined;
-
-  const content = getTokenContent(token)!;
+export function getTokenProofsTotal(token: UnlockedTokenContent): number;
+export function getTokenProofsTotal(token: NostrEvent): number | undefined;
+export function getTokenProofsTotal<T extends NostrEvent>(token: T): number | undefined {
+  const content = getTokenContent(token);
+  if (!content) return undefined;
   return content.proofs.reduce((t, p) => t + p.amount, 0);
 }
 
 /**
  * Selects oldest tokens and proofs that total up to more than the min amount
- * @throws
+ * @throws {Error} If there are insufficient funds
  */
 export function dumbTokenSelection(
   tokens: NostrEvent[],
@@ -118,7 +130,7 @@ export function dumbTokenSelection(
 ): { events: NostrEvent[]; proofs: Proof[] } {
   // sort newest to oldest
   const sorted = tokens
-    .filter((token) => !isTokenContentUnlocked(token) && (mint ? getTokenContent(token)!.mint === mint : true))
+    .filter((token) => (mint ? getTokenContent(token)?.mint === mint : true))
     .sort((a, b) => b.created_at - a.created_at);
 
   let amount = 0;
@@ -130,7 +142,13 @@ export function dumbTokenSelection(
     const token = sorted.pop();
     if (!token) throw new Error("Insufficient funds");
 
-    const proofs = getTokenContent(token)!.proofs.filter(ignoreDuplicateProofs(seen));
+    const content = getTokenContent(token);
+
+    // Skip locked tokens
+    if (!content) continue;
+
+    // Get proofs and total
+    const proofs = content.proofs.filter(ignoreDuplicateProofs(seen));
     const total = proofs.reduce((t, p) => t + p.amount, 0);
 
     selectedTokens.push(token);

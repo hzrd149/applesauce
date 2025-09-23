@@ -1,10 +1,10 @@
+import { bytesToHex } from "@noble/hashes/utils";
+import { create, EventFactory } from "applesauce-factory";
+import { generateSecretKey } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user";
-import { WalletBlueprint } from "../wallet";
-import { build, create, EventFactory } from "applesauce-factory";
 import { getWalletMints, getWalletPrivateKey } from "../../helpers/wallet";
-import { generateSecretKey } from "nostr-tools";
-import { bytesToHex } from "@noble/hashes/utils";
+import { WalletBlueprint } from "../wallet";
 
 const user = new FakeUser();
 const factory = new EventFactory({ signer: user });

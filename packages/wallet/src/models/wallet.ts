@@ -24,12 +24,14 @@ export function WalletModel(pubkey: string): Model<WalletInfo | undefined> {
       map((wallet) => {
         if (!wallet) return;
 
-        if (isWalletUnlocked(wallet)) return { locked: true, event: wallet };
+        if (isWalletUnlocked(wallet)) {
+          const mints = getWalletMints(wallet);
+          const privateKey = getWalletPrivateKey(wallet);
 
-        const mints = getWalletMints(wallet);
-        const privateKey = getWalletPrivateKey(wallet);
-
-        return { locked: false, mints, privateKey, event: wallet };
+          return { locked: false, mints, privateKey, event: wallet };
+        } else {
+          return { locked: true, event: wallet };
+        }
       }),
     );
 }

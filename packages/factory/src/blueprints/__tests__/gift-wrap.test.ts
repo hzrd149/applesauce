@@ -44,7 +44,7 @@ describe("GiftWrapBlueprint", () => {
       WrappedMessageBlueprint(alice.pubkey, "hello world"),
     );
 
-    expect(isGiftWrapUnlocked(event)).toBe(false);
+    expect(isGiftWrapUnlocked(event)).toBe(true);
     expect(getGiftWrapSeal(event)).toBeDefined();
     expect(getGiftWrapRumor(event)).toBeDefined();
     expect(getGiftWrapRumor(event)?.content).toBe("hello world");

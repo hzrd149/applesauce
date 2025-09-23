@@ -3,6 +3,7 @@ import { EncryptionMethod } from "./encrypted-content.js";
 import { GROUPS_LIST_KIND } from "./groups.js";
 import {
   canHaveHiddenContent,
+  getHiddenContent,
   getHiddenContentEncryptionMethods,
   hasHiddenContent,
   HiddenContentSigner,
@@ -14,6 +15,7 @@ import {
   unlockHiddenContent,
 } from "./hidden-content.js";
 
+/** Symbol for caching hidden tags. */
 export const HiddenTagsSymbol = Symbol.for("hidden-tags");
 
 /** Type for events with unlocked hidden tags */
@@ -55,10 +57,18 @@ export function hasHiddenTags<T extends { kind: number; content: string }>(event
   return canHaveHiddenTags(event.kind) && hasHiddenContent(event);
 }
 
-/**
- * Returns the hidden tags for an event if they are unlocked
- * @throws {Error} If the content is not an array of tags
- */
+/** Returns either nip04 or nip44 encryption method depending on list kind */
+export function getHiddenTagsEncryptionMethods(kind: number, signer: HiddenContentSigner) {
+  return getHiddenContentEncryptionMethods(kind, signer);
+}
+
+/** Checks if the hidden tags are locked and casts it to the {@link UnlockedHiddenTags} type */
+export function isHiddenTagsUnlocked<T extends { kind: number }>(event: T): event is T & UnlockedHiddenTags {
+  if (!canHaveHiddenTags(event.kind)) return false;
+  return isHiddenContentUnlocked(event) && Reflect.has(event, `HiddenTagsSymbol`);
+}
+
+/** Returns the hidden tags for an event if they are unlocked */
 export function getHiddenTags<T extends { kind: number } & UnlockedHiddenTags>(event: T): string[][];
 export function getHiddenTags<T extends { kind: number }>(event: T): string[][] | undefined;
 export function getHiddenTags<T extends { kind: number }>(event: T): string[][] | undefined {
@@ -66,18 +76,26 @@ export function getHiddenTags<T extends { kind: number }>(event: T): string[][] 
 
   // If the hidden tags are already unlocked, return the cached value
   if (isHiddenTagsUnlocked(event)) return event[HiddenTagsSymbol];
-  else return undefined;
-}
 
-/** Checks if the hidden tags are locked and casts it to the {@link UnlockedHiddenTags} type */
-export function isHiddenTagsUnlocked<T extends { kind: number }>(event: T): event is T & UnlockedHiddenTags {
-  if (!canHaveHiddenTags(event.kind)) return false;
-  return isHiddenContentUnlocked(event) === true && Reflect.has(event, HiddenTagsSymbol) === true;
-}
+  // unlock hidden content is needed
+  const content = getHiddenContent(event);
 
-/** Returns either nip04 or nip44 encryption method depending on list kind */
-export function getHiddenTagsEncryptionMethods(kind: number, signer: HiddenContentSigner) {
-  return getHiddenContentEncryptionMethods(kind, signer);
+  // Return undefined if the hidden content is not unlocked
+  if (content === undefined) return undefined;
+
+  // Parse the hidden content as an array of tags
+  const parsed = JSON.parse(content) as string[][];
+
+  // Throw error if content is not an array of tags
+  if (!Array.isArray(parsed)) throw new Error("Content is not an array of tags");
+
+  // Convert array to tags array string[][]
+  const tags = parsed.filter((t) => Array.isArray(t)).map((t) => t.map((v) => String(v)));
+
+  // Set the cached value
+  Reflect.set(event, HiddenTagsSymbol, tags);
+
+  return tags;
 }
 
 /**
@@ -97,19 +115,14 @@ export async function unlockHiddenTags<T extends { kind: number; pubkey: string;
   // Return the cached value if the hidden tags are already unlocked
   if (isHiddenTagsUnlocked(event)) return event[HiddenTagsSymbol];
 
-  // unlock hidden content is needed
-  const hiddenContent = await unlockHiddenContent(event, signer, override);
+  // Unlock hidden content
+  await unlockHiddenContent(event, signer, override);
 
-  // Parse the hidden content as an array of tags
-  const parsed = JSON.parse(hiddenContent) as string[][];
+  // Parse the hidden tags
+  const tags = getHiddenTags(event);
+  if (tags === undefined) throw new Error("Failed to unlock hidden tags");
 
-  // Throw error if content is not an array of tags
-  if (!Array.isArray(parsed)) throw new Error("Content is not an array of tags");
-
-  // Convert array to tags array string[][]
-  const tags = parsed.filter((t) => Array.isArray(t)).map((t) => t.map((v) => String(v)));
-
-  // Set the cached value
+  // Set cache an notify event store
   setHiddenTagsCache(event, tags);
 
   return tags;

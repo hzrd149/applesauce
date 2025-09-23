@@ -2,7 +2,13 @@ import { kinds, NostrEvent } from "nostr-tools";
 import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 
 import { getOrComputeCachedValue } from "./cache.js";
-import { getHiddenTags, isHiddenTagsUnlocked } from "./index.js";
+import {
+  getHiddenTags,
+  HiddenContentSigner,
+  isHiddenTagsUnlocked,
+  notifyEventUpdate,
+  unlockHiddenTags,
+} from "./index.js";
 import {
   getAddressPointerFromATag,
   getCoordinateFromAddressPointer,
@@ -13,6 +19,11 @@ import {
 
 export const BookmarkPublicSymbol = Symbol.for("bookmark-public");
 export const BookmarkHiddenSymbol = Symbol.for("bookmark-hidden");
+
+/** Type for unlocked bookmarks events */
+export type UnlockedBookmarks = {
+  [BookmarkHiddenSymbol]: Bookmarks;
+};
 
 export type Bookmarks = {
   notes: EventPointer[];
@@ -78,9 +89,43 @@ export function getPublicBookmarks(bookmark: NostrEvent) {
   return getOrComputeCachedValue(bookmark, BookmarkPublicSymbol, () => parseBookmarkTags(bookmark.tags));
 }
 
-/** Returns the bookmarks of the event if its unlocked */
-export function getHiddenBookmarks(bookmark: NostrEvent) {
-  if (isHiddenTagsUnlocked(bookmark)) return undefined;
+/** Checks if the hidden bookmarks are unlocked */
+export function isHiddenBookmarksUnlocked<T extends NostrEvent>(bookmark: T): bookmark is T & UnlockedBookmarks {
+  return isHiddenTagsUnlocked(bookmark) && Reflect.has(bookmark, BookmarkHiddenSymbol);
+}
 
-  return getOrComputeCachedValue(bookmark, BookmarkHiddenSymbol, () => parseBookmarkTags(getHiddenTags(bookmark)!));
+/** Returns the bookmarks of the event if its unlocked */
+export function getHiddenBookmarks<T extends NostrEvent & UnlockedBookmarks>(bookmark: T): Bookmarks;
+export function getHiddenBookmarks<T extends NostrEvent>(bookmark: T): Bookmarks | undefined;
+export function getHiddenBookmarks<T extends NostrEvent>(bookmark: T): Bookmarks | undefined {
+  if (isHiddenBookmarksUnlocked(bookmark)) return bookmark[BookmarkHiddenSymbol];
+
+  //get hidden tags
+  const tags = getHiddenTags(bookmark);
+  if (!tags) return undefined;
+
+  // parse bookmarks
+  const bookmarks = parseBookmarkTags(tags);
+
+  // set cached value
+  Reflect.set(bookmark, BookmarkHiddenSymbol, bookmarks);
+
+  return bookmarks;
+}
+
+/** Unlocks the hidden bookmarks on a bookmarks event */
+export async function unlockHiddenBookmarks(bookmark: NostrEvent, signer: HiddenContentSigner): Promise<Bookmarks> {
+  if (isHiddenBookmarksUnlocked(bookmark)) return bookmark[BookmarkHiddenSymbol];
+
+  // unlock hidden tags
+  await unlockHiddenTags(bookmark, signer);
+
+  // get hidden bookmarks
+  const bookmarks = getHiddenBookmarks(bookmark);
+  if (!bookmarks) throw new Error("Failed to unlock hidden bookmarks");
+
+  // notify event store
+  notifyEventUpdate(bookmark);
+
+  return bookmarks;
 }

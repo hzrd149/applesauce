@@ -54,6 +54,16 @@ describe("modifyHiddenTags", () => {
     expect(Reflect.get(result, EncryptedContentSymbol)).not.toBe(Reflect.get(draft, EncryptedContentSymbol));
   });
 
+  it("should set hidden tags", async () => {
+    const draft = await build(
+      { kind: 30000 },
+      { signer: user },
+      modifyHiddenTags((tags) => [...tags, ["e", "test-id"]]),
+    );
+
+    expect(getHiddenTags(draft)).toEqual([["e", "test-id"]]);
+  });
+
   it("should work multiple times", async () => {
     const draft = await build(
       { kind: 30000 },

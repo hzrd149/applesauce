@@ -1,11 +1,16 @@
 import { kinds, NostrEvent } from "nostr-tools";
 import { getOrComputeCachedValue } from "./cache.js";
-import { getHiddenTags, isHiddenTagsUnlocked } from "./hidden-tags.js";
-import { getIndexableTags, getNip10References } from "./index.js";
+import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "./hidden-tags.js";
+import { getIndexableTags, getNip10References, HiddenContentSigner, notifyEventUpdate } from "./index.js";
 import { isETag, isPTag, isTTag } from "./tags.js";
 
 export const MutePublicSymbol = Symbol.for("mute-public");
 export const MuteHiddenSymbol = Symbol.for("mute-hidden");
+
+/** Type for unlocked mute events */
+export type UnlockedMutes = {
+  [MuteHiddenSymbol]: Mutes;
+};
 
 export type Mutes = {
   pubkeys: Set<string>;
@@ -50,11 +55,45 @@ export function getPublicMutedThings(mute: NostrEvent): Mutes {
   return getOrComputeCachedValue(mute, MutePublicSymbol, () => parseMutedTags(mute.tags));
 }
 
-/** Returns the hidden muted content if the event is unlocked */
-export function getHiddenMutedThings(mute: NostrEvent): Mutes | undefined {
-  if (isHiddenTagsUnlocked(mute)) return undefined;
+/** Checks if the hidden mutes are unlocked */
+export function isHiddenMutesUnlocked<T extends NostrEvent>(mute: T): mute is T & UnlockedMutes {
+  return isHiddenTagsUnlocked(mute) && Reflect.has(mute, MuteHiddenSymbol);
+}
 
-  return getOrComputeCachedValue(mute, MuteHiddenSymbol, () => parseMutedTags(getHiddenTags(mute)!));
+/** Returns the hidden muted content if the event is unlocked */
+export function getHiddenMutedThings<T extends NostrEvent & UnlockedMutes>(mute: T): Mutes;
+export function getHiddenMutedThings<T extends NostrEvent>(mute: T): Mutes | undefined;
+export function getHiddenMutedThings<T extends NostrEvent>(mute: T): Mutes | undefined {
+  if (isHiddenMutesUnlocked(mute)) return mute[MuteHiddenSymbol];
+
+  // get hidden tags
+  const tags = getHiddenTags(mute);
+  if (!tags) return undefined;
+
+  // parse muted tags
+  const mutes = parseMutedTags(tags);
+
+  // set cached value
+  Reflect.set(mute, MuteHiddenSymbol, mutes);
+
+  return mutes;
+}
+
+/** Unlocks the hidden mutes */
+export async function unlockHiddenMutes(mute: NostrEvent, signer: HiddenContentSigner): Promise<Mutes> {
+  if (isHiddenMutesUnlocked(mute)) return mute[MuteHiddenSymbol];
+
+  // Unlock hidden tags
+  await unlockHiddenTags(mute, signer);
+
+  // get hidden mutes
+  const mutes = getHiddenMutedThings(mute);
+  if (!mutes) throw new Error("Failed to unlock hidden mutes");
+
+  // Notify event store
+  notifyEventUpdate(mute);
+
+  return mutes;
 }
 
 /** Creates a RegExp for matching muted words */

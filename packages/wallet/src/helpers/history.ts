@@ -1,4 +1,5 @@
 import {
+  getHiddenTags,
   HiddenContentSigner,
   isETag,
   isHiddenTagsUnlocked,
@@ -51,17 +52,14 @@ export function isHistoryContentUnlocked<T extends NostrEvent>(history: T): hist
 export function getHistoryContent<T extends UnlockedHiddenTags>(history: T): HistoryContent;
 export function getHistoryContent<T extends NostrEvent>(history: T): HistoryContent | undefined;
 export function getHistoryContent<T extends NostrEvent>(history: T): HistoryContent | undefined {
-  if (isHistoryContentUnlocked(history)) return history[HistoryContentSymbol];
-  else return undefined;
-}
-
-/** Decrypts a wallet history event */
-export async function unlockHistoryContent(history: NostrEvent, signer: HiddenContentSigner): Promise<HistoryContent> {
+  // Return cached value if it exists
   if (isHistoryContentUnlocked(history)) return history[HistoryContentSymbol];
 
-  const tags = await unlockHiddenTags(history, signer);
-  if (!tags) throw new Error("History event is locked");
+  // Get hidden tags
+  const tags = getHiddenTags(history);
+  if (!tags) return;
 
+  // Read tags
   const direction = tags.find((t) => t[0] === "direction")?.[1] as HistoryDirection | undefined;
   if (!direction) throw new Error("History event missing direction");
   const amountStr = tags.find((t) => t[0] === "amount")?.[1];
@@ -79,6 +77,23 @@ export async function unlockHistoryContent(history: NostrEvent, signer: HiddenCo
 
   // Set the cached value
   Reflect.set(history, HistoryContentSymbol, content);
+
+  return content;
+}
+
+/** Decrypts a wallet history event */
+export async function unlockHistoryContent(history: NostrEvent, signer: HiddenContentSigner): Promise<HistoryContent> {
+  // Return cached value if it exists
+  if (isHistoryContentUnlocked(history)) return history[HistoryContentSymbol];
+
+  // Unlock hidden tags if needed
+  await unlockHiddenTags(history, signer);
+
+  // Get the history content
+  const content = getHistoryContent(history);
+  if (!content) throw new Error("Failed to unlock history content");
+
+  // Notify the event store
   notifyEventUpdate(history);
 
   return content;
