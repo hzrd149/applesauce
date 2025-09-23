@@ -11,18 +11,14 @@ import { FakeUser } from "../../__tests__/fixtures.js";
 const user = new FakeUser();
 
 describe("getCommentRootPointer", () => {
-  it("should throw if event is not a comment", () => {
-    expect(() => {
-      getCommentRootPointer(user.note("testing"));
-    }).toThrow("Event is not a comment");
+  it("should return null if event is not a comment", () => {
+    expect(getCommentRootPointer(user.note("testing"))).toBe(null);
   });
 });
 
 describe("getCommentReplyPointer", () => {
-  it("should throw if event is not a comment", () => {
-    expect(() => {
-      getCommentReplyPointer(user.note("testing"));
-    }).toThrow("Event is not a comment");
+  it("should return null if event is not a comment", () => {
+    expect(getCommentReplyPointer(user.note("testing"))).toBe(null);
   });
 });
 
@@ -99,14 +95,12 @@ describe("getCommentEventPointer", () => {
     });
   });
 
-  it("should throw if K tag is missing", () => {
+  it("should return null if K tag is missing", () => {
     const tags = [
       ["E", "86c0b95589b016ffb703bfc080d49e54106e74e2d683295119c3453e494dbe6f", "wss://relay.io/"],
       ["P", "e4336cd525df79fa4d3af364fd9600d4b10dce4215aa4c33ed77ea0842344b10"],
     ];
-    expect(() => {
-      getCommentEventPointer(tags, true);
-    }).toThrow("Missing kind tag");
+    expect(getCommentEventPointer(tags, true)).toBe(null);
   });
 
   it("should return null if missing E tag", () => {
@@ -259,17 +253,17 @@ describe("getCommentAddressPointer", () => {
 
   it("should throw if missing K tag", () => {
     // root
-    expect(() =>
+    expect(
       getCommentAddressPointer(
         [["A", "30010:e4336cd525df79fa4d3af364fd9600d4b10dce4215aa4c33ed77ea0842344b10:list"]],
         true,
       ),
-    ).toThrow("Missing kind tag");
+    ).toBe(null);
 
     // reply
-    expect(() =>
+    expect(
       getCommentAddressPointer([["a", "30010:e4336cd525df79fa4d3af364fd9600d4b10dce4215aa4c33ed77ea0842344b10:list"]]),
-    ).toThrow("Missing kind tag");
+    ).toBe(null);
   });
 
   it("should return null if missing A tag", () => {
@@ -313,15 +307,13 @@ describe("getCommentExternalPointer", () => {
     });
   });
 
-  it("should throw if missing K tag", () => {
+  it("should not return null if missing K tag", () => {
     // root
-    expect(() =>
-      getCommentExternalPointer([["I", "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f"]], true),
-    ).toThrow("Missing kind tag");
+    expect(getCommentExternalPointer([["I", "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f"]], true)).not.toBe(
+      null,
+    );
 
     // reply
-    expect(() => getCommentExternalPointer([["i", "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f"]])).toThrow(
-      "Missing kind tag",
-    );
+    expect(getCommentExternalPointer([["i", "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f"]])).not.toBe(null);
   });
 });

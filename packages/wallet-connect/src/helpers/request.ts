@@ -1,12 +1,13 @@
 import {
-  getHiddenContent,
-  getOrComputeCachedValue,
   getTagValue,
   HiddenContentSigner,
-  isHiddenContentLocked,
+  isHiddenContentUnlocked,
   isNIP04Encrypted,
+  KnownEvent,
+  notifyEventUpdate,
   setHiddenContentEncryptionMethod,
   unixNow,
+  UnlockedHiddenContent,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
@@ -19,8 +20,15 @@ export const WALLET_REQUEST_KIND = 23194;
 // Set the encryption method to use for request kind
 setHiddenContentEncryptionMethod(WALLET_REQUEST_KIND, "nip44");
 
+export type WalletRequestEvent = KnownEvent<typeof WALLET_REQUEST_KIND>;
+
 /** A symbol used to cache the wallet request on the event */
 export const WalletRequestSymbol = Symbol("wallet-request");
+
+/** Type for events with unlocked hidden content */
+export type UnlockedWalletRequest = UnlockedHiddenContent & {
+  [WalletRequestSymbol]: WalletRequest;
+};
 
 /** TLV record for keysend payments */
 export interface TLVRecord {
@@ -163,33 +171,36 @@ export type WalletRequest =
   | GetInfoRequest;
 
 /** Checks if a kind 23194 event is locked */
-export function isWalletRequestLocked(request: NostrEvent) {
-  return isHiddenContentLocked(request);
+export function isWalletRequestUnlocked(request: any): request is UnlockedWalletRequest {
+  return isHiddenContentUnlocked(request) && Reflect.has(request, WalletRequestSymbol) === true;
 }
 
 /** Unlocks a kind 23194 event */
 export async function unlockWalletRequest(
   request: NostrEvent,
   signer: HiddenContentSigner,
-): Promise<WalletRequest | undefined | null> {
-  await unlockHiddenContent(request, signer);
+): Promise<WalletRequest | undefined> {
+  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol];
 
-  return getWalletRequest(request);
+  const content = await unlockHiddenContent(request, signer);
+  const parsed = JSON.parse(content) as WalletRequest;
+
+  // Save the parsed content
+  Reflect.set(request, WalletRequestSymbol, parsed);
+  notifyEventUpdate(request);
+
+  return parsed;
 }
 
 /** Gets the wallet request from a kind 23194 event */
-export function getWalletRequest(request: NostrEvent): WalletRequest | undefined | null {
-  if (isWalletRequestLocked(request)) return undefined;
-
-  return getOrComputeCachedValue(request, WalletRequestSymbol, () => {
-    const content = getHiddenContent(request);
-    if (!content) return null;
-
-    return JSON.parse(content) as WalletRequest;
-  });
+export function getWalletRequest(request: NostrEvent): WalletRequest | undefined {
+  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol];
+  else return undefined;
 }
 
 /** Returns the wallet service pubkey from a request */
+export function getWalletRequestServicePubkey(request: WalletRequestEvent): string;
+export function getWalletRequestServicePubkey(request: NostrEvent): string | undefined;
 export function getWalletRequestServicePubkey(request: NostrEvent): string | undefined {
   return getTagValue(request, "p");
 }
@@ -216,4 +227,9 @@ export function getWalletRequestEncryption(request: NostrEvent): WalletConnectEn
     : isNIP04Encrypted(request.content)
       ? "nip04"
       : "nip44_v2";
+}
+
+/** Checks if an event is a valid wallet request event */
+export function isValidWalletRequest(request: NostrEvent): request is WalletRequestEvent {
+  return request.kind === WALLET_REQUEST_KIND && getWalletRequestServicePubkey(request) !== undefined;
 }

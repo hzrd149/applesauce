@@ -286,7 +286,7 @@ function ThreadsList({ pointer, onSelect }: { pointer: GroupPointer; onSelect: (
 
 export default function ThreadsExample() {
   const [identifier, setIdentifier] = useState("");
-  const [pointer, setPointer] = useState<GroupPointer>();
+  const [pointer, setPointer] = useState<GroupPointer | undefined>(undefined);
   const [selectedThread, setSelectedThread] = useState<NostrEvent>();
 
   const [createThread, setCreateThread] = useState(false);
@@ -295,7 +295,7 @@ export default function ThreadsExample() {
     (identifier: string) => {
       try {
         setIdentifier(identifier);
-        setPointer(decodeGroupPointer(identifier));
+        setPointer(decodeGroupPointer(identifier) ?? undefined);
         setSelectedThread(undefined);
       } catch (error) {}
     },

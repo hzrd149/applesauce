@@ -2,7 +2,7 @@ import { kinds, NostrEvent } from "nostr-tools";
 import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 
 import { getOrComputeCachedValue } from "./cache.js";
-import { getHiddenTags, isHiddenTagsLocked } from "./index.js";
+import { getHiddenTags, isHiddenTagsUnlocked } from "./index.js";
 import {
   getAddressPointerFromATag,
   getCoordinateFromAddressPointer,
@@ -80,7 +80,7 @@ export function getPublicBookmarks(bookmark: NostrEvent) {
 
 /** Returns the bookmarks of the event if its unlocked */
 export function getHiddenBookmarks(bookmark: NostrEvent) {
-  if (isHiddenTagsLocked(bookmark)) return undefined;
+  if (isHiddenTagsUnlocked(bookmark)) return undefined;
 
   return getOrComputeCachedValue(bookmark, BookmarkHiddenSymbol, () => parseBookmarkTags(getHiddenTags(bookmark)!));
 }

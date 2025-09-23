@@ -9,6 +9,7 @@ import { NoteReplyBlueprint } from "./blueprints/reply.js";
 import { ShareBlueprint } from "./blueprints/share.js";
 import { eventPipe } from "./helpers/pipeline.js";
 import {
+  Client,
   includeReplaceableIdentifier,
   modifyTags,
   ModifyTagsOptions,
@@ -18,7 +19,6 @@ import {
   stripStamp,
   stripSymbols,
   updateCreatedAt,
-  Client,
 } from "./operations/index.js";
 import { EventBlueprint, EventFactoryContext, EventOperation } from "./types.js";
 

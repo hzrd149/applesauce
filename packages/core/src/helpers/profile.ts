@@ -2,6 +2,7 @@ import { kinds, NostrEvent } from "nostr-tools";
 import { npubEncode } from "nostr-tools/nip19";
 
 import { getOrComputeCachedValue } from "./cache.js";
+import { KnownEvent, safeParse } from "./index.js";
 
 export const ProfileContentSymbol = Symbol.for("profile-content");
 
@@ -23,10 +24,16 @@ export type ProfileContent = {
   nip05?: string;
 };
 
+/** Type for validated profile events */
+export type ProfileEvent = KnownEvent<kinds.Metadata>;
+
 /** Returns the parsed profile content for a kind 0 event */
-export function getProfileContent(event: NostrEvent): ProfileContent {
+export function getProfileContent(event: ProfileEvent): ProfileContent;
+export function getProfileContent(event: NostrEvent): ProfileContent | undefined;
+export function getProfileContent(event: NostrEvent): ProfileContent | undefined {
   return getOrComputeCachedValue(event, ProfileContentSymbol, () => {
-    const profile = JSON.parse(event.content) as ProfileContent;
+    const profile = safeParse<ProfileContent>(event.content);
+    if (!profile) return undefined;
 
     // ensure nip05 is a string
     if (profile.nip05 && typeof profile.nip05 !== "string") profile.nip05 = String(profile.nip05);
@@ -41,16 +48,14 @@ export function getProfileContent(event: NostrEvent): ProfileContent {
 }
 
 /** Checks if the content of the kind 0 event is valid JSON */
-export function isValidProfile(profile?: NostrEvent) {
+export function isValidProfile(profile?: NostrEvent): profile is ProfileEvent {
   if (!profile) return false;
   if (profile.kind !== kinds.Metadata && profile.kind !== kinds.Handlerinformation) return false;
-  try {
-    getProfileContent(profile);
 
-    return true;
-  } catch (error) {
-    return false;
-  }
+  // Check if the profile content is valid
+  if (!getProfileContent(profile)) return false;
+
+  return true;
 }
 
 /** Gets the profile picture from a nostr event or profile content with fallback */

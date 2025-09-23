@@ -2,7 +2,12 @@ import { combineLatest, filter, map, startWith } from "rxjs";
 import { Model } from "applesauce-core";
 import { NostrEvent } from "nostr-tools";
 
-import { getTokenContent, ignoreDuplicateProofs, isTokenContentLocked, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
+import {
+  getTokenContent,
+  ignoreDuplicateProofs,
+  isTokenContentUnlocked,
+  WALLET_TOKEN_KIND,
+} from "../helpers/tokens.js";
 
 /** removes deleted events from sorted array */
 function filterDeleted(tokens: NostrEvent[]) {
@@ -14,7 +19,7 @@ function filterDeleted(tokens: NostrEvent[]) {
       if (deleted.has(token.id)) return false;
 
       // add ids to deleted array
-      if (!isTokenContentLocked(token)) {
+      if (!isTokenContentUnlocked(token)) {
         const details = getTokenContent(token)!;
         for (const id of details.del) deleted.add(id);
       }
@@ -37,7 +42,7 @@ export function WalletTokensModel(pubkey: string, locked?: boolean | undefined):
       // filter out locked tokens
       map(([_, tokens]) => {
         if (locked === undefined) return tokens;
-        else return tokens.filter((t) => isTokenContentLocked(t) === locked);
+        else return tokens.filter((t) => isTokenContentUnlocked(t) === locked);
       }),
       // remove deleted events
       map(filterDeleted),
@@ -55,7 +60,7 @@ export function WalletBalanceModel(pubkey: string): Model<Record<string, number>
     const timeline = events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] });
 
     return combineLatest([updates, timeline]).pipe(
-      map(([_, tokens]) => tokens.filter((t) => !isTokenContentLocked(t))),
+      map(([_, tokens]) => tokens.filter((t) => !isTokenContentUnlocked(t))),
       // filter out deleted tokens
       map(filterDeleted),
       // map tokens to totals

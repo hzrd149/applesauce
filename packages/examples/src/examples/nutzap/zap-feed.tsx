@@ -11,6 +11,7 @@ import {
   getNutzapRecipient,
   isValidNutzap,
   NUTZAP_KIND,
+  type NutzapEvent,
 } from "applesauce-wallet/helpers";
 import { NostrEvent } from "nostr-tools";
 import { EventPointer } from "nostr-tools/nip19";
@@ -28,7 +29,7 @@ const pool = new RelayPool();
 // Create an address loader
 const addressLoader = createAddressLoader(pool, {
   eventStore,
-  lookupRelays: ["wss://purplepag.es/"],
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 const eventLoader = createEventLoader(pool, { eventStore });
 
@@ -36,6 +37,7 @@ const eventLoader = createEventLoader(pool, { eventStore });
 // These will be called if the event store doesn't have the requested event
 eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
+eventStore.eventLoader = eventLoader;
 
 function EventQuery(pointer: EventPointer): Model<NostrEvent | undefined> {
   return (events) =>
@@ -65,32 +67,18 @@ function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
   return <>{getDisplayName(profile, "unknown")}</>;
 }
 
-function NutzapEvent({ event }: { event: NostrEvent }) {
+function NutzapEvent({ event }: { event: NutzapEvent }) {
   const recipient = getNutzapRecipient(event);
   const eventPointer = getNutzapEventPointer(event);
   const amount = getNutzapAmount(event);
   const comment = getNutzapComment(event);
   const mint = getNutzapMint(event);
-  const isValid = isValidNutzap(event);
   const relays = useMemo(() => Array.from(getSeenRelays(event) ?? []), [event]);
 
   const zappedEvent = useObservableMemo(
     () => (eventPointer ? eventStore.model(EventQuery, addRelayHintsToPointer(eventPointer, relays)) : undefined),
     [eventPointer, relays],
   );
-
-  if (!isValid) {
-    return (
-      <div className="card bg-error text-error-content shadow-md">
-        <div className="card-body">
-          <p>Invalid nutzap event</p>
-          <pre>
-            <code>{JSON.stringify(event, null, 2)}</code>
-          </pre>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -104,7 +92,7 @@ function NutzapEvent({ event }: { event: NostrEvent }) {
           {recipient && (
             <span>
               {" "}
-              to <Username pubkey={recipient} relays={relays} />
+              to <Username pubkey={recipient.pubkey} relays={relays} />
             </span>
           )}
         </h2>
@@ -121,9 +109,12 @@ function NutzapEvent({ event }: { event: NostrEvent }) {
       </div>
 
       {comment && (
-        <div className="bg-base-200 rounded-lg p-3">
-          <p className="text-sm">{comment}</p>
-        </div>
+        <>
+          <p className="text-sm font-mono">Comment:</p>
+          <div className="bg-base-200 rounded-lg p-3">
+            <p className="text-sm">{comment}</p>
+          </div>
+        </>
       )}
 
       {zappedEvent ? (
@@ -197,7 +188,7 @@ export default function ZapFeed() {
           onlyEvents(),
           mapEventsToStore(eventStore),
           mapEventsToTimeline(),
-          map((events) => [...events]),
+          map((events) => events.filter(isValidNutzap)),
         ),
     [relay],
   );
@@ -205,20 +196,19 @@ export default function ZapFeed() {
   const summary = useMemo(() => {
     if (!nutzaps) return { totalAmount: 0, totalZaps: 0, uniqueMints: 0 };
 
-    const validNutzaps = nutzaps.filter(isValidNutzap);
-    const totalAmount = validNutzaps.reduce((sum, event) => sum + getNutzapAmount(event), 0);
-    const mints = validNutzaps.map(getNutzapMint).filter((mint): mint is string => mint !== undefined);
+    const totalAmount = nutzaps.reduce((sum, event) => sum + getNutzapAmount(event), 0);
+    const mints = nutzaps.map(getNutzapMint).filter((mint): mint is string => mint !== undefined);
     const uniqueMints = new Set(mints).size;
 
     return {
       totalAmount,
-      totalZaps: validNutzaps.length,
+      totalZaps: nutzaps.length,
       uniqueMints,
     };
   }, [nutzaps]);
 
   return (
-    <div className="container mx-auto my-8">
+    <div className="mx-auto max-w-4xl p-4">
       <div className="flex gap-2 mb-4">
         <RelayPicker value={relay} onChange={setRelay} />
       </div>

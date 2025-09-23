@@ -3,10 +3,12 @@ import {
   getHiddenContent,
   getOrComputeCachedValue,
   HiddenContentSigner,
-  isHiddenContentLocked,
-  isHiddenTagsLocked,
+  isHiddenContentUnlocked,
+  isHiddenTagsUnlocked,
   lockHiddenContent,
+  notifyEventUpdate,
   setHiddenContentEncryptionMethod,
+  UnlockedHiddenContent,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
@@ -46,12 +48,14 @@ export type TokenContent = {
 
 export const TokenContentSymbol = Symbol.for("token-content");
 
-/**
- * Returns the decrypted and parsed details of a 7375 token event
- * @throws
- */
+/** Type for token events with unlocked content */
+export type UnlockedTokenContent = UnlockedHiddenContent & {
+  [TokenContentSymbol]: TokenContent;
+};
+
+/** Returns the decrypted and parsed details of a 7375 token event */
 export function getTokenContent(token: NostrEvent): TokenContent | undefined {
-  if (isHiddenTagsLocked(token)) return undefined;
+  if (isHiddenTagsUnlocked(token) === false) return undefined;
 
   return getOrComputeCachedValue(token, TokenContentSymbol, () => {
     const plaintext = getHiddenContent(token);
@@ -68,14 +72,22 @@ export function getTokenContent(token: NostrEvent): TokenContent | undefined {
 }
 
 /** Returns if token details are locked */
-export function isTokenContentLocked(token: NostrEvent): boolean {
-  return isHiddenContentLocked(token);
+export function isTokenContentUnlocked<T extends NostrEvent>(token: T): token is T & UnlockedTokenContent {
+  return isHiddenContentUnlocked(token) && Reflect.has(token, TokenContentSymbol) === true;
 }
 
 /** Decrypts a k:7375 token event */
 export async function unlockTokenContent(token: NostrEvent, signer: HiddenContentSigner): Promise<TokenContent> {
-  if (isHiddenContentLocked(token)) await unlockHiddenContent(token, signer);
-  return getTokenContent(token)!;
+  const content = await unlockHiddenContent(token, signer);
+  const parsed = JSON.parse(content) as TokenContent;
+
+  // Save the parsed content
+  Reflect.set(token, TokenContentSymbol, parsed);
+
+  // Trigger update for event
+  notifyEventUpdate(token);
+
+  return parsed;
 }
 
 /** Removes the unencrypted hidden content */
@@ -89,7 +101,7 @@ export function lockTokenContent(token: NostrEvent) {
  * @param token The token event to calculate the total
  */
 export function getTokenProofsTotal(token: NostrEvent): number | undefined {
-  if (isTokenContentLocked(token)) return undefined;
+  if (isTokenContentUnlocked(token)) return undefined;
 
   const content = getTokenContent(token)!;
   return content.proofs.reduce((t, p) => t + p.amount, 0);
@@ -106,7 +118,7 @@ export function dumbTokenSelection(
 ): { events: NostrEvent[]; proofs: Proof[] } {
   // sort newest to oldest
   const sorted = tokens
-    .filter((token) => !isTokenContentLocked(token) && (mint ? getTokenContent(token)!.mint === mint : true))
+    .filter((token) => !isTokenContentUnlocked(token) && (mint ? getTokenContent(token)!.mint === mint : true))
     .sort((a, b) => b.created_at - a.created_at);
 
   let amount = 0;

@@ -1,6 +1,6 @@
 import { Model } from "applesauce-core";
 import { filter, map, merge } from "rxjs";
-import { getWalletMints, getWalletPrivateKey, isWalletLocked, WALLET_KIND } from "../helpers/wallet.js";
+import { getWalletMints, getWalletPrivateKey, isWalletUnlocked, WALLET_KIND } from "../helpers/wallet.js";
 import { NostrEvent } from "nostr-tools";
 
 export type WalletInfo =
@@ -24,7 +24,7 @@ export function WalletModel(pubkey: string): Model<WalletInfo | undefined> {
       map((wallet) => {
         if (!wallet) return;
 
-        if (isWalletLocked(wallet)) return { locked: true, event: wallet };
+        if (isWalletUnlocked(wallet)) return { locked: true, event: wallet };
 
         const mints = getWalletMints(wallet);
         const privateKey = getWalletPrivateKey(wallet);

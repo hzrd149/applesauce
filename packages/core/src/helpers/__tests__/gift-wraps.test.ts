@@ -2,7 +2,6 @@ import { finalizeEvent, kinds, NostrEvent } from "nostr-tools";
 import { wrapEvent } from "nostr-tools/nip59";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { unlockEncryptedContent } from "../encrypted-content.js";
 import {
   getGiftWrapRumor,
   getGiftWrapSeal,
@@ -11,9 +10,8 @@ import {
   getSealGiftWrap,
   getSealRumor,
   internalGiftWrapEvents,
-  isGiftWrapLocked,
+  isGiftWrapUnlocked,
   isRumor,
-  isSealLocked,
   unlockGiftWrap,
   type Rumor,
 } from "../gift-wraps.js";
@@ -76,7 +74,7 @@ describe("gift wrap reference management", () => {
   });
 
   it("should be locked initially", () => {
-    expect(isGiftWrapLocked(giftWrapEvent)).toBe(true);
+    expect(isGiftWrapUnlocked(giftWrapEvent)).toBe(false);
   });
 
   describe("after unlocking", () => {
@@ -85,7 +83,7 @@ describe("gift wrap reference management", () => {
     });
 
     it("should not be locked after unlocking", () => {
-      expect(isGiftWrapLocked(giftWrapEvent)).toBe(false);
+      expect(isGiftWrapUnlocked(giftWrapEvent)).toBe(true);
     });
 
     it("should have seal event reference on gift wrap", () => {
@@ -153,38 +151,19 @@ describe("unlockGiftWrap in various states", () => {
   });
 
   it("should unlock when both gift wrap and seal are locked", async () => {
-    expect(isGiftWrapLocked(giftWrapEvent)).toBe(true);
+    expect(isGiftWrapUnlocked(giftWrapEvent)).toBe(false);
 
     const rumor = await unlockGiftWrap(giftWrapEvent, bob);
 
     expect(rumor).toBeDefined();
     expect(rumor.content).toBe(rumorEvent.content);
-    expect(isGiftWrapLocked(giftWrapEvent)).toBe(false);
-  });
-
-  it("should unlock when gift wrap is decrypted but seal is still locked", async () => {
-    // First decrypt the gift wrap but not the seal
-    await unlockEncryptedContent(giftWrapEvent, giftWrapEvent.pubkey, bob);
-
-    // Verify gift wrap is unlocked but overall still locked due to seal
-    const seal = getGiftWrapSeal(giftWrapEvent);
-    expect(seal).toBeDefined();
-    expect(isSealLocked(seal!)).toBe(true);
-    expect(isGiftWrapLocked(giftWrapEvent)).toBe(true);
-
-    // Now unlock everything
-    const rumor = await unlockGiftWrap(giftWrapEvent, bob);
-
-    expect(rumor).toBeDefined();
-    expect(rumor.content).toBe(rumorEvent.content);
-    expect(isGiftWrapLocked(giftWrapEvent)).toBe(false);
-    expect(isSealLocked(seal!)).toBe(false);
+    expect(isGiftWrapUnlocked(giftWrapEvent)).toBe(true);
   });
 
   it("should handle already unlocked gift wrap", async () => {
     // First unlock
     await unlockGiftWrap(giftWrapEvent, bob);
-    expect(isGiftWrapLocked(giftWrapEvent)).toBe(false);
+    expect(isGiftWrapUnlocked(giftWrapEvent)).toBe(true);
 
     // Unlock again - should work without issues
     const rumor = await unlockGiftWrap(giftWrapEvent, bob);

@@ -6,7 +6,7 @@ import { getIndexableTags } from "./event-tags.js";
 export { Filter } from "nostr-tools/filter";
 
 /**
- * Copied from nostr-tools and modified to use getIndexableTags
+ * Copied from nostr-tools and modified to use {@link getIndexableTags}
  * @see https://github.com/nbd-wtf/nostr-tools/blob/a61cde77eacc9518001f11d7f67f1a50ae05fd80/filter.ts
  */
 export function matchFilter(filter: Filter, event: NostrEvent): boolean {
@@ -37,7 +37,7 @@ export function matchFilter(filter: Filter, event: NostrEvent): boolean {
   return true;
 }
 
-/** Copied from nostr-tools */
+/** Copied from nostr-tools and modified to use {@link matchFilter} */
 export function matchFilters(filters: Filter[], event: NostrEvent): boolean {
   for (let i = 0; i < filters.length; i++) {
     if (matchFilter(filters[i], event)) {
@@ -47,7 +47,7 @@ export function matchFilters(filters: Filter[], event: NostrEvent): boolean {
   return false;
 }
 
-/** Copied from nostr-tools and modified to support undefined  */
+/** Copied from nostr-tools and modified to support undefined values */
 export function mergeFilters(...filters: Filter[]): Filter {
   let result: Filter = {};
   for (let i = 0; i < filters.length; i++) {
@@ -78,6 +78,6 @@ export function mergeFilters(...filters: Filter[]): Filter {
 }
 
 /** Check if two filters are equal */
-export function isFilterEqual(a: Filter | Filter[], b: Filter | Filter[]) {
+export function isFilterEqual(a: Filter | Filter[], b: Filter | Filter[]): boolean {
   return equal(a, b);
 }

@@ -5,7 +5,7 @@ import { getOrComputeCachedValue } from "./cache.js";
 import { isSafeRelayURL } from "./relays.js";
 import { isPTag, processTags } from "./tags.js";
 import { getProfilePointerFromPTag } from "./pointers.js";
-import { getHiddenTags, isHiddenTagsLocked } from "./hidden-tags.js";
+import { getHiddenTags, isHiddenTagsUnlocked } from "./hidden-tags.js";
 
 export const ContactsRelaysSymbol = Symbol.for("contacts-relays");
 export const PublicContactsSymbol = Symbol.for("public-contacts");
@@ -62,7 +62,7 @@ export function getPublicContacts(event: NostrEvent): ProfilePointer[] {
 
 /** Returns only the hidden contacts from a contacts list event */
 export function getHiddenContacts(event: NostrEvent): ProfilePointer[] | undefined {
-  if (isHiddenTagsLocked(event)) return undefined;
+  if (isHiddenTagsUnlocked(event)) return undefined;
 
   return getOrComputeCachedValue(event, HiddenContactsSymbol, () =>
     processTags(getHiddenTags(event)!, (t) => (isPTag(t) ? t : undefined), getProfilePointerFromPTag),

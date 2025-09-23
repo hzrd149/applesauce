@@ -4,7 +4,6 @@ import { SendLegacyMessage } from "applesauce-actions/actions";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import {
   getTagValue,
-  isLegacyMessageLocked,
   lockEncryptedContent,
   persistEncryptedContent,
   persistEventsToCache,
@@ -234,8 +233,7 @@ function DirectMessageView({
 
   const decryptAll = async () => {
     try {
-      for (const message of messages)
-        if (isLegacyMessageLocked(message)) await unlockLegacyMessage(message, pubkey, signer);
+      for (const message of messages) await unlockLegacyMessage(message, pubkey, signer);
     } catch (error) {
       // Stop of first error
     }

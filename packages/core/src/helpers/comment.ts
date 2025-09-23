@@ -4,8 +4,12 @@ import { ExternalPointer, ExternalIdentifiers, getExternalPointerFromTag } from 
 import { getOrComputeCachedValue } from "./cache.js";
 import { getAddressPointerFromATag } from "./pointers.js";
 import { isSafeRelayURL } from "./relays.js";
+import { KnownEvent } from "./index.js";
 
 export const COMMENT_KIND = 1111;
+
+/** Type for validated comment events */
+export type CommentEvent = KnownEvent<typeof COMMENT_KIND>;
 
 export type CommentEventPointer = {
   type: "event";
@@ -34,16 +38,14 @@ export type CommentPointer =
 export const CommentRootPointerSymbol = Symbol.for("comment-root-pointer");
 export const CommentReplyPointerSymbol = Symbol.for("comment-reply-pointer");
 
-/**
- * Gets the EventPointer from an array of tags
- * @throws
- */
+/** Gets the EventPointer from an array of tags */
 export function getCommentEventPointer(tags: string[][], root = false): CommentEventPointer | null {
   const eTag = tags.find((t) => t[0] === (root ? "E" : "e"));
   const kind = tags.find((t) => t[0] === (root ? "K" : "k"))?.[1];
 
   if (eTag) {
-    if (!kind) throw new Error("Missing kind tag");
+    // Missing kind tag, return null
+    if (!kind) return null;
 
     // only the root pubkey can be gotten from the tags, since due to quotes and mentions there will be many "p" tags for replies
     const rootPubkey = root ? tags.find((t) => t[0] === "P")?.[1] : undefined;
@@ -61,17 +63,15 @@ export function getCommentEventPointer(tags: string[][], root = false): CommentE
   return null;
 }
 
-/**
- * Gets the AddressPointer from an array of tags
- * @throws
- */
+/** Gets the AddressPointer from an array of tags */
 export function getCommentAddressPointer(tags: string[][], root = false): CommentAddressPointer | null {
   const aTag = tags.find((t) => t[0] === (root ? "A" : "a"));
   const eTag = tags.find((t) => t[0] === (root ? "E" : "e"));
   const kind = tags.find((t) => t[0] === (root ? "K" : "k"))?.[1];
 
   if (aTag) {
-    if (!kind) throw new Error("Missing kind tag");
+    // Missing kind tag, return null
+    if (!kind) return null;
 
     const addressPointer = getAddressPointerFromATag(aTag);
     const pointer: CommentAddressPointer = {
@@ -88,20 +88,14 @@ export function getCommentAddressPointer(tags: string[][], root = false): Commen
   return null;
 }
 
-/**
- * Gets the ExternalPointer from an array of tags
- * @throws
- */
+/** Gets the ExternalPointer from an array of tags */
 export function getCommentExternalPointer(
   tags: string[][],
   root = false,
 ): CommentExternalPointer<keyof ExternalIdentifiers> | null {
   const iTag = tags.find((t) => t[0] === (root ? "I" : "i"));
-  const kind = tags.find((t) => t[0] === (root ? "K" : "k"))?.[1];
 
   if (iTag) {
-    if (!kind) throw new Error("Missing kind tag");
-
     return {
       type: "external",
       ...getExternalPointerFromTag(iTag),
@@ -110,12 +104,11 @@ export function getCommentExternalPointer(
   return null;
 }
 
-/**
- * Returns the root pointer for a comment
- * @throws
- */
+/** Returns the root pointer for a comment */
+export function getCommentRootPointer(comment: CommentEvent): CommentPointer;
+export function getCommentRootPointer(comment: NostrEvent): CommentPointer | null;
 export function getCommentRootPointer(comment: NostrEvent): CommentPointer | null {
-  if (comment.kind !== COMMENT_KIND) throw new Error("Event is not a comment");
+  if (comment.kind !== COMMENT_KIND) return null;
 
   return getOrComputeCachedValue(comment, CommentRootPointerSymbol, () => {
     // check for address pointer first since it can also have E tags
@@ -132,12 +125,9 @@ export function getCommentRootPointer(comment: NostrEvent): CommentPointer | nul
   });
 }
 
-/**
- * Returns the reply pointer for a comment
- * @throws
- */
+/** Returns the reply pointer for a comment */
 export function getCommentReplyPointer(comment: NostrEvent): CommentPointer | null {
-  if (comment.kind !== COMMENT_KIND) throw new Error("Event is not a comment");
+  if (comment.kind !== COMMENT_KIND) return null;
 
   return getOrComputeCachedValue(comment, CommentReplyPointerSymbol, () => {
     // check for address pointer first since it can also have E tags
@@ -154,6 +144,7 @@ export function getCommentReplyPointer(comment: NostrEvent): CommentPointer | nu
   });
 }
 
+/** Checks if a pointer is a {@link CommentEventPointer} */
 export function isCommentEventPointer(pointer: any): pointer is CommentEventPointer {
   return (
     Reflect.has(pointer, "id") &&
@@ -163,11 +154,19 @@ export function isCommentEventPointer(pointer: any): pointer is CommentEventPoin
   );
 }
 
+/** Checks if a pointer is a {@link CommentAddressPointer} */
 export function isCommentAddressPointer(pointer: any): pointer is CommentAddressPointer {
   return (
     Reflect.has(pointer, "identifier") &&
     Reflect.has(pointer, "pubkey") &&
     Reflect.has(pointer, "kind") &&
     typeof pointer.kind === "number"
+  );
+}
+
+/** Checks if a comment event is valid */
+export function isValidComment(comment: NostrEvent): comment is CommentEvent {
+  return (
+    comment.kind === COMMENT_KIND && getCommentRootPointer(comment) !== null && getCommentReplyPointer(comment) !== null
   );
 }

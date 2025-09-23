@@ -128,7 +128,7 @@ export function isValidList(event: NostrEvent): boolean {
       // event is a set
 
       // ensure the set has an identifier
-      getReplaceableIdentifier(event);
+      if (!getReplaceableIdentifier(event)) return false;
 
       return true;
     } else if (isReplaceableKind(event.kind) && event.kind >= 10000 && event.kind < 20000) {

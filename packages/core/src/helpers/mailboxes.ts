@@ -8,7 +8,7 @@ export const MailboxesInboxesSymbol = Symbol.for("mailboxes-inboxes");
 export const MailboxesOutboxesSymbol = Symbol.for("mailboxes-outboxes");
 
 /** Parses a 10002 event and stores the inboxes in the event using the {@link MailboxesInboxesSymbol} symbol */
-export function getInboxes(event: NostrEvent) {
+export function getInboxes(event: NostrEvent): string[] {
   return getOrComputeCachedValue(event, MailboxesInboxesSymbol, () => {
     const inboxes: string[] = [];
 
@@ -31,7 +31,7 @@ export function getInboxes(event: NostrEvent) {
 }
 
 /** Parses a 10002 event and stores the outboxes in the event using the {@link MailboxesOutboxesSymbol} symbol */
-export function getOutboxes(event: NostrEvent) {
+export function getOutboxes(event: NostrEvent): string[] {
   return getOrComputeCachedValue(event, MailboxesOutboxesSymbol, () => {
     const outboxes: string[] = [];
 

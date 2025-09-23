@@ -14,6 +14,9 @@ export {
 } from "nostr-tools/utils";
 export * as kinds from "nostr-tools/kinds";
 
+/** An event with a known kind. this is used to know if events have been validated */
+export type KnownEvent<K extends number> = Omit<NostrEvent, "kind"> & { kind: K };
+
 /** A symbol on an event that marks which event store its part of */
 export const EventStoreSymbol = Symbol.for("event-store");
 export const EventUIDSymbol = Symbol.for("event-uid");
@@ -106,7 +109,9 @@ export function getParentEventStore<T extends object>(event: T): IEventStore | u
 }
 
 /** Notifies the events parent store that an event has been updated */
-export function notifyEventUpdate(event: NostrEvent) {
+export function notifyEventUpdate(event: any) {
+  if (!isEvent(event)) return;
+
   const eventStore = getParentEventStore(event);
   if (eventStore) eventStore.update(event);
 }

@@ -2,17 +2,17 @@ import { kinds, NostrEvent } from "nostr-tools";
 import { identity, map, of } from "rxjs";
 
 import { Model } from "../event-store/interface.js";
-import { getGiftWrapRumor, isGiftWrapLocked, Rumor } from "../helpers/gift-wraps.js";
+import { getGiftWrapRumor, isGiftWrapUnlocked, Rumor } from "../helpers/gift-wraps.js";
 import { watchEventsUpdates, watchEventUpdates } from "../observable/watch-event-updates.js";
 
 /** A model that returns all gift wrap events for a pubkey, optionally filtered by locked status */
-export function GiftWrapsModel(pubkey: string, locked?: boolean): Model<NostrEvent[]> {
+export function GiftWrapsModel(pubkey: string, unlocked?: boolean): Model<NostrEvent[]> {
   return (store) =>
     store.timeline({ kinds: [kinds.GiftWrap], "#p": [pubkey] }).pipe(
       // Update the timeline when events are updated
       watchEventsUpdates(store),
-      // If lock is specified filter on locked status
-      locked !== undefined ? map((events) => events.filter((e) => isGiftWrapLocked(e) === locked)) : identity,
+      // If unlock is specified filter on unlocked status
+      unlocked !== undefined ? map((events) => events.filter((e) => isGiftWrapUnlocked(e) === unlocked)) : identity,
     );
 }
 

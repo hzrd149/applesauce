@@ -5,17 +5,19 @@ import {
   getProfilePicture,
   getSeenRelays,
   getZapEventPointer,
-  getZapPayment,
   getZapSender,
   mergeRelaySets,
   persistEventsToCache,
   ProfileContent,
+  KnownEvent,
+  isValidZap,
+  getZapAmount,
 } from "applesauce-core/helpers";
 import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { Filter, kinds, NostrEvent } from "nostr-tools";
+import { Filter, kinds } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useState } from "react";
 import { map } from "rxjs";
@@ -77,11 +79,10 @@ function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
   return <>{getDisplayName(profile, "unknown")}</>;
 }
 
-function ZapEvent({ event }: { event: NostrEvent }) {
+function ZapEvent({ event }: { event: KnownEvent<kinds.Zap> }) {
   const pointer = getZapEventPointer(event) ?? undefined;
-  const payment = getZapPayment(event);
-  const senderPubkey = getZapSender(event);
-  const zapAmount = payment?.amount ? Math.round(payment.amount / 1000) : 0; // Convert msats to sats
+  const sender = getZapSender(event);
+  const amount = Math.round(getZapAmount(event) / 1000); // Convert msats to sats
 
   // Load the shared event from the pointer
   useEffect(() => {
@@ -100,13 +101,13 @@ function ZapEvent({ event }: { event: NostrEvent }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2 items-center">
-        <Avatar pubkey={senderPubkey} relays={relays} />
+        <Avatar pubkey={sender} relays={relays} />
         <h2>
           <span className="font-bold">
-            <Username pubkey={senderPubkey} relays={relays} />
+            <Username pubkey={sender} relays={relays} />
           </span>
           <span> zapped </span>
-          <span className="text-warning font-bold">{zapAmount} sats</span>
+          <span className="text-warning font-bold">{amount} sats</span>
         </h2>
         <time className="ms-auto text-sm text-gray-500">{new Date(event.created_at * 1000).toLocaleString()}</time>
       </div>
@@ -172,7 +173,7 @@ export default function ZapsTimeline() {
       </div>
 
       <div className="flex flex-col gap-4">
-        {zaps?.map((event) => (
+        {zaps?.filter(isValidZap).map((event) => (
           <ZapEvent key={event.id} event={event} />
         ))}
       </div>

@@ -4,7 +4,7 @@ import {
   APP_DATA_KIND,
   getAppDataContent,
   getAppDataEncryption,
-  isAppDataLocked,
+  isAppDataUnlocked,
   unlockAppData,
 } from "applesauce-core/helpers/app-data";
 import { EventFactory } from "applesauce-factory";
@@ -38,7 +38,7 @@ const EventDetails = ({
   const [error, setError] = useState<string | null>(null);
 
   const encryption = getAppDataEncryption(event);
-  const isLocked = isAppDataLocked(event);
+  const unlocked = isAppDataUnlocked(event);
   const contentSize = event.content.length;
   const tagCount = event.tags.length;
   const createdAt = new Date(event.created_at * 1000).toLocaleString();
@@ -54,7 +54,7 @@ const EventDetails = ({
 
   // Decrypt encrypted content
   const handleDecrypt = useCallback(async () => {
-    if (!encryption || !isLocked) return;
+    if (!encryption || unlocked) return;
 
     try {
       setIsDecrypting(true);
@@ -67,7 +67,7 @@ const EventDetails = ({
     } finally {
       setIsDecrypting(false);
     }
-  }, [event, encryption, isLocked]);
+  }, [event, encryption, unlocked]);
 
   return (
     <div className="card bg-base-100 shadow-md">
@@ -124,7 +124,7 @@ const EventDetails = ({
           </div>
         )}
 
-        {encryption && isLocked && (
+        {encryption && !unlocked && (
           <div className="mb-4">
             <button
               className={`btn btn-sm ${isDecrypting ? "btn-disabled" : "btn-primary"}`}

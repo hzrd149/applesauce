@@ -39,7 +39,7 @@ function CliExample({ app }: { app: () => Promise<void> }) {
   const term = useRef<TerminalInterface | null>(null);
 
   // Create the terminal when component mounts
-  useEffect(() => {
+  useMount(() => {
     if (!ref.current) throw new Error("Container element not found");
 
     term.current = new BrowserTerminalInterface(ref.current);

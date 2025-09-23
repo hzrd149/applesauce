@@ -89,12 +89,12 @@ describe("getZapRecipient", () => {
     expect(Reflect.has(zapEvent, ZapReceiverSymbol)).toBe(true);
   });
 
-  it("should throw error if p tag is missing", () => {
+  it("should return undefined if p tag is missing", () => {
     const eventWithoutPTag = {
       ...zapEvent,
       tags: zapEvent.tags.filter((tag) => tag[0] !== "p"),
     };
-    expect(() => getZapRecipient(eventWithoutPTag)).toThrow("Missing recipient");
+    expect(getZapRecipient(eventWithoutPTag)).toBe(undefined);
   });
 });
 
@@ -210,12 +210,12 @@ describe("getZapRequest", () => {
     expect(Reflect.has(zapEvent, ZapRequestSymbol)).toBe(true);
   });
 
-  it("should throw error if description tag is missing", () => {
+  it("should return undefined if description tag is missing", () => {
     const eventWithoutDescription = {
       ...zapEvent,
       tags: zapEvent.tags.filter((tag) => tag[0] !== "description"),
     };
-    expect(() => getZapRequest(eventWithoutDescription)).toThrow("Missing description tag");
+    expect(getZapRequest(eventWithoutDescription)).toBe(undefined);
   });
 });
 

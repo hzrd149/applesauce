@@ -1,12 +1,11 @@
 import {
-  getHiddenTags,
-  getOrComputeCachedValue,
   HiddenContentSigner,
   isETag,
-  isHiddenContentLocked,
-  isHiddenTagsLocked,
+  isHiddenTagsUnlocked,
   lockHiddenTags,
+  notifyEventUpdate,
   setHiddenTagsEncryptionMethod,
+  UnlockedHiddenTags,
   unlockHiddenTags,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
@@ -33,45 +32,56 @@ export type HistoryContent = {
 
 export const HistoryContentSymbol = Symbol.for("history-content");
 
+/** Type for unlocked history events */
+export type UnlockedHistoryContent = UnlockedHiddenTags & {
+  [HistoryContentSymbol]: HistoryContent;
+};
+
 /** returns an array of redeemed event ids in a history event */
 export function getHistoryRedeemed(history: NostrEvent): string[] {
   return history.tags.filter((t) => isETag(t) && t[3] === "redeemed").map((t) => t[1]);
 }
 
 /** Checks if the history contents are locked */
-export function isHistoryContentLocked(history: NostrEvent): boolean {
-  return isHiddenTagsLocked(history);
+export function isHistoryContentUnlocked<T extends NostrEvent>(history: T): history is T & UnlockedHistoryContent {
+  return isHiddenTagsUnlocked(history) && Reflect.has(history, HistoryContentSymbol) === true;
 }
 
 /** Returns the parsed content of a 7376 history event */
-export function getHistoryContent(history: NostrEvent): HistoryContent | undefined {
-  if (isHistoryContentLocked(history)) return undefined;
-
-  return getOrComputeCachedValue(history, HistoryContentSymbol, () => {
-    const tags = getHiddenTags(history);
-    if (!tags) throw new Error("History event is locked");
-
-    const direction = tags.find((t) => t[0] === "direction")?.[1] as HistoryDirection | undefined;
-    if (!direction) throw new Error("History event missing direction");
-    const amountStr = tags.find((t) => t[0] === "amount")?.[1];
-    if (!amountStr) throw new Error("History event missing amount");
-    const amount = parseInt(amountStr);
-    if (!Number.isFinite(amount)) throw new Error("Failed to parse amount");
-
-    const mint = tags.find((t) => t[0] === "mint")?.[1];
-    const feeStr = tags.find((t) => t[0] === "fee")?.[1];
-    const fee = feeStr ? parseInt(feeStr) : undefined;
-
-    const created = tags.filter((t) => isETag(t) && t[3] === "created").map((t) => t[1]);
-
-    return { direction, amount, created, mint, fee };
-  });
+export function getHistoryContent<T extends UnlockedHiddenTags>(history: T): HistoryContent;
+export function getHistoryContent<T extends NostrEvent>(history: T): HistoryContent | undefined;
+export function getHistoryContent<T extends NostrEvent>(history: T): HistoryContent | undefined {
+  if (isHistoryContentUnlocked(history)) return history[HistoryContentSymbol];
+  else return undefined;
 }
 
 /** Decrypts a wallet history event */
 export async function unlockHistoryContent(history: NostrEvent, signer: HiddenContentSigner): Promise<HistoryContent> {
-  if (isHiddenContentLocked(history)) await unlockHiddenTags(history, signer);
-  return getHistoryContent(history)!;
+  if (isHistoryContentUnlocked(history)) return history[HistoryContentSymbol];
+
+  const tags = await unlockHiddenTags(history, signer);
+  if (!tags) throw new Error("History event is locked");
+
+  const direction = tags.find((t) => t[0] === "direction")?.[1] as HistoryDirection | undefined;
+  if (!direction) throw new Error("History event missing direction");
+  const amountStr = tags.find((t) => t[0] === "amount")?.[1];
+  if (!amountStr) throw new Error("History event missing amount");
+  const amount = parseInt(amountStr);
+  if (!Number.isFinite(amount)) throw new Error("Failed to parse amount");
+
+  const mint = tags.find((t) => t[0] === "mint")?.[1];
+  const feeStr = tags.find((t) => t[0] === "fee")?.[1];
+  const fee = feeStr ? parseInt(feeStr) : undefined;
+
+  const created = tags.filter((t) => isETag(t) && t[3] === "created").map((t) => t[1]);
+
+  const content = { direction, amount, created, mint, fee };
+
+  // Set the cached value
+  Reflect.set(history, HistoryContentSymbol, content);
+  notifyEventUpdate(history);
+
+  return content;
 }
 
 export function lockHistoryContent(history: NostrEvent) {

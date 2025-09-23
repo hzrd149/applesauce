@@ -1,5 +1,5 @@
 import { EventStore } from "applesauce-core";
-import { isGiftWrapLocked, persistEncryptedContent, unlockGiftWrap } from "applesauce-core/helpers";
+import { isGiftWrapUnlocked, persistEncryptedContent, unlockGiftWrap } from "applesauce-core/helpers";
 import { GiftWrapsModel, GiftWrapRumorModel } from "applesauce-core/models";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
@@ -115,7 +115,7 @@ function LoginView({ onLogin }: { onLogin: (signer: ExtensionSigner, pubkey: str
 
 function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ExtensionSigner }) {
   const [unlocking, setUnlocking] = useState(false);
-  const locked = isGiftWrapLocked(event);
+  const unlocked = isGiftWrapUnlocked(event);
 
   // Subscribe to when the rumor is unlocked
   const rumor = useObservableMemo(() => eventStore.model(GiftWrapRumorModel, event.id), [event.id]);
@@ -134,7 +134,7 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: Extension
   return (
     <div className="card bg-base-100 shadow-md mb-4">
       <div className="card-body">
-        {locked ? (
+        {unlocked === false ? (
           <>
             <h3 className="card-title">Locked Gift Wrap</h3>
 
@@ -161,9 +161,9 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner 
   const events = useObservableEagerMemo(() => {
     switch (filter) {
       case "locked":
-        return eventStore.model(GiftWrapsModel, pubkey, true).pipe(map((t) => [...t]));
-      case "unlocked":
         return eventStore.model(GiftWrapsModel, pubkey, false).pipe(map((t) => [...t]));
+      case "unlocked":
+        return eventStore.model(GiftWrapsModel, pubkey, true).pipe(map((t) => [...t]));
       default:
         return eventStore.model(GiftWrapsModel, pubkey).pipe(map((t) => [...t]));
     }

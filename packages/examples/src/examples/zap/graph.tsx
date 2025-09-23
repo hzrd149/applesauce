@@ -1,5 +1,5 @@
 import { EventStore } from "applesauce-core";
-import { getZapPayment, getZapRecipient, isValidZap, normalizeToPubkey } from "applesauce-core/helpers";
+import { getZapAmount, getZapRecipient, isValidZap, normalizeToPubkey } from "applesauce-core/helpers";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -37,12 +37,11 @@ function prepareChartData(events: NostrEvent[], userPubkey: string, mode: ChartM
     .filter(isValidZap)
     .map((event) => {
       try {
-        const payment = getZapPayment(event);
-        if (!payment?.amount && mode === "amount") return null;
+        const amount = getZapAmount(event);
 
         return {
           timestamp: event.created_at,
-          amount: payment?.amount ? Math.round(payment.amount / 1000) : 1, // Convert msats to sats or use 1 for counting
+          amount: Math.round(amount / 1000), // Convert msats to sats or use 1 for counting
           isIncoming: getZapRecipient(event) === userPubkey,
         };
       } catch (error) {

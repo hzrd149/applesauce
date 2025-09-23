@@ -17,13 +17,10 @@ export type GroupPointer = {
   name?: string;
 };
 
-/**
- * decodes a group identifier into a group pointer object
- * @throws
- */
-export function decodeGroupPointer(str: string): GroupPointer {
+/** decodes a group identifier into a group pointer object */
+export function decodeGroupPointer(str: string): GroupPointer | null {
   let [relay, id] = str.split("'");
-  if (!relay) throw new Error("Group pointer missing relay");
+  if (!relay) return null;
 
   // Prepend wss:// if missing
   if (!relay.match(/^wss?:/)) relay = `wss://${relay}`;
@@ -35,7 +32,7 @@ export function decodeGroupPointer(str: string): GroupPointer {
 }
 
 /** Converts a group pointer into a group identifier */
-export function encodeGroupPointer(pointer: GroupPointer) {
+export function encodeGroupPointer(pointer: GroupPointer): string {
   const hostname = URL.canParse(pointer.relay) ? new URL(pointer.relay).hostname : pointer.relay;
 
   return `${hostname}'${pointer.id}`;

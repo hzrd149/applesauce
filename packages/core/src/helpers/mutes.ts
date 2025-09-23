@@ -1,6 +1,6 @@
 import { kinds, NostrEvent } from "nostr-tools";
 import { getOrComputeCachedValue } from "./cache.js";
-import { getHiddenTags, isHiddenTagsLocked } from "./hidden-tags.js";
+import { getHiddenTags, isHiddenTagsUnlocked } from "./hidden-tags.js";
 import { getIndexableTags, getNip10References } from "./index.js";
 import { isETag, isPTag, isTTag } from "./tags.js";
 
@@ -52,7 +52,7 @@ export function getPublicMutedThings(mute: NostrEvent): Mutes {
 
 /** Returns the hidden muted content if the event is unlocked */
 export function getHiddenMutedThings(mute: NostrEvent): Mutes | undefined {
-  if (isHiddenTagsLocked(mute)) return undefined;
+  if (isHiddenTagsUnlocked(mute)) return undefined;
 
   return getOrComputeCachedValue(mute, MuteHiddenSymbol, () => parseMutedTags(getHiddenTags(mute)!));
 }

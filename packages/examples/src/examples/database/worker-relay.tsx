@@ -1,6 +1,15 @@
 import { WorkerRelayInterface } from "@snort/worker-relay";
 import { AsyncEventStore, BehaviorSubject, IAsyncEventDatabase } from "applesauce-core";
-import { Filter, NostrEvent, getDisplayName, getProfileContent, getProfilePicture } from "applesauce-core/helpers";
+import {
+  Filter,
+  KnownEvent,
+  NostrEvent,
+  getDisplayName,
+  getProfileContent,
+  getProfilePicture,
+  isValidProfile,
+  kinds,
+} from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
@@ -156,7 +165,7 @@ function AnyEventTable({ events }: { events: NostrEvent[] }) {
   );
 }
 
-function ProfileList({ events }: { events: NostrEvent[] }) {
+function ProfileList({ events }: { events: KnownEvent<kinds.Metadata>[] }) {
   return (
     <ul className="list bg-base-100 rounded-box shadow-md">
       {events.map((event) => {
@@ -324,7 +333,7 @@ export default function WorkerRelaySearch() {
       {/* Results Table */}
       {searchResults.length > 0 &&
         (kind === 0 ? (
-          <ProfileList events={searchResults.filter((e) => e.kind === 0)} />
+          <ProfileList events={searchResults.filter(isValidProfile)} />
         ) : kind === 1 ? (
           <NotesList events={searchResults.filter((e) => e.kind === 1)} />
         ) : (

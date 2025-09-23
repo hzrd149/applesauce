@@ -3,7 +3,12 @@ import { Action } from "applesauce-actions";
 import { DeleteBlueprint } from "applesauce-factory/blueprints";
 import { NostrEvent } from "nostr-tools";
 
-import { getTokenContent, ignoreDuplicateProofs, isTokenContentLocked, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
+import {
+  getTokenContent,
+  ignoreDuplicateProofs,
+  isTokenContentUnlocked,
+  WALLET_TOKEN_KIND,
+} from "../helpers/tokens.js";
 import { WalletTokenBlueprint } from "../blueprints/tokens.js";
 import { WalletHistoryBlueprint } from "../blueprints/history.js";
 
@@ -56,7 +61,7 @@ export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
 export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
   return async function* ({ factory }) {
     if (spent.length === 0) throw new Error("Cant complete spent with no token events");
-    if (spent.some((s) => isTokenContentLocked(s))) throw new Error("Cant complete spend with locked tokens");
+    if (spent.some((s) => isTokenContentUnlocked(s))) throw new Error("Cant complete spend with locked tokens");
 
     // create the nip-09 delete event for previous events
     const deleteDraft = await factory.create(DeleteBlueprint, spent);
@@ -106,7 +111,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
 export function ConsolidateTokens(opts?: { ignoreLocked?: boolean }): Action {
   return async function* ({ events, factory, self }) {
     const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] })).filter((token) => {
-      if (isTokenContentLocked(token)) {
+      if (isTokenContentUnlocked(token)) {
         if (opts?.ignoreLocked) return false;
         else throw new Error("Token is locked");
       } else return true;

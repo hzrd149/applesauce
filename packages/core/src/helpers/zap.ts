@@ -5,6 +5,7 @@ import { getOrComputeCachedValue } from "./cache.js";
 import { getTagValue } from "./event-tags.js";
 import { getAddressPointerFromATag, getEventPointerFromETag } from "./pointers.js";
 import { isATag, isETag } from "./tags.js";
+import { KnownEvent } from "./index.js";
 
 export const ZapRequestSymbol = Symbol.for("zap-request");
 export const ZapSenderSymbol = Symbol.for("zap-sender");
@@ -14,30 +15,38 @@ export const ZapEventPointerSymbol = Symbol.for("zap-event-pointer");
 export const ZapAddressPointerSymbol = Symbol.for("zap-address-pointer");
 
 /** Returns the senders pubkey */
-export function getZapSender(zap: NostrEvent): string {
+export function getZapSender(zap: KnownEvent<kinds.Zap>): string;
+export function getZapSender(zap: NostrEvent): string | undefined;
+export function getZapSender(zap: NostrEvent): string | undefined {
   return getOrComputeCachedValue(zap, ZapSenderSymbol, () => {
-    return getTagValue(zap, "P") || getZapRequest(zap).pubkey;
+    return getTagValue(zap, "P") || getZapRequest(zap)?.pubkey;
   });
 }
 
-/**
- * Gets the receivers pubkey
- * @throws
- */
-export function getZapRecipient(zap: NostrEvent): string {
+/** Gets the receivers pubkey */
+export function getZapRecipient(zap: KnownEvent<kinds.Zap>): string;
+export function getZapRecipient(zap: NostrEvent): string | undefined;
+export function getZapRecipient(zap: NostrEvent): string | undefined {
   return getOrComputeCachedValue(zap, ZapReceiverSymbol, () => {
-    const recipient = getTagValue(zap, "p");
-    if (!recipient) throw new Error("Missing recipient");
-    return recipient;
+    return getTagValue(zap, "p");
   });
 }
 
 /** Returns the parsed bolt11 invoice */
+export function getZapPayment(zap: KnownEvent<kinds.Zap>): ParsedInvoice;
+export function getZapPayment(zap: NostrEvent): ParsedInvoice | undefined;
 export function getZapPayment(zap: NostrEvent): ParsedInvoice | undefined {
   return getOrComputeCachedValue(zap, ZapInvoiceSymbol, () => {
     const bolt11 = getTagValue(zap, "bolt11");
     return bolt11 ? parseBolt11(bolt11) : undefined;
   });
+}
+
+/** Returns the zap event amount in msats */
+export function getZapAmount(zap: KnownEvent<kinds.Zap>): number;
+export function getZapAmount(zap: NostrEvent): number | undefined;
+export function getZapAmount(zap: NostrEvent): number | undefined {
+  return getZapPayment(zap)?.amount;
 }
 
 /** Gets the AddressPointer that was zapped */
@@ -61,34 +70,41 @@ export function getZapPreimage(zap: NostrEvent): string | undefined {
   return getTagValue(zap, "preimage");
 }
 
-/**
- * Returns the zap request event inside the zap receipt
- * @throws
- */
-export function getZapRequest(zap: NostrEvent): NostrEvent {
+/** Returns the zap request event inside the zap receipt */
+export function getZapRequest(zap: KnownEvent<kinds.Zap>): NostrEvent;
+export function getZapRequest(zap: NostrEvent): NostrEvent | undefined;
+export function getZapRequest(zap: NostrEvent): NostrEvent | undefined {
   return getOrComputeCachedValue(zap, ZapRequestSymbol, () => {
     const description = getTagValue(zap, "description");
-    if (!description) throw new Error("Missing description tag");
-    const error = nip57.validateZapRequest(description);
-    if (error) throw new Error(error);
-    return JSON.parse(description) as NostrEvent;
+    if (!description) return;
+
+    // Attempt to parse the zap request
+    try {
+      const error = nip57.validateZapRequest(description);
+      if (error) return;
+
+      return JSON.parse(description) as NostrEvent;
+    } catch (error) {
+      return undefined;
+    }
   });
 }
 
 /**
- * Checks if the zap is valid
+ * Checks if a zap event is valid (not missing fields)
  * DOES NOT validate LNURL address
  */
-export function isValidZap(zap?: NostrEvent) {
+export function isValidZap(zap?: NostrEvent): zap is KnownEvent<kinds.Zap> {
   if (!zap) return false;
   if (zap.kind !== kinds.Zap) return false;
-  try {
-    getZapRequest(zap);
-    getZapRecipient(zap);
-    return true;
-  } catch (error) {
-    return false;
-  }
+
+  // Is not a valid zap kind if any of these is undefined
+  if (getZapPayment(zap) === undefined) return false;
+  if (getZapRequest(zap) === undefined) return false;
+  if (getZapRecipient(zap) === undefined) return false;
+  if (getZapSender(zap) === undefined) return false;
+
+  return true;
 }
 
 export type ZapSplit = { pubkey: string; percent: number; weight: number; relay?: string };

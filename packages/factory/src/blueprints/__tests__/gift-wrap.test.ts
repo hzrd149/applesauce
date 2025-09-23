@@ -5,7 +5,7 @@ import { EventFactory } from "../../event-factory.js";
 import { GiftWrapBlueprint } from "../gift-wrap.js";
 import { NoteBlueprint } from "../note.js";
 import { WrappedMessageBlueprint } from "../wrapped-messages";
-import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapLocked } from "applesauce-core/helpers";
+import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-core/helpers";
 
 const bob = new FakeUser();
 const alice = new FakeUser();
@@ -44,7 +44,7 @@ describe("GiftWrapBlueprint", () => {
       WrappedMessageBlueprint(alice.pubkey, "hello world"),
     );
 
-    expect(isGiftWrapLocked(event)).toBe(false);
+    expect(isGiftWrapUnlocked(event)).toBe(false);
     expect(getGiftWrapSeal(event)).toBeDefined();
     expect(getGiftWrapRumor(event)).toBeDefined();
     expect(getGiftWrapRumor(event)?.content).toBe("hello world");

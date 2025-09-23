@@ -158,7 +158,7 @@ export default function RelayGroupExample() {
     (identifier: string) => {
       try {
         setIdentifier(identifier);
-        setPointer(decodeGroupPointer(identifier));
+        setPointer(decodeGroupPointer(identifier) ?? undefined);
       } catch (error) {}
     },
     [setIdentifier, setPointer],

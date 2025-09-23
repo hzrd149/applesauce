@@ -1,6 +1,6 @@
 import { logger } from "applesauce-core";
 import { create, EventSigner } from "applesauce-factory";
-import { generateSecretKey, getPublicKey, NostrEvent, verifyEvent } from "nostr-tools";
+import { generateSecretKey, getPublicKey, verifyEvent } from "nostr-tools";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription } from "rxjs";
 
 import { bytesToHex } from "@noble/hashes/utils";
@@ -17,8 +17,8 @@ import {
   GetInfoParams,
   GetInfoRequest,
   getWalletRequest,
+  isValidWalletRequest,
   isWalletRequestExpired,
-  isWalletRequestLocked,
   ListTransactionsParams,
   ListTransactionsRequest,
   LookupInvoiceParams,
@@ -36,6 +36,7 @@ import {
   unlockWalletRequest,
   WALLET_REQUEST_KIND,
   WalletRequest,
+  WalletRequestEvent,
 } from "./helpers/request.js";
 import {
   GetBalanceResult,
@@ -159,7 +160,7 @@ export class WalletService {
   public client: string;
 
   /** Shared observable for all wallet request events */
-  protected events$: Observable<NostrEvent> | null = null;
+  protected events$: Observable<WalletRequestEvent> | null = null;
 
   /** Subscription to the events observable */
   protected subscription: Subscription | null = null;
@@ -229,7 +230,9 @@ export class WalletService {
       // Ignore strings (support for applesauce-relay)
       filter((event) => typeof event !== "string"),
       // Only include valid wallet request events
-      filter((event) => event.kind === WALLET_REQUEST_KIND && event.pubkey === this.client),
+      filter(isValidWalletRequest),
+      // Ensure they are to our pubkey
+      filter((event) => event.pubkey === this.client),
       // Verify event signature
       filter((event) => verifyEvent(event)),
       // Only create a single subscription to the relays
@@ -312,20 +315,14 @@ export class WalletService {
   }
 
   /** Handle a wallet request event */
-  protected async handleRequestEvent(requestEvent: NostrEvent): Promise<void> {
+  protected async handleRequestEvent(requestEvent: WalletRequestEvent): Promise<void> {
     try {
       // Check if the request has expired
       if (isWalletRequestExpired(requestEvent))
         return await this.sendErrorResponse(requestEvent, "OTHER", "Request has expired");
 
       // Unlock the request if needed
-      let request: WalletRequest | undefined | null;
-      if (isWalletRequestLocked(requestEvent)) {
-        request = await unlockWalletRequest(requestEvent, this.signer);
-      } else {
-        request = getWalletRequest(requestEvent);
-      }
-
+      const request = await unlockWalletRequest(requestEvent, this.signer);
       if (!request) return await this.sendErrorResponse(requestEvent, "OTHER", "Failed to decrypt or parse request");
 
       // Handle the request based on its method
@@ -337,7 +334,7 @@ export class WalletService {
   }
 
   /** Process a decrypted wallet request */
-  protected async processRequest(requestEvent: NostrEvent, request: WalletRequest): Promise<void> {
+  protected async processRequest(requestEvent: WalletRequestEvent, request: WalletRequest): Promise<void> {
     const handler = this.handlers[request.method];
 
     if (!handler) {
@@ -401,7 +398,7 @@ export class WalletService {
 
   /** Send a success response */
   protected async sendSuccessResponse<T extends WalletResponse>(
-    requestEvent: NostrEvent,
+    requestEvent: WalletRequestEvent,
     method: T["result_type"],
     result: T["result"],
   ): Promise<void> {
@@ -416,7 +413,7 @@ export class WalletService {
 
   /** Send an error response */
   protected async sendErrorResponse(
-    requestEvent: NostrEvent,
+    requestEvent: WalletRequestEvent,
     errorType: WalletErrorCode,
     errorMessage: string,
   ): Promise<void> {
@@ -436,7 +433,7 @@ export class WalletService {
   }
 
   /** Send a response event */
-  protected async sendResponse(requestEvent: NostrEvent, response: WalletResponse): Promise<void> {
+  protected async sendResponse(requestEvent: WalletRequestEvent, response: WalletResponse): Promise<void> {
     try {
       const draft = await create({ signer: this.signer }, WalletResponseBlueprint, requestEvent, response);
       const event = await this.signer.signEvent(draft);

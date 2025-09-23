@@ -4,7 +4,7 @@ import { isNIP04Encrypted } from "./encryption.js";
 import {
   getHiddenContent,
   HiddenContentSigner,
-  isHiddenContentLocked,
+  isHiddenContentUnlocked,
   lockHiddenContent,
   setHiddenContentEncryptionMethod,
   unlockHiddenContent,
@@ -14,6 +14,7 @@ import { safeParse } from "./json.js";
 // NIP-78 Application Data event kind
 export const APP_DATA_KIND = 30078;
 
+/** A symbol used to cache the application data content */
 export const AppDataContentSymbol = Symbol.for("app-data-content");
 
 // Set the encryption method for app data events (default to nip44)
@@ -39,8 +40,8 @@ export function getAppDataEncryption<T extends { kind: number; content: string }
 }
 
 /** Checks if the application data is locked (encrypted and not decrypted) */
-export function isAppDataLocked<T extends object>(event: T): boolean {
-  return isHiddenContentLocked(event);
+export function isAppDataUnlocked<T extends { kind: number }>(event: T): boolean {
+  return isHiddenContentUnlocked(event);
 }
 
 /** Returns the parsed application data for an event if it's unlocked */

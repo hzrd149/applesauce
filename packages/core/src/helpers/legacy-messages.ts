@@ -1,32 +1,33 @@
-import { NostrEvent } from "nostr-tools";
+import { kinds, NostrEvent } from "nostr-tools";
 import {
   EncryptedContentSigner,
   getEncryptedContent,
-  isEncryptedContentLocked,
+  isEncryptedContentUnlocked,
   lockEncryptedContent,
+  UnlockedEncryptedContent,
   unlockEncryptedContent,
 } from "./encrypted-content.js";
-import { getTagValue } from "./index.js";
+import { getTagValue, KnownEvent } from "./index.js";
+
+/** Type for valid legacy direct messages */
+export type LegacyMessage = KnownEvent<kinds.EncryptedDirectMessage>;
+
+/** Type for a legacy direct message with unlocked encrypted content */
+export type UnlockedLegacyMessage = LegacyMessage & UnlockedEncryptedContent;
 
 /** Checks if a legacy direct message content is encrypted */
-export function isLegacyMessageLocked(event: NostrEvent): boolean {
-  return isEncryptedContentLocked(event);
+export function isLegacyMessageUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedEncryptedContent {
+  return isEncryptedContentUnlocked(event);
 }
 
-/**
- * Returns the correspondent of a legacy direct message
- * @throws if no correspondent is found
- */
-export function getLegacyMessageCorrespondent(message: NostrEvent, self: string): string {
-  const correspondent = message.pubkey === self ? getTagValue(message, "p") : message.pubkey;
-  if (!correspondent) throw new Error("No correspondent found");
-  return correspondent;
+/** Returns the correspondent of a legacy direct message */
+export function getLegacyMessageCorrespondent<T extends LegacyMessage>(message: T, self: string): string;
+export function getLegacyMessageCorrespondent<T extends NostrEvent>(message: T, self: string): string | undefined;
+export function getLegacyMessageCorrespondent<T extends NostrEvent>(message: T, self: string): string | undefined {
+  return message.pubkey === self ? getTagValue(message, "p") : message.pubkey;
 }
 
-/**
- * Returns the receiver of a legacy direct message
- * @throws if no receiver is found
- */
+/** Returns the receiver of a legacy direct me */
 export const getLegacyMessageReceiver = getLegacyMessageCorrespondent;
 
 /** @deprecated use {@link getLegacyMessageCorrespondent} instead */
@@ -40,6 +41,15 @@ export function getLegacyMessageSender(message: NostrEvent): string {
 /** Returns the parent message id of a legacy message */
 export function getLegacyMessageParent(message: NostrEvent): string | undefined {
   return getTagValue(message, "e");
+}
+
+/** Checks if a legacy message is valid */
+export function isValidLegacyMessage(event: any): event is LegacyMessage {
+  return (
+    event.kind === kinds.EncryptedDirectMessage &&
+    getLegacyMessageCorrespondent(event, event.pubkey) !== undefined &&
+    event.content.length > 0
+  );
 }
 
 /**
@@ -58,6 +68,7 @@ export async function unlockLegacyMessage(
   if (cached) return cached;
 
   const correspondent = getLegacyMessageCorrespondent(message, self);
+  if (!correspondent) throw new Error("No correspondent found");
 
   // Unlock the encrypted content
   return await unlockEncryptedContent(message, correspondent, signer);

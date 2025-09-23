@@ -63,6 +63,7 @@ export function LegacyMessageThreads(self: string, correspondent: string): Model
 /** Returns all the legacy direct messages that are replies to a given message */
 export function LegacyMessageReplies(self: string, message: NostrEvent): Model<NostrEvent[]> {
   const correspondent = getLegacyMessageCorrespondent(message, self);
+  if (!correspondent) throw new Error("Legacy message has no correspondent");
 
   return (store) =>
     store.timeline([

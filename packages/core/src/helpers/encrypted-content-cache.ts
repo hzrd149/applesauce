@@ -18,7 +18,7 @@ import { logger } from "../logger.js";
 import {
   canHaveEncryptedContent,
   getEncryptedContent,
-  isEncryptedContentLocked,
+  isEncryptedContentUnlocked,
   setEncryptedContentCache,
 } from "./encrypted-content.js";
 import { notifyEventUpdate } from "./event.js";
@@ -68,7 +68,7 @@ export function persistEncryptedContent(
   const restore = eventStore.insert$
     .pipe(
       // Look for events that support encrypted content and are locked
-      filter((e) => canHaveEncryptedContent(e.kind) && isEncryptedContentLocked(e)),
+      filter((e) => canHaveEncryptedContent(e.kind) && isEncryptedContentUnlocked(e) === false),
       // Get the encrypted content from storage
       mergeMap((event) =>
         // Wait for storage to be available
@@ -95,11 +95,11 @@ export function persistEncryptedContent(
   const restoreSeals = eventStore.update$
     .pipe(
       // Look for gift wraps that are unlocked
-      filter((e) => e.kind === kinds.GiftWrap && !isEncryptedContentLocked(e)),
+      filter((e) => e.kind === kinds.GiftWrap && isEncryptedContentUnlocked(e)),
       // Get the seal event
       map((gift) => getGiftWrapSeal(gift)),
       // Look for gift wraps with locked seals
-      filter((seal) => seal !== undefined && isEncryptedContentLocked(seal)),
+      filter((seal) => seal !== undefined && isEncryptedContentUnlocked(seal) === false),
       // Only attempt to unlock seals once
       distinct((seal) => seal!.id),
       // Get encrypted content from storage
@@ -137,7 +137,7 @@ export function persistEncryptedContent(
       filter(
         ([event]) =>
           canHaveEncryptedContent(event.kind) &&
-          !isEncryptedContentLocked(event) &&
+          isEncryptedContentUnlocked(event) &&
           !isEncryptedContentFromCache(event),
       ),
       // Only persist the encrypted content once
@@ -161,13 +161,13 @@ export function persistEncryptedContent(
   const persistSeals = combineLatest([merge(eventStore.update$, eventStore.insert$), storage$])
     .pipe(
       // Look for gift wraps that are unlocked
-      filter(([event]) => event.kind === kinds.GiftWrap && !isEncryptedContentLocked(event)),
+      filter(([event]) => event.kind === kinds.GiftWrap && isEncryptedContentUnlocked(event)),
       // Get the seal event
       map(([gift, storage]) => [getGiftWrapSeal(gift), storage] as const),
       // Make sure the seal is defined
       filter(([seal]) => seal !== undefined),
       // Make sure seal is unlocked and not from cache
-      filter(([seal]) => !isEncryptedContentLocked(seal!) && !isEncryptedContentFromCache(seal!)),
+      filter(([seal]) => isEncryptedContentUnlocked(seal!) && !isEncryptedContentFromCache(seal!)),
       // Only persist the seal once
       distinct(([seal]) => seal!.id),
     )

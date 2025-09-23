@@ -3,7 +3,7 @@ import { getOrComputeCachedValue } from "./cache.js";
 
 export type FileMetadata = {
   /** URL of the file */
-  url: string;
+  url?: string;
   /** MIME type */
   type?: string;
   /** sha256 hash of the file */
@@ -34,6 +34,8 @@ export type FileMetadata = {
   /** fallback URLs */
   fallback?: string[];
 };
+
+/** Alias for {@link FileMetadata} */
 export type MediaAttachment = FileMetadata;
 
 /**
@@ -55,7 +57,6 @@ export function parseFileMetadataTags(tags: string[][]): FileMetadata {
     }
   }
 
-  if (!fields.url) throw new Error("Missing required url in file metadata");
   const metadata: FileMetadata = { url: fields.url, fallback };
 
   // parse size
@@ -77,10 +78,7 @@ export function parseFileMetadataTags(tags: string[][]): FileMetadata {
   return metadata;
 }
 
-/**
- * Parses a imeta tag into a {@link FileMetadata}
- * @throws
- */
+/** Parses a imeta tag into a {@link FileMetadata} */
 export function getFileMetadataFromImetaTag(tag: string[]): FileMetadata {
   const parts = tag.slice(1);
   const tags: string[][] = [];
@@ -116,10 +114,7 @@ export function getMediaAttachments(event: NostrEvent): FileMetadata[] {
   });
 }
 
-/**
- * Gets {@link FileMetadata} for a NIP-94 kind 1063 event
- * @throws
- */
+/** Gets {@link FileMetadata} for a NIP-94 kind 1063 event */
 export function getFileMetadata(file: NostrEvent) {
   return parseFileMetadataTags(file.tags);
 }

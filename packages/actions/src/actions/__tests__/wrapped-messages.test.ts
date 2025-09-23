@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { EventStore } from "applesauce-core";
-import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapLocked } from "applesauce-core/helpers";
+import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-core/helpers";
 import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -57,7 +57,7 @@ describe("SendWrappedMessage", () => {
     await spy.onComplete();
 
     for (const gift of spy.getValues()) {
-      expect(isGiftWrapLocked(gift)).toBe(false);
+      expect(isGiftWrapUnlocked(gift)).toBe(true);
       expect(getGiftWrapSeal(gift)).toBeDefined();
       expect(getGiftWrapRumor(gift)).toBeDefined();
     }

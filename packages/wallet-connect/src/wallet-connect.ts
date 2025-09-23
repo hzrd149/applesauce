@@ -36,13 +36,11 @@ import {
   GetBalanceResult,
   GetInfoResult,
   getPreferredEncryption,
-  getWalletNotification,
   getWalletRequestEncryption,
-  getWalletResponse,
   getWalletResponseRequestId,
   getWalletSupport,
-  isWalletNotificationLocked,
-  isWalletResponseLocked,
+  isValidWalletNotification,
+  isValidWalletResponse,
   ListTransactionsResult,
   LookupInvoiceResult,
   MakeInvoiceParams,
@@ -65,8 +63,10 @@ import {
   WalletConnectURI,
   WalletMethod,
   WalletNotification,
+  WalletNotificationEvent,
   WalletRequest,
   WalletResponse,
+  WalletResponseEvent,
   WalletSupport,
 } from "./helpers/index.js";
 import {
@@ -217,7 +217,7 @@ export class WalletConnect {
     this.encryption$ = this.support$.pipe(map((info) => (info ? getPreferredEncryption(info) : "nip04")));
 
     this.notifications$ = this.events$.pipe(
-      filter((event) => event.kind === WALLET_NOTIFICATION_KIND),
+      filter((event) => isValidWalletNotification(event)),
       mergeMap((event) => this.handleNotificationEvent(event)),
     );
 
@@ -239,29 +239,26 @@ export class WalletConnect {
   }
 
   /** Process response events and return WalletResponse or throw error */
-  protected async handleResponseEvent(event: NostrEvent, encryption?: EncryptionMethod): Promise<WalletResponse> {
+  protected async handleResponseEvent(
+    event: WalletResponseEvent,
+    encryption?: EncryptionMethod,
+  ): Promise<WalletResponse> {
     if (!verifyEvent(event)) throw new Error("Invalid response event signature");
 
     const requestId = getWalletResponseRequestId(event);
     if (!requestId) throw new Error("Response missing request ID");
 
-    let response: WalletResponse | undefined | null;
-    if (isWalletResponseLocked(event)) response = await unlockWalletResponse(event, this.signer, encryption);
-    else response = getWalletResponse(event);
-
+    const response = await unlockWalletResponse(event, this.signer, encryption);
     if (!response) throw new Error("Failed to decrypt or parse response");
+
     return response;
   }
 
   /** Handle notification events */
-  protected async handleNotificationEvent(event: NostrEvent): Promise<WalletNotification> {
+  protected async handleNotificationEvent(event: WalletNotificationEvent): Promise<WalletNotification> {
     if (!verifyEvent(event)) throw new Error("Invalid notification event signature");
 
-    let notification: WalletNotification | undefined | null;
-
-    if (isWalletNotificationLocked(event)) notification = await unlockWalletNotification(event, this.signer);
-    else notification = getWalletNotification(event);
-
+    const notification = await unlockWalletNotification(event, this.signer);
     if (!notification) throw new Error("Failed to decrypt or parse notification");
 
     return notification;
@@ -291,10 +288,8 @@ export class WalletConnect {
 
         // Create an observable that listens for response events
         const responses$ = this.events$.pipe(
-          filter(
-            (response) =>
-              response.kind === WALLET_RESPONSE_KIND && getWalletResponseRequestId(response) === requestEvent.id,
-          ),
+          filter(isValidWalletResponse),
+          filter((response) => getWalletResponseRequestId(response) === requestEvent.id),
           mergeMap((response) => this.handleResponseEvent(response, encryption)),
           // Set timeout for response events
           simpleTimeout(options.timeout || this.defaultTimeout),

@@ -95,7 +95,7 @@ Hidden tags are used in [NIP-51](https://github.com/nostr-protocol/nips/blob/mas
 - [`canHaveHiddenTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.canHaveHiddenTags.html) Checks if a given event kind can have hidden tags
 - [`hasHiddenTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.hasHiddenTags.html) Checks if an event has hidden tags
 - [`getHiddenTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.getHiddenTags.html) Returns the hidden tags for an event if they are unlocked
-- [`isHiddenTagsLocked`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.isHiddenTagsLocked.html) Checks if the hidden tags are locked
+- [`isHiddenTagsUnlocked`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.isHiddenTagsUnlocked.html) Checks if the hidden tags are locked
 - [`unlockHiddenTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.unlockHiddenTags.html) Unlocks the hidden tags using a `signer`
 - [`modifyEventTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.modifyEventTags.html) Modifies an events public or hidden tags
 

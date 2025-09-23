@@ -1,13 +1,12 @@
-import { NostrEvent, UnsignedEvent, verifyEvent } from "nostr-tools";
+import { kinds, NostrEvent, UnsignedEvent, verifyEvent } from "nostr-tools";
 import { EventMemory } from "../event-store/event-memory.js";
 import {
   EncryptedContentSigner,
-  getEncryptedContent,
-  isEncryptedContentLocked,
+  isEncryptedContentUnlocked,
   lockEncryptedContent,
   unlockEncryptedContent,
 } from "./encrypted-content.js";
-import { notifyEventUpdate } from "./event.js";
+import { KnownEvent, notifyEventUpdate } from "./event.js";
 
 /**
  * An internal event set to keep track of seals and rumors
@@ -27,6 +26,20 @@ export const RumorSymbol = Symbol.for("rumor");
 
 /** Used to store a reference to the parent gift wrap event on seals (upstream) */
 export const GiftWrapSymbol = Symbol.for("gift-wrap");
+
+/** A gift wrap event that knows its seal event */
+export type UnlockedGiftWrapEvent = KnownEvent<kinds.GiftWrap> & {
+  /** Downstream seal event */
+  [SealSymbol]: UnlockedSeal;
+};
+
+/** A seal that knows its parent gift wrap event */
+export type UnlockedSeal = KnownEvent<kinds.Seal> & {
+  /** Upstream gift wrap event */
+  [SealSymbol]: UnlockedGiftWrapEvent;
+  /** Downstream rumor event */
+  [RumorSymbol]: Rumor;
+};
 
 /** Adds a parent reference to a seal or rumor */
 function addParentSealReference(rumor: Rumor, seal: NostrEvent): void {
@@ -58,12 +71,14 @@ export function isRumor(event: any): event is Rumor {
 }
 
 /** Returns all the parent gift wraps for a seal event */
-export function getSealGiftWrap(seal: NostrEvent): NostrEvent | undefined {
+export function getSealGiftWrap(seal: UnlockedSeal): UnlockedGiftWrapEvent;
+export function getSealGiftWrap(seal: NostrEvent): UnlockedGiftWrapEvent | undefined;
+export function getSealGiftWrap(seal: NostrEvent): UnlockedGiftWrapEvent | undefined {
   return Reflect.get(seal, GiftWrapSymbol);
 }
 
 /** Returns all the parent seals for a rumor event */
-export function getRumorSeals(rumor: Rumor): NostrEvent[] {
+export function getRumorSeals(rumor: Rumor): UnlockedSeal[] {
   let set = Reflect.get(rumor, SealSymbol);
   if (!set) {
     set = new Set();
@@ -73,8 +88,8 @@ export function getRumorSeals(rumor: Rumor): NostrEvent[] {
 }
 
 /** Returns all the parent gift wraps for a rumor event */
-export function getRumorGiftWraps(rumor: Rumor): NostrEvent[] {
-  const giftWraps = new Set<NostrEvent>();
+export function getRumorGiftWraps(rumor: Rumor): UnlockedGiftWrapEvent[] {
+  const giftWraps = new Set<UnlockedGiftWrapEvent>();
   const seals = getRumorSeals(rumor);
   for (const seal of seals) {
     const upstream = getSealGiftWrap(seal);
@@ -83,22 +98,72 @@ export function getRumorGiftWraps(rumor: Rumor): NostrEvent[] {
   return Array.from(giftWraps);
 }
 
-/** Checks if a seal event is locked */
-export function isSealLocked(seal: NostrEvent): boolean {
-  return isEncryptedContentLocked(seal);
+/** Checks if a seal event is locked and casts it to the {@link UnlockedSeal} type */
+export function isSealUnlocked(seal: NostrEvent): seal is UnlockedSeal {
+  return isEncryptedContentUnlocked(seal) === true && Reflect.has(seal, RumorSymbol) === true;
+}
+
+/** Returns if a gift-wrap event or gift-wrap seal is locked */
+export function isGiftWrapUnlocked(gift: NostrEvent): gift is UnlockedGiftWrapEvent {
+  if (isEncryptedContentUnlocked(gift) === false) return false;
+
+  // Get the seal event
+  const seal = getGiftWrapSeal(gift);
+  if (!seal) return false;
+
+  // If seal is locked, return false
+  if (!isSealUnlocked(seal)) return false;
+
+  return true;
 }
 
 /** Gets the rumor from a seal event */
+export function getSealRumor(seal: UnlockedSeal): Rumor;
+export function getSealRumor(seal: NostrEvent): Rumor | undefined;
 export function getSealRumor(seal: NostrEvent): Rumor | undefined {
-  // Returned cached rumor if it exists (downstream)
-  const cached = Reflect.get(seal, RumorSymbol) as Rumor | undefined;
+  // Non seal events cant have rumors
+  if (seal.kind !== kinds.Seal) return undefined;
+
+  // If locked, return undefined
+  if (isSealUnlocked(seal) === false) return undefined;
+
+  // Return the rumor
+  return seal[RumorSymbol];
+}
+
+/** Returns the seal event in a gift-wrap event */
+export function getGiftWrapSeal(gift: UnlockedGiftWrapEvent): UnlockedSeal;
+export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined;
+export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined {
+  // Returned cached seal if it exists (downstream)
+  const cached = Reflect.get(gift, SealSymbol) as UnlockedSeal | NostrEvent | undefined;
   if (cached) return cached;
+  return undefined;
+}
+
+/** Returns the unsigned rumor in the gift-wrap */
+export function getGiftWrapRumor(gift: UnlockedGiftWrapEvent): Rumor;
+export function getGiftWrapRumor(gift: NostrEvent): Rumor | undefined;
+export function getGiftWrapRumor(gift: NostrEvent): Rumor | undefined {
+  const seal = getGiftWrapSeal(gift);
+  if (!seal) return undefined;
+
+  return getSealRumor(seal);
+}
+
+/**
+ * Unlocks a seal event and returns the rumor event
+ * @throws {Error} If the author of the rumor event does not match the author of the seal
+ */
+export async function unlockSeal(seal: NostrEvent, signer: EncryptedContentSigner): Promise<Rumor> {
+  // If already unlocked, return the rumor
+  if (isSealUnlocked(seal)) return seal[RumorSymbol];
 
   // Get the encrypted content plaintext
-  const plaintext = getEncryptedContent(seal);
-  if (!plaintext) return undefined;
+  const content = await unlockEncryptedContent(seal, seal.pubkey, signer);
 
-  let rumor = JSON.parse(plaintext) as Rumor;
+  // Parse the content as a rumor event
+  let rumor = JSON.parse(content) as Rumor;
 
   // Check if the rumor event already exists in the internal event set
   const existing = internalGiftWrapEvents.getEvent(rumor.id);
@@ -109,25 +174,33 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
     // Add to the internal event set
     internalGiftWrapEvents.add(rumor as NostrEvent);
 
+  // Throw an error if the rumor event is not valid
+  if (!rumor) throw new Error("Failed to read rumor in gift wrap");
+
+  // Check if the seal and rumor authors match
+  if (rumor.pubkey !== seal.pubkey) throw new Error("Seal author does not match rumor author");
+
   // Save a reference to the parent seal event
   addParentSealReference(rumor, seal);
 
-  // Save a reference to the rumor on the seal (downstream)
+  // Cache the rumor event
   Reflect.set(seal, RumorSymbol, rumor);
 
   return rumor;
 }
 
-/** Returns the seal event in a gift-wrap event */
-export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined {
-  // Returned cached seal if it exists (downstream)
-  const cached = Reflect.get(gift, SealSymbol) as NostrEvent | undefined;
-  if (cached) return cached;
+/**
+ * Unlocks and returns the unsigned seal event in a gift-wrap
+ * @throws {Error} If the author of the rumor event does not match the author of the seal
+ */
+export async function unlockGiftWrap(gift: NostrEvent, signer: EncryptedContentSigner): Promise<Rumor> {
+  // If already unlocked, return the rumor
+  if (isGiftWrapUnlocked(gift)) return getGiftWrapRumor(gift);
 
   // Get the encrypted content plaintext
-  const plaintext = getEncryptedContent(gift);
-  if (!plaintext) return undefined;
+  const plaintext = await unlockEncryptedContent(gift, gift.pubkey, signer);
 
+  // Parse seal as nostr event
   let seal = JSON.parse(plaintext) as NostrEvent;
 
   // Check if the seal event already exists in the internal event set
@@ -148,56 +221,6 @@ export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined {
   // Save a reference to the seal on the gift wrap (downstream)
   Reflect.set(gift, SealSymbol, seal);
 
-  return seal;
-}
-
-/** Returns the unsigned rumor in the gift-wrap */
-export function getGiftWrapRumor(gift: NostrEvent): Rumor | undefined {
-  const seal = getGiftWrapSeal(gift);
-  if (!seal) return undefined;
-
-  return getSealRumor(seal);
-}
-
-/** Returns if a gift-wrap event or gift-wrap seal is locked */
-export function isGiftWrapLocked(gift: NostrEvent): boolean {
-  if (isEncryptedContentLocked(gift)) return true;
-  else {
-    const seal = getGiftWrapSeal(gift);
-    if (!seal || isSealLocked(seal)) return true;
-    else return false;
-  }
-}
-
-/**
- * Unlocks a seal event and returns the rumor event
- * @throws {Error} If the author of the rumor event does not match the author of the seal
- */
-export async function unlockSeal(seal: NostrEvent, signer: EncryptedContentSigner): Promise<Rumor> {
-  if (isEncryptedContentLocked(seal)) await unlockEncryptedContent(seal, seal.pubkey, signer);
-
-  // Parse the rumor event
-  const rumor = getSealRumor(seal);
-  if (!rumor) throw new Error("Failed to read rumor in gift wrap");
-
-  // Check if the seal and rumor authors match
-  if (rumor.pubkey !== seal.pubkey) throw new Error("Seal author does not match rumor author");
-
-  return rumor;
-}
-
-/**
- * Unlocks and returns the unsigned seal event in a gift-wrap
- * @throws {Error} If the author of the rumor event does not match the author of the seal
- */
-export async function unlockGiftWrap(gift: NostrEvent, signer: EncryptedContentSigner): Promise<Rumor> {
-  // First unlock the gift-wrap event
-  if (isEncryptedContentLocked(gift)) await unlockEncryptedContent(gift, gift.pubkey, signer);
-
-  // Get the seal event
-  const seal = getGiftWrapSeal(gift);
-  if (!seal) throw new Error("Failed to read seal in gift wrap");
-
   // Unlock the seal event
   const rumor = await unlockSeal(seal, signer);
 
@@ -207,6 +230,7 @@ export async function unlockGiftWrap(gift: NostrEvent, signer: EncryptedContentS
   return rumor;
 }
 
+/** Locks a gift-wrap event and seals its seal event */
 export function lockGiftWrap(gift: NostrEvent) {
   const seal = getGiftWrapSeal(gift);
   if (seal) {

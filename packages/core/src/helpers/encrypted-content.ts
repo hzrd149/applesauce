@@ -1,5 +1,5 @@
 import { kinds } from "nostr-tools";
-import { isEvent, notifyEventUpdate } from "./event.js";
+import { notifyEventUpdate } from "./event.js";
 
 /** A symbol use to store the encrypted content of an event in memory */
 export const EncryptedContentSymbol = Symbol.for("encrypted-content");
@@ -15,7 +15,13 @@ export interface EncryptedContentSigner {
   };
 }
 
+/** Encryption method types */
 export type EncryptionMethod = "nip04" | "nip44";
+
+/** Type for an event who's encrypted content is unlocked */
+export type UnlockedEncryptedContent = {
+  [EncryptedContentSymbol]: string;
+};
 
 /** A pair of encryption methods for encrypting and decrypting event content */
 export interface EncryptionMethods {
@@ -69,13 +75,15 @@ export function hasEncryptedContent<T extends { content: string }>(event: T): bo
 }
 
 /** Returns the encrypted content for an event if it is unlocked */
+export function getEncryptedContent<T extends UnlockedEncryptedContent>(event: T): string;
+export function getEncryptedContent<T extends object>(event: T): string | undefined;
 export function getEncryptedContent<T extends object>(event: T): string | undefined {
   return Reflect.get(event, EncryptedContentSymbol) as string | undefined;
 }
 
-/** Checks if the encrypted content is locked */
-export function isEncryptedContentLocked<T extends object>(event: T): boolean {
-  return Reflect.has(event, EncryptedContentSymbol) === false;
+/** Checks if the encrypted content is unlocked and casts it to the {@link UnlockedEncryptedContent} type */
+export function isEncryptedContentUnlocked<T extends object>(event: T): event is T & UnlockedEncryptedContent {
+  return Reflect.has(event, EncryptedContentSymbol) === true;
 }
 
 /**
@@ -83,16 +91,23 @@ export function isEncryptedContentLocked<T extends object>(event: T): boolean {
  * @param event The event with content to decrypt
  * @param pubkey The other pubkey that encrypted the content
  * @param signer A signer to use to decrypt the content
+ * @throws If the event kind does not support encrypted content
  */
 export async function unlockEncryptedContent<T extends { kind: number; content: string }>(
   event: T,
   pubkey: string,
   signer: EncryptedContentSigner,
 ): Promise<string> {
+  if (!canHaveEncryptedContent(event.kind)) throw new Error("Event kind does not support encrypted content");
+
+  // Get the encryption methods from the signer
   const encryption = getEncryptedContentEncryptionMethods(event.kind, signer);
   const plaintext = await encryption.decrypt(pubkey, event.content);
 
+  // Set the cached value and trigger update
   setEncryptedContentCache(event, plaintext);
+
+  // Return the decrypted content
   return plaintext;
 }
 
@@ -101,7 +116,7 @@ export function setEncryptedContentCache<T extends object>(event: T, plaintext: 
   Reflect.set(event, EncryptedContentSymbol, plaintext);
 
   // if the event has been added to an event store, notify it
-  if (isEvent(event)) notifyEventUpdate(event);
+  notifyEventUpdate(event);
 }
 
 /** Removes the encrypted content cache on an event */
@@ -109,5 +124,5 @@ export function lockEncryptedContent<T extends object>(event: T) {
   Reflect.deleteProperty(event, EncryptedContentSymbol);
 
   // if the event has been added to an event store, notify it
-  if (isEvent(event)) notifyEventUpdate(event);
+  notifyEventUpdate(event);
 }
