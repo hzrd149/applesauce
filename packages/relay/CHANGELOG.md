@@ -1,5 +1,24 @@
 # applesauce-relay
 
+## 4.0.0
+
+### Major Changes
+
+- 52ba312: Add `.negentropy` and `.sync` methods to `Relay`, `RelayGroup` and `RelayPool`
+- 997326a: Add `publishTimeout` to `Relay` and default to 30 seconds
+- 52ba312: Update `RelayGroup` and `RelayPool` to deduplicate events by default
+
+### Minor Changes
+
+- f8fd5ec: Bump `nostr-tools` to `2.17`
+- 7ac7b0c: Add `add$`, `remove$` signals to `RelayPool`
+
+### Patch Changes
+
+- 9e13abf: Add `eventStore` option to `RelayPool.request` and `RelayPool.subscription` to filter duplicate events
+- Updated dependencies
+  - applesauce-core@4.0.0
+
 ## 3.1.0
 
 ### Minor Changes

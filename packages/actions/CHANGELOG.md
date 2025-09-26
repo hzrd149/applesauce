@@ -1,5 +1,22 @@
 # applesauce-actions
 
+## 4.0.0
+
+### Major Changes
+
+- 49e6c44: Rename all `isLocked` methods to `isUnlocked` for type casting
+
+### Minor Changes
+
+- f8fd5ec: Bump `nostr-tools` to `2.17`
+- d802905: Add actions for NIP-78 app data events
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.0.0
+  - applesauce-factory@4.0.0
+
 ## 3.1.0
 
 ### Minor Changes

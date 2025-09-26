@@ -1,5 +1,18 @@
 # applesauce-loaders
 
+## 4.0.0
+
+### Minor Changes
+
+- f8fd5ec: Bump `nostr-tools` to `2.17`
+- 7ac7b0c: Add `includeMailboxes` operator for adding outbox or inbox relays to contacts
+- 7ac7b0c: Add `selectOptimalRelays` operator for selecting contacts relays (outbox)
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.0.0
+
 ## 3.1.0
 
 ### Minor Changes
