@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { NostrEvent } from "nostr-tools";
+import { of } from "rxjs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
-import { Relay } from "../relay.js";
 import { RelayGroup } from "../group.js";
-import { of } from "rxjs";
+import { Relay } from "../relay.js";
 
 let mockRelay1: WS;
 let mockRelay2: WS;

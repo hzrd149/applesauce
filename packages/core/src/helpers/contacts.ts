@@ -5,11 +5,18 @@ import { getOrComputeCachedValue } from "./cache.js";
 import { isSafeRelayURL } from "./relays.js";
 import { isPTag, processTags } from "./tags.js";
 import { getProfilePointerFromPTag } from "./pointers.js";
-import { getHiddenTags, isHiddenTagsUnlocked } from "./hidden-tags.js";
+import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "./hidden-tags.js";
+import { HiddenContentSigner } from "./hidden-content.js";
+import { notifyEventUpdate } from "./index.js";
 
 export const ContactsRelaysSymbol = Symbol.for("contacts-relays");
 export const PublicContactsSymbol = Symbol.for("public-contacts");
 export const HiddenContactsSymbol = Symbol.for("hidden-contacts");
+
+/** Type for contact events with unlocked hidden tags */
+export type UnlockedContacts = {
+  [HiddenContactsSymbol]: ProfilePointer[];
+};
 
 type RelayJson = Record<string, { read: boolean; write: boolean }>;
 export function getRelaysFromContactsEvent(event: NostrEvent) {
@@ -60,11 +67,41 @@ export function getPublicContacts(event: NostrEvent): ProfilePointer[] {
   );
 }
 
+/** Checks if the hidden contacts are unlocked */
+export function isHiddenContactsUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedContacts {
+  return isHiddenTagsUnlocked(event) && Reflect.has(event, HiddenContactsSymbol);
+}
+
 /** Returns only the hidden contacts from a contacts list event */
 export function getHiddenContacts(event: NostrEvent): ProfilePointer[] | undefined {
-  if (isHiddenTagsUnlocked(event)) return undefined;
+  if (isHiddenContactsUnlocked(event)) return event[HiddenContactsSymbol];
 
-  return getOrComputeCachedValue(event, HiddenContactsSymbol, () =>
-    processTags(getHiddenTags(event)!, (t) => (isPTag(t) ? t : undefined), getProfilePointerFromPTag),
-  );
+  // Get hidden tags
+  const tags = getHiddenTags(event);
+  if (!tags) return undefined;
+
+  // Parse tags
+  const contacts = processTags(tags, (t) => (isPTag(t) ? t : undefined), getProfilePointerFromPTag);
+
+  // Set cache and notify event store
+  Reflect.set(event, HiddenContactsSymbol, contacts);
+
+  return contacts;
+}
+
+/** Unlocks the hidden contacts */
+export async function unlockHiddenContacts(event: NostrEvent, signer: HiddenContentSigner): Promise<ProfilePointer[]> {
+  if (isHiddenContactsUnlocked(event)) return event[HiddenContactsSymbol];
+
+  // Unlock hidden tags
+  await unlockHiddenTags(event, signer);
+
+  // Get hidden contacts
+  const contacts = getHiddenContacts(event);
+  if (!contacts) throw new Error("Failed to unlock hidden contacts");
+
+  // Set cache and notify event store
+  notifyEventUpdate(event);
+
+  return contacts;
 }

@@ -1,6 +1,11 @@
-import { type EventTemplate, type Filter, type NostrEvent } from "nostr-tools";
-import { Observable, repeat, retry } from "rxjs";
-import { WebSocketSubject } from "rxjs/webSocket";
+import type { EventTemplate, Filter, NostrEvent } from "nostr-tools";
+import type { RelayInformation } from "nostr-tools/nip11";
+import type { Observable, repeat, retry } from "rxjs";
+import type { WebSocketSubject } from "rxjs/webSocket";
+import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
+import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
+import type { SyncDirection } from "./relay.js";
+import type { GroupNegentropySyncOptions, GroupRequestOptions, GroupSubscriptionOptions } from "./group.js";
 
 export type SubscriptionResponse = NostrEvent | "EOSE";
 export type PublishResponse = { ok: boolean; message?: string; from: string };
@@ -81,6 +86,14 @@ export interface IRelay extends MultiplexWebSocket {
   event(event: NostrEvent): Observable<PublishResponse>;
   /** Send an AUTH message */
   auth(event: NostrEvent): Promise<PublishResponse>;
+  /** Negentropy sync event ids with the relay and an event store */
+  negentropy(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    reconcile: ReconcileFunction,
+    opts?: NegentropySyncOptions,
+  ): Promise<boolean>;
+
   /** Authenticate with the relay using a signer */
   authenticate(signer: AuthSigner): Promise<PublishResponse>;
   /** Send an EVENT message with retries */
@@ -89,6 +102,19 @@ export interface IRelay extends MultiplexWebSocket {
   request(filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent>;
   /** Open a subscription with retries */
   subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
+  /** Negentropy sync events with the relay and an event store */
+  sync(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    direction?: SyncDirection,
+  ): Observable<NostrEvent>;
+
+  /** Get the NIP-11 information document for the relay */
+  getInformation(): Promise<RelayInformation | null>;
+  /** Get the limitations for the relay */
+  getLimitations(): Promise<RelayInformation["limitation"] | null>;
+  /** Get the supported NIPs for the relay */
+  getSupported(): Promise<number[] | null>;
 }
 
 export interface IGroup {
@@ -96,12 +122,26 @@ export interface IGroup {
   req(filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
   /** Send an EVENT message */
   event(event: NostrEvent): Observable<PublishResponse>;
+  /** Negentropy sync event ids with the relays and an event store */
+  negentropy(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    reconcile: ReconcileFunction,
+    opts?: NegentropySyncOptions,
+  ): Promise<boolean>;
+
   /** Send an EVENT message with retries */
   publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse[]>;
   /** Send a REQ message with retries */
-  request(filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent>;
+  request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent>;
   /** Open a subscription with retries */
-  subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
+  subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<SubscriptionResponse>;
+  /** Negentropy sync events with the relay and an event store */
+  sync(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    direction?: SyncDirection,
+  ): Observable<NostrEvent>;
 }
 
 /** Signals emitted by the pool */
@@ -123,6 +163,15 @@ export interface IPool extends IPoolSignals {
   req(relays: string[], filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
   /** Send an EVENT message */
   event(relays: string[], event: NostrEvent): Observable<PublishResponse>;
+  /** Negentropy sync event ids with the relays and an event store */
+  negentropy(
+    relays: string[],
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    reconcile: ReconcileFunction,
+    opts?: GroupNegentropySyncOptions,
+  ): Promise<boolean>;
+
   /** Send an EVENT message to relays with retries */
   publish(
     relays: string[],
@@ -141,4 +190,11 @@ export interface IPool extends IPoolSignals {
     filters: Parameters<IGroup["subscription"]>[0],
     opts?: Parameters<IGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse>;
+  /** Negentropy sync events with the relay and an event store */
+  sync(
+    relays: string[],
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    direction?: SyncDirection,
+  ): Observable<NostrEvent>;
 }

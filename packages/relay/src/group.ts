@@ -1,8 +1,28 @@
 import { nanoid } from "nanoid";
-import { type NostrEvent } from "nostr-tools";
-import { catchError, EMPTY, endWith, identity, ignoreElements, merge, Observable, of } from "rxjs";
+import { Filter, type NostrEvent } from "nostr-tools";
+import {
+  catchError,
+  defer,
+  EMPTY,
+  endWith,
+  identity,
+  ignoreElements,
+  merge,
+  Observable,
+  of,
+  share,
+  switchMap,
+} from "rxjs";
 
-import { filterDuplicateEvents, IAsyncEventStoreActions, IEventStoreActions } from "applesauce-core";
+import {
+  EventMemory,
+  filterDuplicateEvents,
+  IAsyncEventStoreActions,
+  IAsyncEventStoreRead,
+  IEventStoreActions,
+  IEventStoreRead,
+} from "applesauce-core";
+import { NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import { completeOnEose } from "./operators/complete-on-eose.js";
 import { onlyEvents } from "./operators/only-events.js";
 import {
@@ -15,6 +35,25 @@ import {
   SubscriptionOptions,
   SubscriptionResponse,
 } from "./types.js";
+import { SyncDirection } from "./relay.js";
+
+/** Options for negentropy sync on a group of relays */
+export type GroupNegentropySyncOptions = NegentropySyncOptions & {
+  /** Whether to sync in parallel (default true) */
+  parallel?: boolean;
+};
+
+/** Options for a subscription on a group of relays */
+export type GroupSubscriptionOptions = SubscriptionOptions & {
+  /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
+  eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
+};
+
+/** Options for a request on a group of relays */
+export type GroupRequestOptions = RequestOptions & {
+  /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
+  eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
+};
 
 export class RelayGroup implements IGroup {
   constructor(public relays: IRelay[]) {}
@@ -22,7 +61,7 @@ export class RelayGroup implements IGroup {
   /** Takes an array of observables and only emits EOSE when all observables have emitted EOSE */
   protected mergeEOSE(
     requests: Observable<SubscriptionResponse>[],
-    eventStore?: IEventStoreActions | IAsyncEventStoreActions,
+    eventStore: IEventStoreActions | IAsyncEventStoreActions | null = new EventMemory(),
   ) {
     // Create stream of events only
     const events = merge(...requests).pipe(
@@ -74,6 +113,27 @@ export class RelayGroup implements IGroup {
     );
   }
 
+  /** Negentropy sync events with the relays and an event store */
+  async negentropy(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    reconcile: ReconcileFunction,
+    opts?: GroupNegentropySyncOptions,
+  ): Promise<boolean> {
+    // Filter out relays that do not support NIP-77 negentropy sync
+    const supported = await Promise.all(this.relays.map(async (relay) => [relay, await relay.getSupported()] as const));
+    const relays = supported.filter(([_, supported]) => supported?.includes(77)).map(([relay]) => relay);
+    if (relays.length === 0) throw new Error("No relays support NIP-77 negentropy sync");
+
+    // Non parallel sync is not supported yet
+    if (!opts?.parallel) throw new Error("Negentropy sync must be parallel (for now)");
+
+    // Sync all the relays in parallel
+    await Promise.allSettled(relays.map((relay) => relay.negentropy(store, filter, reconcile, opts)));
+
+    return true;
+  }
+
   /** Publish an event to all relays with retries ( default 3 retries ) */
   publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse[]> {
     return Promise.all(
@@ -87,13 +147,7 @@ export class RelayGroup implements IGroup {
   }
 
   /** Request events from all relays with retries ( default 3 retries ) */
-  request(
-    filters: FilterInput,
-    opts?: RequestOptions & {
-      // Add all events to the store and deduplicate them
-      eventStore?: IEventStoreActions;
-    },
-  ): Observable<NostrEvent> {
+  request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent> {
     return merge(
       ...this.relays.map((relay) =>
         relay.request(filters, opts).pipe(
@@ -103,15 +157,12 @@ export class RelayGroup implements IGroup {
       ),
     ).pipe(
       // If an event store is provided, filter duplicate events
-      opts?.eventStore ? filterDuplicateEvents(opts.eventStore) : identity,
+      opts?.eventStore == null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory()),
     );
   }
 
   /** Open a subscription to all relays with retries ( default 3 retries ) */
-  subscription(
-    filters: FilterInput,
-    opts?: SubscriptionOptions & { eventStore?: IEventStoreActions },
-  ): Observable<SubscriptionResponse> {
+  subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<SubscriptionResponse> {
     return this.mergeEOSE(
       this.relays.map((relay) =>
         relay.subscription(filters, opts).pipe(
@@ -121,6 +172,28 @@ export class RelayGroup implements IGroup {
       ),
       // Pass event store so that duplicate events are removed
       opts?.eventStore,
+    );
+  }
+
+  /** Negentropy sync events with the relays and an event store */
+  sync(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    direction?: SyncDirection,
+  ): Observable<NostrEvent> {
+    // Get an array of relays that support NIP-77 negentropy sync
+    return defer(async () => {
+      const supported = await Promise.all(
+        this.relays.map(async (relay) => [relay, await relay.getSupported()] as const),
+      );
+      const relays = supported.filter(([_, supported]) => supported?.includes(77)).map(([relay]) => relay);
+      if (relays.length === 0) throw new Error("No relays support NIP-77 negentropy sync");
+      return relays;
+    }).pipe(
+      // Once relays are selected, sync all the relays in parallel
+      switchMap((relays) => merge(...relays.map((relay) => relay.sync(store, filter, direction)))),
+      // Only create one upstream subscription
+      share(),
     );
   }
 }

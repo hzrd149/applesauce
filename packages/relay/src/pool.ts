@@ -1,10 +1,12 @@
-import { type NostrEvent } from "nostr-tools";
+import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
+import { normalizeURL } from "applesauce-core/helpers";
+import { Filter, type NostrEvent } from "nostr-tools";
 import { BehaviorSubject, Observable, Subject } from "rxjs";
 
-import { normalizeURL } from "applesauce-core/helpers";
 import { RelayGroup } from "./group.js";
-import { Relay, RelayOptions } from "./relay.js";
-import { FilterInput, IPool, IRelay, PublishResponse, SubscriptionResponse } from "./types.js";
+import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
+import { Relay, SyncDirection, type RelayOptions } from "./relay.js";
+import type { FilterInput, IPool, IRelay, PublishResponse, SubscriptionResponse } from "./types.js";
 
 export class RelayPool implements IPool {
   groups$ = new BehaviorSubject<Map<string, RelayGroup>>(new Map());
@@ -108,6 +110,17 @@ export class RelayPool implements IPool {
     return this.group(relays).event(event);
   }
 
+  /** Negentropy sync event ids with the relays and an event store */
+  negentropy(
+    relays: string[],
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    reconcile: ReconcileFunction,
+    opts?: NegentropySyncOptions,
+  ): Promise<boolean> {
+    return this.group(relays).negentropy(store, filter, reconcile, opts);
+  }
+
   /** Publish an event to multiple relays */
   publish(
     relays: string[],
@@ -130,8 +143,18 @@ export class RelayPool implements IPool {
   subscription(
     relays: string[],
     filters: Parameters<RelayGroup["subscription"]>[0],
-    opts?: Parameters<RelayGroup["subscription"]>[1],
+    options?: Parameters<RelayGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse> {
-    return this.group(relays).subscription(filters, opts);
+    return this.group(relays).subscription(filters, options);
+  }
+
+  /** Negentropy sync events with the relays and an event store */
+  sync(
+    relays: string[],
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    direction?: SyncDirection,
+  ): Observable<NostrEvent> {
+    return this.group(relays).sync(store, filter, direction);
   }
 }

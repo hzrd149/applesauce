@@ -1,4 +1,4 @@
-import { logger } from "applesauce-core";
+import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
 import { ensureHttpURL } from "applesauce-core/helpers";
 import { simpleTimeout } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
@@ -44,6 +44,7 @@ import {
 } from "rxjs";
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
+import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import { completeOnEose } from "./operators/complete-on-eose.js";
 import { markFromRelay } from "./operators/mark-from-relay.js";
 import {
@@ -58,6 +59,13 @@ import {
 } from "./types.js";
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = { count: 10, delay: 1000, resetOnSuccess: true };
+
+/** Flags for the negentropy sync type */
+export enum SyncDirection {
+  RECEIVE = 1 << 0,
+  SEND = 1 << 1,
+  BOTH = SEND | RECEIVE,
+}
 
 /** An error that is thrown when a REQ is closed from the relay side */
 export class ReqCloseError extends Error {}
@@ -117,6 +125,9 @@ export class Relay implements IRelay {
 
   /** An observable that emits the limitations for the relay */
   limitations$: Observable<RelayInformation["limitation"] | null>;
+
+  /** An array of supported NIPs from the NIP-11 information document */
+  supported$: Observable<number[] | null>;
 
   /** An observable that emits when underlying websocket is opened */
   open$ = new Subject<Event>();
@@ -234,7 +245,12 @@ export class Relay implements IRelay {
       // cache the result
       shareReplay(1),
     );
-    this.limitations$ = this.information$.pipe(map((info) => info?.limitation));
+    this.limitations$ = this.information$.pipe(map((info) => (info ? info.limitation : null)));
+    this.supported$ = this.information$.pipe(
+      map((info) =>
+        info && Array.isArray(info.supported_nips) ? info.supported_nips.filter((n) => typeof n === "number") : null,
+      ),
+    );
 
     // Create observables that track if auth is required for REQ or EVENT
     this.authRequiredForRead$ = this.receivedAuthRequiredForReq.pipe(
@@ -481,6 +497,23 @@ export class Relay implements IRelay {
     );
   }
 
+  /** Negentropy sync event ids with the relay and an event store */
+  async negentropy(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    reconcile: ReconcileFunction,
+    opts?: NegentropySyncOptions,
+  ): Promise<boolean> {
+    // Check relay supports NIP-77 sync
+    if ((await this.getSupported())?.includes(77) === false) throw new Error("Relay does not support NIP-77");
+
+    // Import negentropy functions dynamically
+    const { buildStorageVector, buildStorageFromFilter, negentropySync } = await import("./negentropy.js");
+
+    const storage = Array.isArray(store) ? buildStorageVector(store) : await buildStorageFromFilter(store, filter);
+    return negentropySync(storage, this.socket, filter, reconcile, opts);
+  }
+
   /** Authenticate with the relay using a signer */
   authenticate(signer: AuthSigner): Promise<PublishResponse> {
     if (!this.challenge) throw new Error("Have not received authentication challenge");
@@ -572,6 +605,59 @@ export class Relay implements IRelay {
     );
   }
 
+  /** Negentropy sync events with the relay and an event store */
+  sync(
+    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    filter: Filter,
+    direction: SyncDirection = SyncDirection.RECEIVE,
+  ): Observable<NostrEvent> {
+    const getEvents = async (ids: string[]) => {
+      if (Array.isArray(store)) return store.filter((event) => ids.includes(event.id));
+      else return store.getByFilters({ ids });
+    };
+
+    return new Observable<NostrEvent>((observer) => {
+      const controller = new AbortController();
+
+      this.negentropy(
+        store,
+        filter,
+        async (have, need) => {
+          // NOTE: it may be more efficient to sync all the events later in a single batch
+
+          // Send missing events to the relay
+          if (direction & SyncDirection.SEND && have.length > 0) {
+            const events = await getEvents(have);
+
+            // Send all events to the relay
+            await Promise.allSettled(events.map((event) => lastValueFrom(this.event(event))));
+          }
+
+          // Fetch missing events from the relay
+          if (direction & SyncDirection.RECEIVE && need.length > 0) {
+            await lastValueFrom(
+              this.req({ ids: need }).pipe(
+                completeOnEose(),
+                tap((event) => observer.next(event)),
+              ),
+            );
+          }
+        },
+        { signal: controller.signal },
+      )
+        // Complete the observable when the sync is complete
+        .then(() => observer.complete())
+        // Error the observable when the sync fails
+        .catch((err) => observer.error(err));
+
+      // Cancel the sync when the observable is unsubscribed
+      return () => controller.abort();
+    }).pipe(
+      // Only create one upstream subscription
+      share(),
+    );
+  }
+
   /** Force close the connection */
   close() {
     this.socket.unsubscribe();
@@ -585,6 +671,11 @@ export class Relay implements IRelay {
   /** An async method that returns the NIP-11 limitations for the relay */
   async getLimitations(): Promise<RelayInformation["limitation"] | null> {
     return firstValueFrom(this.limitations$);
+  }
+
+  /** An async method that returns the supported NIPs for the relay */
+  async getSupported(): Promise<number[] | null> {
+    return firstValueFrom(this.supported$);
   }
 
   /** Static method to fetch the NIP-11 information document for a relay */
