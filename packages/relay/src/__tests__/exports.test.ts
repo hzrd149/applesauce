@@ -9,6 +9,7 @@ describe("exports", () => {
         "RelayGroup",
         "RelayPool",
         "ReqCloseError",
+        "SyncDirection",
         "completeOnEose",
         "markFromRelay",
         "onlyEvents",
