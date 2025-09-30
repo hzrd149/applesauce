@@ -1,6 +1,6 @@
 ---
-"applesauce-content": major
-"applesauce-wallet": major
+"applesauce-content": minor
+"applesauce-wallet": minor
 ---
 
 Bump `cashu-ts` to `2.7`
