@@ -1,4 +1,3 @@
-import { hexToBytes } from "@noble/hashes/utils";
 import { parseBolt11, ParsedInvoice } from "applesauce-core/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -12,7 +11,10 @@ import {
   Transaction,
   WalletSupport,
 } from "applesauce-wallet-connect/helpers";
+import { generateSecretKey } from "nostr-tools";
 import { useEffect, useMemo, useState } from "react";
+import { of } from "rxjs";
+import RelayPicker from "../../components/relay-picker";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -491,10 +493,98 @@ function PayInvoiceModal({
   );
 }
 
-export default function SimpleWalletExample() {
+function ConnectionUriInput({ onConnect }: { onConnect: (wallet: WalletConnect) => void }) {
   const [uri, setUri] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [parsed, setParsed] = useState<ReturnType<typeof parseWalletConnectURI> | null>(null);
+
+  const handleUriChange = (value: string) => {
+    setUri(value);
+    setError(null);
+
+    if (!value.trim()) return;
+
+    try {
+      parseWalletConnectURI(value);
+      // If parsing succeeds, call onConnect with the valid URI
+      const wallet = WalletConnect.fromConnectURI(value, { pool });
+      onConnect(wallet);
+    } catch (err) {
+      console.error("Failed to parse URI:", err);
+      setError(err instanceof Error ? err.message : "Failed to parse URI");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="label">
+        <span className="label-text">Connection String</span>
+      </label>
+      <textarea
+        value={uri}
+        onChange={(e) => handleUriChange(e.target.value)}
+        placeholder="nostr+walletconnect://pubkey?relay=wss://relay.example.com&secret=secretkey"
+        className="textarea textarea-bordered w-full"
+        rows={3}
+      />
+      {error && (
+        <div className="alert alert-error">
+          <span className="text-sm">{error}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => void }) {
+  const [relay, setRelay] = useState<string>("wss://relay.getalby.com/v1");
+  const wallet = useMemo(() => new WalletConnect({ pool, relays: [relay], secret: generateSecretKey() }), [relay]);
+
+  useEffect(() => {
+    let connected = false;
+    const controller = new AbortController();
+
+    // Start waiting for the service to connect
+    wallet
+      .waitForService(controller.signal)
+      .then(() => {
+        connected = true;
+        onConnect(wallet);
+      })
+      .catch(() => {});
+
+    // Cleanup function to abort the waiting process
+    return () => {
+      if (!connected) controller.abort();
+    };
+  }, [wallet]);
+
+  const uri = useMemo(
+    () =>
+      wallet.getAuthURI({ methods: ["get_balance", "get_info", "make_invoice", "pay_invoice"], name: "applesauce" }),
+    [wallet],
+  );
+
+  return (
+    <div className="gap-2 flex flex-col items-center">
+      <a href={uri} className="bg-white p-4 rounded-lg">
+        <img
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}`}
+          alt="QR Code"
+          className="w-48 h-48"
+        />
+      </a>
+      <RelayPicker value={relay} onChange={setRelay} common={["wss://relay.getalby.com/v1"]} className="w-full" />
+      <a href={uri} className="btn btn-primary btn-block">
+        Connect
+      </a>
+      <code className="text-xs break-all select-all">{uri}</code>
+    </div>
+  );
+}
+
+export default function SimpleWalletExample() {
+  const [wallet, setWallet] = useState<WalletConnect | undefined>(undefined);
+
   const [balance, setBalance] = useState<GetBalanceResult | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -502,47 +592,20 @@ export default function SimpleWalletExample() {
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
   const [showPayInvoiceModal, setShowPayInvoiceModal] = useState(false);
 
-  // Handle URI input and parsing
-  const handleUriChange = (value: string) => {
-    setUri(value);
-    setError(null);
-    setParsed(null);
-    setBalance(null);
-    setTransactions([]);
-
-    if (!value.trim()) return;
-
+  // Handle connection from URI input component
+  const handleConnect = (wallet: WalletConnect) => {
     try {
-      const parsed = parseWalletConnectURI(value);
-      setParsed(parsed);
+      setWallet(wallet);
+      setBalance(null);
+      setTransactions([]);
     } catch (err) {
       console.error("Failed to parse URI:", err);
-      setError(err instanceof Error ? err.message : "Failed to parse URI");
+      // Error handling is done in the ConnectionUriInput component
     }
   };
 
-  // Create WalletConnect instance
-  const wallet = useMemo(() => {
-    if (!parsed) return undefined;
-
-    try {
-      const secret = hexToBytes(parsed.secret);
-      const walletConnect = new WalletConnect({
-        ...parsed,
-        secret,
-        subscriptionMethod: pool.subscription.bind(pool),
-        publishMethod: pool.publish.bind(pool),
-      });
-
-      return walletConnect;
-    } catch (err) {
-      console.error("Failed to create wallet connection:", err);
-      return undefined;
-    }
-  }, [parsed]);
-
   // Get wallet capabilities to check supported methods
-  const support = useObservableMemo(() => wallet?.support$, [wallet]);
+  const support = useObservableMemo(() => wallet?.support$ ?? of(undefined), [wallet]);
 
   // Fetch wallet balance
   const fetchBalance = async () => {
@@ -556,7 +619,6 @@ export default function SimpleWalletExample() {
       setBalance(balanceResult);
     } catch (err) {
       console.error("Failed to fetch balance:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch balance");
     } finally {
       setBalanceLoading(false);
     }
@@ -574,7 +636,6 @@ export default function SimpleWalletExample() {
       setTransactions(txResult.transactions);
     } catch (err) {
       console.error("Failed to fetch transactions:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch transactions");
     } finally {
       setTransactionsLoading(false);
     }
@@ -590,9 +651,7 @@ export default function SimpleWalletExample() {
 
   // Disconnect function
   const handleDisconnect = () => {
-    setUri("");
-    setError(null);
-    setParsed(null);
+    setWallet(undefined);
     setBalance(null);
     setTransactions([]);
   };
@@ -600,7 +659,6 @@ export default function SimpleWalletExample() {
   const canMakeInvoice = support && supportsMethod(support, "make_invoice");
   const canPayInvoice = support && supportsMethod(support, "pay_invoice");
   const canListTransactions = support && supportsMethod(support, "list_transactions");
-  const isConnected = parsed && support;
 
   return (
     <div className="container mx-auto max-w-md px-4 py-6">
@@ -611,29 +669,16 @@ export default function SimpleWalletExample() {
           <p className="text-sm opacity-70">Connect to your Nostr Wallet Connect enabled wallet</p>
         </div>
 
-        {/* Connection String Input - Hidden when connected */}
-        {!isConnected && (
-          <div className="space-y-2">
-            <label className="label">
-              <span className="label-text">Connection String</span>
-            </label>
-            <textarea
-              value={uri}
-              onChange={(e) => handleUriChange(e.target.value)}
-              placeholder="nostr+walletconnect://pubkey?relay=wss://relay.example.com&secret=secretkey"
-              className="textarea textarea-bordered w-full"
-              rows={3}
-            />
-            {error && (
-              <div className="alert alert-error">
-                <span className="text-sm">{error}</span>
-              </div>
-            )}
-          </div>
+        {/* Connection URI Input Component */}
+        {!wallet && (
+          <>
+            <ConnectAuthUri onConnect={handleConnect} />
+            <ConnectionUriInput onConnect={handleConnect} />
+          </>
         )}
 
         {/* Connecting State */}
-        {parsed && support === undefined && (
+        {wallet && support === undefined && (
           <div className="flex justify-center items-center gap-2 py-4">
             <span className="loading loading-spinner loading-md"></span>
             <span>Connecting to wallet...</span>
@@ -641,14 +686,14 @@ export default function SimpleWalletExample() {
         )}
 
         {/* Connection Failed */}
-        {parsed && support === null && (
+        {wallet && support === null && (
           <div className="alert alert-warning">
             <span className="text-sm">Wallet offline or not found. Please check your connection string.</span>
           </div>
         )}
 
         {/* Disconnect Button - Only show when connected */}
-        {isConnected && (
+        {wallet && (
           <div className="flex justify-center">
             <button onClick={handleDisconnect} className="btn btn-sm btn-ghost">
               Disconnect
@@ -657,7 +702,7 @@ export default function SimpleWalletExample() {
         )}
 
         {/* Balance Display */}
-        {support && (
+        {wallet && support && (
           <div className="card card-border bg-primary text-primary-content">
             <div className="card-body p-6 text-center">
               <h2 className="text-lg font-semibold mb-2">Balance</h2>
@@ -677,7 +722,7 @@ export default function SimpleWalletExample() {
         )}
 
         {/* Action Buttons */}
-        {support && (
+        {wallet && support && (
           <div className="grid grid-cols-2 gap-4">
             <button
               className="btn btn-success"
@@ -693,7 +738,7 @@ export default function SimpleWalletExample() {
         )}
 
         {/* Transactions List */}
-        {support && canListTransactions && (
+        {wallet && support && canListTransactions && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold">Recent Transactions</h3>
@@ -713,7 +758,7 @@ export default function SimpleWalletExample() {
         )}
 
         {/* No transactions support message */}
-        {support && !canListTransactions && (
+        {wallet && support && !canListTransactions && (
           <div className="alert alert-info">
             <span className="text-sm">This wallet does not support transaction history.</span>
           </div>

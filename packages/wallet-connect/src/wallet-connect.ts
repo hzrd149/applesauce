@@ -17,12 +17,14 @@ import {
   merge,
   mergeMap,
   Observable,
+  of,
   repeat,
   ReplaySubject,
   retry,
   share,
   Subscription,
   switchMap,
+  take,
   takeUntil,
   tap,
   timer,
@@ -221,18 +223,25 @@ export class WalletConnect {
       mergeMap((event) => this.handleNotificationEvent(event)),
     );
 
-    this.waitForService$ = this.events$.pipe(
-      // Complete when the service is set
-      takeUntil(this.service$),
-      // Only listen for wallet info events
-      filter((event) => event.kind === WALLET_INFO_KIND && !this.service),
-      // Set the service to the pubkey of the wallet info event
-      tap((event) => {
-        // Set the service to the pubkey of the wallet info event
-        this.service$.next(event.pubkey);
-      }),
-      // Get the service pubkey from the event
-      map((event) => event.pubkey),
+    this.waitForService$ = defer(() =>
+      // If service is already set, return it
+      this.service$.value
+        ? of(this.service$.value)
+        : // Otherwise listen for new wallet info events
+          this.events$.pipe(
+            // Only listen for wallet info events
+            filter((event) => event.kind === WALLET_INFO_KIND),
+            // Set the service to the pubkey of the wallet info event
+            tap((event) => {
+              // Set the service to the pubkey of the wallet info event
+              this.service$.next(event.pubkey);
+            }),
+            // Get the service pubkey from the event
+            map((event) => event.pubkey),
+            // Complete after the first value
+            take(1),
+          ),
+    ).pipe(
       // Only create a single subscription to avoid multiple side effects
       share(),
     );
