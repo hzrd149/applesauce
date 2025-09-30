@@ -1,6 +1,6 @@
 {
   "name": "applesauce-loaders",
-  "version": "3.1.0",
+  "version": "4.0.0",
   "description": "A collection of observable based loaders built on rx-nostr",
   "type": "module",
   "main": "dist/index.js",
@@ -59,14 +59,14 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^3.1.0",
+    "applesauce-core": "^4.0.0",
     "nanoid": "^5.0.9",
     "nostr-tools": "~2.17",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
-    "applesauce-signers": "^3.1.0",
+    "applesauce-signers": "^4.0.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",

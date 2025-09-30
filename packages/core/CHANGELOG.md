@@ -1,5 +1,28 @@
 # applesauce-core
 
+## 4.0.0
+
+### Major Changes
+
+- fba497a: Rename `EventSet` to `EventMemory`
+- fba497a: Add support for custom databases to `EventStore`
+- 688f126: Add `AsyncEventStore` and async interfaces for event store and event database
+- 49e6c44: Rename all `isLocked` methods to `isUnlocked` for type casting
+- 1a7a4e1: Change `EventStore.getByFilters` to return `NostrEvent[]` instead of `Set<NostrEvent>`
+
+### Minor Changes
+
+- f8fd5ec: Bump `nostr-tools` to `2.17`
+- 7ac7b0c: Add `includeMailboxes` operator for adding outbox or inbox relays to contacts
+- 7cd3ae6: Add `hasNameValueTag` helper method
+- e2f0ecc: Add `OutboxModel` for subscribing to contacts with outbox relays
+- d802905: Add helpers for NIP-78 app data events
+- 7ac7b0c: Add `selectOptimalRelays` operator for selecting contacts relays (outbox)
+
+### Patch Changes
+
+- 846b877: Fix `mergeRelaySets` only working with arrays
+
 ## 3.1.0
 
 ### Minor Changes
