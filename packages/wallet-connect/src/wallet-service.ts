@@ -154,7 +154,7 @@ export class WalletService {
   public pubkey: string | null = null;
 
   /** The client's secret key */
-  protected secret: Uint8Array;
+  protected secret?: Uint8Array;
 
   /** The client's public key */
   public client: string;
@@ -175,9 +175,14 @@ export class WalletService {
 
     // Set the client's secret and public key
     if (options.secret) {
+      // Service was created with a custom secret
       this.secret = options.secret;
       this.client = getPublicKey(this.secret);
+    } else if (options.client) {
+      // Service was restored with only the clients pubkey
+      this.client = options.client;
     } else {
+      // Generate secret and client pubkey
       this.secret = generateSecretKey();
       this.client = getPublicKey(this.secret);
     }
@@ -271,6 +276,7 @@ export class WalletService {
 
   /** Get the connection URI for the service */
   getConnectURI(): string {
+    if (!this.secret) throw new Error("Service was not created with a secret");
     if (!this.pubkey) throw new Error("Service is not running");
     if (!this.relays.length) throw new Error("No relays configured");
     const url = new URL(`nostr+walletconnect://${this.pubkey}`);

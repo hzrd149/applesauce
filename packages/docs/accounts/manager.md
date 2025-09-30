@@ -64,7 +64,8 @@ The `AccountManager` class exposes a set of methods to track which account is ac
 The account manager exposes two methods that can be used to persist accounts between app reloads. `toJSON` and `fromJSON`
 
 ```ts
-import { AccountManager, registerCommonAccountTypes, SimpleAccount } from "applesauce-accounts";
+import { AccountManager } from "applesauce-accounts";
+import { registerCommonAccountTypes } from "applesauce-accounts/accounts";
 
 // create an account manager instance
 const manager = new AccountManager();
