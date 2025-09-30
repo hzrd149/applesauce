@@ -1,19 +1,25 @@
-# Managing events
+# Event Store
 
-The `EventStore` is a reactive in-memory event database
+The `EventStore` is a reactive event management system that provides high-level features for handling Nostr events, including delete event processing, replaceable event management, and automatic event deduplication.
 
-At its core the event store uses the [`Database`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.Database.html) class to store and index events
+The EventStore can use any event database for persistence, or fall back to in-memory storage when no database is provided.
 
 ## Creating an event store
 
 ```ts
 import { EventStore } from "applesauce-core";
 
+// Memory-only storage
 const eventStore = new EventStore();
+
+// With persistent database
+import { BetterSqlite3EventDatabase } from "applesauce-sqlite/better-sqlite3";
+const database = new BetterSqlite3EventDatabase("./events.db");
+const eventStore = new EventStore(database);
 ```
 
 > [!INFO]
-> Its recommended to only create a single event store for your app
+> It's recommended to only create a single event store for your app
 
 ## Adding events
 
@@ -30,13 +36,15 @@ const event = { kind: 1, ... }
 eventStore.add(event)
 ```
 
-### Duplicate an replaceable events
+### Duplicate and replaceable events
 
-The event store understands to to handle replaceable (`1xxxx`) and parameterized replaceable events (`3xxxx`)
+The EventStore automatically handles:
 
-If the event store already has the event (same `id`) or if its a replaceable event and it already has newer version of it. `eventStore.add` will returning the **existing** instance of the event
+- **Duplicate events**: Same event ID returns the existing instance
+- **Replaceable events** (`1xxxx`): Automatically removes old versions when newer ones are added
+- **Delete events** (kind 5): Automatically removes referenced events
 
-This allows you to easily deduplicate events from multiple relays
+This allows you to easily deduplicate events from multiple relays and maintain proper event state.
 
 ```ts
 const incoming = [
@@ -85,7 +93,7 @@ const event = eventStore.add(incoming[2]);
 
 // since the event f177c37f has already been added
 // the subscription will not update and the returned event is the original
-console.log(event !== incoming[2]);
+console.log(event === incoming[0]); // true - same instance
 ```
 
 ## Subscribing

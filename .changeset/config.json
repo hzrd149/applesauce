@@ -23,5 +23,5 @@
   "access": "public",
   "baseBranch": "master",
   "updateInternalDependencies": "minor",
-  "ignore": ["applesauce-docs", "applesauce-examples"]
+  "ignore": ["applesauce-docs", "applesauce-examples", "applesauce-snippets"]
 }

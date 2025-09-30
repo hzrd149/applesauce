@@ -64,7 +64,7 @@ const sub = relay.subscribe([{ kinds: [0, 1] }], {
 });
 
 // Use models as normal - they'll work with persisted data
-const profile = eventStore.model(ProfileModel, "npub...");
+const profile = eventStore.model(ProfileModel, "pubkey...");
 profile.subscribe((parsed) => {
   console.log("Profile loaded from database:", parsed);
 });

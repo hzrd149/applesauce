@@ -41,6 +41,8 @@ export default defineConfig({
         items: [
           { text: "Event Store", link: "/core/event-store" },
           { text: "Models", link: "/core/models" },
+          { text: "Event Memory", link: "/core/event-memory" },
+          { text: "Event Database", link: "/core/event-database" },
           { text: "Helpers", link: "/core/helpers" },
         ],
       },
@@ -50,6 +52,7 @@ export default defineConfig({
           { text: "Package", link: "/relays/package" },
           { text: "Relays", link: "/relays/relays" },
           { text: "Relay Pool", link: "/relays/pool" },
+          { text: "Negentropy", link: "/relays/negentropy" },
           { text: "Operators", link: "/relays/operators" },
         ],
       },
@@ -109,13 +112,6 @@ export default defineConfig({
         ],
       },
       {
-        text: "React",
-        items: [
-          { text: "Package", link: "/react/package" },
-          { text: "Hooks", link: "/react/hooks" },
-        ],
-      },
-      {
         text: "Wallet",
         items: [
           { text: "Package", link: "/wallet/package" },
@@ -129,6 +125,16 @@ export default defineConfig({
           { text: "Package", link: "/wallet-connect/package" },
           { text: "Connect", link: "/wallet-connect/wallet-connect" },
           { text: "Service", link: "/wallet-connect/wallet-service" },
+        ],
+      },
+      {
+        text: "SQLite",
+        items: [
+          { text: "Package", link: "/sqlite/index" },
+          { text: "Better SQLite3", link: "/sqlite/better-sqlite3" },
+          { text: "Native SQLite", link: "/sqlite/native" },
+          { text: "Bun SQLite", link: "/sqlite/bun" },
+          { text: "LibSQL", link: "/sqlite/libsql" },
         ],
       },
       {

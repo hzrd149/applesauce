@@ -112,48 +112,27 @@ Load mentions for a user from their inbox relays:
 
 ```typescript
 // Get user's NIP-65 relay list
-const mailboxes = await eventStore.mailboxes(pubkey);
+eventStore
+  .mailboxes(pubkey)
+  .pipe(
+    switchMap((mailboxes) => {
+      // If no mailboxes, return nothing
+      if (!mailboxes) return NEVER;
 
-if (mailboxes.inboxes.length > 0) {
-  // Sync mentions from last 24 hours
-  pool
-    .sync(mailboxes.inboxes, eventStore, {
-      kinds: [1],
-      "#p": [pubkey],
-      since: unixNow() - 86400,
-    })
-    .subscribe((mention) => {
-      console.log("New mention:", mention.content);
-    });
-}
+      // Sync mentions from last 24 hours
+      return pool.sync(mailboxes.inboxes, eventStore, {
+        kinds: [1],
+        "#p": [pubkey],
+        since: unixNow() - 86400,
+      });
+    }),
+  )
+  .subscribe((mention) => {
+    console.log("New mention:", mention.content);
+  });
 ```
 
-### 2. Compare Relay Differences
-
-Find which events are missing from different relays:
-
-```typescript
-const syncResults = new Map();
-
-// Sync each relay individually to compare
-for (const relay of outboxRelays) {
-  const eventIds: string[] = [];
-
-  await pool.relay(relay).negentropy(
-    [], // Empty store - just collect IDs
-    { kinds: [1], authors: [pubkey], since: unixNow() - 86400 },
-    async (_have, need) => {
-      eventIds.push(...need); // Collect event IDs
-    },
-  );
-
-  syncResults.set(relay, eventIds);
-}
-
-// Now compare which events are missing from each relay
-```
-
-### 3. Sync Note Reactions
+### 2. Sync Note Reactions
 
 Load all reactions for a specific note:
 
@@ -173,75 +152,7 @@ pool
 
 ## API Reference
 
-### Relay Methods
-
-#### `negentropy(store, filter, reconcile, options?)`
-
-Low-level negentropy sync with custom reconciliation logic.
-
-**Parameters:**
-
-- `store`: Event store, async event store, or array of events
-- `filter`: Nostr filter to sync
-- `reconcile`: Function called with (have, need) event ID arrays
-- `options`: Optional sync options
-
-**Returns:** `Promise<boolean>` - true if successful
-
-#### `sync(store, filter, direction?)`
-
-High-level sync that returns events as an observable.
-
-**Parameters:**
-
-- `store`: Event store or array of events
-- `filter`: Nostr filter to sync
-- `direction`: `SyncDirection.RECEIVE` (default), `SEND`, or `BOTH`
-
-**Returns:** `Observable<NostrEvent>` - stream of synced events
-
-### Pool Methods
-
-#### `sync(relays, store, filter, direction?)`
-
-Sync with multiple relays using the high-level interface.
-
-#### `negentropy(relays, store, filter, reconcile, options?)`
-
-Sync with multiple relays using custom reconciliation logic.
-
-## Sync Directions
-
-Control what happens during sync:
-
-- **`SyncDirection.RECEIVE`** (default): Only fetch missing events from relay
-- **`SyncDirection.SEND`**: Only send your events to relay
-- **`SyncDirection.BOTH`**: Two-way sync - send and receive
-
-```typescript
-// Only send your events to relay
-relay.sync(eventStore, filter, SyncDirection.SEND);
-
-// Two-way sync
-relay.sync(eventStore, filter, SyncDirection.BOTH);
-```
-
-## Error Handling
-
-Always handle potential errors:
-
-```typescript
-try {
-  await relay.negentropy(eventStore, filter, reconcile);
-} catch (error) {
-  if (error.message.includes("does not support NIP-77")) {
-    console.log("Relay doesn't support negentropy");
-    // Fall back to regular REQ/subscription
-  } else {
-    console.error("Sync failed:", error);
-  }
-}
-```
+For full API reference, see the [API Reference](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-relay.html).
 
 ## Performance Tips
 
