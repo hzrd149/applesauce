@@ -1,9 +1,9 @@
 import { unixNow } from "applesauce-core/helpers";
 import type { NostrEvent } from "nostr-tools";
 import { finalizeEvent, getPublicKey, kinds } from "nostr-tools";
-import { SimpleSigner } from "../signers/simple-signer";
+import { PrivateKeySigner } from "../signers/private-key-signer";
 
-export class FakeUser extends SimpleSigner {
+export class FakeUser extends PrivateKeySigner {
   pubkey = getPublicKey(this.key);
 
   event(data?: Partial<NostrEvent>): NostrEvent {

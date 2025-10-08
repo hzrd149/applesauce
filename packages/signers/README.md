@@ -37,12 +37,12 @@ A basic signer that holds the secret key in memory with NIP-04 and NIP-44 encryp
 
 ```ts
 // Create new signer with random key
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 
 // Or import existing key
 const key = new Uint8Array(32);
 window.crypto.getRandomValues(key);
-const signer = new SimpleSigner(key);
+const signer = new PrivateKeySigner(key);
 ```
 
 ### Nostr Connect Signer (NIP-46)

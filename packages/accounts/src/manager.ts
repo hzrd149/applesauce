@@ -176,4 +176,18 @@ export class AccountManager<Metadata extends unknown = any> {
       }
     }
   }
+
+  /** Create an account from a types array and a serialized account */
+  static deserialize<
+    Signer extends ISigner = ISigner,
+    SignerData extends unknown = any,
+    Metadata extends unknown = any,
+  >(
+    types: IAccountConstructor<any, any, any>[],
+    json: SerializedAccount<SignerData, Metadata>,
+  ): IAccount<Signer, SignerData, Metadata> {
+    const account = types.find((type) => type.type === json.type)?.fromJSON(json);
+    if (!account) throw new Error(`Missing account type ${json.type}`);
+    return account;
+  }
 }

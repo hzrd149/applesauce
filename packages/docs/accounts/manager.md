@@ -22,7 +22,7 @@ manager.registerType(AmberClipboardAccount);
 ## Adding and removing accounts
 
 ```ts
-import { AccountManager, registerCommonAccountTypes, SimpleAccount } from "applesauce-accounts";
+import { AccountManager, registerCommonAccountTypes, PrivateKeyAccount } from "applesauce-accounts";
 
 // create an account manager instance
 const manager = new AccountManager();
@@ -39,7 +39,7 @@ manager.active$.subscribe((account) => {
 });
 
 // create an account
-const account = SimpleAccount.fromKey("788229e1801c4576391d39a03610293ea7e6645c9d39aca54c62fc6d71cbc385");
+const account = PrivateKeyAccount.fromKey("788229e1801c4576391d39a03610293ea7e6645c9d39aca54c62fc6d71cbc385");
 
 // add it to the manager
 manager.addAccount(account);

@@ -13,10 +13,10 @@ npm install applesauce-actions
 ```js
 import { EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-factory";
-import { SimpleSigner } from "applesauce-signers";
+import { PrivateKeySigner } from "applesauce-signers";
 import { ActionHub, Actions } from "applesauce-actions";
 
-const user = new SimpleSigner();
+const user = new PrivateKeySigner();
 const events = new EventStore();
 const factory = new EventFactory({ signer: user });
 

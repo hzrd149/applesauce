@@ -13,7 +13,7 @@ import {
 } from "../../helpers/nostr-connect";
 import { NostrPool } from "../../interop";
 import { NostrConnectProvider } from "../nostr-connect-provider";
-import { SimpleSigner } from "../simple-signer";
+import { PrivateKeySigner } from "../private-key-signer";
 
 let relay: WS;
 let pool: NostrPool;
@@ -36,7 +36,7 @@ describe("getBunkerURI", () => {
   it("should create a bunker uri", async () => {
     const provider = new NostrConnectProvider({
       upstream: user,
-      signer: new SimpleSigner(),
+      signer: new PrivateKeySigner(),
       relays: ["wss://relay.nsec.app"],
     });
 
@@ -48,7 +48,7 @@ describe("getBunkerURI", () => {
   it("should create a bunker uri with secret", async () => {
     const provider = new NostrConnectProvider({
       upstream: user,
-      signer: new SimpleSigner(),
+      signer: new PrivateKeySigner(),
       relays: ["wss://relay.nsec.app"],
       secret: "test-secret",
     });
@@ -61,7 +61,7 @@ describe("getBunkerURI", () => {
 
 describe("start", () => {
   it("should subscribe to relays for new requests", async () => {
-    const signer = new SimpleSigner();
+    const signer = new PrivateKeySigner();
     const provider = new NostrConnectProvider({
       upstream: user,
       signer,
@@ -83,7 +83,7 @@ describe("start", () => {
 
   it("should update subscription when `connect` is received", async () => {
     const client = new FakeUser();
-    const signer = new SimpleSigner();
+    const signer = new PrivateKeySigner();
     const provider = new NostrConnectProvider({
       upstream: user,
       signer,
@@ -261,7 +261,7 @@ describe("initiated by client", () => {
       relays: ["wss://relay.nsec.app"],
     });
 
-    const signer = new SimpleSigner();
+    const signer = new PrivateKeySigner();
     const provider = new NostrConnectProvider({
       upstream: user,
       signer,

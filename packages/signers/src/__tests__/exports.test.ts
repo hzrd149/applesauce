@@ -12,6 +12,7 @@ describe("exports", () => {
         "NostrConnectProvider",
         "NostrConnectSigner",
         "PasswordSigner",
+        "PrivateKeySigner",
         "ReadonlySigner",
         "SerialPortSigner",
         "SimpleSigner",

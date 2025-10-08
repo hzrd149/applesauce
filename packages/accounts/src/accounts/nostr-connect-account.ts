@@ -1,4 +1,4 @@
-import { NostrConnectSigner, SimpleSigner } from "applesauce-signers";
+import { NostrConnectSigner, PrivateKeySigner } from "applesauce-signers";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 
 import { BaseAccount } from "../account.js";
@@ -37,7 +37,7 @@ export class NostrConnectAccount<Metadata extends unknown> extends BaseAccount<
       relays: json.signer.relays,
       pubkey: json.pubkey,
       remote: json.signer.remote,
-      signer: new SimpleSigner(hexToBytes(json.signer.clientKey)),
+      signer: new PrivateKeySigner(hexToBytes(json.signer.clientKey)),
     });
 
     const account = new NostrConnectAccount<Metadata>(json.pubkey, signer);

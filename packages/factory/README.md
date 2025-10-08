@@ -14,7 +14,7 @@ For detailed documentation and guides, visit:
 When creating a new event factory you can pass a [context](https://hzrd149.github.io/applesauce/typedoc/types/applesauce-factory.EventFactoryContext.html) object that is used by all blueprints:
 
 ```ts
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 
 const factory = new EventFactory({
   // optionally pass a signer in (required for encryption)

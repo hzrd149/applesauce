@@ -1,13 +1,13 @@
-import { ISigner, SimpleSigner } from "applesauce-signers";
+import { ISigner, PrivateKeySigner } from "applesauce-signers";
 import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAccount, SignerMismatchError } from "../account.js";
-import { SimpleAccount } from "../accounts/simple-account.js";
+import { PrivateKeyAccount } from "../accounts/private-key-account.js";
 
-let signer: SimpleSigner;
+let signer: PrivateKeySigner;
 beforeEach(() => {
-  signer = new SimpleSigner();
+  signer = new PrivateKeySigner();
 });
 
 describe("request queue", () => {
@@ -82,7 +82,7 @@ describe("request queue", () => {
 
 describe("type", () => {
   it("should return static account type", () => {
-    const account = SimpleAccount.fromKey(generateSecretKey());
+    const account = PrivateKeyAccount.fromKey(generateSecretKey());
 
     expect(account.type).toBe("nsec");
   });

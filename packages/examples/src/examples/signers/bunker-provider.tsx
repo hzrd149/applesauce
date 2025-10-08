@@ -1,6 +1,6 @@
 import { bytesToHex } from "@noble/hashes/utils";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionMissingError, ExtensionSigner, NostrConnectProvider, SimpleSigner } from "applesauce-signers";
+import { ExtensionMissingError, ExtensionSigner, NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
@@ -231,7 +231,7 @@ const BunkerURISection = ({
 export default function BunkerProvider() {
   const [selectedRelay, setSelectedRelay] = useState("wss://relay.nsec.app/");
   const [selectedSigner, setSelectedSigner] = useState<"extension" | "generated">("extension");
-  const [generatedKey, setGeneratedKey] = useState<SimpleSigner | null>(null);
+  const [generatedKey, setGeneratedKey] = useState<PrivateKeySigner | null>(null);
   const [provider, setProvider] = useState<NostrConnectProvider | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [bunkerUri, setBunkerUri] = useState<string>("");
@@ -260,7 +260,7 @@ export default function BunkerProvider() {
 
   // Generate new key
   const handleGenerateKey = useCallback(async () => {
-    const signer = new SimpleSigner();
+    const signer = new PrivateKeySigner();
     setGeneratedKey(signer);
     const pubkey = await signer.getPublicKey();
     addLog("info", "Generated new key", { pubkey: pubkey, nsec: bytesToHex(signer.key) });
@@ -275,7 +275,7 @@ export default function BunkerProvider() {
         addLog("info", "Using browser extension signer");
         return signer;
       } else {
-        const signer = generatedKey || new SimpleSigner();
+        const signer = generatedKey || new PrivateKeySigner();
         if (!generatedKey) {
           setGeneratedKey(signer);
         }
@@ -362,7 +362,7 @@ export default function BunkerProvider() {
         relays: [selectedRelay],
         upstream: signer,
         // Use a different signer for the provider identity
-        signer: new SimpleSigner(),
+        signer: new PrivateKeySigner(),
         secret: nanoid(16), // Generate random secret
         onClientConnect: (client) => {
           setShowBunkerURI(false);

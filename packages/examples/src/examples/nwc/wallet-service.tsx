@@ -1,7 +1,7 @@
 import { parseBolt11, unixNow } from "applesauce-core/helpers";
 import { useObservableEagerState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { SimpleSigner } from "applesauce-signers";
+import { PrivateKeySigner } from "applesauce-signers";
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
 import { GetInfoResult, WalletMethod, Transaction as WalletTransaction } from "applesauce-wallet-connect/helpers";
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
@@ -28,7 +28,7 @@ const DEFAULT_RELAYS = ["wss://relay.getalby.com/v1", "wss://nos.lol"];
 const pool = new RelayPool();
 
 /** Create a signer for the service */
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 
 // Setup subscription and publish methods
 WalletService.subscriptionMethod = pool.subscription.bind(pool);

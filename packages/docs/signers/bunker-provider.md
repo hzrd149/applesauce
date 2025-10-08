@@ -7,10 +7,10 @@ The [`NostrConnectProvider`](https://hzrd149.github.io/applesauce/typedoc/classe
 The `NostrConnectProvider` requires an upstream signer that will be used for the common [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md) operations (`sign_event`, `nip04_encrypt`, etc.)
 
 ```typescript
-import { SimpleSigner } from "applesauce-signers";
+import { PrivateKeySigner } from "applesauce-signers";
 
 // Create a new signer for the users key
-const upstream = SimpleSigner.fromKey("nsec1...");
+const upstream = PrivateKeySigner.fromKey("nsec1...");
 
 // Create a new provider that will use the upstream signer
 const provider = new NostrConnectProvider({
@@ -126,18 +126,18 @@ const provider = new NostrConnectProvider({
 To create a provider that waits for clients to connect, you can use the `waitForClient` method:
 
 ```typescript
-import { NostrConnectProvider, SimpleSigner } from "applesauce-signers";
+import { NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";
 
 // Create a signer for the users key
-const user = SimpleSigner.fromKey("nsec1...");
+const user = PrivateKeySigner.fromKey("nsec1...");
 
 // Create a signer for the provider's identity (recomended to be different from the upstream signer)
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 
 const provider = new NostrConnectProvider({
   relays: ["wss://relay.signer.com"],
   upstream: user, // Signer for actual operations
-  signer: signer, // Provider's identity (optional, will create a new SimpleSigner if not provided)
+  signer: signer, // Provider's identity (optional, will create a new PrivateKeySigner if not provided)
   secret: "my-secret-key", // Recommended secret for client authentication (optional)
   onClientConnect: (client) => {
     console.log("Client connected:", client);
@@ -189,10 +189,10 @@ This URI can be displayed as a QR code or shared with clients to initiate connec
 To create a provider that responds to a client's `nostrconnect://` URI, pass the URI to the `start` method:
 
 ```typescript
-import { NostrConnectProvider, SimpleSigner } from "applesauce-signers";
+import { NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";
 
 // Create a signer for the users key
-const user = SimpleSigner.fromKey("nsec1...");
+const user = PrivateKeySigner.fromKey("nsec1...");
 
 // Create a new provider with the users signer
 const provider = new NostrConnectProvider({
@@ -242,7 +242,7 @@ Its not recomended but it is possible to listen for `connect` requests sent to t
 ```typescript
 const pool = new RelayPool();
 
-const user = SimpleSigner.fromKey("nsec1...");
+const user = PrivateKeySigner.fromKey("nsec1...");
 
 const providers: NostrConnectProvider[] = [];
 

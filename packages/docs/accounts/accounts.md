@@ -7,7 +7,7 @@ The [account classes](https://hzrd149.github.io/applesauce/typedoc/modules/apple
 - [ExtensionAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.ExtensionAccount.html) is a wrapper around [ExtensionSigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.ExtensionSigner.html)
 - [PasswordAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.PasswordAccount.html) is a wrapper around [PasswordSigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.PasswordSigner.html)
 - [NostrConnectAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.NostrConnectAccount.html) is a wrapper around [NostrConnectSigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.NostrConnectSigner.html)
-- [SimpleAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.SimpleAccount.html) is a wrapper around [SimpleSigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.SimpleSigner.html)
+- [PrivateKeyAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.PrivateKeyAccount.html) is a wrapper around [PrivateKeySigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.PrivateKeySigner.html)
 - [SerialPortAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.SerialPortAccount.html) is a wrapper around [SerialPortSigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.SerialPortSigner.html)
 - [ReadonlyAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.ReadonlyAccount.html) is a wrapper around [ReadonlySigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.ReadonlySigner.html)
 - [AmberClipboardAccount](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-accounts.Accounts.AmberClipboardAccount.html) is a wrapper around [AmberClipboardSigner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.AmberClipboardSigner.html)
@@ -17,17 +17,17 @@ The [account classes](https://hzrd149.github.io/applesauce/typedoc/modules/apple
 All account classes require the signer to be created and setup first
 
 ```ts
-import { SimpleSigner } from "applesauce-signers/signers";
-import { SimpleAccount } from "applesauce-accounts/accounts";
+import { PrivateKeySigner } from "applesauce-signers/signers";
+import { PrivateKeyAccount } from "applesauce-accounts/accounts";
 
 // create the signer first
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 
 // setup signer
 const pubkey = await signer.getPublicKey();
 
 // create account
-const account = new SimpleAccount(pubkey, signer);
+const account = new PrivateKeyAccount(pubkey, signer);
 ```
 
 For a nostr connect signer it would look something like

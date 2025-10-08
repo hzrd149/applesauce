@@ -57,10 +57,10 @@ Create a wallet service that handles NIP-47 requests:
 
 ```typescript
 import { WalletService } from "applesauce-wallet-connect";
-import { SimpleSigner } from "applesauce-signers";
+import { PrivateKeySigner } from "applesauce-signers";
 
 // Create a signer for the service
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 
 // Define method handlers
 const handlers = {

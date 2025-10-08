@@ -31,7 +31,7 @@ import {
   NostrPublishMethod,
   NostrSubscriptionMethod,
 } from "../interop.js";
-import { SimpleSigner } from "./simple-signer.js";
+import { PrivateKeySigner } from "./private-key-signer.js";
 
 export interface ProviderAuthorization {
   /** A method used to accept or reject `connect` requests */
@@ -124,7 +124,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
   constructor(options: NostrConnectProviderOptions) {
     this.relays = options.relays;
     this.upstream = options.upstream;
-    this.signer = options.signer ?? new SimpleSigner();
+    this.signer = options.signer ?? new PrivateKeySigner();
     this.secret = options.secret;
 
     // Get the subscription and publish methods

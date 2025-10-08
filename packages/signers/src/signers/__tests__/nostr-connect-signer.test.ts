@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NEVER } from "rxjs";
 import { NostrConnectSigner } from "../nostr-connect-signer.js";
-import { SimpleSigner } from "../simple-signer.js";
+import { PrivateKeySigner } from "../private-key-signer.js";
 
 const relays = ["wss://relay.signer.com"];
-const client = new SimpleSigner();
-const remote = new SimpleSigner();
+const client = new PrivateKeySigner();
+const remote = new PrivateKeySigner();
 
 const subscriptionMethod = vi.fn().mockReturnValue(NEVER);
 const publishMethod = vi.fn(async () => {});

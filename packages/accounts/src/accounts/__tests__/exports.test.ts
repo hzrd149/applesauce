@@ -9,6 +9,7 @@ describe("exports", () => {
         "ExtensionAccount",
         "NostrConnectAccount",
         "PasswordAccount",
+        "PrivateKeyAccount",
         "ReadonlyAccount",
         "SerialPortAccount",
         "SimpleAccount",

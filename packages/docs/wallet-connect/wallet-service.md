@@ -19,10 +19,10 @@ The `WalletService` class provides a service-side implementation for creating NI
 
 ```typescript
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
-import { SimpleSigner } from "applesauce-signers";
+import { PrivateKeySigner } from "applesauce-signers";
 
 // Create a signer for the service
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 
 // Define method handlers
 const handlers: WalletServiceHandlers = {

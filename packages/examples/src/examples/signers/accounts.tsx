@@ -1,5 +1,5 @@
 import { AccountManager } from "applesauce-accounts";
-import { registerCommonAccountTypes, SimpleAccount } from "applesauce-accounts/accounts";
+import { registerCommonAccountTypes, PrivateKeyAccount } from "applesauce-accounts/accounts";
 import { useObservableState } from "applesauce-react/hooks";
 import { useCallback, useState } from "react";
 import { merge, Subject } from "rxjs";
@@ -35,7 +35,7 @@ manager.active$.subscribe((account) => {
   else localStorage.removeItem("activeAccount");
 });
 
-function AccountCard({ account }: { account: SimpleAccount<AccountMetadata> }) {
+function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> }) {
   const activeAccount = useObservableState(manager.active$);
   const [name, setName] = useState(account.metadata?.name || "");
 
@@ -92,7 +92,7 @@ export default function AccountManagerExample() {
   const accounts = useObservableState(manager.accounts$);
 
   const createNewAccount = useCallback(() => {
-    const account = SimpleAccount.generateNew<AccountMetadata>();
+    const account = PrivateKeyAccount.generateNew<AccountMetadata>();
     account.metadata = { name: `Account ${accounts.length + 1}` };
     manager.addAccount(account);
   }, [accounts.length]);
@@ -108,7 +108,7 @@ export default function AccountManagerExample() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {accounts.map((account) => (
-          <AccountCard key={account.id} account={account as SimpleAccount<AccountMetadata>} />
+          <AccountCard key={account.id} account={account as PrivateKeyAccount<AccountMetadata>} />
         ))}
       </div>
 

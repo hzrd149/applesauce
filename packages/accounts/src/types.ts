@@ -9,7 +9,7 @@ export type EventTemplate = {
 };
 
 /** A type for serializing an account */
-export type SerializedAccount<SignerData, Metadata extends unknown> = {
+export type SerializedAccount<SignerData extends unknown = any, Metadata extends unknown = any> = {
   /** Internal account ID */
   id: string;
   /** account type */
@@ -23,8 +23,11 @@ export type SerializedAccount<SignerData, Metadata extends unknown> = {
 };
 
 /** An interface for an account */
-export interface IAccount<Signer extends ISigner = ISigner, SignerData = any, Metadata extends unknown = any>
-  extends ISigner {
+export interface IAccount<
+  Signer extends ISigner = ISigner,
+  SignerData extends unknown = any,
+  Metadata extends unknown = any,
+> extends ISigner {
   id: string;
   name?: string;
   pubkey: string;
@@ -39,7 +42,11 @@ export interface IAccount<Signer extends ISigner = ISigner, SignerData = any, Me
 }
 
 /** A constructor for an account */
-export interface IAccountConstructor<Signer extends ISigner, SignerData, Metadata extends unknown> {
+export interface IAccountConstructor<
+  Signer extends ISigner,
+  SignerData extends unknown = any,
+  Metadata extends unknown = any,
+> {
   readonly type: string;
   new (pubkey: string, signer: Signer): IAccount<Signer, SignerData, Metadata>;
   fromJSON(json: SerializedAccount<SignerData, Metadata>): IAccount<Signer, SignerData, Metadata>;

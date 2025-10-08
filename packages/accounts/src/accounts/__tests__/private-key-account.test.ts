@@ -1,11 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
-import { nip19 } from "nostr-tools";
-import { SimpleSigner } from "applesauce-signers/signers/simple-signer";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { bytesToHex } from "@noble/hashes/utils";
+import { PrivateKeySigner } from "applesauce-signers/signers/private-key-signer";
+import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { SimpleAccount } from "../simple-account.js";
 import { SerializedAccount } from "../../types.js";
+import { PrivateKeyAccount } from "../private-key-account.js";
 
 let testKey: Uint8Array;
 let testPubkey: string;
@@ -20,9 +19,9 @@ beforeEach(() => {
 });
 
 describe("constructor", () => {
-  it("should create a SimpleAccount with the correct type", () => {
-    const signer = new SimpleSigner(testKey);
-    const account = new SimpleAccount(testPubkey, signer);
+  it("should create a PrivateKeyAccount with the correct type", () => {
+    const signer = new PrivateKeySigner(testKey);
+    const account = new PrivateKeyAccount(testPubkey, signer);
 
     expect(account.type).toBe("nsec");
     expect(account.pubkey).toBe(testPubkey);
@@ -30,14 +29,14 @@ describe("constructor", () => {
   });
 
   it("should have the correct static type", () => {
-    expect(SimpleAccount.type).toBe("nsec");
+    expect(PrivateKeyAccount.type).toBe("nsec");
   });
 });
 
 describe("toJSON", () => {
   it("should serialize account to JSON with correct structure", () => {
-    const signer = new SimpleSigner(testKey);
-    const account = new SimpleAccount(testPubkey, signer);
+    const signer = new PrivateKeySigner(testKey);
+    const account = new PrivateKeyAccount(testPubkey, signer);
     account.id = "test-id";
     account.metadata = { name: "Test Account" };
 
@@ -55,8 +54,8 @@ describe("toJSON", () => {
   });
 
   it("should serialize account without metadata", () => {
-    const signer = new SimpleSigner(testKey);
-    const account = new SimpleAccount(testPubkey, signer);
+    const signer = new PrivateKeySigner(testKey);
+    const account = new PrivateKeyAccount(testPubkey, signer);
     account.id = "test-id";
 
     const json = account.toJSON();
@@ -73,8 +72,8 @@ describe("toJSON", () => {
   });
 
   it("should convert private key bytes to hex in signer data", () => {
-    const signer = new SimpleSigner(testKey);
-    const account = new SimpleAccount(testPubkey, signer);
+    const signer = new PrivateKeySigner(testKey);
+    const account = new PrivateKeyAccount(testPubkey, signer);
 
     const json = account.toJSON();
 
@@ -84,7 +83,7 @@ describe("toJSON", () => {
 });
 
 describe("fromJSON", () => {
-  it("should deserialize JSON to SimpleAccount", () => {
+  it("should deserialize JSON to PrivateKeyAccount", () => {
     const json: SerializedAccount<any, any> = {
       id: "test-id",
       type: "nsec",
@@ -95,13 +94,13 @@ describe("fromJSON", () => {
       metadata: { name: "Test Account" },
     };
 
-    const account = SimpleAccount.fromJSON(json);
+    const account = PrivateKeyAccount.fromJSON(json);
 
     expect(account.id).toBe("test-id");
     expect(account.type).toBe("nsec");
     expect(account.pubkey).toBe(testPubkey);
     expect(account.metadata).toEqual({ name: "Test Account" });
-    expect(account.signer).toBeInstanceOf(SimpleSigner);
+    expect(account.signer).toBeInstanceOf(PrivateKeySigner);
     expect(account.signer.key).toEqual(testKey);
   });
 
@@ -115,13 +114,13 @@ describe("fromJSON", () => {
       },
     };
 
-    const account = SimpleAccount.fromJSON(json);
+    const account = PrivateKeyAccount.fromJSON(json);
 
     expect(account.id).toBe("test-id");
     expect(account.type).toBe("nsec");
     expect(account.pubkey).toBe(testPubkey);
     expect(account.metadata).toBeUndefined();
-    expect(account.signer).toBeInstanceOf(SimpleSigner);
+    expect(account.signer).toBeInstanceOf(PrivateKeySigner);
     expect(account.signer.key).toEqual(testKey);
   });
 
@@ -135,7 +134,7 @@ describe("fromJSON", () => {
       },
     };
 
-    const account = SimpleAccount.fromJSON(json);
+    const account = PrivateKeyAccount.fromJSON(json);
 
     expect(account.signer.key).toEqual(testKey);
     expect(account.signer.key).toBeInstanceOf(Uint8Array);
@@ -144,34 +143,34 @@ describe("fromJSON", () => {
 
 describe("fromKey", () => {
   it("should create account from hex private key", () => {
-    const account = SimpleAccount.fromKey(testHexKey);
+    const account = PrivateKeyAccount.fromKey(testHexKey);
 
     expect(account.pubkey).toBe(testPubkey);
     expect(account.type).toBe("nsec");
-    expect(account.signer).toBeInstanceOf(SimpleSigner);
+    expect(account.signer).toBeInstanceOf(PrivateKeySigner);
     expect(account.signer.key).toEqual(testKey);
   });
 
   it("should create account from NIP-19 nsec", () => {
-    const account = SimpleAccount.fromKey(testNsec);
+    const account = PrivateKeyAccount.fromKey(testNsec);
 
     expect(account.pubkey).toBe(testPubkey);
     expect(account.type).toBe("nsec");
-    expect(account.signer).toBeInstanceOf(SimpleSigner);
+    expect(account.signer).toBeInstanceOf(PrivateKeySigner);
     expect(account.signer.key).toEqual(testKey);
   });
 
   it("should create account from Uint8Array private key", () => {
-    const account = SimpleAccount.fromKey(testKey);
+    const account = PrivateKeyAccount.fromKey(testKey);
 
     expect(account.pubkey).toBe(testPubkey);
     expect(account.type).toBe("nsec");
-    expect(account.signer).toBeInstanceOf(SimpleSigner);
+    expect(account.signer).toBeInstanceOf(PrivateKeySigner);
     expect(account.signer.key).toEqual(testKey);
   });
 
   it("should derive correct public key from private key", () => {
-    const account = SimpleAccount.fromKey(testKey);
+    const account = PrivateKeyAccount.fromKey(testKey);
     const expectedPubkey = getPublicKey(testKey);
 
     expect(account.pubkey).toBe(expectedPubkey);
@@ -183,7 +182,7 @@ describe("fromKey", () => {
       avatar?: string;
     }
 
-    const account = SimpleAccount.fromKey<TestMetadata>(testKey);
+    const account = PrivateKeyAccount.fromKey<TestMetadata>(testKey);
 
     expect(account.pubkey).toBe(testPubkey);
     expect(account.type).toBe("nsec");
@@ -196,26 +195,26 @@ describe("fromKey", () => {
 
 describe("generateNew", () => {
   it("should generate a new account with random key", () => {
-    const account = SimpleAccount.generateNew();
+    const account = PrivateKeyAccount.generateNew();
 
     expect(account.type).toBe("nsec");
     expect(account.pubkey).toBeDefined();
     expect(account.pubkey).toHaveLength(64); // hex pubkey length
-    expect(account.signer).toBeInstanceOf(SimpleSigner);
+    expect(account.signer).toBeInstanceOf(PrivateKeySigner);
     expect(account.signer.key).toBeInstanceOf(Uint8Array);
     expect(account.signer.key).toHaveLength(32); // 32 bytes
   });
 
   it("should generate different accounts each time", () => {
-    const account1 = SimpleAccount.generateNew();
-    const account2 = SimpleAccount.generateNew();
+    const account1 = PrivateKeyAccount.generateNew();
+    const account2 = PrivateKeyAccount.generateNew();
 
     expect(account1.pubkey).not.toBe(account2.pubkey);
     expect(account1.signer.key).not.toEqual(account2.signer.key);
   });
 
   it("should generate account with valid key pair", () => {
-    const account = SimpleAccount.generateNew();
+    const account = PrivateKeyAccount.generateNew();
     const expectedPubkey = getPublicKey(account.signer.key);
 
     expect(account.pubkey).toBe(expectedPubkey);
@@ -227,7 +226,7 @@ describe("generateNew", () => {
       created: Date;
     }
 
-    const account = SimpleAccount.generateNew<TestMetadata>();
+    const account = PrivateKeyAccount.generateNew<TestMetadata>();
 
     expect(account.type).toBe("nsec");
     expect(account.pubkey).toBeDefined();
@@ -240,12 +239,12 @@ describe("generateNew", () => {
 
 describe("JSON roundtrip", () => {
   it("should preserve all data through JSON serialization and deserialization", () => {
-    const originalAccount = SimpleAccount.fromKey(testKey);
+    const originalAccount = PrivateKeyAccount.fromKey(testKey);
     originalAccount.id = "original-id";
     originalAccount.metadata = { name: "Original Account", created: new Date().toISOString() };
 
     const json = originalAccount.toJSON();
-    const restoredAccount = SimpleAccount.fromJSON(json);
+    const restoredAccount = PrivateKeyAccount.fromJSON(json);
 
     expect(restoredAccount.id).toBe(originalAccount.id);
     expect(restoredAccount.type).toBe(originalAccount.type);
@@ -255,11 +254,11 @@ describe("JSON roundtrip", () => {
   });
 
   it("should handle empty metadata in roundtrip", () => {
-    const originalAccount = SimpleAccount.fromKey(testKey);
+    const originalAccount = PrivateKeyAccount.fromKey(testKey);
     originalAccount.id = "no-metadata-id";
 
     const json = originalAccount.toJSON();
-    const restoredAccount = SimpleAccount.fromJSON(json);
+    const restoredAccount = PrivateKeyAccount.fromJSON(json);
 
     expect(restoredAccount.id).toBe(originalAccount.id);
     expect(restoredAccount.metadata).toBeUndefined();

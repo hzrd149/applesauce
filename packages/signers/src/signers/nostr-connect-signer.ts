@@ -7,7 +7,7 @@ import {
   NostrPool,
   NostrPublishMethod,
   NostrSubscriptionMethod,
-  SimpleSigner,
+  PrivateKeySigner,
   getConnectionMethods,
 } from "applesauce-signers";
 import { nanoid } from "nanoid";
@@ -35,8 +35,8 @@ async function defaultHandleAuth(url: string) {
 export type NostrConnectSignerOptions = NostrConnectionMethodsOptions & {
   /** The relays to communicate over */
   relays: string[];
-  /** A {@link SimpleSigner} for this client */
-  signer?: SimpleSigner;
+  /** A {@link PrivateKeySigner} for this client */
+  signer?: PrivateKeySigner;
   /** pubkey of the remote signer application */
   remote?: string;
   /** Users pubkey */
@@ -62,7 +62,7 @@ export class NostrConnectSigner implements ISigner {
 
   protected log = logger.extend("NostrConnectSigner");
   /** The local client signer */
-  public signer: SimpleSigner;
+  public signer: PrivateKeySigner;
 
   /** Whether the signer is listening for events */
   listening = false;
@@ -119,7 +119,7 @@ export class NostrConnectSigner implements ISigner {
     if (options.onAuth) this.onAuth = options.onAuth;
 
     // Get or create the local signer
-    this.signer = options?.signer || new SimpleSigner();
+    this.signer = options?.signer || new PrivateKeySigner();
 
     this.nip04 = {
       encrypt: this.nip04Encrypt.bind(this),
@@ -420,7 +420,7 @@ export class NostrConnectSigner implements ISigner {
   /** Create a {@link NostrConnectSigner} from a bunker:// URI */
   static async fromBunkerURI(
     uri: string,
-    options?: Omit<NostrConnectSignerOptions, "relays"> & { permissions?: string[]; signer?: SimpleSigner },
+    options?: Omit<NostrConnectSignerOptions, "relays"> & { permissions?: string[]; signer?: PrivateKeySigner },
   ) {
     const { remote, relays, secret } = NostrConnectSigner.parseBunkerURI(uri);
 

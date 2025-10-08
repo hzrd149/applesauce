@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { AccountManager } from "../manager.js";
-import { SimpleAccount, SimpleAccountSignerData } from "../accounts/simple-account.js";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
-import { SerializedAccount } from "../types.js";
 import { bytesToHex } from "@noble/hashes/utils";
+import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { beforeEach, describe, expect, it } from "vitest";
+import { PrivateKeyAccount, PrivateKeyAccountSignerData } from "../accounts/private-key-account.js";
+import { AccountManager } from "../manager.js";
+import { SerializedAccount } from "../types.js";
 
 let manager: AccountManager;
 
@@ -13,7 +13,7 @@ beforeEach(() => {
 
 describe("toJSON", () => {
   it("should return an array of serialized accounts", () => {
-    manager.addAccount(SimpleAccount.fromKey(generateSecretKey()));
+    manager.addAccount(PrivateKeyAccount.fromKey(generateSecretKey()));
 
     manager.setAccountMetadata(manager.accounts[0], { name: "testing" });
 
@@ -32,7 +32,7 @@ describe("toJSON", () => {
 describe("fromJSON", () => {
   it("should recreate accounts", () => {
     const key = generateSecretKey();
-    const json: SerializedAccount<SimpleAccountSignerData, { name: string }>[] = [
+    const json: SerializedAccount<PrivateKeyAccountSignerData, { name: string }>[] = [
       {
         id: "custom-id",
         type: "nsec",
@@ -42,18 +42,18 @@ describe("fromJSON", () => {
       },
     ];
 
-    manager.registerType(SimpleAccount);
+    manager.registerType(PrivateKeyAccount);
     manager.fromJSON(json);
 
-    expect(manager.getAccount("custom-id")).toBeInstanceOf(SimpleAccount);
-    expect(manager.getAccountForPubkey(getPublicKey(key))).toBeInstanceOf(SimpleAccount);
+    expect(manager.getAccount("custom-id")).toBeInstanceOf(PrivateKeyAccount);
+    expect(manager.getAccountForPubkey(getPublicKey(key))).toBeInstanceOf(PrivateKeyAccount);
     expect(manager.getAccountMetadata("custom-id")).toEqual({ name: "testing" });
   });
 });
 
 describe("signer", () => {
   it("should proxy active account", async () => {
-    const account = SimpleAccount.generateNew();
+    const account = PrivateKeyAccount.generateNew();
     manager.addAccount(account);
     manager.setActive(account);
 
@@ -67,7 +67,7 @@ describe("signer", () => {
 
 describe("removeAccount", () => {
   it("should clear active account if removed account was active", () => {
-    const account = SimpleAccount.generateNew();
+    const account = PrivateKeyAccount.generateNew();
     manager.addAccount(account);
     manager.setActive(account);
 

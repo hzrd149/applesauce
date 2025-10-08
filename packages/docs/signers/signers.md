@@ -66,12 +66,12 @@ try {
 
 ## Simple Signer
 
-The [`SimpleSigner`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.SimpleSigner.html) class is a standard signer that holds the secret key in memory and supports NIP-04 and NIP-44 encryption
+The [`PrivateKeySigner`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.PrivateKeySigner.html) class is a standard signer that holds the secret key in memory and supports NIP-04 and NIP-44 encryption
 
 You can create a new signer and secret key by not passing anything into the constructor
 
 ```ts
-const signer = new SimpleSigner();
+const signer = new PrivateKeySigner();
 ```
 
 Or you can import and existing secret key
@@ -81,7 +81,7 @@ const key = new Uint8Array();
 window.crypto.getRandomValues(key);
 
 // pass the key into constructor
-const signer = new SimpleSigner(key);
+const signer = new PrivateKeySigner(key);
 // or set it manually
 signer.key = key;
 ```
