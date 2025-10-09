@@ -12,6 +12,9 @@ import {
 } from "nostr-tools/nip19";
 import { getPublicKey, kinds, nip19, NostrEvent } from "nostr-tools";
 
+// re-export types from nostr-tools/nip19
+export { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
+
 import { getReplaceableIdentifier } from "./event.js";
 import { isAddressableKind } from "nostr-tools/kinds";
 import { isSafeRelayURL, mergeRelaySets } from "./relays.js";
