@@ -13,7 +13,18 @@ import {
 import { getPublicKey, kinds, nip19, NostrEvent } from "nostr-tools";
 
 // re-export types from nostr-tools/nip19
-export { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
+export type { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
+
+// export nip-19 helpers
+export {
+  naddrEncode,
+  neventEncode,
+  noteEncode,
+  nprofileEncode,
+  npubEncode,
+  nsecEncode,
+  decode as decodePointer,
+} from "nostr-tools/nip19";
 
 import { getReplaceableIdentifier } from "./event.js";
 import { isAddressableKind } from "nostr-tools/kinds";

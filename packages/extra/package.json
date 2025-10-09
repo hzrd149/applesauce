@@ -1,0 +1,42 @@
+{
+  "name": "applesauce-extra",
+  "version": "4.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prebuild": "rimraf dist",
+    "build": "tsc",
+    "watch:build": "tsc --watch > /dev/null",
+    "test": "vitest run --passWithNoTests",
+    "watch:test": "vitest"
+  },
+  "keywords": [
+    "nostr",
+    "applesauce",
+    "vertex",
+    "primal"
+  ],
+  "author": "hzrd149",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "applesauce-core": "workspace:^",
+    "applesauce-relay": "workspace:^",
+    "applesauce-signers": "workspace:^",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@hirez_io/observer-spy": "^2.2.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "funding": {
+    "type": "lightning",
+    "url": "lightning:nostrudel@geyser.fund"
+  }
+}
