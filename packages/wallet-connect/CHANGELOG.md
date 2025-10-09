@@ -1,5 +1,12 @@
 # applesauce-wallet-connect
 
+## 4.1.0
+
+### Minor Changes
+
+- 5769b74: Add `acceptRelayHint` to `WalletConnect` and enable by default
+- 5769b74: Add `overrideRelay` option to `WalletService.fromAuthURI`
+
 ## 4.0.0
 
 ### Major Changes
