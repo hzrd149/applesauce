@@ -1,4 +1,4 @@
-import { getTagValue, hasNameValueTag, unixNow } from "applesauce-core/helpers";
+import { getTagValue, hasNameValueTag, LRU, unixNow } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { onlyEvents, Relay, type RelayOptions } from "applesauce-relay";
 import { type ISigner } from "applesauce-signers";
@@ -44,12 +44,19 @@ export class Vertex extends Relay {
     });
   }
 
+  // Create a cache for user search results that expires after 1 hour
+  protected userSearchCache = new LRU<ProfilePointer[]>(1000, 60 * 60 * 1000);
+
   /** Lookup user profiles by search query */
-  async lookupProfiles(
+  async userSearch(
     query: string,
     sortMethod: SortMethod = "globalPagerank",
     limit: number = 10,
   ): Promise<ProfilePointer[]> {
+    // Check cache
+    const cached = this.userSearchCache.get([query, sortMethod, limit].join(":"));
+    if (cached) return cached;
+
     // Create request
     const request = await this.signer.signEvent({
       kind: VERTEX_SEARCH_KIND,
@@ -95,6 +102,9 @@ export class Vertex extends Relay {
         pubkey,
         relays: [VERTEX_RELAY],
       }));
+
+    // Cache the results
+    this.userSearchCache.set([query, sortMethod, limit].join(":"), pointers);
 
     return pointers;
   }
