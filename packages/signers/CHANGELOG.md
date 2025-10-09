@@ -1,5 +1,11 @@
 # applesauce-signer
 
+## 4.1.0
+
+### Minor Changes
+
+- 686176d: Rename `SimpleSigner` to `PrivateKeySigner` and keep old exports
+
 ## 4.0.0
 
 ### Minor Changes
