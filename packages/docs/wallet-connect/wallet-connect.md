@@ -97,10 +97,10 @@ import { WalletConnect } from "applesauce-wallet-connect";
 
 // Create a new client with a random secret key
 const secret = generateSecretKey();
-const wallet = new WalletConnect(
+const wallet = new WalletConnect({
   secret,
   relays: ["wss://relay.wallet.com"],
-);
+});
 
 // Get the auth URI and show it to the user as a QR code
 const authUri = wallet.getAuthURI();
@@ -112,6 +112,33 @@ console.log("Connected to wallet service!");
 // Start using the wallet
 await wallet.getInfo();
 ```
+
+### Relay Optimization
+
+By default, the `WalletConnect` client has `acceptRelayHint` enabled, which allows it to automatically switch to the recommended relay if the wallet service provides one. This only applies when using the `nostr+walletauth://` URIs to connect to the wallet service.
+
+```typescript
+// Create a client with relay optimization enabled (default)
+const connect = new WalletConnect({
+  secret,
+  relays: ["wss://relay1.com", "wss://relay2.com", "wss://relay3.com"],
+  acceptRelayHint: true, // This is the default value
+});
+
+const authUri = connect.getAuthURI();
+
+// On the service side
+const service = await WalletService.fromAuthURI(authUri, {
+  signer,
+  handlers,
+  // Randomly select a single relay
+  overrideRelay: (relays) => relays[Math.floor(Math.random() * relays.length)],
+});
+```
+
+When `acceptRelayHint` is enabled the client will switch to the single relay when the wallet service responds and includes a relay recommendation in the wallet support events
+
+This optimization only applies to the `nostr+walletauth://` flow and is ignored when using `nostr+walletconnect://` connection strings.
 
 ## Checking Wallet Capabilities
 

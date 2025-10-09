@@ -131,6 +131,31 @@ const walletService = await WalletService.fromAuthURI(authUri, {
 await walletService.start();
 ```
 
+### Override Relay Selection
+
+When handling `nostr+walletauth://` URIs, the service can specify a single relay for communication between the client and service. This is useful when the auth URI contains multiple relays but you want to optimize the connection.
+
+```typescript
+// Select a specific relay
+const walletService = await WalletService.fromAuthURI(authUri, {
+  signer,
+  handlers,
+  overrideRelay: "wss://relay.example.com", // Use this specific relay
+});
+
+// Or use a function to select the best relay
+const walletService = await WalletService.fromAuthURI(authUri, {
+  signer,
+  handlers,
+  overrideRelay: (relays) => {
+    // Select the fastest or most reliable relay
+    return relays.find((relay) => relay.includes("fast-relay")) || relays[0];
+  },
+});
+```
+
+If no override relay is specified, the service will use all relays from the auth URI.
+
 ## Method Handlers
 
 ### Understanding Handlers

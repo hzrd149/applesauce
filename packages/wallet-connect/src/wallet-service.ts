@@ -311,7 +311,15 @@ export class WalletService {
   /** Publish the wallet support event */
   protected async publishSupportEvent(): Promise<void> {
     try {
-      const draft = await create({ signer: this.signer }, WalletSupportBlueprint, this.support, this.client);
+      // Tell the client which relay to use if there is only one (for nostr+walletauth URI connections)
+      const overrideRelay = this.relays.length === 1 ? this.relays[0] : undefined;
+      const draft = await create(
+        { signer: this.signer },
+        WalletSupportBlueprint,
+        this.support,
+        this.client,
+        overrideRelay,
+      );
       const event = await this.signer.signEvent(draft);
       await this.publishMethod(this.relays, event);
     } catch (error) {
@@ -451,12 +459,22 @@ export class WalletService {
   }
 
   /** Creates a service for a nostr+walletauth URI */
-  static fromAuthURI(uri: string | WalletAuthURI, options: Omit<WalletServiceOptions, "relays">): WalletService {
-    const { client, relays } = typeof uri === "string" ? parseWalletAuthURI(uri) : uri;
+  static fromAuthURI(
+    uri: string | WalletAuthURI,
+    options: Omit<WalletServiceOptions, "relays"> & {
+      /** A relay or method to select a single relay for the client and service to communicate over */
+      overrideRelay?: string | ((relays: string[]) => string);
+    },
+  ): WalletService {
+    const authURI = typeof uri === "string" ? parseWalletAuthURI(uri) : uri;
+
+    const relays = options.overrideRelay
+      ? [typeof options.overrideRelay === "function" ? options.overrideRelay(authURI.relays) : options.overrideRelay]
+      : authURI.relays;
 
     return new WalletService({
       ...options,
-      client,
+      client: authURI.client,
       relays,
     });
   }

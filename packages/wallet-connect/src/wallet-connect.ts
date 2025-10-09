@@ -5,6 +5,7 @@ import { create, EventSigner } from "applesauce-factory";
 import { finalizeEvent, getPublicKey, nip04, nip44, NostrEvent, verifyEvent } from "nostr-tools";
 import {
   BehaviorSubject,
+  combineLatest,
   defer,
   filter,
   firstValueFrom,
@@ -90,6 +91,8 @@ export type WalletConnectOptions = NostrConnectionMethodsOptions & {
   service?: string;
   /** Default timeout for RPC requests in milliseconds */
   timeout?: number;
+  /** Whether to accept the relay hint from the wallet service */
+  acceptRelayHint?: boolean;
 };
 
 export class WalletConnect {
@@ -110,7 +113,13 @@ export class WalletConnect {
   protected readonly signer: EventSigner;
 
   /** The relays to use for the connection */
-  public readonly relays: string[];
+  protected relays$ = new BehaviorSubject<string[]>([]);
+  public get relays(): string[] {
+    return this.relays$.value;
+  }
+
+  /** Whether to accept the relay hint from the wallet service */
+  public acceptRelayHint: boolean;
 
   /** The wallet service public key ( unset if waiting for service ) */
   public service$ = new BehaviorSubject<string | undefined>(undefined);
@@ -138,7 +147,8 @@ export class WalletConnect {
 
   constructor(options: WalletConnectOptions) {
     this.secret = options.secret;
-    this.relays = options.relays;
+    this.relays$.next(options.relays);
+    this.acceptRelayHint = options.acceptRelayHint ?? true;
     this.service$.next(options.service);
     this.defaultTimeout = options.timeout || 30000; // 30 second default timeout
 
@@ -164,13 +174,13 @@ export class WalletConnect {
     this.publishMethod = (relays, event) => publishMethod(relays, event);
 
     // Create shared observable for all wallet events
-    this.events$ = this.service$.pipe(
-      switchMap((service) => {
+    this.events$ = combineLatest([this.service$, this.relays$]).pipe(
+      switchMap(([service, relays]) => {
         const client = getPublicKey(this.secret);
 
         // If the service is not known yet, subscribe to a wallet info event tagging the client
         if (!service)
-          return from(this.subscriptionMethod(this.relays, [{ kinds: [WALLET_INFO_KIND], "#p": [client] }])).pipe(
+          return from(this.subscriptionMethod(relays, [{ kinds: [WALLET_INFO_KIND], "#p": [client] }])).pipe(
             // Keep the connection open indefinitely
             repeat(),
             // Retry on connection failure
@@ -180,7 +190,7 @@ export class WalletConnect {
           );
 
         return from(
-          this.subscriptionMethod(this.relays, [
+          this.subscriptionMethod(relays, [
             // Subscribe to response events
             {
               kinds: [WALLET_RESPONSE_KIND, WALLET_NOTIFICATION_KIND, WALLET_LEGACY_NOTIFICATION_KIND],
@@ -235,6 +245,12 @@ export class WalletConnect {
             tap((event) => {
               // Set the service to the pubkey of the wallet info event
               this.service$.next(event.pubkey);
+
+              // Switch to the relay from the service if its set
+              if (this.acceptRelayHint) {
+                const relay = event.tags.find((t) => t[0] === "p" && t[2])?.[2];
+                if (relay) this.relays$.next([relay]);
+              }
             }),
             // Get the service pubkey from the event
             map((event) => event.pubkey),
@@ -277,7 +293,7 @@ export class WalletConnect {
   request(request: WalletRequest, options: { timeout?: number } = {}): Observable<WalletResponse> {
     if (!this.service) throw new Error("WalletConnect is not connected to a service");
 
-    // Create the request evnet
+    // Create the request event
     return defer(async () => {
       // Get the preferred encryption method for the wallet
       const encryption = await firstValueFrom(this.encryption$);
