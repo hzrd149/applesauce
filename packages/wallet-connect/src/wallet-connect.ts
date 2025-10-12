@@ -350,21 +350,21 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
   }
 
   /** Call a method and return an observable of results */
-  call<Method extends Methods>(
-    method: Method["method"],
-    params: Method["request"]["params"],
+  call<K extends Methods["method"]>(
+    method: K,
+    params: Extract<Methods, { method: K }>["request"]["params"],
     options: { timeout?: number } = {},
-  ): Observable<Method["response"] | Method["error"]> {
+  ): Observable<Extract<Methods, { method: K }>["response"] | Extract<Methods, { method: K }>["error"]> {
     return this.genericCall(method, params, options);
   }
 
   /** Typed request method, returns the result or throws and error */
-  async request<Method extends Methods>(
-    method: Method["method"],
-    params: Method["request"]["params"],
+  async request<K extends Methods["method"]>(
+    method: K,
+    params: Extract<Methods, { method: K }>["request"]["params"],
     options: { timeout?: number } = {},
-  ): Promise<Method["response"]["result"]> {
-    return this.genericRequest<Method>(method, params, options);
+  ): Promise<Extract<Methods, { method: K }>["response"]["result"]> {
+    return this.genericRequest<Extract<Methods, { method: K }>>(method as any, params, options);
   }
 
   /**

@@ -255,3 +255,62 @@ export type CommonWalletMethods =
   | ListTransactionsMethod
   | GetBalanceMethod
   | GetInfoMethod;
+
+// Experimental cashu methods
+
+/** Withdraw a token from the wallet */
+export type CashuWithdrawMethod = TWalletMethod<
+  "cashu_withdraw",
+  {
+    /** Token amount */
+    amount: number;
+    /** required token unit */
+    unit: string;
+    /** Optional array of mints, if provided token MUST be from one */
+    mints?: string[];
+    /** Size of proofs (optional) */
+    proofs?: number[];
+    /** Lock to pubkey (optional) */
+    p2pk?: string;
+  },
+  { token: string }
+>;
+
+/** Deposit a token into the wallet */
+export type CashuDepositMethod = TWalletMethod<
+  "cashu_deposit",
+  {
+    /** Token to deposit */
+    token: string;
+  },
+  // Hard coded response, should throw error if receiving failed
+  { success: true }
+>;
+
+export type CashuPayRequestMethod = TWalletMethod<
+  "cashu_pay_request",
+  {
+    /** Cashu payment request. if request originally does not contain an amount they client may add one and re-encode */
+    request: string;
+  },
+  // Hard coded response, should throw error if receiving failed
+  { success: true }
+>;
+
+/** Info for a single mint used in the wallet service */
+export type CashuMintInfo = {
+  /** Mint URL */
+  url: string;
+  /** Units and balances */
+  balances: Record<string, number>;
+};
+
+/** Get the list of mints that are used in the wallet and their balances */
+export type CashuListMintsMethod = TWalletMethod<"cashu_list_mints", {}, { mints: CashuMintInfo[] }>;
+
+/** Union of all cashu methods */
+export type CashuWalletMethods =
+  | CashuWithdrawMethod
+  | CashuDepositMethod
+  | CashuPayRequestMethod
+  | CashuListMintsMethod;
