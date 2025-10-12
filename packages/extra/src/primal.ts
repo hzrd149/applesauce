@@ -1,7 +1,7 @@
 import { mapEventsToTimeline } from "applesauce-core";
-import type { NostrEvent } from "applesauce-core/helpers";
-import { completeOnEose, Relay, type RelayOptions } from "applesauce-relay";
-import { lastValueFrom, Observable } from "rxjs";
+import { isEvent, type NostrEvent } from "applesauce-core/helpers";
+import { completeOnEose, onlyEvents, Relay, type RelayOptions } from "applesauce-relay";
+import { filter, lastValueFrom, Observable } from "rxjs";
 
 export const DEFAULT_PRIMAL_RELAY = "wss://cache2.primal.net/v1";
 
@@ -367,9 +367,7 @@ export class PrimalCache extends Relay {
   }
 
   /** Make a "cache" request to the caching server */
-  cacheRequest<R extends CacheRequest>(
-    request: CacheRequest["req"],
-  ): Observable<R["event"]> {
+  cacheRequest<R extends CacheRequest>(request: CacheRequest["req"]): Observable<R["event"]> {
     return this.req({
       // @ts-expect-error
       cache: request,
@@ -380,131 +378,86 @@ export class PrimalCache extends Relay {
 
   /** Get legend counts for explore page */
   exploreLegendCounts(pubkey: string): Promise<ExploreLegendCounts["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["explore_legend_counts", { pubkey }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["explore_legend_counts", { pubkey }]).pipe(mapEventsToTimeline()));
   }
 
   /** Explore content with various filters */
   explore(params: Explore["req"][1]): Promise<Explore["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["explore", params]).pipe(mapEventsToTimeline()),
-    );
+    return lastValueFrom(this.cacheRequest(["explore", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Get global trending content from last 24 hours */
-  exploreGlobalTrending24h(
-    limit = 20,
-  ): Promise<ExploreGlobalTrending24h["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["explore_global_trending_24h", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  exploreGlobalTrending24h(limit = 20): Promise<ExploreGlobalTrending24h["event"][]> {
+    return lastValueFrom(this.cacheRequest(["explore_global_trending_24h", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get global most zapped content from last 4 hours */
-  exploreGlobalMostZapped4h(
-    limit = 20,
-  ): Promise<ExploreGlobalMostZapped4h["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["explore_global_mostzapped_4h", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  exploreGlobalMostZapped4h(limit = 20): Promise<ExploreGlobalMostZapped4h["event"][]> {
+    return lastValueFrom(this.cacheRequest(["explore_global_mostzapped_4h", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== SCORED CONTENT METHODS =====
 
   /** Get scored content */
   scored(params: Scored["req"][1]): Promise<Scored["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["scored", params]).pipe(mapEventsToTimeline()),
-    );
+    return lastValueFrom(this.cacheRequest(["scored", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Get scored users */
   scoredUsers(limit = 20): Promise<ScoredUsers["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["scored_users", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["scored_users", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get scored users from last 24 hours */
   scoredUsers24h(limit = 20): Promise<ScoredUsers24h["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["scored_users_24h", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["scored_users_24h", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== RELAY METHODS =====
 
   /** Get default relays */
   getDefaultRelays(): Promise<GetDefaultRelays["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_default_relays", {}]).pipe(mapEventsToTimeline()),
-    );
+    return lastValueFrom(this.cacheRequest(["get_default_relays", {}]).pipe(mapEventsToTimeline()));
   }
 
   // ===== USER METHODS =====
 
   /** Get recommended users */
   getRecommendedUsers(limit = 20): Promise<GetRecommendedUsers["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_recommended_users", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["get_recommended_users", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get suggested users */
   getSuggestedUsers(limit = 20): Promise<GetSuggestedUsers["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_suggested_users", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["get_suggested_users", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Search for users by query */
   userSearch(query: string, limit = 10): Promise<UserSearch["event"][]> {
     return lastValueFrom(
       this.cacheRequest(["user_search", { query, limit }]).pipe(
+        // Ignore non events
+        filter(isEvent),
+        // Only accept profile kinds
+        filter((e) => e.kind === 0),
+        // Add to timeline
         mapEventsToTimeline(),
       ),
     );
   }
 
   /** Get trusted users */
-  trustedUsers(
-    limit = 500,
-    extendedResponse = true,
-  ): Promise<TrustedUsers["event"][]> {
+  trustedUsers(limit = 500, extendedResponse = true): Promise<TrustedUsers["event"][]> {
     return lastValueFrom(
-      this.cacheRequest([
-        "trusted_users",
-        { limit, extended_response: extendedResponse },
-      ]).pipe(mapEventsToTimeline()),
+      this.cacheRequest(["trusted_users", { limit, extended_response: extendedResponse }]).pipe(mapEventsToTimeline()),
     );
   }
 
   // ===== PROFILE METHODS =====
 
   /** Get user profile scored content */
-  userProfileScoredContent(
-    params: UserProfileScoredContent["req"][1],
-  ): Promise<UserProfileScoredContent["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["user_profile_scored_content", params]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  userProfileScoredContent(params: UserProfileScoredContent["req"][1]): Promise<UserProfileScoredContent["event"][]> {
+    return lastValueFrom(this.cacheRequest(["user_profile_scored_content", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Get user profile scored media thumbnails */
@@ -512,9 +465,7 @@ export class PrimalCache extends Relay {
     params: UserProfileScoredMediaThumbnails["req"][1],
   ): Promise<UserProfileScoredMediaThumbnails["event"][]> {
     return lastValueFrom(
-      this.cacheRequest(["user_profile_scored_media_thumbnails", params]).pipe(
-        mapEventsToTimeline(),
-      ),
+      this.cacheRequest(["user_profile_scored_media_thumbnails", params]).pipe(mapEventsToTimeline()),
     );
   }
 
@@ -522,241 +473,139 @@ export class PrimalCache extends Relay {
 
   /** Search content */
   search(params: Search["req"][1]): Promise<Search["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["search", params]).pipe(mapEventsToTimeline()),
-    );
+    return lastValueFrom(this.cacheRequest(["search", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Advanced search */
-  advancedSearch(
-    params: AdvancedSearch["req"][1],
-  ): Promise<AdvancedSearch["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["advanced_search", params]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  advancedSearch(params: AdvancedSearch["req"][1]): Promise<AdvancedSearch["event"][]> {
+    return lastValueFrom(this.cacheRequest(["advanced_search", params]).pipe(mapEventsToTimeline()));
   }
 
   // ===== FEED METHODS =====
 
   /** Advanced feed */
-  advancedFeed(
-    params: AdvancedFeed["req"][1],
-  ): Promise<AdvancedFeed["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["advanced_feed", params]).pipe(mapEventsToTimeline()),
-    );
+  advancedFeed(params: AdvancedFeed["req"][1]): Promise<AdvancedFeed["event"][]> {
+    return lastValueFrom(this.cacheRequest(["advanced_feed", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Feed directive */
-  feedDirective(
-    params: FeedDirective["req"][1],
-  ): Promise<FeedDirective["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["feed_directive", params]).pipe(mapEventsToTimeline()),
-    );
+  feedDirective(params: FeedDirective["req"][1]): Promise<FeedDirective["event"][]> {
+    return lastValueFrom(this.cacheRequest(["feed_directive", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Feed directive v2 */
-  feedDirective2(
-    params: FeedDirective2["req"][1],
-  ): Promise<FeedDirective2["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["feed_directive_2", params]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  feedDirective2(params: FeedDirective2["req"][1]): Promise<FeedDirective2["event"][]> {
+    return lastValueFrom(this.cacheRequest(["feed_directive_2", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Get advanced feeds */
   getAdvancedFeeds(): Promise<GetAdvancedFeeds["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_advanced_feeds", {}]).pipe(mapEventsToTimeline()),
-    );
+    return lastValueFrom(this.cacheRequest(["get_advanced_feeds", {}]).pipe(mapEventsToTimeline()));
   }
 
   // ===== TRENDING METHODS =====
 
   /** Get trending hashtags */
   trendingHashtags(limit = 20): Promise<TrendingHashtags["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["trending_hashtags", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["trending_hashtags", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get trending hashtags from last 4 hours */
   trendingHashtags4h(limit = 20): Promise<TrendingHashtags4h["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["trending_hashtags_4h", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["trending_hashtags_4h", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get trending hashtags from last 7 days */
   trendingHashtags7d(limit = 20): Promise<TrendingHashtags7d["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["trending_hashtags_7d", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["trending_hashtags_7d", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get trending images */
   trendingImages(limit = 20): Promise<TrendingImages["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["trending_images", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["trending_images", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get trending images from last 4 hours */
   trendingImages4h(limit = 20): Promise<TrendingImages4h["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["trending_images_4h", { limit }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["trending_images_4h", { limit }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== NOTIFICATION METHODS =====
 
   /** Get notifications */
-  getNotifications(
-    params: GetNotifications["req"][1],
-  ): Promise<GetNotifications["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_notifications", params]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  getNotifications(params: GetNotifications["req"][1]): Promise<GetNotifications["event"][]> {
+    return lastValueFrom(this.cacheRequest(["get_notifications", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Set notifications as seen */
-  setNotificationsSeen(
-    pubkey: string,
-    until: number,
-  ): Promise<SetNotificationsSeen["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["set_notifications_seen", { pubkey, until }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  setNotificationsSeen(pubkey: string, until: number): Promise<SetNotificationsSeen["event"][]> {
+    return lastValueFrom(this.cacheRequest(["set_notifications_seen", { pubkey, until }]).pipe(mapEventsToTimeline()));
   }
 
   /** Get notifications seen status */
-  getNotificationsSeen(
-    pubkey: string,
-  ): Promise<GetNotificationsSeen["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_notifications_seen", { pubkey }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  getNotificationsSeen(pubkey: string): Promise<GetNotificationsSeen["event"][]> {
+    return lastValueFrom(this.cacheRequest(["get_notifications_seen", { pubkey }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== RELAY METHODS =====
 
   /** Get relays */
   relays(): Promise<Relays["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["relays", {}]).pipe(mapEventsToTimeline()),
-    );
+    return lastValueFrom(this.cacheRequest(["relays", {}]).pipe(mapEventsToTimeline()));
   }
 
   // ===== REPORT METHODS =====
 
   /** Report user */
   reportUser(pubkey: string, reason: string): Promise<ReportUser["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["report_user", { pubkey, reason }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["report_user", { pubkey, reason }]).pipe(mapEventsToTimeline()));
   }
 
   /** Report note */
   reportNote(eventId: string, reason: string): Promise<ReportNote["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["report_note", { event_id: eventId, reason }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["report_note", { event_id: eventId, reason }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== FILTERLIST METHODS =====
 
   /** Get filterlist */
   getFilterlist(): Promise<GetFilterlist["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_filterlist", {}]).pipe(mapEventsToTimeline()),
-    );
+    return lastValueFrom(this.cacheRequest(["get_filterlist", {}]).pipe(mapEventsToTimeline()));
   }
 
   /** Check filterlist */
   checkFilterlist(pubkeys: string[]): Promise<CheckFilterlist["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["check_filterlist", { pubkeys }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["check_filterlist", { pubkeys }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== BROADCAST METHODS =====
 
   /** Broadcast reply */
   broadcastReply(event: NostrEvent): Promise<BroadcastReply["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["broadcast_reply", { event }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["broadcast_reply", { event }]).pipe(mapEventsToTimeline()));
   }
 
   /** Broadcast events */
-  broadcastEvents(
-    events: NostrEvent[],
-    relays: string[],
-  ): Promise<BroadcastEvents["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["broadcast_events", { events, relays }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+  broadcastEvents(events: NostrEvent[], relays: string[]): Promise<BroadcastEvents["event"][]> {
+    return lastValueFrom(this.cacheRequest(["broadcast_events", { events, relays }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== MENTION METHODS =====
 
   /** Get note mentions */
-  noteMentions(
-    params: NoteMentions["req"][1],
-  ): Promise<NoteMentions["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["note_mentions", params]).pipe(mapEventsToTimeline()),
-    );
+  noteMentions(params: NoteMentions["req"][1]): Promise<NoteMentions["event"][]> {
+    return lastValueFrom(this.cacheRequest(["note_mentions", params]).pipe(mapEventsToTimeline()));
   }
 
   /** Get note mentions count */
   noteMentionsCount(eventId: string): Promise<NoteMentionsCount["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["note_mentions_count", { event_id: eventId }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["note_mentions_count", { event_id: eventId }]).pipe(mapEventsToTimeline()));
   }
 
   // ===== MEDIA METHODS =====
 
   /** Get media metadata */
   getMediaMetadata(urls: string[]): Promise<GetMediaMetadata["event"][]> {
-    return lastValueFrom(
-      this.cacheRequest(["get_media_metadata", { urls }]).pipe(
-        mapEventsToTimeline(),
-      ),
-    );
+    return lastValueFrom(this.cacheRequest(["get_media_metadata", { urls }]).pipe(mapEventsToTimeline()));
   }
 }

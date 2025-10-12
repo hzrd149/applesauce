@@ -36,10 +36,12 @@ export class Vertex extends Relay {
     this.signer = signer;
 
     // Automatically authenticate to the relay when a challenge is received
+    let authenticating = false;
     this.autoAuth = combineLatest([this.challenge$, this.authenticated$]).subscribe(([challenge, authenticated]) => {
-      if (challenge && !authenticated) {
+      if (challenge && !authenticated && !authenticating) {
         console.info("[VERTEX] Authenticating to relay");
-        this.authenticate(this.signer);
+        authenticating = true;
+        this.authenticate(this.signer).finally(() => (authenticating = false));
       }
     });
   }
