@@ -87,7 +87,14 @@ export class RelayGroup implements IGroup {
    * Make a request to all relays
    * @note This does not deduplicate events
    */
-  req(filters: FilterInput, id = nanoid(8)): Observable<SubscriptionResponse> {
+  req(
+    filters: FilterInput,
+    id = nanoid(8),
+    opts?: {
+      /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
+      eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
+    },
+  ): Observable<SubscriptionResponse> {
     const requests = this.relays.map((relay) =>
       relay.req(filters, id).pipe(
         // Ignore connection errors
@@ -96,7 +103,7 @@ export class RelayGroup implements IGroup {
     );
 
     // Merge events and the single EOSE stream
-    return this.mergeEOSE(requests);
+    return this.mergeEOSE(requests, opts?.eventStore);
   }
 
   /** Send an event to all relays */

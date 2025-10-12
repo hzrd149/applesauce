@@ -94,6 +94,20 @@ describe("req", () => {
 
     expect(spy.getValues()).toEqual(["EOSE"]);
   });
+
+  it("should still pass events to subscription when one relay is offline", async () => {
+    // Close one relay to simulate it being offline
+    mockRelay1.close();
+
+    // Make the request
+    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], "test-sub", { eventStore: null }));
+
+    // Send event from the remaining online relay
+    mockRelay2.send(["EVENT", "test-sub", mockEvent]);
+    mockRelay2.send(["EOSE", "test-sub"]);
+
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+  });
 });
 
 describe("event", () => {

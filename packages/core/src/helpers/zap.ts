@@ -7,6 +7,9 @@ import { getAddressPointerFromATag, getEventPointerFromETag } from "./pointers.j
 import { isATag, isETag } from "./tags.js";
 import { KnownEvent } from "./index.js";
 
+/** Type for validated zap event */
+export type ZapEvent = KnownEvent<kinds.Zap>;
+
 export const ZapRequestSymbol = Symbol.for("zap-request");
 export const ZapSenderSymbol = Symbol.for("zap-sender");
 export const ZapReceiverSymbol = Symbol.for("zap-receiver");
@@ -15,7 +18,7 @@ export const ZapEventPointerSymbol = Symbol.for("zap-event-pointer");
 export const ZapAddressPointerSymbol = Symbol.for("zap-address-pointer");
 
 /** Returns the senders pubkey */
-export function getZapSender(zap: KnownEvent<kinds.Zap>): string;
+export function getZapSender(zap: ZapEvent): string;
 export function getZapSender(zap: NostrEvent): string | undefined;
 export function getZapSender(zap: NostrEvent): string | undefined {
   return getOrComputeCachedValue(zap, ZapSenderSymbol, () => {
@@ -24,7 +27,7 @@ export function getZapSender(zap: NostrEvent): string | undefined {
 }
 
 /** Gets the receivers pubkey */
-export function getZapRecipient(zap: KnownEvent<kinds.Zap>): string;
+export function getZapRecipient(zap: ZapEvent): string;
 export function getZapRecipient(zap: NostrEvent): string | undefined;
 export function getZapRecipient(zap: NostrEvent): string | undefined {
   return getOrComputeCachedValue(zap, ZapReceiverSymbol, () => {
@@ -33,7 +36,7 @@ export function getZapRecipient(zap: NostrEvent): string | undefined {
 }
 
 /** Returns the parsed bolt11 invoice */
-export function getZapPayment(zap: KnownEvent<kinds.Zap>): ParsedInvoice;
+export function getZapPayment(zap: ZapEvent): ParsedInvoice;
 export function getZapPayment(zap: NostrEvent): ParsedInvoice | undefined;
 export function getZapPayment(zap: NostrEvent): ParsedInvoice | undefined {
   return getOrComputeCachedValue(zap, ZapInvoiceSymbol, () => {
@@ -43,7 +46,7 @@ export function getZapPayment(zap: NostrEvent): ParsedInvoice | undefined {
 }
 
 /** Returns the zap event amount in msats */
-export function getZapAmount(zap: KnownEvent<kinds.Zap>): number;
+export function getZapAmount(zap: ZapEvent): number;
 export function getZapAmount(zap: NostrEvent): number | undefined;
 export function getZapAmount(zap: NostrEvent): number | undefined {
   return getZapPayment(zap)?.amount;
@@ -71,7 +74,7 @@ export function getZapPreimage(zap: NostrEvent): string | undefined {
 }
 
 /** Returns the zap request event inside the zap receipt */
-export function getZapRequest(zap: KnownEvent<kinds.Zap>): NostrEvent;
+export function getZapRequest(zap: ZapEvent): NostrEvent;
 export function getZapRequest(zap: NostrEvent): NostrEvent | undefined;
 export function getZapRequest(zap: NostrEvent): NostrEvent | undefined {
   return getOrComputeCachedValue(zap, ZapRequestSymbol, () => {
@@ -94,7 +97,7 @@ export function getZapRequest(zap: NostrEvent): NostrEvent | undefined {
  * Checks if a zap event is valid (not missing fields)
  * DOES NOT validate LNURL address
  */
-export function isValidZap(zap?: NostrEvent): zap is KnownEvent<kinds.Zap> {
+export function isValidZap(zap?: NostrEvent): zap is ZapEvent {
   if (!zap) return false;
   if (zap.kind !== kinds.Zap) return false;
 
