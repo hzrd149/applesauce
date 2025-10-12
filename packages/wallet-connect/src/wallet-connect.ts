@@ -36,22 +36,14 @@ import { WalletRequestBlueprint } from "./blueprints/index.js";
 import { createWalletError } from "./helpers/error.js";
 import {
   createWalletAuthURI,
-  GetBalanceResult,
-  GetInfoResult,
   getPreferredEncryption,
   getWalletRequestEncryption,
   getWalletResponseRequestId,
   getWalletSupport,
   isValidWalletNotification,
   isValidWalletResponse,
-  ListTransactionsResult,
-  LookupInvoiceResult,
-  MakeInvoiceParams,
-  MakeInvoiceResult,
   NotificationType,
   parseWalletConnectURI,
-  PayInvoiceResult,
-  PayKeysendResult,
   supportsMethod,
   supportsNotifications,
   supportsNotificationType,
@@ -64,14 +56,24 @@ import {
   WalletAuthURI,
   WalletConnectEncryptionMethod,
   WalletConnectURI,
-  WalletMethod,
   WalletNotification,
   WalletNotificationEvent,
-  WalletRequest,
-  WalletResponse,
   WalletResponseEvent,
   WalletSupport,
 } from "./helpers/index.js";
+import {
+  CommonWalletMethods,
+  GetBalanceMethod,
+  GetInfoMethod,
+  ListTransactionsMethod,
+  LookupInvoiceMethod,
+  MakeInvoiceMethod,
+  MultiPayInvoiceMethod,
+  MultiPayKeysendMethod,
+  PayInvoiceMethod,
+  PayKeysendMethod,
+  TWalletMethod,
+} from "./helpers/methods.js";
 import {
   getConnectionMethods,
   NostrConnectionMethodsOptions,
@@ -95,7 +97,7 @@ export type WalletConnectOptions = NostrConnectionMethodsOptions & {
   acceptRelayHint?: boolean;
 };
 
-export class WalletConnect {
+export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> {
   /** A fallback method to use for subscriptionMethod if none is passed in when creating the client */
   static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
   /** A fallback method to use for publishMethod if none is passed in when creating the client */
@@ -264,16 +266,16 @@ export class WalletConnect {
   }
 
   /** Process response events and return WalletResponse or throw error */
-  protected async handleResponseEvent(
+  protected async handleResponseEvent<Method extends Methods>(
     event: WalletResponseEvent,
     encryption?: EncryptionMethod,
-  ): Promise<WalletResponse> {
+  ): Promise<Method["response"]> {
     if (!verifyEvent(event)) throw new Error("Invalid response event signature");
 
     const requestId = getWalletResponseRequestId(event);
     if (!requestId) throw new Error("Response missing request ID");
 
-    const response = await unlockWalletResponse(event, this.signer, encryption);
+    const response = await unlockWalletResponse<Method>(event, this.signer, encryption);
     if (!response) throw new Error("Failed to decrypt or parse response");
 
     return response;
@@ -289,8 +291,12 @@ export class WalletConnect {
     return notification;
   }
 
-  /** Core RPC method that makes a request and returns the response */
-  request(request: WalletRequest, options: { timeout?: number } = {}): Observable<WalletResponse> {
+  /** Generic call method with generic type */
+  genericCall<Method extends TWalletMethod>(
+    method: Method["method"],
+    params: Method["request"]["params"],
+    options: { timeout?: number } = {},
+  ): Observable<Method["response"] | Method["error"]> {
     if (!this.service) throw new Error("WalletConnect is not connected to a service");
 
     // Create the request event
@@ -299,7 +305,13 @@ export class WalletConnect {
       const encryption = await firstValueFrom(this.encryption$);
 
       // Create the request event
-      const draft = await create({ signer: this.signer }, WalletRequestBlueprint, this.service!, request, encryption);
+      const draft = await create(
+        { signer: this.signer },
+        WalletRequestBlueprint,
+        this.service!,
+        { method, params },
+        encryption,
+      );
 
       // Sign the request event
       return await this.signer.signEvent(draft);
@@ -325,6 +337,36 @@ export class WalletConnect {
     );
   }
 
+  /** Request method with generic type */
+  async genericRequest<Method extends TWalletMethod>(
+    method: Method["method"],
+    params: Method["request"]["params"],
+    options: { timeout?: number } = {},
+  ): Promise<Method["response"]["result"]> {
+    const result = await firstValueFrom(this.genericCall<Method>(method, params, options));
+    if (result.result_type !== method) throw new Error(`Unexpected response type: ${result.result_type}`);
+    if (result.error) throw createWalletError(result.error.type, result.error.message);
+    return result.result;
+  }
+
+  /** Call a method and return an observable of results */
+  call<Method extends Methods>(
+    method: Method["method"],
+    params: Method["request"]["params"],
+    options: { timeout?: number } = {},
+  ): Observable<Method["response"] | Method["error"]> {
+    return this.genericCall(method, params, options);
+  }
+
+  /** Typed request method, returns the result or throws and error */
+  async request<Method extends Methods>(
+    method: Method["method"],
+    params: Method["request"]["params"],
+    options: { timeout?: number } = {},
+  ): Promise<Method["response"]["result"]> {
+    return this.genericRequest<Method>(method, params, options);
+  }
+
   /**
    * Listen for a type of notification
    * @returns a method to unsubscribe the listener
@@ -339,8 +381,8 @@ export class WalletConnect {
   }
 
   /** Gets the nostr+walletauth URI for the connection */
-  getAuthURI(parts?: Omit<WalletAuthURI, "client" | "relays">): string {
-    return createWalletAuthURI({ ...parts, client: getPublicKey(this.secret), relays: this.relays });
+  getAuthURI(parts?: Omit<WalletAuthURI<Methods>, "client" | "relays">): string {
+    return createWalletAuthURI<Methods>({ ...parts, client: getPublicKey(this.secret), relays: this.relays });
   }
 
   /** Wait for the wallet service to connect */
@@ -363,7 +405,7 @@ export class WalletConnect {
   }
 
   /** Check if the wallet supports a method */
-  async supportsMethod(method: WalletMethod): Promise<boolean> {
+  async supportsMethod(method: string): Promise<boolean> {
     const support = await this.getSupport();
     return support ? supportsMethod(support, method) : false;
   }
@@ -380,21 +422,19 @@ export class WalletConnect {
     return support ? supportsNotificationType(support, type) : false;
   }
 
-  /** Pay a lightning invoice */
-  async payInvoice(invoice: string, amount?: number): Promise<PayInvoiceResult> {
-    const response = await firstValueFrom(this.request({ method: "pay_invoice", params: { invoice, amount } }));
-    if (response.result_type !== "pay_invoice") throw new Error(`Unexpected response type: ${response.result_type}`);
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
+  // Methods for common types
 
-    return response.result;
+  /** Pay a lightning invoice */
+  async payInvoice(invoice: string, amount?: number): Promise<PayInvoiceMethod["response"]["result"]> {
+    return await this.genericRequest<PayInvoiceMethod>("pay_invoice", { invoice, amount });
   }
 
   /** Pay multiple lightning invoices */
   async payMultipleInvoices(
     invoices: Array<{ id?: string; invoice: string; amount?: number }>,
-  ): Promise<PayInvoiceResult[]> {
+  ): Promise<MultiPayInvoiceMethod["response"]["result"][]> {
     return await lastValueFrom(
-      this.request({ method: "multi_pay_invoice", params: { invoices } })
+      this.genericCall<MultiPayInvoiceMethod>("multi_pay_invoice", { invoices })
         .pipe(
           map((response) => {
             if (response.result_type !== "multi_pay_invoice")
@@ -414,14 +454,8 @@ export class WalletConnect {
     amount: number,
     preimage?: string,
     tlv_records?: Array<{ type: number; value: string }>,
-  ): Promise<PayKeysendResult> {
-    const response = await firstValueFrom(
-      this.request({ method: "pay_keysend", params: { pubkey, amount, preimage, tlv_records } }),
-    );
-    if (response.result_type !== "pay_keysend") throw new Error(`Unexpected response type: ${response.result_type}`);
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
-
-    return response.result;
+  ): Promise<PayKeysendMethod["response"]["result"]> {
+    return await this.genericRequest<PayKeysendMethod>("pay_keysend", { pubkey, amount, preimage, tlv_records });
   }
 
   /** Send multiple keysend payments */
@@ -433,9 +467,9 @@ export class WalletConnect {
       preimage?: string;
       tlv_records?: Array<{ type: number; value: string }>;
     }>,
-  ): Promise<PayKeysendResult[]> {
+  ): Promise<MultiPayKeysendMethod["response"]["result"][]> {
     return lastValueFrom(
-      this.request({ method: "multi_pay_keysend", params: { keysends } }).pipe(
+      this.genericCall<MultiPayKeysendMethod>("multi_pay_keysend", { keysends }).pipe(
         map((response) => {
           if (response.result_type !== "multi_pay_keysend")
             throw new Error(`Unexpected response type: ${response.result_type}`);
@@ -449,23 +483,16 @@ export class WalletConnect {
   }
 
   /** Create a new invoice */
-  async makeInvoice(amount: number, options?: Omit<MakeInvoiceParams, "amount">): Promise<MakeInvoiceResult> {
-    const response = await firstValueFrom(this.request({ method: "make_invoice", params: { amount, ...options } }));
-    if (response.result_type !== "make_invoice") throw new Error(`Unexpected response type: ${response.result_type}`);
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
-
-    return response.result;
+  async makeInvoice(
+    amount: number,
+    options?: Omit<MakeInvoiceMethod["request"]["params"], "amount">,
+  ): Promise<MakeInvoiceMethod["response"]["result"]> {
+    return await this.genericRequest<MakeInvoiceMethod>("make_invoice", { amount, ...options });
   }
 
   /** Look up an invoice by payment hash or invoice string */
-  async lookupInvoice(payment_hash?: string, invoice?: string): Promise<LookupInvoiceResult> {
-    const response = await firstValueFrom(
-      this.request({ method: "lookup_invoice", params: { payment_hash, invoice } }),
-    );
-    if (response.result_type !== "lookup_invoice") throw new Error(`Unexpected response type: ${response.result_type}`);
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
-
-    return response.result;
+  async lookupInvoice(payment_hash?: string, invoice?: string): Promise<LookupInvoiceMethod["response"]["result"]> {
+    return await this.genericRequest<LookupInvoiceMethod>("lookup_invoice", { payment_hash, invoice });
   }
 
   /** List transactions */
@@ -476,32 +503,18 @@ export class WalletConnect {
     offset?: number;
     unpaid?: boolean;
     type?: "incoming" | "outgoing";
-  }): Promise<ListTransactionsResult> {
-    const response = await firstValueFrom(this.request({ method: "list_transactions", params: params || {} }));
-    if (response.result_type !== "list_transactions")
-      throw new Error(`Unexpected response type: ${response.result_type}`);
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
-
-    return response.result;
+  }): Promise<ListTransactionsMethod["response"]["result"]> {
+    return await this.genericRequest<ListTransactionsMethod>("list_transactions", params || {});
   }
 
   /** Get wallet balance */
-  async getBalance(): Promise<GetBalanceResult> {
-    const response = await firstValueFrom(this.request({ method: "get_balance", params: {} }));
-    if (response.result_type !== "get_balance") throw new Error(`Unexpected response type: ${response.result_type}`);
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
-
-    return response.result;
+  async getBalance(): Promise<GetBalanceMethod["response"]["result"]> {
+    return await this.genericRequest<GetBalanceMethod>("get_balance", {});
   }
 
   /** Get wallet info */
-  async getInfo(): Promise<GetInfoResult> {
-    const response = await firstValueFrom(this.request({ method: "get_info", params: {} }));
-
-    if (response.result_type !== "get_info") throw new Error(`Unexpected response type: ${response.result_type}`);
-    if (response.error) throw createWalletError(response.error.type, response.error.message);
-
-    return response.result;
+  async getInfo(): Promise<GetInfoMethod["response"]["result"]> {
+    return await this.genericRequest<GetInfoMethod>("get_info", {});
   }
 
   /** Serialize the WalletConnect instance */
@@ -529,10 +542,10 @@ export class WalletConnect {
   }
 
   /** Create a new WalletConnect instance from a connection string */
-  static fromConnectURI(
+  static fromConnectURI<Methods extends TWalletMethod = CommonWalletMethods>(
     connectionString: string,
     options?: Omit<WalletConnectOptions, "secret" | "relays" | "service">,
-  ): WalletConnect {
+  ): WalletConnect<Methods> {
     const { secret, service, relays } = parseWalletConnectURI(connectionString);
 
     return new WalletConnect({

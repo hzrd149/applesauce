@@ -3,17 +3,17 @@ import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
-  GetInfoResult,
   getPreferredEncryption,
   parseWalletConnectURI,
   supportsMethod,
+  WalletInfo,
 } from "applesauce-wallet-connect/helpers";
 import { useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
 
-function WalletInfoDisplay({ walletInfo }: { walletInfo: GetInfoResult }) {
+function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Wallet Information</h2>
@@ -64,7 +64,7 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: GetInfoResult }) {
               </div>
               <div>
                 <span className="font-medium">Block Height:</span>
-                <span className="ml-2 badge badge-outline">{walletInfo.block_height.toLocaleString()}</span>
+                <span className="ml-2 badge badge-outline">{walletInfo.block_height?.toLocaleString()}</span>
               </div>
               <div>
                 <span className="font-medium">Block Hash:</span>
@@ -120,7 +120,7 @@ export default function WalletInfoExample() {
   const [uri, setUri] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ReturnType<typeof parseWalletConnectURI> | null>(null);
-  const [walletInfo, setWalletInfo] = useState<GetInfoResult | null>(null);
+  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [methodError, setMethodError] = useState<string | null>(null);
 

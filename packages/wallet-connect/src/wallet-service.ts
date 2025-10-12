@@ -9,48 +9,18 @@ import { WalletResponseBlueprint } from "./blueprints/response.js";
 import { WalletSupportBlueprint } from "./blueprints/support.js";
 import { parseWalletAuthURI, WalletAuthURI } from "./helpers/auth-uri.js";
 import { WalletConnectEncryptionMethod } from "./helpers/encryption.js";
-import { WalletBaseError, WalletErrorCode } from "./helpers/error.js";
+import { NotImplementedError, WalletBaseError, WalletErrorCode } from "./helpers/error.js";
+import { CommonWalletMethods, TWalletMethod, WalletInfo } from "./helpers/methods.js";
 import { NotificationType, WalletNotification } from "./helpers/notification.js";
 import {
-  GetBalanceParams,
-  GetBalanceRequest,
-  GetInfoParams,
-  GetInfoRequest,
   getWalletRequest,
   isValidWalletRequest,
   isWalletRequestExpired,
-  ListTransactionsParams,
-  ListTransactionsRequest,
-  LookupInvoiceParams,
-  LookupInvoiceRequest,
-  MakeInvoiceParams,
-  MakeInvoiceRequest,
-  MultiPayInvoiceParams,
-  MultiPayInvoiceRequest,
-  MultiPayKeysendParams,
-  MultiPayKeysendRequest,
-  PayInvoiceParams,
-  PayInvoiceRequest,
-  PayKeysendParams,
-  PayKeysendRequest,
   unlockWalletRequest,
   WALLET_REQUEST_KIND,
-  WalletRequest,
   WalletRequestEvent,
 } from "./helpers/request.js";
-import {
-  GetBalanceResult,
-  GetInfoResult,
-  ListTransactionsResult,
-  LookupInvoiceResult,
-  MakeInvoiceResult,
-  MultiPayInvoiceResult,
-  MultiPayKeysendResult,
-  PayInvoiceResult,
-  PayKeysendResult,
-  WalletResponse,
-} from "./helpers/response.js";
-import { WalletMethod, WalletSupport } from "./helpers/support.js";
+import { WalletSupport } from "./helpers/support.js";
 import {
   getConnectionMethods,
   NostrConnectionMethodsOptions,
@@ -59,46 +29,17 @@ import {
   NostrSubscriptionMethod,
 } from "./interop.js";
 
-/** Handler function for pay_invoice method */
-export type PayInvoiceHandler = (params: PayInvoiceParams) => Promise<PayInvoiceResult>;
+/** Generic type for wallet method handlers */
+export type WalletMethodHandler<Method extends TWalletMethod> = (
+  params: Method["request"]["params"],
+) => Promise<Method["response"]["result"]>;
 
-/** Handler function for multi_pay_invoice method */
-export type MultiPayInvoiceHandler = (params: MultiPayInvoiceParams) => Promise<MultiPayInvoiceResult[]>;
+/** Map of method handlers for the wallet service for a specific set of methods */
+export type WalletServiceHandlers<Methods extends TWalletMethod = TWalletMethod> = {
+  [K in Methods["method"]]?: WalletMethodHandler<Extract<Methods, { method: K }>>;
+};
 
-/** Handler function for pay_keysend method */
-export type PayKeysendHandler = (params: PayKeysendParams) => Promise<PayKeysendResult>;
-
-/** Handler function for multi_pay_keysend method */
-export type MultiPayKeysendHandler = (params: MultiPayKeysendParams) => Promise<MultiPayKeysendResult[]>;
-
-/** Handler function for make_invoice method */
-export type MakeInvoiceHandler = (params: MakeInvoiceParams) => Promise<MakeInvoiceResult>;
-
-/** Handler function for lookup_invoice method */
-export type LookupInvoiceHandler = (params: LookupInvoiceParams) => Promise<LookupInvoiceResult>;
-
-/** Handler function for list_transactions method */
-export type ListTransactionsHandler = (params: ListTransactionsParams) => Promise<ListTransactionsResult>;
-
-/** Handler function for get_balance method */
-export type GetBalanceHandler = (params: GetBalanceParams) => Promise<GetBalanceResult>;
-
-/** Handler function for get_info method */
-export type GetInfoHandler = (params: GetInfoParams) => Promise<GetInfoResult>;
-
-/** Map of method handlers for the wallet service */
-export interface WalletServiceHandlers {
-  pay_invoice?: PayInvoiceHandler;
-  multi_pay_invoice?: MultiPayInvoiceHandler;
-  pay_keysend?: PayKeysendHandler;
-  multi_pay_keysend?: MultiPayKeysendHandler;
-  make_invoice?: MakeInvoiceHandler;
-  lookup_invoice?: LookupInvoiceHandler;
-  list_transactions?: ListTransactionsHandler;
-  get_balance?: GetBalanceHandler;
-  get_info?: GetInfoHandler;
-}
-
+/** Serialized wallet service */
 export type SerializedWalletService = {
   /** The client's public key */
   client: string;
@@ -106,8 +47,12 @@ export type SerializedWalletService = {
   relays: string[];
 };
 
+/** Only the necessary info for the getInfo method on wallet service */
+export type WalletServiceInfo = Partial<Omit<WalletInfo, "methods" | "notifications">>;
+
 /** Options for creating a WalletService */
-export interface WalletServiceOptions extends NostrConnectionMethodsOptions {
+export interface WalletServiceOptions<Methods extends TWalletMethod = CommonWalletMethods>
+  extends NostrConnectionMethodsOptions {
   /** The relays to use for the service */
   relays: string[];
   /** The signer to use for creating and unlocking events */
@@ -116,14 +61,16 @@ export interface WalletServiceOptions extends NostrConnectionMethodsOptions {
   secret?: Uint8Array;
   /** The client's public key (used for restoring the service) */
   client?: string;
+  /** A method for getting the general wallet information (Can be overwritten if get_info is set in handlers) */
+  getInfo?: () => Promise<WalletServiceInfo>;
   /** Map of method handlers */
-  handlers: WalletServiceHandlers;
+  handlers: WalletServiceHandlers<Methods>;
   /** An array of notifications this wallet supports */
   notifications?: NotificationType[];
 }
 
 /** NIP-47 Wallet Service implementation */
-export class WalletService {
+export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> {
   /** A fallback method to use for subscriptionMethod if none is passed in when creating the client */
   static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
   /** A fallback method to use for publishMethod if none is passed in when creating the client */
@@ -138,6 +85,9 @@ export class WalletService {
 
   protected log = logger.extend("WalletService");
 
+  /** A special method for getting the generic wallet information */
+  public getInfo?: () => Promise<WalletServiceInfo>;
+
   /** The relays to use for the service */
   public readonly relays: string[];
 
@@ -145,10 +95,10 @@ export class WalletService {
   protected readonly signer: EventSigner;
 
   /** Map of method handlers */
-  protected readonly handlers: WalletServiceHandlers;
+  protected readonly handlers: WalletServiceHandlers<Methods>;
 
   /** Wallet support information */
-  protected readonly support: WalletSupport;
+  protected readonly support: WalletSupport<Methods>;
 
   /** The service's public key */
   public pubkey: string | null = null;
@@ -168,7 +118,7 @@ export class WalletService {
   /** Whether the service is currently running */
   public running: boolean = false;
 
-  constructor(options: WalletServiceOptions) {
+  constructor(options: WalletServiceOptions<Methods>) {
     this.relays = options.relays;
     this.signer = options.signer;
     this.handlers = options.handlers;
@@ -203,7 +153,7 @@ export class WalletService {
 
     // Build the support infomation based on options
     this.support = {
-      methods: Object.keys(options.handlers) as WalletMethod[],
+      methods: Object.keys(options.handlers),
       notifications: options.notifications,
       encryption,
     };
@@ -315,7 +265,7 @@ export class WalletService {
       const overrideRelay = this.relays.length === 1 ? this.relays[0] : undefined;
       const draft = await create(
         { signer: this.signer },
-        WalletSupportBlueprint,
+        WalletSupportBlueprint<Methods>,
         this.support,
         this.client,
         overrideRelay,
@@ -348,50 +298,34 @@ export class WalletService {
   }
 
   /** Process a decrypted wallet request */
-  protected async processRequest(requestEvent: WalletRequestEvent, request: WalletRequest): Promise<void> {
-    const handler = this.handlers[request.method];
-
-    if (!handler) {
-      await this.sendErrorResponse(requestEvent, "NOT_IMPLEMENTED", `Method ${request.method} not supported`);
-      return;
-    }
+  protected async processRequest<Method extends Methods>(
+    requestEvent: WalletRequestEvent,
+    request: Method["request"],
+  ): Promise<void> {
+    const handler = this.handlers[request.method as Methods["method"]];
 
     try {
-      let result: any;
-      const method = request.method; // Store method for use in catch block
+      let result: Method["response"]["result"] | undefined = undefined;
 
-      switch (method) {
-        case "pay_invoice":
-          result = await (handler as PayInvoiceHandler)((request as PayInvoiceRequest).params);
-          break;
-        case "multi_pay_invoice":
-          result = await (handler as MultiPayInvoiceHandler)((request as MultiPayInvoiceRequest).params);
-          break;
-        case "pay_keysend":
-          result = await (handler as PayKeysendHandler)((request as PayKeysendRequest).params);
-          break;
-        case "multi_pay_keysend":
-          result = await (handler as MultiPayKeysendHandler)((request as MultiPayKeysendRequest).params);
-          break;
-        case "make_invoice":
-          result = await (handler as MakeInvoiceHandler)((request as MakeInvoiceRequest).params);
-          break;
-        case "lookup_invoice":
-          result = await (handler as LookupInvoiceHandler)((request as LookupInvoiceRequest).params);
-          break;
-        case "list_transactions":
-          result = await (handler as ListTransactionsHandler)((request as ListTransactionsRequest).params);
-          break;
-        case "get_balance":
-          result = await (handler as GetBalanceHandler)((request as GetBalanceRequest).params);
-          break;
-        case "get_info":
-          result = await (handler as GetInfoHandler)((request as GetInfoRequest).params);
-          break;
+      // If the user has not implemented the method
+      if (!handler) {
+        // If its the get_info try to use the builtin getInfo method
+        if (request.method === "get_info") {
+          result = { ...(this.getInfo?.() ?? {}), ...this.support } satisfies WalletInfo;
+        } else {
+          // Else throw not supported error
+          throw new NotImplementedError(`Method ${request.method} not supported`);
+        }
       }
 
+      // Otherwise use the user provided handler
+      if (!result && handler) result = await handler(request.params);
+
+      // Throw if failed to get result
+      if (!result) throw new NotImplementedError(`Method ${request.method} not supported`);
+
       // Send success response
-      await this.sendSuccessResponse(requestEvent, method, result);
+      await this.sendSuccessResponse(requestEvent, request.method, result);
     } catch (error) {
       this.log(`Error executing ${request.method}:`, error);
 
@@ -411,22 +345,22 @@ export class WalletService {
   }
 
   /** Send a success response */
-  protected async sendSuccessResponse<T extends WalletResponse>(
+  protected async sendSuccessResponse<Method extends Methods>(
     requestEvent: WalletRequestEvent,
-    method: T["result_type"],
-    result: T["result"],
+    method: Method["response"]["result_type"],
+    result: Method["response"]["result"],
   ): Promise<void> {
-    const response = {
+    const response: Method["response"] = {
       result_type: method,
       error: null,
       result,
-    } as WalletResponse;
+    };
 
-    await this.sendResponse(requestEvent, response);
+    await this.sendResponse<Method>(requestEvent, response);
   }
 
   /** Send an error response */
-  protected async sendErrorResponse(
+  protected async sendErrorResponse<Method extends Methods>(
     requestEvent: WalletRequestEvent,
     errorType: WalletErrorCode,
     errorMessage: string,
@@ -434,7 +368,7 @@ export class WalletService {
     const request = getWalletRequest(requestEvent);
     if (!request) throw new Error("Cant respond to a locked request");
 
-    const response: WalletResponse = {
+    const response: Method["error"] = {
       result_type: request.method,
       error: {
         type: errorType,
@@ -443,13 +377,16 @@ export class WalletService {
       result: null,
     };
 
-    await this.sendResponse(requestEvent, response);
+    await this.sendResponse<Method>(requestEvent, response);
   }
 
   /** Send a response event */
-  protected async sendResponse(requestEvent: WalletRequestEvent, response: WalletResponse): Promise<void> {
+  protected async sendResponse<Method extends Methods>(
+    requestEvent: WalletRequestEvent,
+    response: Method["response"] | Method["error"],
+  ): Promise<void> {
     try {
-      const draft = await create({ signer: this.signer }, WalletResponseBlueprint, requestEvent, response);
+      const draft = await create({ signer: this.signer }, WalletResponseBlueprint<Method>(requestEvent, response));
       const event = await this.signer.signEvent(draft);
       await this.publishMethod(this.relays, event);
     } catch (error) {
@@ -459,20 +396,20 @@ export class WalletService {
   }
 
   /** Creates a service for a nostr+walletauth URI */
-  static fromAuthURI(
+  static fromAuthURI<Methods extends TWalletMethod = CommonWalletMethods>(
     uri: string | WalletAuthURI,
-    options: Omit<WalletServiceOptions, "relays"> & {
+    options: Omit<WalletServiceOptions<Methods>, "relays"> & {
       /** A relay or method to select a single relay for the client and service to communicate over */
       overrideRelay?: string | ((relays: string[]) => string);
     },
-  ): WalletService {
+  ): WalletService<Methods> {
     const authURI = typeof uri === "string" ? parseWalletAuthURI(uri) : uri;
 
     const relays = options.overrideRelay
       ? [typeof options.overrideRelay === "function" ? options.overrideRelay(authURI.relays) : options.overrideRelay]
       : authURI.relays;
 
-    return new WalletService({
+    return new WalletService<Methods>({
       ...options,
       client: authURI.client,
       relays,

@@ -8,8 +8,7 @@ import {
   unlockHiddenContent,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
-
-import { Transaction } from "./response.js";
+import { Transaction } from "./methods.js";
 
 export const WALLET_NOTIFICATION_KIND = 23197;
 export const WALLET_LEGACY_NOTIFICATION_KIND = 23196;

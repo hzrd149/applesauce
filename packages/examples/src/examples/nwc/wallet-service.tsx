@@ -3,7 +3,7 @@ import { useObservableEagerState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
-import { GetInfoResult, WalletMethod, Transaction as WalletTransaction } from "applesauce-wallet-connect/helpers";
+import { CommonWalletMethods, WalletInfo, Transaction as WalletTransaction } from "applesauce-wallet-connect/helpers";
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
 import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
@@ -91,7 +91,7 @@ function WalletInfoCard({
   walletInfo,
   updateWalletInfo,
 }: {
-  walletInfo: Omit<GetInfoResult, "methods" | "pubkey">;
+  walletInfo: WalletInfo;
   updateWalletInfo: (field: string, value: any) => void;
 }) {
   return (
@@ -299,12 +299,13 @@ function MethodCard({
 
 // Create global state (easier to manage outside of the component)
 const balance$ = new BehaviorSubject<number>(50000 * 1000);
-const walletInfo$ = new BehaviorSubject<Omit<GetInfoResult, "methods" | "pubkey">>({
+const walletInfo$ = new BehaviorSubject<WalletInfo>({
   alias: "Example Wallet",
   color: "#3b82f6",
   network: "mainnet",
   block_height: 800000,
   block_hash: "0000000000000000000000000000000000000000000000000000000000000000",
+  methods: [],
 });
 const transactions$ = new BehaviorSubject<Transaction[]>([
   {
@@ -333,7 +334,7 @@ const transactions$ = new BehaviorSubject<Transaction[]>([
 
 export default function WalletServiceExample() {
   const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
-  const [supportedMethods, setSupportedMethods] = useState<WalletMethod[]>([
+  const [supportedMethods, setSupportedMethods] = useState<string[]>([
     "get_balance",
     "get_info",
     "make_invoice",
@@ -454,7 +455,7 @@ export default function WalletServiceExample() {
 
   const startWalletService = useCallback(async () => {
     try {
-      const service = new WalletService({
+      const service = new WalletService<CommonWalletMethods>({
         relays,
         signer,
         handlers,
@@ -486,7 +487,7 @@ export default function WalletServiceExample() {
     setRelays((prev) => prev.filter((r) => r !== relay));
   }, []);
 
-  const toggleMethod = useCallback((method: WalletMethod) => {
+  const toggleMethod = useCallback((method: string) => {
     setSupportedMethods((prev) => (prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method]));
   }, []);
 

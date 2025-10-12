@@ -1,8 +1,8 @@
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { NotificationType } from "./notification.js";
-import { WalletMethod } from "./support.js";
+import { CommonWalletMethods, TWalletMethod } from "./methods.js";
 
-export interface WalletAuthURI {
+export interface WalletAuthURI<Methods extends TWalletMethod = CommonWalletMethods> {
   /** The public key of the client requesting authorization */
   client: string;
   /** Required. URL of the relay where the client intends to communicate with the wallet service */
@@ -20,7 +20,7 @@ export interface WalletAuthURI {
   /** The reset the budget at the end of the given budget renewal. Can be never (default), daily, weekly, monthly, yearly (optional) */
   budgetRenewal?: "never" | "daily" | "weekly" | "monthly" | "yearly";
   /** List of request types that you need permission for (optional) */
-  methods?: WalletMethod[];
+  methods?: Methods["method"][];
   /** List of notification types that you need permission for (optional) */
   notifications?: NotificationType[];
   /** The makes an isolated app connection / sub-wallet with its own balance and only access to its own transaction list (optional) */
@@ -35,7 +35,9 @@ export interface WalletAuthURI {
  * Parses a nostr+walletauth URI
  * @throws {Error} if the authorization URI is invalid
  */
-export function parseWalletAuthURI(authURI: string): WalletAuthURI {
+export function parseWalletAuthURI<Methods extends TWalletMethod = CommonWalletMethods>(
+  authURI: string,
+): WalletAuthURI<Methods> {
   const { host, pathname, searchParams, protocol } = new URL(authURI);
 
   // Check if it's a valid wallet auth protocol
@@ -69,7 +71,7 @@ export function parseWalletAuthURI(authURI: string): WalletAuthURI {
   const budgetRenewal = searchParams.get("budget_renewal") as WalletAuthURI["budgetRenewal"] | null;
 
   const methodsParam = searchParams.get("request_methods");
-  const methods = methodsParam ? (methodsParam.split(" ") as WalletMethod[]) : undefined;
+  const methods = methodsParam ? (methodsParam.split(" ") as Methods["method"][]) : undefined;
 
   const notificationsParam = searchParams.get("notification_types");
   const notifications = notificationsParam ? (notificationsParam.split(" ") as NotificationType[]) : undefined;
@@ -104,10 +106,10 @@ export function parseWalletAuthURI(authURI: string): WalletAuthURI {
   };
 }
 
-/**
- * Creates a nostr+walletauth URI from a WalletAuthURI object
- */
-export function createWalletAuthURI(parts: WalletAuthURI): string {
+/** Creates a nostr+walletauth URI from a WalletAuthURI object */
+export function createWalletAuthURI<Methods extends TWalletMethod = CommonWalletMethods>(
+  parts: WalletAuthURI<Methods>,
+): string {
   validateWalletAuthURI(parts);
 
   // Determine the protocol based on whether wallet name is specified
@@ -143,7 +145,7 @@ export function createWalletAuthURI(parts: WalletAuthURI): string {
  * Validates a WalletAuthURI object
  * @returns true if valid, throws Error if invalid
  */
-export function validateWalletAuthURI(parts: WalletAuthURI): boolean {
+export function validateWalletAuthURI(parts: WalletAuthURI<TWalletMethod>): boolean {
   if (!parts.client || parts.client.length === 0) throw new Error("client public key is required");
 
   if (!parts.relays || parts.relays.length === 0) throw new Error("at least one relay is required");

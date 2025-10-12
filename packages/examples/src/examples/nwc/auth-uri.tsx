@@ -1,16 +1,16 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
 import {
-  parseWalletAuthURI,
+  CommonWalletMethods,
   createWalletAuthURI,
-  WalletAuthURI,
-  WalletMethod,
   NotificationType,
+  parseWalletAuthURI,
+  WalletAuthURI,
 } from "applesauce-wallet-connect/helpers";
 import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 
 // Method descriptions for better UX
-const METHOD_DESCRIPTIONS: Record<WalletMethod, string> = {
+const METHOD_DESCRIPTIONS: Record<string, string> = {
   pay_invoice: "Pay Lightning invoices",
   multi_pay_invoice: "Pay multiple Lightning invoices at once",
   pay_keysend: "Send keysend payments",
@@ -40,7 +40,7 @@ type FormData = {
   expiresAt: string;
   maxAmount: string;
   budgetRenewal: "never" | "daily" | "weekly" | "monthly" | "yearly";
-  methods: WalletMethod[];
+  methods: string[];
   notifications: NotificationType[];
   isolated: boolean;
   metadata: Record<string, string>;
@@ -233,7 +233,7 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
     setValue("relays", currentRelays);
   };
 
-  const toggleMethod = (method: WalletMethod) => {
+  const toggleMethod = (method: string) => {
     const currentMethods = watchedMethods;
     const newMethods = currentMethods.includes(method)
       ? currentMethods.filter((m) => m !== method)
@@ -278,7 +278,7 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
         expiresAt: data.expiresAt ? Math.floor(new Date(data.expiresAt).getTime() / 1000) : undefined,
         maxAmount: data.maxAmount ? parseInt(data.maxAmount) : undefined,
         budgetRenewal: data.budgetRenewal,
-        methods: data.methods,
+        methods: data.methods as CommonWalletMethods["method"][],
         notifications: data.notifications,
         isolated: data.isolated,
         metadata: data.metadata,
@@ -431,8 +431,8 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
                 <label key={method} className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={watchedMethods.includes(method as WalletMethod)}
-                    onChange={() => toggleMethod(method as WalletMethod)}
+                    checked={watchedMethods.includes(method)}
+                    onChange={() => toggleMethod(method)}
                     className="checkbox checkbox-sm"
                   />
                   <span className="text-sm">{method}</span>

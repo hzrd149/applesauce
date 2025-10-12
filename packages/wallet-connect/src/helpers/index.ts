@@ -6,3 +6,4 @@ export * from "./support.js";
 export * from "./notification.js";
 export * from "./encryption.js";
 export * from "./auth-uri.js";
+export * from "./methods.js";

@@ -2,28 +2,18 @@ import { getOrComputeCachedValue, getTagValue, isEvent } from "applesauce-core/h
 import { NostrEvent } from "nostr-tools";
 
 import { WalletConnectEncryptionMethod } from "./encryption.js";
-import { NotificationType as NotificationType } from "./notification.js";
+import { TWalletMethod } from "./methods.js";
+import { NotificationType } from "./notification.js";
 
 export const WALLET_INFO_KIND = 13194;
 
 /** A symbol used to cache the wallet info on the event */
 export const WalletInfoSymbol = Symbol("wallet-info");
 
-export type WalletMethod =
-  | "pay_invoice"
-  | "multi_pay_invoice"
-  | "pay_keysend"
-  | "multi_pay_keysend"
-  | "make_invoice"
-  | "lookup_invoice"
-  | "list_transactions"
-  | "get_balance"
-  | "get_info";
-
 /** Wallet service capabilities and information */
-export interface WalletSupport {
+export interface WalletSupport<Methods extends TWalletMethod = TWalletMethod> {
   /** List of supported methods for this wallet service */
-  methods: WalletMethod[];
+  methods: Array<Methods["method"]>;
   /** List of supported encryption methods */
   encryption: WalletConnectEncryptionMethod[];
   /** List of supported notifications, optional */
@@ -31,7 +21,9 @@ export interface WalletSupport {
 }
 
 /** Gets the wallet info from a kind 13194 event */
-export function getWalletSupport(info: NostrEvent): WalletSupport | null {
+export function getWalletSupport<Methods extends TWalletMethod = TWalletMethod>(
+  info: NostrEvent,
+): WalletSupport<Methods> | null {
   if (info.kind !== WALLET_INFO_KIND) return null;
 
   return getOrComputeCachedValue(info, WalletInfoSymbol, () => {
@@ -40,22 +32,7 @@ export function getWalletSupport(info: NostrEvent): WalletSupport | null {
 
     // Parse methods from content (space-separated)
     const contentParts = content.split(/\s+/);
-    const methods = contentParts
-      .filter((part) =>
-        [
-          "pay_invoice",
-          "multi_pay_invoice",
-          "pay_keysend",
-          "multi_pay_keysend",
-          "make_invoice",
-          "lookup_invoice",
-          "list_transactions",
-          "get_balance",
-          "get_info",
-          "notifications",
-        ].includes(part),
-      )
-      .filter((part) => part !== "notifications") as WalletMethod[];
+    const methods = contentParts.filter((part) => part !== "notifications") as Array<Methods["method"]>;
 
     // Parse encryption methods from encryption tag
     const encryptionTag = getTagValue(info, "encryption");
@@ -110,7 +87,7 @@ export function getPreferredEncryption(info: NostrEvent | WalletSupport): Wallet
 }
 
 /** Checks if the wallet service supports a specific method */
-export function supportsMethod(info: NostrEvent | WalletSupport, method: WalletMethod): boolean {
+export function supportsMethod(info: NostrEvent | WalletSupport, method: string): boolean {
   const walletInfo = isEvent(info) ? getWalletSupport(info) : (info as WalletSupport);
   return walletInfo?.methods.includes(method) ?? false;
 }
@@ -131,7 +108,7 @@ export function supportsNotificationType(
 }
 
 /** Gets all supported methods from the wallet info */
-export function getSupportedMethods(info: NostrEvent | WalletSupport): WalletMethod[] {
+export function getSupportedMethods(info: NostrEvent | WalletSupport): string[] {
   const walletInfo = isEvent(info) ? getWalletSupport(info) : (info as WalletSupport);
   return walletInfo?.methods ?? [];
 }

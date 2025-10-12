@@ -13,7 +13,6 @@ import {
   NotificationType,
   WalletConnectURI,
   WalletConnectEncryptionMethod,
-  WalletMethod,
 } from "applesauce-wallet-connect/helpers";
 import { hexToBytes } from "@noble/hashes/utils";
 import { useMemo, useState } from "react";
@@ -22,7 +21,7 @@ import { useMemo, useState } from "react";
 const pool = new RelayPool();
 
 // Method descriptions for better UX
-const METHOD_DESCRIPTIONS: Record<WalletMethod, string> = {
+const METHOD_DESCRIPTIONS: Record<string, string> = {
   pay_invoice: "Pay Lightning invoices",
   multi_pay_invoice: "Pay multiple Lightning invoices at once",
   pay_keysend: "Send keysend payments",
@@ -82,7 +81,7 @@ function MethodsSeciton({ walletInfo }: { walletInfo: WalletSupport }) {
       <h2 className="text-2xl font-bold">Supported Methods</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Object.entries(METHOD_DESCRIPTIONS).map(([method, description]) => {
-          const isSupported = supportsMethod(walletInfo, method as WalletMethod);
+          const isSupported = supportsMethod(walletInfo, method);
           return (
             <div key={method} className="card card-compact card-border bg-base-200">
               <div className="card-body">

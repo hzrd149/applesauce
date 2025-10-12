@@ -13,7 +13,7 @@ import {
 import { NostrEvent } from "nostr-tools";
 
 import { WalletConnectEncryptionMethod } from "./encryption.js";
-import { WalletMethod } from "./support.js";
+import { TWalletMethod } from "./methods.js";
 
 export const WALLET_REQUEST_KIND = 23194;
 
@@ -26,164 +26,26 @@ export type WalletRequestEvent = KnownEvent<typeof WALLET_REQUEST_KIND>;
 export const WalletRequestSymbol = Symbol("wallet-request");
 
 /** Type for events with unlocked hidden content */
-export type UnlockedWalletRequest = UnlockedHiddenContent & {
-  [WalletRequestSymbol]: WalletRequest;
+export type UnlockedWalletRequest<Method extends TWalletMethod = TWalletMethod> = UnlockedHiddenContent & {
+  [WalletRequestSymbol]: Method["request"];
 };
 
-/** TLV record for keysend payments */
-export interface TLVRecord {
-  /** TLV type */
-  type: number;
-  /** Hex encoded TLV value */
-  value: string;
-}
-
-/** Base request structure for all NIP-47 requests */
-export interface BaseWalletRequest<TMethod extends WalletMethod, TParams> {
-  /** The method to call */
-  method: TMethod;
-  /** Parameters for the method */
-  params: TParams;
-}
-
-// Request Parameter Types
-
-/** Parameters for pay_invoice method */
-export interface PayInvoiceParams {
-  /** BOLT11 invoice */
-  invoice: string;
-  /** Invoice amount in msats, optional */
-  amount?: number;
-}
-
-export type PayInvoiceRequest = BaseWalletRequest<"pay_invoice", PayInvoiceParams>;
-
-/** Parameters for multi_pay_invoice method */
-export interface MultiPayInvoiceParams {
-  /** Array of invoices to pay */
-  invoices: Array<{
-    /** ID to identify this invoice in the response */
-    id?: string;
-    /** BOLT11 invoice */
-    invoice: string;
-    /** Invoice amount in msats, optional */
-    amount?: number;
-  }>;
-}
-
-export type MultiPayInvoiceRequest = BaseWalletRequest<"multi_pay_invoice", MultiPayInvoiceParams>;
-
-/** Parameters for pay_keysend method */
-export interface PayKeysendParams {
-  /** Amount in msats, required */
-  amount: number;
-  /** Payee pubkey, required */
-  pubkey: string;
-  /** Preimage of the payment, optional */
-  preimage?: string;
-  /** TLV records, optional */
-  tlv_records?: TLVRecord[];
-}
-
-export type PayKeysendRequest = BaseWalletRequest<"pay_keysend", PayKeysendParams>;
-
-/** Parameters for multi_pay_keysend method */
-export interface MultiPayKeysendParams {
-  /** Array of keysend payments */
-  keysends: Array<{
-    /** ID to identify this keysend in the response */
-    id?: string;
-    /** Payee pubkey, required */
-    pubkey: string;
-    /** Amount in msats, required */
-    amount: number;
-    /** Preimage of the payment, optional */
-    preimage?: string;
-    /** TLV records, optional */
-    tlv_records?: TLVRecord[];
-  }>;
-}
-
-export type MultiPayKeysendRequest = BaseWalletRequest<"multi_pay_keysend", MultiPayKeysendParams>;
-
-/** Parameters for make_invoice method */
-export interface MakeInvoiceParams {
-  /** Value in msats */
-  amount: number;
-  /** Invoice's description, optional */
-  description?: string;
-  /** Invoice's description hash, optional */
-  description_hash?: string;
-  /** Expiry in seconds from time invoice is created, optional */
-  expiry?: number;
-}
-
-export type MakeInvoiceRequest = BaseWalletRequest<"make_invoice", MakeInvoiceParams>;
-
-/** Parameters for lookup_invoice method */
-export interface LookupInvoiceParams {
-  /** Payment hash of the invoice, one of payment_hash or invoice is required */
-  payment_hash?: string;
-  /** Invoice to lookup */
-  invoice?: string;
-}
-
-export type LookupInvoiceRequest = BaseWalletRequest<"lookup_invoice", LookupInvoiceParams>;
-
-/** Parameters for list_transactions method */
-export interface ListTransactionsParams {
-  /** Starting timestamp in seconds since epoch (inclusive), optional */
-  from?: number;
-  /** Ending timestamp in seconds since epoch (inclusive), optional */
-  until?: number;
-  /** Maximum number of invoices to return, optional */
-  limit?: number;
-  /** Offset of the first invoice to return, optional */
-  offset?: number;
-  /** Include unpaid invoices, optional, default false */
-  unpaid?: boolean;
-  /** "incoming" for invoices, "outgoing" for payments, undefined for both */
-  type?: "incoming" | "outgoing";
-}
-
-export type ListTransactionsRequest = BaseWalletRequest<"list_transactions", ListTransactionsParams>;
-
-/** Parameters for get_balance method */
-export interface GetBalanceParams {}
-
-export type GetBalanceRequest = BaseWalletRequest<"get_balance", GetBalanceParams>;
-
-/** Parameters for get_info method */
-export interface GetInfoParams {}
-
-export type GetInfoRequest = BaseWalletRequest<"get_info", GetInfoParams>;
-
-/** Union type for all NIP-47 request types */
-export type WalletRequest =
-  | PayInvoiceRequest
-  | MultiPayInvoiceRequest
-  | PayKeysendRequest
-  | MultiPayKeysendRequest
-  | MakeInvoiceRequest
-  | LookupInvoiceRequest
-  | ListTransactionsRequest
-  | GetBalanceRequest
-  | GetInfoRequest;
-
 /** Checks if a kind 23194 event is locked */
-export function isWalletRequestUnlocked(request: any): request is UnlockedWalletRequest {
+export function isWalletRequestUnlocked<Method extends TWalletMethod = TWalletMethod>(
+  request: any,
+): request is UnlockedWalletRequest<Method> {
   return isHiddenContentUnlocked(request) && Reflect.has(request, WalletRequestSymbol) === true;
 }
 
 /** Unlocks a kind 23194 event */
-export async function unlockWalletRequest(
+export async function unlockWalletRequest<Method extends TWalletMethod = TWalletMethod>(
   request: NostrEvent,
   signer: HiddenContentSigner,
-): Promise<WalletRequest | undefined> {
-  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol];
+): Promise<Method["request"] | undefined> {
+  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol] as Method["request"];
 
   const content = await unlockHiddenContent(request, signer);
-  const parsed = JSON.parse(content) as WalletRequest;
+  const parsed = JSON.parse(content) as Method["request"];
 
   // Save the parsed content
   Reflect.set(request, WalletRequestSymbol, parsed);
@@ -193,8 +55,10 @@ export async function unlockWalletRequest(
 }
 
 /** Gets the wallet request from a kind 23194 event */
-export function getWalletRequest(request: NostrEvent): WalletRequest | undefined {
-  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol];
+export function getWalletRequest<Method extends TWalletMethod = TWalletMethod>(
+  request: NostrEvent,
+): Method["request"] | undefined {
+  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol] as Method["request"];
   else return undefined;
 }
 

@@ -3,10 +3,9 @@ import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
-  GetBalanceResult,
-  MakeInvoiceResult,
+  GetBalanceMethod,
   parseWalletConnectURI,
-  PayInvoiceResult,
+  PayInvoiceMethod,
   supportsMethod,
   Transaction,
   WalletSupport,
@@ -93,7 +92,7 @@ function CreateInvoiceModal({
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [invoice, setInvoice] = useState<MakeInvoiceResult | null>(null);
+  const [invoice, setInvoice] = useState<Transaction | null>(null);
   const [isPaid, setIsPaid] = useState(false);
 
   // Listen for payment notifications
@@ -303,7 +302,7 @@ function PayInvoiceModal({
   const [parsedInvoice, setParsedInvoice] = useState<ParsedInvoice | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [paymentResult, setPaymentResult] = useState<PayInvoiceResult | null>(null);
+  const [paymentResult, setPaymentResult] = useState<PayInvoiceMethod["response"]["result"] | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Reset state when modal opens/closes
@@ -585,7 +584,7 @@ function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => v
 export default function SimpleWalletExample() {
   const [wallet, setWallet] = useState<WalletConnect | undefined>(undefined);
 
-  const [balance, setBalance] = useState<GetBalanceResult | null>(null);
+  const [balance, setBalance] = useState<GetBalanceMethod["response"]["result"] | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
