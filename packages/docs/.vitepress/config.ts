@@ -135,6 +135,7 @@ export default defineConfig({
           { text: "Native SQLite", link: "/sqlite/native" },
           { text: "Bun SQLite", link: "/sqlite/bun" },
           { text: "LibSQL", link: "/sqlite/libsql" },
+          { text: "Turso", link: "/sqlite/turso" },
           { text: "Turso Wasm", link: "/sqlite/turso-wasm" },
         ],
       },

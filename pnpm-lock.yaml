@@ -719,6 +719,9 @@ importers:
 
   packages/sqlite:
     dependencies:
+      '@tursodatabase/database':
+        specifier: ^0.2.2
+        version: 0.2.2
       applesauce-core:
         specifier: ^4.0.0
         version: link:../core
@@ -2031,11 +2034,34 @@ packages:
   '@tursodatabase/database-common@0.2.2':
     resolution: {integrity: sha512-cSNpms6MIaRj29B37XzIu9yGbea0HSGDupZs8QrMxR3rKqgHJIfY04ysqDD/4lS8TNIImPlPZrZgqQz+b/FoKQ==}
 
+  '@tursodatabase/database-darwin-arm64@0.2.2':
+    resolution: {integrity: sha512-9hfG9gncCnCU8fnYcw5w8iUheV8GVHBA1kS9VWyGxtFrlaajpNv3WVKM67BznacvtGhz35EpAGoG5ayxpEbQKA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tursodatabase/database-linux-arm64-gnu@0.2.2':
+    resolution: {integrity: sha512-u3VFXFzTZd+5RxxyQVClxMHVfj6aRxV0AbdoTLJ4flUao5YMebL4p5w30vozl8wNzlSq7g4ocmCiG71btofDGg==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@tursodatabase/database-linux-x64-gnu@0.2.2':
+    resolution: {integrity: sha512-tAu9ZQBP3sZjaeQEOyEAQoHz/oqONBQwrtE/lYZQhqpR8nZ0DrKsYUIiu4lBOcWcofwtJmOgTVM8WYayJOm4HA==}
+    cpu: [x64]
+    os: [linux]
+
   '@tursodatabase/database-wasm-common@0.2.2':
     resolution: {integrity: sha512-fBQk7+omGw0fjn4ZC1D1aCnj4kXRoqBwGoC63vpB6d6aR5i+es2ng1uII3vktUBsC4JmPLBj51/B59AIqM1e7w==}
 
   '@tursodatabase/database-wasm@0.2.2':
     resolution: {integrity: sha512-AsCwMYs9xRsnoWv4BFnB8dD/FbmONc1Jtspv6rNmc0E0NGtWAJu34phu7wbNjmoGoGjgZFqmCfIgfNS2LQPXGg==}
+
+  '@tursodatabase/database-win32-x64-msvc@0.2.2':
+    resolution: {integrity: sha512-C1Z1xOUSln1/qtzR60xZYHgmfrQIhNm0glgqsnZt2wQI354dDtQGZH/oG/tKWCHrvtFvWCbnd9DEZif/VCK56A==}
+    cpu: [x64]
+    os: [win32]
+
+  '@tursodatabase/database@0.2.2':
+    resolution: {integrity: sha512-BlvoyiwIWIIQA65KEYlCqLDpRKIOM1AN99tBMjz1B+ydO9h0cDb+lCbfBf6f7+Lk696KB1ODpePiF5EfGm9qpw==}
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -5739,6 +5765,15 @@ snapshots:
 
   '@tursodatabase/database-common@0.2.2': {}
 
+  '@tursodatabase/database-darwin-arm64@0.2.2':
+    optional: true
+
+  '@tursodatabase/database-linux-arm64-gnu@0.2.2':
+    optional: true
+
+  '@tursodatabase/database-linux-x64-gnu@0.2.2':
+    optional: true
+
   '@tursodatabase/database-wasm-common@0.2.2':
     dependencies:
       '@napi-rs/wasm-runtime': 1.0.7
@@ -5747,6 +5782,18 @@ snapshots:
     dependencies:
       '@tursodatabase/database-common': 0.2.2
       '@tursodatabase/database-wasm-common': 0.2.2
+
+  '@tursodatabase/database-win32-x64-msvc@0.2.2':
+    optional: true
+
+  '@tursodatabase/database@0.2.2':
+    dependencies:
+      '@tursodatabase/database-common': 0.2.2
+    optionalDependencies:
+      '@tursodatabase/database-darwin-arm64': 0.2.2
+      '@tursodatabase/database-linux-arm64-gnu': 0.2.2
+      '@tursodatabase/database-linux-x64-gnu': 0.2.2
+      '@tursodatabase/database-win32-x64-msvc': 0.2.2
 
   '@tybys/wasm-util@0.10.1':
     dependencies:

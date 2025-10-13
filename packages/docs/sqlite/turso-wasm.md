@@ -2,6 +2,14 @@
 
 The Turso WASM implementation uses the `@tursodatabase/database-wasm` library, providing SQLite functionality in web browsers and other WASM-compatible environments.
 
+:::info
+This implementation uses [`SharedArrayBuffer`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer) and [`OPFS`](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) which require the following server headers to be set:
+
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Embedder-Policy: require-corp`
+
+:::
+
 ## Installation
 
 ```bash
@@ -203,29 +211,3 @@ Here's a complete example for use in a web browser:
   </body>
 </html>
 ```
-
-## Performance Considerations
-
-- **WASM Environment**: Runs in web browsers and other WASM-compatible environments
-- **File-based Storage**: Persistent storage in the browser's IndexedDB or similar
-- **Search Enabled**: Adds overhead for indexing, but enables powerful search capabilities
-- **Async Operations**: All database operations are asynchronous
-- **Memory Usage**: WASM has memory constraints, monitor usage with large datasets
-
-## When to Use
-
-Choose Turso WASM when:
-
-- Building web applications that need SQLite functionality
-- You need persistent storage in browsers
-- You want to avoid server-side database dependencies
-- You're building offline-capable applications
-- You need full-text search in a web environment
-- You want to use SQLite without Node.js native dependencies
-
-## Limitations
-
-- **WASM Constraints**: Limited by WASM memory and performance characteristics
-- **Browser Compatibility**: Requires browsers that support WASM
-- **File Size**: The WASM binary adds to your bundle size
-- **Async Only**: All operations are asynchronous (no synchronous alternatives)
