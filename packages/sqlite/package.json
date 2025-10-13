@@ -87,12 +87,23 @@
       "import": "./dist/libsql/*.js",
       "require": "./dist/libsql/*.js",
       "types": "./dist/libsql/*.d.ts"
+    },
+    "./turso-wasm": {
+      "import": "./dist/turso-wasm/index.js",
+      "require": "./dist/turso-wasm/index.js",
+      "types": "./dist/turso-wasm/index.d.ts"
+    },
+    "./turso-wasm/*": {
+      "import": "./dist/turso-wasm/*.js",
+      "require": "./dist/turso-wasm/*.js",
+      "types": "./dist/turso-wasm/*.d.ts"
     }
   },
   "dependencies": {
     "applesauce-core": "^4.0.0"
   },
   "optionalDependencies": {
+    "@tursodatabase/database-wasm": "^0.2.2",
     "@libsql/client": "^0.15.15",
     "better-sqlite3": "^12.2.0"
   },
@@ -101,6 +112,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.5.13",
     "applesauce-signers": "^4.0.0",
+    "nostr-tools": "^2.17.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.7.3",
     "vitest": "^3.2.4",

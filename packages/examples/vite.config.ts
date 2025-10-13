@@ -6,8 +6,22 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   base: process.env.VITE_BASE || "/",
   build: {
-    target: ["chrome89", "edge89", "firefox89", "safari15"],
+    target: "es2022",
     sourcemap: true,
+  },
+  esbuild: {
+    target: "es2022",
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: "es2022",
+    },
+  },
+  server: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
   },
   plugins: [react(), tailwindcss()],
 });

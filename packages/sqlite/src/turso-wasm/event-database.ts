@@ -1,7 +1,6 @@
-import { Client, createClient } from "@libsql/client";
 import { IAsyncEventDatabase, logger } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers";
-import { enhancedSearchContentFormatter, FilterWithSearch, SearchContentFormatter } from "../helpers/search.js";
+import { Database } from "@tursodatabase/database-wasm";
 import {
   createTables,
   deleteEvent,
@@ -14,33 +13,37 @@ import {
   insertEvent,
   rebuildSearchIndex,
 } from "./methods.js";
+import { enhancedSearchContentFormatter, FilterWithSearch, SearchContentFormatter } from "../helpers/search.js";
 
-const log = logger.extend("LibsqlEventDatabase");
+const log = logger.extend("TursoWasmEventDatabase");
 
-/** Options for the {@link LibsqlEventDatabase} */
-export type LibsqlEventDatabaseOptions = {
+/** Options for the {@link TursoWasmEventDatabase} */
+export type TursoWasmEventDatabaseOptions = {
   search?: boolean;
   searchContentFormatter?: SearchContentFormatter;
 };
 
-export class LibsqlEventDatabase implements IAsyncEventDatabase {
-  db: Client;
+export class TursoWasmEventDatabase implements IAsyncEventDatabase {
+  db: Database;
 
   /** If search is enabled */
   private search: boolean;
   /** The search content formatter */
   private searchContentFormatter: SearchContentFormatter;
 
-  constructor(database: string | Client, options?: LibsqlEventDatabaseOptions) {
-    this.db = typeof database === "string" ? createClient({ url: database }) : database;
+  constructor(database: Database, options?: TursoWasmEventDatabaseOptions) {
+    this.db = database;
 
     this.search = options?.search ?? false;
     this.searchContentFormatter = options?.searchContentFormatter ?? enhancedSearchContentFormatter;
   }
 
   /** Create a TursoWasmEventDatabase from a database and initialize it */
-  static async fromClient(database: Client, options?: LibsqlEventDatabaseOptions): Promise<LibsqlEventDatabase> {
-    const eventDatabase = new LibsqlEventDatabase(database, options);
+  static async fromDatabase(
+    database: Database,
+    options?: TursoWasmEventDatabaseOptions,
+  ): Promise<TursoWasmEventDatabase> {
+    const eventDatabase = new TursoWasmEventDatabase(database, options);
     return await eventDatabase.initialize();
   }
 
@@ -129,11 +132,15 @@ export class LibsqlEventDatabase implements IAsyncEventDatabase {
   }
 
   /** Close the database connection */
-  close(): void {
+  async close(): Promise<void> {
     log("Closing database connection");
-    this.db.close();
+    await this.db.close();
   }
   [Symbol.dispose]() {
-    this.close();
+    // Note: dispose is synchronous, but close is async
+    // This is a limitation of the dispose pattern
+    this.close().catch((error) => {
+      log("Error closing database in dispose:", error);
+    });
   }
 }

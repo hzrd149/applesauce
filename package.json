@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@changesets/cli": "^2.29.7",
-    "typedoc": "^0.28.13"
+    "typedoc": "^0.28.14"
   },
   "devDependencies": {
     "@changesets/changelog-git": "^0.2.1",

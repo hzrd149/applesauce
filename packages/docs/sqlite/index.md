@@ -39,6 +39,10 @@ Uses Bun's built-in `bun:sqlite` module. Optimized for Bun runtime applications.
 
 Uses the LibSQL client for local and remote SQLite databases. Supports both local files and remote LibSQL instances.
 
+### [Turso WASM](./turso-wasm.md)
+
+Uses the Turso WASM SQLite implementation for web browsers and WASM-compatible environments. Provides persistent SQLite functionality without native dependencies.
+
 ## Installation
 
 Install the package along with your preferred SQLite implementation:
@@ -50,6 +54,9 @@ npm install applesauce-sqlite better-sqlite3
 # For libsql (supports local and remote databases)
 npm install applesauce-sqlite @libsql/client
 
+# For turso wasm (web browsers and WASM environments)
+npm install applesauce-sqlite @tursodatabase/database-wasm
+
 # For bun (uses built-in SQLite)
 bun add applesauce-sqlite
 
@@ -59,7 +66,7 @@ npm install applesauce-sqlite
 
 ## Basic Usage
 
-All implementations follow the same pattern. Here's a basic example using Better SQLite3:
+Most implementations follow the same pattern. Here's a basic example using Better SQLite3:
 
 ```js
 import { EventStore } from "applesauce-core";
@@ -76,6 +83,8 @@ eventStore.add(someNostrEvent);
 
 // The events are now persisted to SQLite!
 ```
+
+**Note**: The Turso WASM implementation requires a different initialization pattern since it can't easily bundle WASM files. It uses a static `fromDatabase()` method for cleaner initialization. See the [Turso WASM documentation](./turso-wasm.md) for details.
 
 ## Advanced Features
 
@@ -114,6 +123,7 @@ const database = new BetterSqlite3EventDatabase("./events.db", {
 - **Native SQLite**: Good for Node.js applications preferring built-in modules
 - **Bun SQLite**: Optimal for Bun runtime applications
 - **LibSQL**: Best for applications requiring remote database support or LibSQL-specific features
+- **Turso WASM**: Best for web browsers and WASM environments requiring persistent SQLite functionality
 
 ## Migration from In-Memory
 

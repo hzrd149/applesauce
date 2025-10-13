@@ -119,8 +119,12 @@ export function deleteEvent(db: Database, id: string): boolean {
     );
     deleteTagsStmt.run(id);
 
-    // Delete from search tables
-    deleteSearchContent(db, id);
+    // Delete from search tables if they exist
+    try {
+      deleteSearchContent(db, id);
+    } catch (error) {
+      // Search table might not exist if search is disabled, ignore the error
+    }
 
     // Delete from events table
     const deleteEventStmt = db.prepare<StatementParams<typeof DELETE_EVENT_STATEMENT>>(DELETE_EVENT_STATEMENT.sql);
