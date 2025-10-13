@@ -1,7 +1,7 @@
 import { AsyncEventStore } from "applesauce-core";
 import { Filter, NostrEvent, isEvent } from "applesauce-core/helpers";
 import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";
-import { connect } from "@tursodatabase/database-wasm";
+import { connect } from "@tursodatabase/database-wasm/vite";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 // Initialize database and event store
@@ -17,9 +17,7 @@ function isSharedArrayBufferSupported(): boolean {
 async function initializeDatabase() {
   try {
     const db = await connect("nostr-events.db");
-    eventDatabase = await TursoWasmEventDatabase.fromDatabase(db, {
-      search: false, // Disable full-text search for this example
-    });
+    eventDatabase = await TursoWasmEventDatabase.fromDatabase(db);
     eventStore = new AsyncEventStore(eventDatabase);
     return true;
   } catch (error) {
@@ -204,7 +202,6 @@ export default function TursoWasmExample() {
         filter.kinds = [kindFilter];
       }
 
-      // Note: search field is disabled, only using standard Nostr filters
       const results = await eventStore.getTimeline(filter);
       setEvents(results);
     } catch (err) {
@@ -274,11 +271,8 @@ export default function TursoWasmExample() {
     setError(null);
 
     try {
-      // Get all events and remove them
-      const allEvents = await eventStore.getTimeline({ limit: 10000 });
-      for (const event of allEvents) {
-        await eventStore.remove(event.id);
-      }
+      // Use removeByFilters with empty filter to clear all events
+      await eventStore.removeByFilters({});
 
       setEvents([]);
       setImportStats(null);
@@ -359,152 +353,144 @@ export default function TursoWasmExample() {
       )}
 
       {/* Controls */}
-      <div className="card bg-base-100 shadow-md mb-6">
-        <div className="card-body">
-          <h2 className="card-title mb-4">Database Controls</h2>
+      <div className="mb-6">
+        <h2 className="text-xl font-bold mb-4">Database Controls</h2>
 
-          <div className="flex flex-wrap gap-4 items-center">
-            {/* Import */}
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".jsonl"
-                onChange={handleFileImport}
-                className="hidden"
-                disabled={isLoading}
-              />
-              <button onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="btn btn-primary">
-                {isLoading ? (
-                  <>
-                    <span className="loading loading-spinner loading-sm"></span>
-                    Importing...
-                  </>
-                ) : (
-                  "Import JSONL"
-                )}
-              </button>
-            </div>
-
-            {/* Export */}
-            <button onClick={handleExport} disabled={isLoading || events.length === 0} className="btn btn-secondary">
-              Export JSONL ({events.length} events)
-            </button>
-
-            {/* Clear */}
-            <button onClick={handleClearDatabase} disabled={isLoading || events.length === 0} className="btn btn-error">
-              Clear Database
+        <div className="flex flex-wrap gap-4 items-center">
+          {/* Import */}
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".jsonl"
+              onChange={handleFileImport}
+              className="hidden"
+              disabled={isLoading}
+            />
+            <button onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="btn btn-primary">
+              {isLoading ? (
+                <>
+                  <span className="loading loading-spinner loading-sm"></span>
+                  Importing...
+                </>
+              ) : (
+                "Import JSONL"
+              )}
             </button>
           </div>
+
+          {/* Export */}
+          <button onClick={handleExport} disabled={isLoading || events.length === 0} className="btn btn-secondary">
+            Export JSONL ({events.length} events)
+          </button>
+
+          {/* Clear */}
+          <button onClick={handleClearDatabase} disabled={isLoading || events.length === 0} className="btn btn-error">
+            Clear Database
+          </button>
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="card bg-base-100 shadow-md mb-6">
-        <div className="card-body">
-          <h2 className="card-title mb-4">Filter Events</h2>
+      {/* Filter Events */}
+      <div className="mb-6">
+        <h2 className="text-xl font-bold mb-4">Filter Events</h2>
 
-          <form onSubmit={handleFilter} className="flex flex-wrap gap-4 items-end">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Event Kind</span>
-              </label>
-              <select
-                value={kindFilter ?? ""}
-                onChange={(e) => setKindFilter(e.target.value === "" ? null : Number(e.target.value))}
-                className="select select-bordered w-32"
-                disabled={isLoading}
-              >
-                <option value="">Any</option>
-                <option value="0">Profile (0)</option>
-                <option value="1">Note (1)</option>
-                <option value="2">Recommend Relay (2)</option>
-                <option value="3">Contacts (3)</option>
-                <option value="4">Encrypted DM (4)</option>
-                <option value="5">Event Deletion (5)</option>
-                <option value="6">Repost (6)</option>
-                <option value="7">Reaction (7)</option>
-                <option value="8">Badge Award (8)</option>
-                <option value="40">Channel Creation (40)</option>
-                <option value="41">Channel Metadata (41)</option>
-                <option value="42">Channel Message (42)</option>
-                <option value="43">Channel Hide Message (43)</option>
-                <option value="44">Channel Mute User (44)</option>
-                <option value="10000">Mute List (10000)</option>
-                <option value="10001">Pin List (10001)</option>
-                <option value="10002">Relay List Metadata (10002)</option>
-                <option value="10003">Bookmark List (10003)</option>
-                <option value="10004">Communities List (10004)</option>
-                <option value="10005">Public Chats List (10005)</option>
-                <option value="10006">Public Chats List (10006)</option>
-                <option value="10007">App-specific Data (10007)</option>
-                <option value="10015">Interests List (10015)</option>
-                <option value="10030">User Status (10030)</option>
-                <option value="13194">File Metadata (13194)</option>
-                <option value="30000">Follow Sets (30000)</option>
-                <option value="30001">Communities (30001)</option>
-                <option value="30008">Profile Badges (30008)</option>
-                <option value="30009">Badge Definition (30009)</option>
-                <option value="30015">Interest Sets (30015)</option>
-                <option value="30017">Create or update a stall (30017)</option>
-                <option value="30018">Create or update a product (30018)</option>
-                <option value="30019">Create or update a pickup method (30019)</option>
-                <option value="30023">Long-form Content (30023)</option>
-                <option value="30024">Draft Long-form Content (30024)</option>
-                <option value="30030">Emoji Sets (30030)</option>
-                <option value="30078">Application-specific Data (30078)</option>
-                <option value="30311">Classified Listing (30311)</option>
-                <option value="30315">Live Event (30315)</option>
-                <option value="30315">Live Event Messages (30315)</option>
-                <option value="30402">Community Post Approval (30402)</option>
-                <option value="30403">Community Post (30403)</option>
-                <option value="31922">Date-based Calendar Event (31922)</option>
-                <option value="31923">Time-based Calendar Event (31923)</option>
-                <option value="31924">Calendar (31924)</option>
-                <option value="31925">Calendar Event RSVP (31925)</option>
-                <option value="31990">File Header (31990)</option>
-                <option value="31991">File Metadata (31991)</option>
-                <option value="31992">Live Event (31992)</option>
-                <option value="31993">Live Event Messages (31993)</option>
-                <option value="31994">Handler Recommendation (31994)</option>
-                <option value="31995">Handler Information (31995)</option>
-                <option value="31996">Community Moderation (31996)</option>
-                <option value="31997">Community Post (31997)</option>
-                <option value="31998">Community (31998)</option>
-                <option value="31999">Community Admin (31999)</option>
-              </select>
-            </div>
+        <form onSubmit={handleFilter} className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-sm font-medium mb-2">Event Kind</label>
+            <select
+              value={kindFilter ?? ""}
+              onChange={(e) => setKindFilter(e.target.value === "" ? null : Number(e.target.value))}
+              className="select select-bordered w-48"
+              disabled={isLoading}
+            >
+              <option value="">Any</option>
+              <option value="0">Profile (0)</option>
+              <option value="1">Note (1)</option>
+              <option value="2">Recommend Relay (2)</option>
+              <option value="3">Contacts (3)</option>
+              <option value="4">Encrypted DM (4)</option>
+              <option value="5">Event Deletion (5)</option>
+              <option value="6">Repost (6)</option>
+              <option value="7">Reaction (7)</option>
+              <option value="8">Badge Award (8)</option>
+              <option value="40">Channel Creation (40)</option>
+              <option value="41">Channel Metadata (41)</option>
+              <option value="42">Channel Message (42)</option>
+              <option value="43">Channel Hide Message (43)</option>
+              <option value="44">Channel Mute User (44)</option>
+              <option value="10000">Mute List (10000)</option>
+              <option value="10001">Pin List (10001)</option>
+              <option value="10002">Relay List Metadata (10002)</option>
+              <option value="10003">Bookmark List (10003)</option>
+              <option value="10004">Communities List (10004)</option>
+              <option value="10005">Public Chats List (10005)</option>
+              <option value="10006">Public Chats List (10006)</option>
+              <option value="10007">App-specific Data (10007)</option>
+              <option value="10015">Interests List (10015)</option>
+              <option value="10030">User Status (10030)</option>
+              <option value="13194">File Metadata (13194)</option>
+              <option value="30000">Follow Sets (30000)</option>
+              <option value="30001">Communities (30001)</option>
+              <option value="30008">Profile Badges (30008)</option>
+              <option value="30009">Badge Definition (30009)</option>
+              <option value="30015">Interest Sets (30015)</option>
+              <option value="30017">Create or update a stall (30017)</option>
+              <option value="30018">Create or update a product (30018)</option>
+              <option value="30019">Create or update a pickup method (30019)</option>
+              <option value="30023">Long-form Content (30023)</option>
+              <option value="30024">Draft Long-form Content (30024)</option>
+              <option value="30030">Emoji Sets (30030)</option>
+              <option value="30078">Application-specific Data (30078)</option>
+              <option value="30311">Classified Listing (30311)</option>
+              <option value="30315">Live Event (30315)</option>
+              <option value="30315">Live Event Messages (30315)</option>
+              <option value="30402">Community Post Approval (30402)</option>
+              <option value="30403">Community Post (30403)</option>
+              <option value="31922">Date-based Calendar Event (31922)</option>
+              <option value="31923">Time-based Calendar Event (31923)</option>
+              <option value="31924">Calendar (31924)</option>
+              <option value="31925">Calendar Event RSVP (31925)</option>
+              <option value="31990">File Header (31990)</option>
+              <option value="31991">File Metadata (31991)</option>
+              <option value="31992">Live Event (31992)</option>
+              <option value="31993">Live Event Messages (31993)</option>
+              <option value="31994">Handler Recommendation (31994)</option>
+              <option value="31995">Handler Information (31995)</option>
+              <option value="31996">Community Moderation (31996)</option>
+              <option value="31997">Community Post (31997)</option>
+              <option value="31998">Community (31998)</option>
+              <option value="31999">Community Admin (31999)</option>
+            </select>
+          </div>
 
-            <div className="form-control">
-              <button type="submit" disabled={isLoading} className="btn btn-primary">
-                {isLoading ? (
-                  <>
-                    <span className="loading loading-spinner loading-sm"></span>
-                    Filtering...
-                  </>
-                ) : (
-                  "Filter"
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+          <div>
+            <button type="submit" disabled={isLoading} className="btn btn-primary">
+              {isLoading ? (
+                <>
+                  <span className="loading loading-spinner loading-sm"></span>
+                  Filtering...
+                </>
+              ) : (
+                "Filter"
+              )}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Results */}
-      <div className="card bg-base-100 shadow-md">
-        <div className="card-body">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="card-title">Events ({events.length})</h2>
-            {events.length > 0 && (
-              <button onClick={loadAllEvents} disabled={isLoading} className="btn btn-sm btn-outline">
-                Load All Events
-              </button>
-            )}
-          </div>
-
-          <EventsTable events={events} />
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Events ({events.length})</h2>
+          {events.length > 0 && (
+            <button onClick={loadAllEvents} disabled={isLoading} className="btn btn-sm btn-outline">
+              Load All Events
+            </button>
+          )}
         </div>
+
+        <EventsTable events={events} />
       </div>
     </div>
   );

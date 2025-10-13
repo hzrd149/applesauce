@@ -5,6 +5,7 @@ import { enhancedSearchContentFormatter, FilterWithSearch, SearchContentFormatte
 import {
   createTables,
   deleteEvent,
+  deleteEventsByFilters,
   getEvent,
   getEventsByFilters,
   getReplaceable,
@@ -70,6 +71,15 @@ export class LibsqlEventDatabase implements IAsyncEventDatabase {
     }
   }
 
+  /** Remove multiple events that match the given filters */
+  async removeByFilters(filters: FilterWithSearch | FilterWithSearch[]): Promise<number> {
+    // If search is disabled, remove the search field from the filters
+    if (this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
+      throw new Error("Cannot delete with search");
+
+    return await deleteEventsByFilters(this.db, filters);
+  }
+
   /** Checks if an event exists */
   async hasEvent(id: string): Promise<boolean> {
     return await hasEvent(this.db, id);
@@ -79,7 +89,7 @@ export class LibsqlEventDatabase implements IAsyncEventDatabase {
     return await getEvent(this.db, id);
   }
 
-  /** Get the latest replaceable event For replaceable events (10000-19999), returns the most recent event */
+  /** Get the latest replaceable event For replaceable events (10000-19999 and 30000-39999), returns the most recent event */
   async getReplaceable(kind: number, pubkey: string, identifier: string = ""): Promise<NostrEvent | undefined> {
     return await getReplaceable(this.db, kind, pubkey, identifier);
   }

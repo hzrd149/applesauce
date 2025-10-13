@@ -9,9 +9,10 @@ import {
   getProfilePicture,
   isValidProfile,
   kinds,
+  isEvent,
 } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
@@ -46,6 +47,18 @@ class WorkerRelayEventDatabase implements IAsyncEventDatabase {
     const id = typeof event === "string" ? event : event.id;
     const deleted = await this.relay.delete(["REQ", id, { ids: [id] }]);
     return deleted.length > 0;
+  }
+
+  async removeByFilters(filters: Filter | Filter[]): Promise<number> {
+    const filterArray = Array.isArray(filters) ? filters : [filters];
+    let totalRemoved = 0;
+
+    for (const filter of filterArray) {
+      const deleted = await this.relay.delete(["REQ", "bulk-delete", filter]);
+      totalRemoved += deleted.length;
+    }
+
+    return totalRemoved;
   }
 
   async hasEvent(event: string | NostrEvent): Promise<boolean> {
@@ -116,6 +129,61 @@ function truncate(text: string, maxLength: number = 50): string {
 // Helper function to format timestamp
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString();
+}
+
+// Export events to JSONL format
+function exportEventsToJsonl(events: NostrEvent[]): string {
+  return events.map((event) => JSON.stringify(event)).join("\n");
+}
+
+// Download file helper
+function downloadFile(content: string, filename: string, mimeType: string = "application/json") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Import events from JSONL format
+async function importEventsFromJsonl(
+  file: File,
+  eventStore: AsyncEventStore,
+): Promise<{ total: number; added: number; failed: number }> {
+  const stats = { total: 0, added: 0, failed: 0 };
+
+  try {
+    const text = await file.text();
+    const lines = text.split("\n").filter((line) => line.trim());
+    stats.total = lines.length;
+
+    for (const line of lines) {
+      try {
+        const event = JSON.parse(line.trim());
+
+        if (!isEvent(event)) {
+          console.warn("Invalid event:", event);
+          stats.failed++;
+          continue;
+        }
+
+        await eventStore.add(event);
+        stats.added++;
+      } catch (parseError) {
+        console.error("Failed to parse event:", parseError);
+        stats.failed++;
+      }
+    }
+  } catch (error) {
+    console.error("Failed to process file:", error);
+    throw error;
+  }
+
+  return stats;
 }
 
 // Profile hook for username lookup
@@ -254,12 +322,14 @@ export default function WorkerRelaySearch() {
   const [searchResults, setSearchResults] = useState<NostrEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importStats, setImportStats] = useState<{ total: number; added: number; failed: number } | null>(null);
 
   const viewEvent = useObservableEagerState(viewEvent$);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadEvents = useCallback(async () => {
     const filter: Filter = {
-      limit: 100,
+      limit: 1000,
     };
 
     // Build filter
@@ -295,59 +365,273 @@ export default function WorkerRelaySearch() {
   // Load events 500 ms after finish typing
   useDebounce(loadEvents, 500, [searchQuery]);
 
+  // Handle file import
+  const handleFileImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".jsonl")) {
+      setError("Please select a .jsonl file");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const stats = await importEventsFromJsonl(file, eventStore);
+      setImportStats(stats);
+      await loadEvents(); // Reload events after import
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setIsLoading(false);
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Handle export
+  const handleExport = () => {
+    if (searchResults.length === 0) {
+      setError("No events to export");
+      return;
+    }
+
+    const jsonlContent = exportEventsToJsonl(searchResults);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadFile(jsonlContent, `nostr-events-${timestamp}.jsonl`, "application/json");
+  };
+
+  // Handle clear database
+  const handleClearDatabase = async () => {
+    if (!confirm("Are you sure you want to clear all events? This action cannot be undone.")) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Use removeByFilters with empty filter to clear all events
+      await eventStore.removeByFilters({});
+
+      setSearchResults([]);
+      setImportStats(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear database");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Searchable browser SQLite event database</h1>
+    <div className="container mx-auto p-6 max-w-6xl">
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <h1 className="text-3xl font-bold">Searchable browser SQLite event database with import/export</h1>
+          <div className="badge badge-success badge-sm">
+            <span className="loading loading-dots loading-xs mr-1"></span>
+            Worker Relay
+          </div>
+        </div>
+        <p className="text-base-content/70">
+          Import, export, search, and filter Nostr events using Worker Relay SQLite with full-text search and standard
+          Nostr filters.
+        </p>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="alert alert-error mb-6">
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Import Stats */}
+      {importStats && (
+        <div className="alert alert-success mb-6">
+          <div>
+            <h3 className="font-bold">Import Complete!</h3>
+            <p>
+              Added: {importStats.added} | Failed: {importStats.failed} | Total: {importStats.total}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Database Controls */}
+      <div className="mb-6">
+        <h2 className="text-xl font-bold mb-4">Database Controls</h2>
+        <div className="flex flex-wrap gap-4 items-center">
+          {/* Import */}
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".jsonl"
+              onChange={handleFileImport}
+              className="hidden"
+              disabled={isLoading}
+            />
+            <button onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="btn btn-primary">
+              {isLoading ? (
+                <>
+                  <span className="loading loading-spinner loading-sm"></span>
+                  Importing...
+                </>
+              ) : (
+                "Import JSONL"
+              )}
+            </button>
+          </div>
+
+          {/* Export */}
+          <button
+            onClick={handleExport}
+            disabled={isLoading || searchResults.length === 0}
+            className="btn btn-secondary"
+          >
+            Export JSONL ({searchResults.length} events)
+          </button>
+
+          {/* Clear */}
+          <button
+            onClick={handleClearDatabase}
+            disabled={isLoading || searchResults.length === 0}
+            className="btn btn-error"
+          >
+            Clear Database
+          </button>
+        </div>
+      </div>
 
       {/* Search Form */}
-      <div className="flex gap-2 w-full">
-        <form onSubmit={handleSearch} className="mb-6 flex-1">
-          <div className="flex gap-2">
+      <div className="mb-6">
+        <h2 className="text-xl font-bold mb-4">Search Events</h2>
+        <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-sm font-medium mb-2">Event Kind</label>
             <select
               value={kind ?? ""}
               onChange={(e) => (e.target.value === "" ? setKind(null) : setKind(Number(e.target.value)))}
-              className="select select-bordered w-32"
+              className="select select-bordered w-48"
             >
               <option value="">Any</option>
-              <option value={1}>Note</option>
-              <option value={0}>Profile</option>
+              <option value="0">Profile (0)</option>
+              <option value="1">Note (1)</option>
+              <option value="2">Recommend Relay (2)</option>
+              <option value="3">Contacts (3)</option>
+              <option value="4">Encrypted DM (4)</option>
+              <option value="5">Event Deletion (5)</option>
+              <option value="6">Repost (6)</option>
+              <option value="7">Reaction (7)</option>
+              <option value="8">Badge Award (8)</option>
+              <option value="40">Channel Creation (40)</option>
+              <option value="41">Channel Metadata (41)</option>
+              <option value="42">Channel Message (42)</option>
+              <option value="43">Channel Hide Message (43)</option>
+              <option value="44">Channel Mute User (44)</option>
+              <option value="10000">Mute List (10000)</option>
+              <option value="10001">Pin List (10001)</option>
+              <option value="10002">Relay List Metadata (10002)</option>
+              <option value="10003">Bookmark List (10003)</option>
+              <option value="10004">Communities List (10004)</option>
+              <option value="10005">Public Chats List (10005)</option>
+              <option value="10006">Public Chats List (10006)</option>
+              <option value="10007">App-specific Data (10007)</option>
+              <option value="10015">Interests List (10015)</option>
+              <option value="10030">User Status (10030)</option>
+              <option value="13194">File Metadata (13194)</option>
+              <option value="30000">Follow Sets (30000)</option>
+              <option value="30001">Communities (30001)</option>
+              <option value="30008">Profile Badges (30008)</option>
+              <option value="30009">Badge Definition (30009)</option>
+              <option value="30015">Interest Sets (30015)</option>
+              <option value="30017">Create or update a stall (30017)</option>
+              <option value="30018">Create or update a product (30018)</option>
+              <option value="30019">Create or update a pickup method (30019)</option>
+              <option value="30023">Long-form Content (30023)</option>
+              <option value="30024">Draft Long-form Content (30024)</option>
+              <option value="30030">Emoji Sets (30030)</option>
+              <option value="30078">Application-specific Data (30078)</option>
+              <option value="30311">Classified Listing (30311)</option>
+              <option value="30315">Live Event (30315)</option>
+              <option value="30315">Live Event Messages (30315)</option>
+              <option value="30402">Community Post Approval (30402)</option>
+              <option value="30403">Community Post (30403)</option>
+              <option value="31922">Date-based Calendar Event (31922)</option>
+              <option value="31923">Time-based Calendar Event (31923)</option>
+              <option value="31924">Calendar (31924)</option>
+              <option value="31925">Calendar Event RSVP (31925)</option>
+              <option value="31990">File Header (31990)</option>
+              <option value="31991">File Metadata (31991)</option>
+              <option value="31992">Live Event (31992)</option>
+              <option value="31993">Live Event Messages (31993)</option>
+              <option value="31994">Handler Recommendation (31994)</option>
+              <option value="31995">Handler Information (31995)</option>
+              <option value="31996">Community Moderation (31996)</option>
+              <option value="31997">Community Post (31997)</option>
+              <option value="31998">Community (31998)</option>
+              <option value="31999">Community Admin (31999)</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Search</label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search events..."
-              className="input input-bordered flex-1"
+              className="input input-bordered w-64"
             />
+          </div>
+
+          <div>
             <button type="submit" disabled={isLoading} className="btn btn-primary">
-              {isLoading ? "Searching..." : "Search"}
+              {isLoading ? (
+                <>
+                  <span className="loading loading-spinner loading-sm"></span>
+                  Searching...
+                </>
+              ) : (
+                "Search"
+              )}
             </button>
           </div>
         </form>
-        <ImportEventsButton eventStore={eventStore} />
       </div>
 
-      {/* Error Display */}
-      {error && <div className="alert alert-error mb-4">Error: {error}</div>}
+      {/* Results */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Events ({searchResults.length})</h2>
+          {searchResults.length > 0 && <ImportEventsButton eventStore={eventStore} />}
+        </div>
 
-      {/* Results Table */}
-      {searchResults.length > 0 &&
-        (kind === 0 ? (
-          <ProfileList events={searchResults.filter(isValidProfile)} />
-        ) : kind === 1 ? (
-          <NotesList events={searchResults.filter((e) => e.kind === 1)} />
-        ) : (
-          <AnyEventTable events={searchResults} />
-        ))}
+        {/* Results Table */}
+        {searchResults.length > 0 &&
+          (kind === 0 ? (
+            <ProfileList events={searchResults.filter(isValidProfile)} />
+          ) : kind === 1 ? (
+            <NotesList events={searchResults.filter((e) => e.kind === 1)} />
+          ) : (
+            <AnyEventTable events={searchResults} />
+          ))}
 
-      {/* No Results Message */}
-      {!isLoading && searchQuery && searchResults.length === 0 && !error && (
-        <div className="text-center text-base-content/70 mt-8">No events found for "{searchQuery}"</div>
-      )}
+        {/* No Results Message */}
+        {!isLoading && searchQuery && searchResults.length === 0 && !error && (
+          <div className="text-center text-base-content/70 mt-8">No events found for "{searchQuery}"</div>
+        )}
 
-      {!isLoading && !searchQuery && searchResults.length === 0 && !error && (
-        <div className="text-center text-base-content/70 mt-8">No events in database, import some</div>
-      )}
+        {!isLoading && !searchQuery && searchResults.length === 0 && !error && (
+          <div className="text-center text-base-content/70 mt-8">No events in database, import some</div>
+        )}
+      </div>
 
       <dialog className={`modal ${viewEvent ? "modal-open" : ""}`}>
         <div className="modal-box">

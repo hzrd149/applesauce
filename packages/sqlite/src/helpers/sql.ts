@@ -153,3 +153,37 @@ export function buildFiltersQuery(filters: FilterWithSearch | FilterWithSearch[]
 
   return { sql: query, params: allParams };
 }
+
+/** Builds a WHERE clause for events that match the given filters */
+export function buildDeleteFiltersQuery(filters: FilterWithSearch | FilterWithSearch[]): {
+  sql: string;
+  params: any[];
+} | null {
+  const filterArray = Array.isArray(filters) ? filters : [filters];
+  if (filterArray.length === 0) return null;
+
+  const filterQueries: string[] = [];
+  const allParams: any[] = [];
+
+  for (const filter of filterArray) {
+    const { conditions, params } = buildFilterConditions(filter);
+
+    if (conditions.length === 0) {
+      // If no conditions, this filter matches all events
+      filterQueries.push("1=1");
+    } else {
+      // AND logic within a single filter
+      filterQueries.push(`(${conditions.join(" AND ")})`);
+    }
+
+    allParams.push(...params);
+  }
+
+  // Combine all filter conditions with OR logic
+  const whereClause = filterQueries.length > 0 ? `WHERE ${filterQueries.join(" OR ")}` : "";
+
+  return {
+    sql: whereClause, // Just return the WHERE clause
+    params: allParams,
+  };
+}

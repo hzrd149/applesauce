@@ -5,6 +5,7 @@ import { enhancedSearchContentFormatter, FilterWithSearch, SearchContentFormatte
 import {
   createTables,
   deleteEvent,
+  deleteEventsByFilters,
   getEvent,
   getEventsByFilters,
   getReplaceable,
@@ -61,6 +62,15 @@ export class NativeSqliteEventDatabase implements IEventDatabase {
     }
   }
 
+  /** Remove multiple events that match the given filters */
+  removeByFilters(filters: FilterWithSearch | FilterWithSearch[]): number {
+    // If search is disabled, remove the search field from the filters
+    if (this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
+      throw new Error("Cannot delete with search");
+
+    return deleteEventsByFilters(this.db, filters);
+  }
+
   /** Checks if an event exists */
   hasEvent(id: string): boolean {
     return hasEvent(this.db, id);
@@ -70,7 +80,7 @@ export class NativeSqliteEventDatabase implements IEventDatabase {
     return getEvent(this.db, id);
   }
 
-  /** Get the latest replaceable event For replaceable events (10000-19999), returns the most recent event */
+  /** Get the latest replaceable event For replaceable events (10000-19999 and 30000-39999), returns the most recent event */
   getReplaceable(kind: number, pubkey: string, identifier: string = ""): NostrEvent | undefined {
     return getReplaceable(this.db, kind, pubkey, identifier);
   }

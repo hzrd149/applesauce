@@ -280,6 +280,25 @@ export class AsyncEventStore extends EventStoreModelMixin(class {}) implements I
     return removed;
   }
 
+  /** Remove multiple events that match the given filters */
+  async removeByFilters(filters: Filter | Filter[]): Promise<number> {
+    // Get events that will be removed for notification
+    const eventsToRemove = await this.getByFilters(filters);
+
+    // Remove from memory if available
+    if (this.memory) this.memory.removeByFilters(filters);
+
+    // Remove from database
+    const removedCount = await this.database.removeByFilters(filters);
+
+    // Notify subscriptions for each removed event
+    for (const event of eventsToRemove) {
+      this.remove$.next(event);
+    }
+
+    return removedCount;
+  }
+
   /** Add an event to the store and notifies all subscribes it has updated */
   async update(event: NostrEvent): Promise<void> {
     // Map the event to the current instance in the database

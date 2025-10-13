@@ -178,6 +178,8 @@ export interface IEventDatabase extends IEventStoreRead {
   add(event: NostrEvent): NostrEvent;
   /** Remove an event from the database */
   remove(event: string | NostrEvent): boolean;
+  /** Remove multiple events that match the given filters */
+  removeByFilters(filters: Filter | Filter[]): number;
   /** Notifies the database that an event has updated */
   update?: (event: NostrEvent) => void;
 }
@@ -188,6 +190,8 @@ export interface IAsyncEventDatabase extends IAsyncEventStoreRead {
   add(event: NostrEvent): Promise<NostrEvent>;
   /** Remove an event from the database */
   remove(event: string | NostrEvent): Promise<boolean>;
+  /** Remove multiple events that match the given filters */
+  removeByFilters(filters: Filter | Filter[]): Promise<number>;
   /** Notifies the database that an event has updated */
   update?: (event: NostrEvent) => void;
 }

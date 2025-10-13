@@ -33,8 +33,16 @@ export type EventRow = {
 };
 
 // Event-related statements
+export const INSERT_EVENT_STATEMENT_WITH_IGNORE: Statement<
+  [string, number, string, number, string, string, string, string]
+> = {
+  sql: `INSERT OR IGNORE INTO events (id, kind, pubkey, created_at, content, tags, sig, identifier)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+};
+
+/** For implementations that don't support OR IGNORE (libsql, turso-wasm) */
 export const INSERT_EVENT_STATEMENT: Statement<[string, number, string, number, string, string, string, string]> = {
-  sql: `INSERT OR REPLACE INTO events (id, kind, pubkey, created_at, content, tags, sig, identifier)
+  sql: `INSERT INTO events (id, kind, pubkey, created_at, content, tags, sig, identifier)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 };
 
@@ -43,7 +51,7 @@ export const DELETE_EVENT_TAGS_STATEMENT: Statement<[string]> = {
 };
 
 export const INSERT_EVENT_TAG_STATEMENT: Statement<[string, string, string]> = {
-  sql: `INSERT OR IGNORE INTO event_tags (event_id, tag_name, tag_value) VALUES (?, ?, ?)`,
+  sql: `INSERT INTO event_tags (event_id, tag_name, tag_value) VALUES (?, ?, ?)`,
 };
 
 export const DELETE_EVENT_STATEMENT: Statement<[string]> = {

@@ -144,6 +144,20 @@ export class EventMemory implements IEventMemory {
 
     return true;
   }
+
+  /** Remove multiple events that match the given filters */
+  removeByFilters(filters: Filter | Filter[]): number {
+    const eventsToRemove = this.getByFilters(filters);
+    let removedCount = 0;
+
+    for (const event of eventsToRemove) {
+      if (this.remove(event)) {
+        removedCount++;
+      }
+    }
+
+    return removedCount;
+  }
   /** Notify the database that an event has updated */
   update(_event: NostrEvent) {
     // Do nothing

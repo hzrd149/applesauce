@@ -7,13 +7,12 @@ import {
   INSERT_SEARCH_CONTENT_STATEMENT,
   SearchContentFormatter,
 } from "../helpers/search.js";
-import { buildFiltersQuery, rowToEvent } from "../helpers/sql.js";
+import { buildFiltersQuery, buildDeleteFiltersQuery, rowToEvent } from "../helpers/sql.js";
 import {
   CREATE_EVENT_TAGS_TABLE_STATEMENT,
   CREATE_EVENTS_TABLE_STATEMENT,
   CREATE_INDEXES_STATEMENTS,
   DELETE_EVENT_STATEMENT,
-  DELETE_EVENT_TAGS_STATEMENT,
   GET_ALL_EVENTS_STATEMENT,
   GET_EVENT_STATEMENT,
   GET_REPLACEABLE_HISTORY_STATEMENT,
@@ -76,7 +75,18 @@ export async function insertEvent(
 
   const transaction = await db.transaction();
   try {
-    // Insert/update the main event
+    // Check if event already exists
+    const existsResult = await transaction.execute({
+      sql: HAS_EVENT_STATEMENT.sql,
+      args: [event.id],
+    });
+
+    if (existsResult.rows[0] && (existsResult.rows[0][0] as number) > 0) {
+      await transaction.rollback();
+      return false; // Event already exists, skip insertion
+    }
+
+    // Insert the event
     const result = await transaction.execute({
       sql: INSERT_EVENT_STATEMENT.sql,
       args: [
@@ -92,10 +102,28 @@ export async function insertEvent(
     });
 
     // Insert indexable tags into the event_tags table
-    await insertEventTags(transaction, event);
+    const indexableTags = getIndexableTags(event);
+    if (indexableTags && indexableTags.size > 0) {
+      for (const tagString of indexableTags) {
+        // Parse the "tagName:tagValue" format
+        const [name, value] = tagString.split(":");
+        if (name && value) {
+          await db.execute({
+            sql: INSERT_EVENT_TAG_STATEMENT.sql,
+            args: [event.id, name, value],
+          });
+        }
+      }
+    }
 
     // Insert searchable content into the search tables
-    if (contentFormatter) await insertSearchContent(transaction, event, contentFormatter);
+    if (contentFormatter) {
+      try {
+        await insertSearchContent(transaction, event, contentFormatter);
+      } catch (error) {
+        // Search table might not exist if search is disabled, ignore the error
+      }
+    }
 
     await transaction.commit();
     return result.rowsAffected > 0;
@@ -105,45 +133,20 @@ export async function insertEvent(
   }
 }
 
-/** Insert indexable tags for an event into the event_tags table */
-export async function insertEventTags(db: Client | Transaction, event: NostrEvent): Promise<void> {
-  // Clear existing tags for this event first
-  await db.execute({
-    sql: DELETE_EVENT_TAGS_STATEMENT.sql,
-    args: [event.id],
-  });
-
-  // Get only the indexable tags using applesauce-core helper
-  const indexableTags = getIndexableTags(event);
-
-  if (indexableTags && indexableTags.size > 0) {
-    for (const tagString of indexableTags) {
-      // Parse the "tagName:tagValue" format
-      const [name, value] = tagString.split(":");
-      if (name && value) {
-        await db.execute({
-          sql: INSERT_EVENT_TAG_STATEMENT.sql,
-          args: [event.id, name, value],
-        });
-      }
-    }
-  }
-}
-
 /** Removes an event by id from the `events`, `event_tags`, and search tables of a database */
 export async function deleteEvent(db: Client, id: string): Promise<boolean> {
   const transaction = await db.transaction();
   try {
-    // Delete from event_tags first (foreign key constraint)
-    await transaction.execute({
-      sql: DELETE_EVENT_TAGS_STATEMENT.sql,
-      args: [id],
-    });
+    // Delete from search tables if they exist
+    try {
+      await deleteSearchContent(transaction, id);
+    } catch (error) {
+      // Search table might not exist if search is disabled, ignore the error
+    }
 
-    // Delete from search tables
-    await deleteSearchContent(transaction, id);
-
-    // Delete from events table
+    // Delete from events table - this will CASCADE to event_tags automatically!
+    // The foreign key constraint: FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    // ensures that all related event_tags records are deleted automatically
     const result = await transaction.execute({
       sql: DELETE_EVENT_STATEMENT.sql,
       args: [id],
@@ -324,6 +327,44 @@ export async function rebuildSearchIndex(db: Client, contentFormatter: SearchCon
       await insertSearchContent(transaction, event, contentFormatter);
     }
     await transaction.commit();
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+/** Removes multiple events that match the given filters from the database */
+export async function deleteEventsByFilters(
+  db: Client,
+  filters: FilterWithSearch | FilterWithSearch[],
+): Promise<number> {
+  const whereClause = buildDeleteFiltersQuery(filters);
+  if (!whereClause) return 0;
+
+  const transaction = await db.transaction();
+  try {
+    // Delete from search tables if they exist
+    try {
+      const searchDeleteQuery = `DELETE FROM search_content WHERE event_id IN (SELECT id FROM events ${whereClause.sql})`;
+      await transaction.execute({
+        sql: searchDeleteQuery,
+        args: whereClause.params,
+      });
+    } catch (error) {
+      // Search table might not exist if search is disabled, ignore the error
+    }
+
+    // Delete from events table - this will CASCADE to event_tags automatically!
+    // The foreign key constraint: FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    // ensures that all related event_tags records are deleted automatically
+    const deleteEventsQuery = `DELETE FROM events ${whereClause.sql}`;
+    const result = await transaction.execute({
+      sql: deleteEventsQuery,
+      args: whereClause.params,
+    });
+
+    await transaction.commit();
+    return result.rowsAffected;
   } catch (error) {
     await transaction.rollback();
     throw error;

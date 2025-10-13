@@ -8,7 +8,7 @@ describe("exports", () => {
         "TursoWasmEventDatabase",
         "createTables",
         "deleteEvent",
-        "deleteSearchContent",
+        "deleteEventsByFilters",
         "getEvent",
         "getEventsByFilters",
         "getReplaceable",
@@ -16,10 +16,6 @@ describe("exports", () => {
         "hasEvent",
         "hasReplaceable",
         "insertEvent",
-        "insertEventTags",
-        "insertSearchContent",
-        "rebuildSearchIndex",
-        "searchEvents",
       ]
     `);
   });

@@ -7,13 +7,12 @@ import {
   INSERT_SEARCH_CONTENT_STATEMENT,
   SearchContentFormatter,
 } from "../helpers/search.js";
-import { buildFiltersQuery, rowToEvent } from "../helpers/sql.js";
+import { buildFiltersQuery, buildDeleteFiltersQuery, rowToEvent } from "../helpers/sql.js";
 import {
   CREATE_EVENT_TAGS_TABLE_STATEMENT,
   CREATE_EVENTS_TABLE_STATEMENT,
   CREATE_INDEXES_STATEMENTS,
   DELETE_EVENT_STATEMENT,
-  DELETE_EVENT_TAGS_STATEMENT,
   EventRow,
   GET_ALL_EVENTS_STATEMENT,
   GET_EVENT_STATEMENT,
@@ -21,7 +20,7 @@ import {
   GET_REPLACEABLE_STATEMENT,
   HAS_EVENT_STATEMENT,
   HAS_REPLACEABLE_STATEMENT,
-  INSERT_EVENT_STATEMENT,
+  INSERT_EVENT_STATEMENT_WITH_IGNORE,
   INSERT_EVENT_TAG_STATEMENT,
   type StatementParams,
 } from "../helpers/statements.js";
@@ -66,59 +65,50 @@ export function insertEvent(db: Database, event: NostrEvent, contentFormatter?: 
   const identifier = getReplaceableIdentifier(event);
 
   return db.transaction(() => {
-    // Insert/update the main event
-    const stmt = db.prepare<StatementParams<typeof INSERT_EVENT_STATEMENT>>(INSERT_EVENT_STATEMENT.sql);
+    // Try to insert the main event with OR IGNORE
+    const result = db
+      .prepare<StatementParams<typeof INSERT_EVENT_STATEMENT_WITH_IGNORE>>(INSERT_EVENT_STATEMENT_WITH_IGNORE.sql)
+      .run(
+        event.id,
+        event.kind,
+        event.pubkey,
+        event.created_at,
+        event.content,
+        JSON.stringify(event.tags),
+        event.sig,
+        identifier,
+      );
 
-    const result = stmt.run(
-      event.id,
-      event.kind,
-      event.pubkey,
-      event.created_at,
-      event.content,
-      JSON.stringify(event.tags),
-      event.sig,
-      identifier,
-    );
+    // If no rows were changed, the event already existed
+    if (result.changes === 0) return false; // Event already exists, skip tags/search processing
 
-    // Insert indexable tags into the event_tags table
-    insertEventTags(db, event);
+    // Event was inserted, continue with tags and search content
+    const indexableTags = getIndexableTags(event);
+    if (indexableTags && indexableTags.size > 0) {
+      const insertStmt = db.prepare<StatementParams<typeof INSERT_EVENT_TAG_STATEMENT>>(INSERT_EVENT_TAG_STATEMENT.sql);
 
-    // Insert searchable content into the search tables
-    if (contentFormatter) insertSearchContent(db, event, contentFormatter);
-
-    return result.changes > 0;
-  })();
-}
-
-/** Insert indexable tags for an event into the event_tags table */
-export function insertEventTags(db: Database, event: NostrEvent): void {
-  // Clear existing tags for this event first
-  const deleteStmt = db.prepare<StatementParams<typeof DELETE_EVENT_TAGS_STATEMENT>>(DELETE_EVENT_TAGS_STATEMENT.sql);
-  deleteStmt.run(event.id);
-
-  // Get only the indexable tags using applesauce-core helper
-  const indexableTags = getIndexableTags(event);
-
-  if (indexableTags && indexableTags.size > 0) {
-    const insertStmt = db.prepare<StatementParams<typeof INSERT_EVENT_TAG_STATEMENT>>(INSERT_EVENT_TAG_STATEMENT.sql);
-
-    for (const tagString of indexableTags) {
-      // Parse the "tagName:tagValue" format
-      const [name, value] = tagString.split(":");
-      if (name && value) insertStmt.run(event.id, name, value);
+      for (const tagString of indexableTags) {
+        // Parse the "tagName:tagValue" format
+        const [name, value] = tagString.split(":");
+        if (name && value) insertStmt.run(event.id, name, value);
+      }
     }
-  }
+
+    if (contentFormatter) {
+      try {
+        insertSearchContent(db, event, contentFormatter);
+      } catch (error) {
+        // Search table might not exist if search is disabled, ignore the error
+      }
+    }
+
+    return true;
+  })();
 }
 
 /** Removes an event by id from the `events`, `event_tags`, and search tables of a database */
 export function deleteEvent(db: Database, id: string): boolean {
   return db.transaction(() => {
-    // Delete from event_tags first (foreign key constraint)
-    const deleteTagsStmt = db.prepare<StatementParams<typeof DELETE_EVENT_TAGS_STATEMENT>>(
-      DELETE_EVENT_TAGS_STATEMENT.sql,
-    );
-    deleteTagsStmt.run(id);
-
     // Delete from search tables if they exist
     try {
       deleteSearchContent(db, id);
@@ -126,49 +116,50 @@ export function deleteEvent(db: Database, id: string): boolean {
       // Search table might not exist if search is disabled, ignore the error
     }
 
-    // Delete from events table
-    const deleteEventStmt = db.prepare<StatementParams<typeof DELETE_EVENT_STATEMENT>>(DELETE_EVENT_STATEMENT.sql);
-    const result = deleteEventStmt.run(id);
+    // Delete from events table - this will CASCADE to event_tags automatically!
+    // The foreign key constraint: FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    // ensures that all related event_tags records are deleted automatically
+    const result = db.prepare<StatementParams<typeof DELETE_EVENT_STATEMENT>>(DELETE_EVENT_STATEMENT.sql).run(id);
     return result.changes > 0;
   })();
 }
 
 /** Checks if an event exists */
 export function hasEvent(db: Database, id: string): boolean {
-  const stmt = db.prepare<StatementParams<typeof HAS_EVENT_STATEMENT>, { count: number }>(HAS_EVENT_STATEMENT.sql);
-  const result = stmt.get(id);
+  const result = db
+    .prepare<StatementParams<typeof HAS_EVENT_STATEMENT>, { count: number }>(HAS_EVENT_STATEMENT.sql)
+    .get(id);
   if (!result) return false;
   return result.count > 0;
 }
 
 /** Gets a single event from a database */
 export function getEvent(db: Database, id: string): NostrEvent | undefined {
-  const stmt = db.prepare<StatementParams<typeof GET_EVENT_STATEMENT>, EventRow>(GET_EVENT_STATEMENT.sql);
-  const row = stmt.get(id);
+  const row = db.prepare<StatementParams<typeof GET_EVENT_STATEMENT>, EventRow>(GET_EVENT_STATEMENT.sql).get(id);
   return row && rowToEvent(row);
 }
 
 /** Gets the latest replaceable event from a database */
 export function getReplaceable(db: Database, kind: number, pubkey: string, identifier: string): NostrEvent | undefined {
-  const stmt = db.prepare<StatementParams<typeof GET_REPLACEABLE_STATEMENT>, EventRow>(GET_REPLACEABLE_STATEMENT.sql);
-  const row = stmt.get(kind, pubkey, identifier);
+  const row = db
+    .prepare<StatementParams<typeof GET_REPLACEABLE_STATEMENT>, EventRow>(GET_REPLACEABLE_STATEMENT.sql)
+    .get(kind, pubkey, identifier);
   return row && rowToEvent(row);
 }
 
 /** Gets the history of a replaceable event from a database */
 export function getReplaceableHistory(db: Database, kind: number, pubkey: string, identifier: string): NostrEvent[] {
-  const stmt = db.prepare<StatementParams<typeof GET_REPLACEABLE_HISTORY_STATEMENT>, EventRow>(
-    GET_REPLACEABLE_HISTORY_STATEMENT.sql,
-  );
-  return stmt.all(kind, pubkey, identifier).map(rowToEvent);
+  return db
+    .prepare<StatementParams<typeof GET_REPLACEABLE_HISTORY_STATEMENT>, EventRow>(GET_REPLACEABLE_HISTORY_STATEMENT.sql)
+    .all(kind, pubkey, identifier)
+    .map(rowToEvent);
 }
 
 /** Checks if a replaceable event exists in a database */
 export function hasReplaceable(db: Database, kind: number, pubkey: string, identifier: string = ""): boolean {
-  const stmt = db.prepare<StatementParams<typeof HAS_REPLACEABLE_STATEMENT>, { count: number }>(
-    HAS_REPLACEABLE_STATEMENT.sql,
-  );
-  const result = stmt.get(kind, pubkey, identifier);
+  const result = db
+    .prepare<StatementParams<typeof HAS_REPLACEABLE_STATEMENT>, { count: number }>(HAS_REPLACEABLE_STATEMENT.sql)
+    .get(kind, pubkey, identifier);
   if (!result) return false;
   return result.count > 0;
 }
@@ -178,8 +169,7 @@ export function getEventsByFilters(db: Database, filters: FilterWithSearch | Fil
   const query = buildFiltersQuery(filters);
   if (!query) return [];
 
-  const stmt = db.prepare<any[], EventRow>(query.sql);
-  const rows = stmt.all(...query.params);
+  const rows = db.prepare<any[], EventRow>(query.sql).all(...query.params);
 
   // Convert rows to events and add to set
   return rows.map(rowToEvent);
@@ -206,11 +196,37 @@ export function rebuildSearchIndex(db: Database, contentFormatter: SearchContent
     db.exec(`DELETE FROM events_search;`);
 
     // Rebuild from all events
-    const stmt = db.prepare<StatementParams<typeof GET_ALL_EVENTS_STATEMENT>, EventRow>(GET_ALL_EVENTS_STATEMENT.sql);
-    const events = stmt.all().map(rowToEvent);
+    const events = db
+      .prepare<StatementParams<typeof GET_ALL_EVENTS_STATEMENT>, EventRow>(GET_ALL_EVENTS_STATEMENT.sql)
+      .all()
+      .map(rowToEvent);
 
     for (const event of events) {
       insertSearchContent(db, event, contentFormatter);
     }
+  })();
+}
+
+/** Removes multiple events that match the given filters from the database */
+export function deleteEventsByFilters(db: Database, filters: FilterWithSearch | FilterWithSearch[]): number {
+  const whereClause = buildDeleteFiltersQuery(filters);
+  if (!whereClause) return 0;
+
+  return db.transaction(() => {
+    // Delete from search tables if they exist
+    try {
+      const searchDeleteQuery = `DELETE FROM search_content WHERE event_id IN (SELECT id FROM events ${whereClause.sql})`;
+      db.prepare(searchDeleteQuery).run(...whereClause.params);
+    } catch (error) {
+      // Search table might not exist if search is disabled, ignore the error
+    }
+
+    // Delete from events table - this will CASCADE to event_tags automatically!
+    // The foreign key constraint: FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    // ensures that all related event_tags records are deleted automatically
+    const deleteEventsQuery = `DELETE FROM events ${whereClause.sql}`;
+    const result = db.prepare(deleteEventsQuery).run(...whereClause.params);
+
+    return result.changes;
   })();
 }

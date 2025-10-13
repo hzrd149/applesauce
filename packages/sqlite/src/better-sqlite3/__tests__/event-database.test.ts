@@ -286,3 +286,231 @@ describe("error handling", () => {
     expect(result).toBe(false);
   });
 });
+
+describe("removeByFilters", () => {
+  beforeEach(() => {
+    // Reset database for each test
+    database = new BetterSqlite3EventDatabase(":memory:");
+    user = new FakeUser();
+  });
+
+  it("should remove events by kind filter", () => {
+    const profile1 = user.profile({ name: "user1" });
+    const profile2 = user.profile({ name: "user2" });
+    const note1 = user.note("note1");
+    const note2 = user.note("note2");
+
+    database.add(profile1);
+    database.add(profile2);
+    database.add(note1);
+    database.add(note2);
+
+    // Remove all profile events (kind 0)
+    const removed = database.removeByFilters({ kinds: [0] });
+    expect(removed).toBe(2);
+
+    // Verify profile events are gone
+    expect(database.hasEvent(profile1.id)).toBe(false);
+    expect(database.hasEvent(profile2.id)).toBe(false);
+
+    // Verify note events remain
+    expect(database.hasEvent(note1.id)).toBe(true);
+    expect(database.hasEvent(note2.id)).toBe(true);
+  });
+
+  it("should remove events by author filter", () => {
+    const user2 = new FakeUser();
+    const profile1 = user.profile({ name: "user1" });
+    const profile2 = user2.profile({ name: "user2" });
+    const note1 = user.note("note1");
+    const note2 = user2.note("note2");
+
+    database.add(profile1);
+    database.add(profile2);
+    database.add(note1);
+    database.add(note2);
+
+    // Remove all events by user1
+    const removed = database.removeByFilters({ authors: [user.pubkey] });
+    expect(removed).toBe(2);
+
+    // Verify user1 events are gone
+    expect(database.hasEvent(profile1.id)).toBe(false);
+    expect(database.hasEvent(note1.id)).toBe(false);
+
+    // Verify user2 events remain
+    expect(database.hasEvent(profile2.id)).toBe(true);
+    expect(database.hasEvent(note2.id)).toBe(true);
+  });
+
+  it("should remove events by ID filter", () => {
+    const profile1 = user.profile({ name: "user1" });
+    const profile2 = user.profile({ name: "user2" });
+    const note1 = user.note("note1");
+
+    database.add(profile1);
+    database.add(profile2);
+    database.add(note1);
+
+    // Remove specific events by ID
+    const removed = database.removeByFilters({ ids: [profile1.id, note1.id] });
+    expect(removed).toBe(2);
+
+    // Verify specific events are gone
+    expect(database.hasEvent(profile1.id)).toBe(false);
+    expect(database.hasEvent(note1.id)).toBe(false);
+
+    // Verify other event remains
+    expect(database.hasEvent(profile2.id)).toBe(true);
+  });
+
+  it("should remove events by time range filter", () => {
+    const oldEvent = user.profile({ name: "old" }, { created_at: 1000 });
+    const middleEvent = user.profile({ name: "middle" }, { created_at: 2000 });
+    const newEvent = user.profile({ name: "new" }, { created_at: 3000 });
+
+    database.add(oldEvent);
+    database.add(middleEvent);
+    database.add(newEvent);
+
+    // Remove events between timestamps 1500 and 2500
+    const removed = database.removeByFilters({ since: 1500, until: 2500 });
+    expect(removed).toBe(1);
+
+    // Verify middle event is gone
+    expect(database.hasEvent(middleEvent.id)).toBe(false);
+
+    // Verify old and new events remain
+    expect(database.hasEvent(oldEvent.id)).toBe(true);
+    expect(database.hasEvent(newEvent.id)).toBe(true);
+  });
+
+  it("should remove events by tag filter", () => {
+    const event1 = user.note("test", {
+      tags: [
+        ["t", "tag1"],
+        ["t", "tag2"],
+      ],
+    });
+    const event2 = user.note("test", {
+      tags: [
+        ["t", "tag2"],
+        ["t", "tag3"],
+      ],
+    });
+    const event3 = user.note("test", {
+      tags: [
+        ["t", "tag3"],
+        ["t", "tag4"],
+      ],
+    });
+
+    database.add(event1);
+    database.add(event2);
+    database.add(event3);
+
+    // Remove events with tag "tag2"
+    const removed = database.removeByFilters({ "#t": ["tag2"] });
+    expect(removed).toBe(2);
+
+    // Verify events with tag2 are gone
+    expect(database.hasEvent(event1.id)).toBe(false);
+    expect(database.hasEvent(event2.id)).toBe(false);
+
+    // Verify event without tag2 remains
+    expect(database.hasEvent(event3.id)).toBe(true);
+  });
+
+  it("should handle multiple filters with OR logic", () => {
+    const profile1 = user.profile({ name: "user1" });
+    const profile2 = user.profile({ name: "user2" });
+    const note1 = user.note("note1");
+
+    database.add(profile1);
+    database.add(profile2);
+    database.add(note1);
+
+    // Remove events that are either profiles OR notes
+    const removed = database.removeByFilters([
+      { kinds: [0] }, // profiles
+      { kinds: [1] }, // notes
+    ]);
+    expect(removed).toBe(3);
+
+    // Verify all events are gone
+    expect(database.hasEvent(profile1.id)).toBe(false);
+    expect(database.hasEvent(profile2.id)).toBe(false);
+    expect(database.hasEvent(note1.id)).toBe(false);
+  });
+
+  it("should handle complex filter combinations", () => {
+    const user2 = new FakeUser();
+    const profile1 = user.profile({ name: "user1" }, { created_at: 1000 });
+    const profile2 = user2.profile({ name: "user2" }, { created_at: 2000 });
+    const note1 = user.note("note1", { created_at: 1500 });
+    const note2 = user2.note("note2", { created_at: 2500 });
+
+    database.add(profile1);
+    database.add(profile2);
+    database.add(note1);
+    database.add(note2);
+
+    // Remove profiles by user1 OR notes by user2
+    const removed = database.removeByFilters([
+      { kinds: [0], authors: [user.pubkey] }, // profiles by user1
+      { kinds: [1], authors: [user2.pubkey] }, // notes by user2
+    ]);
+    expect(removed).toBe(2);
+
+    // Verify specific events are gone
+    expect(database.hasEvent(profile1.id)).toBe(false);
+    expect(database.hasEvent(note2.id)).toBe(false);
+
+    // Verify other events remain
+    expect(database.hasEvent(profile2.id)).toBe(true);
+    expect(database.hasEvent(note1.id)).toBe(true);
+  });
+
+  it("should return 0 when no events match filters", () => {
+    const profile1 = user.profile({ name: "user1" });
+    database.add(profile1);
+
+    // Try to remove notes (kind 1) when only profiles exist
+    const removed = database.removeByFilters({ kinds: [1] });
+    expect(removed).toBe(0);
+
+    // Verify original event remains
+    expect(database.hasEvent(profile1.id)).toBe(true);
+  });
+
+  it("should handle empty filters array", () => {
+    const profile1 = user.profile({ name: "user1" });
+    database.add(profile1);
+
+    const removed = database.removeByFilters([]);
+    expect(removed).toBe(0);
+
+    // Verify original event remains
+    expect(database.hasEvent(profile1.id)).toBe(true);
+  });
+
+  it("should properly clean up related data (tags)", () => {
+    const event = user.note("test", {
+      tags: [
+        ["t", "tag1"],
+        ["p", "pubkey1"],
+      ],
+    });
+    database.add(event);
+
+    // Verify event exists
+    expect(database.hasEvent(event.id)).toBe(true);
+
+    // Remove the event
+    const removed = database.removeByFilters({ ids: [event.id] });
+    expect(removed).toBe(1);
+
+    // Verify event is gone
+    expect(database.hasEvent(event.id)).toBe(false);
+  });
+});
