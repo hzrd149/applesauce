@@ -52,6 +52,7 @@ export default defineConfig({
           { text: "Package", link: "/relays/package" },
           { text: "Relays", link: "/relays/relays" },
           { text: "Relay Pool", link: "/relays/pool" },
+          { text: "Liveness", link: "/relays/liveness" },
           { text: "Negentropy", link: "/relays/negentropy" },
           { text: "Operators", link: "/relays/operators" },
         ],

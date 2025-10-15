@@ -48,8 +48,6 @@ export interface LivenessOptions {
   backoffBaseDelay?: number;
   /** Maximum backoff delay (ms) */
   backoffMaxDelay?: number;
-  /** Interval for retrying dead relays (ms) */
-  deadRetryInterval?: number;
 }
 
 /** Record and manage liveness reports for relays */
@@ -112,7 +110,6 @@ export class RelayLiveness {
       maxFailuresBeforeDead: options.maxFailuresBeforeDead ?? 5,
       backoffBaseDelay: options.backoffBaseDelay ?? 30 * 1000, // 30 seconds
       backoffMaxDelay: options.backoffMaxDelay ?? 5 * 60 * 1000, // 5 minutes
-      deadRetryInterval: options.deadRetryInterval ?? 7 * 24 * 60 * 60 * 1000, // 7 days
     };
     this.storage = options.storage;
 
