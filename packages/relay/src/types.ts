@@ -70,6 +70,9 @@ export interface IRelay extends MultiplexWebSocket {
   challenge$: Observable<string | null>;
   authenticated$: Observable<boolean>;
   notices$: Observable<string[]>;
+  open$: Observable<Event>;
+  close$: Observable<CloseEvent>;
+  closing$: Observable<void>;
   error$: Observable<Error | null>;
 
   readonly connected: boolean;

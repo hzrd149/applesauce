@@ -1,10 +1,12 @@
-import { defined, EventStore, ignoreBlacklistedRelays, includeMailboxes } from "applesauce-core";
+import { defined, EventStore, includeMailboxes } from "applesauce-core";
 import { getDisplayName, getProfilePicture, groupPubkeysByRelay } from "applesauce-core/helpers";
 import { selectOptimalRelays } from "applesauce-core/helpers/relay-selection";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
-import { RelayPool } from "applesauce-relay";
+import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
+import localforage from "localforage";
 import { ProfilePointer } from "nostr-tools/nip19";
+import pastellify from "pastellify";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, firstValueFrom, shareReplay, switchMap, throttleTime } from "rxjs";
 
@@ -36,18 +38,12 @@ const addressLoader = createAddressLoader(pool, {
 eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
 
-// Keep a global list of blacklisted relays
-const blacklist$ = new BehaviorSubject<string[]>([]);
-
-// Add relays to blacklisted if they fail to connect
-pool.add$.subscribe((relay) => {
-  relay.error$.subscribe((error) => {
-    if (error && !blacklist$.value.includes(relay.url)) {
-      console.info(`${relay.url} failed to connect. Adding to blacklist`);
-      blacklist$.next([...blacklist$.value, relay.url]);
-    }
-  });
+// Create a liveness tracker and connect to the pool
+const liveness = new RelayLiveness({
+  storage: localforage.createInstance({ name: "liveness" }),
 });
+await liveness.load();
+liveness.connectToPool(pool);
 
 /** Subject for previewing a user */
 const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
@@ -316,18 +312,87 @@ function RelayRow({ relay, users, totalUsers }: { relay: string; users: ProfileP
   );
 }
 
-// Blacklisted Relays Component
-function BlacklistedRelays() {
-  const blacklistedRelays = useObservableState(blacklist$);
+// Component to show unhealthy relay information
+function UnhealthyRelay({ relay }: { relay: string }) {
+  const relayDisplayName = relay.replace("wss://", "").replace("ws://", "");
 
-  if (!blacklistedRelays || blacklistedRelays.length === 0) {
+  // Get state information from liveness tracker observable
+  const state = useObservableMemo(() => liveness.state(relay), [relay]);
+
+  const color = useMemo(() => pastellify(relay, { toCSS: true }), [relay]);
+
+  const getStateBadge = (state?: RelayHealthState | "unknown") => {
+    switch (state) {
+      case "dead":
+        return "badge-error";
+      case "offline":
+        return "badge-warning";
+      case "online":
+        return "badge-success";
+      default:
+        return "badge-neutral";
+    }
+  };
+
+  const formatBackoffTime = (ms: number) => {
+    if (ms === 0) return "";
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+  };
+
+  const handleRevive = () => {
+    liveness.revive(relay);
+  };
+
+  // Calculate derived state from the relay state
+  const isInBackoff = state?.backoffUntil ? Date.now() < state.backoffUntil : false;
+  const backoffRemaining = state?.backoffUntil ? Math.max(0, state.backoffUntil - Date.now()) : 0;
+
+  return (
+    <div className="flex items-center gap-2  p-2 hover:bg-base-100 border-l-2 border-l-error">
+      <div className="text-sm font-medium truncate" style={{ color }}>
+        {relayDisplayName}
+      </div>
+      <div className="flex items-center gap-2">
+        <div className={`badge badge-sm ${getStateBadge(state?.state || "unknown")}`}>{state?.state || "unknown"}</div>
+        {isInBackoff && backoffRemaining > 0 && (
+          <div className="text-xs text-base-content/60">Backoff: {formatBackoffTime(backoffRemaining)}</div>
+        )}
+      </div>
+      {state?.failureCount && <div className="text-xs text-base-content/60">{state.failureCount} failures</div>}
+      {state?.state === "dead" && (
+        <button className="btn btn-xs btn-outline btn-error ms-auto" onClick={handleRevive} title="Revive this relay">
+          Revive
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Unhealthy Relays Component
+function UnhealthyRelays() {
+  const unhealthyRelays = useObservableState(liveness.unhealthy$);
+
+  if (!unhealthyRelays || unhealthyRelays.length === 0) {
     return null;
   }
 
   return (
     <div className="mt-8">
-      <h3 className="text-lg font-bold mb-2">Blacklisted Relays ({blacklistedRelays.length})</h3>
-      <div className="text-sm text-base-content/60 font-mono">{blacklistedRelays.join(", ")}</div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-error">Unhealthy Relays</h3>
+        <div className="badge badge-error">{unhealthyRelays.length}</div>
+      </div>
+
+      <div className="space-y-1 max-h-96 overflow-y-auto">
+        {unhealthyRelays.map((relay) => (
+          <UnhealthyRelay key={relay} relay={relay} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -617,14 +682,14 @@ export default function RelaySelectionExample() {
         defined(),
         // Load the NIP-65 outboxes for all contacts
         includeMailboxes(eventStore),
-        // Watch the blacklist and ignore relays
-        ignoreBlacklistedRelays(blacklist$),
+        // Ignore unhealthy relays from the liveness tracker
+        ignoreUnhealthyRelaysOnPointers(liveness),
         // Only recalculate every 200ms
         throttleTime(200),
         // Only calculate it once
         shareReplay(1),
       ),
-    [eventStore, blacklist$],
+    [eventStore, liveness],
   );
 
   const original = useObservableState(outboxes$);
@@ -730,8 +795,8 @@ export default function RelaySelectionExample() {
       {/* Users by Relay Count Report */}
       <UsersByRelayCount selection={selection} contacts={original} />
 
-      {/* Blacklisted Relays Section */}
-      <BlacklistedRelays />
+      {/* Unhealthy Relays Section */}
+      <UnhealthyRelays />
     </div>
   );
 }

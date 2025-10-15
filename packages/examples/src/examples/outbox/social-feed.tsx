@@ -1,4 +1,4 @@
-import { defined, EventStore, ignoreBlacklistedRelays, includeMailboxes, mapEventsToStore } from "applesauce-core";
+import { defined, EventStore, includeFallbackRelays, includeMailboxes, mapEventsToStore } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
@@ -11,15 +11,22 @@ import {
 } from "applesauce-core/helpers";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import {
+  ignoreUnhealthyRelaysOnPointers,
+  onlyEvents,
+  RelayHealthState,
+  RelayLiveness,
+  RelayPool,
+} from "applesauce-relay";
+import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, combineLatestWith, map, merge, of, shareReplay, switchMap, throttleTime } from "rxjs";
-
 import { SubmitHandler } from "react-hook-form";
+import { BehaviorSubject, map, merge, of, shareReplay, switchMap, throttleTime } from "rxjs";
+
 import PubkeyPicker from "../../components/pubkey-picker";
 
 // Extend Window interface to include nostr property
@@ -55,20 +62,14 @@ eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
 
 // A list of extra relays to always use
-const extraRelays$ = new BehaviorSubject<string[]>([]);
+const fallbacks$ = new BehaviorSubject<string[]>([]);
 
-// Keep a global list of blacklisted relays
-const blacklist$ = new BehaviorSubject<string[]>([]);
-
-// Add relays to blacklisted if they fail to connect
-pool.add$.subscribe((relay) => {
-  relay.error$.subscribe((error) => {
-    if (error && !blacklist$.value.includes(relay.url)) {
-      console.info(`${relay.url} failed to connect. Adding to blacklist`);
-      blacklist$.next([...blacklist$.value, relay.url]);
-    }
-  });
+// Create a liveness tracker and connect to the pool
+const liveness = new RelayLiveness({
+  storage: localforage.createInstance({ name: "liveness" }),
 });
+await liveness.load();
+liveness.connectToPool(pool);
 
 /** A list of users contacts */
 const contacts$ = pubkey$.pipe(
@@ -81,8 +82,8 @@ const outboxes$ = contacts$.pipe(
   defined(),
   // Load the NIP-65 outboxes for all contacts
   includeMailboxes(eventStore),
-  // Watch the blacklist and ignore relays
-  ignoreBlacklistedRelays(blacklist$),
+  // Ignore unhealthy relays from the liveness tracker
+  ignoreUnhealthyRelaysOnPointers(liveness),
   // Only recalculate every 200ms
   throttleTime(200),
   // Only calculate it once
@@ -532,6 +533,73 @@ function RelayConnection({ relay, userCount, totalUsers }: { relay: string; user
   );
 }
 
+// Component to show unhealthy relay information
+function UnhealthyRelay({ relay }: { relay: string }) {
+  const relayDisplayName = relay.replace("wss://", "").replace("ws://", "");
+
+  // Get state information from liveness tracker observable
+  const state = useObservableMemo(() => liveness.state(relay), [relay]);
+
+  const color = useMemo(() => pastellify(relay, { toCSS: true }), [relay]);
+
+  const getStateBadge = (state?: RelayHealthState | "unknown") => {
+    switch (state) {
+      case "dead":
+        return "badge-error";
+      case "offline":
+        return "badge-warning";
+      case "online":
+        return "badge-success";
+      default:
+        return "badge-neutral";
+    }
+  };
+
+  const formatBackoffTime = (ms: number) => {
+    if (ms === 0) return "";
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+  };
+
+  const handleRevive = () => {
+    liveness.revive(relay);
+  };
+
+  // Calculate derived state from the relay state
+  const isInBackoff = state?.backoffUntil ? Date.now() < state.backoffUntil : false;
+  const backoffRemaining = state?.backoffUntil ? Math.max(0, state.backoffUntil - Date.now()) : 0;
+
+  return (
+    <div className="flex items-center gap-2 justify-between p-2 hover:bg-base-100 border-l-2 border-l-error">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium truncate" style={{ color }}>
+          {relayDisplayName}
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          <div className={`badge badge-sm ${getStateBadge(state?.state || "unknown")}`}>
+            {state?.state || "unknown"}
+          </div>
+          {isInBackoff && backoffRemaining > 0 && (
+            <div className="text-xs text-base-content/60">Backoff: {formatBackoffTime(backoffRemaining)}</div>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-col items-end ml-2">
+        {state?.state === "dead" && (
+          <button className="btn btn-xs btn-outline btn-error" onClick={handleRevive} title="Revive this relay">
+            Revive
+          </button>
+        )}
+        {state?.failureCount && <div className="text-xs text-base-content/60 mt-1">{state.failureCount} failures</div>}
+      </div>
+    </div>
+  );
+}
+
 // Main Social Feed Component
 export default function SocialFeedExample() {
   const pubkey = useObservableEagerState(pubkey$);
@@ -549,16 +617,7 @@ export default function SocialFeedExample() {
         // Select the best relays for the contacts
         map((users) => selectOptimalRelays(users, { maxConnections, maxRelaysPerUser })),
         // Get the extra relays
-        combineLatestWith(extraRelays$),
-        // Add the extra relays to every user
-        map(([users, extraRelays]) =>
-          users.map((user) => {
-            if (!extraAsFallback) return { ...user, relays: relaySet(user.relays, extraRelays) };
-
-            if (!user.relays || user.relays.length === 0) return { ...user, relays: extraRelays };
-            else return user;
-          }),
-        ),
+        includeFallbackRelays(fallbacks$),
       ),
     [maxConnections, maxRelaysPerUser, extraAsFallback],
   );
@@ -604,7 +663,10 @@ export default function SocialFeedExample() {
     );
   }, [outboxMap]);
 
-  const extraRelays = useObservableState(extraRelays$);
+  const fallbacks = useObservableState(fallbacks$);
+
+  // Get unhealthy relays from liveness tracker
+  const unhealthyRelays = useObservableState(liveness.unhealthy$);
 
   // Get the timeline from the event store
   const feedEvents = useObservableMemo(
@@ -762,18 +824,26 @@ export default function SocialFeedExample() {
 
         {/* Extra relays */}
         <div className="p-4">
-          <h3 className="text-lg font-semibold mb-4">Extra Relays</h3>
-          <RelayManager relays={extraRelays} onChange={(relays) => extraRelays$.next(relays)} />
-          <label className="label mt-2">
-            <input
-              type="checkbox"
-              checked={extraAsFallback}
-              onChange={(e) => setExtraAsFallback(e.target.checked)}
-              className="toggle toggle-sm"
-            />
-            Use extras as fallbacks
-          </label>
+          <h3 className="text-lg font-semibold mb-4">Fallback Relays</h3>
+          <p className="text-base-content/60 text-sm mb-4">Used when no relays are available for a user</p>
+          <RelayManager relays={fallbacks} onChange={(relays) => fallbacks$.next(relays)} />
         </div>
+
+        {/* Unhealthy Relays Section */}
+        {unhealthyRelays && unhealthyRelays.length > 0 && (
+          <div className="p-4 border-b border-base-300">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-error">Unhealthy Relays</h3>
+              <div className="badge badge-error">{unhealthyRelays.length}</div>
+            </div>
+
+            <div className="space-y-1 max-h-96 overflow-y-auto">
+              {unhealthyRelays.map((relay) => (
+                <UnhealthyRelay key={relay} relay={relay} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
