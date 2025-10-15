@@ -6,6 +6,9 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "completeOnEose",
+        "ignoreUnhealthyMailboxes",
+        "ignoreUnhealthyRelays",
+        "ignoreUnhealthyRelaysOnPointers",
         "markFromRelay",
         "onlyEvents",
         "storeEvents",
