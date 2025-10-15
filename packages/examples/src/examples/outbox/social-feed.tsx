@@ -605,7 +605,6 @@ export default function SocialFeedExample() {
   const pubkey = useObservableEagerState(pubkey$);
   const [maxConnections, setMaxConnections] = useState(30);
   const [maxRelaysPerUser, setMaxRelaysPerUser] = useState(8);
-  const [extraAsFallback, setExtraAsFallback] = useState(false);
 
   // Get the original contacts (before relay selection)
   const outboxes = useObservableState(outboxes$);
@@ -619,7 +618,7 @@ export default function SocialFeedExample() {
         // Get the extra relays
         includeFallbackRelays(fallbacks$),
       ),
-    [maxConnections, maxRelaysPerUser, extraAsFallback],
+    [maxConnections, maxRelaysPerUser],
   );
 
   const byPubkey = useMemo(
