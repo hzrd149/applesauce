@@ -88,6 +88,22 @@ export function selectOptimalRelays(
   }));
 }
 
+/** Sets relays for any user that has 0 relays */
+export function setFallbackRelays(users: ProfilePointer[], fallbacks: string[]): ProfilePointer[] {
+  return users.map((user) => {
+    if (!user.relays || user.relays.length === 0) return { ...user, relays: fallbacks };
+    else return user;
+  });
+}
+
+/** Removes blacklisted relays from the user's relays */
+export function removeBlacklistedRelays(users: ProfilePointer[], blacklist: string[]): ProfilePointer[] {
+  return users.map((user) => {
+    if (!user.relays || user.relays.length === 0) return user;
+    else return { ...user, relays: user.relays.filter((relay) => !blacklist.includes(relay)) };
+  });
+}
+
 /** A map of pubkeys by relay */
 export type OutboxMap = Record<string, ProfilePointer[]>;
 

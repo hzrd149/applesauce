@@ -14,6 +14,7 @@ import {
 import { IEventSubscriptions } from "../event-store/interface.js";
 import { getInboxes, getOutboxes } from "../helpers/mailboxes.js";
 import { addRelayHintsToPointer } from "../helpers/pointers.js";
+import { removeBlacklistedRelays, setFallbackRelays } from "../helpers/relay-selection.js";
 
 /** RxJS operator that fetches outboxes for profile pointers from the event store */
 export function includeMailboxes(
@@ -56,11 +57,18 @@ export function ignoreBlacklistedRelays(
     // Combine with the observable so it re-emits when the blacklist changes
     combineLatestWith(isObservable(blacklist) ? blacklist : of(blacklist)),
     // Filter the relays for the user
-    map(([users, blacklist]) =>
-      users.map((user) => {
-        if (!user.relays) return user;
-        return { ...user, relays: user.relays.filter((relay) => !blacklist.includes(relay)) };
-      }),
-    ),
+    map(([users, blacklist]) => removeBlacklistedRelays(users, blacklist)),
+  );
+}
+
+/** Sets fallback relays for any user that has 0 relays */
+export function includeFallbackRelays(
+  fallbacks: string[] | Observable<string[]>,
+): MonoTypeOperatorFunction<ProfilePointer[]> {
+  return pipe(
+    // Get the fallbacks from the observable
+    combineLatestWith(isObservable(fallbacks) ? fallbacks : of(fallbacks)),
+    // Set the fallback relays for the users
+    map(([users, fallbacks]) => setFallbackRelays(users, fallbacks)),
   );
 }
