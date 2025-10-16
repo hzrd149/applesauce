@@ -1,5 +1,14 @@
 # applesauce-core
 
+## 4.1.0
+
+### Minor Changes
+
+- 2f2d3e3: Add `removeByFilters` to `EventStore` and `AsyncEventStore`
+- b066fe3: Add `includeFallbackRelays` to relay selection operators
+- 2f2d3e3: Add `removeByFilters` to `EventMemory`
+- b066fe3: Add `setFallbackRelays` and `removeBlacklistedRelays` methods to relay selection helpers
+
 ## 4.0.0
 
 ### Major Changes
