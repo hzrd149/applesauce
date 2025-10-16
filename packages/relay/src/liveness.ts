@@ -6,9 +6,7 @@ import { IPool, IRelay } from "./types.js";
 /** Relay health states for liveness tracking */
 export type RelayHealthState = "online" | "offline" | "dead";
 
-/**
- * State information for a relay's health tracking
- */
+/** State information for a relay's health tracking */
 export interface RelayState {
   /** Current relay health state */
   state: RelayHealthState;

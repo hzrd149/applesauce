@@ -9,6 +9,7 @@ import type { GroupNegentropySyncOptions, GroupRequestOptions, GroupSubscription
 
 export type SubscriptionResponse = NostrEvent | "EOSE";
 export type PublishResponse = { ok: boolean; message?: string; from: string };
+export type CountResponse = { count: number };
 
 export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">;
 
@@ -85,6 +86,8 @@ export interface IRelay extends MultiplexWebSocket {
 
   /** Send a REQ message */
   req(filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
+  /** Send a COUNT message */
+  count(filters: Filter | Filter[], id?: string): Observable<CountResponse>;
   /** Send an EVENT message */
   event(event: NostrEvent): Observable<PublishResponse>;
   /** Send an AUTH message */
@@ -139,6 +142,8 @@ export interface IGroup {
   request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent>;
   /** Open a subscription with retries */
   subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<SubscriptionResponse>;
+  /** Count events on the relays and an event store */
+  count(filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
   /** Negentropy sync events with the relay and an event store */
   sync(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
@@ -193,6 +198,8 @@ export interface IPool extends IPoolSignals {
     filters: Parameters<IGroup["subscription"]>[0],
     opts?: Parameters<IGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse>;
+  /** Count events on the relays and an event store */
+  count(relays: string[], filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
   /** Negentropy sync events with the relay and an event store */
   sync(
     relays: string[],

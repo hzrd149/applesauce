@@ -6,7 +6,7 @@ import { BehaviorSubject, Observable, Subject } from "rxjs";
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
 import { Relay, SyncDirection, type RelayOptions } from "./relay.js";
-import type { FilterInput, IPool, IRelay, PublishResponse, SubscriptionResponse } from "./types.js";
+import type { CountResponse, FilterInput, IPool, IRelay, PublishResponse, SubscriptionResponse } from "./types.js";
 
 export class RelayPool implements IPool {
   groups$ = new BehaviorSubject<Map<string, RelayGroup>>(new Map());
@@ -146,6 +146,11 @@ export class RelayPool implements IPool {
     options?: Parameters<RelayGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse> {
     return this.group(relays).subscription(filters, options);
+  }
+
+  /** Count events on multiple relays */
+  count(relays: string[], filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>> {
+    return this.group(relays).count(filters, id);
   }
 
   /** Negentropy sync events with the relays and an event store */

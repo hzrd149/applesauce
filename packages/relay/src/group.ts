@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { Filter, type NostrEvent } from "nostr-tools";
 import {
   catchError,
+  combineLatest,
   defer,
   EMPTY,
   endWith,
@@ -26,6 +27,7 @@ import { NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import { completeOnEose } from "./operators/complete-on-eose.js";
 import { onlyEvents } from "./operators/only-events.js";
 import {
+  CountResponse,
   FilterInput,
   IGroup,
   IRelay,
@@ -89,7 +91,7 @@ export class RelayGroup implements IGroup {
    */
   req(
     filters: FilterInput,
-    id = nanoid(8),
+    id = nanoid(),
     opts?: {
       /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
       eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
@@ -180,6 +182,11 @@ export class RelayGroup implements IGroup {
       // Pass event store so that duplicate events are removed
       opts?.eventStore,
     );
+  }
+
+  /** Count events on all relays in the group */
+  count(filters: Filter | Filter[], id = nanoid()): Observable<Record<string, CountResponse>> {
+    return combineLatest(Object.fromEntries(this.relays.map((relay) => [relay.url, relay.count(filters, id)])));
   }
 
   /** Negentropy sync events with the relays and an event store */

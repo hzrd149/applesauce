@@ -986,6 +986,108 @@ describe("authenticate", () => {
   });
 });
 
+describe("count", () => {
+  it("should trigger connection to relay", async () => {
+    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+
+    // Wait for connection
+    await firstValueFrom(relay.connected$.pipe(filter(Boolean)));
+
+    expect(relay.connected).toBe(true);
+  });
+
+  it("should send expected messages to relay", async () => {
+    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+  });
+
+  it("should emit count response", async () => {
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+    await server.connected;
+
+    // Send COUNT response
+    server.send(["COUNT", "count1", { count: 42 }]);
+
+    expect(spy.getValues()).toEqual([{ count: 42 }]);
+    expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("should ignore COUNT responses that do not match subscription id", async () => {
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+    await server.connected;
+
+    // Send COUNT response with wrong subscription id
+    server.send(["COUNT", "wrong_count", { count: 42 }]);
+
+    // Send COUNT response with correct subscription id
+    server.send(["COUNT", "count1", { count: 24 }]);
+
+    expect(spy.getValues()).toEqual([{ count: 24 }]);
+  });
+
+  it("should error subscription when CLOSED message is received", async () => {
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"), { expectErrors: true });
+    await server.connected;
+
+    // Send CLOSED message for the subscription
+    server.send(["CLOSED", "count1", "reason"]);
+
+    // Verify the subscription completed with error
+    expect(spy.receivedError()).toBe(true);
+  });
+
+  it("should error if no COUNT response received within timeout", async () => {
+    vi.useFakeTimers();
+
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"), { expectErrors: true });
+
+    // Fast-forward time by 10 seconds
+    await vi.advanceTimersByTimeAsync(10000);
+
+    expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()?.message).toBe("COUNT timeout");
+  });
+
+  it("should not send multiple COUNT messages for multiple subscriptions", async () => {
+    const sub = relay.count([{ kinds: [1] }], "count1");
+    sub.subscribe();
+    sub.subscribe();
+
+    // Wait for all messages to be sent
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(server.messages).toEqual([["COUNT", "count1", { kinds: [1] }]]);
+  });
+
+  it("should wait when relay isn't ready", async () => {
+    // @ts-expect-error
+    relay.ready$.next(false);
+
+    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+
+    // Wait 10ms to ensure the relay didn't receive anything
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(server.messages.length).toBe(0);
+
+    // @ts-expect-error
+    relay.ready$.next(true);
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+  });
+
+  it("should handle multiple filters", async () => {
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }, { kinds: [2] }], "count1"));
+    await server.connected;
+
+    // Send COUNT response
+    server.send(["COUNT", "count1", { count: 7 }]);
+
+    expect(spy.getValues()).toEqual([{ count: 7 }]);
+  });
+});
+
 describe("close", () => {
   it("should close the socket", async () => {
     subscribeSpyTo(relay.req([{ kinds: [1] }]));

@@ -10,16 +10,15 @@ npm install applesauce-relay
 
 ## Features
 
-- [x] NIP-01
+- [x] NIP-01 `REQ` and `EVENT` messages
 - [x] Relay pool and groups
-- [x] Fetch NIP-11 information before connecting
 - [x] NIP-11 `auth_required` limitation
 - [ ] NIP-11 `max_subscriptions` limitation
 - [x] Client negentropy sync
 - [x] Reconnection backoff logic
 - [x] republish event on reconnect and auth-required
 - [x] Resubscribe on reconnect and auth-required
-- [ ] NIP-45 COUNT
+- [x] NIP-45 COUNT
 
 ## Examples
 

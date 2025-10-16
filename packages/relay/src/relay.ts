@@ -49,6 +49,7 @@ import { completeOnEose } from "./operators/complete-on-eose.js";
 import { markFromRelay } from "./operators/mark-from-relay.js";
 import {
   AuthSigner,
+  CountResponse,
   FilterInput,
   IRelay,
   PublishOptions,
@@ -58,6 +59,7 @@ import {
   SubscriptionResponse,
 } from "./types.js";
 
+const AUTH_REQUIRED_PREFIX = "auth-required:";
 const DEFAULT_RETRY_CONFIG: RetryConfig = { count: 10, delay: 1000, resetOnSuccess: true };
 
 /** Flags for the negentropy sync type */
@@ -413,24 +415,11 @@ export class Relay implements IRelay {
         else if (message[0] === "CLOSED") throw new ReqCloseError(message[2]);
         else return message[2] as NostrEvent;
       }),
-      catchError((error) => {
-        // Set REQ auth required if the REQ is closed with auth-required
-        if (
-          error instanceof ReqCloseError &&
-          error.message.startsWith("auth-required") &&
-          !this.receivedAuthRequiredForReq.value
-        ) {
-          this.log("Auth required for REQ");
-          this.receivedAuthRequiredForReq.next(true);
-        }
-
-        // Pass the error through
-        return throwError(() => error);
-      }),
+      this.handleAuthRequiredForReq("REQ"),
       // mark events as from relays
       markFromRelay(this.url),
       // if no events are seen in 10s, emit EOSE
-      // TODO: this should emit EOSE event if events are seen, the timeout should be for only the EOSE message
+      // TODO: this timeout should only emit EOSE after the last event is seen and no EOSE has been sent in (timeout ms)
       timeout({
         first: this.eoseTimeout,
         with: () => merge(of<SubscriptionResponse>("EOSE"), NEVER),
@@ -440,6 +429,44 @@ export class Relay implements IRelay {
     );
 
     // Wait for auth if required and make sure to start the watch tower
+    return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable));
+  }
+
+  /** Create a COUNT observable that emits a single count response */
+  count(filters: Filter | Filter[], id = nanoid()): Observable<CountResponse> {
+    // Create an observable that filters responses from the relay to just the ones for this COUNT
+    const messages: Observable<any[]> = this.socket.pipe(
+      filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
+      // Singleton (prevents duplicate subscriptions)
+      share(),
+    );
+
+    // Send the COUNT message and listen for response
+    const observable = defer(() => {
+      // Send the COUNT message when subscription starts
+      this.socket.next(Array.isArray(filters) ? ["COUNT", id, ...filters] : ["COUNT", id, filters]);
+
+      // Merge with watch tower to keep connection alive
+      return merge(this.watchTower, messages);
+    }).pipe(
+      // Map the messages to count responses or throw an error
+      map<any[], CountResponse>((message) => {
+        if (message[0] === "COUNT") return message[2] as CountResponse;
+        else throw new ReqCloseError(message[2]);
+      }),
+      this.handleAuthRequiredForReq("COUNT"),
+      // Complete on first value (COUNT responses are single-shot)
+      take(1),
+      // Add timeout
+      timeout({
+        first: this.eoseTimeout,
+        with: () => throwError(() => new Error("COUNT timeout")),
+      }),
+      // Only create one upstream subscription
+      share(),
+    );
+
+    // Start the watch tower and wait for auth if required
     return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable));
   }
 
@@ -468,7 +495,7 @@ export class Relay implements IRelay {
       take(1),
       // listen for OK auth-required
       tap(({ ok, message }) => {
-        if (ok === false && message?.startsWith("auth-required") && !this.receivedAuthRequiredForEvent.value) {
+        if (ok === false && message?.startsWith(AUTH_REQUIRED_PREFIX) && !this.receivedAuthRequiredForEvent.value) {
           this.log("Auth required for publish");
           this.receivedAuthRequiredForEvent.next(true);
         }
@@ -558,6 +585,24 @@ export class Relay implements IRelay {
     else return simpleTimeout(timeout ?? defaultTimeout);
   }
 
+  /** Internal operator for handling auth-required errors from REQ/COUNT operations */
+  protected handleAuthRequiredForReq(operation: "REQ" | "COUNT"): MonoTypeOperatorFunction<any> {
+    return catchError((error) => {
+      // Set auth required if the operation is closed with auth-required
+      if (
+        error instanceof ReqCloseError &&
+        error.message.startsWith(AUTH_REQUIRED_PREFIX) &&
+        !this.receivedAuthRequiredForReq.value
+      ) {
+        this.log(`Auth required for ${operation}`);
+        this.receivedAuthRequiredForReq.next(true);
+      }
+
+      // Pass the error through
+      return throwError(() => error);
+    });
+  }
+
   /** Creates a REQ that retries when relay errors ( default 3 retries ) */
   subscription(filters: Filter | Filter[], opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
     return this.req(filters, opts?.id).pipe(
@@ -590,7 +635,7 @@ export class Relay implements IRelay {
       this.event(event).pipe(
         mergeMap((result) => {
           // If the relay responds with auth-required, throw an error for the retry operator to handle
-          if (result.ok === false && result.message?.startsWith("auth-required:"))
+          if (result.ok === false && result.message?.startsWith(AUTH_REQUIRED_PREFIX))
             return throwError(() => new Error(result.message));
 
           return of(result);
