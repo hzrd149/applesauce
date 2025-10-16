@@ -1,5 +1,18 @@
 # applesauce-wallet-connect
 
+## 4.1.0
+
+### Minor Changes
+
+- 1e5e1eb: Support custom methods in `WalletConnect` and `WalletService` classes
+- 5769b74: Add `acceptRelayHint` to `WalletConnect` and enable by default
+- 5769b74: Add `overrideRelay` option to `WalletService.fromAuthURI`
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.1.0
+
 ## 4.0.0
 
 ### Major Changes

@@ -1,5 +1,20 @@
 # applesauce-sqlite
 
+## 4.1.0
+
+### Minor Changes
+
+- 0fdf56a: Add `@tursodatabase/database` implementation
+- 2f2d3e3: Add Turso WASM using `@tursodatabase/database-wasm`
+- 2f2d3e3: Add `removeByFilters` to all database implementations
+- 58cc8a2: Add experimental Turso WASM to `applesauce-sqlite`
+- 2f2d3e3: Optimize delete event sql
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.1.0
+
 ## 4.0.0
 
 ### Minor Changes

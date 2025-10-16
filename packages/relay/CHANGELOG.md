@@ -1,5 +1,17 @@
 # applesauce-relay
 
+## 4.1.0
+
+### Minor Changes
+
+- 1caf5da: Support NIP-45 `COUNT` verb
+- f45f84f: Add `RelayLiveness` class for tracking unhealthy relays
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.1.0
+
 ## 4.0.0
 
 ### Major Changes
