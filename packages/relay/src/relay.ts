@@ -380,13 +380,17 @@ export class Relay implements IRelay {
   /** Create a REQ observable that emits events or "EOSE" or errors */
   req(filters: FilterInput, id = nanoid()): Observable<SubscriptionResponse> {
     // Convert filters input into an observable, if its a normal value merge it with NEVER so it never completes
-    let input: Observable<Filter | Filter[]>;
+    let input: Observable<Filter[]>;
 
     // Create input from filters input
     if (typeof filters === "function") {
       const result = filters(this);
-      input = isObservable(result) ? result : merge(of(result), NEVER);
-    } else input = isObservable(filters) ? filters : merge(of(filters), NEVER);
+      input = (isObservable(result) ? result : merge(of(result), NEVER)).pipe(map((f) => (Array.isArray(f) ? f : [f])));
+    } else {
+      input = (isObservable(filters) ? filters : merge(of(filters), NEVER)).pipe(
+        map((f) => (Array.isArray(f) ? f : [f])),
+      );
+    }
 
     // Create an observable that completes when the upstream observable completes
     const filtersComplete = input.pipe(ignoreElements(), endWith(null));
@@ -401,7 +405,7 @@ export class Relay implements IRelay {
     // Create an observable that controls sending the filters and closing the REQ
     const control = input.pipe(
       // Send the filters when they change
-      tap((filters) => this.socket.next(Array.isArray(filters) ? ["REQ", id, ...filters] : ["REQ", id, filters])),
+      tap((filters) => this.socket.next(["REQ", id, ...filters])),
       // Send the CLOSE message when unsubscribed or input completes
       finalize(() => this.socket.next(["CLOSE", id])),
       // Once filters have been sent, switch to listening for messages

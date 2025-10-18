@@ -1,4 +1,5 @@
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "./pointers.js";
+import { Filter } from "./filter.js";
 
 export type SelectOptimalRelaysOptions = {
   /** Maximum number of connections (relays) to select */
@@ -107,7 +108,10 @@ export function removeBlacklistedRelays(users: ProfilePointer[], blacklist: stri
 /** A map of pubkeys by relay */
 export type OutboxMap = Record<string, ProfilePointer[]>;
 
-/** RxJS operator that aggregates contacts with outboxes into a relay -> pubkeys map */
+/** A map of filters by relay */
+export type FilterMap = Record<string, Filter | Filter[]>;
+
+/** Creates an {@link OutboxMap} for an array of profile points (groups users by relay) */
 export function groupPubkeysByRelay(pointers: ProfilePointer[]): OutboxMap {
   const outbox: OutboxMap = {};
 
@@ -122,4 +126,17 @@ export function groupPubkeysByRelay(pointers: ProfilePointer[]): OutboxMap {
   }
 
   return outbox;
+}
+
+/** Alias for {@link groupPubkeysByRelay} */
+export const createOutboxMap = groupPubkeysByRelay;
+
+/** Creates a {@link FilterMap} for an {@link OutboxMap} */
+export function createFilterMap(outboxMap: OutboxMap, filter: Omit<Filter, "authors">): FilterMap {
+  return Object.fromEntries(
+    Array.from(Object.entries(outboxMap)).map(([relay, users]) => [
+      relay,
+      { authors: users.map((user) => user.pubkey), ...filter },
+    ]),
+  );
 }

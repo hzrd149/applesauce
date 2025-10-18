@@ -1,7 +1,7 @@
 import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
-import { normalizeURL } from "applesauce-core/helpers";
+import { isFilterEqual, normalizeURL } from "applesauce-core/helpers";
 import { Filter, type NostrEvent } from "nostr-tools";
-import { BehaviorSubject, map, Observable, Subject } from "rxjs";
+import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, Subject } from "rxjs";
 
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
@@ -117,6 +117,28 @@ export class RelayPool implements IPool {
     options?: Parameters<RelayGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse> {
     return this.group(relays).subscription(filters, options);
+  }
+
+  /** Open a subscription for a map of relays and filters */
+  subscriptionMap(
+    relays: Record<string, Filter | Filter[]> | Observable<Record<string, Filter | Filter[]>>,
+    options?: Parameters<RelayGroup["subscription"]>[1],
+  ): Observable<SubscriptionResponse> {
+    // Convert input to observable
+    const relays$ = isObservable(relays) ? relays : of(relays);
+
+    return this.group(
+      // Create a group with an observable of dynamic relay urls
+      relays$.pipe(map((dir) => Object.keys(dir))),
+    ).subscription((relay) => {
+      // Return observable to subscribe to the relays unique filters
+      return relays$.pipe(
+        // Select the relays filters
+        map((dir) => dir[relay.url]),
+        // Don't send duplicate filters
+        distinctUntilChanged(isFilterEqual),
+      );
+    }, options);
   }
 
   /** Count events on multiple relays */

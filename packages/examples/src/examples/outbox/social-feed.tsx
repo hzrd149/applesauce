@@ -4,11 +4,11 @@ import {
   getDisplayName,
   getProfilePicture,
   getSeenRelays,
-  groupPubkeysByRelay,
   persistEventsToCache,
   relaySet,
   selectOptimalRelays,
 } from "applesauce-core/helpers";
+import { createFilterMap, createOutboxMap } from "applesauce-core/helpers/relay-selection";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import {
@@ -25,7 +25,7 @@ import { ProfilePointer } from "nostr-tools/nip19";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
 import { SubmitHandler } from "react-hook-form";
-import { BehaviorSubject, map, merge, of, shareReplay, switchMap, throttleTime } from "rxjs";
+import { BehaviorSubject, combineLatest, debounceTime, map, of, shareReplay, switchMap, throttleTime } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 
@@ -61,9 +61,6 @@ const addressLoader = createAddressLoader(pool, {
 eventStore.addressableLoader = addressLoader;
 eventStore.replaceableLoader = addressLoader;
 
-// A list of extra relays to always use
-const fallbacks$ = new BehaviorSubject<string[]>([]);
-
 // Create a liveness tracker and connect to the pool
 const liveness = new RelayLiveness({
   storage: localforage.createInstance({ name: "liveness" }),
@@ -71,24 +68,62 @@ const liveness = new RelayLiveness({
 await liveness.load();
 liveness.connectToPool(pool);
 
-/** A list of users contacts */
+// A list of extra relays to always use
+const fallbacks$ = new BehaviorSubject<string[]>([]);
+
+// The maximum number of connections to make
+const maxConnections$ = new BehaviorSubject(30);
+
+// The maximum number of relays to select per user
+const maxRelaysPerUser$ = new BehaviorSubject(4);
+
+/** An observable of the users contacts */
 const contacts$ = pubkey$.pipe(
+  // Wait for user to login
   defined(),
+  // Get the contacts for the user
   switchMap((pubkey) => eventStore.contacts(pubkey)),
 );
 
-/** Contacts with outboxes */
-const outboxes$ = contacts$.pipe(
+/** An observable of contacts with outboxes and unhealthy relays filtered out */
+const contactsWithOutboxes$ = contacts$.pipe(
+  // Wait for contacts to be fetched
   defined(),
   // Load the NIP-65 outboxes for all contacts
   includeMailboxes(eventStore),
   // Ignore unhealthy relays from the liveness tracker
   ignoreUnhealthyRelaysOnPointers(liveness),
-  // Only recalculate every 200ms
-  throttleTime(200),
   // Only calculate it once
   shareReplay(1),
 );
+
+// Create an observable of contacts -> contacts with relay selection / fallbacks
+const selection$ = combineLatest([
+  contactsWithOutboxes$.pipe(
+    // First include fallback relays
+    includeFallbackRelays(fallbacks$),
+  ),
+  maxConnections$,
+  maxRelaysPerUser$,
+]).pipe(
+  // Debounce recalculations for performance
+  debounceTime(200),
+  // Select the best relays for the contacts
+  map(([users, maxConnections, maxRelaysPerUser]) => selectOptimalRelays(users, { maxConnections, maxRelaysPerUser })),
+);
+
+// Create an observable of filter map { [<relay>]: [<filter>] }
+const filterMap$ = selection$.pipe(
+  // Convert users to outbox map
+  map(createOutboxMap),
+  // Convert to filter map
+  map((outboxes) => createFilterMap(outboxes, { kinds: [1] })),
+  // Keep the last value so reconnection works
+  shareReplay(1),
+);
+
+// Create a stream of events from the filter map
+const events$ = pool.subscriptionMap(filterMap$, { eventStore }).pipe(onlyEvents());
 
 // Global state for previewing user
 const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
@@ -603,23 +638,16 @@ function UnhealthyRelay({ relay }: { relay: string }) {
 // Main Social Feed Component
 export default function SocialFeedExample() {
   const pubkey = useObservableEagerState(pubkey$);
-  const [maxConnections, setMaxConnections] = useState(30);
-  const [maxRelaysPerUser, setMaxRelaysPerUser] = useState(8);
+  const maxConnections = useObservableEagerState(maxConnections$);
+  const maxRelaysPerUser = useObservableEagerState(maxRelaysPerUser$);
 
-  // Get the original contacts (before relay selection)
-  const outboxes = useObservableState(outboxes$);
+  // Start subscription on mount
+  useObservableState(events$);
 
   // Select the best relays for the contacts
-  const selection = useObservableMemo(
-    () =>
-      outboxes$.pipe(
-        // Select the best relays for the contacts
-        map((users) => selectOptimalRelays(users, { maxConnections, maxRelaysPerUser })),
-        // Get the extra relays
-        includeFallbackRelays(fallbacks$),
-      ),
-    [maxConnections, maxRelaysPerUser],
-  );
+  const outboxes = useObservableState(contactsWithOutboxes$);
+  const selection = useObservableMemo(() => selection$, [selection$]);
+  const outboxMap = useObservableMemo(() => selection$.pipe(map(createOutboxMap)), [selection$]);
 
   const byPubkey = useMemo(
     () =>
@@ -633,34 +661,8 @@ export default function SocialFeedExample() {
     [selection],
   );
 
-  const outboxMap = useMemo(() => selection && groupPubkeysByRelay(selection), [selection]);
-
   // Sort relays by popularity (number of users) in descending order
   const sortedRelays = outboxMap ? Object.entries(outboxMap).sort(([, a], [, b]) => b.length - a.length) : [];
-
-  // Create feed subscription for selected relays and contacts
-  useObservableMemo(() => {
-    if (!outboxMap || Object.keys(outboxMap).length === 0) return undefined;
-
-    console.log("Creating relay subscriptions");
-
-    // Create subscriptions for each relay with the pubkeys that use it
-    const relaySubscriptions = Object.entries(outboxMap).map(([relayUrl, pubkeys]) =>
-      pool.relay(relayUrl).subscription({
-        kinds: [1], // Text notes
-        authors: pubkeys.map((user) => user.pubkey),
-        limit: pubkeys.length, // get at least one event for each pubkey
-      }),
-    );
-
-    // Merge all relay subscriptions into one stream
-    return merge(...relaySubscriptions).pipe(
-      // Only get events from relay (ignore EOSE)
-      onlyEvents(),
-      // deduplicate events using the event store
-      mapEventsToStore(eventStore),
-    );
-  }, [outboxMap]);
 
   const fallbacks = useObservableState(fallbacks$);
 
@@ -695,7 +697,7 @@ export default function SocialFeedExample() {
               <div className="bg-base-100 border border-base-300 rounded-lg">
                 {feedEvents && feedEvents.length > 0 ? (
                   <div className="divide-y divide-base-300">
-                    {feedEvents.map((event) => (
+                    {feedEvents.slice(0, 100).map((event) => (
                       <Note key={event.id} note={event} selection={byPubkey?.[event.pubkey]} />
                     ))}
                   </div>
@@ -760,7 +762,7 @@ export default function SocialFeedExample() {
                 max="200"
                 step="1"
                 value={maxConnections}
-                onChange={(e) => setMaxConnections(Number(e.target.value))}
+                onChange={(e) => maxConnections$.next(Number(e.target.value))}
                 className="range range-primary range-sm"
               />
               <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
@@ -781,7 +783,7 @@ export default function SocialFeedExample() {
                 min="0"
                 max="30"
                 value={maxRelaysPerUser}
-                onChange={(e) => setMaxRelaysPerUser(Number(e.target.value))}
+                onChange={(e) => maxRelaysPerUser$.next(Number(e.target.value))}
                 className="range range-primary range-sm"
               />
               <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
