@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 4.2.0
+
+### Minor Changes
+
+- 363804d: Add `createFilterMap` helper for creating filter maps from outbox maps
+
 ## 4.1.0
 
 ### Minor Changes
