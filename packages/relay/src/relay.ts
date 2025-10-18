@@ -380,7 +380,13 @@ export class Relay implements IRelay {
   /** Create a REQ observable that emits events or "EOSE" or errors */
   req(filters: FilterInput, id = nanoid()): Observable<SubscriptionResponse> {
     // Convert filters input into an observable, if its a normal value merge it with NEVER so it never completes
-    const input = isObservable(filters) ? filters : merge(of(filters), NEVER);
+    let input: Observable<Filter | Filter[]>;
+
+    // Create input from filters input
+    if (typeof filters === "function") {
+      const result = filters(this);
+      input = isObservable(result) ? result : merge(of(result), NEVER);
+    } else input = isObservable(filters) ? filters : merge(of(filters), NEVER);
 
     // Create an observable that completes when the upstream observable completes
     const filtersComplete = input.pipe(ignoreElements(), endWith(null));
@@ -604,7 +610,7 @@ export class Relay implements IRelay {
   }
 
   /** Creates a REQ that retries when relay errors ( default 3 retries ) */
-  subscription(filters: Filter | Filter[], opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
+  subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
       this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
@@ -616,7 +622,7 @@ export class Relay implements IRelay {
   }
 
   /** Makes a single request that retires on errors and completes on EOSE */
-  request(filters: Filter | Filter[], opts?: RequestOptions): Observable<NostrEvent> {
+  request(filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
       this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),

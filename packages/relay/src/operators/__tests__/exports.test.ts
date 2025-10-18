@@ -11,6 +11,7 @@ describe("exports", () => {
         "ignoreUnhealthyRelaysOnPointers",
         "markFromRelay",
         "onlyEvents",
+        "reverseSwitchMap",
         "storeEvents",
         "toEventStore",
       ]

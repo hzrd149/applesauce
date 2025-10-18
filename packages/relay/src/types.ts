@@ -59,8 +59,16 @@ export type AuthSigner = {
   signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent>;
 };
 
-/** The type of input the REQ method accepts */
-export type FilterInput = Filter | Filter[] | Observable<Filter | Filter[]>;
+/** Filters that can be passed to request methods on the pool or relay */
+export type FilterInput =
+  // A single filter
+  | Filter
+  // An array of filters
+  | Filter[]
+  // A stream of filters
+  | Observable<Filter | Filter[]>
+  // A function to create a filter for a relay
+  | ((relay: IRelay) => Filter | Filter[] | Observable<Filter | Filter[]>);
 
 export interface IRelay extends MultiplexWebSocket {
   url: string;
@@ -123,11 +131,13 @@ export interface IRelay extends MultiplexWebSocket {
   getSupported(): Promise<number[] | null>;
 }
 
+export type IGroupRelayInput = IRelay[] | Observable<IRelay[]>;
+
 export interface IGroup {
   /** Send a REQ message */
-  req(filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
+  req(filters: Parameters<IRelay["req"]>[0], id?: string): Observable<SubscriptionResponse>;
   /** Send an EVENT message */
-  event(event: NostrEvent): Observable<PublishResponse>;
+  event(event: Parameters<IRelay["event"]>[0]): Observable<PublishResponse>;
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
@@ -136,12 +146,22 @@ export interface IGroup {
     opts?: NegentropySyncOptions,
   ): Promise<boolean>;
 
+  /** Add a relay to the group */
+  add(relay: IRelay): void;
+  /** Remove a relay from the group */
+  remove(relay: IRelay): void;
+  /** Check if a relay is in the group */
+  has(relay: IRelay | string): boolean;
+
   /** Send an EVENT message with retries */
-  publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse[]>;
+  publish(event: Parameters<IRelay["event"]>[0], opts?: PublishOptions): Promise<PublishResponse[]>;
   /** Send a REQ message with retries */
-  request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent>;
+  request(filters: Parameters<IRelay["request"]>[0], opts?: GroupRequestOptions): Observable<NostrEvent>;
   /** Open a subscription with retries */
-  subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<SubscriptionResponse>;
+  subscription(
+    filters: Parameters<IRelay["subscription"]>[0],
+    opts?: GroupSubscriptionOptions,
+  ): Observable<SubscriptionResponse>;
   /** Count events on the relays and an event store */
   count(filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
   /** Negentropy sync events with the relay and an event store */
@@ -158,22 +178,24 @@ export interface IPoolSignals {
   remove$: Observable<IRelay>;
 }
 
+export type IPoolRelayInput = string[] | Observable<string[]>;
+
 export interface IPool extends IPoolSignals {
   /** Get or create a relay */
   relay(url: string): IRelay;
   /** Create a relay group */
-  group(relays: string[]): IGroup;
+  group(relays: IPoolRelayInput): IGroup;
 
   /** Removes a relay from the pool and defaults to closing the connection */
   remove(relay: string | IRelay, close?: boolean): void;
 
   /** Send a REQ message */
-  req(relays: string[], filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
+  req(relays: IPoolRelayInput, filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
   /** Send an EVENT message */
-  event(relays: string[], event: NostrEvent): Observable<PublishResponse>;
+  event(relays: IPoolRelayInput, event: NostrEvent): Observable<PublishResponse>;
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
-    relays: string[],
+    relays: IPoolRelayInput,
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
     filter: Filter,
     reconcile: ReconcileFunction,
@@ -182,27 +204,27 @@ export interface IPool extends IPoolSignals {
 
   /** Send an EVENT message to relays with retries */
   publish(
-    relays: string[],
+    relays: IPoolRelayInput,
     event: Parameters<IGroup["publish"]>[0],
     opts?: Parameters<IGroup["publish"]>[1],
   ): Promise<PublishResponse[]>;
   /** Send a REQ message to relays with retries */
   request(
-    relays: string[],
+    relays: IPoolRelayInput,
     filters: Parameters<IGroup["request"]>[0],
     opts?: Parameters<IGroup["request"]>[1],
   ): Observable<NostrEvent>;
   /** Open a subscription to relays with retries */
   subscription(
-    relays: string[],
+    relays: IPoolRelayInput,
     filters: Parameters<IGroup["subscription"]>[0],
     opts?: Parameters<IGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse>;
   /** Count events on the relays and an event store */
-  count(relays: string[], filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
+  count(relays: IPoolRelayInput, filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
   /** Negentropy sync events with the relay and an event store */
   sync(
-    relays: string[],
+    relays: IPoolRelayInput,
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
     filter: Filter,
     direction?: SyncDirection,

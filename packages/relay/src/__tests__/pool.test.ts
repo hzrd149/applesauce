@@ -65,16 +65,6 @@ describe("relay", () => {
   });
 });
 
-describe("group", () => {
-  it("should create a relay group", () => {
-    const urls = ["wss://relay1.example.com/", "wss://relay2.example.com/"];
-    const group = pool.group(urls);
-
-    expect(group).toBeDefined();
-    expect(pool.groups.get(urls.sort().join(","))).toBe(group);
-  });
-});
-
 describe("req", () => {
   it("should send subscription to multiple relays", async () => {
     const urls = ["wss://relay1.example.com", "wss://relay2.example.com"];

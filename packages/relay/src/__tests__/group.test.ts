@@ -137,6 +137,7 @@ describe("event", () => {
     expect(spy.receivedComplete()).toBe(false);
 
     mockRelay2.send(["OK", mockEvent.id, true, ""]);
+    console.log("last value");
     expect(spy.receivedComplete()).toBe(true);
   });
 
