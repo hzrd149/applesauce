@@ -1,4 +1,4 @@
-import { defined, EventStore, includeFallbackRelays, includeMailboxes, mapEventsToStore } from "applesauce-core";
+import { defined, EventStore, includeFallbackRelays, includeMailboxes } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
@@ -25,7 +25,7 @@ import { ProfilePointer } from "nostr-tools/nip19";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
 import { SubmitHandler } from "react-hook-form";
-import { BehaviorSubject, combineLatest, debounceTime, map, of, shareReplay, switchMap, throttleTime } from "rxjs";
+import { BehaviorSubject, combineLatest, debounceTime, map, of, shareReplay, switchMap } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 
