@@ -1,5 +1,5 @@
 import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
-import { isFilterEqual, normalizeURL } from "applesauce-core/helpers";
+import { createFilterMap, FilterMap, isFilterEqual, normalizeURL, OutboxMap } from "applesauce-core/helpers";
 import { Filter, type NostrEvent } from "nostr-tools";
 import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, Subject } from "rxjs";
 
@@ -121,7 +121,7 @@ export class RelayPool implements IPool {
 
   /** Open a subscription for a map of relays and filters */
   subscriptionMap(
-    relays: Record<string, Filter | Filter[]> | Observable<Record<string, Filter | Filter[]>>,
+    relays: FilterMap | Observable<FilterMap>,
     options?: Parameters<RelayGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse> {
     // Convert input to observable
@@ -139,6 +139,22 @@ export class RelayPool implements IPool {
         distinctUntilChanged(isFilterEqual),
       );
     }, options);
+  }
+
+  /** Open a subscription for an {@link OutboxMap} and filter */
+  outboxSubscription(
+    outboxes: OutboxMap | Observable<OutboxMap>,
+    filter: Omit<Filter, "authors">,
+    options?: Parameters<RelayGroup["subscription"]>[1],
+  ): Observable<SubscriptionResponse> {
+    const filterMap = isObservable(outboxes)
+      ? outboxes.pipe(
+          // Project outbox map to filter map
+          map((outboxes) => createFilterMap(outboxes, filter)),
+        )
+      : createFilterMap(outboxes, filter);
+
+    return this.subscriptionMap(filterMap, options);
   }
 
   /** Count events on multiple relays */

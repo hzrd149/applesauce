@@ -1,4 +1,11 @@
-import { defined, EventStore, includeFallbackRelays, includeMailboxes } from "applesauce-core";
+import {
+  defined,
+  EventStore,
+  filterOptimalRelays,
+  includeFallbackRelays,
+  includeMailboxes,
+  mapEventsToStore,
+} from "applesauce-core";
 import {
   Filter,
   getDisplayName,
@@ -6,10 +13,10 @@ import {
   getSeenRelays,
   persistEventsToCache,
   relaySet,
-  selectOptimalRelays,
+  unixNow,
 } from "applesauce-core/helpers";
-import { createFilterMap, createOutboxMap } from "applesauce-core/helpers/relay-selection";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createOutboxMap } from "applesauce-core/helpers/relay-selection";
+import { createAddressLoader, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import {
   ignoreUnhealthyRelaysOnPointers,
@@ -25,7 +32,8 @@ import { ProfilePointer } from "nostr-tools/nip19";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
 import { SubmitHandler } from "react-hook-form";
-import { BehaviorSubject, combineLatest, debounceTime, map, of, shareReplay, switchMap } from "rxjs";
+import { useObservable } from "react-use";
+import { BehaviorSubject, debounceTime, map, of, shareReplay, switchMap } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 
@@ -98,32 +106,54 @@ const contactsWithOutboxes$ = contacts$.pipe(
 );
 
 // Create an observable of contacts -> contacts with relay selection / fallbacks
-const selection$ = combineLatest([
-  contactsWithOutboxes$.pipe(
-    // First include fallback relays
-    includeFallbackRelays(fallbacks$),
-  ),
-  maxConnections$,
-  maxRelaysPerUser$,
-]).pipe(
+const selection$ = contactsWithOutboxes$.pipe(
+  // First include fallback relays
+  includeFallbackRelays(fallbacks$),
   // Debounce recalculations for performance
   debounceTime(200),
   // Select the best relays for the contacts
-  map(([users, maxConnections, maxRelaysPerUser]) => selectOptimalRelays(users, { maxConnections, maxRelaysPerUser })),
-);
-
-// Create an observable of filter map { [<relay>]: [<filter>] }
-const filterMap$ = selection$.pipe(
-  // Convert users to outbox map
-  map(createOutboxMap),
-  // Convert to filter map
-  map((outboxes) => createFilterMap(outboxes, { kinds: [1] })),
+  filterOptimalRelays(maxConnections$, maxRelaysPerUser$),
   // Keep the last value so reconnection works
   shareReplay(1),
 );
 
-// Create a stream of events from the filter map
-const events$ = pool.subscriptionMap(filterMap$, { eventStore }).pipe(onlyEvents());
+// Create an observable that converts selection to an outbox map
+const outboxMap$ = selection$.pipe(map(createOutboxMap));
+
+// Hard code start time for live so it does not change and cause filters to change (resubscribe to relays)
+const aMinuteAgo = unixNow() - 60;
+
+// Create a live subscription for users feeds
+const live$ = pool
+  .outboxSubscription(
+    outboxMap$,
+    // Subscribe to notes from the last minute
+    { kinds: [1], since: aMinuteAgo },
+  )
+  .pipe(
+    // Ignore EOSE messages
+    onlyEvents(),
+    // Add events to the event store
+    mapEventsToStore(eventStore),
+  );
+
+// The current state of the timeline, {since, until}
+const window$ = new BehaviorSubject<TimelineWindow>({});
+
+// Create a timeline loader and add events to the event store
+const timeline$ = window$.pipe(
+  // When the timeline window changes, load missing events
+  loadBlocksFromOutboxMap(
+    pool,
+    outboxMap$,
+    // Base filter to use for blocks of events
+    { kinds: [1] },
+    // Load 100 events at a time
+    { limit: 100 },
+  ),
+  // Add events to the event store
+  mapEventsToStore(eventStore),
+);
 
 // Global state for previewing user
 const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
@@ -641,8 +671,9 @@ export default function SocialFeedExample() {
   const maxConnections = useObservableEagerState(maxConnections$);
   const maxRelaysPerUser = useObservableEagerState(maxRelaysPerUser$);
 
-  // Start subscription on mount
-  useObservableState(events$);
+  // Start live and timeline subscriptions on mount (and stop them on unmount)
+  useObservable(live$);
+  useObservable(timeline$);
 
   // Select the best relays for the contacts
   const outboxes = useObservableState(contactsWithOutboxes$);

@@ -18,6 +18,7 @@ describe("exports", () => {
         "combineLatest",
         "defined",
         "filterDuplicateEvents",
+        "filterOptimalRelays",
         "firstValueFrom",
         "getObservableValue",
         "ignoreBlacklistedRelays",

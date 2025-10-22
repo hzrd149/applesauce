@@ -14,7 +14,7 @@ import {
 import { IEventSubscriptions } from "../event-store/interface.js";
 import { getInboxes, getOutboxes } from "../helpers/mailboxes.js";
 import { addRelayHintsToPointer } from "../helpers/pointers.js";
-import { removeBlacklistedRelays, setFallbackRelays } from "../helpers/relay-selection.js";
+import { removeBlacklistedRelays, selectOptimalRelays, setFallbackRelays } from "../helpers/relay-selection.js";
 
 /** RxJS operator that fetches outboxes for profile pointers from the event store */
 export function includeMailboxes(
@@ -70,5 +70,23 @@ export function includeFallbackRelays(
     combineLatestWith(isObservable(fallbacks) ? fallbacks : of(fallbacks)),
     // Set the fallback relays for the users
     map(([users, fallbacks]) => setFallbackRelays(users, fallbacks)),
+  );
+}
+
+/** A operator calls {@link selectOptimalRelays} and filters the relays for the user */
+export function filterOptimalRelays(
+  maxConnections: number | Observable<number>,
+  maxRelaysPerUser: number | Observable<number>,
+): MonoTypeOperatorFunction<ProfilePointer[]> {
+  return pipe(
+    // Combine with the observable so it re-emits when the max connections and max relays per user change
+    combineLatestWith(
+      isObservable(maxConnections) ? maxConnections : of(maxConnections),
+      isObservable(maxRelaysPerUser) ? maxRelaysPerUser : of(maxRelaysPerUser),
+    ),
+    // Filter the relays for the user
+    map(([users, maxConnections, maxRelaysPerUser]) =>
+      selectOptimalRelays(users, { maxConnections, maxRelaysPerUser }),
+    ),
   );
 }
