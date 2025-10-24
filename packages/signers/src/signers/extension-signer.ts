@@ -1,5 +1,6 @@
 import { EventTemplate, VerifiedEvent, verifyEvent } from "nostr-tools";
 import { ISigner } from "../interop.js";
+import { isHexKey } from "applesauce-core/helpers";
 
 /** AN error that is throw when the window.nostr extension is missing */
 export class ExtensionMissingError extends Error {}
@@ -19,7 +20,10 @@ export class ExtensionSigner implements ISigner {
     if (!window.nostr) throw new ExtensionMissingError("Signer extension missing");
     if (this.pubkey) return this.pubkey;
 
-    this.pubkey = await window.nostr.getPublicKey();
+    const key = await window.nostr.getPublicKey();
+
+    if (!isHexKey(key)) throw new Error("Extension returned an invalid public key");
+    this.pubkey = key;
     return this.pubkey;
   }
 

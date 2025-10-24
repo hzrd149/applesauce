@@ -1,5 +1,5 @@
 import { logger } from "applesauce-core";
-import { getHiddenContent, unixNow } from "applesauce-core/helpers";
+import { getHiddenContent, isHexKey, unixNow } from "applesauce-core/helpers";
 import { Deferred, createDefer } from "applesauce-core/promise";
 import {
   ISigner,
@@ -355,7 +355,10 @@ export class NostrConnectSigner implements ISigner {
     if (this.pubkey) return this.pubkey;
 
     await this.requireConnection();
-    return this.makeRequest(NostrConnectMethod.GetPublicKey, []);
+    const key = await this.makeRequest(NostrConnectMethod.GetPublicKey, []);
+
+    if (!isHexKey(key)) throw new Error("Remote signer returned an invalid public key");
+    return key;
   }
 
   /** Request to sign an event */
