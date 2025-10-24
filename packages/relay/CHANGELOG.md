@@ -1,5 +1,18 @@
 # applesauce-relay
 
+## 4.2.0
+
+### Minor Changes
+
+- 363804d: Add `RelayPool.subscriptionMap` method
+- 4f978f6: Add `RelayPool.outboxSubscription` for subscribing to an `OutboxMap` with a filter
+- 136964d: Add support for dynamic relay groups
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.2.0
+
 ## 4.1.0
 
 ### Minor Changes

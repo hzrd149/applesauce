@@ -1,5 +1,12 @@
 # applesauce-core
 
+## 4.2.0
+
+### Minor Changes
+
+- 363804d: Add `createFilterMap` helper for creating filter maps from outbox maps
+- 4f978f6: Add `filterOptimalRelays` RxJS operator
+
 ## 4.1.0
 
 ### Minor Changes

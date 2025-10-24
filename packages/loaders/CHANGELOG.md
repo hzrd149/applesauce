@@ -1,5 +1,16 @@
 # applesauce-loaders
 
+## 4.2.0
+
+### Minor Changes
+
+- 4f978f6: Rebuild timeline loaders to support forwards and backwards loading
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.2.0
+
 ## 4.0.0
 
 ### Minor Changes
