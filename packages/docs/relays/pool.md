@@ -50,6 +50,8 @@ pool
   });
 ```
 
+**Note:** The `req` method does not deduplicate events by default. If you need deduplication, use the `request` or `subscription` methods instead, which automatically deduplicate events using an event store.
+
 ### Event Method
 
 The `event` method sends an `EVENT` message to multiple relays and returns an observable of the responses from each relay.
@@ -77,10 +79,10 @@ pool.event(relays, event).subscribe({
 
 ### Publish Method
 
-The `publish` method is a wrapper around the `event` method that returns a `Promise` and automatically handles reconnecting and retrying:
+The `publish` method is a wrapper around the `event` method that returns a `Promise<PublishResponse[]>` and automatically handles reconnecting and retrying:
 
 ```typescript
-// Publish with retries (defaults to 3 retries)
+// Publish with retries (defaults to 10 retries)
 const responses = await pool.publish(relays, event);
 for (const response of responses) {
   console.log(`Published to ${response.from}:`, response.ok, response.message);
@@ -146,6 +148,89 @@ subscription.unsubscribe();
 
 All of these methods accept the same parameters as their counterparts in the `Relay` class, making it easy to transition between working with individual relays and relay pools.
 
+### Subscription Map Method
+
+The `subscriptionMap` method allows you to subscribe to different filters on different relays:
+
+```typescript
+import { createFilterMap } from "applesauce-core/helpers";
+
+// Create a map of relay URLs to filters
+const filterMap = {
+  "wss://relay1.example.com": { kinds: [1], authors: ["pubkey1"] },
+  "wss://relay2.example.com": { kinds: [1], authors: ["pubkey2"] },
+};
+
+pool.subscriptionMap(filterMap).subscribe({
+  next: (response) => {
+    if (response === "EOSE") {
+      console.log("End of stored events");
+    } else {
+      console.log("Event:", response);
+    }
+  },
+});
+```
+
+### Outbox Subscription Method
+
+The `outboxSubscription` method is designed for the outbox model (NIP-65), allowing you to subscribe to events from users using their designated outbox relays:
+
+```typescript
+import { createOutboxMap } from "applesauce-core/helpers/relay-selection";
+
+// Create an outbox map from user profiles with relay preferences
+const outboxMap = createOutboxMap(usersWithRelays);
+
+pool
+  .outboxSubscription(
+    outboxMap,
+    { kinds: [1], since: unixNow() - 3600 }, // Filter without authors (added automatically)
+  )
+  .subscribe({
+    next: (response) => {
+      if (response === "EOSE") {
+        console.log("End of stored events");
+      } else {
+        console.log("Event from outbox:", response);
+      }
+    },
+  });
+```
+
+### Count Method
+
+The `count` method sends a COUNT request to multiple relays and returns counts from each:
+
+```typescript
+pool.count(relays, { kinds: [1], authors: ["pubkey"] }).subscribe({
+  next: (counts) => {
+    // counts is a Record<string, CountResponse>
+    Object.entries(counts).forEach(([relay, response]) => {
+      console.log(`${relay}: ${response.count} events`);
+    });
+  },
+});
+```
+
+### Sync Method
+
+The `sync` method performs bidirectional Negentropy synchronization (NIP-77) with relays:
+
+```typescript
+pool
+  .sync(
+    relays,
+    eventStore, // or array of events
+    { kinds: [1], authors: ["pubkey"] },
+    "down", // optional: "up", "down", or "both" (default)
+  )
+  .subscribe({
+    next: (event) => console.log("Synced event:", event),
+    complete: () => console.log("Sync complete"),
+  });
+```
+
 ## Relay Groups
 
 The `RelayGroup` class is used internally by RelayPool to manage collections of relays. You can access relay groups directly through the pool:
@@ -170,7 +255,7 @@ The RelayGroup intelligently merges responses from multiple relays, emitting EOS
 
 ## Observable Properties
 
-The RelayPool provides observables for tracking relays and groups:
+The RelayPool provides observables for tracking relays:
 
 ```typescript
 // Subscribe to changes in the relays map
@@ -178,8 +263,13 @@ pool.relays$.subscribe((relaysMap) => {
   console.log("Relays updated:", Array.from(relaysMap.keys()));
 });
 
-// Subscribe to changes in the relay groups map
-pool.groups$.subscribe((groupsMap) => {
-  console.log("Groups updated:", Array.from(groupsMap.keys()));
+// Listen for relay additions
+pool.add$.subscribe((relay) => {
+  console.log("Relay added:", relay.url);
+});
+
+// Listen for relay removals
+pool.remove$.subscribe((relay) => {
+  console.log("Relay removed:", relay.url);
 });
 ```

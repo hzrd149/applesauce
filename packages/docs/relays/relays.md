@@ -48,7 +48,7 @@ relay
 Send events to the relay using the `event` or `publish` methods.
 
 :::info
-The `publish` method is a wrapper around the `event` method that returns a `Promise` and automatically handles reconnecting and retrying.
+The `publish` method is a wrapper around the `event` method that returns a `Promise<PublishResponse>` and automatically handles reconnecting and retrying (default 10 retries with 1 second delay).
 :::
 
 ```typescript
@@ -80,24 +80,38 @@ console.log(`Published: ${response.ok}`, response.message);
 
 ## Making One-time Requests
 
-Use the `request` method for one-time queries that complete after receiving `EOSE`.
+Use the `request` method for one-time queries that complete after receiving `EOSE`. The `request` method returns an `Observable<NostrEvent>` that emits individual events and completes when EOSE is received.
 
 ```typescript
-import { lastValueFrom } from "rxjs";
+import { toArray, lastValueFrom } from "rxjs";
 import { getProfileContent } from "applesauce-core/helpers";
 
 // Get latest user profile
 async function getProfile(pubkey) {
   const events = await lastValueFrom(
-    relay.request({
-      kinds: [0],
-      authors: [pubkey],
-      limit: 1,
-    }),
+    relay
+      .request({
+        kinds: [0],
+        authors: [pubkey],
+        limit: 1,
+      })
+      .pipe(toArray()),
   );
 
   return getProfileContent(events[0]);
 }
+
+// Or subscribe to events as they arrive
+relay
+  .request({
+    kinds: [1],
+    authors: [pubkey],
+    limit: 10,
+  })
+  .subscribe({
+    next: (event) => console.log("Received event:", event),
+    complete: () => console.log("Request complete"),
+  });
 ```
 
 ## Authentication
@@ -261,6 +275,77 @@ setTimeout(() => {
 }, 5000);
 ```
 
+## Counting Events
+
+The `count` method sends a COUNT request to the relay (NIP-45) and returns an observable that emits a single count response:
+
+```typescript
+relay.count({ kinds: [1], authors: [pubkey] }).subscribe({
+  next: (response) => {
+    console.log(`Found ${response.count} events`);
+  },
+  error: (err) => console.error("Count error:", err),
+});
+
+// Or use with async/await
+import { lastValueFrom } from "rxjs";
+
+const response = await lastValueFrom(relay.count({ kinds: [1] }));
+console.log(`Total events: ${response.count}`);
+```
+
+## Negentropy Synchronization
+
+The relay supports efficient event synchronization using Negentropy (NIP-77). There are two methods available:
+
+### negentropy() Method
+
+The `negentropy` method performs low-level Negentropy sync with a custom reconcile function:
+
+```typescript
+import { EventStore } from "applesauce-core";
+
+const eventStore = new EventStore();
+
+await relay.negentropy(
+  eventStore, // or array of events
+  { kinds: [1], authors: [pubkey] },
+  async (have, need) => {
+    // 'have' = event IDs we have that relay needs
+    // 'need' = event IDs relay has that we need
+    console.log(`We have ${have.length} events relay needs`);
+    console.log(`Relay has ${need.length} events we need`);
+
+    // Implement custom logic to send/receive events
+  },
+  { signal: abortController.signal },
+);
+```
+
+### sync() Method
+
+The `sync` method is a higher-level wrapper that automatically handles sending and receiving events:
+
+```typescript
+import { SyncDirection } from "applesauce-relay";
+
+// Bidirectional sync (default)
+relay.sync(eventStore, { kinds: [1], authors: [pubkey] }).subscribe({
+  next: (event) => console.log("Received event:", event),
+  complete: () => console.log("Sync complete"),
+});
+
+// Only receive events from relay (download)
+relay.sync(eventStore, { kinds: [1] }, SyncDirection.RECEIVE).subscribe({
+  next: (event) => console.log("Downloaded event:", event),
+});
+
+// Only send events to relay (upload)
+relay.sync(eventStore, { kinds: [1] }, SyncDirection.SEND).subscribe({
+  complete: () => console.log("Upload complete"),
+});
+```
+
 ## Relay Information
 
 The `Relay` class keeps track of the relay information and emits it as an observable from the `information$` property.
@@ -277,5 +362,71 @@ relay.information$.subscribe((info) => {
       console.log("Max message size:", info.limitation.max_message_length);
     }
   }
+});
+
+// Check for specific NIP support
+relay.supported$.subscribe((nips) => {
+  if (nips?.includes(77)) {
+    console.log("Relay supports Negentropy (NIP-77)");
+  }
+});
+
+// Get relay limitations
+relay.limitations$.subscribe((limits) => {
+  if (limits) {
+    console.log("Max subscriptions:", limits.max_subscriptions);
+    console.log("Max filters:", limits.max_filters);
+  }
+});
+```
+
+## Observable Properties
+
+The `Relay` class exposes several observable properties for tracking relay state:
+
+```typescript
+// Connection state
+relay.connected$.subscribe((connected) => {
+  console.log("Connected:", connected);
+});
+
+// Connection attempts (increments on each reconnection attempt)
+relay.attempts$.subscribe((attempts) => {
+  console.log("Connection attempts:", attempts);
+});
+
+// Last connection error
+relay.error$.subscribe((error) => {
+  if (error) console.error("Connection error:", error);
+});
+
+// Authentication challenge from relay
+relay.challenge$.subscribe((challenge) => {
+  if (challenge) console.log("Auth challenge:", challenge);
+});
+
+// Authentication state
+relay.authenticated$.subscribe((authenticated) => {
+  console.log("Authenticated:", authenticated);
+});
+
+// Whether auth is required for reading events
+relay.authRequiredForRead$.subscribe((required) => {
+  console.log("Auth required for reading:", required);
+});
+
+// Whether auth is required for publishing events
+relay.authRequiredForPublish$.subscribe((required) => {
+  console.log("Auth required for publishing:", required);
+});
+
+// All notices from the relay
+relay.notices$.subscribe((notices) => {
+  console.log("Relay notices:", notices);
+});
+
+// Individual notice messages
+relay.notice$.subscribe((notice) => {
+  console.log("New notice:", notice);
 });
 ```
