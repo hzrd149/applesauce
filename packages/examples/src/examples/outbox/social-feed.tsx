@@ -138,7 +138,8 @@ const live$ = pool
   );
 
 // The current state of the timeline, {since, until}
-const window$ = new BehaviorSubject<TimelineWindow>({});
+// Initialize with since: -Infinity to force loading the first block of events
+const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
 
 // Create a timeline loader and add events to the event store
 const timeline$ = window$.pipe(
