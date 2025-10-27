@@ -7,7 +7,7 @@ import { filter, repeat } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
-import { Relay } from "../relay.js";
+import { Relay, SyncDirection } from "../relay.js";
 import { FakeUser } from "./fake-user.js";
 
 const defaultMockInfo: RelayInformation = {
@@ -1099,31 +1099,163 @@ describe("close", () => {
   });
 });
 
-// describe("keepAlive", () => {
-//   it("should close the socket connection after keepAlive timeout", async () => {
-//     vi.useFakeTimers();
+describe("negentropy", () => {
+  beforeEach(() => {
+    // Mock relay to support NIP-77
+    vi.spyOn(relay, "getSupported").mockResolvedValue([1, 77]);
+  });
 
-//     // Set a short keepAlive timeout for testing
-//     relay.keepAlive = 100; // 100ms for quick testing
+  it("should throw error if relay does not support NIP-77", async () => {
+    vi.spyOn(relay, "getSupported").mockResolvedValue([1, 2, 3]);
 
-//     // Subscribe to the relay to ensure it is active
-//     const sub = subscribeSpyTo(relay.req([{ kinds: [1] }]));
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+    const reconcile = vi.fn().mockResolvedValue(undefined);
 
-//     // Wait for connection
-//     await server.connected;
+    await expect(relay.negentropy(store, filter, reconcile)).rejects.toThrow("Relay does not support NIP-77");
+  });
 
-//     // Close the subscription
-//     sub.unsubscribe();
+  it("should send NEG-OPEN when starting sync", async () => {
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+    const reconcile = vi.fn().mockResolvedValue(undefined);
 
-//     // Fast-forward time by 10ms
-//     await vi.advanceTimersByTimeAsync(10);
+    // Start negentropy sync
+    const negPromise = relay.negentropy(store, filter, reconcile).catch(() => {});
 
-//     // should still be connected
-//     expect(relay.connected).toBe(true);
+    // Wait for connection and NEG-OPEN message
+    await server.connected;
+    const negOpenMsg = (await server.nextMessage) as any[];
+    expect(negOpenMsg[0]).toBe("NEG-OPEN");
+    expect(negOpenMsg[2]).toEqual(filter);
+    expect(typeof negOpenMsg[1]).toBe("string"); // negId
 
-//     // Wait for the keepAlive timeout to elapse
-//     await vi.advanceTimersByTimeAsync(150);
+    // Send error to end the test
+    server.send(["NEG-ERR", negOpenMsg[1], "test done"]);
+    await negPromise;
+  });
 
-//     expect(relay.connected).toBe(false);
-//   });
-// });
+  it("should handle NEG-ERR messages by throwing an error", async () => {
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+    const reconcile = vi.fn().mockResolvedValue(undefined);
+
+    const negPromise = relay.negentropy(store, filter, reconcile);
+
+    await server.connected;
+    const negOpenMsg = (await server.nextMessage) as any[];
+    const negId = negOpenMsg[1] as string;
+
+    // Send error response
+    server.send(["NEG-ERR", negId, "Something went wrong"]);
+
+    // Verify the promise rejects with the error
+    await expect(negPromise).rejects.toThrow("Something went wrong");
+
+    // NEG-CLOSE should still be sent
+    await expect(server).toReceiveMessage(["NEG-CLOSE", negId]);
+  });
+
+  it("should support abort signal to cancel sync", async () => {
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+    const reconcile = vi.fn().mockResolvedValue(undefined);
+    const controller = new AbortController();
+
+    // Abort immediately before starting sync
+    controller.abort();
+
+    const negPromise = relay.negentropy(store, filter, reconcile, { signal: controller.signal });
+
+    // Should return false when aborted
+    const result = await negPromise;
+    expect(result).toBe(false);
+
+    // Verify reconcile was never called since we aborted before sync started
+    expect(reconcile).not.toHaveBeenCalled();
+  });
+});
+
+describe("sync", () => {
+  beforeEach(() => {
+    // Mock relay to support NIP-77
+    vi.spyOn(relay, "getSupported").mockResolvedValue([1, 77]);
+  });
+
+  it("should return an observable that completes when sync is complete", async () => {
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+
+    const spy = subscribeSpyTo(relay.sync(store, filter), { expectErrors: true });
+
+    await server.connected;
+    const negOpenMsg = (await server.nextMessage) as any[];
+    const negId = negOpenMsg[1] as string;
+
+    // Send error to trigger completion
+    server.send(["NEG-ERR", negId, "test complete"]);
+
+    // Wait for error (which triggers observable to error out)
+    await spy.onError();
+
+    // Verify observable completed (with error in this case)
+    expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()?.message).toBe("test complete");
+  });
+
+  it("should handle errors during sync", async () => {
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+
+    const spy = subscribeSpyTo(relay.sync(store, filter), { expectErrors: true });
+
+    await server.connected;
+    const negOpenMsg = (await server.nextMessage) as any[];
+    const negId = negOpenMsg[1] as string;
+
+    // Send error
+    server.send(["NEG-ERR", negId, "Sync failed"]);
+
+    // Wait for error
+    await spy.onError();
+
+    // Verify observable errored
+    expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()?.message).toBe("Sync failed");
+  });
+
+  it("should send NEG-CLOSE when observable is unsubscribed", async () => {
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+
+    const spy = subscribeSpyTo(relay.sync(store, filter), { expectErrors: true });
+
+    await server.connected;
+    const negOpenMsg = (await server.nextMessage) as any[];
+    const negId = negOpenMsg[1] as string;
+
+    // Unsubscribe before completion - this should trigger NEG-CLOSE
+    spy.unsubscribe();
+
+    // Wait and verify NEG-CLOSE was sent
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(server.messages.some((m) => m[0] === "NEG-CLOSE" && m[1] === negId)).toBe(true);
+  });
+
+  it("should complete observable when relay disconnect during sync", async () => {
+    const store: NostrEvent[] = [];
+    const filter = { kinds: [1] };
+
+    const spy = subscribeSpyTo(relay.sync(store, filter), { expectErrors: true });
+
+    await server.connected;
+    await server.nextMessage; // NEG-OPEN
+
+    // Close connection during sync
+    server.close({ wasClean: false, code: 1006, reason: "Connection lost" });
+
+    // Should error the observable
+    await spy.onError();
+    expect(spy.receivedError()).toBe(true);
+  });
+});

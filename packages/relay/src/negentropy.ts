@@ -1,5 +1,5 @@
 import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
-import { map, share, firstValueFrom } from "rxjs";
+import { map, share, firstValueFrom, race, Observable } from "rxjs";
 import { Filter } from "nostr-tools";
 import { nanoid } from "nanoid";
 
@@ -85,18 +85,60 @@ export async function negentropySync(
       share(),
     );
 
+  // Check if already aborted before starting sync
+  if (opts?.signal?.aborted) return false;
+
+  // Create an observable that emits when abort signal is triggered
+  const abortSignal$ = new Observable<"abort">((observer) => {
+    if (opts?.signal?.aborted) {
+      observer.next("abort");
+      observer.complete();
+      return;
+    }
+
+    const onAbort = () => {
+      observer.next("abort");
+      observer.complete();
+    };
+    opts?.signal?.addEventListener("abort", onAbort);
+    return () => opts?.signal?.removeEventListener("abort", onAbort);
+  });
+
   // keep an additional subscription open while waiting for async operations
-  const sub = incoming.subscribe((m) => log(m));
+  const sub = incoming.subscribe({
+    next: (m) => log(m),
+    error: () => {}, // Ignore errors here, they'll be caught by firstValueFrom
+  });
+
   try {
     while (msg && opts?.signal?.aborted !== true) {
-      const received = await firstValueFrom(incoming);
-      if (opts?.signal?.aborted) return false;
+      // Race between incoming message and abort signal
+      try {
+        const received = await firstValueFrom(
+          race(
+            incoming.pipe(map((m) => ({ type: "message" as const, data: m }))),
+            abortSignal$.pipe(map(() => ({ type: "abort" as const }))),
+          ),
+        );
 
-      const [newMsg, have, need] = await ne.reconcile<string>(received);
+        if (received.type === "abort" || opts?.signal?.aborted) {
+          sub.unsubscribe();
+          return false;
+        }
 
-      await reconcile(have, need);
+        const [newMsg, have, need] = await ne.reconcile<string>(received.data);
 
-      msg = newMsg;
+        await reconcile(have, need);
+
+        msg = newMsg;
+      } catch (err) {
+        // Check if aborted during reconcile or message processing
+        if (opts?.signal?.aborted) {
+          sub.unsubscribe();
+          return false;
+        }
+        throw err;
+      }
     }
   } catch (err) {
     sub.unsubscribe();

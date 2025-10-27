@@ -673,6 +673,15 @@ export class Relay implements IRelay {
 
     return new Observable<NostrEvent>((observer) => {
       const controller = new AbortController();
+      let cleanupCalled = false;
+
+      // Store reference to cleanup the negentropy properly
+      const cleanup = () => {
+        if (!cleanupCalled) {
+          cleanupCalled = true;
+          controller.abort();
+        }
+      };
 
       this.negentropy(
         store,
@@ -701,12 +710,16 @@ export class Relay implements IRelay {
         { signal: controller.signal },
       )
         // Complete the observable when the sync is complete
-        .then(() => observer.complete())
+        .then(() => {
+          if (!cleanupCalled) observer.complete();
+        })
         // Error the observable when the sync fails
-        .catch((err) => observer.error(err));
+        .catch((err) => {
+          if (!cleanupCalled) observer.error(err);
+        });
 
       // Cancel the sync when the observable is unsubscribed
-      return () => controller.abort();
+      return cleanup;
     }).pipe(
       // Only create one upstream subscription
       share(),
