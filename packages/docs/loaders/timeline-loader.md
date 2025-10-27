@@ -2,6 +2,8 @@
 
 The Timeline Loader is designed for fetching paginated Nostr events in chronological order. It maintains state between calls, allowing you to efficiently load timeline events in blocks until you reach a specific timestamp or exhaust available events.
 
+The loader automatically deduplicates events by default, so you won't receive the same event multiple times even if it appears on multiple relays or in multiple blocks.
+
 :::warning
 The observable returned by the Timeline Loader MUST be subscribed to in order for the request to be made. No request will be sent until you call `.subscribe()` on the returned observable.
 :::
@@ -11,203 +13,208 @@ The observable returned by the Timeline Loader MUST be subscribed to in order fo
 ```ts
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
+import { EventStore } from "applesauce-core";
 
-// Create a relay pool
 const pool = new RelayPool();
+const eventStore = new EventStore();
 
 // Create a timeline loader
 const timelineLoader = createTimelineLoader(
   pool,
-  ["wss://relay.example.com"],
+  ["wss://relay.damus.io", "wss://nos.lol"],
   { kinds: [1] }, // Load text notes
+  { eventStore, limit: 50 },
 );
 
 // Initial load - gets the most recent events
-timelineLoader().subscribe((event) => {
-  console.log("Loaded event:", event);
+timelineLoader().subscribe({
+  next: (event) => console.log("Loaded event:", event),
+  complete: () => console.log("Block loaded"),
 });
 
 // Later, load older events by calling the loader again
 // Each call continues from where the previous one left off
-timelineLoader().subscribe((event) => {
-  console.log("Loaded older event:", event);
-});
-
-// Load events until a specific timestamp
-const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-timelineLoader(oneWeekAgo).subscribe((event) => {
-  console.log("Event from last week:", event);
-});
+timelineLoader().subscribe((event) => console.log("Loaded older event:", event));
 ```
 
 ## Configuration Options
 
-The `createTimelineLoader` function accepts these options:
+### Limit
 
-- `limit`: Maximum number of events to request per filter
-- `cache`: A method used to load events from a local cache
-- `eventStore`: An event store to pass all events to
+Control how many events to request per block:
 
-:::warning
-If an event store is not provided, the loader will not be able to deduplicate events.
+```ts
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { limit: 100 });
+```
+
+### Event Store
+
+Pass an `EventStore` to integrate with your app's event management:
+
+```ts
+const eventStore = new EventStore();
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore });
+```
+
+:::tip
+If you don't provide an `EventStore`, the loader uses an internal `EventMemory` for deduplication. Providing your own `EventStore` allows the loader to integrate with your app's state management and access events from other loaders.
 :::
 
-## Working with Relay Pools
+### Cache
 
-The Timeline Loader requires a request method for loading Nostr events from relays. You can provide this in multiple ways:
-
-### Using a RelayPool instance
-
-The simplest approach is to pass a RelayPool instance directly:
+Load from local cache alongside relays:
 
 ```ts
-import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-import { EventStore } from "applesauce-core";
-
-const eventStore = new EventStore();
-const pool = new RelayPool();
-
-const timelineLoader = createTimelineLoader(
-  pool,
-  ["wss://relay.example.com"],
-  { kinds: [1], authors: ["user_pubkey"] },
-  { eventStore },
-);
-```
-
-### Using a custom request method
-
-You can also provide a custom request method, such as one from nostr-tools:
-
-```ts
-import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { SimplePool } from "nostr-tools";
-import { Observable } from "rxjs";
-
-const pool = SimplePool();
-
-// Create a custom request function using nostr-tools
-function customRequest(relays, filters) {
-  return new Observable((observer) => {
-    const sub = pool.subscribeMany(relays, filters, {
-      onevent: (event) => observer.next(event),
-      eose: () => observer.complete(),
-    });
-
-    return () => sub.close();
-  });
-}
-
-// Create a function that matches the UpstreamPool interface
-const customPool = {
-  request: customRequest,
-};
-
-// Create timeline loader with custom pool
-const timelineLoader = createTimelineLoader(customPool, ["wss://relay.example.com"], filters);
-```
-
-## Loading from cache
-
-For improved performance, you can configure the loader to use a local cache:
-
-```ts
-import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { openDB, getEventsForFilters } from "nostr-idb";
 
-// Setup a local event cache
 const cache = await openDB();
-
-function cacheRequest(filters) {
-  return getEventsForFilters(cache, filters);
-}
-
-const timelineLoader = createTimelineLoader(
+const loader = createTimelineLoader(
   pool,
-  ["wss://relay.example.com"],
+  relays,
   { kinds: [1] },
-  { cache: cacheRequest, eventStore },
+  {
+    eventStore,
+    cache: (filters) => getEventsForFilters(cache, filters),
+  },
 );
 ```
 
-## Real-World Example
+## Outbox Model
 
-Here's how you might use the Timeline Loader in a React application for an infinite scrolling feed:
+Load events from each user's preferred relays:
 
-```tsx
-import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-import { EventStore } from "applesauce-core";
-import { useEffect, useState } from "react";
+```ts
+import { createOutboxTimelineLoader } from "applesauce-loaders/loaders";
+import { createOutboxMap } from "applesauce-core/helpers/relay-selection";
 
-// Setup at app level
-const eventStore = new EventStore();
-const pool = new RelayPool();
+const contacts = [...]; // Array of ProfilePointer with relays
+const outboxMap = createOutboxMap(contacts);
 
-function Feed() {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [timelineLoader, setTimelineLoader] = useState(null);
+const loader = createOutboxTimelineLoader(pool, outboxMap, { kinds: [1] }, { eventStore, limit: 100 });
 
-  // Initialize the timeline loader
-  useEffect(() => {
-    const loader = createTimelineLoader(
-      pool,
-      ["wss://relay.example.com"],
-      { kinds: [1] }, // Load text notes
-      { eventStore },
-    );
-
-    setTimelineLoader(() => loader);
-
-    // Load initial events
-    loadMoreEvents(loader);
-  }, []);
-
-  // Function to load more events
-  const loadMoreEvents = (loader) => {
-    if (!loader || loading) return;
-
-    setLoading(true);
-
-    const subscription = loader().subscribe({
-      next: (event) => {
-        setEvents((prev) => [...prev, event]);
-      },
-      complete: () => {
-        setLoading(false);
-      },
-    });
-
-    return () => subscription.unsubscribe();
-  };
-
-  return (
-    <div>
-      {events.map((event) => (
-        <div key={event.id} className="event">
-          {event.content}
-        </div>
-      ))}
-
-      <button onClick={() => loadMoreEvents(timelineLoader)} disabled={loading}>
-        {loading ? "Loading..." : "Load More"}
-      </button>
-    </div>
-  );
-}
+loader().subscribe((event) => console.log(event));
 ```
 
-## Loading Sequence
+### Dynamic Outbox Maps
 
-The Timeline Loader follows this sequence when loading events:
+Pass an Observable for reactive relay selection:
 
-1. Start with a cursor at Infinity (most recent events)
-2. Attempt to load from cache (if configured)
-3. Fetch from specified relays in parallel
-4. Update the cursor to the oldest event's timestamp
-5. Each subsequent call starts from the updated cursor
-6. Stop when no more events are returned or the specified timestamp is reached
+```ts
+import { BehaviorSubject, map } from "rxjs";
 
-This stateful approach allows efficient pagination through chronological timelines with minimal code complexity.
+const contacts$ = new BehaviorSubject<ProfilePointer[]>([]);
+const outboxMap$ = contacts$.pipe(map(createOutboxMap));
+
+const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore, limit: 100 });
+```
+
+## Timeline Window
+
+The timeline window represents the range of timestamps currently visible on screen. It's an observable that emits `{ since?, until? }` objects with the minimum (`since`) and maximum (`until`) `created_at` timestamps of events you want to display.
+
+```ts
+import { BehaviorSubject } from "rxjs";
+import { TimelineWindow } from "applesauce-loaders/loaders";
+
+// Window starts undefined (no events on screen yet)
+const window$ = new BehaviorSubject<TimelineWindow>({});
+
+// As user scrolls, update the window with visible timestamp range
+window$.next({
+  since: oldestVisibleEvent.created_at,
+  until: newestVisibleEvent.created_at,
+});
+```
+
+The timeline loader operators watch this window and automatically load missing events when:
+
+- The window expands (user scrolls to older/newer content)
+- Events are missing in the current range
+- The window is first initialized
+
+This reactive approach means you just update the window to reflect what's on screen, and the loaders handle fetching the necessary blocks.
+
+## RxJS Operators
+
+For advanced use cases, use the stateful RxJS operators directly. These operators track what events have been loaded and automatically trigger new requests when the timeline window changes:
+
+### Load from Relays
+
+```ts
+import { BehaviorSubject } from "rxjs";
+import { loadBlocksFromRelays, TimelineWindow } from "applesauce-loaders/loaders";
+
+const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
+const events$ = window$.pipe(loadBlocksFromRelays(pool, relays, { kinds: [1] }, { limit: 50 }));
+
+events$.subscribe((event) => console.log(event));
+window$.next({ since: -Infinity }); // Triggers loading the next block
+```
+
+### Load from Cache
+
+```ts
+import { loadBlocksFromCache } from "applesauce-loaders/loaders";
+
+const events$ = window$.pipe(
+  loadBlocksFromCache((filters) => getEventsForFilters(cache, filters), { kinds: [1] }, { limit: 50 }),
+);
+```
+
+### Load from Outbox Map
+
+```ts
+import { loadBlocksFromOutboxMap } from "applesauce-loaders/loaders";
+
+const events$ = window$.pipe(loadBlocksFromOutboxMap(pool, outboxMap$, { kinds: [1] }, { limit: 100 }));
+```
+
+### Combine Cache and Relays
+
+```ts
+import { merge } from "rxjs";
+import { mapEventsToStore } from "applesauce-core";
+
+const cache$ = window$.pipe(loadBlocksFromCache(cacheRequest, { kinds: [1] }, { limit: 50 }));
+const relays$ = window$.pipe(loadBlocksFromRelays(pool, relays, { kinds: [1] }, { limit: 50 }));
+const timeline$ = merge(cache$, relays$).pipe(mapEventsToStore(eventStore));
+
+timeline$.subscribe((event) => console.log(event));
+```
+
+## Examples
+
+### Paginated Feed
+
+```tsx
+const loader = useMemo(() => createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore, limit: 20 }), []);
+
+const loadMore = useCallback(() => {
+  setLoading(true);
+  loader().subscribe({
+    next: (event) => setEvents((prev) => [...prev, event]),
+    complete: () => setLoading(false),
+  });
+}, [loader]);
+```
+
+### Social Feed with Outbox Model
+
+```tsx
+const contacts$ = new BehaviorSubject<ProfilePointer[]>([]);
+const outboxMap$ = contacts$.pipe(map(createOutboxMap));
+const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
+
+// Load blocks using outbox model
+const timeline$ = window$.pipe(
+  loadBlocksFromOutboxMap(pool, outboxMap$, { kinds: [1] }, { limit: 100 }),
+  mapEventsToStore(eventStore),
+);
+
+timeline$.subscribe();
+
+// Load more by updating window
+function loadMore() {
+  window$.next({ since: -Infinity });
+}
+```

@@ -1,4 +1,4 @@
-import { mapEventsToStore } from "applesauce-core";
+import { EventMemory, filterDuplicateEvents } from "applesauce-core";
 import {
   createReplaceableAddress,
   getReplaceableAddress,
@@ -7,7 +7,7 @@ import {
   mergeRelaySets,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "nostr-tools";
-import { bufferTime, catchError, EMPTY, Observable } from "rxjs";
+import { bufferTime, catchError, EMPTY, identity, Observable } from "rxjs";
 
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";
 import { makeCacheRequest } from "../helpers/cache.js";
@@ -144,8 +144,8 @@ export type AddressLoaderOptions = Partial<{
   bufferTime: number;
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
-  /** An event store used to deduplicate events */
-  eventStore?: Parameters<typeof mapEventsToStore>[0];
+  /** An event store used to deduplicate events. Set to null to disable deduplication */
+  eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
   /** A method used to load events from a local cache */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */
@@ -179,7 +179,7 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
       event.kind === pointer.kind &&
       event.pubkey === pointer.pubkey &&
       (pointer.identifier ? getReplaceableIdentifier(event) === pointer.identifier : true),
-    // Pass all events through the store if defined
-    opts?.eventStore && mapEventsToStore(opts.eventStore),
+    // Pass all events through the store if provided, or use EventMemory for deduplication by default
+    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
   );
 }

@@ -1,7 +1,7 @@
-import { mapEventsToStore } from "applesauce-core";
+import { EventMemory, filterDuplicateEvents } from "applesauce-core";
 import { NostrEvent } from "nostr-tools";
 import { EventPointer } from "nostr-tools/nip19";
-import { bufferTime, catchError, EMPTY, merge, Observable, tap } from "rxjs";
+import { bufferTime, catchError, EMPTY, identity, merge, Observable, tap } from "rxjs";
 
 import { makeCacheRequest } from "../helpers/cache.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
@@ -101,8 +101,8 @@ export type EventPointerLoaderOptions = Partial<{
   bufferTime: number;
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
-  /** An event store used to deduplicate events */
-  eventStore?: Parameters<typeof mapEventsToStore>[0];
+  /** An event store used to deduplicate events. Set to null to disable deduplication */
+  eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
   /** A method used to load events from a local cache */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */
@@ -130,7 +130,7 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
     ),
     // Filter resutls based on requests
     (pointer, event) => event.id === pointer.id,
-    // Pass all events through the store if defined
-    opts?.eventStore && mapEventsToStore(opts.eventStore),
+    // Pass all events through the store if provided, or use EventMemory for deduplication by default
+    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
   );
 }

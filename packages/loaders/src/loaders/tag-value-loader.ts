@@ -1,7 +1,7 @@
-import { mapEventsToStore } from "applesauce-core";
+import { EventMemory, filterDuplicateEvents } from "applesauce-core";
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { Filter, NostrEvent } from "nostr-tools";
-import { bufferTime, EMPTY, merge, Observable } from "rxjs";
+import { bufferTime, EMPTY, identity, merge, Observable } from "rxjs";
 
 import { unique } from "../helpers/array.js";
 import { makeCacheRequest } from "../helpers/cache.js";
@@ -33,8 +33,8 @@ export type TagValueLoaderOptions = {
   cacheRequest?: CacheRequest;
   /** An array of relays to always fetch from */
   extraRelays?: string[] | Observable<string[]>;
-  /** An event store used to deduplicate events */
-  eventStore?: Parameters<typeof mapEventsToStore>[0];
+  /** An event store used to deduplicate events. Set to null to disable deduplication */
+  eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
 };
 
 export type TagValueLoader = (pointer: TagValuePointer) => Observable<NostrEvent>;
@@ -121,7 +121,7 @@ export function createTagValueLoader(
     },
     // Filter results based on requests
     (pointer, event) => event.tags.some((tag) => tag[0] === tagName && tag[1] === pointer.value),
-    // Pass all events through the store if defined
-    opts?.eventStore && mapEventsToStore(opts?.eventStore),
+    // Pass all events through the store if provided, or use EventMemory for deduplication by default
+    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
   );
 }

@@ -1,4 +1,4 @@
-import { logger as baseLogger, mapEventsToStore } from "applesauce-core";
+import { logger as baseLogger, EventMemory, filterDuplicateEvents, mapEventsToStore } from "applesauce-core";
 import {
   createFilterMap,
   FilterMap,
@@ -357,11 +357,11 @@ export function loadBlocksFromOutboxMapCache(
 function wrapTimelineLoader(
   window$: BehaviorSubject<TimelineWindow>,
   loader$: Observable<NostrEvent>,
-  eventStore?: Parameters<typeof mapEventsToStore>[0],
+  eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null,
 ): TimelineLoader {
   const singleton$ = loader$.pipe(
     // Pass all events through the store if provided
-    eventStore ? mapEventsToStore(eventStore) : identity,
+    eventStore === null ? identity : filterDuplicateEvents(eventStore || new EventMemory()),
     // Ensure a single subscription to the requests
     share(),
   );
