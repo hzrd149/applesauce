@@ -4,7 +4,7 @@ The `EventStore` is a reactive event management system that provides high-level 
 
 The EventStore can use any event database for persistence, or fall back to in-memory storage when no database is provided.
 
-## Creating an event store
+## Creating an Event Store
 
 ```ts
 import { EventStore } from "applesauce-core";
@@ -21,28 +21,29 @@ const eventStore = new EventStore(database);
 > [!INFO]
 > It's recommended to only create a single event store for your app
 
-## Adding events
+## Adding Events
 
-To add events to the event store you can use the [`eventStore.add`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.EventStore.html#add) method
+To add events to the event store you can use the [`eventStore.add`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.EventStore.html#add) method.
 
-Adding events to the event store will update any subscriptions that match that event
+Adding events to the event store will update any subscriptions that match that event:
 
 ```ts
-eventStore.timeline({kinds: [1]}).subscribe(events => {
-  console.log(`timeline updated (${events.length})`)
-})
+eventStore.timeline({ kinds: [1] }).subscribe((events) => {
+  console.log(`Timeline updated (${events.length} events)`);
+});
 
-const event = { kind: 1, ... }
-eventStore.add(event)
+const event = { kind: 1, content: "Hello, world!", ... };
+eventStore.add(event);
 ```
 
-### Duplicate and replaceable events
+### Duplicate and Replaceable Events
 
 The EventStore automatically handles:
 
 - **Duplicate events**: Same event ID returns the existing instance
-- **Replaceable events** (`1xxxx`): Automatically removes old versions when newer ones are added
-- **Delete events** (kind 5): Automatically removes referenced events
+- **Replaceable events** (kinds `0`, `3`, `1xxxx`): Automatically removes old versions when newer ones are added
+- **Addressable events** (kind `3xxxx`): Automatically manages versions based on the `d` tag identifier
+- **Delete events** (kind `5`): Automatically removes referenced events
 
 This allows you to easily deduplicate events from multiple relays and maintain proper event state.
 
@@ -78,7 +79,7 @@ const incoming = [
   },
 ];
 
-const sub = eventStore.stream({ kinds: [1] }).subscribe((event) => {
+const sub = eventStore.filters({ kinds: [1] }).subscribe((event) => {
   console.log("new event", event);
 });
 
@@ -96,11 +97,11 @@ const event = eventStore.add(incoming[2]);
 console.log(event === incoming[0]); // true - same instance
 ```
 
-## Subscribing
+## Subscriptions
 
-Subscriptions are rxjs [observables](https://rxjs.dev/guide/observable) that update when new events are added to the event store
+Subscriptions are rxjs [observables](https://rxjs.dev/guide/observable) that update when new events are added to the event store.
 
-### Single events
+### Single Events
 
 Subscribing to a single event will notify you when the event has been added to the event store or when it is deleted
 
@@ -126,9 +127,9 @@ const sub = eventStore.event("000021ba6f5f4da9d1f913c73dcf8fc8347052b4e74e14a2e4
 eventStore.add(event);
 ```
 
-### Replaceable events
+### Replaceable Events
 
-Subscribing to a replaceable event will notify you when there is a newer version or when it is deleted
+Subscribing to a replaceable event will notify you when there is a newer version or when it is deleted:
 
 ```ts
 const original = {
@@ -144,7 +145,7 @@ const original = {
 const updated = {
   id: "2f54a4491a31451cbe0d296297649af458d89df2f24d7f86d2474fd0607e29a1",
   pubkey: "d8dd41ef1e287dfc668d2473fbef8fa9deea5c2ef03947105ef568e68827e7e4",
-  created_at: 1733346633,
+  created_at: 1733346734,
   kind: 0,
   tags: [],
   content: '{ "name": "john smith" }',
@@ -153,29 +154,29 @@ const updated = {
 
 eventStore.add(original);
 
-// get the original and listen for any updates
+// Get the original and listen for any updates
 const sub = eventStore
   .replaceable(0, "d8dd41ef1e287dfc668d2473fbef8fa9deea5c2ef03947105ef568e68827e7e4")
   .subscribe((event) => {
-    // first event will be the original
+    // First event will be the original
     if (event) console.log("Profile Updated", event);
   });
 
-// this will trigger the subscription
+// This will trigger the subscription with the updated profile
 eventStore.add(updated);
 ```
 
-### Streams
+### Filters
 
-A stream subscription takes a filter(s) and returns all events that match and notifies you when there are new events
+A filters subscription takes a filter(s) and returns all events that match and notifies you when there are new events
 
 ```ts
-const sub = eventStore.stream({ kinds: [1] }).subscribe((event) => {
+const sub = eventStore.filters({ kinds: [1] }).subscribe((event) => {
   console.log("Found text note", event);
 });
 
 // or if you only want to subscribe to future events
-const sub = eventStore.stream({ kinds: [1] }, true).subscribe((event) => {
+const sub = eventStore.filters({ kinds: [1] }, true).subscribe((event) => {
   console.log("Found new text note", event);
 });
 ```
@@ -189,11 +190,127 @@ const timeline = eventStore.timeline({ kinds: [1] }).subscribe((events) => {
   console.log(events);
 });
 
+// or if you only want to subscribe to future events
+const timeline = eventStore.timeline({ kinds: [1] }, true).subscribe((events) => {
+  console.log("New events:", events);
+});
+
 // fetch some events using another library
 fetchEvents({ kinds: [1, 0] }, (event) => {
   // timeline will update for each new event
   eventStore.add(event);
 });
+```
+
+### Addressable Events
+
+Subscribe to an addressable event (kind 3xxxx with a `d` tag identifier):
+
+```ts
+const sub = eventStore.addressable({ kind: 30023, pubkey: "...", identifier: "my-article" }).subscribe((article) => {
+  if (article) console.log("Article:", article);
+});
+```
+
+## Helper Subscription Methods
+
+The event store provides convenient helper methods for common subscription patterns:
+
+### Profile
+
+Subscribe to a user's profile (kind 0):
+
+```ts
+const sub = eventStore
+  .profile("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
+  .subscribe((profile) => {
+    if (profile) console.log("Profile:", profile);
+  });
+```
+
+### Contacts
+
+Subscribe to a user's contacts (kind 3):
+
+```ts
+const sub = eventStore
+  .contacts("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
+  .subscribe((contacts) => {
+    console.log("Contacts:", contacts);
+  });
+```
+
+### Mutes
+
+Subscribe to a user's mutes (kind 10000):
+
+```ts
+const sub = eventStore.mutes("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d").subscribe((mutes) => {
+  if (mutes) console.log("Muted users:", mutes);
+});
+```
+
+### Mailboxes
+
+Subscribe to a user's NIP-65 mailboxes (kind 10002):
+
+```ts
+const sub = eventStore
+  .mailboxes("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
+  .subscribe((mailboxes) => {
+    if (mailboxes) {
+      console.log("Inbox relays:", mailboxes.inboxes);
+      console.log("Outbox relays:", mailboxes.outboxes);
+    }
+  });
+```
+
+### Blossom Servers
+
+Subscribe to a user's blossom servers (kind 10063):
+
+```ts
+const sub = eventStore
+  .blossomServers("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
+  .subscribe((servers) => {
+    console.log("Blossom servers:", servers);
+  });
+```
+
+### Reactions
+
+Subscribe to an event's reactions (kind 7):
+
+```ts
+const event = eventStore.getEvent("event-id");
+if (event) {
+  const sub = eventStore.reactions(event).subscribe((reactions) => {
+    console.log("Reactions:", reactions);
+  });
+}
+```
+
+### Thread
+
+Subscribe to a thread of replies:
+
+```ts
+const sub = eventStore.thread("event-id").subscribe((thread) => {
+  console.log("Thread:", thread);
+});
+```
+
+### Comments
+
+Subscribe to an event's comments:
+
+```ts
+const event = eventStore.getEvent("event-id");
+if (event) {
+  const sub = eventStore.comments(event).subscribe((comments) => {
+    console.log("Comments:", comments);
+  });
+}
 ```
 
 ## Fallback event loaders
@@ -231,7 +348,7 @@ eventStore.addressableLoader = async (pointer) => {
 };
 ```
 
-Now if events are subscribed to and they don't exist in the store, the loaders will be called.
+Now when events are subscribed to and they don't exist in the store, the loaders will be called automatically.
 
 ```ts
 const sub = eventStore
@@ -240,7 +357,7 @@ const sub = eventStore
     if (profile) console.log("Profile loaded:", profile);
   });
 
-// Console:
+// Console output:
 // loading replaceable event { kind: 0, pubkey: '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d' }
 // Profile loaded: { name: 'fiatjaf', ... }
 ```
@@ -281,45 +398,274 @@ const eventLoader = createEventLoader(pool, {
 eventStore.eventLoader = eventLoader;
 ```
 
-## Static Methods
+## Configuration Options
+
+The event store has several configuration properties that control its behavior:
+
+### keepOldVersions
+
+By default, the event store removes old versions of replaceable events when newer ones are added. Set this to `true` to keep all versions:
+
+```ts
+const eventStore = new EventStore();
+eventStore.keepOldVersions = true;
+```
+
+### keepExpired
+
+By default, expired events (with an `expiration` tag) are automatically removed when they expire. Set this to `true` to keep expired events:
+
+```ts
+const eventStore = new EventStore();
+eventStore.keepExpired = true;
+```
+
+### verifyEvent
+
+Provide a custom function to verify events before they're added to the store:
+
+```ts
+import { verifyEvent } from "nostr-tools";
+
+const eventStore = new EventStore();
+eventStore.verifyEvent = (event) => {
+  return verifyEvent(event);
+};
+```
+
+### modelKeepWarm
+
+Controls how long a model should be kept "warm" (in memory) after all subscribers unsubscribe. Default is 60000ms (60 seconds):
+
+```ts
+const eventStore = new EventStore();
+eventStore.modelKeepWarm = 30000; // Keep models warm for 30 seconds
+```
+
+## Event Management Methods
+
+The event store provides several methods to directly manage events.
+
+### add
+
+Adds an event to the store and updates subscriptions. Returns the event that was added (or the existing instance if it's a duplicate), or `null` if the event was rejected:
+
+```ts
+const event = { kind: 1, content: "Hello, world!", ... };
+const added = eventStore.add(event);
+
+if (added) {
+  console.log("Event added:", added.id);
+} else {
+  console.log("Event was rejected");
+}
+
+// You can also specify which relay the event came from
+const addedWithRelay = eventStore.add(event, "wss://relay.damus.io");
+```
+
+### remove
+
+Remove an event from the store by ID or event object:
+
+```ts
+// Remove by ID
+const removed = eventStore.remove("event-id");
+
+// Remove by event object
+const event = eventStore.getEvent("event-id");
+if (event) {
+  eventStore.remove(event);
+}
+```
+
+### removeByFilters
+
+Remove multiple events that match the given filters:
+
+```ts
+// Remove all kind 1 events from a specific author
+const count = eventStore.removeByFilters({
+  kinds: [1],
+  authors: ["3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"],
+});
+console.log(`Removed ${count} events`);
+```
+
+### update
+
+Notify the store that an event has been updated (useful when you modify an event's metadata):
+
+```ts
+const event = eventStore.getEvent("event-id");
+if (event) {
+  // Modify the event somehow
+  eventStore.update(event);
+}
+```
+
+## Query Methods
 
 The event store provides several methods to directly access events without creating subscriptions. These methods are useful when you need to check for or retrieve events synchronously.
 
-### Event Management
+### hasEvent
 
-- `add(event)`: Add a new event to the store
-- `remove(event)`: Remove an event from the store
-- `update(event)`: Notify the store that an event has been updated
-
-### Checking Event Existence
-
-- `hasEvent(id)`: Check if an event with a specific ID exists in the store
-- `hasReplaceable(kind, pubkey, identifier?)`: Check if a replaceable event exists for the given kind and pubkey combination
-
-### Retrieving Events
-
-- `getEvent(id)`: Get a single event by its ID
-- `getReplaceable(kind, pubkey, identifier?)`: Get the latest version of a replaceable event
-- `getReplaceableHistory(kind, pubkey, identifier?)`: Get the history of all versions of a replaceable event
-- `getByFilters(filters)`: Get a set of all events that match the given filter(s)
-- `getTimeline(filters)`: Get a sorted array of events that match the given filter(s)
-
-Example usage:
+Check if an event with a specific ID exists in the store:
 
 ```ts
-// Check if an event exists
 const exists = eventStore.hasEvent("000021ba6f5f...");
+if (exists) {
+  console.log("Event is in the store");
+}
+```
 
-// Get an event by ID
+### getEvent
+
+Get a single event by its ID:
+
+```ts
 const event = eventStore.getEvent("000021ba6f5f...");
+if (event) {
+  console.log("Found event:", event);
+}
+```
 
-// Get events matching filters
-const events = eventStore.getByFilters({ kinds: [1], authors: ["000021ba6f5f..."] });
+### hasReplaceable
 
-// Get a timeline of events
+Check if a replaceable event exists for the given kind and pubkey:
+
+```ts
+const hasProfile = eventStore.hasReplaceable(0, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+```
+
+### getReplaceable
+
+Get the latest version of a replaceable event:
+
+```ts
+const profile = eventStore.getReplaceable(0, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+
+// For addressable events, include the identifier
+const article = eventStore.getReplaceable(30023, "pubkey...", "my-article");
+```
+
+### getReplaceableHistory
+
+Get all versions of a replaceable event (only available when `keepOldVersions` is `true`):
+
+```ts
+eventStore.keepOldVersions = true;
+
+const versions = eventStore.getReplaceableHistory(
+  0,
+  "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+);
+if (versions) {
+  console.log(`Found ${versions.length} versions`);
+  console.log("Latest:", versions[0]);
+}
+```
+
+### getByFilters
+
+Get all events that match the given filter(s):
+
+```ts
+const events = eventStore.getByFilters({
+  kinds: [1],
+  authors: ["3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"],
+});
+console.log(`Found ${events.length} events`);
+```
+
+### getTimeline
+
+Get a sorted array of events that match the given filter(s), sorted by `created_at` descending (newest first):
+
+```ts
 const timeline = eventStore.getTimeline({ kinds: [1] });
+console.log(`Timeline has ${timeline.length} events`);
+console.log("Most recent:", timeline[0]);
+```
 
-// Check and get replaceable events
-const hasProfile = eventStore.hasReplaceable(0, "000021ba6f5f...");
-const profile = eventStore.getReplaceable(0, "000021ba6f5f...");
+## Memory Management
+
+The event store includes built-in memory management through a "claim" system that tracks which events are actively being used by subscriptions.
+
+### Claiming Events
+
+The event store automatically claims events when they're used by subscriptions. You can also manually manage claims:
+
+```ts
+const event = eventStore.getEvent("event-id");
+if (event) {
+  // Mark the event as being used by something
+  eventStore.claim(event, "my-component");
+
+  // Check if an event is claimed
+  const claimed = eventStore.isClaimed(event);
+
+  // Remove a specific claim
+  eventStore.removeClaim(event, "my-component");
+
+  // Clear all claims
+  eventStore.clearClaim(event);
+}
+```
+
+### Pruning Unclaimed Events
+
+Remove events that aren't being used by any subscriptions:
+
+```ts
+// Remove up to 1000 unclaimed events
+const pruned = eventStore.prune(1000);
+console.log(`Pruned ${pruned} events`);
+
+// Remove all unclaimed events
+const allPruned = eventStore.prune();
+```
+
+### Getting Unclaimed Events
+
+Get a generator of unclaimed events (ordered by least recently used):
+
+```ts
+for (const event of eventStore.unclaimed()) {
+  console.log("Unclaimed event:", event.id);
+}
+```
+
+## Observable Streams
+
+The event store exposes three observable streams that you can subscribe to directly:
+
+### insert$
+
+Emits when a new event is added to the store:
+
+```ts
+eventStore.insert$.subscribe((event) => {
+  console.log("New event added:", event.id);
+});
+```
+
+### update$
+
+Emits when an event is updated:
+
+```ts
+eventStore.update$.subscribe((event) => {
+  console.log("Event updated:", event.id);
+});
+```
+
+### remove$
+
+Emits when an event is removed:
+
+```ts
+eventStore.remove$.subscribe((event) => {
+  console.log("Event removed:", event.id);
+});
 ```
