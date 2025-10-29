@@ -11,6 +11,7 @@ interface HomeViewProps {
   filteredEvents: NostrEvent[] | null;
   hasActiveSearch: boolean;
   onViewFull: (eventId: string) => void;
+  onNavigateToPublish: () => void;
 }
 
 export default function HomeView({
@@ -23,6 +24,7 @@ export default function HomeView({
   filteredEvents,
   hasActiveSearch,
   onViewFull,
+  onNavigateToPublish,
 }: HomeViewProps) {
   // Use filtered events for display
   const displayEvents = filteredEvents;
@@ -35,6 +37,12 @@ export default function HomeView({
           <a className="btn btn-ghost text-xl">Applesauce Code Snippets</a>
         </div>
         <div className="flex gap-2">
+          <button onClick={onNavigateToPublish} className="btn btn-primary">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Publish
+          </button>
           <a className="btn btn-ghost" href="https://github.com/hzrd149/nostr-code-snippets" target="_blank">
             MCP code snippets
           </a>

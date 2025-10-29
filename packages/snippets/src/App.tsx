@@ -5,14 +5,14 @@ import { type NostrEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
 import { map, Observable } from "rxjs";
 import "./App.css";
-import { CodeSnippetDetails, HomeView, PocketDrawer } from "./components";
+import { CodeSnippetDetails, HomeView, PocketDrawer, PublishView } from "./components";
 import { useSearch } from "./hooks";
 import { usePocketContext } from "./contexts/PocketContext";
 import { eventStore, pool, CODE_SNIPPET_KIND, DEFAULT_RELAYS, isValidEventId } from "./helpers/nostr";
 
 function App() {
   // Hash-based routing state
-  const [currentView, setCurrentView] = useState<"home" | "details">("home");
+  const [currentView, setCurrentView] = useState<"home" | "details" | "publish">("home");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   // Relay state management
@@ -68,7 +68,10 @@ function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.substring(1);
-      if (hash) {
+      if (hash === "publish") {
+        setCurrentView("publish");
+        setSelectedEventId(null);
+      } else if (hash) {
         // Check if it's a valid event identifier (nevent or hex id)
         if (isValidEventId(hash)) {
           setSelectedEventId(hash);
@@ -97,10 +100,19 @@ function App() {
     window.location.hash = "";
   };
 
+  const navigateToPublish = () => {
+    window.location.hash = "publish";
+  };
+
   // Handle viewing pocket item by navigating to details
   const handleViewPocketItem = (eventId: string) => {
     navigateToDetails(eventId);
   };
+
+  // Render publish view
+  if (currentView === "publish") {
+    return <PublishView onBack={navigateToHome} onPublishSuccess={navigateToDetails} />;
+  }
 
   // Render details view if hash is present
   if (currentView === "details" && selectedEventId) {
@@ -131,6 +143,7 @@ function App() {
         filteredEvents={filteredEvents}
         hasActiveSearch={hasActiveSearch}
         onViewFull={navigateToDetails}
+        onNavigateToPublish={navigateToPublish}
       />
       <PocketDrawer
         pocketItems={pocketItems}
