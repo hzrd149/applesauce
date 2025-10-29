@@ -24,9 +24,9 @@
     "dist"
   ],
   "dependencies": {
-    "applesauce-core": "workspace:^",
-    "applesauce-relay": "workspace:^",
-    "applesauce-signers": "workspace:^",
+    "applesauce-core": "^4",
+    "applesauce-relay": "^4",
+    "applesauce-signers": "^4",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
