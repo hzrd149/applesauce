@@ -32,7 +32,7 @@ import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { CacheRequest, TimelessFilter, UpstreamPool } from "../types.js";
 
 /** A loader that optionally takes a timestamp to load till and returns a stream of events */
-export type TimelineLoader = (since?: number) => Observable<NostrEvent>;
+export type TimelineLoader = (since?: number | TimelineWindow) => Observable<NostrEvent>;
 
 /**
  * The current `since` value of the timeline loader
@@ -280,14 +280,6 @@ export function loadBlocksFromFilterMap(
   };
 }
 
-export type TimelineLoaderOptions = Partial<{
-  /** A method used to load the timeline from the cache */
-  cache: CacheRequest;
-  /** An event store to pass all the events to */
-  eventStore?: Parameters<typeof mapEventsToStore>[0];
-}> &
-  CommonTimelineLoaderOptions;
-
 /** Loads timeline blocks from an {@link OutboxMap} and {@link Filter} or a function that projects users to a filter */
 export function loadBlocksFromOutboxMap(
   pool: UpstreamPool,
@@ -366,21 +358,37 @@ function wrapTimelineLoader(
     share(),
   );
 
-  return (since?: number) => {
+  return (since?: number | TimelineWindow) => {
     // Return the loader so it can be subscribed to
     return new Observable((observer) => {
       const sub = singleton$.subscribe(observer);
 
-      // Only update window when this request is subscribed to (prevents window getting lost before subscription)
-      window$.next({
-        // Default to -Infinity to force loading the next block of events (legacy behavior)
-        since: since ?? -Infinity,
-      });
+      // Once subscribed, update the window
+
+      if (typeof since === "object" && since !== undefined) {
+        // Pass new window to the loader
+        window$.next(since);
+      } else {
+        // Only update window when this request is subscribed to (prevents window getting lost before subscription)
+        window$.next({
+          // Default to -Infinity to force loading the next block of events (legacy behavior)
+          since: since ?? -Infinity,
+        });
+      }
 
       return () => sub.unsubscribe();
     });
   };
 }
+
+/** Options for the create timeline loader methods */
+export type TimelineLoaderOptions = Partial<{
+  /** A method used to load the timeline from the cache */
+  cache: CacheRequest;
+  /** An event store to pass all the events to */
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
+}> &
+  CommonTimelineLoaderOptions;
 
 /** @deprecated Use the {@link loadBlocksFromCache} operator instead */
 export function cacheTimelineLoader(
@@ -392,7 +400,7 @@ export function cacheTimelineLoader(
   return wrapTimelineLoader(window$, window$.pipe(loadBlocksFromCache(request, filters, opts)));
 }
 
-/** @deprecated Use the {@link loadBlocksFromRelays} operator instead */
+/** @deprecated Use the {@link createTimelineLoader} operator instead */
 export function relaysTimelineLoader(
   pool: UpstreamPool,
   relays: string[],
@@ -403,7 +411,13 @@ export function relaysTimelineLoader(
   return wrapTimelineLoader(window$, window$.pipe(loadBlocksFromRelays(pool, relays, filters, opts)));
 }
 
-/** Converts an ObservableTimelineLoader to the legacy TimelineLoader format for backwards compatibility */
+/**
+ * Creates a {@link TimelineLoader} that loads events from multiple relays and a cache
+ * @param pool - The upstream pool to use
+ * @param relays - The relays to load from
+ * @param filters - The filters to use
+ * @param opts - The options for the timeline loader
+ */
 export function createTimelineLoader(
   pool: UpstreamPool,
   relays: string[],
@@ -422,11 +436,11 @@ export function createTimelineLoader(
   // Merge the cache and relays loaders
   const loader$ = merge(cache$, relays$);
 
-  return wrapTimelineLoader(window$, loader$);
+  return wrapTimelineLoader(window$, loader$, opts?.eventStore);
 }
 
 /**
- * Creates a timeline loader that loads events for a {@link OutboxMap} or an observable of {@link OutboxMap}
+ * Creates a {@link TimelineLoader} that loads events for a {@link OutboxMap} or an observable of {@link OutboxMap}
  * @param pool - The upstream pool to use
  * @param outboxMap - An {@link OutboxMap} or an observable of {@link OutboxMap}
  * @param filter - A function to create filters for a set of users
@@ -453,5 +467,5 @@ export function createOutboxTimelineLoader(
   const loader$ = merge(cache$, relays$);
 
   // Wrap the loader in a timeline loader function
-  return wrapTimelineLoader(window$, loader$);
+  return wrapTimelineLoader(window$, loader$, opts?.eventStore);
 }

@@ -35,9 +35,38 @@ timelineLoader().subscribe({
 // Later, load older events by calling the loader again
 // Each call continues from where the previous one left off
 timelineLoader().subscribe((event) => console.log("Loaded older event:", event));
+
+// Pass a window to load missing events in a specific range
+timelineLoader({ since: oldestTimestamp, until: newestTimestamp }).subscribe((event) => console.log(event));
 ```
 
 ## Configuration Options
+
+### Timeline Window
+
+The timeline loader can accept a timeline window to load missing events within a specific range. The window is an object with optional `since` and `until` properties:
+
+```ts
+// Load the next block of historical events (default behavior)
+// Since defaults to -Infinity, forcing the loader to load new blocks
+timelineLoader().subscribe((event) => console.log(event));
+
+// Load events newer than a specific timestamp (backward compatibility)
+timelineLoader(1234567890).subscribe((event) => console.log(event));
+
+// Pass a window to load missing events in a specific time range
+timelineLoader({ since: oldestTimestamp, until: newestTimestamp }).subscribe((event) => console.log(event));
+
+// Load only newer events (forward in time)
+timelineLoader({ until: newestTimestamp }).subscribe((event) => console.log(event));
+```
+
+The loader intelligently loads missing blocks of events based on the window you provide:
+
+- **`since`** - Minimum `created_at` timestamp (lower bound of the window). If `undefined`, defaults to `-Infinity` which forces loading new blocks from all relays
+- **`until`** - Maximum `created_at` timestamp (upper bound of the window). If `undefined`, only loads historical events going backwards in time
+
+When you pass a window to the loader, it will load any missing events that fall within that range. This allows your app to reactively update the timeline as the user scrolls and the visible window changes.
 
 ### Limit
 
@@ -108,9 +137,34 @@ const outboxMap$ = contacts$.pipe(map(createOutboxMap));
 const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore, limit: 100 });
 ```
 
-## Timeline Window
+## Using Timeline Windows with Function-Based Loaders
 
-The timeline window represents the range of timestamps currently visible on screen. It's an observable that emits `{ since?, until? }` objects with the minimum (`since`) and maximum (`until`) `created_at` timestamps of events you want to display.
+When using the function-based loaders (`createTimelineLoader` and `createOutboxTimelineLoader`), you can pass a timeline window directly to the loader to load missing events:
+
+```ts
+import { TimelineWindow } from "applesauce-loaders/loaders";
+
+// As user scrolls, pass the visible window to the loader
+const window: TimelineWindow = {
+  since: oldestVisibleEvent.created_at,
+  until: newestVisibleEvent.created_at,
+};
+
+// The loader will automatically load any missing events in this range
+timelineLoader(window).subscribe((event) => console.log(event));
+```
+
+The timeline loader intelligently loads missing blocks of events when:
+
+- The window expands (user scrolls to older/newer content)
+- Events are missing in the current range
+- You call the loader with a new window
+
+This approach allows your app to reactively load timeline events as the user scrolls, ensuring that all visible events are fetched.
+
+## Using Timeline Windows with RxJS Operators
+
+For more advanced use cases, you can use the RxJS operators with an observable window. The timeline window represents the range of timestamps currently visible on screen as an observable that emits `{ since?, until? }` objects:
 
 ```ts
 import { BehaviorSubject } from "rxjs";
@@ -126,13 +180,7 @@ window$.next({
 });
 ```
 
-The timeline loader operators watch this window and automatically load missing events when:
-
-- The window expands (user scrolls to older/newer content)
-- Events are missing in the current range
-- The window is first initialized
-
-This reactive approach means you just update the window to reflect what's on screen, and the loaders handle fetching the necessary blocks.
+The timeline loader operators watch this window and automatically load missing events when the window changes. This reactive approach means you just update the window observable to reflect what's on screen, and the operators handle fetching the necessary blocks of events.
 
 ## RxJS Operators
 
@@ -184,23 +232,46 @@ timeline$.subscribe((event) => console.log(event));
 
 ## Examples
 
-### Paginated Feed
+### Paginated Feed (Simple)
 
-```tsx
-const loader = useMemo(() => createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore, limit: 20 }), []);
+```ts
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore, limit: 20 });
 
-const loadMore = useCallback(() => {
-  setLoading(true);
+// Load the next page of older events
+function loadMore() {
   loader().subscribe({
-    next: (event) => setEvents((prev) => [...prev, event]),
-    complete: () => setLoading(false),
+    next: (event) => events.push(event),
+    complete: () => console.log("Page loaded"),
   });
-}, [loader]);
+}
 ```
 
-### Social Feed with Outbox Model
+### Window-Based Feed
 
-```tsx
+```ts
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore, limit: 20 });
+
+// Track the visible window as user scrolls
+let currentWindow: TimelineWindow = { since: Date.now() / 1000 };
+
+// Load events for the current window
+let subscription = loader(currentWindow).subscribe((event) => {
+  events.push(event);
+});
+
+// Update window as user scrolls
+function updateWindow(since: number, until: number) {
+  subscription.unsubscribe();
+  currentWindow = { since, until };
+  subscription = loader(currentWindow).subscribe((event) => {
+    events.push(event);
+  });
+}
+```
+
+### Social Feed with Outbox Model (Using RxJS Operators)
+
+```ts
 const contacts$ = new BehaviorSubject<ProfilePointer[]>([]);
 const outboxMap$ = contacts$.pipe(map(createOutboxMap));
 const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
@@ -211,10 +282,27 @@ const timeline$ = window$.pipe(
   mapEventsToStore(eventStore),
 );
 
-timeline$.subscribe();
+timeline$.subscribe((event) => console.log(event));
 
 // Load more by updating window
 function loadMore() {
   window$.next({ since: -Infinity });
+}
+```
+
+### Social Feed with Outbox Model (Using Function Loader)
+
+```ts
+const contacts = [...]; // Array of ProfilePointer with relays
+const outboxMap = createOutboxMap(contacts);
+
+const loader = createOutboxTimelineLoader(pool, outboxMap, { kinds: [1] }, { eventStore, limit: 20 });
+
+// Load initial block of events
+loader().subscribe((event) => events.push(event));
+
+// Load events as the window changes
+function loadWindow(since: number, until: number) {
+  loader({ since, until }).subscribe((event) => events.push(event));
 }
 ```
