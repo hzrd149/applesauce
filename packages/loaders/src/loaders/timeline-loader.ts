@@ -13,6 +13,7 @@ import {
   BehaviorSubject,
   distinctUntilChanged,
   EMPTY,
+  filter,
   finalize,
   identity,
   isObservable,
@@ -59,17 +60,15 @@ export function loadBackwardBlocks(
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   return (source) => {
     const log = opts?.logger?.extend("backward").extend(nanoid(8));
-    log?.("Created");
 
     let cursor: number | undefined = undefined;
     let loading = false;
     let complete = false;
 
     return source.pipe(
-      // NOTE: use mergeMap here to ensure old requests continue to load
-      mergeMap(({ since, until }) => {
+      filter(({ since, until }) => {
         // Once complete, prevent further requests
-        if (complete) return EMPTY;
+        if (complete) return false;
 
         // If max is unset, initialize to until
         if (cursor === undefined && until !== undefined && Number.isFinite(until)) cursor = until;
@@ -81,11 +80,15 @@ export function loadBackwardBlocks(
           // If number is finite and in the loaded range, skip
           (Number.isFinite(since) && cursor !== undefined && since <= cursor)
         )
-          return EMPTY;
+          return false;
 
         // Don't load blocks in parallel
-        if (loading) return EMPTY;
+        if (loading) return false;
 
+        return true;
+      }),
+      // NOTE: use mergeMap here to ensure old requests continue to load
+      mergeMap(() => {
         // Set loading lock
         loading = true;
 
@@ -98,7 +101,7 @@ export function loadBackwardBlocks(
         return request(cursor).pipe(
           tap((event) => {
             count++;
-            // Update the min created_at seen from the source
+            // Track the minimum created_at seen from the events
             cursor = Math.min(event.created_at, cursor ?? Infinity);
           }),
           finalize(() => {
@@ -124,17 +127,15 @@ export function loadForwardBlocks(
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   return (source) => {
     const log = opts?.logger?.extend("forward").extend(nanoid(8));
-    log?.("Created");
 
     let cursor: number | undefined = undefined;
     let loading = false;
     let complete = false;
 
     return source.pipe(
-      // NOTE: use mergeMap here to ensure old requests continue to load
-      mergeMap(({ since, until }) => {
+      filter(({ since, until }) => {
         // Once complete, prevent further requests
-        if (complete) return EMPTY;
+        if (complete) return false;
 
         // If min is unset, initialize to since
         if (cursor === undefined && since !== undefined && Number.isFinite(since)) cursor = since;
@@ -146,11 +147,15 @@ export function loadForwardBlocks(
           // If number is finite and in the loaded range, skip
           (Number.isFinite(until) && cursor !== undefined && until <= cursor)
         )
-          return EMPTY;
+          return false;
 
         // Don't load blocks in parallel
-        if (loading) return EMPTY;
+        if (loading) return false;
 
+        return true;
+      }),
+      // NOTE: use mergeMap here to ensure old requests continue to load
+      mergeMap(() => {
         // Set loading lock
         loading = true;
 
@@ -163,7 +168,7 @@ export function loadForwardBlocks(
         return request(cursor).pipe(
           tap((event) => {
             count++;
-            // Update the max created_at seen from the source
+            // Track the maximum created_at seen from the events
             cursor = Math.max(event.created_at, cursor ?? -Infinity);
           }),
           finalize(() => {
