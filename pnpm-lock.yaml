@@ -261,22 +261,22 @@ importers:
         specifier: ^4
         version: link:../content
       applesauce-core:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../core
       applesauce-factory:
         specifier: ^4
         version: link:../factory
       applesauce-loaders:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../loaders
       applesauce-react:
         specifier: ^4
         version: link:../react
       applesauce-relay:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../relay
       applesauce-signers:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../signers
       applesauce-sqlite:
         specifier: ^4
@@ -453,7 +453,7 @@ importers:
   packages/loaders:
     dependencies:
       applesauce-core:
-        specifier: ^4.0.0
+        specifier: ^4.2.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -469,7 +469,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.8.3)
       applesauce-signers:
-        specifier: ^4.0.0
+        specifier: ^4.2.0
         version: link:../signers
       rimraf:
         specifier: ^6.0.1
@@ -539,7 +539,7 @@ importers:
         specifier: ^1.7.1
         version: 1.8.0
       applesauce-core:
-        specifier: ^4.1.0
+        specifier: ^4.2.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -555,7 +555,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.8.3)
       applesauce-signers:
-        specifier: ^4.1.0
+        specifier: ^4.2.0
         version: link:../signers
       rimraf:
         specifier: ^6.0.1
@@ -582,7 +582,7 @@ importers:
         specifier: ^1.2.4
         version: 1.2.5
       applesauce-core:
-        specifier: ^4.1.0
+        specifier: ^4.2.0
         version: link:../core
       debug:
         specifier: ^4.4.0
@@ -631,22 +631,22 @@ importers:
         specifier: ^4
         version: link:../content
       applesauce-core:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../core
       applesauce-factory:
         specifier: ^4
         version: link:../factory
       applesauce-loaders:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../loaders
       applesauce-react:
         specifier: ^4
         version: link:../react
       applesauce-relay:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../relay
       applesauce-signers:
-        specifier: ^4
+        specifier: ^4.2.0
         version: link:../signers
       applesauce-wallet:
         specifier: ^4

@@ -1,5 +1,13 @@
 # applesauce-signer
 
+## 4.2.0
+
+### Patch Changes
+
+- 872115f: Verify `ExtensionSigner` and `NostrConnectSigner` return hex pubkey for `getPublicKey`
+- Updated dependencies
+  - applesauce-core@4.2.0
+
 ## 4.1.0
 
 ### Minor Changes
