@@ -24,6 +24,7 @@ describe("exports", () => {
         "PicturePostBlueprint",
         "PollBlueprint",
         "PollResponseBlueprint",
+        "ProfileBlueprint",
         "ReactionBlueprint",
         "ShareBlueprint",
         "SingleChoicePollResponseBlueprint",
