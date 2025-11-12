@@ -1,5 +1,16 @@
 # applesauce-factory
 
+## 4.3.0
+
+### Minor Changes
+
+- 2e7331e: Add profile blueprint
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.3.0
+
 ## 4.0.0
 
 ### Major Changes
