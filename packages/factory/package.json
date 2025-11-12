@@ -1,6 +1,6 @@
 {
   "name": "applesauce-factory",
-  "version": "4.0.0",
+  "version": "4.3.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -75,7 +75,7 @@
   },
   "dependencies": {
     "applesauce-content": "^4.0.0",
-    "applesauce-core": "^4.0.0",
+    "applesauce-core": "^4.3.0",
     "nanoid": "^5.0.9",
     "nostr-tools": "^2.13"
   },

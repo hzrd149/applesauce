@@ -261,10 +261,10 @@ importers:
         specifier: ^4
         version: link:../content
       applesauce-core:
-        specifier: ^4.2.0
+        specifier: ^4.3.0
         version: link:../core
       applesauce-factory:
-        specifier: ^4
+        specifier: ^4.3.0
         version: link:../factory
       applesauce-loaders:
         specifier: ^4.2.0
@@ -419,7 +419,7 @@ importers:
         specifier: ^4.0.0
         version: link:../content
       applesauce-core:
-        specifier: ^4.0.0
+        specifier: ^4.3.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -631,10 +631,10 @@ importers:
         specifier: ^4
         version: link:../content
       applesauce-core:
-        specifier: ^4.2.0
+        specifier: ^4.3.0
         version: link:../core
       applesauce-factory:
-        specifier: ^4
+        specifier: ^4.3.0
         version: link:../factory
       applesauce-loaders:
         specifier: ^4.2.0

@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 4.3.0
+
+### Patch Changes
+
+- b287edf: Fix `getSharedEventPointer` returning event pointers with an empty string relay hint
+
 ## 4.2.0
 
 ### Minor Changes
