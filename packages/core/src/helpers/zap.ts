@@ -41,7 +41,12 @@ export function getZapPayment(zap: NostrEvent): ParsedInvoice | undefined;
 export function getZapPayment(zap: NostrEvent): ParsedInvoice | undefined {
   return getOrComputeCachedValue(zap, ZapInvoiceSymbol, () => {
     const bolt11 = getTagValue(zap, "bolt11");
-    return bolt11 ? parseBolt11(bolt11) : undefined;
+    try {
+      // Catch errors with parsing the bolt11 invoice
+      return bolt11 ? parseBolt11(bolt11) : undefined;
+    } catch (error) {
+      return undefined;
+    }
   });
 }
 
