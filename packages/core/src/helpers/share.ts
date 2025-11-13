@@ -1,19 +1,34 @@
-import { nip18, NostrEvent } from "nostr-tools";
-import { getOrComputeCachedValue } from "./cache.js";
+import { kinds, nip18, NostrEvent } from "nostr-tools";
+import { isKind } from "nostr-tools/kinds";
 import { AddressPointer, EventPointer } from "nostr-tools/nip19";
-import { isATag, isETag } from "./tags.js";
+
+import { getOrComputeCachedValue } from "./cache.js";
+import { getTagValue, KnownEvent } from "./index.js";
 import { getAddressPointerFromATag, getEventPointerFromETag } from "./pointers.js";
+import { isATag, isETag } from "./tags.js";
+
+/** Type of a known share event */
+export type ShareEvent = KnownEvent<kinds.Repost | kinds.GenericRepost>;
 
 export const SharedEventSymbol = Symbol.for("shared-event");
 export const SharedEventPointerSymbol = Symbol.for("shared-event-pointer");
 export const SharedAddressPointerSymbol = Symbol.for("shared-address-pointer");
+
 /** Returns the event pointer of a kind 6 or 16 share event */
+export function getSharedEventPointer(event: ShareEvent): EventPointer;
+export function getSharedEventPointer(event: NostrEvent): EventPointer | undefined;
 export function getSharedEventPointer(event: NostrEvent): EventPointer | undefined {
   return getOrComputeCachedValue(event, SharedEventPointerSymbol, () => {
     const e = event.tags.find(isETag);
     if (!e) return undefined;
 
-    return getEventPointerFromETag(e);
+    // Get kind from k tag if it exists
+    const kStr = getTagValue(event, "k");
+    const k = kStr ? parseInt(kStr) : undefined;
+
+    const pointer = getEventPointerFromETag(e);
+    if (k !== undefined) pointer.kind = k;
+    return pointer;
   });
 }
 
@@ -34,3 +49,10 @@ export function getEmbededSharedEvent(event: NostrEvent): NostrEvent | undefined
 
 /** @deprecated use getEmbededSharedEvent instead */
 export const parseSharedEvent = getEmbededSharedEvent;
+
+/** Validates that an event is a valid share event */
+export function isValidShare(event?: NostrEvent): event is ShareEvent {
+  if (!event) return false;
+
+  return isKind(event, [kinds.Repost, kinds.GenericRepost]) && getSharedEventPointer(event) !== undefined;
+}
