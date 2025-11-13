@@ -1,5 +1,15 @@
 # applesauce-core
 
+## 4.4.0
+
+### Minor Changes
+
+- eb8b7df: Add `ShareEvent` type and `isValidShare` method
+
+### Patch Changes
+
+- fb285c1: Fix `getZapPayment` and `isValidZap` throwing when zap includes invalid LN invoice
+
 ## 4.3.0
 
 ### Patch Changes
