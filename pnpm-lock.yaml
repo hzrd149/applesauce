@@ -261,7 +261,7 @@ importers:
         specifier: ^4
         version: link:../content
       applesauce-core:
-        specifier: ^4.3.0
+        specifier: ^4.4.0
         version: link:../core
       applesauce-factory:
         specifier: ^4.3.0
@@ -631,7 +631,7 @@ importers:
         specifier: ^4
         version: link:../content
       applesauce-core:
-        specifier: ^4.3.0
+        specifier: ^4.4.0
         version: link:../core
       applesauce-factory:
         specifier: ^4.3.0
