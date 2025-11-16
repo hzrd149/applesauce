@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { Filter, type NostrEvent } from "nostr-tools";
+import { type NostrEvent } from "nostr-tools";
 import {
   BehaviorSubject,
   catchError,
@@ -33,6 +33,7 @@ import {
   IEventStoreActions,
   IEventStoreRead,
 } from "applesauce-core";
+import { type FilterWithAnd } from "applesauce-core/helpers";
 import { NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import { completeOnEose } from "./operators/complete-on-eose.js";
 import { onlyEvents } from "./operators/only-events.js";
@@ -246,7 +247,7 @@ export class RelayGroup implements IGroup {
   /** Negentropy sync events with the relays and an event store */
   async negentropy(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     reconcile: ReconcileFunction,
     opts?: GroupNegentropySyncOptions,
   ): Promise<boolean> {
@@ -297,7 +298,7 @@ export class RelayGroup implements IGroup {
   }
 
   /** Count events on all relays in the group */
-  count(filters: Filter | Filter[], id = nanoid()): Observable<Record<string, CountResponse>> {
+  count(filters: FilterWithAnd | FilterWithAnd[], id = nanoid()): Observable<Record<string, CountResponse>> {
     return this.relays$.pipe(
       switchMap((relays) =>
         combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(filters, id)]))),
@@ -310,7 +311,7 @@ export class RelayGroup implements IGroup {
   /** Negentropy sync events with the relays and an event store */
   sync(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     direction?: SyncDirection,
   ): Observable<NostrEvent> {
     // Get an array of relays that support NIP-77 negentropy sync

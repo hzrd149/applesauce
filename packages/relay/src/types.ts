@@ -1,11 +1,12 @@
-import type { EventTemplate, Filter, NostrEvent } from "nostr-tools";
+import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
+import type { FilterWithAnd } from "applesauce-core/helpers";
+import type { EventTemplate, NostrEvent } from "nostr-tools";
 import type { RelayInformation } from "nostr-tools/nip11";
 import type { Observable, repeat, retry } from "rxjs";
 import type { WebSocketSubject } from "rxjs/webSocket";
-import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
-import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
-import type { SyncDirection } from "./relay.js";
 import type { GroupNegentropySyncOptions, GroupRequestOptions, GroupSubscriptionOptions } from "./group.js";
+import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
+import type { SyncDirection } from "./relay.js";
 
 export type SubscriptionResponse = NostrEvent | "EOSE";
 export type PublishResponse = { ok: boolean; message?: string; from: string };
@@ -62,13 +63,13 @@ export type AuthSigner = {
 /** Filters that can be passed to request methods on the pool or relay */
 export type FilterInput =
   // A single filter
-  | Filter
+  | FilterWithAnd
   // An array of filters
-  | Filter[]
+  | FilterWithAnd[]
   // A stream of filters
-  | Observable<Filter | Filter[]>
+  | Observable<FilterWithAnd | FilterWithAnd[]>
   // A function to create a filter for a relay
-  | ((relay: IRelay) => Filter | Filter[] | Observable<Filter | Filter[]>);
+  | ((relay: IRelay) => FilterWithAnd | FilterWithAnd[] | Observable<FilterWithAnd | FilterWithAnd[]>);
 
 export interface IRelay extends MultiplexWebSocket {
   url: string;
@@ -95,7 +96,7 @@ export interface IRelay extends MultiplexWebSocket {
   /** Send a REQ message */
   req(filters: FilterInput, id?: string): Observable<SubscriptionResponse>;
   /** Send a COUNT message */
-  count(filters: Filter | Filter[], id?: string): Observable<CountResponse>;
+  count(filters: FilterWithAnd | FilterWithAnd[], id?: string): Observable<CountResponse>;
   /** Send an EVENT message */
   event(event: NostrEvent): Observable<PublishResponse>;
   /** Send an AUTH message */
@@ -103,7 +104,7 @@ export interface IRelay extends MultiplexWebSocket {
   /** Negentropy sync event ids with the relay and an event store */
   negentropy(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
   ): Promise<boolean>;
@@ -119,7 +120,7 @@ export interface IRelay extends MultiplexWebSocket {
   /** Negentropy sync events with the relay and an event store */
   sync(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     direction?: SyncDirection,
   ): Observable<NostrEvent>;
 
@@ -141,7 +142,7 @@ export interface IGroup {
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
   ): Promise<boolean>;
@@ -163,11 +164,11 @@ export interface IGroup {
     opts?: GroupSubscriptionOptions,
   ): Observable<SubscriptionResponse>;
   /** Count events on the relays and an event store */
-  count(filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
+  count(filters: FilterWithAnd | FilterWithAnd[], id?: string): Observable<Record<string, CountResponse>>;
   /** Negentropy sync events with the relay and an event store */
   sync(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     direction?: SyncDirection,
   ): Observable<NostrEvent>;
 }
@@ -197,7 +198,7 @@ export interface IPool extends IPoolSignals {
   negentropy(
     relays: IPoolRelayInput,
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     reconcile: ReconcileFunction,
     opts?: GroupNegentropySyncOptions,
   ): Promise<boolean>;
@@ -221,12 +222,16 @@ export interface IPool extends IPoolSignals {
     opts?: Parameters<IGroup["subscription"]>[1],
   ): Observable<SubscriptionResponse>;
   /** Count events on the relays and an event store */
-  count(relays: IPoolRelayInput, filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
+  count(
+    relays: IPoolRelayInput,
+    filters: FilterWithAnd | FilterWithAnd[],
+    id?: string,
+  ): Observable<Record<string, CountResponse>>;
   /** Negentropy sync events with the relay and an event store */
   sync(
     relays: IPoolRelayInput,
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     direction?: SyncDirection,
   ): Observable<NostrEvent>;
 }

@@ -1,5 +1,5 @@
 import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
-import { ensureHttpURL } from "applesauce-core/helpers";
+import { ensureHttpURL, type FilterWithAnd } from "applesauce-core/helpers";
 import { simpleTimeout } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
 import { nip42, type Filter, type NostrEvent } from "nostr-tools";
@@ -443,7 +443,7 @@ export class Relay implements IRelay {
   }
 
   /** Create a COUNT observable that emits a single count response */
-  count(filters: Filter | Filter[], id = nanoid()): Observable<CountResponse> {
+  count(filters: FilterWithAnd | FilterWithAnd[], id = nanoid()): Observable<CountResponse> {
     // Create an observable that filters responses from the relay to just the ones for this COUNT
     const messages: Observable<any[]> = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
@@ -537,7 +537,7 @@ export class Relay implements IRelay {
   /** Negentropy sync event ids with the relay and an event store */
   async negentropy(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
   ): Promise<boolean> {
@@ -663,7 +663,7 @@ export class Relay implements IRelay {
   /** Negentropy sync events with the relay and an event store */
   sync(
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
+    filter: FilterWithAnd,
     direction: SyncDirection = SyncDirection.RECEIVE,
   ): Observable<NostrEvent> {
     const getEvents = async (ids: string[]) => {

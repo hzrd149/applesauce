@@ -1,10 +1,10 @@
 import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
-import { map, share, firstValueFrom, race, Observable } from "rxjs";
-import { Filter } from "nostr-tools";
+import { type FilterWithAnd } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
+import { firstValueFrom, map, Observable, race, share } from "rxjs";
 
-import { MultiplexWebSocket } from "./types.js";
 import { Negentropy, NegentropyStorageVector } from "./lib/negentropy.js";
+import { MultiplexWebSocket } from "./types.js";
 
 /**
  * A function that reconciles the storage vectors with a remote relay
@@ -25,7 +25,7 @@ const log = logger.extend("negentropy");
 /** Creates a NegentropyStorageVector from an event store and filter */
 export async function buildStorageFromFilter(
   store: IEventStoreRead | IAsyncEventStoreRead,
-  filter: Filter,
+  filter: FilterWithAnd,
 ): Promise<NegentropyStorageVector> {
   const storage = new NegentropyStorageVector();
   for (const event of await store.getByFilters(filter)) storage.insert(event.created_at, event.id);
@@ -49,7 +49,7 @@ export function buildStorageVector(items: { id: string; created_at: number }[]):
 export async function negentropySync(
   storage: NegentropyStorageVector,
   socket: MultiplexWebSocket & { next: (msg: any) => void },
-  filter: Filter,
+  filter: FilterWithAnd,
   reconcile: ReconcileFunction,
   opts?: NegentropySyncOptions,
 ): Promise<boolean> {
