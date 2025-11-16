@@ -1,7 +1,8 @@
-import { Filter, NostrEvent } from "nostr-tools";
+import { NostrEvent } from "nostr-tools";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { Observable } from "rxjs";
 
+import { FilterWithAnd } from "../helpers/filter.js";
 import { AddressPointerWithoutD } from "../helpers/pointers.js";
 import { ProfileContent } from "../helpers/profile.js";
 import { Mutes } from "../helpers/mutes.js";
@@ -22,9 +23,9 @@ export interface IEventStoreRead {
   getReplaceableHistory(kind: number, pubkey: string, identifier?: string): NostrEvent[] | undefined;
 
   /** Get all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): NostrEvent[];
+  getByFilters(filters: FilterWithAnd | FilterWithAnd[]): NostrEvent[];
   /** Get a timeline of events that match the filters */
-  getTimeline(filters: Filter | Filter[]): NostrEvent[];
+  getTimeline(filters: FilterWithAnd | FilterWithAnd[]): NostrEvent[];
 }
 
 /** The async read interface for an event store */
@@ -42,9 +43,9 @@ export interface IAsyncEventStoreRead {
   getReplaceableHistory(kind: number, pubkey: string, identifier?: string): Promise<NostrEvent[] | undefined>;
 
   /** Get all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): Promise<NostrEvent[]>;
+  getByFilters(filters: FilterWithAnd | FilterWithAnd[]): Promise<NostrEvent[]>;
   /** Get a timeline of events that match the filters */
-  getTimeline(filters: Filter | Filter[]): Promise<NostrEvent[]>;
+  getTimeline(filters: FilterWithAnd | FilterWithAnd[]): Promise<NostrEvent[]>;
 }
 
 /** The stream interface for an event store */
@@ -104,9 +105,9 @@ export interface IEventSubscriptions {
   /** Subscribe to an addressable event by pointer */
   addressable(pointer: AddressPointer): Observable<NostrEvent | undefined>;
   /** Subscribe to a batch of events that match the filters */
-  filters(filters: Filter | Filter[], onlyNew?: boolean): Observable<NostrEvent>;
+  filters(filters: FilterWithAnd | FilterWithAnd[], onlyNew?: boolean): Observable<NostrEvent>;
   /** Subscribe to a sorted timeline of events that match the filters */
-  timeline(filters: Filter | Filter[], onlyNew?: boolean): Observable<NostrEvent[]>;
+  timeline(filters: FilterWithAnd | FilterWithAnd[], onlyNew?: boolean): Observable<NostrEvent[]>;
 }
 
 /** @deprecated use {@link IEventSubscriptions} instead */
@@ -179,7 +180,7 @@ export interface IEventDatabase extends IEventStoreRead {
   /** Remove an event from the database */
   remove(event: string | NostrEvent): boolean;
   /** Remove multiple events that match the given filters */
-  removeByFilters(filters: Filter | Filter[]): number;
+  removeByFilters(filters: FilterWithAnd | FilterWithAnd[]): number;
   /** Notifies the database that an event has updated */
   update?: (event: NostrEvent) => void;
 }
@@ -191,7 +192,7 @@ export interface IAsyncEventDatabase extends IAsyncEventStoreRead {
   /** Remove an event from the database */
   remove(event: string | NostrEvent): Promise<boolean>;
   /** Remove multiple events that match the given filters */
-  removeByFilters(filters: Filter | Filter[]): Promise<number>;
+  removeByFilters(filters: FilterWithAnd | FilterWithAnd[]): Promise<number>;
   /** Notifies the database that an event has updated */
   update?: (event: NostrEvent) => void;
 }

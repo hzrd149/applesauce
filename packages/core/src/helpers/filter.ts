@@ -6,57 +6,99 @@ import { getIndexableTags } from "./event-tags.js";
 export { Filter } from "nostr-tools/filter";
 
 /**
+ * Extended Filter type that supports NIP-ND AND operator
+ * Uses `&` prefix for tag filters that require ALL values to match (AND logic)
+ * @example
+ * {
+ *   kinds: [1],
+ *   "&t": ["meme", "cat"],  // Must have BOTH "meme" AND "cat" tags
+ *   "#t": ["black", "white"] // Must have "black" OR "white" tags
+ * }
+ */
+export type FilterWithAnd = Filter & {
+  [key: `&${string}`]: string[] | undefined;
+};
+
+/**
  * Copied from nostr-tools and modified to use {@link getIndexableTags}
+ * Extended to support NIP-ND AND operator with `&` prefix
  * @see https://github.com/nbd-wtf/nostr-tools/blob/a61cde77eacc9518001f11d7f67f1a50ae05fd80/filter.ts
  */
-export function matchFilter(filter: Filter, event: NostrEvent): boolean {
-  if (filter.ids && filter.ids.indexOf(event.id) === -1) {
-    return false;
-  }
-  if (filter.kinds && filter.kinds.indexOf(event.kind) === -1) {
-    return false;
-  }
-  if (filter.authors && filter.authors.indexOf(event.pubkey) === -1) {
-    return false;
+export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
+  if (filter.ids && filter.ids.indexOf(event.id) === -1) return false;
+  if (filter.kinds && filter.kinds.indexOf(event.kind) === -1) return false;
+  if (filter.authors && filter.authors.indexOf(event.pubkey) === -1) return false;
+  if (filter.since && event.created_at < filter.since) return false;
+  if (filter.until && event.created_at > filter.until) return false;
+
+  // Process AND tag filters (& prefix) first - NIP-ND
+  // AND takes precedence and requires ALL values to be present
+  for (let f in filter) {
+    if (f[0] === "&") {
+      let tagName = f.slice(1);
+      let values = (filter as FilterWithAnd)[f as `&${string}`];
+      if (values && values.length > 0) {
+        const tags = getIndexableTags(event);
+        // ALL values must be present (AND logic)
+        for (const value of values) {
+          if (!tags.has(tagName + ":" + value)) {
+            return false;
+          }
+        }
+      }
+    }
   }
 
+  // Process OR tag filters (# prefix)
+  // Skip values that are in AND tags (NIP-ND rule)
   for (let f in filter) {
     if (f[0] === "#") {
       let tagName = f.slice(1);
       let values = filter[f as `#${string}`];
       if (values) {
+        // Check if there's a corresponding AND filter for this tag
+        const andKey = `&${tagName}` as `&${string}`;
+        const andValues = (filter as FilterWithAnd)[andKey];
+
+        // Filter out values that are in AND tags (NIP-ND rule)
+        const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
+
+        // If there are no values left after filtering, skip this check
+        if (filteredValues.length === 0) continue;
+
         const tags = getIndexableTags(event);
-        if (values.some((v) => tags.has(tagName + ":" + v)) === false) return false;
+        if (filteredValues.some((v) => tags.has(tagName + ":" + v)) === false) return false;
       }
     }
   }
-
-  if (filter.since && event.created_at < filter.since) return false;
-  if (filter.until && event.created_at > filter.until) return false;
 
   return true;
 }
 
 /** Copied from nostr-tools and modified to use {@link matchFilter} */
-export function matchFilters(filters: Filter[], event: NostrEvent): boolean {
+export function matchFilters(filters: FilterWithAnd[], event: NostrEvent): boolean {
   for (let i = 0; i < filters.length; i++) {
-    if (matchFilter(filters[i], event)) {
-      return true;
-    }
+    if (matchFilter(filters[i], event)) return true;
   }
   return false;
 }
 
-/** Copied from nostr-tools and modified to support undefined values */
-export function mergeFilters(...filters: Filter[]): Filter {
-  let result: Filter = {};
+/** Copied from nostr-tools and modified to support undefined values and NIP-ND AND operator */
+export function mergeFilters(...filters: FilterWithAnd[]): FilterWithAnd {
+  let result: FilterWithAnd = {};
   for (let i = 0; i < filters.length; i++) {
     let filter = filters[i];
     Object.entries(filter).forEach(([property, values]) => {
       // skip undefined
       if (values === undefined) return;
 
-      if (property === "kinds" || property === "ids" || property === "authors" || property[0] === "#") {
+      if (
+        property === "kinds" ||
+        property === "ids" ||
+        property === "authors" ||
+        property[0] === "#" ||
+        property[0] === "&"
+      ) {
         // @ts-ignore
         result[property] = result[property] || [];
         // @ts-ignore
@@ -78,6 +120,6 @@ export function mergeFilters(...filters: Filter[]): Filter {
 }
 
 /** Check if two filters are equal */
-export function isFilterEqual(a: Filter | Filter[], b: Filter | Filter[]): boolean {
+export function isFilterEqual(a: FilterWithAnd | FilterWithAnd[], b: FilterWithAnd | FilterWithAnd[]): boolean {
   return equal(a, b);
 }

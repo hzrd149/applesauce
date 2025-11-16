@@ -1,8 +1,9 @@
-import { Filter, NostrEvent } from "nostr-tools";
+import { NostrEvent } from "nostr-tools";
 import { binarySearch, insertEventIntoDescendingList } from "nostr-tools/utils";
 
 import { getIndexableTags, INDEXABLE_TAGS } from "../helpers/event-tags.js";
 import { createReplaceableAddress, isReplaceable } from "../helpers/event.js";
+import { FilterWithAnd } from "../helpers/filter.js";
 import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
 import { IEventMemory } from "./interface.js";
@@ -58,11 +59,11 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Gets all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): NostrEvent[] {
+  getByFilters(filters: FilterWithAnd | FilterWithAnd[]): NostrEvent[] {
     return Array.from(this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]));
   }
   /** Gets a timeline of events that match the filters */
-  getTimeline(filters: Filter | Filter[]): NostrEvent[] {
+  getTimeline(filters: FilterWithAnd | FilterWithAnd[]): NostrEvent[] {
     const timeline: NostrEvent[] = [];
     const events = this.getByFilters(filters);
     for (const event of events) insertEventIntoDescendingList(timeline, event);
@@ -152,7 +153,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Remove multiple events that match the given filters */
-  removeByFilters(filters: Filter | Filter[]): number {
+  removeByFilters(filters: FilterWithAnd | FilterWithAnd[]): number {
     const eventsToRemove = this.getByFilters(filters);
     let removedCount = 0;
 
@@ -392,7 +393,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Returns all events that match the filter */
-  protected getEventsForFilter(filter: Filter): Set<NostrEvent> {
+  protected getEventsForFilter(filter: FilterWithAnd): Set<NostrEvent> {
     // search is not supported, return an empty set
     if (filter.search) return new Set();
 
@@ -421,10 +422,36 @@ export class EventMemory implements IEventMemory {
       and(time);
     }
 
+    // Process AND tag filters (& prefix) first - NIP-ND
+    // AND takes precedence and requires ALL values to be present
+    for (const t of INDEXABLE_TAGS) {
+      const key = `&${t}` as `&${string}`;
+      const values = filter[key];
+      if (values?.length) {
+        // For AND logic, we need to intersect events that have ALL the specified tag values
+        // We do this by iterating through each value and intersecting the results
+        for (const value of values) {
+          and(this.iterateTag(t, [value]));
+        }
+      }
+    }
+
+    // Process OR tag filters (# prefix)
+    // Skip values that are in AND tags (NIP-ND rule)
     for (const t of INDEXABLE_TAGS) {
       const key = `#${t}`;
       const values = filter[key as `#${string}`];
-      if (values?.length) and(this.iterateTag(t, values));
+      if (values?.length) {
+        // Check if there's a corresponding AND filter for this tag
+        const andKey = `&${t}` as `&${string}`;
+        const andValues = filter[andKey];
+
+        // Filter out values that are in AND tags (NIP-ND rule)
+        const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
+
+        // Only apply OR filter if there are values left after filtering
+        if (filteredValues.length > 0) and(this.iterateTag(t, filteredValues));
+      }
     }
 
     // Optimize: Use composite kind+author index when both are present and the cross-product is small
@@ -471,7 +498,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Returns all events that match the filters */
-  protected getEventsForFilters(filters: Filter[]): Set<NostrEvent> {
+  protected getEventsForFilters(filters: FilterWithAnd[]): Set<NostrEvent> {
     if (filters.length === 0) return new Set();
 
     let events = new Set<NostrEvent>();
