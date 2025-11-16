@@ -181,6 +181,26 @@ const sub = eventStore.filters({ kinds: [1] }, true).subscribe((event) => {
 });
 ```
 
+#### NIP-ND AND Operator Support
+
+The event store supports [NIP-ND](https://github.com/nostr-protocol/nips/pull/1365) AND operators in filters using the `&` prefix for tag filters that require ALL values to match:
+
+```ts
+// Find events that have BOTH "meme" AND "cat" tags
+// and also have "black" OR "white" tags
+const sub = eventStore
+  .filters({
+    kinds: [1],
+    "&t": ["meme", "cat"], // Must have BOTH tags (AND)
+    "#t": ["black", "white"], // Must have black OR white (OR)
+  })
+  .subscribe((event) => {
+    console.log("Found matching event", event);
+  });
+```
+
+The AND operator (`&`) takes precedence over OR (`#`), and any tag values used in AND filters are automatically excluded from OR filters to avoid redundancy.
+
 ### Timelines
 
 A timeline subscription takes a filter(s) and returns a sorted array of events that match the filter(s)
@@ -576,6 +596,13 @@ const events = eventStore.getByFilters({
   authors: ["3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"],
 });
 console.log(`Found ${events.length} events`);
+
+// With NIP-ND AND operators
+const filteredEvents = eventStore.getByFilters({
+  kinds: [1],
+  "&t": ["nostr", "bitcoin"], // Must have BOTH tags
+  "#t": ["meme"], // Must also have meme tag
+});
 ```
 
 ### getTimeline
