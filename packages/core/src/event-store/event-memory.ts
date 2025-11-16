@@ -17,13 +17,16 @@ export class EventMemory implements IEventMemory {
   protected tags = new LRU<Set<NostrEvent>>();
   protected created_at: NostrEvent[] = [];
 
+  /** Composite index for kind+author queries (common pattern) */
+  protected kindAuthor = new Map<string, Set<NostrEvent>>();
+
   /** LRU cache of last events touched */
   events = new LRU<NostrEvent>();
 
   /** A sorted array of replaceable events by address */
   protected replaceable = new Map<string, NostrEvent[]>();
 
-  /** The number of events in the event set */
+  /** The number of events in the database */
   get size() {
     return this.events.size;
   }
@@ -76,6 +79,7 @@ export class EventMemory implements IEventMemory {
     this.events.set(id, event);
     this.getKindIndex(event.kind).add(event);
     this.getAuthorsIndex(event.pubkey).add(event);
+    this.getKindAuthorIndex(event.kind, event.pubkey).add(event);
 
     // Add the event to the tag indexes if they exist
     for (const tag of getIndexableTags(event)) {
@@ -116,27 +120,29 @@ export class EventMemory implements IEventMemory {
     this.getAuthorsIndex(event.pubkey).delete(event);
     this.getKindIndex(event.kind).delete(event);
 
+    // Remove from composite kind+author index
+    const kindAuthorKey = `${event.kind}:${event.pubkey}`;
+    if (this.kindAuthor.has(kindAuthorKey)) {
+      this.kindAuthor.get(kindAuthorKey)!.delete(event);
+    }
+
     for (const tag of getIndexableTags(event)) {
       if (this.tags.has(tag)) {
         this.getTagIndex(tag).delete(event);
       }
     }
 
-    // remove from created_at index
-    const i = this.created_at.indexOf(event);
-    this.created_at.splice(i, 1);
+    // remove from created_at index using binary search
+    this.removeFromSortedArray(this.created_at, event);
 
     this.events.delete(id);
 
-    // remove from replaceable index
+    // remove from replaceable index using binary search
     if (isReplaceable(event.kind)) {
       const identifier = event.tags.find((t) => t[0] === "d")?.[1];
       const address = createReplaceableAddress(event.kind, event.pubkey, identifier);
       const array = this.replaceable.get(address);
-      if (array && array.includes(event)) {
-        const idx = array.indexOf(event);
-        array.splice(idx, 1);
-      }
+      if (array) this.removeFromSortedArray(array, event);
     }
 
     // remove any claims this event has
@@ -163,8 +169,8 @@ export class EventMemory implements IEventMemory {
     // Do nothing
   }
 
-  /** A weak map of events that are claimed by other things */
-  protected claims = new WeakMap<NostrEvent, any>();
+  /** A weak map of events to claim reference counts */
+  protected claims = new WeakMap<NostrEvent, number>();
 
   /** Moves an event to the top of the LRU cache */
   touch(event: NostrEvent): void {
@@ -175,23 +181,30 @@ export class EventMemory implements IEventMemory {
     this.events.set(event.id, event);
   }
 
-  /** Sets the claim on the event and touches it */
-  claim(event: NostrEvent, claim: any): void {
-    if (!this.claims.has(event)) {
-      this.claims.set(event, claim);
-    }
+  /** Increments the claim count on the event and touches it */
+  claim(event: NostrEvent): void {
+    const currentCount = this.claims.get(event) || 0;
+    this.claims.set(event, currentCount + 1);
 
     // always touch event
     this.touch(event);
   }
   /** Checks if an event is claimed by anything */
   isClaimed(event: NostrEvent): boolean {
-    return this.claims.has(event);
+    const count = this.claims.get(event);
+    return count !== undefined && count > 0;
   }
-  /** Removes a claim from an event */
-  removeClaim(event: NostrEvent, claim: any): void {
-    const current = this.claims.get(event);
-    if (current === claim) this.claims.delete(event);
+  /** Decrements the claim count on an event */
+  removeClaim(event: NostrEvent): void {
+    const currentCount = this.claims.get(event);
+    if (currentCount !== undefined && currentCount > 0) {
+      const newCount = currentCount - 1;
+      if (newCount === 0) {
+        this.claims.delete(event);
+      } else {
+        this.claims.set(event, newCount);
+      }
+    }
   }
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void {
@@ -234,6 +247,11 @@ export class EventMemory implements IEventMemory {
     if (!this.authors.has(author)) this.authors.set(author, new Set());
     return this.authors.get(author)!;
   }
+  protected getKindAuthorIndex(kind: number, pubkey: string) {
+    const key = `${kind}:${pubkey}`;
+    if (!this.kindAuthor.has(key)) this.kindAuthor.set(key, new Set());
+    return this.kindAuthor.get(key)!;
+  }
   protected getTagIndex(tagAndValue: string) {
     if (!this.tags.has(tagAndValue)) {
       // build new tag index from existing events
@@ -251,6 +269,56 @@ export class EventMemory implements IEventMemory {
       this.tags.set(tagAndValue, events);
     }
     return this.tags.get(tagAndValue)!;
+  }
+
+  /**
+   * Helper method to remove an event from a sorted array using binary search.
+   * Falls back to indexOf if binary search doesn't find exact match.
+   */
+  protected removeFromSortedArray(array: NostrEvent[], event: NostrEvent): void {
+    if (array.length === 0) return;
+
+    // Use binary search to find the approximate position
+    const result = binarySearch(array, (mid) => mid.created_at - event.created_at);
+
+    if (result) {
+      let index = result[0];
+
+      // Binary search finds the position, but we need to find the exact event
+      // since multiple events can have the same created_at timestamp.
+      // Search backwards and forwards from the found position
+      let found = false;
+
+      // Check the found position first
+      if (array[index] === event) {
+        array.splice(index, 1);
+        return;
+      }
+
+      // Search backwards
+      for (let i = index - 1; i >= 0 && array[i].created_at === event.created_at; i--) {
+        if (array[i] === event) {
+          array.splice(i, 1);
+          found = true;
+          break;
+        }
+      }
+
+      if (found) return;
+
+      // Search forwards
+      for (let i = index + 1; i < array.length && array[i].created_at === event.created_at; i++) {
+        if (array[i] === event) {
+          array.splice(i, 1);
+          return;
+        }
+      }
+    }
+
+    // Fallback to indexOf if binary search doesn't find the event
+    // This should rarely happen, but ensures correctness
+    const idx = array.indexOf(event);
+    if (idx !== -1) array.splice(idx, 1);
   }
 
   /** Iterates over all events by author */
@@ -288,27 +356,31 @@ export class EventMemory implements IEventMemory {
 
   /** Iterates over all events by time */
   *iterateTime(since: number | undefined, until: number | undefined): Generator<NostrEvent> {
-    let untilIndex = 0;
-    let sinceIndex = this.created_at.length - 1;
+    let startIndex = 0;
+    let endIndex = this.created_at.length - 1;
 
+    // If until is set, use binary search to find better start index
     let start = until
       ? binarySearch(this.created_at, (mid) => {
           return mid.created_at - until;
         })
       : undefined;
+    if (start) startIndex = start[0];
 
-    if (start) untilIndex = start[0];
-
+    // If since is set, use binary search to find better end index
     const end = since
       ? binarySearch(this.created_at, (mid) => {
           return mid.created_at - since;
         })
       : undefined;
+    if (end) endIndex = end[0];
 
-    if (end) sinceIndex = end[0];
-
-    for (let i = untilIndex; i < sinceIndex; i++) {
-      yield this.created_at[i];
+    // Yield events in the range, filtering by exact bounds
+    for (let i = startIndex; i <= endIndex; i++) {
+      const event = this.created_at[i];
+      if (until !== undefined && event.created_at > until) continue;
+      if (since !== undefined && event.created_at < since) break;
+      yield event;
     }
   }
 
@@ -355,13 +427,34 @@ export class EventMemory implements IEventMemory {
       if (values?.length) and(this.iterateTag(t, values));
     }
 
-    if (filter.authors) and(this.iterateAuthors(filter.authors));
-    if (filter.kinds) and(this.iterateKinds(filter.kinds));
+    // Optimize: Use composite kind+author index when both are present and the cross-product is small
+    if (filter.authors && filter.kinds && filter.authors.length * filter.kinds.length <= 20) {
+      const combined = new Set<NostrEvent>();
+      for (const kind of filter.kinds) {
+        for (const author of filter.authors) {
+          const key = `${kind}:${author}`;
+          const kindAuthorEvents = this.kindAuthor.get(key);
+          if (kindAuthorEvents) {
+            for (const event of kindAuthorEvents) combined.add(event);
+          }
+        }
+      }
+      and(combined);
+    } else {
+      // Use separate indexes
+      if (filter.authors) and(this.iterateAuthors(filter.authors));
+      if (filter.kinds) and(this.iterateKinds(filter.kinds));
+    }
 
     // query for time last if only until is set
     if (filter.since === undefined && filter.until !== undefined) {
       time = Array.from(this.iterateTime(filter.since, filter.until));
       and(time);
+    }
+
+    // If no filters were applied (empty filter), return all events
+    if (first) {
+      return new Set(this.events.values());
     }
 
     // if the filter queried on time and has a limit. truncate the events now
@@ -396,6 +489,7 @@ export class EventMemory implements IEventMemory {
     this.events.clear();
     this.kinds.clear();
     this.authors.clear();
+    this.kindAuthor.clear();
     this.tags.clear();
     this.created_at = [];
     this.replaceable.clear();

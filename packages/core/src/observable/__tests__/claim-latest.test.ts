@@ -26,9 +26,19 @@ const event2 = {
   sig: "5220d6a8cdb4837b2569c26a84a2ac6a44427a224cb1602c05c578c6a63fe122a37e16455b09cb38bf297fc8161a8e715d7b444d017624c044d87a77e092c881",
   tags: [["alt", "User profile for Cesar Dias"]],
 };
+const event3 = {
+  content: '{"name":"Test User","about":"Third test event"}',
+  created_at: 1738362530,
+  id: "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+  kind: 0,
+  pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  relays: [""],
+  sig: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+  tags: [],
+};
 
 describe("claimLatest", () => {
-  it("it should claim events", () => {
+  it("should claim the latest event and unclaim previous ones", () => {
     const database = new EventMemory();
     const subject = new Subject<NostrEvent>();
     const sub = subject.pipe(claimLatest(database)).subscribe();
@@ -40,5 +50,255 @@ describe("claimLatest", () => {
     sub.unsubscribe();
     expect(database.isClaimed(event1)).toBe(false);
     expect(database.isClaimed(event2)).toBe(false);
+  });
+
+  it("should claim only a single event", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    subject.next(database.add(event1)!);
+    expect(database.isClaimed(event1)).toBe(true);
+
+    sub.unsubscribe();
+    expect(database.isClaimed(event1)).toBe(false);
+  });
+
+  it("should handle the same event emitted multiple times (MEMORY LEAK TEST)", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    const evt = database.add(event1)!;
+
+    // Emit the same event multiple times
+    subject.next(evt);
+    expect(database.isClaimed(evt)).toBe(true);
+
+    subject.next(evt);
+    expect(database.isClaimed(evt)).toBe(true);
+
+    subject.next(evt);
+    expect(database.isClaimed(evt)).toBe(true);
+
+    // When unsubscribed, the event should be unclaimed
+    sub.unsubscribe();
+    expect(database.isClaimed(evt)).toBe(false);
+  });
+
+  it("should handle multiple events in sequence", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    const evt1 = database.add(event1)!;
+    const evt2 = database.add(event2)!;
+    const evt3 = database.add(event3)!;
+
+    subject.next(evt1);
+    expect(database.isClaimed(evt1)).toBe(true);
+    expect(database.isClaimed(evt2)).toBe(false);
+    expect(database.isClaimed(evt3)).toBe(false);
+
+    subject.next(evt2);
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(true);
+    expect(database.isClaimed(evt3)).toBe(false);
+
+    subject.next(evt3);
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(false);
+    expect(database.isClaimed(evt3)).toBe(true);
+
+    sub.unsubscribe();
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(false);
+    expect(database.isClaimed(evt3)).toBe(false);
+  });
+
+  it("should handle undefined values", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent | undefined>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    // Start with undefined
+    subject.next(undefined);
+
+    // Emit an event
+    const evt = database.add(event1)!;
+    subject.next(evt);
+    expect(database.isClaimed(evt)).toBe(true);
+
+    // Emit undefined again - should unclaim the event
+    subject.next(undefined);
+    expect(database.isClaimed(evt)).toBe(false);
+
+    sub.unsubscribe();
+  });
+
+  it("should handle alternating between event and undefined", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent | undefined>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    const evt1 = database.add(event1)!;
+    const evt2 = database.add(event2)!;
+
+    subject.next(evt1);
+    expect(database.isClaimed(evt1)).toBe(true);
+
+    subject.next(undefined);
+    expect(database.isClaimed(evt1)).toBe(false);
+
+    subject.next(evt2);
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(true);
+
+    subject.next(undefined);
+    expect(database.isClaimed(evt2)).toBe(false);
+
+    sub.unsubscribe();
+  });
+
+  it("should handle observable completion", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+
+    subject.pipe(claimLatest(database)).subscribe();
+
+    const evt = database.add(event1)!;
+    subject.next(evt);
+
+    expect(database.isClaimed(evt)).toBe(true);
+
+    // Complete the observable
+    subject.complete();
+
+    // Claims should be removed on completion
+    expect(database.isClaimed(evt)).toBe(false);
+  });
+
+  it("should handle observable error", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+
+    subject.pipe(claimLatest(database)).subscribe({
+      error: () => {
+        // Ignore error
+      },
+    });
+
+    const evt = database.add(event1)!;
+    subject.next(evt);
+
+    expect(database.isClaimed(evt)).toBe(true);
+
+    // Error the observable
+    subject.error(new Error("test error"));
+
+    // Claims should be removed on error
+    expect(database.isClaimed(evt)).toBe(false);
+  });
+
+  it("should handle multiple subscriptions to the same observable", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+    const observable = subject.pipe(claimLatest(database));
+
+    const sub1 = observable.subscribe();
+    const sub2 = observable.subscribe();
+
+    const evt1 = database.add(event1)!;
+    const evt2 = database.add(event2)!;
+
+    subject.next(evt1);
+
+    // Both subscriptions should claim the event
+    expect(database.isClaimed(evt1)).toBe(true);
+
+    subject.next(evt2);
+
+    // Now evt2 should be claimed
+    expect(database.isClaimed(evt2)).toBe(true);
+
+    // Unsubscribe first subscription
+    sub1.unsubscribe();
+
+    // Event might still be claimed by sub2
+    const claimedAfterFirstUnsub = database.isClaimed(evt2);
+
+    // Unsubscribe second subscription
+    sub2.unsubscribe();
+
+    // After both unsubscribe, claims should be removed
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(false);
+  });
+
+  it("should handle rapid event changes", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    const evt1 = database.add(event1)!;
+    const evt2 = database.add(event2)!;
+    const evt3 = database.add(event3)!;
+
+    // Rapidly emit events
+    subject.next(evt1);
+    subject.next(evt2);
+    subject.next(evt3);
+    subject.next(evt1);
+    subject.next(evt2);
+
+    // Only the latest should be claimed
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(true);
+    expect(database.isClaimed(evt3)).toBe(false);
+
+    sub.unsubscribe();
+    expect(database.isClaimed(evt2)).toBe(false);
+  });
+
+  it("should handle event -> same event -> different event sequence (MEMORY LEAK TEST)", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    const evt1 = database.add(event1)!;
+    const evt2 = database.add(event2)!;
+
+    subject.next(evt1);
+    expect(database.isClaimed(evt1)).toBe(true);
+
+    // Emit the same event again
+    subject.next(evt1);
+    expect(database.isClaimed(evt1)).toBe(true);
+
+    // Now emit a different event
+    subject.next(evt2);
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(true);
+
+    sub.unsubscribe();
+    expect(database.isClaimed(evt1)).toBe(false);
+    expect(database.isClaimed(evt2)).toBe(false);
+  });
+
+  it("should handle starting with undefined then emitting events", () => {
+    const database = new EventMemory();
+    const subject = new Subject<NostrEvent | undefined>();
+    const sub = subject.pipe(claimLatest(database)).subscribe();
+
+    // Start with multiple undefined emissions
+    subject.next(undefined);
+    subject.next(undefined);
+
+    const evt = database.add(event1)!;
+    subject.next(evt);
+    expect(database.isClaimed(evt)).toBe(true);
+
+    sub.unsubscribe();
+    expect(database.isClaimed(evt)).toBe(false);
   });
 });

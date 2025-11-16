@@ -81,12 +81,12 @@ export interface IAsyncEventStoreActions {
 export interface IEventClaims {
   /** Tell the store that this event was used */
   touch(event: NostrEvent): void;
-  /** Sets the claim on the event and touches it */
-  claim(event: NostrEvent, claim: any): void;
+  /** Increments the claim count on the event */
+  claim(event: NostrEvent): void;
   /** Checks if an event is claimed by anything */
   isClaimed(event: NostrEvent): boolean;
-  /** Removes a claim from an event */
-  removeClaim(event: NostrEvent, claim: any): void;
+  /** Decrements the claim count on an event */
+  removeClaim(event: NostrEvent): void;
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void;
   /** Returns a generator of unclaimed events in order of least used */

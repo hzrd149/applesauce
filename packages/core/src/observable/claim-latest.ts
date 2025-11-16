@@ -10,16 +10,19 @@ export function claimLatest<T extends NostrEvent | undefined>(claims: IEventClai
 
     return source.pipe(
       tap((event) => {
-        // remove old claim
-        if (latest) claims.removeClaim(latest, source);
-        // claim new event
-        if (event) claims.claim(event, source);
-        // update state
-        latest = event;
+        // only update if the event changed
+        if (latest !== event) {
+          // remove old claim
+          if (latest) claims.removeClaim(latest);
+          // claim new event
+          if (event) claims.claim(event);
+          // update state
+          latest = event;
+        }
       }),
       finalize(() => {
         // remove latest claim
-        if (latest) claims.removeClaim(latest, source);
+        if (latest) claims.removeClaim(latest);
       }),
     );
   };

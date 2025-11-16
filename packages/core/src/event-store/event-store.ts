@@ -18,7 +18,7 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
   database: IEventDatabase;
 
   /** Optional memory database for ensuring single event instances */
-  memory?: EventMemory;
+  memory: EventMemory;
 
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions = false;
@@ -371,17 +371,17 @@ export class EventStore extends EventStoreModelMixin(class {}) implements IEvent
   touch(event: NostrEvent) {
     return this.memory?.touch(event);
   }
-  /** Sets the claim on the event and touches it */
-  claim(event: NostrEvent, claim: any): void {
-    return this.memory?.claim(event, claim);
+  /** Increments the claim count on the event and touches it */
+  claim(event: NostrEvent): void {
+    return this.memory?.claim(event);
   }
   /** Checks if an event is claimed by anything */
   isClaimed(event: NostrEvent): boolean {
     return this.memory?.isClaimed(event) ?? false;
   }
-  /** Removes a claim from an event */
-  removeClaim(event: NostrEvent, claim: any): void {
-    return this.memory?.removeClaim(event, claim);
+  /** Decrements the claim count on an event */
+  removeClaim(event: NostrEvent): void {
+    return this.memory?.removeClaim(event);
   }
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void {

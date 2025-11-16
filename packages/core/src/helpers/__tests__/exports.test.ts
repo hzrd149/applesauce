@@ -342,6 +342,7 @@ describe("exports", () => {
         "isValidLegacyMessage",
         "isValidList",
         "isValidProfile",
+        "isValidShare",
         "isValidZap",
         "isVideoURL",
         "kinds",
