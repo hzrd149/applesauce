@@ -65,21 +65,56 @@ export function buildFilterConditions(filter: FilterWithSearch): {
     params.push(filter.until);
   }
 
-  // Handle tag filters (e.g., #e, #p, #t, #d, etc.)
+  // Handle AND tag filters (& prefix) first - NIP-ND
+  // AND takes precedence and requires ALL values to be present
+  for (const [key, values] of Object.entries(filter)) {
+    if (key.startsWith("&") && values && Array.isArray(values) && values.length > 0) {
+      const tagName = key.slice(1); // Remove the '&' prefix
+
+      // Use a single subquery with GROUP BY + HAVING COUNT for efficiency
+      // This is more efficient than multiple JOINs for the same tag
+      const placeholders = values.map(() => "?").join(", ");
+      conditions.push(`events.id IN (
+        SELECT event_id
+        FROM event_tags
+        WHERE tag_name = ? AND tag_value IN (${placeholders})
+        GROUP BY event_id
+        HAVING COUNT(DISTINCT tag_value) = ?
+      )`);
+
+      // Add parameters: tagName, all tag values, then count of values
+      params.push(tagName, ...values, values.length);
+    }
+  }
+
+  // Handle OR tag filters (# prefix)
+  // Skip values that are in AND tags (NIP-ND rule)
   for (const [key, values] of Object.entries(filter)) {
     if (key.startsWith("#") && values && Array.isArray(values) && values.length > 0) {
       const tagName = key.slice(1); // Remove the '#' prefix
 
+      // Check if there's a corresponding AND filter for this tag
+      const andKey = `&${tagName}`;
+      const andValues = filter[andKey as `&${string}`];
+
+      // Filter out values that are in AND tags (NIP-ND rule)
+      const filteredValues = andValues
+        ? (values as string[]).filter((v) => !andValues.includes(v))
+        : (values as string[]);
+
+      // Only apply OR filter if there are values left after filtering
+      if (filteredValues.length === 0) continue;
+
       // Use the event_tags table for efficient tag filtering
-      const placeholders = values.map(() => "?").join(", ");
+      const placeholders = filteredValues.map(() => "?").join(", ");
       conditions.push(`events.id IN (
         SELECT DISTINCT event_id
         FROM event_tags
         WHERE tag_name = ? AND tag_value IN (${placeholders})
       )`);
 
-      // Add parameters: tagName first, then all the tag values
-      params.push(tagName, ...values);
+      // Add parameters: tagName first, then all the filtered tag values
+      params.push(tagName, ...filteredValues);
     }
   }
 

@@ -1,4 +1,4 @@
-import { Filter, NostrEvent } from "applesauce-core/helpers";
+import { FilterWithAnd, NostrEvent } from "applesauce-core/helpers";
 import type { Statement } from "./statements.js";
 
 // SQL schema for FTS5 search table - stores formatted searchable content directly
@@ -21,8 +21,8 @@ export const DELETE_SEARCH_CONTENT_STATEMENT: Statement<[string]> = {
   sql: `DELETE FROM events_search WHERE event_id = ?`,
 };
 
-/** Filter with search field */
-export type FilterWithSearch = Filter & { search?: string; order?: "created_at" | "rank" };
+/** Filter with search field and NIP-ND AND operator support */
+export type FilterWithSearch = FilterWithAnd & { search?: string; order?: "created_at" | "rank" };
 
 /** Content formatter function type for search indexing */
 export type SearchContentFormatter = (event: NostrEvent) => string;

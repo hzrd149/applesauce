@@ -514,3 +514,420 @@ describe("removeByFilters", () => {
     expect(database.hasEvent(event.id)).toBe(false);
   });
 });
+
+describe("NIP-ND AND filter support", () => {
+  beforeEach(() => {
+    database = new BetterSqlite3EventDatabase(":memory:");
+    user = new FakeUser();
+  });
+
+  describe("basic AND functionality", () => {
+    it("should filter events with AND operator requiring all tag values", () => {
+      const event1 = user.note("Has both meme and cat", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+      const event2 = user.note("Has only meme", {
+        tags: [["t", "meme"]],
+      });
+      const event3 = user.note("Has only cat", {
+        tags: [["t", "cat"]],
+      });
+      const event4 = user.note("Has both plus dog", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+          ["t", "dog"],
+        ],
+      });
+
+      database.add(event1);
+      database.add(event2);
+      database.add(event3);
+      database.add(event4);
+
+      // Query with AND operator - must have BOTH meme AND cat
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme", "cat"],
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+      expect(results.map((e) => e.id)).toContain(event4.id);
+      expect(results.map((e) => e.id)).not.toContain(event2.id);
+      expect(results.map((e) => e.id)).not.toContain(event3.id);
+    });
+
+    it("should handle AND with single value", () => {
+      const event1 = user.note("Has meme", { tags: [["t", "meme"]] });
+      const event2 = user.note("No tags", { tags: [] });
+
+      database.add(event1);
+      database.add(event2);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme"],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+    });
+
+    it("should return empty array when no events match AND condition", () => {
+      const event1 = user.note("Has only meme", { tags: [["t", "meme"]] });
+      const event2 = user.note("Has only cat", { tags: [["t", "cat"]] });
+
+      database.add(event1);
+      database.add(event2);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme", "cat"],
+      });
+
+      expect(results).toHaveLength(0);
+    });
+  });
+
+  describe("AND with OR combination", () => {
+    it("should combine AND and OR filters on same tag type", () => {
+      const event1 = user.note("Has meme, cat, and black", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+          ["t", "black"],
+        ],
+      });
+      const event2 = user.note("Has meme, cat, and white", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+          ["t", "white"],
+        ],
+      });
+      const event3 = user.note("Has only meme and black", {
+        tags: [
+          ["t", "meme"],
+          ["t", "black"],
+        ],
+      });
+
+      database.add(event1);
+      database.add(event2);
+      database.add(event3);
+
+      // Must have BOTH meme AND cat, plus black OR white
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme", "cat"],
+        "#t": ["black", "white"],
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+      expect(results.map((e) => e.id)).toContain(event2.id);
+      expect(results.map((e) => e.id)).not.toContain(event3.id); // Missing cat
+    });
+
+    it("should filter out AND values from OR (NIP-ND rule)", () => {
+      const event1 = user.note("Has meme and black", {
+        tags: [
+          ["t", "meme"],
+          ["t", "black"],
+        ],
+      });
+      const event2 = user.note("Has only meme", {
+        tags: [["t", "meme"]],
+      });
+
+      database.add(event1);
+      database.add(event2);
+
+      // AND has "meme", OR has "meme" and "black"
+      // "meme" should be filtered from OR, leaving only "black"
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme"],
+        "#t": ["meme", "black"],
+      });
+
+      // event1 has meme (AND) and black (OR) - should match
+      // event2 has meme (AND) but not black (OR) - should NOT match
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+      expect(results.map((e) => e.id)).not.toContain(event2.id);
+    });
+
+    it("should handle case where all OR values are filtered out", () => {
+      const event1 = user.note("Has meme", { tags: [["t", "meme"]] });
+      const event2 = user.note("Has meme and cat", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+
+      database.add(event1);
+      database.add(event2);
+
+      // AND has "meme", OR only has "meme" - so OR becomes empty and is ignored
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme"],
+        "#t": ["meme"],
+      });
+
+      // Both events should match since OR is effectively ignored
+      expect(results).toHaveLength(2);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+      expect(results.map((e) => e.id)).toContain(event2.id);
+    });
+  });
+
+  describe("AND with multiple tag types", () => {
+    it("should handle AND on different tag types", () => {
+      const user2 = new FakeUser();
+      const event1 = user.note("Has both tags", {
+        tags: [
+          ["t", "meme"],
+          ["p", user2.pubkey],
+        ],
+      });
+      const event2 = user.note("Has only t tag", {
+        tags: [["t", "meme"]],
+      });
+      const event3 = user.note("Has only p tag", {
+        tags: [["p", user2.pubkey]],
+      });
+
+      database.add(event1);
+      database.add(event2);
+      database.add(event3);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme"],
+        "&p": [user2.pubkey],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+    });
+
+    it("should combine AND and OR on different tag types", () => {
+      const user2 = new FakeUser();
+      const event1 = user.note("Perfect match", {
+        tags: [
+          ["t", "meme"],
+          ["p", user2.pubkey],
+          ["e", "event-1"],
+        ],
+      });
+      const event2 = user.note("Missing AND tag", {
+        tags: [
+          ["p", user2.pubkey],
+          ["e", "event-1"],
+        ],
+      });
+      const event3 = user.note("Missing OR tag", {
+        tags: [
+          ["t", "meme"],
+          ["p", user2.pubkey],
+        ],
+      });
+
+      database.add(event1);
+      database.add(event2);
+      database.add(event3);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme"],
+        "&p": [user2.pubkey],
+        "#e": ["event-1", "event-2"], // OR condition
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+    });
+  });
+
+  describe("AND with other filter types", () => {
+    it("should combine AND tags with kinds filter", () => {
+      const profile = user.profile({ name: "test" });
+      const note = user.note("test", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+
+      database.add(profile);
+      database.add(note);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme", "cat"],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(note.id);
+    });
+
+    it("should combine AND tags with authors filter", () => {
+      const user2 = new FakeUser();
+      const event1 = user.note("user1 note", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+      const event2 = user2.note("user2 note", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+
+      database.add(event1);
+      database.add(event2);
+
+      const results = database.getByFilters({
+        authors: [user.pubkey],
+        "&t": ["meme", "cat"],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+    });
+
+    it("should combine AND tags with time filters", () => {
+      const event1 = user.note("old", {
+        created_at: 1000,
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+      const event2 = user.note("new", {
+        created_at: 2000,
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+
+      database.add(event1);
+      database.add(event2);
+
+      const results = database.getByFilters({
+        since: 1500,
+        "&t": ["meme", "cat"],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event2.id);
+    });
+  });
+
+  describe("multiple filters with AND tags (OR logic between filters)", () => {
+    it("should handle OR logic between filters with AND tags", () => {
+      const event1 = user.note("Has meme and cat", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+      const event2 = user.note("Has dog and bird", {
+        tags: [
+          ["t", "dog"],
+          ["t", "bird"],
+        ],
+      });
+      const event3 = user.note("Has only meme", {
+        tags: [["t", "meme"]],
+      });
+
+      database.add(event1);
+      database.add(event2);
+      database.add(event3);
+
+      // Filter 1: must have meme AND cat
+      // Filter 2: must have dog AND bird
+      const results = database.getByFilters([
+        { kinds: [kinds.ShortTextNote], "&t": ["meme", "cat"] },
+        { kinds: [kinds.ShortTextNote], "&t": ["dog", "bird"] },
+      ]);
+
+      expect(results).toHaveLength(2);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+      expect(results.map((e) => e.id)).toContain(event2.id);
+      expect(results.map((e) => e.id)).not.toContain(event3.id);
+    });
+  });
+
+  describe("edge cases", () => {
+    it("should handle empty AND array", () => {
+      const event = user.note("test", { tags: [["t", "meme"]] });
+      database.add(event);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": [],
+      });
+
+      // Empty AND array should not filter anything
+      expect(results).toHaveLength(1);
+    });
+
+    it("should handle events with duplicate tag values", () => {
+      const event = user.note("test", {
+        tags: [
+          ["t", "meme"],
+          ["t", "meme"], // duplicate
+          ["t", "cat"],
+        ],
+      });
+      database.add(event);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme", "cat"],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event.id);
+    });
+
+    it("should handle three or more AND values", () => {
+      const event1 = user.note("Has all three", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+          ["t", "funny"],
+        ],
+      });
+      const event2 = user.note("Has only two", {
+        tags: [
+          ["t", "meme"],
+          ["t", "cat"],
+        ],
+      });
+
+      database.add(event1);
+      database.add(event2);
+
+      const results = database.getByFilters({
+        kinds: [kinds.ShortTextNote],
+        "&t": ["meme", "cat", "funny"],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results.map((e) => e.id)).toContain(event1.id);
+    });
+  });
+});
