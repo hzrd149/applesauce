@@ -1,5 +1,16 @@
 # applesauce-sqlite
 
+## 4.4.0
+
+### Minor Changes
+
+- aa75748: Add support for NIP-ND AND tag filters
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.4.0
+
 ## 4.1.0
 
 ### Minor Changes

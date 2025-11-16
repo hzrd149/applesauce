@@ -1,6 +1,6 @@
 {
   "name": "applesauce-sqlite",
-  "version": "4.1.0",
+  "version": "4.4.0",
   "description": "sqlite event databases for applesauce",
   "type": "module",
   "main": "dist/index.js",
@@ -110,7 +110,7 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^4.1.0"
+    "applesauce-core": "^4.4.0"
   },
   "optionalDependencies": {
     "@libsql/client": "^0.15.15",
