@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 4.4.1
+
+### Patch Changes
+
+- 46910ef: Fix `getAddressPointerForEvent` throwing for replaceable events
+
 ## 4.4.0
 
 ### Minor Changes
