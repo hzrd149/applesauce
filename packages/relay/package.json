@@ -1,6 +1,6 @@
 {
   "name": "applesauce-relay",
-  "version": "4.4.0",
+  "version": "4.4.2",
   "description": "nostr relay communication framework built on rxjs",
   "type": "module",
   "main": "dist/index.js",

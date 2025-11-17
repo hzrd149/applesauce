@@ -1,5 +1,11 @@
 # applesauce-relay
 
+## 4.4.2
+
+### Patch Changes
+
+- ccd87cc: Fix performance issues with shared observables
+
 ## 4.4.0
 
 ### Minor Changes
