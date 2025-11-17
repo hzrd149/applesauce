@@ -71,7 +71,7 @@ export function getEventUID(event: NostrEvent) {
 
 /** Returns the replaceable event address for an addressable event */
 export function getReplaceableAddress(event: NostrEvent): string {
-  if (!isAddressableKind(event.kind) || !isReplaceableKind(event.kind))
+  if (!isAddressableKind(event.kind) && !isReplaceableKind(event.kind))
     throw new Error("Event is not replaceable or addressable");
 
   return getOrComputeCachedValue(event, ReplaceableAddressSymbol, () => {
