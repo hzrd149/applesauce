@@ -1,5 +1,17 @@
 # applesauce-core
 
+## 4.4.0
+
+### Minor Changes
+
+- eb8b7df: Add `ShareEvent` type and `isValidShare` method
+- 20a4d57: Add support for NIP-ND, AND filters
+
+### Patch Changes
+
+- 75ef7d5: Convert event claims to counter to avoid memory leaks
+- fb285c1: Fix `getZapPayment` and `isValidZap` throwing when zap includes invalid LN invoice
+
 ## 4.3.0
 
 ### Patch Changes

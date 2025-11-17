@@ -1,5 +1,16 @@
 # applesauce-relay
 
+## 4.4.0
+
+### Minor Changes
+
+- 71019f3: Add type support for NIP-ND in filters sent to relays
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.4.0
+
 ## 4.2.0
 
 ### Minor Changes
