@@ -61,7 +61,7 @@ export function getEventUID(event: NostrEvent) {
   let uid = Reflect.get(event, EventUIDSymbol) as string | undefined;
 
   if (!uid) {
-    if (isReplaceable(event.kind)) uid = getReplaceableAddress(event);
+    if (isAddressableKind(event.kind) || isReplaceableKind(event.kind)) uid = getReplaceableAddress(event);
     else uid = event.id;
     Reflect.set(event, EventUIDSymbol, uid);
   }
@@ -71,11 +71,11 @@ export function getEventUID(event: NostrEvent) {
 
 /** Returns the replaceable event address for an addressable event */
 export function getReplaceableAddress(event: NostrEvent): string {
-  if (!isReplaceable(event.kind)) throw new Error("Event is not replaceable or addressable");
+  if (!isAddressableKind(event.kind) || !isReplaceableKind(event.kind))
+    throw new Error("Event is not replaceable or addressable");
 
   return getOrComputeCachedValue(event, ReplaceableAddressSymbol, () => {
-    const identifier = isAddressableKind(event.kind) ? getReplaceableIdentifier(event) : undefined;
-    return createReplaceableAddress(event.kind, event.pubkey, identifier);
+    return createReplaceableAddress(event.kind, event.pubkey, getReplaceableIdentifier(event));
   });
 }
 

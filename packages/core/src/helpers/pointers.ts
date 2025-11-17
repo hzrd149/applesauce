@@ -27,8 +27,8 @@ export {
 } from "nostr-tools/nip19";
 
 import { getReplaceableIdentifier } from "./event.js";
-import { isAddressableKind } from "nostr-tools/kinds";
-import { isSafeRelayURL, mergeRelaySets } from "./relays.js";
+import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
+import { isSafeRelayURL, relaySet } from "./relays.js";
 import { isHexKey } from "./string.js";
 import { hexToBytes } from "@noble/hashes/utils";
 import { normalizeURL } from "./url.js";
@@ -89,6 +89,20 @@ export function getPubkeyFromDecodeResult(result?: DecodeResult): string | undef
   }
 }
 
+/** Gets the relays from a decode result */
+export function getRelaysFromDecodeResult(result?: DecodeResult): string[] | undefined {
+  if (!result) return;
+  switch (result.type) {
+    case "naddr":
+      return result.data.relays;
+    case "nprofile":
+      return result.data.relays;
+    case "nevent":
+      return result.data.relays;
+  }
+  return undefined;
+}
+
 /** Encodes the result of nip19.decode */
 export function encodeDecodeResult(result: DecodeResult) {
   switch (result.type) {
@@ -122,7 +136,7 @@ export function getEventPointerFromETag(tag: string[]): EventPointer {
 
 /**
  * Gets an EventPointer form a common "q" tag
- * @throws
+ * @throws if the tag is invalid
  */
 export function getEventPointerFromQTag(tag: string[]): EventPointer {
   if (!tag[1]) throw new Error("Missing event id in tag");
@@ -135,7 +149,7 @@ export function getEventPointerFromQTag(tag: string[]): EventPointer {
 
 /**
  * Get an AddressPointer from a common "a" tag
- * @throws
+ * @throws if the tag is invalid
  */
 export function getAddressPointerFromATag(tag: string[]): AddressPointer {
   if (!tag[1]) throw new Error("Missing coordinate in tag");
@@ -146,7 +160,7 @@ export function getAddressPointerFromATag(tag: string[]): AddressPointer {
 
 /**
  * Gets a ProfilePointer from a common "p" tag
- * @throws
+ * @throws if the tag is invalid
  */
 export function getProfilePointerFromPTag(tag: string[]): ProfilePointer {
   if (!tag[1]) throw new Error("Missing pubkey in tag");
@@ -178,10 +192,11 @@ export function getCoordinateFromAddressPointer(pointer: AddressPointer) {
 
 /**
  * Returns an AddressPointer for a replaceable event
- * @throws
+ * @throws if the event is not replaceable or addressable
  */
 export function getAddressPointerForEvent(event: NostrEvent, relays?: string[]): AddressPointer {
-  if (!isAddressableKind(event.kind)) throw new Error("Cant get AddressPointer for non-replaceable event");
+  if (!isAddressableKind(event.kind) && !isReplaceableKind(event.kind))
+    throw new Error("Cant get AddressPointer for non-replaceable event");
 
   const d = getReplaceableIdentifier(event);
   return {
@@ -202,12 +217,9 @@ export function getEventPointerForEvent(event: NostrEvent, relays?: string[]): E
   };
 }
 
-/**
- * Returns a pointer for a given event
- * @throws
- */
+/** Returns a pointer for a given event */
 export function getPointerForEvent(event: NostrEvent, relays?: string[]): DecodeResult {
-  if (kinds.isAddressableKind(event.kind)) {
+  if (kinds.isAddressableKind(event.kind) || kinds.isReplaceableKind(event.kind)) {
     return {
       type: "naddr",
       data: getAddressPointerForEvent(event, relays),
@@ -223,7 +235,7 @@ export function getPointerForEvent(event: NostrEvent, relays?: string[]): Decode
 /** Adds relay hints to a pointer object that has a relays array */
 export function addRelayHintsToPointer<T extends { relays?: string[] }>(pointer: T, relays?: Iterable<string>): T {
   if (!relays) return pointer;
-  else return { ...pointer, relays: mergeRelaySets(relays, pointer.relays) };
+  else return { ...pointer, relays: relaySet(relays, pointer.relays) };
 }
 
 /** Gets the hex pubkey from any nip-19 encoded string */
@@ -234,6 +246,23 @@ export function normalizeToPubkey(str: string): string {
     const pubkey = getPubkeyFromDecodeResult(decode);
     if (!pubkey) throw new Error(`Cant find pubkey in ${decode.type}`);
     return pubkey;
+  }
+}
+
+/** Gets a ProfilePointer from any nip-19 encoded string */
+export function normalizeToProfilePointer(str: string): ProfilePointer {
+  if (isHexKey(str)) return { pubkey: str.toLowerCase() };
+  else {
+    const decode = nip19.decode(str);
+
+    // Return it if it's a profile pointer
+    if (decode.type === "nprofile") return decode.data;
+
+    // fallback to just getting the pubkey
+    const pubkey = getPubkeyFromDecodeResult(decode);
+    if (!pubkey) throw new Error(`Cant find pubkey in ${decode.type}`);
+    const relays = getRelaysFromDecodeResult(decode);
+    return { pubkey, relays };
   }
 }
 
@@ -255,7 +284,7 @@ export function normalizeToSecretKey(str: string | Uint8Array): Uint8Array {
 export function mergeEventPointers(a: EventPointer, b: EventPointer): EventPointer {
   if (a.id !== b.id) throw new Error("Cant merge event pointers with different ids");
 
-  const relays = mergeRelaySets(a.relays, b.relays);
+  const relays = relaySet(a.relays, b.relays);
   return { id: a.id, kind: a.kind ?? b.kind, author: a.author ?? b.author, relays };
 }
 
@@ -267,7 +296,7 @@ export function mergeAddressPointers(a: AddressPointer, b: AddressPointer): Addr
   if (a.kind !== b.kind || a.pubkey !== b.pubkey || a.identifier !== b.identifier)
     throw new Error("Cant merge address pointers with different kinds, pubkeys, or identifiers");
 
-  const relays = mergeRelaySets(a.relays, b.relays);
+  const relays = relaySet(a.relays, b.relays);
   return { ...a, relays };
 }
 
@@ -278,6 +307,6 @@ export function mergeAddressPointers(a: AddressPointer, b: AddressPointer): Addr
 export function mergeProfilePointers(a: ProfilePointer, b: ProfilePointer): ProfilePointer {
   if (a.pubkey !== b.pubkey) throw new Error("Cant merge profile pointers with different pubkeys");
 
-  const relays = mergeRelaySets(a.relays, b.relays);
+  const relays = relaySet(a.relays, b.relays);
   return { ...a, relays };
 }
