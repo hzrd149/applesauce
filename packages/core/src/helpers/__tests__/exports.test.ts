@@ -403,6 +403,7 @@ describe("exports", () => {
         "setHiddenContentEncryptionMethod",
         "setHiddenTagsCache",
         "setHiddenTagsEncryptionMethod",
+        "setVerifyWrappedEventMethod",
         "stripInvisibleChar",
         "unixNow",
         "unlockEncryptedContent",
@@ -416,6 +417,7 @@ describe("exports", () => {
         "unlockSeal",
         "verifiedSymbol",
         "verifyEvent",
+        "verifyWrappedEvent",
       ]
     `);
   });

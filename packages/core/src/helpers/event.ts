@@ -1,4 +1,4 @@
-import { NostrEvent, VerifiedEvent, verifiedSymbol } from "nostr-tools";
+import { NostrEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
 import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
 import { IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
@@ -86,6 +86,22 @@ export function createReplaceableAddress(kind: number, pubkey: string, identifie
 
 /** @deprecated use createReplaceableAddress instead */
 export const getReplaceableUID = createReplaceableAddress;
+
+/** Method used to verify an events signature */
+export type VerifyEventMethod = (event: NostrEvent) => event is VerifiedEvent;
+
+// Internal method for verifying events (used by zaps, gift-wraps, etc)
+let verifyWrappedEventMethod: VerifyEventMethod = verifyEvent;
+
+/** Sets the internal method used to verify events in helpers (zaps, gift-wraps, etc) */
+export function setVerifyWrappedEventMethod(method: VerifyEventMethod): void {
+  verifyWrappedEventMethod = method;
+}
+
+/** Verifies an internal (wrapped) event using the set internal verification method */
+export function verifyWrappedEvent(event: NostrEvent): event is VerifiedEvent {
+  return verifyWrappedEventMethod(event);
+}
 
 /** Sets events verified flag without checking anything */
 export function fakeVerifyEvent(event: NostrEvent): event is VerifiedEvent {

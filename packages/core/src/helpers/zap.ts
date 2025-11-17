@@ -1,11 +1,11 @@
-import { kinds, nip57, NostrEvent } from "nostr-tools";
+import { kinds, NostrEvent, validateEvent } from "nostr-tools";
 import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 import { parseBolt11, ParsedInvoice } from "./bolt11.js";
 import { getOrComputeCachedValue } from "./cache.js";
 import { getTagValue } from "./event-tags.js";
+import { KnownEvent, verifyWrappedEvent } from "./index.js";
 import { getAddressPointerFromATag, getEventPointerFromETag } from "./pointers.js";
 import { isATag, isETag } from "./tags.js";
-import { KnownEvent } from "./index.js";
 
 /** Type for validated zap event */
 export type ZapEvent = KnownEvent<kinds.Zap>;
@@ -88,10 +88,29 @@ export function getZapRequest(zap: NostrEvent): NostrEvent | undefined {
 
     // Attempt to parse the zap request
     try {
-      const error = nip57.validateZapRequest(description);
-      if (error) return;
+      // Copied from nostr-tools/nip57 and modified to use the internal verifyZap method and return the zap request event
+      let zapRequest: NostrEvent;
 
-      return JSON.parse(description) as NostrEvent;
+      try {
+        zapRequest = JSON.parse(description);
+      } catch (err) {
+        throw new Error("Invalid zap request JSON.");
+      }
+
+      if (!validateEvent(zapRequest)) throw new Error("Zap request is not a valid Nostr event.");
+      if (!verifyWrappedEvent(zapRequest)) throw new Error("Invalid signature on zap request.");
+
+      let p = zapRequest.tags.find(([t, v]) => t === "p" && v);
+      if (!p) throw new Error("Zap request doesn't have a 'p' tag.");
+      if (!p[1].match(/^[a-f0-9]{64}$/)) throw new Error("Zap request 'p' tag is not valid hex.");
+
+      let e = zapRequest.tags.find(([t, v]) => t === "e" && v);
+      if (e && !e[1].match(/^[a-f0-9]{64}$/)) throw new Error("Zap request 'e' tag is not valid hex.");
+
+      let relays = zapRequest.tags.find(([t, v]) => t === "relays" && v);
+      if (!relays) throw new Error("Zap request doesn't have a 'relays' tag.");
+
+      return zapRequest;
     } catch (error) {
       return undefined;
     }

@@ -1,4 +1,4 @@
-import { kinds, NostrEvent, UnsignedEvent, verifyEvent } from "nostr-tools";
+import { kinds, NostrEvent, UnsignedEvent } from "nostr-tools";
 import { EventMemory } from "../event-store/event-memory.js";
 import {
   EncryptedContentSigner,
@@ -7,7 +7,7 @@ import {
   lockEncryptedContent,
   unlockEncryptedContent,
 } from "./encrypted-content.js";
-import { KnownEvent, notifyEventUpdate } from "./event.js";
+import { KnownEvent, notifyEventUpdate, verifyWrappedEvent } from "./event.js";
 
 /**
  * An internal event set to keep track of seals and rumors
@@ -184,7 +184,7 @@ export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined {
     seal = existing;
   } else {
     // Verify the seal event
-    verifyEvent(seal);
+    verifyWrappedEvent(seal);
     // Add to the internal event set
     internalGiftWrapEvents.add(seal);
 

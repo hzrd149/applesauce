@@ -255,14 +255,22 @@ export class Relay implements IRelay {
     );
 
     // Create observables that track if auth is required for REQ or EVENT
-    this.authRequiredForRead$ = this.receivedAuthRequiredForReq.pipe(
-      tap((required) => required && this.log("Auth required for REQ")),
-      shareReplay(1),
-    );
-    this.authRequiredForPublish$ = this.receivedAuthRequiredForEvent.pipe(
-      tap((required) => required && this.log("Auth required for EVENT")),
-      shareReplay(1),
-    );
+    this.authRequiredForRead$ = this.receivedAuthRequiredForReq;
+    this.authRequiredForPublish$ = this.receivedAuthRequiredForEvent;
+
+    // Log when auth is required
+    this.authRequiredForRead$
+      .pipe(
+        filter((r) => r === true),
+        take(1),
+      )
+      .subscribe(() => this.log("Auth required for REQ"));
+    this.authRequiredForPublish$
+      .pipe(
+        filter((r) => r === true),
+        take(1),
+      )
+      .subscribe(() => this.log("Auth required for EVENT"));
 
     // Update the notices state
     const listenForNotice = this.socket.pipe(
@@ -447,8 +455,6 @@ export class Relay implements IRelay {
     // Create an observable that filters responses from the relay to just the ones for this COUNT
     const messages: Observable<any[]> = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
-      // Singleton (prevents duplicate subscriptions)
-      share(),
     );
 
     // Send the COUNT message and listen for response
@@ -472,12 +478,11 @@ export class Relay implements IRelay {
         first: this.eoseTimeout,
         with: () => throwError(() => new Error("COUNT timeout")),
       }),
-      // Only create one upstream subscription
-      share(),
     );
 
     // Start the watch tower and wait for auth if required
-    return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable));
+    // Use share() to prevent multiple subscriptions from creating duplicate COUNT messages
+    return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable)).pipe(share());
   }
 
   /** Send an EVENT or AUTH message and return an observable of PublishResponse that completes or errors */
@@ -515,13 +520,12 @@ export class Relay implements IRelay {
         first: this.eventTimeout,
         with: () => of<PublishResponse>({ ok: false, from: this.url, message: "Timeout" }),
       }),
-      // Only create one upstream subscription
-      share(),
     );
 
     // skip wait for auth if verb is AUTH
-    if (verb === "AUTH") return this.waitForReady(observable);
-    else return this.waitForReady(this.waitForAuth(this.authRequiredForPublish$, observable));
+    // Use share() to prevent multiple subscriptions from creating duplicate EVENT messages
+    if (verb === "AUTH") return this.waitForReady(observable).pipe(share());
+    else return this.waitForReady(this.waitForAuth(this.authRequiredForPublish$, observable)).pipe(share());
   }
 
   /** send and AUTH message */
@@ -654,8 +658,6 @@ export class Relay implements IRelay {
         this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
         // Add timeout for publishing
         this.customTimeoutOperator(opts?.timeout, this.publishTimeout),
-        // Single subscription
-        share(),
       ),
     );
   }

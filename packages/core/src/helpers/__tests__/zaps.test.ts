@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent, verifiedSymbol } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   getZapAddressPointer,
@@ -188,7 +188,7 @@ describe("getZapPreimage", () => {
 describe("getZapRequest", () => {
   it("should return parsed zap request from description tag", () => {
     const zapRequest = getZapRequest(zapEvent);
-    expect(zapRequest).toEqual({
+    expect(zapRequest).toMatchObject({
       id: "2813fcc0240532e5dcaafad02b5312fe73d51c8e7a88dbaa56b6049c6f918897",
       pubkey: "55f04590674f3648f4cdc9dc8ce32da2a282074cd0b020596ee033d12d385185",
       content: "",

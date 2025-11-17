@@ -216,8 +216,6 @@ export class RelayGroup implements IGroup {
 
         return merge(...observables);
       }),
-      // Ensure a single upstream
-      share(),
     );
   }
 
@@ -241,7 +239,10 @@ export class RelayGroup implements IGroup {
 
   /** Send an event to all relays */
   event(event: NostrEvent): Observable<PublishResponse> {
-    return this.internalPublish((relay) => relay.event(event));
+    return this.internalPublish((relay) => relay.event(event)).pipe(
+      // Ensure a single upstream subscription
+      share(),
+    );
   }
 
   /** Negentropy sync events with the relays and an event store */
