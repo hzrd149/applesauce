@@ -252,40 +252,40 @@ importers:
         specifier: ^5.5.0
         version: 5.5.0
       applesauce-accounts:
-        specifier: workspace:^
+        specifier: ^4
         version: link:../accounts
       applesauce-actions:
-        specifier: workspace:^
+        specifier: ^4
         version: link:../actions
       applesauce-content:
-        specifier: workspace:^
+        specifier: ^4
         version: link:../content
       applesauce-core:
-        specifier: workspace:^
+        specifier: ^4.4.0
         version: link:../core
       applesauce-factory:
-        specifier: workspace:^
+        specifier: ^4.3.0
         version: link:../factory
       applesauce-loaders:
-        specifier: workspace:^
+        specifier: ^4.2.0
         version: link:../loaders
       applesauce-react:
-        specifier: workspace:^
+        specifier: ^4
         version: link:../react
       applesauce-relay:
-        specifier: workspace:^
+        specifier: ^4.4.0
         version: link:../relay
       applesauce-signers:
-        specifier: workspace:^
+        specifier: ^4.2.0
         version: link:../signers
       applesauce-sqlite:
-        specifier: workspace:^
+        specifier: ^4.4.0
         version: link:../sqlite
       applesauce-wallet:
-        specifier: workspace:^
+        specifier: ^4
         version: link:../wallet
       applesauce-wallet-connect:
-        specifier: workspace:^
+        specifier: ^4
         version: link:../wallet-connect
       chalk:
         specifier: ^5.6.2
@@ -436,7 +436,7 @@ importers:
         version: 22.15.21
       '@vitest/coverage-v8':
         specifier: 2.1.8
-        version: 2.1.8(@vitest/browser@3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4))(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4))(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))
+        version: 2.1.8(@vitest/browser@3.2.4)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))
       applesauce-signers:
         specifier: ^4.0.0
         version: link:../signers
@@ -448,7 +448,7 @@ importers:
         version: 5.8.3
       vitest:
         specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4))(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
 
   packages/loaders:
     dependencies:
@@ -3604,7 +3604,6 @@ packages:
 
   libsql@0.5.22:
     resolution: {integrity: sha512-NscWthMQt7fpU8lqd7LXMvT9pi+KhhmTHAJWUB/Lj6MWa0MKFv0F2V4C6WKKpjCVZl0VwcDz4nOI3CyaT1DDiA==}
-    cpu: [x64, arm64, wasm32, arm]
     os: [darwin, linux, win32]
 
   lie@3.1.1:
@@ -6831,7 +6830,7 @@ snapshots:
       - utf-8-validate
       - vite
 
-  '@vitest/coverage-v8@2.1.8(@vitest/browser@3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4))(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4))(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))':
+  '@vitest/coverage-v8@2.1.8(@vitest/browser@3.2.4)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 0.2.3
@@ -6845,7 +6844,7 @@ snapshots:
       std-env: 3.9.0
       test-exclude: 7.0.1
       tinyrainbow: 1.2.0
-      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4))(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
+      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
     optionalDependencies:
       '@vitest/browser': 3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4)
     transitivePeerDependencies:
@@ -9598,7 +9597,7 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4(playwright@1.56.1)(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1))(vitest@3.2.4))(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1):
+  vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.15.21)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1):
     dependencies:
       '@types/chai': 5.2.2
       '@vitest/expect': 3.2.4
