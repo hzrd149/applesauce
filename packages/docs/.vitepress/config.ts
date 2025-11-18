@@ -3,9 +3,19 @@ import { defineConfig } from "vitepress";
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "AppleSauce",
-  description: "Utilities for nostr apps",
+  description: "Functional Nostr SDK for building reactive web apps",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
+    logo: "/logo.png",
+
+    editLink: {
+      pattern: "https://github.com/hzrd149/applesauce/edit/master/packages/docs/:path",
+    },
+
+    search: {
+      provider: "local",
+    },
+
     nav: [
       { text: "Home", link: "/" },
       { text: "Examples", link: "https://hzrd149.github.io/applesauce/examples" },

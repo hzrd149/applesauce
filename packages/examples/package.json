@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@cashu/cashu-ts": "^2.7.2",
+    "@cashu/cashu-ts": "^2.8.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource/roboto": "^5.2.8",
@@ -34,36 +34,36 @@
     "chalk": "^5.6.2",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
-    "daisyui": "^5.2.3",
+    "daisyui": "^5.5.5",
     "leaflet": "^1.9.4",
     "localforage": "^1.10.0",
     "nanoid": "^5.1.6",
     "nostr-idb": "^2.4.0",
     "nostr-social-graph": "^1.0.33",
-    "nostr-tools": "^2.17.0",
+    "nostr-tools": "^2.17.2",
     "pastellify": "^0.1.4",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
-    "react-chartjs-2": "^5.3.0",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "^18.3.1",
     "react-error-boundary": "^6.0.0",
-    "react-hook-form": "^7.65.0",
+    "react-hook-form": "^7.66.1",
     "react-leaflet": "^4.2.1",
     "react-markdown": "^10.1.0",
-    "react-player": "^3.3.3",
+    "react-player": "^3.4.0",
     "react-use": "^17.6.0",
-    "tailwindcss": "^4.1.14",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.14",
+    "@tailwindcss/vite": "^4.1.17",
     "@types/leaflet": "^1.9.21",
-    "@types/node": "^22.18.10",
+    "@types/node": "^22.19.1",
     "@types/prismjs": "^1.26.5",
-    "@types/react": "^18.3.26",
+    "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "typescript": "~5.6.3",
-    "vite": "^7.1.9"
+    "vite": "^7.2.2"
   }
 }
