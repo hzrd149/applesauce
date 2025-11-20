@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- aa75748: Add support for NIP-ND AND tag filters
+- aa75748: Add support for NIP-91 AND tag filters
 
 ### Patch Changes
 

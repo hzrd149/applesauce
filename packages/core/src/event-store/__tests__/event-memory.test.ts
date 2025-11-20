@@ -786,7 +786,7 @@ describe("EventMemory - Edge Cases", () => {
   });
 });
 
-describe("EventMemory - NIP-ND AND Operator", () => {
+describe("EventMemory - NIP-91 AND Operator", () => {
   describe("basic AND functionality", () => {
     it("should filter events with AND operator requiring all tag values", () => {
       // Create events with different tag combinations
@@ -862,7 +862,7 @@ describe("EventMemory - NIP-ND AND Operator", () => {
 
   describe("AND with OR combination", () => {
     it("should combine AND and OR filters on same tag type", () => {
-      // From NIP-ND spec example:
+      // From NIP-91 spec example:
       // "&t": ["meme", "cat"] - must have both
       // "#t": ["black", "white"] - must have black OR white
       const event1 = user1.note("Has meme, cat, and black", {
@@ -914,7 +914,7 @@ describe("EventMemory - NIP-ND AND Operator", () => {
       expect(results).not.toContainEqual(event5);
     });
 
-    it("should filter out OR values that are in AND tags (NIP-ND rule)", () => {
+    it("should filter out OR values that are in AND tags (NIP-91 rule)", () => {
       // If "meme" is in AND, it should be ignored in OR
       const event1 = user1.note("Has meme and cat", {
         tags: [

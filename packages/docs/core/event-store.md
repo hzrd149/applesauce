@@ -181,9 +181,9 @@ const sub = eventStore.filters({ kinds: [1] }, true).subscribe((event) => {
 });
 ```
 
-#### NIP-ND AND Operator Support
+#### NIP-91 AND Operator Support
 
-The event store supports [NIP-ND](https://github.com/nostr-protocol/nips/pull/1365) AND operators in filters using the `&` prefix for tag filters that require ALL values to match:
+The event store supports [NIP-91](https://github.com/nostr-protocol/nips/pull/1365) AND operators in filters using the `&` prefix for tag filters that require ALL values to match:
 
 ```ts
 // Find events that have BOTH "meme" AND "cat" tags
@@ -597,7 +597,7 @@ const events = eventStore.getByFilters({
 });
 console.log(`Found ${events.length} events`);
 
-// With NIP-ND AND operators
+// With NIP-91 AND operators
 const filteredEvents = eventStore.getByFilters({
   kinds: [1],
   "&t": ["nostr", "bitcoin"], // Must have BOTH tags

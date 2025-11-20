@@ -10,7 +10,7 @@
 
 ### Minor Changes
 
-- 71019f3: Add type support for NIP-ND in filters sent to relays
+- 71019f3: Add type support for NIP-91 in filters sent to relays
 
 ### Patch Changes
 

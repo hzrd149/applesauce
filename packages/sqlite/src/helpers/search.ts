@@ -21,7 +21,7 @@ export const DELETE_SEARCH_CONTENT_STATEMENT: Statement<[string]> = {
   sql: `DELETE FROM events_search WHERE event_id = ?`,
 };
 
-/** Filter with search field and NIP-ND AND operator support */
+/** Filter with search field and NIP-91 AND operator support */
 export type FilterWithSearch = FilterWithAnd & { search?: string; order?: "created_at" | "rank" };
 
 /** Content formatter function type for search indexing */

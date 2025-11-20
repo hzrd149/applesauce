@@ -17,7 +17,7 @@
 ### Minor Changes
 
 - eb8b7df: Add `ShareEvent` type and `isValidShare` method
-- 20a4d57: Add support for NIP-ND, AND filters
+- 20a4d57: Add support for NIP-91, AND filters
 
 ### Patch Changes
 

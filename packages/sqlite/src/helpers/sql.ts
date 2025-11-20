@@ -65,7 +65,7 @@ export function buildFilterConditions(filter: FilterWithSearch): {
     params.push(filter.until);
   }
 
-  // Handle AND tag filters (& prefix) first - NIP-ND
+  // Handle AND tag filters (& prefix) first - NIP-91
   // AND takes precedence and requires ALL values to be present
   for (const [key, values] of Object.entries(filter)) {
     if (key.startsWith("&") && values && Array.isArray(values) && values.length > 0) {
@@ -88,7 +88,7 @@ export function buildFilterConditions(filter: FilterWithSearch): {
   }
 
   // Handle OR tag filters (# prefix)
-  // Skip values that are in AND tags (NIP-ND rule)
+  // Skip values that are in AND tags (NIP-91 rule)
   for (const [key, values] of Object.entries(filter)) {
     if (key.startsWith("#") && values && Array.isArray(values) && values.length > 0) {
       const tagName = key.slice(1); // Remove the '#' prefix
@@ -97,7 +97,7 @@ export function buildFilterConditions(filter: FilterWithSearch): {
       const andKey = `&${tagName}`;
       const andValues = filter[andKey as `&${string}`];
 
-      // Filter out values that are in AND tags (NIP-ND rule)
+      // Filter out values that are in AND tags (NIP-91 rule)
       const filteredValues = andValues
         ? (values as string[]).filter((v) => !andValues.includes(v))
         : (values as string[]);

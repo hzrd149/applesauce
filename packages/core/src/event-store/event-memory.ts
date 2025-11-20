@@ -422,7 +422,7 @@ export class EventMemory implements IEventMemory {
       and(time);
     }
 
-    // Process AND tag filters (& prefix) first - NIP-ND
+    // Process AND tag filters (& prefix) first - NIP-91
     // AND takes precedence and requires ALL values to be present
     for (const t of INDEXABLE_TAGS) {
       const key = `&${t}` as `&${string}`;
@@ -437,7 +437,7 @@ export class EventMemory implements IEventMemory {
     }
 
     // Process OR tag filters (# prefix)
-    // Skip values that are in AND tags (NIP-ND rule)
+    // Skip values that are in AND tags (NIP-91 rule)
     for (const t of INDEXABLE_TAGS) {
       const key = `#${t}`;
       const values = filter[key as `#${string}`];
@@ -446,7 +446,7 @@ export class EventMemory implements IEventMemory {
         const andKey = `&${t}` as `&${string}`;
         const andValues = filter[andKey];
 
-        // Filter out values that are in AND tags (NIP-ND rule)
+        // Filter out values that are in AND tags (NIP-91 rule)
         const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
 
         // Only apply OR filter if there are values left after filtering

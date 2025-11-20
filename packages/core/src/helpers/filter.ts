@@ -6,7 +6,7 @@ import { getIndexableTags } from "./event-tags.js";
 export { Filter } from "nostr-tools/filter";
 
 /**
- * Extended Filter type that supports NIP-ND AND operator
+ * Extended Filter type that supports NIP-91 AND operator
  * Uses `&` prefix for tag filters that require ALL values to match (AND logic)
  * @example
  * {
@@ -21,7 +21,7 @@ export type FilterWithAnd = Filter & {
 
 /**
  * Copied from nostr-tools and modified to use {@link getIndexableTags}
- * Extended to support NIP-ND AND operator with `&` prefix
+ * Extended to support NIP-91 AND operator with `&` prefix
  * @see https://github.com/nbd-wtf/nostr-tools/blob/a61cde77eacc9518001f11d7f67f1a50ae05fd80/filter.ts
  */
 export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
@@ -31,7 +31,7 @@ export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
   if (filter.since && event.created_at < filter.since) return false;
   if (filter.until && event.created_at > filter.until) return false;
 
-  // Process AND tag filters (& prefix) first - NIP-ND
+  // Process AND tag filters (& prefix) first - NIP-91
   // AND takes precedence and requires ALL values to be present
   for (let f in filter) {
     if (f[0] === "&") {
@@ -50,7 +50,7 @@ export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
   }
 
   // Process OR tag filters (# prefix)
-  // Skip values that are in AND tags (NIP-ND rule)
+  // Skip values that are in AND tags (NIP-91 rule)
   for (let f in filter) {
     if (f[0] === "#") {
       let tagName = f.slice(1);
@@ -60,7 +60,7 @@ export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
         const andKey = `&${tagName}` as `&${string}`;
         const andValues = (filter as FilterWithAnd)[andKey];
 
-        // Filter out values that are in AND tags (NIP-ND rule)
+        // Filter out values that are in AND tags (NIP-91 rule)
         const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
 
         // If there are no values left after filtering, skip this check
@@ -83,7 +83,7 @@ export function matchFilters(filters: FilterWithAnd[], event: NostrEvent): boole
   return false;
 }
 
-/** Copied from nostr-tools and modified to support undefined values and NIP-ND AND operator */
+/** Copied from nostr-tools and modified to support undefined values and NIP-91 AND operator */
 export function mergeFilters(...filters: FilterWithAnd[]): FilterWithAnd {
   let result: FilterWithAnd = {};
   for (let i = 0; i < filters.length; i++) {

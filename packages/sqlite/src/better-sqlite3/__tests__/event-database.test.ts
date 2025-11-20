@@ -515,7 +515,7 @@ describe("removeByFilters", () => {
   });
 });
 
-describe("NIP-ND AND filter support", () => {
+describe("NIP-91 AND filter support", () => {
   beforeEach(() => {
     database = new BetterSqlite3EventDatabase(":memory:");
     user = new FakeUser();
@@ -633,7 +633,7 @@ describe("NIP-ND AND filter support", () => {
       expect(results.map((e) => e.id)).not.toContain(event3.id); // Missing cat
     });
 
-    it("should filter out AND values from OR (NIP-ND rule)", () => {
+    it("should filter out AND values from OR (NIP-91 rule)", () => {
       const event1 = user.note("Has meme and black", {
         tags: [
           ["t", "meme"],

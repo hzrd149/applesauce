@@ -55,7 +55,7 @@ describe("matchFilter - Basic Functionality", () => {
   });
 });
 
-describe("matchFilter - NIP-ND AND Operator", () => {
+describe("matchFilter - NIP-91 AND Operator", () => {
   describe("basic AND functionality", () => {
     it("should match event with AND operator requiring all tag values", () => {
       const event = user1.note("Test", {
@@ -106,7 +106,7 @@ describe("matchFilter - NIP-ND AND Operator", () => {
 
   describe("AND with OR combination", () => {
     it("should combine AND and OR filters on same tag type", () => {
-      // From NIP-ND spec example:
+      // From NIP-91 spec example:
       // "&t": ["meme", "cat"] - must have both
       // "#t": ["black", "white"] - must have black OR white
       const event1 = user1.note("Test", {
@@ -142,7 +142,7 @@ describe("matchFilter - NIP-ND AND Operator", () => {
       expect(matchFilter(filter, event3)).toBe(false); // Missing black/white
     });
 
-    it("should filter out OR values that are in AND tags (NIP-ND rule)", () => {
+    it("should filter out OR values that are in AND tags (NIP-91 rule)", () => {
       const event1 = user1.note("Test", {
         tags: [
           ["t", "meme"],
