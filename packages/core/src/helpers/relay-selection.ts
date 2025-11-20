@@ -6,12 +6,14 @@ export type SelectOptimalRelaysOptions = {
   maxConnections: number;
   /** Cap the number of relays a user can have */
   maxRelaysPerUser?: number;
+  /** Custom priority function for calculating relay scores.*/
+  score?: (relay: string, coverage: number, popularity: number) => number;
 };
 
 /** Selects the optimal relays for a list of ProfilePointers */
 export function selectOptimalRelays(
   users: ProfilePointer[],
-  { maxConnections, maxRelaysPerUser }: SelectOptimalRelaysOptions,
+  { maxConnections, maxRelaysPerUser, score }: SelectOptimalRelaysOptions,
 ): ProfilePointer[] {
   const usersWithRelays = users.filter((user) => user.relays && user.relays.length > 0);
 
@@ -22,22 +24,16 @@ export function selectOptimalRelays(
     for (const relay of user.relays) popular.set(relay, (popular.get(relay) || 0) + 1);
   }
 
-  // sort users relays by popularity
-  for (const user of usersWithRelays) {
-    if (!user.relays) continue;
-    user.relays = Array.from(user.relays).sort((a, b) => popular.get(b)! - popular.get(a)!);
-  }
-
   // Create a pool of users to calculate relay coverage from
   let selectionPool = Array.from(usersWithRelays);
 
-  // Create map of times a users relay has been selected
+  // Number of times one of a users relays has been selected
   const selectionCount = new Map<string, number>();
 
   let selection = new Set<string>();
   while (selectionPool.length > 0 && selection.size < maxConnections) {
-    // Create map of number of pool users per relay
-    const relayUserCount = new Map<string, number>();
+    // Create map of number of pool users per relay (relay, count)
+    const relayCoverage = new Map<string, number>();
     for (const user of selectionPool) {
       if (!user.relays) continue;
       for (const relay of user.relays) {
@@ -45,47 +41,54 @@ export function selectOptimalRelays(
         if (selection.has(relay)) continue;
 
         // Increment relay user count
-        relayUserCount.set(relay, (relayUserCount.get(relay) || 0) + 1);
+        relayCoverage.set(relay, (relayCoverage.get(relay) || 0) + 1);
       }
     }
 
-    // Sort relays by coverage
-    const byCoverage = Array.from(relayUserCount.entries()).sort((a, b) => b[1] - a[1]);
+    // No relays to select, exit loop
+    if (relayCoverage.size === 0) break;
 
-    // No more relays to select, exit loop
-    if (byCoverage.length === 0) break;
+    // Sort relays by score
+    const sorted = Array.from(relayCoverage.keys()).sort((a, b) => {
+      const aCoverageScore = (relayCoverage.get(a) ?? 0) / selectionPool.length;
+      const bCoverageScore = (relayCoverage.get(b) ?? 0) / selectionPool.length;
 
-    // Pick the most popular relay
-    const relay = byCoverage[0][0];
+      const aScore = score ? score(a, aCoverageScore, popular.get(a) ?? 0) : aCoverageScore;
+      const bScore = score ? score(b, bCoverageScore, popular.get(b) ?? 0) : bCoverageScore;
+
+      return bScore - aScore;
+    });
+
+    // Pick the best relay
+    const relay = sorted[0];
 
     // Add relay to selection
     selection.add(relay);
 
     // Increment user relay count and remove users over the limit
-    selectionPool = selectionPool.filter((user) => {
-      // Ignore users that don't have the relay
-      if (!user.relays || !user.relays.includes(relay)) return true;
+    if (maxRelaysPerUser) {
+      selectionPool = selectionPool.filter((user) => {
+        // Ignore users that don't have the relay
+        if (!user.relays || !user.relays.includes(relay)) return true;
 
-      // Increment user relay count
-      let count = selectionCount.get(relay) || 0;
-      selectionCount.set(relay, count++);
+        // Increment user relay count
+        let count = selectionCount.get(user.pubkey) || 0;
+        selectionCount.set(user.pubkey, count++);
 
-      // Remove user if they their relay has been selected more than minRelaysPerUser times
-      if (count >= 1) return false;
+        // Remove the user if their relay has been selected more than maxRelaysPerUser times
+        if (count >= maxRelaysPerUser) return false;
 
-      return true;
-    });
+        return true;
+      });
+    }
   }
 
   // Take the original users and only include relays that where selected
   return users.map((user) => ({
     ...user,
-    relays: maxRelaysPerUser
-      ? user.relays
-          ?.filter((relay) => selection.has(relay))
-          .sort((a, b) => (popular.get(a) ?? 0) - (popular.get(b) ?? 0))
-          .slice(0, maxRelaysPerUser)
-      : user.relays?.filter((relay) => selection.has(relay)),
+    // TODO: this will have more than maxRelaysPerUser relays
+    // but its not a big deal as long as we are taking the maxRelaysPerUser into account above
+    relays: user.relays?.filter((relay) => selection.has(relay)),
   }));
 }
 
