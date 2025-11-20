@@ -3,7 +3,7 @@ import { binarySearch, insertEventIntoDescendingList } from "nostr-tools/utils";
 
 import { getIndexableTags, INDEXABLE_TAGS } from "../helpers/event-tags.js";
 import { createReplaceableAddress, isReplaceable } from "../helpers/event.js";
-import { FilterWithAnd } from "../helpers/filter.js";
+import { Filter } from "../helpers/filter.js";
 import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
 import { IEventMemory } from "./interface.js";
@@ -59,11 +59,11 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Gets all events that match the filters */
-  getByFilters(filters: FilterWithAnd | FilterWithAnd[]): NostrEvent[] {
+  getByFilters(filters: Filter | Filter[]): NostrEvent[] {
     return Array.from(this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]));
   }
   /** Gets a timeline of events that match the filters */
-  getTimeline(filters: FilterWithAnd | FilterWithAnd[]): NostrEvent[] {
+  getTimeline(filters: Filter | Filter[]): NostrEvent[] {
     const timeline: NostrEvent[] = [];
     const events = this.getByFilters(filters);
     for (const event of events) insertEventIntoDescendingList(timeline, event);
@@ -153,7 +153,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Remove multiple events that match the given filters */
-  removeByFilters(filters: FilterWithAnd | FilterWithAnd[]): number {
+  removeByFilters(filters: Filter | Filter[]): number {
     const eventsToRemove = this.getByFilters(filters);
     let removedCount = 0;
 
@@ -393,7 +393,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Returns all events that match the filter */
-  protected getEventsForFilter(filter: FilterWithAnd): Set<NostrEvent> {
+  protected getEventsForFilter(filter: Filter): Set<NostrEvent> {
     // search is not supported, return an empty set
     if (filter.search) return new Set();
 
@@ -446,7 +446,7 @@ export class EventMemory implements IEventMemory {
         const andKey = `&${t}` as `&${string}`;
         const andValues = filter[andKey];
 
-        // Filter out values that are in AND tags (NIP-91 rule)
+        // Filterout values that are in AND tags (NIP-91 rule)
         const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
 
         // Only apply OR filter if there are values left after filtering
@@ -498,7 +498,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Returns all events that match the filters */
-  protected getEventsForFilters(filters: FilterWithAnd[]): Set<NostrEvent> {
+  protected getEventsForFilters(filters: Filter[]): Set<NostrEvent> {
     if (filters.length === 0) return new Set();
 
     let events = new Set<NostrEvent>();

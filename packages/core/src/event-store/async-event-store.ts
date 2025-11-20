@@ -1,4 +1,4 @@
-import { Filter, kinds, NostrEvent } from "nostr-tools";
+import { kinds, NostrEvent } from "nostr-tools";
 import { isAddressableKind } from "nostr-tools/kinds";
 import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 import { EMPTY, filter, mergeMap, Observable, Subject, take } from "rxjs";
@@ -6,6 +6,7 @@ import { EMPTY, filter, mergeMap, Observable, Subject, take } from "rxjs";
 import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
 import { createReplaceableAddress, EventStoreSymbol, FromCacheSymbol, isReplaceable } from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
+import { Filter } from "../helpers/filter.js";
 import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";

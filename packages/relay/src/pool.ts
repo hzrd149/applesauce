@@ -5,9 +5,9 @@ import {
   isFilterEqual,
   normalizeURL,
   OutboxMap,
-  type FilterWithAnd,
+  type Filter,
 } from "applesauce-core/helpers";
-import { Filter, type NostrEvent } from "nostr-tools";
+import { type NostrEvent } from "nostr-tools";
 import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, Subject } from "rxjs";
 
 import { RelayGroup } from "./group.js";
@@ -92,7 +92,7 @@ export class RelayPool implements IPool {
   negentropy(
     relays: IPoolRelayInput,
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: FilterWithAnd,
+    filter: Filter,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
   ): Promise<boolean> {
@@ -165,11 +165,7 @@ export class RelayPool implements IPool {
   }
 
   /** Count events on multiple relays */
-  count(
-    relays: IPoolRelayInput,
-    filters: FilterWithAnd | FilterWithAnd[],
-    id?: string,
-  ): Observable<Record<string, CountResponse>> {
+  count(relays: IPoolRelayInput, filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>> {
     return this.group(relays).count(filters, id);
   }
 
@@ -177,7 +173,7 @@ export class RelayPool implements IPool {
   sync(
     relays: IPoolRelayInput,
     store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: FilterWithAnd,
+    filter: Filter,
     direction?: SyncDirection,
   ): Observable<NostrEvent> {
     return this.group(relays).sync(store, filter, direction);

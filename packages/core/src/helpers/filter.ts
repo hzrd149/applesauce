@@ -1,22 +1,15 @@
 import equal from "fast-deep-equal";
-import { Filter, NostrEvent } from "nostr-tools";
+import { Filter as CoreFilter, NostrEvent } from "nostr-tools";
 import { getIndexableTags } from "./event-tags.js";
 
-// Re-export type Filter from nostr-tools
-export { Filter } from "nostr-tools/filter";
-
 /**
- * Extended Filter type that supports NIP-91 AND operator
- * Uses `&` prefix for tag filters that require ALL values to match (AND logic)
- * @example
- * {
- *   kinds: [1],
- *   "&t": ["meme", "cat"],  // Must have BOTH "meme" AND "cat" tags
- *   "#t": ["black", "white"] // Must have "black" OR "white" tags
- * }
+ * Extended Filter type that supports NIP-91 AND operator and NIP-50 search filter field
  */
-export type FilterWithAnd = Filter & {
+export type Filter = CoreFilter & {
+  /** NIP-91 AND operator support */
   [key: `&${string}`]: string[] | undefined;
+  /** NIP-50 search filter field */
+  search?: string;
 };
 
 /**
@@ -24,7 +17,7 @@ export type FilterWithAnd = Filter & {
  * Extended to support NIP-91 AND operator with `&` prefix
  * @see https://github.com/nbd-wtf/nostr-tools/blob/a61cde77eacc9518001f11d7f67f1a50ae05fd80/filter.ts
  */
-export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
+export function matchFilter(filter: Filter, event: NostrEvent): boolean {
   if (filter.ids && filter.ids.indexOf(event.id) === -1) return false;
   if (filter.kinds && filter.kinds.indexOf(event.kind) === -1) return false;
   if (filter.authors && filter.authors.indexOf(event.pubkey) === -1) return false;
@@ -36,7 +29,7 @@ export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
   for (let f in filter) {
     if (f[0] === "&") {
       let tagName = f.slice(1);
-      let values = (filter as FilterWithAnd)[f as `&${string}`];
+      let values = (filter as Filter)[f as `&${string}`];
       if (values && values.length > 0) {
         const tags = getIndexableTags(event);
         // ALL values must be present (AND logic)
@@ -58,9 +51,9 @@ export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
       if (values) {
         // Check if there's a corresponding AND filter for this tag
         const andKey = `&${tagName}` as `&${string}`;
-        const andValues = (filter as FilterWithAnd)[andKey];
+        const andValues = (filter as Filter)[andKey];
 
-        // Filter out values that are in AND tags (NIP-91 rule)
+        // Filterout values that are in AND tags (NIP-91 rule)
         const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
 
         // If there are no values left after filtering, skip this check
@@ -76,7 +69,7 @@ export function matchFilter(filter: FilterWithAnd, event: NostrEvent): boolean {
 }
 
 /** Copied from nostr-tools and modified to use {@link matchFilter} */
-export function matchFilters(filters: FilterWithAnd[], event: NostrEvent): boolean {
+export function matchFilters(filters: Filter[], event: NostrEvent): boolean {
   for (let i = 0; i < filters.length; i++) {
     if (matchFilter(filters[i], event)) return true;
   }
@@ -84,8 +77,8 @@ export function matchFilters(filters: FilterWithAnd[], event: NostrEvent): boole
 }
 
 /** Copied from nostr-tools and modified to support undefined values and NIP-91 AND operator */
-export function mergeFilters(...filters: FilterWithAnd[]): FilterWithAnd {
-  let result: FilterWithAnd = {};
+export function mergeFilters(...filters: Filter[]): Filter {
+  let result: Filter = {};
   for (let i = 0; i < filters.length; i++) {
     let filter = filters[i];
     Object.entries(filter).forEach(([property, values]) => {
@@ -120,6 +113,6 @@ export function mergeFilters(...filters: FilterWithAnd[]): FilterWithAnd {
 }
 
 /** Check if two filters are equal */
-export function isFilterEqual(a: FilterWithAnd | FilterWithAnd[], b: FilterWithAnd | FilterWithAnd[]): boolean {
+export function isFilterEqual(a: Filter | Filter[], b: Filter | Filter[]): boolean {
   return equal(a, b);
 }

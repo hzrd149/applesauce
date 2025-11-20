@@ -1,9 +1,9 @@
 import hash_sum from "hash-sum";
-import { Filter, NostrEvent } from "nostr-tools";
+import { NostrEvent } from "nostr-tools";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { EMPTY, Observable, ReplaySubject, filter, finalize, from, merge, mergeMap, share, timer } from "rxjs";
 
-import { matchFilters } from "../helpers/filter.js";
+import { Filter, matchFilters } from "../helpers/filter.js";
 import { AddressPointerWithoutD } from "../helpers/pointers.js";
 import {
   IAsyncEventStore,

@@ -186,7 +186,7 @@ export default function TursoWasmExample() {
     }
   }, []);
 
-  // Filter events
+  // Filterevents
   const filterEvents = useCallback(async () => {
     if (!eventStore) return;
 
@@ -205,8 +205,8 @@ export default function TursoWasmExample() {
       const results = await eventStore.getTimeline(filter);
       setEvents(results);
     } catch (err) {
-      console.error("Filter failed:", err);
-      setError(err instanceof Error ? err.message : "Filter failed");
+      console.error("Filterfailed:", err);
+      setError(err instanceof Error ? err.message : "Filterfailed");
     } finally {
       setIsLoading(false);
     }
@@ -391,9 +391,9 @@ export default function TursoWasmExample() {
         </div>
       </div>
 
-      {/* Filter Events */}
+      {/* FilterEvents */}
       <div className="mb-6">
-        <h2 className="text-xl font-bold mb-4">Filter Events</h2>
+        <h2 className="text-xl font-bold mb-4">FilterEvents</h2>
 
         <form onSubmit={handleFilter} className="flex flex-wrap gap-4 items-end">
           <div>

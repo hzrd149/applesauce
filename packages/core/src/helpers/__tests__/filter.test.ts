@@ -12,7 +12,7 @@ beforeEach(() => {
   user2 = new FakeUser();
 });
 
-describe("matchFilter - Basic Functionality", () => {
+describe("matchFilter- Basic Functionality", () => {
   it("should match event by kind", () => {
     const event = user1.note("Test");
     expect(matchFilter({ kinds: [kinds.ShortTextNote] }, event)).toBe(true);
@@ -55,7 +55,7 @@ describe("matchFilter - Basic Functionality", () => {
   });
 });
 
-describe("matchFilter - NIP-91 AND Operator", () => {
+describe("matchFilter- NIP-91 AND Operator", () => {
   describe("basic AND functionality", () => {
     it("should match event with AND operator requiring all tag values", () => {
       const event = user1.note("Test", {
