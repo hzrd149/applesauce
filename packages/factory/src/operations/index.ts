@@ -24,6 +24,7 @@ export * as Profile from "./profile.js";
 export * as Reaction from "./reaction.js";
 export * as StreamChat from "./stream-chat.js";
 export * as Stream from "./stream.js";
+export * as Torrent from "./torrent.js";
 export * as WrappedMessage from "./wrapped-message.js";
 export * as Zap from "./zap-split.js";
 

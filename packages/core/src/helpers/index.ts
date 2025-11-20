@@ -53,6 +53,7 @@ export * from "./string.js";
 export * from "./tags.js";
 export * from "./threading.js";
 export * from "./time.js";
+export * from "./torrent.js";
 export * from "./url.js";
 export * from "./user-status.js";
 export * from "./wrapped-messages.js";
