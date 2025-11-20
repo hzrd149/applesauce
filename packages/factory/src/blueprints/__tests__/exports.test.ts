@@ -29,6 +29,7 @@ describe("exports", () => {
         "ShareBlueprint",
         "SingleChoicePollResponseBlueprint",
         "StreamChatMessage",
+        "TorrentBlueprint",
         "WrappedMessageBlueprint",
         "WrappedMessageReplyBlueprint",
       ]

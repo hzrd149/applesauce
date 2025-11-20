@@ -32,6 +32,7 @@ describe("exports", () => {
         "Stream",
         "StreamChat",
         "TagOperations",
+        "Torrent",
         "WrappedMessage",
         "Zap",
         "includeAltTag",
