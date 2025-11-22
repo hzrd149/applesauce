@@ -1,4 +1,8 @@
-import type { TorrentExternalIdentifier, TorrentExternalIdentifierPrefix, TorrentFile } from "applesauce-core/helpers/torrent";
+import type {
+  TorrentExternalIdentifier,
+  TorrentExternalIdentifierPrefix,
+  TorrentFile,
+} from "applesauce-core/helpers/torrent";
 import { createTorrentExternalIdentifier } from "applesauce-core/helpers/torrent";
 import { EventOperation } from "../types.js";
 import { addNameValueTag, removeNameValueTag, setSingletonTag } from "./tag/common.js";
