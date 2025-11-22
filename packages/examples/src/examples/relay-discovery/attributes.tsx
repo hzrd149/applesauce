@@ -8,17 +8,18 @@ import {
 } from "applesauce-core/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
-import { BubbleController, Chart as ChartJS, LinearScale, PointElement, Title, Tooltip } from "chart.js";
+import { CategoryScale, Chart as ChartJS, LinearScale, Title, Tooltip } from "chart.js";
+import { WordCloudController, WordElement } from "chartjs-chart-wordcloud";
 import { NostrEvent } from "nostr-tools";
-import { useMemo, useState } from "react";
-import { Bubble } from "react-chartjs-2";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Chart } from "react-chartjs-2";
 import { useThrottle } from "react-use";
 import { of } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
 // Register ChartJS components
-ChartJS.register(BubbleController, PointElement, LinearScale, Title, Tooltip);
+ChartJS.register(WordCloudController, WordElement, CategoryScale, LinearScale, Title, Tooltip);
 
 // Create stores and relay pool
 const eventStore = new EventStore();
@@ -29,11 +30,9 @@ interface AttributeData {
   relayCount: number;
 }
 
-interface BubbleDataPoint {
-  x: number;
-  y: number;
-  r: number;
-  label: string;
+interface WordCloudDataPoint {
+  key: string;
+  value: number;
 }
 
 /**
@@ -81,37 +80,34 @@ function countRelaysPerAttribute(events: NostrEvent[]): AttributeData[] {
 }
 
 /**
- * Converts attribute data to bubble chart format
+ * Converts attribute data to word cloud format
  */
-function prepareBubbleChartData(attributeData: AttributeData[]): BubbleDataPoint[] {
-  if (attributeData.length === 0) return [];
-
-  const maxCount = Math.max(...attributeData.map((d) => d.relayCount));
-  const minRadius = 10;
-  const maxRadius = 50;
-
-  // Use a simple grid layout for positioning
-  const cols = Math.ceil(Math.sqrt(attributeData.length));
-  const spacing = 100;
-
-  return attributeData.map((data, index) => {
-    const row = Math.floor(index / cols);
-    const col = index % cols;
-    const normalizedCount = data.relayCount / maxCount;
-    const radius = minRadius + (maxRadius - minRadius) * normalizedCount;
-
-    return {
-      x: col * spacing + spacing / 2,
-      y: row * spacing + spacing / 2,
-      r: radius,
-      label: data.attribute,
-    };
-  });
+function prepareWordCloudData(attributeData: AttributeData[]): WordCloudDataPoint[] {
+  return attributeData.map((data) => ({
+    key: data.attribute,
+    value: data.relayCount,
+  }));
 }
 
 export default function RelayDiscoveryAttributes() {
   const [relayUrl, setRelayUrl] = useState<string>("wss://relay.nostr.watch/");
   const [attributeInput, setAttributeInput] = useState<string>("");
+  const [containerDimensions, setContainerDimensions] = useState({ width: 800, height: 600 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Measure container dimensions and update on resize
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect();
+        setContainerDimensions({ width, height });
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
 
   // Get relay instance and check NIP-91 support
   const relay = useMemo(() => (relayUrl ? pool.relay(relayUrl) : null), [relayUrl]);
@@ -131,6 +127,7 @@ export default function RelayDiscoveryAttributes() {
   // Create filter for relay subscription
   const relayFilter: Filter = useMemo(() => {
     const base: Filter = {
+      authors: ['9bbbb845e5b6c831c29789900769843ab43bb5047abe697870cb50b6fc9bf923'],
       kinds: [RELAY_DISCOVERY_KIND],
       limit: 1000, // Load many events to get comprehensive data
     };
@@ -187,61 +184,79 @@ export default function RelayDiscoveryAttributes() {
     return Array.from(attributeSet).sort();
   }, [events]);
 
-  // Prepare bubble chart data
-  const bubbleData = useMemo(() => {
-    const points = prepareBubbleChartData(attributeData);
+  // Prepare word cloud data
+  const wordCloudData = useMemo(() => {
+    const points = prepareWordCloudData(attributeData);
     if (points.length === 0) return null;
 
     return {
+      labels: points.map((p) => p.key),
       datasets: [
         {
           label: "Relay Attributes",
-          data: points,
-          backgroundColor: "rgba(54, 162, 235, 0.5)",
-          borderColor: "rgba(54, 162, 235, 1)",
-          borderWidth: 1,
+          data: points.map((p) => p.value),
         },
       ],
     };
   }, [attributeData]);
 
-  const chartOptions = useMemo(
-    () => ({
+  const chartOptions = useMemo(() => {
+    const dataSize = attributeData.length;
+    const maxValue = Math.max(...attributeData.map((d) => d.relayCount), 1);
+
+    // Scale font sizes based on container dimensions, dataset size, and density
+    const containerArea = containerDimensions.width * containerDimensions.height;
+    const density = dataSize > 0 ? containerArea / dataSize : containerArea;
+
+    // Calculate base font size from available space per word
+    const baseFontSize = Math.max(16, Math.min(120, Math.sqrt(density) * 0.15));
+    const minFontSize = Math.max(10, baseFontSize * 0.4);
+    const maxFontSize = Math.min(baseFontSize * 3, containerDimensions.height * 0.15);
+
+    return {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         title: {
           display: true,
-          text: "Relay Attributes (bubble size = number of relays)",
+          text: "Relay Attributes (size = number of relays)",
         },
         tooltip: {
           callbacks: {
             label: (context: any) => {
-              const point = context.raw as BubbleDataPoint;
-              return `${point.label}: ${attributeData.find((d) => d.attribute === point.label)?.relayCount || 0} relays`;
+              const label = context.label || '';
+              const value = context.parsed || context.raw;
+              return `${label}: ${value} relays`;
             },
           },
         },
-      },
-      scales: {
-        x: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: "",
-          },
-        },
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: "",
-          },
+        legend: {
+          display: false,
         },
       },
-    }),
-    [attributeData],
-  );
+      // Word cloud specific options
+      elements: {
+        word: {
+          size: (ctx: any) => {
+            const value = ctx.raw || 0;
+            const normalized = value / maxValue;
+            return minFontSize + (maxFontSize - minFontSize) * normalized;
+          },
+          color: () => {
+            const colors = [
+              'rgba(54, 162, 235, 0.8)',
+              'rgba(75, 192, 192, 0.8)',
+              'rgba(153, 102, 255, 0.8)',
+              'rgba(255, 159, 64, 0.8)',
+              'rgba(255, 99, 132, 0.8)',
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+          },
+          hoverColor: 'rgba(255, 99, 132, 1)',
+        },
+      },
+    };
+  }, [attributeData, containerDimensions]);
 
   // Count total unique relays
   const totalRelays = useMemo(() => {
@@ -347,17 +362,17 @@ export default function RelayDiscoveryAttributes() {
       {/* Stats */}
       {relayUrl && (
         <div className="mb-4 text-sm text-base-content/70">
-          Loaded {events?.length || 0} events from {totalRelays} unique relay{totalRelays !== 1 ? "s" : ""}
+          Found {totalRelays} unique relays from {events?.length || 0} NIP-66 reports
         </div>
       )}
 
-      {/* Bubble chart */}
+      {/* Word cloud chart */}
       {relayUrl ? (
-        bubbleData ? (
+        wordCloudData ? (
           <div className="card bg-base-100">
             <div className="card-body">
-              <div style={{ height: "600px" }}>
-                <Bubble data={bubbleData} options={chartOptions} />
+              <div ref={containerRef} style={{ height: "600px" }}>
+                <Chart type="wordCloud" data={wordCloudData} options={chartOptions} />
               </div>
             </div>
           </div>
