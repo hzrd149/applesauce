@@ -1,4 +1,4 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore, mapEventsToStore } from "applesauce-core";
 import {
   Filter,
   getRelayDiscoveryAttributes,
@@ -6,19 +6,14 @@ import {
   isValidRelayDiscovery,
   RELAY_DISCOVERY_KIND,
 } from "applesauce-core/helpers";
-import {
-  useObservableEagerMemo,
-  useObservableEagerState,
-  useObservableMemo,
-  useObservableState,
-} from "applesauce-react/hooks";
+import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { BubbleController, Chart as ChartJS, LinearScale, PointElement, Title, Tooltip } from "chart.js";
 import { NostrEvent } from "nostr-tools";
 import { useMemo, useState } from "react";
 import { Bubble } from "react-chartjs-2";
 import { useThrottle } from "react-use";
-import { map, of } from "rxjs";
+import { of } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
