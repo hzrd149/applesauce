@@ -15,6 +15,7 @@ import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/lo
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "nostr-tools";
+import { decode } from "ngeohash";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import { map } from "rxjs";
@@ -31,7 +32,7 @@ const pool = new RelayPool();
 // Create an address loader to load user profiles
 const addressLoader = createAddressLoader(pool, {
   eventStore,
-  lookupRelays: ["wss://purplepag.es"],
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
 
 // Add loaders to event store
@@ -52,45 +53,15 @@ L.Icon.Default.mergeOptions({
 });
 
 // Helper function to decode geohash to lat/lng
-function decodeGeohash(geohash: string): [number, number] | null {
-  if (!geohash) return null;
+function decodeGeohash(geohashString: string): [number, number] | null {
+  if (!geohashString) return null;
 
-  // Simple geohash decoding - this is a basic implementation
-  // For production, you might want to use a proper geohash library
-  const base32 = "0123456789bcdefghjkmnpqrstuvwxyz";
-  let isEven = true;
-  let lat = [-90.0, 90.0];
-  let lng = [-180.0, 180.0];
-
-  for (let i = 0; i < geohash.length; i++) {
-    const char = geohash[i];
-    const idx = base32.indexOf(char);
-    if (idx === -1) return null;
-
-    for (let bit = 4; bit >= 0; bit--) {
-      const bitValue = (idx >> bit) & 1;
-      if (isEven) {
-        // longitude
-        const mid = (lng[0] + lng[1]) / 2;
-        if (bitValue === 1) {
-          lng[0] = mid;
-        } else {
-          lng[1] = mid;
-        }
-      } else {
-        // latitude
-        const mid = (lat[0] + lat[1]) / 2;
-        if (bitValue === 1) {
-          lat[0] = mid;
-        } else {
-          lat[1] = mid;
-        }
-      }
-      isEven = !isEven;
-    }
+  try {
+    const decoded = decode(geohashString);
+    return [decoded.latitude, decoded.longitude];
+  } catch {
+    return null;
   }
-
-  return [(lat[0] + lat[1]) / 2, (lng[0] + lng[1]) / 2];
 }
 
 interface CalendarEventWithLocation extends NostrEvent {

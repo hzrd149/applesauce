@@ -1,7 +1,7 @@
 import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
 import type { Filter } from "applesauce-core/helpers";
 import type { EventTemplate, NostrEvent } from "nostr-tools";
-import type { RelayInformation } from "nostr-tools/nip11";
+import type { RelayInformation as CoreRelayInformation } from "nostr-tools/nip11";
 import type { Observable, repeat, retry } from "rxjs";
 import type { WebSocketSubject } from "rxjs/webSocket";
 import type { GroupNegentropySyncOptions, GroupRequestOptions, GroupSubscriptionOptions } from "./group.js";
@@ -70,6 +70,11 @@ export type FilterInput =
   | Observable<Filter | Filter[]>
   // A function to create a filter for a relay
   | ((relay: IRelay) => Filter | Filter[] | Observable<Filter | Filter[]>);
+
+export type RelayInformation = CoreRelayInformation & {
+  /** An array of attributes that describe the relay type/characteristics */
+  attributes?: string[];
+};
 
 export interface IRelay extends MultiplexWebSocket {
   url: string;

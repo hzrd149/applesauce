@@ -3,7 +3,6 @@ import { ensureHttpURL, type Filter } from "applesauce-core/helpers";
 import { simpleTimeout } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
 import { nip42, type NostrEvent } from "nostr-tools";
-import { RelayInformation } from "nostr-tools/nip11";
 import {
   BehaviorSubject,
   catchError,
@@ -54,6 +53,7 @@ import {
   IRelay,
   PublishOptions,
   PublishResponse,
+  RelayInformation,
   RequestOptions,
   SubscriptionOptions,
   SubscriptionResponse,

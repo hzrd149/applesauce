@@ -1,13 +1,13 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { getSeenRelays } from "applesauce-core/helpers";
 import { Filter, NostrEvent } from "nostr-tools";
-import { RelayInformation } from "nostr-tools/nip11";
 import { firstValueFrom, of, Subject, throwError, timer } from "rxjs";
 import { filter, repeat } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
-import { Relay, SyncDirection } from "../relay.js";
+import { Relay } from "../relay.js";
+import { RelayInformation } from "../types";
 import { FakeUser } from "./fake-user.js";
 
 const defaultMockInfo: RelayInformation = {
