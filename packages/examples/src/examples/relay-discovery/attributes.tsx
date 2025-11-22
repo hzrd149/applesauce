@@ -6,14 +6,19 @@ import {
   isValidRelayDiscovery,
   RELAY_DISCOVERY_KIND,
 } from "applesauce-core/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import {
+  useObservableEagerMemo,
+  useObservableEagerState,
+  useObservableMemo,
+  useObservableState,
+} from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { BubbleController, Chart as ChartJS, LinearScale, PointElement, Title, Tooltip } from "chart.js";
 import { NostrEvent } from "nostr-tools";
 import { useMemo, useState } from "react";
 import { Bubble } from "react-chartjs-2";
 import { useThrottle } from "react-use";
-import { map } from "rxjs";
+import { map, of } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -113,14 +118,16 @@ export default function RelayDiscoveryAttributes() {
   const [relayUrl, setRelayUrl] = useState<string>("wss://relay.nostr.watch/");
   const [attributeInput, setAttributeInput] = useState<string>("");
 
-  // Get relay instance
+  // Get relay instance and check NIP-91 support
   const relay = useMemo(() => (relayUrl ? pool.relay(relayUrl) : null), [relayUrl]);
+  const supportedNips = useObservableMemo(() => relay?.supported$ ?? of(null), [relay]);
+  const supportsNip91 = supportedNips?.includes(91) ?? false;
 
   // Parse attributes from input (split by space/comma and filter empty)
   const attributeFilters = useMemo(() => {
     return attributeInput
       .split(/[\s,]+/)
-      .map((a) => a.trim().toLowerCase())
+      .map((a) => a)
       .filter((a) => a.length > 0);
   }, [attributeInput]);
 
@@ -133,24 +140,38 @@ export default function RelayDiscoveryAttributes() {
       limit: 1000, // Load many events to get comprehensive data
     };
 
-    if (attributes.length > 0) base["&W"] = attributes;
+    if (attributes.length > 0) {
+      if (supportsNip91) {
+        base["&W"] = attributes;
+      } else {
+        // fallback to OR filtering
+        base["#W"] = attributes;
+      }
+    }
 
     return base;
-  }, [attributes]);
+  }, [attributes, supportsNip91, relay]);
 
   // Subscribe to events from relay
+  useObservableMemo(
+    () => (relay ? relay.subscription(relayFilter).pipe(onlyEvents(), mapEventsToStore(eventStore)) : undefined),
+    [relay, relayFilter],
+  );
+
+  // Get events from the event store so & tags always work
   const events = useObservableMemo(
     () =>
-      relay
-        ? relay.subscription(relayFilter).pipe(
-            onlyEvents(),
-            mapEventsToStore(eventStore),
-            mapEventsToTimeline(),
-            // Hack to make react update
-            map((e) => [...e]),
-          )
-        : undefined,
-    [relay, relayFilter],
+      eventStore.timeline(
+        attributes.length > 0
+          ? {
+              kinds: [RELAY_DISCOVERY_KIND],
+              "&W": attributes,
+            }
+          : {
+              kinds: [RELAY_DISCOVERY_KIND],
+            },
+      ),
+    [attributes],
   );
 
   // Count relays per attribute
@@ -241,9 +262,8 @@ export default function RelayDiscoveryAttributes() {
 
   // Handle attribute button click - add to input
   const handleAttributeClick = (attribute: string) => {
-    const normalized = attribute.toLowerCase().trim();
-    if (!attributeInput.includes(normalized)) {
-      setAttributeInput((prev) => (prev.trim() ? `${prev.trim()} ${normalized}` : normalized));
+    if (!attributeInput.includes(attribute)) {
+      setAttributeInput((prev) => (prev.trim() ? `${prev.trim()} ${attribute}` : attribute));
     }
   };
 
@@ -253,6 +273,28 @@ export default function RelayDiscoveryAttributes() {
         <h1 className="text-2xl font-bold">Relay Discovery Attributes</h1>
         <RelayPicker value={relayUrl} onChange={setRelayUrl} />
       </div>
+
+      {/* Warning if relay doesn't support NIP-91 */}
+      {relayUrl && !supportsNip91 && supportedNips !== null && (
+        <div className="alert alert-warning mb-4">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="stroke-current shrink-0 h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <span>
+            This relay does not support NIP-91 (AND tag filters). Multiple attribute filtering may not work as expected.
+          </span>
+        </div>
+      )}
 
       {/* Attribute input */}
       <div className="mb-4">
@@ -298,7 +340,7 @@ export default function RelayDiscoveryAttributes() {
                 key={attr}
                 className="btn btn-sm btn-outline"
                 onClick={() => handleAttributeClick(attr)}
-                disabled={attributeFilters.includes(attr.toLowerCase())}
+                disabled={attributeFilters.includes(attr)}
               >
                 {attr}
               </button>
@@ -317,7 +359,7 @@ export default function RelayDiscoveryAttributes() {
       {/* Bubble chart */}
       {relayUrl ? (
         bubbleData ? (
-          <div className="card bg-base-100 shadow-xl">
+          <div className="card bg-base-100">
             <div className="card-body">
               <div style={{ height: "600px" }}>
                 <Bubble data={bubbleData} options={chartOptions} />
