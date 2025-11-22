@@ -1,5 +1,12 @@
 # applesauce-core
 
+## 4.5.0
+
+### Minor Changes
+
+- 82bc46f: Add helper methods for NIP-66 relay discovery
+- fc21438: Add support for NIP-35 torrents
+
 ## 4.4.2
 
 ### Patch Changes

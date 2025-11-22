@@ -1,5 +1,16 @@
 # applesauce-factory
 
+## 4.5.0
+
+### Minor Changes
+
+- fc21438: Add support for NIP-35 torrents
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@4.5.0
+
 ## 4.3.0
 
 ### Minor Changes
