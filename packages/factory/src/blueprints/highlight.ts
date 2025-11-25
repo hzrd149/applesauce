@@ -1,6 +1,6 @@
-import { HighlightAttribution } from "applesauce-core/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
-import { AddressPointer } from "nostr-tools/nip19";
+import { HighlightAttribution } from "applesauce-common/helpers/highlight";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { AddressPointer } from "applesauce-core/helpers/pointers";
 
 import { blueprint } from "../event-factory.js";
 import { includeAltTag, MetaTagOptions, setMetaTags } from "../operations/common.js";

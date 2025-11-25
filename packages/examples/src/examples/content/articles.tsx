@@ -1,10 +1,9 @@
+import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-common/helpers";
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-core/helpers";
+import { NostrEvent, npubEncode } from "applesauce-core/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
-import { npubEncode } from "nostr-tools/nip19";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { map } from "rxjs/operators";

@@ -1,9 +1,9 @@
-import { GroupPointer } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { GroupPointer } from "applesauce-common/helpers/groups";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
-import { EventOperation } from "../types.js";
-import { ensureNamedValueTag } from "../helpers/tag.js";
 import { createGroupHTagFromGroupPointer } from "../helpers/groups.js";
+import { ensureNamedValueTag } from "../helpers/tag.js";
+import { EventOperation } from "../types.js";
 import { includeSingletonTag } from "./tags.js";
 
 /** Sets the "h" tag for NIP-29 group messages or other events */

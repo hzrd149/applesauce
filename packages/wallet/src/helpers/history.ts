@@ -9,7 +9,7 @@ import {
   UnlockedHiddenTags,
   unlockHiddenTags,
 } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 export const WALLET_HISTORY_KIND = 7376;
 

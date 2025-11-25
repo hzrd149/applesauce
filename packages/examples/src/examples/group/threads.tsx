@@ -17,7 +17,7 @@ import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useCallback, useRef, useState } from "react";
 import { map, startWith } from "rxjs";

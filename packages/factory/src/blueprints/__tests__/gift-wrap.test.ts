@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { EventFactory } from "../../event-factory.js";

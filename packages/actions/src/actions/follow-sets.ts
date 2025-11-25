@@ -1,8 +1,8 @@
 import { IEventStoreRead } from "applesauce-core/event-store";
-import { modifyHiddenTags, modifyPublicTags, List } from "applesauce-factory/operations";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { List, modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
 import { addPubkeyTag, removePubkeyTag } from "applesauce-factory/operations/tag";
-import { kinds, NostrEvent } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 
 import { Action } from "../action-hub.js";
 

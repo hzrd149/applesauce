@@ -1,9 +1,9 @@
-import { Emoji } from "applesauce-core/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
+import { Emoji } from "applesauce-common/helpers/emoji";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 
 import { blueprint } from "../event-factory.js";
 import { includeEmojis } from "../operations/content.js";
-import { setReactionParent, setReaction } from "../operations/reaction.js";
+import { setReaction, setReactionParent } from "../operations/reaction.js";
 
 /** blueprint for kind 7 reaction event */
 export function ReactionBlueprint(event: NostrEvent, emoji: string | Emoji = "+") {

@@ -1,4 +1,5 @@
-import { getConversationParticipants, Rumor } from "applesauce-core/helpers";
+import { getConversationParticipants } from "applesauce-common/helpers/messages";
+import { Rumor } from "applesauce-core/helpers/gift-wraps";
 import {
   GiftWrapBlueprint,
   WrappedMessageBlueprint,

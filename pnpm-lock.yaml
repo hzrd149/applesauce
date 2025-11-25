@@ -76,6 +76,9 @@ importers:
 
   packages/actions:
     dependencies:
+      applesauce-common:
+        specifier: ^4.4
+        version: link:../common
       applesauce-core:
         specifier: ^4.0.0
         version: link:../core
@@ -111,6 +114,58 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.10.1)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
 
+  packages/common:
+    dependencies:
+      '@noble/hashes':
+        specifier: ^1.7.1
+        version: 1.8.0
+      '@scure/base':
+        specifier: ^1.2.4
+        version: 1.2.6
+      applesauce-core:
+        specifier: ^4.4
+        version: link:../core
+      debug:
+        specifier: ^4.4.0
+        version: 4.4.3
+      fast-deep-equal:
+        specifier: ^3.1.3
+        version: 3.1.3
+      hash-sum:
+        specifier: ^2.0.0
+        version: 2.0.0
+      light-bolt11-decoder:
+        specifier: ^3.2.0
+        version: 3.2.0
+      nanoid:
+        specifier: ^5.0.9
+        version: 5.1.6
+      nostr-tools:
+        specifier: ^2.18.1
+        version: 2.18.1(typescript@5.9.3)
+      rxjs:
+        specifier: ^7.8.1
+        version: 7.8.2
+    devDependencies:
+      '@hirez_io/observer-spy':
+        specifier: ^2.2.0
+        version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
+      '@types/debug':
+        specifier: ^4.1.12
+        version: 4.1.12
+      '@types/hash-sum':
+        specifier: ^1.0.2
+        version: 1.0.2
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.0.1
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.10.1)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
+
   packages/content:
     dependencies:
       '@cashu/cashu-ts':
@@ -125,6 +180,9 @@ importers:
       '@types/unist':
         specifier: ^3.0.3
         version: 3.0.3
+      applesauce-common:
+        specifier: ^4.4
+        version: link:../common
       applesauce-core:
         specifier: ^4.0.0
         version: link:../core
@@ -257,6 +315,9 @@ importers:
       applesauce-actions:
         specifier: ^4
         version: link:../actions
+      applesauce-common:
+        specifier: workspace:^4.4
+        version: link:../common
       applesauce-content:
         specifier: ^4
         version: link:../content
@@ -421,6 +482,9 @@ importers:
 
   packages/factory:
     dependencies:
+      applesauce-common:
+        specifier: ^4.4
+        version: link:../common
       applesauce-content:
         specifier: ^4.0.0
         version: link:../content
@@ -587,6 +651,9 @@ importers:
       '@scure/base':
         specifier: ^1.2.4
         version: 1.2.5
+      applesauce-common:
+        specifier: ^4.4
+        version: link:../common
       applesauce-core:
         specifier: ^4.2.0
         version: link:../core
@@ -4073,6 +4140,14 @@ packages:
       typescript:
         optional: true
 
+  nostr-tools@2.18.1:
+    resolution: {integrity: sha512-qNun7HI+IT5vPzkpIJmr5kyzUrYkmaDot1JtKtpdw7Nf7g3S2UOxdWA92i79Hbrp+0wKGNGjKPbCCQ9Pwf1djw==}
+    peerDependencies:
+      typescript: '>=5.0.0'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   nostr-wasm@0.1.0:
     resolution: {integrity: sha512-78BTryCLcLYv96ONU8Ws3Q1JzjlAt+43pWQhIl86xZmWeegYCNLPml7yQ+gG3vR6V5h4XGj+TxO+SS5dsThQIA==}
 
@@ -6269,7 +6344,7 @@ snapshots:
   '@scure/bip32@1.3.1':
     dependencies:
       '@noble/curves': 1.1.0
-      '@noble/hashes': 1.3.1
+      '@noble/hashes': 1.3.2
       '@scure/base': 1.1.1
 
   '@scure/bip32@1.7.0':
@@ -6280,7 +6355,7 @@ snapshots:
 
   '@scure/bip39@1.2.1':
     dependencies:
-      '@noble/hashes': 1.3.1
+      '@noble/hashes': 1.3.2
       '@scure/base': 1.1.1
 
   '@shikijs/core@2.5.0':
@@ -6850,7 +6925,7 @@ snapshots:
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 0.2.3
-      debug: 4.4.1
+      debug: 4.4.3
       istanbul-lib-coverage: 3.2.2
       istanbul-lib-report: 3.0.1
       istanbul-lib-source-maps: 5.0.6
@@ -8510,6 +8585,18 @@ snapshots:
     optionalDependencies:
       typescript: 5.6.3
 
+  nostr-tools@2.18.1(typescript@5.9.3):
+    dependencies:
+      '@noble/ciphers': 0.5.3
+      '@noble/curves': 1.2.0
+      '@noble/hashes': 1.3.1
+      '@scure/base': 1.1.1
+      '@scure/bip32': 1.3.1
+      '@scure/bip39': 1.2.1
+      nostr-wasm: 0.1.0
+    optionalDependencies:
+      typescript: 5.9.3
+
   nostr-wasm@0.1.0: {}
 
   object-assign@4.1.1: {}
@@ -9363,7 +9450,7 @@ snapshots:
   vite-node@3.1.4(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.1
+      debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 6.4.1(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
@@ -9384,7 +9471,7 @@ snapshots:
   vite-node@3.2.4(@types/node@22.15.21)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.1
+      debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 7.2.2(@types/node@22.15.21)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
@@ -9405,7 +9492,7 @@ snapshots:
   vite-node@3.2.4(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.1
+      debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.1)
@@ -9584,7 +9671,7 @@ snapshots:
       '@vitest/spy': 3.1.4
       '@vitest/utils': 3.1.4
       chai: 5.2.0
-      debug: 4.4.1
+      debug: 4.4.3
       expect-type: 1.2.1
       magic-string: 0.30.17
       pathe: 2.0.3

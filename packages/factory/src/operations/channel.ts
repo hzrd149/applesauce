@@ -1,5 +1,5 @@
 import { getEventPointerForEvent } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { ensureMarkedEventPointerTag } from "../helpers/common-tags.js";
 import { EventOperation } from "../types.js";

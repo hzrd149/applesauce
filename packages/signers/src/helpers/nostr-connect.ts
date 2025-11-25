@@ -1,4 +1,4 @@
-import { setHiddenContentEncryptionMethod } from "applesauce-core/helpers";
+import { setHiddenContentEncryptionMethod } from "applesauce-core/helpers/hidden-content";
 import { isHexKey } from "applesauce-core/helpers/string";
 import { kinds } from "nostr-tools";
 

@@ -1,6 +1,6 @@
-import { Emoji, getTagValue } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
-import { isAddressableKind } from "nostr-tools/kinds";
+import { Emoji } from "applesauce-common/helpers/emoji";
+import { isAddressableKind, NostrEvent } from "applesauce-core/helpers/event";
+import { getTagValue } from "applesauce-core/helpers/event-tags";
 
 import {
   ensureAddressPointerTag,

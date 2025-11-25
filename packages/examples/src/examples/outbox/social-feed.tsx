@@ -15,7 +15,7 @@ import {
   relaySet,
   unixNow,
 } from "applesauce-core/helpers";
-import { createOutboxMap } from "applesauce-core/helpers/relay-selection";
+import { createOutboxMap } from "applesauce-core/helpers";
 import { createAddressLoader, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import {
@@ -27,7 +27,7 @@ import {
 } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";

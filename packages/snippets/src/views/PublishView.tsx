@@ -1,14 +1,15 @@
+import { defined } from "applesauce-core";
 import { EventFactory, blueprint } from "applesauce-factory";
 import { setContent } from "applesauce-factory/operations/content";
 import { includeNameValueTag, includeSingletonTag } from "applesauce-factory/operations/tags";
 import { ExtensionSigner } from "applesauce-signers";
-import { useState, useEffect } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
-import { CODE_SNIPPET_KIND, eventStore, pool } from "../helpers/nostr";
-import { firstValueFrom } from "rxjs";
-import { defined } from "applesauce-core";
 import { nip19 } from "nostr-tools";
+import { useEffect, useState } from "react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { firstValueFrom } from "rxjs";
+
 import { CodeEditorPanel, MetadataPanel, type FieldArrayOperations } from "../components";
+import { CODE_SNIPPET_KIND, eventStore, pool } from "../helpers/nostr";
 
 // Setup signer and factory
 const signer = new ExtensionSigner();

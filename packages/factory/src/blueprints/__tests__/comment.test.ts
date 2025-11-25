@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { COMMENT_KIND } from "applesauce-core/helpers";
 
 import { EventFactory } from "../../event-factory.js";

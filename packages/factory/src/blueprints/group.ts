@@ -1,10 +1,10 @@
-import { GROUP_MESSAGE_KIND, GroupPointer } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { GROUP_MESSAGE_KIND, GroupPointer } from "applesauce-common/helpers/groups";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { blueprint } from "../event-factory.js";
 import { MetaTagOptions, setMetaTags } from "../operations/common.js";
 import { setShortTextContent, TextContentOptions } from "../operations/content.js";
-import { setGroupPointer, addPreviousRefs } from "../operations/group.js";
+import { addPreviousRefs, setGroupPointer } from "../operations/group.js";
 
 export type GroupMessageBlueprintOptions = { previous: NostrEvent[] } & TextContentOptions & MetaTagOptions;
 

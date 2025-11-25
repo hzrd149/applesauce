@@ -1,5 +1,5 @@
 import { type Transformer } from "unified";
-import { parseBolt11 } from "applesauce-core/helpers/bolt11";
+import { parseBolt11 } from "applesauce-common/helpers/bolt11";
 
 import { LightningInvoice, Root } from "../nast/types.js";
 import { Tokens } from "../helpers/regexp.js";

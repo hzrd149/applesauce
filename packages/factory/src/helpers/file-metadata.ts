@@ -1,4 +1,5 @@
-import { FileMetadata, NameValueTag } from "applesauce-core/helpers";
+import { FileMetadata } from "applesauce-common/helpers/file-metadata";
+import { NameValueTag } from "applesauce-core/helpers/tags";
 
 /** Creates tags for {@link FileMetadata} */
 export function createFileMetadataTags(attachment: FileMetadata): NameValueTag[] {

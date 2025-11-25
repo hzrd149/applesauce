@@ -6,7 +6,7 @@ import {
   isReplaceable,
   mergeRelaySets,
 } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { bufferTime, catchError, EMPTY, identity, Observable } from "rxjs";
 
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";

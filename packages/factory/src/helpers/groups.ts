@@ -1,4 +1,4 @@
-import { GroupPointer } from "applesauce-core/helpers/groups";
+import { GroupPointer } from "applesauce-common/helpers/groups";
 import { ensureWebSocketURL, NameValueTag } from "applesauce-core/helpers";
 
 import { fillAndTrimTag } from "./tag.js";

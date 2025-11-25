@@ -54,6 +54,7 @@
     "@noble/hashes": "^1.7.1",
     "@noble/secp256k1": "^1.7.1",
     "@scure/base": "^1.2.4",
+    "applesauce-common": "^4.4",
     "applesauce-core": "^4.2.0",
     "debug": "^4.4.0",
     "nanoid": "^5.0.9",

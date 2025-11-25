@@ -1,5 +1,6 @@
-import { getConversationParticipants, Rumor } from "applesauce-core/helpers";
-import { kinds } from "nostr-tools";
+import { getConversationParticipants } from "applesauce-common/helpers/messages";
+import { kinds } from "applesauce-core/helpers/event";
+import { Rumor } from "applesauce-core/helpers/gift-wraps";
 
 import { eventPipe } from "../helpers/pipeline.js";
 import { EventOperation } from "../types.js";

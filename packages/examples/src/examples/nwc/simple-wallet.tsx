@@ -1,4 +1,4 @@
-import { parseBolt11, ParsedInvoice } from "applesauce-core/helpers";
+import { parseBolt11, ParsedInvoice } from "applesauce-common/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";

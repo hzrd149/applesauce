@@ -1,4 +1,4 @@
-import { unixNow } from "applesauce-core/helpers";
+import { unixNow } from "applesauce-core/helpers/time";
 import { PrivateKeySigner } from "applesauce-signers/signers/private-key-signer";
 import { nanoid } from "nanoid";
 import type { NostrEvent } from "nostr-tools";

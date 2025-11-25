@@ -1,6 +1,6 @@
-import { EventTemplate, NostrEvent, UnsignedEvent } from "nostr-tools";
-import { AddressPointer } from "nostr-tools/nip19";
-import { Emoji } from "applesauce-core/helpers";
+import { Emoji } from "applesauce-common/helpers/emoji";
+import { EventTemplate, NostrEvent, UnsignedEvent } from "applesauce-core/helpers/event";
+import { AddressPointer } from "applesauce-core/helpers/pointers";
 
 /** Nostr event signer */
 export interface EventSigner {

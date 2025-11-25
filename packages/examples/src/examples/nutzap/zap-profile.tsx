@@ -14,7 +14,7 @@ import {
   getNutzapInfoRelays,
   NUTZAP_INFO_KIND,
 } from "applesauce-wallet/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { npubEncode } from "nostr-tools/nip19";
 import { useState } from "react";
 import { startWith } from "rxjs/operators";

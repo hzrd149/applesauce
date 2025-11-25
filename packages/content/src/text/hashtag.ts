@@ -1,5 +1,5 @@
 import { Transformer } from "unified";
-import { getHashtagTag } from "applesauce-core/helpers/hashtag";
+import { getHashtagTag } from "applesauce-common/helpers/hashtag";
 
 import { Hashtag, Root } from "../nast/types.js";
 import { Tokens } from "../helpers/regexp.js";

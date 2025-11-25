@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { of } from "rxjs";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { EventStore } from "../../event-store/event-store.js";
 import { watchEventUpdates } from "../watch-event-updates.js";

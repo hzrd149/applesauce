@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { isAddressableKind } from "nostr-tools/kinds";
 import { getAddressPointerForEvent } from "applesauce-core/helpers";
 

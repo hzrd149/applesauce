@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { insertEventIntoDescendingList } from "nostr-tools/utils";
 import { OperatorFunction, pipe, scan } from "rxjs";
 import { withImmediateValueOrDefault } from "./with-immediate-value.js";

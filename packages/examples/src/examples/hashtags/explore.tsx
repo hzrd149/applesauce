@@ -1,9 +1,9 @@
 import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { Filter, isTTag } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { ComponentMap, useObservableEagerState, useObservableMemo, useRenderedContent } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
 import { useMemo, useState } from "react";
 import { map, of } from "rxjs";
 

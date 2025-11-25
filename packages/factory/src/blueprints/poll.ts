@@ -1,12 +1,12 @@
-import { POLL_KIND, POLL_RESPONSE_KIND, PollType } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
-import { EventPointer } from "nostr-tools/nip19";
+import { POLL_KIND, POLL_RESPONSE_KIND, PollType } from "applesauce-common/helpers/poll";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { EventPointer } from "applesauce-core/helpers/pointers";
 
 import { blueprint } from "../event-factory.js";
 import { MetaTagOptions, setMetaTags } from "../operations/common.js";
 import { setContent } from "../operations/content.js";
+import { Poll, PollResponse } from "../operations/index.js";
 import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
-import { PollResponse, Poll } from "../operations/index.js";
 
 export interface PollOption {
   id: string;

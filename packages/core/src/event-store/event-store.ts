@@ -12,10 +12,10 @@ import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
 import { EventMemory } from "./event-memory.js";
 import { IEventDatabase, IEventStore } from "./interface.js";
-import { EventStoreModelMixin } from "./model-mixin.js";
+import { EventModels } from "./event-models.js";
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
-export class EventStore extends EventStoreModelMixin(class {}) implements IEventStore {
+export class EventStore extends EventModels implements IEventStore {
   database: IEventDatabase;
 
   /** Optional memory database for ensuring single event instances */

@@ -1,13 +1,12 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   createHandlerLink,
   getHandlerDescription,
   getHandlerName,
   getHandlerPicture,
   getHandlerSupportedKinds,
-  isAddressPointer,
-  isEventPointer,
-} from "applesauce-core/helpers";
+} from "applesauce-common/helpers";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { isAddressPointer, isEventPointer } from "applesauce-core/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { Filter, kinds, nip19, NostrEvent } from "nostr-tools";

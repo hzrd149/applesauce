@@ -10,7 +10,7 @@ import {
   processTags,
   safeParse,
 } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { getHistoryRedeemed } from "./history.js";
 

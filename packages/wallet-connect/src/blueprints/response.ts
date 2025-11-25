@@ -1,7 +1,7 @@
 import { blueprint, EventBlueprint } from "applesauce-factory";
 import { includeSingletonTag } from "applesauce-factory/operations";
 import { setEncryptedContent } from "applesauce-factory/operations/content";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { TWalletMethod } from "../helpers/methods.js";
 import { getWalletRequestEncryption } from "../helpers/request.js";

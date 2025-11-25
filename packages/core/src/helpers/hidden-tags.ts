@@ -1,6 +1,5 @@
 import { kinds } from "nostr-tools";
 import { EncryptionMethod } from "./encrypted-content.js";
-import { GROUPS_LIST_KIND } from "./groups.js";
 import {
   canHaveHiddenContent,
   getHiddenContent,
@@ -14,6 +13,9 @@ import {
   UnlockedHiddenContent,
   unlockHiddenContent,
 } from "./hidden-content.js";
+
+/** NIP-29 groups list kind */
+const GROUPS_LIST_KIND = 10009;
 
 /** Symbol for caching hidden tags. */
 export const HiddenTagsSymbol = Symbol.for("hidden-tags");

@@ -1,5 +1,5 @@
 import { EventMemory, filterDuplicateEvents } from "applesauce-core";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "nostr-tools/nip19";
 import { bufferTime, catchError, EMPTY, identity, merge, Observable, tap } from "rxjs";
 

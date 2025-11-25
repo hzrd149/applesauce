@@ -6,11 +6,11 @@ import {
   mergeRelaySets,
   ProfileContent,
 } from "applesauce-core/helpers";
-import { ReactionsModel } from "applesauce-core/models";
+import { ReactionsModel } from "applesauce-common/models";
 import { createAddressLoader, createReactionsLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useState } from "react";
 import { map } from "rxjs";

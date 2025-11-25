@@ -1,7 +1,7 @@
 import { Model } from "applesauce-core";
 import { filter, map, merge } from "rxjs";
 import { getWalletMints, getWalletPrivateKey, isWalletUnlocked, WALLET_KIND } from "../helpers/wallet.js";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 export type WalletInfo =
   | { locked: true; event: NostrEvent }

@@ -14,7 +14,7 @@ import {
 import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { decode } from "ngeohash";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";

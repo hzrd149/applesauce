@@ -1,4 +1,4 @@
-import { ProfileContent } from "applesauce-core/helpers";
+import { ProfileContent } from "applesauce-core/helpers/profile";
 import { Action } from "../action-hub.js";
 import { kinds } from "nostr-tools";
 import { Profile } from "applesauce-factory/operations";

@@ -74,6 +74,7 @@
     }
   },
   "dependencies": {
+    "applesauce-common": "^4.4",
     "applesauce-content": "^4.0.0",
     "applesauce-core": "^4.3.0",
     "nanoid": "^5.0.9",

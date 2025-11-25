@@ -1,5 +1,5 @@
 import { getAddressPointerForEvent, isAddressPointer } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer } from "nostr-tools/nip19";
 
 import { ensureAddressPointerTag } from "../helpers/common-tags.js";

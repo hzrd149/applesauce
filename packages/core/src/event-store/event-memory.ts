@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { binarySearch, insertEventIntoDescendingList } from "nostr-tools/utils";
 
 import { getIndexableTags, INDEXABLE_TAGS } from "../helpers/event-tags.js";

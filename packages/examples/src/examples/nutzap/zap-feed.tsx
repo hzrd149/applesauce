@@ -13,7 +13,7 @@ import {
   NUTZAP_KIND,
   type NutzapEvent,
 } from "applesauce-wallet/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
 import { EMPTY, ignoreElements, iif, map, mergeWith } from "rxjs";

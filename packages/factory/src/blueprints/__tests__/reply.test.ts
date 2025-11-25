@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EventFactory } from "../../event-factory.js";
 import { NoteReplyBlueprint } from "../reply.js";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 describe("NoteReplyBlueprint", () => {
   const factory = new EventFactory();

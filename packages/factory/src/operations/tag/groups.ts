@@ -1,4 +1,4 @@
-import { GroupPointer } from "applesauce-core/helpers/groups";
+import { GroupPointer } from "applesauce-common/helpers/groups";
 
 import { createGroupTagFromGroupPointer } from "../../helpers/groups.js";
 import { TagOperation } from "../../types.js";

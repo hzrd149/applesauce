@@ -18,7 +18,7 @@ import {
   getStreamSummary,
   getStreamTitle,
   getStreamViewers,
-} from "applesauce-core/helpers/stream";
+} from "applesauce-common/helpers/stream";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";

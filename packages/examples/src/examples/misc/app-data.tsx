@@ -6,14 +6,14 @@ import {
   getAppDataEncryption,
   isAppDataUnlocked,
   unlockAppData,
-} from "applesauce-core/helpers/app-data";
+} from "applesauce-common/helpers/app-data";
 import { EventFactory } from "applesauce-factory";
 import { DeleteBlueprint } from "applesauce-factory/blueprints";
 import { AppData } from "applesauce-factory/operations";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner } from "applesauce-signers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { useCallback, useEffect, useState } from "react";
 import { map, NEVER, startWith } from "rxjs";
 import RelayPicker from "../../components/relay-picker";

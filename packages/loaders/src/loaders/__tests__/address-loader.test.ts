@@ -1,5 +1,5 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { Subject } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, Mock, vi } from "vitest";
 

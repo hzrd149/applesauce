@@ -1,5 +1,5 @@
 import { getReplaceableUID, getTagValue } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { isAddressableKind } from "nostr-tools/kinds";
 import {
   COMMENT_KIND,
@@ -7,7 +7,7 @@ import {
   getCommentRootPointer,
   isCommentAddressPointer,
   isCommentEventPointer,
-} from "applesauce-core/helpers/comment";
+} from "applesauce-common/helpers/comment";
 
 import { fillAndTrimTag } from "./tag.js";
 

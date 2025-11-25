@@ -9,8 +9,9 @@ import "highlight.js/styles/github-dark.css";
 import { nip19, type NostrEvent } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
 import { map, NEVER } from "rxjs";
-import { COMMENT_KIND, eventStore, pool } from "../helpers/nostr";
+
 import { usePocketContext } from "../contexts/PocketContext";
+import { COMMENT_KIND, eventStore, pool } from "../helpers/nostr";
 
 // Register languages
 hljs.registerLanguage("typescript", typescript);

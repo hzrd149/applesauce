@@ -1,8 +1,7 @@
-import { kinds } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { Model } from "applesauce-core/event-store";
+import { kinds } from "applesauce-core/helpers/event";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { map } from "rxjs/operators";
-
-import { Model } from "../event-store/interface.js";
 import { getInboxes, getOutboxes } from "../helpers/mailboxes.js";
 
 /** A model that gets and parses the inbox and outbox relays for a pubkey */

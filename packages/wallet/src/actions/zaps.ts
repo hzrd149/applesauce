@@ -1,6 +1,6 @@
 import { Token } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "nostr-tools/nip19";
 
 import { NutzapBlueprint, ProfileNutzapBlueprint } from "../blueprints/zaps.js";

@@ -38,7 +38,7 @@ For most applications, you'll want to provide a publish method that handles how 
 
 ```typescript
 import { RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 const pool = new RelayPool();
 const defaultRelays = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band"];

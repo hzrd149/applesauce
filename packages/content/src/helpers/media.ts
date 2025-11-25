@@ -1,4 +1,4 @@
-import { MediaAttachment, getSha256FromURL } from "applesauce-core/helpers/file-metadata";
+import { MediaAttachment, getSha256FromURL } from "applesauce-common/helpers/file-metadata";
 
 import { Tokens } from "./regexp.js";
 

@@ -1,21 +1,19 @@
+import { decodeGroupPointer, groupMessageEvents, GroupPointer } from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
-  decodeGroupPointer,
   getDisplayName,
   getProfilePicture,
   getSeenRelays,
-  groupMessageEvents,
-  GroupPointer,
   mergeRelaySets,
   ProfileContent,
 } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventFactory } from "applesauce-factory";
 import { GroupMessageBlueprint } from "applesauce-factory/blueprints";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useCallback, useEffect, useState } from "react";
 import { map, startWith } from "rxjs";

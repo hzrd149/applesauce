@@ -4,7 +4,7 @@ import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
 import { ComponentMap, useObservableEagerState, useObservableMemo, useRenderedContent } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { neventEncode, npubEncode } from "nostr-tools/nip19";
 import { useCallback, useState } from "react";
 import { scan } from "rxjs";

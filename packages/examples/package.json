@@ -21,6 +21,7 @@
     "@xterm/xterm": "^5.5.0",
     "applesauce-accounts": "^4",
     "applesauce-actions": "^4",
+    "applesauce-common": "workspace:^4.4",
     "applesauce-content": "^4",
     "applesauce-core": "^4.4.0",
     "applesauce-factory": "^4.3.0",

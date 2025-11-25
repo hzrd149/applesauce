@@ -1,4 +1,4 @@
-import { MediaAttachment } from "applesauce-core/helpers";
+import { MediaAttachment } from "applesauce-common/helpers/file-metadata";
 
 import { ensureNamedValueTag } from "../helpers/tag.js";
 import { EventOperation } from "../types.js";

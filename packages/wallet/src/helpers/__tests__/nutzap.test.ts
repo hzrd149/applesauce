@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { getNutzapMint } from "../nutzap.js";
 
 describe("getNutzapMint", () => {

@@ -1,4 +1,4 @@
-import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-core/helpers/blossom";
+import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-common/helpers/blossom";
 import { TagOperation } from "applesauce-factory";
 import { modifyPublicTags, modifyTags } from "applesauce-factory/operations";
 import { addBlossomServerTag, removeBlossomServerTag } from "applesauce-factory/operations/tag/blossom";

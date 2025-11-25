@@ -1,4 +1,4 @@
-import { APP_DATA_KIND, getAppDataEncryption } from "applesauce-core/helpers/app-data";
+import { APP_DATA_KIND, getAppDataEncryption } from "applesauce-common/helpers/app-data";
 import { AppDataBlueprint } from "applesauce-factory/blueprints/app-data";
 import { AppData } from "applesauce-factory/operations";
 import { Action } from "../action-hub.js";

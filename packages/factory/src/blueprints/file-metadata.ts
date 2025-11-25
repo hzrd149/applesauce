@@ -1,5 +1,5 @@
-import { FileMetadata } from "applesauce-core/helpers";
-import { kinds } from "nostr-tools";
+import { FileMetadata } from "applesauce-common/helpers/file-metadata";
+import { kinds } from "applesauce-core/helpers/event";
 
 import { blueprint } from "../event-factory.js";
 import { skip } from "../helpers/pipeline.js";

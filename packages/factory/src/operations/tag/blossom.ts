@@ -1,4 +1,4 @@
-import { areBlossomServersEqual } from "applesauce-core/helpers/blossom";
+import { areBlossomServersEqual } from "applesauce-common/helpers/blossom";
 import { addNameValueTag } from "./common.js";
 import { TagOperation } from "../../types.js";
 

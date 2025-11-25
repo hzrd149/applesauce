@@ -1,5 +1,5 @@
+import { getZapAmount, getZapRecipient, isValidZap } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
-import { getZapAmount, getZapRecipient, isValidZap, normalizeToPubkey } from "applesauce-core/helpers";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 import { EMPTY } from "rxjs";
 
+import { normalizeToPubkey } from "applesauce-core/helpers";
 import RelayPicker from "../../components/relay-picker";
 
 // Register ChartJS components

@@ -1,18 +1,27 @@
+import { kinds } from "nostr-tools";
+import { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
 import { NostrEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
-import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
 import { IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
-export { NostrEvent, EventTemplate, UnsignedEvent, verifiedSymbol, verifyEvent, VerifiedEvent } from "nostr-tools/pure";
 export {
+  EventTemplate,
+  NostrEvent,
+  UnsignedEvent,
+  VerifiedEvent,
+  verifiedSymbol,
+  verifyEvent,
+  getEventHash,
+} from "nostr-tools/pure";
+export {
+  binarySearch,
   bytesToHex,
   hexToBytes,
   insertEventIntoAscendingList,
   insertEventIntoDescendingList,
-  binarySearch,
 } from "nostr-tools/utils";
-export * as kinds from "nostr-tools/kinds";
+export { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind, kinds };
 
 /** An event with a known kind. this is used to know if events have been validated */
 export type KnownEvent<K extends number> = Omit<NostrEvent, "kind"> & { kind: K };

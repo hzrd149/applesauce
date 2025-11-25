@@ -1,5 +1,5 @@
 import { EventStore } from "applesauce-core";
-import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-core/helpers/blossom";
+import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-common/helpers/blossom";
 import { EventFactory } from "applesauce-factory";
 import { firstValueFrom, lastValueFrom } from "rxjs";
 import { toArray } from "rxjs/operators";

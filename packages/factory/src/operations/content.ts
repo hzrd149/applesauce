@@ -5,7 +5,7 @@ import {
   getEncryptedContentEncryptionMethods,
   getPubkeyFromDecodeResult,
 } from "applesauce-core/helpers";
-import { Emoji } from "applesauce-core/helpers/emoji";
+import { Emoji } from "applesauce-common/helpers/emoji";
 
 import { ensureProfilePointerTag } from "../helpers/common-tags.js";
 import { getContentPointers } from "../helpers/content.js";

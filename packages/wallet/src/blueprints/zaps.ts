@@ -1,7 +1,7 @@
 import { Token } from "@cashu/cashu-ts";
 import { blueprint, EventBlueprint } from "applesauce-factory";
 import { skip } from "applesauce-factory/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "nostr-tools/nip19";
 
 import { NUTZAP_KIND } from "../helpers/nutzap.js";

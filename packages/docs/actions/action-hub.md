@@ -10,7 +10,7 @@ To create an ActionHub, you need an event store and event factory. Optionally, y
 
 ```ts
 import { ActionHub } from "applesauce-actions";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 // Create a basic ActionHub without automatic publishing
 const hub = new ActionHub(eventStore, eventFactory);

@@ -1,5 +1,5 @@
-import { COMMENT_KIND } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { COMMENT_KIND } from "applesauce-common/helpers/comment";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { blueprint } from "../event-factory.js";
 import { setParent } from "../operations/comment.js";

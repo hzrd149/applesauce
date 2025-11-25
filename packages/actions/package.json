@@ -39,6 +39,7 @@
     }
   },
   "dependencies": {
+    "applesauce-common": "^4.4",
     "applesauce-core": "^4.0.0",
     "applesauce-factory": "^4.0.0",
     "nostr-tools": "~2.17",

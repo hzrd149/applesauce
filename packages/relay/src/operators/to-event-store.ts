@@ -1,6 +1,6 @@
 import { OperatorFunction } from "rxjs";
 import { IEventStore } from "applesauce-core";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { mapEventsToStore, mapEventsToTimeline } from "applesauce-core/observable";
 
 import { SubscriptionResponse } from "../types.js";

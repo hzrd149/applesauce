@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { getHiddenTags } from "./hidden-tags.js";
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";

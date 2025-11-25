@@ -1,5 +1,5 @@
 import { EncryptionMethod } from "applesauce-core/helpers";
-import { APP_DATA_KIND } from "applesauce-core/helpers/app-data";
+import { APP_DATA_KIND } from "applesauce-common/helpers/app-data";
 import { blueprint } from "../event-factory.js";
 import * as AppData from "../operations/app-data.js";
 import { MetaTagOptions, setMetaTags } from "../operations/common.js";

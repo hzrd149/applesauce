@@ -1,7 +1,8 @@
-import { TORRENT_KIND } from "applesauce-core/helpers";
-import type { TorrentFile, TorrentExternalIdentifier } from "applesauce-core/helpers/torrent";
+import type { TorrentExternalIdentifier, TorrentFile } from "applesauce-common/helpers/torrent";
+import { TORRENT_KIND } from "applesauce-common/helpers/torrent";
 
 import { blueprint } from "../event-factory.js";
+import { eventPipe } from "../helpers/pipeline.js";
 import { MetaTagOptions, setMetaTags } from "../operations/common.js";
 import { setContent } from "../operations/content.js";
 import {
@@ -14,7 +15,6 @@ import {
   setTorrentInfoHash,
   setTorrentTitle,
 } from "../operations/torrent.js";
-import { eventPipe } from "../helpers/pipeline.js";
 
 export type TorrentBlueprintOptions = MetaTagOptions & {
   /** Torrent title */

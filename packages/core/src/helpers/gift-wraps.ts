@@ -1,4 +1,3 @@
-import { kinds, NostrEvent, UnsignedEvent } from "nostr-tools";
 import { EventMemory } from "../event-store/event-memory.js";
 import {
   EncryptedContentSigner,
@@ -7,7 +6,7 @@ import {
   lockEncryptedContent,
   unlockEncryptedContent,
 } from "./encrypted-content.js";
-import { KnownEvent, notifyEventUpdate, verifyWrappedEvent } from "./event.js";
+import { kinds, KnownEvent, NostrEvent, notifyEventUpdate, UnsignedEvent, verifyWrappedEvent } from "./event.js";
 
 /**
  * An internal event set to keep track of seals and rumors

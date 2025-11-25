@@ -7,7 +7,7 @@ import { EventStore } from "applesauce-core";
 import { FakeUser } from "./fake-user.js";
 import { ActionHub } from "../action-hub.js";
 import { CreateProfile } from "../actions/profile.js";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 const user = new FakeUser();
 let events = new EventStore();

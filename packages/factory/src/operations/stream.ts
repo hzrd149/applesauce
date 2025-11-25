@@ -1,4 +1,4 @@
-import { StreamRole } from "applesauce-core/helpers/stream";
+import { StreamRole } from "applesauce-common/helpers/stream";
 import { ProfilePointer } from "nostr-tools/nip19";
 
 import { ensureMarkedProfilePointerTag } from "../helpers/common-tags.js";

@@ -1,5 +1,5 @@
 import { type Transformer } from "unified";
-import { getEmojiTag } from "applesauce-core/helpers/emoji";
+import { getEmojiTag } from "applesauce-common/helpers/emoji";
 
 import { Emoji, Root } from "../nast/types.js";
 import { Tokens } from "../helpers/regexp.js";

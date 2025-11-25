@@ -1,7 +1,7 @@
 import { getDisplayName, getProfilePicture, mergeRelaySets, normalizeToPubkey } from "applesauce-core/helpers";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RelayPicker from "./relay-picker";
 

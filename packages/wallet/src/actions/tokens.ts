@@ -1,7 +1,7 @@
 import { CashuMint, CashuWallet, CheckStateEnum, Proof, Token } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { DeleteBlueprint } from "applesauce-factory/blueprints";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import {
   getTokenContent,

@@ -1,6 +1,6 @@
 import { type Token } from "@cashu/cashu-ts";
 import { type DecodeResult } from "applesauce-core/helpers";
-import { type ParsedInvoice } from "applesauce-core/helpers/bolt11";
+import { type ParsedInvoice } from "applesauce-common/helpers/bolt11";
 import { type EventTemplate, type NostrEvent } from "nostr-tools";
 import { type Parent, type Node as UnistNode } from "unist";
 

@@ -2,7 +2,7 @@ import { bytesToHex } from "@noble/hashes/utils";
 import { EventOperation } from "applesauce-factory";
 import { modifyHiddenTags } from "applesauce-factory/operations";
 import { setSingletonTag } from "applesauce-factory/operations/tag";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { WALLET_KIND } from "../helpers/wallet.js";
 

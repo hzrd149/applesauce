@@ -1,23 +1,25 @@
+import {
+  getMonitorChecks,
+  getMonitorFrequency,
+  getMonitorGeohash,
+  isValidRelayMonitorAnnouncement,
+  RELAY_MONITOR_ANNOUNCEMENT_KIND,
+} from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
-  getMonitorChecks,
-  getMonitorFrequency,
-  getMonitorGeohash,
   getProfilePicture,
   getSeenRelays,
-  isValidRelayMonitorAnnouncement,
   mergeRelaySets,
+  NostrEvent,
   ProfileContent,
-  RELAY_MONITOR_ANNOUNCEMENT_KIND,
 } from "applesauce-core/helpers";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
 import { decode } from "ngeohash";
+import { ProfilePointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import { map } from "rxjs";
@@ -108,6 +110,57 @@ function MonitorPopup({ event }: { event: MonitorEventWithLocation }) {
         <strong>Created:</strong> {createdDate.toLocaleString()}
       </div>
     </div>
+  );
+}
+
+// Component to create a custom avatar marker
+function AvatarMarker({ event }: { event: MonitorEventWithLocation }) {
+  const profile = useProfile(
+    useMemo(() => ({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) }), [event]),
+  );
+
+  const avatarUrl = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
+
+  // Create custom icon with avatar
+  const icon = useMemo(() => {
+    return L.divIcon({
+      className: "avatar-marker", // Remove default marker styling
+      html: `
+        <div style="
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          border: 3px solid white;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+          overflow: hidden;
+          background: white;
+        ">
+          <img
+            src="${avatarUrl}"
+            alt="Avatar"
+            style="
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            "
+            onerror="this.src='https://robohash.org/${event.pubkey}.png'"
+          />
+        </div>
+      `,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20], // Center the icon on the position
+      popupAnchor: [0, -20], // Position popup above the marker
+    });
+  }, [avatarUrl, event.pubkey]);
+
+  if (!event.position) return null;
+
+  return (
+    <Marker position={event.position} icon={icon}>
+      <Popup>
+        <MonitorPopup event={event} />
+      </Popup>
+    </Marker>
   );
 }
 
@@ -220,16 +273,9 @@ export default function MonitorsMap() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
 
-          {monitorsWithLocation.map((monitor) => {
-            if (!monitor.position) return null;
-            return (
-              <Marker key={monitor.id} position={monitor.position}>
-                <Popup>
-                  <MonitorPopup event={monitor} />
-                </Popup>
-              </Marker>
-            );
-          })}
+          {monitorsWithLocation.map((monitor) => (
+            <AvatarMarker key={monitor.id} event={monitor} />
+          ))}
         </MapContainer>
       </div>
     </div>

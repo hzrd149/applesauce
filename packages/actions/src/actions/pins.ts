@@ -1,4 +1,4 @@
-import { getReplaceableAddress, isReplaceable } from "applesauce-core/helpers";
+import { getReplaceableAddress, isReplaceable } from "applesauce-core/helpers/event";
 import { modifyPublicTags } from "applesauce-factory/operations";
 import { addAddressTag, addEventTag, removeAddressTag, removeEventTag } from "applesauce-factory/operations/tag";
 import { kinds, NostrEvent } from "nostr-tools";

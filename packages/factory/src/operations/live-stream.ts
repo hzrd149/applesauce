@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { getAddressPointerForEvent } from "applesauce-core/helpers";
 
 import { EventOperation } from "../types.js";

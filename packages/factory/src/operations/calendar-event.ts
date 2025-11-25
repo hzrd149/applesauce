@@ -1,4 +1,4 @@
-import { CalendarEventParticipant } from "applesauce-core/helpers";
+import { CalendarEventParticipant } from "applesauce-common/helpers/calendar-event";
 import { createCalendarEventParticipantTag } from "../helpers/calendar-event.js";
 import { EventOperation } from "../types.js";
 import { includeNameValueTag, includeSingletonTag, modifyPublicTags } from "./tags.js";

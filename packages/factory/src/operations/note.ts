@@ -1,6 +1,7 @@
-import { getNip10References, isPTag } from "applesauce-core/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
-import { EventPointer } from "nostr-tools/nip19";
+import { getNip10References } from "applesauce-common/helpers/threading";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { EventPointer } from "applesauce-core/helpers/pointers";
+import { isPTag } from "applesauce-core/helpers/tags";
 
 import { ensureMarkedEventPointerTag, ensureProfilePointerTag } from "../helpers/common-tags.js";
 import { EventOperation } from "../types.js";

@@ -1,8 +1,10 @@
-import { Emoji, getConversationParticipants, Rumor } from "applesauce-core/helpers";
-import { kinds } from "nostr-tools";
+import { Emoji } from "applesauce-common/helpers/emoji";
+import { getConversationParticipants } from "applesauce-common/helpers/messages";
+import { kinds } from "applesauce-core/helpers/event";
+import { Rumor } from "applesauce-core/helpers/gift-wraps";
+
 import { blueprint } from "../event-factory.js";
-import { repairNostrLinks, setContent } from "../operations/content.js";
-import { includeEmojis } from "../operations/content.js";
+import { includeEmojis, repairNostrLinks, setContent } from "../operations/content.js";
 import { toRumor } from "../operations/gift-wrap.js";
 import { setConversation, setParent, setSubject } from "../operations/wrapped-message.js";
 import { EventBlueprint } from "../types.js";

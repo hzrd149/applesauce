@@ -1,7 +1,8 @@
+import { EventTemplate, kinds } from "applesauce-core/helpers/event";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
 import { addPubkeyTag, removePubkeyTag } from "applesauce-factory/operations/tag";
-import { EventTemplate, kinds } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+
 import { Action } from "../action-hub.js";
 
 /** An action that adds a pubkey to a users contacts event */

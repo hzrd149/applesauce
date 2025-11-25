@@ -1,13 +1,12 @@
+import { HighlightAttribution } from "applesauce-common/helpers/highlight";
+import { NostrEvent, isEvent, isReplaceable } from "applesauce-core/helpers/event";
 import {
+  AddressPointer,
+  EventPointer,
   getAddressPointerForEvent,
-  HighlightAttribution,
   isAddressPointer,
-  isEvent,
   isEventPointer,
-  isReplaceable,
-} from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
+} from "applesauce-core/helpers/pointers";
 
 import { ensureMarkedProfilePointerTag } from "../helpers/common-tags.js";
 import { EventOperation } from "../types.js";

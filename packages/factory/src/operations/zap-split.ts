@@ -1,4 +1,4 @@
-import { ZapSplit } from "applesauce-core/helpers";
+import { ZapSplit } from "applesauce-common/helpers/zap";
 
 import { skip } from "../helpers/pipeline.js";
 import { fillAndTrimTag } from "../helpers/tag.js";

@@ -1,4 +1,5 @@
-import { MediaAttachment, PICTURE_POST_KIND } from "applesauce-core/helpers";
+import { MediaAttachment } from "applesauce-common/helpers/file-metadata";
+import { PICTURE_POST_KIND } from "applesauce-common/helpers/picture-post";
 
 import { blueprint } from "../event-factory.js";
 import { MetaTagOptions, setMetaTags } from "../operations/common.js";

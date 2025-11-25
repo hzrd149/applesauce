@@ -4,7 +4,7 @@ import { EventOperation, TagOperation } from "applesauce-factory";
 import { modifyPublicTags } from "applesauce-factory/operations";
 import { setContent } from "applesauce-factory/operations/content";
 import { addAddressTag, addEventTag, addPubkeyTag, setSingletonTag } from "applesauce-factory/operations/tag";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 
 /** Sets the cashu proofs for a nutzap event */

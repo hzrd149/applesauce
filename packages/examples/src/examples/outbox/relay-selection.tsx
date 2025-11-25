@@ -1,6 +1,6 @@
 import { defined, EventStore, includeMailboxes } from "applesauce-core";
 import { getDisplayName, getProfilePicture, groupPubkeysByRelay } from "applesauce-core/helpers";
-import { selectOptimalRelays } from "applesauce-core/helpers/relay-selection";
+import { selectOptimalRelays } from "applesauce-core/helpers";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";

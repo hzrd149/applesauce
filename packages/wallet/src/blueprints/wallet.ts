@@ -1,6 +1,6 @@
 import { blueprint } from "applesauce-factory";
 
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { WALLET_BACKUP_KIND, WALLET_KIND } from "../helpers/wallet.js";
 import { setBackupContent, setMints, setPrivateKey } from "../operations/wallet.js";
 

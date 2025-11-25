@@ -1,5 +1,5 @@
 import { from, isObservable, lastValueFrom, Observable, switchMap, tap, toArray } from "rxjs";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventFactory } from "applesauce-factory";
 import { IEventStoreActions, IEventStoreRead } from "applesauce-core";
 

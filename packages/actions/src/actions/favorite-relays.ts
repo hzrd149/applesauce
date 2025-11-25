@@ -1,9 +1,9 @@
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { FAVORITE_RELAYS_KIND } from "applesauce-core/helpers/lists";
+import { AddressPointer } from "applesauce-core/helpers/pointers";
 import { TagOperation } from "applesauce-factory";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
 import { addAddressTag, addRelayTag, removeAddressTag, removeRelayTag } from "applesauce-factory/operations/tag";
-import { AddressPointer } from "nostr-tools/nip19";
 
 import { Action } from "../action-hub.js";
 

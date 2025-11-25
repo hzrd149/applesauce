@@ -1,5 +1,5 @@
 import { ISigner } from "applesauce-signers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 export type EventTemplate = {
   kind: number;

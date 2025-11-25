@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { finalize, MonoTypeOperatorFunction, tap } from "rxjs";
 
 import { IEventClaims } from "../event-store/interface.js";

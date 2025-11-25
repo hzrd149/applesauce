@@ -1,6 +1,6 @@
 import { IAsyncEventStore, IEventStore } from "applesauce-core";
 import { isEvent } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { ChangeEvent, useRef, useState } from "react";
 
 interface ImportEventsButtonProps {

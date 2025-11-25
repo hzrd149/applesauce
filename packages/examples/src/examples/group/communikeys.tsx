@@ -3,7 +3,7 @@ import { getDisplayName, getProfilePicture, getTagValue, isRTag, ProfileContent 
 import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useCallback, useEffect, useMemo, useState } from "react";
 

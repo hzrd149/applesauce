@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { EventOperation } from "../types.js";
 import { createCommentTagsForEvent } from "../helpers/comment.js";

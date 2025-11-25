@@ -1,4 +1,5 @@
-import { CalendarEventParticipant, NameValueTag } from "applesauce-core/helpers";
+import { CalendarEventParticipant } from "applesauce-common/helpers/calendar-event";
+import { NameValueTag } from "applesauce-core/helpers/tags";
 import { createPTagFromProfilePointer } from "./pointer.js";
 import { fillAndTrimTag } from "./tag.js";
 

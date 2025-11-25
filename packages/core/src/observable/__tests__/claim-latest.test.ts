@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { Subject } from "rxjs";
 import { describe, expect, it } from "vitest";
 import { EventMemory } from "../../event-store/event-memory.js";

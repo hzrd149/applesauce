@@ -1,4 +1,4 @@
-import { PollType } from "applesauce-core/helpers";
+import { PollType } from "applesauce-common/helpers/poll";
 
 import { EventOperation } from "../types.js";
 import { includeSingletonTag, modifyPublicTags } from "./tags.js";
