@@ -1,7 +1,6 @@
+import { EncryptedContentSigner, unixNow } from "applesauce-core/helpers";
 import type { NostrEvent } from "nostr-tools";
 import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04, nip44 } from "nostr-tools";
-import { EncryptedContentSigner } from "../helpers/encrypted-content.js";
-import { unixNow } from "../helpers/time.js";
 
 export class FakeUser implements EncryptedContentSigner {
   key = generateSecretKey();

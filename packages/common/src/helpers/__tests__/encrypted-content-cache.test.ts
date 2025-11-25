@@ -1,9 +1,12 @@
+import { EventStore } from "applesauce-core/event-store";
+import {
+  EncryptedContentSymbol,
+  setEncryptedContentCache,
+  unlockEncryptedContent,
+} from "applesauce-core/helpers/encrypted-content";
 import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { EventStore } from "applesauce-core/event-store/event-store";
-import { EncryptedContentSymbol, setEncryptedContentCache, unlockEncryptedContent } from "../encrypted-content.js";
 import { EncryptedContentFromCacheSymbol, persistEncryptedContent } from "../encrypted-content-cache.js";
 
 const mockStorage = {

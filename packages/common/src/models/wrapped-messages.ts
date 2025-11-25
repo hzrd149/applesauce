@@ -1,9 +1,9 @@
 import { Model } from "applesauce-core/event-store";
-import { getGiftWrapRumor, Rumor } from "applesauce-core/helpers/gift-wraps";
 import { watchEventsUpdates } from "applesauce-core/observable";
 import { kinds } from "applesauce-core/helpers/event";
 import { map } from "rxjs";
 
+import { getGiftWrapRumor, Rumor } from "../helpers/gift-wraps.js";
 import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,

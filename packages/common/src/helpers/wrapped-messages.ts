@@ -1,5 +1,5 @@
 import { getTagValue } from "applesauce-core/helpers/event-tags";
-import { Rumor } from "applesauce-core/helpers/gift-wraps";
+import { Rumor } from "../helpers/gift-wraps.js";
 import { getConversationParticipants } from "./messages.js";
 
 /** Returns the subject of a wrapped direct message */

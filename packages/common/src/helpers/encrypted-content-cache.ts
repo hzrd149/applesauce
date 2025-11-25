@@ -13,15 +13,15 @@ import {
   of,
   switchMap,
 } from "rxjs";
-import { IEventStoreStreams } from "../event-store/interface.js";
-import { logger } from "../logger.js";
+import { IEventStoreStreams } from "applesauce-core/event-store";
+import { logger } from "applesauce-core";
 import {
   canHaveEncryptedContent,
   getEncryptedContent,
   isEncryptedContentUnlocked,
   setEncryptedContentCache,
-} from "./encrypted-content.js";
-import { notifyEventUpdate } from "./event.js";
+} from "applesauce-core/helpers/encrypted-content";
+import { notifyEventUpdate } from "applesauce-core/helpers/event";
 import { getGiftWrapSeal, getSealGiftWrap, getSealRumor } from "./gift-wraps.js";
 
 /** A symbol that is used to mark encrypted content as being from a cache */
