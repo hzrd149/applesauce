@@ -10,10 +10,14 @@ import {
   isEventPointer,
 } from "applesauce-core/helpers/pointers";
 import { isAddressableKind } from "applesauce-core/helpers/event";
+import { type Observable } from "rxjs";
 import { map } from "rxjs/operators";
 
 import { COMMENT_KIND } from "../helpers/comment.js";
 import { getNip10References, interpretThreadTags, ThreadReferences } from "../helpers/threading.js";
+
+// Import EventModels as a value (class) to modify its prototype
+import { EventModels } from "applesauce-core/event-store";
 
 export type Thread = {
   root?: ThreadItem;
@@ -132,4 +136,17 @@ export function RepliesModel(event: NostrEvent, overrideKinds?: number[]): Model
       }),
     );
   };
+}
+
+// Register this model with EventModels
+EventModels.prototype.thread = function (root: string | EventPointer | AddressPointer) {
+  return this.model(ThreadModel, root);
+};
+
+// Type augmentation for EventModels
+declare module "applesauce-core/event-store" {
+  interface EventModels {
+    /** Subscribe to a thread */
+    thread(root: string | EventPointer | AddressPointer): Observable<Thread>;
+  }
 }

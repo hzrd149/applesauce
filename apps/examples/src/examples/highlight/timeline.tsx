@@ -5,6 +5,8 @@ import {
   getSeenRelays,
   mergeRelaySets,
   ProfileContent,
+} from "applesauce-core/helpers";
+import {
   getHighlightText,
   getHighlightContext,
   getHighlightComment,
@@ -12,7 +14,8 @@ import {
   getHighlightSourceAddressPointer,
   getHighlightSourceUrl,
   getHighlightAttributions,
-} from "applesauce-core/helpers";
+  HighlightAttribution,
+} from "applesauce-common/helpers";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
@@ -130,8 +133,8 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
         {/* Attribution */}
         {attribution.length > 0 && <div className="divider"></div>}
         {attribution
-          .filter((a) => a.role === "author")
-          .map((author, i) => (
+          .filter((a: HighlightAttribution) => a.role === "author")
+          .map((author: HighlightAttribution, i: number) => (
             <div key={`author-${i}`} className="flex items-center gap-2 mb-2">
               <span className="badge badge-primary badge-sm">author</span>
               <a
@@ -145,7 +148,7 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
             </div>
           ))}
         {attribution
-          .filter((a) => a.role === "editor")
+          .filter((attr) => attr.role === "editor")
           .map((editor, i) => (
             <div key={`editor-${i}`} className="flex items-center gap-2 mb-2">
               <span className="badge badge-secondary badge-sm">editor</span>
@@ -160,7 +163,7 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
             </div>
           ))}
         {attribution
-          .filter((a) => a.role !== "author" && a.role !== "editor")
+          .filter((attr) => attr.role !== "author" && attr.role !== "editor")
           .map((other, i) => (
             <div key={`other-${i}`} className="flex items-center gap-2 mb-2">
               <span className="badge badge-sm">{other.role || "mention"}</span>

@@ -2,6 +2,7 @@
   "name": "applesauce",
   "private": true,
   "scripts": {
+    "dev": "cd apps/examples && pnpm dev",
     "build": "turbo build",
     "test": "turbo build && vitest run",
     "coverage": "turbo build && vitest run --coverage",

@@ -13,4 +13,5 @@ export * from "./wrapped-messages.js";
 export * from "./zaps.js";
 export * from "./gift-wrap.js";
 
-export * from "./register-models.js";
+// Register the common models with the event store
+import "../register.js";

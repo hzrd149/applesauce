@@ -9,7 +9,7 @@ import {
 } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventFactory } from "applesauce-core";
-import { GroupMessageBlueprint } from "applesauce-factory/blueprints";
+import { GroupMessageBlueprint } from "applesauce-common/blueprints";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";

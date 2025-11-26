@@ -2,9 +2,13 @@ import { Model } from "applesauce-core/event-store";
 import { kinds } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { watchEventUpdates } from "applesauce-core/observable";
+import { type Observable } from "rxjs";
 import { map } from "rxjs/operators";
 
 import { getHiddenMutedThings, getMutedThings, getPublicMutedThings, Mutes } from "../helpers/mutes.js";
+
+// Import EventModels as a value (class) to modify its prototype
+import { EventModels } from "applesauce-core/event-store";
 
 /** A model that returns all a users muted things */
 export function MuteModel(user: string | ProfilePointer): Model<Mutes | undefined> {
@@ -34,4 +38,18 @@ export function HiddenMuteModel(pubkey: string): Model<Mutes | null | undefined>
       // Get hidden muted things
       map((event) => event && getHiddenMutedThings(event)),
     );
+}
+
+// Register this model with EventModels
+EventModels.prototype.mutes = function (user: string | ProfilePointer) {
+  if (typeof user === "string") user = { pubkey: user };
+  return this.model(MuteModel, user);
+};
+
+// Type augmentation for EventModels
+declare module "applesauce-core/event-store" {
+  interface EventModels {
+    /** Subscribe to a users mutes */
+    mutes(user: string | ProfilePointer): Observable<Mutes | undefined>;
+  }
 }

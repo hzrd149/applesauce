@@ -1,11 +1,14 @@
 import { blueprint } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "applesauce-core/helpers/pointers";
 import { MetaTagOptions, setContent, setMetaTags } from "applesauce-core/operations";
 import { POLL_KIND, POLL_RESPONSE_KIND, PollType } from "../helpers/poll.js";
 import * as PollResponse from "../operations/poll-response.js";
 import * as Poll from "../operations/poll.js";
 import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
+
+// Import EventFactory as a value (class) to modify its prototype
+import { EventFactory } from "applesauce-core/event-factory";
 
 export interface PollOption {
   id: string;
@@ -75,4 +78,17 @@ export function SingleChoicePollResponseBlueprint(
     opts?.comment ? setContent(opts.comment) : undefined,
     setMetaTags({ ...opts, alt: opts?.alt ?? "Poll response" }),
   );
+}
+
+// Register this blueprint with EventFactory
+EventFactory.prototype.poll = function (question: string, options: PollOption[], opts?: PollBlueprintOptions) {
+  return this.create(PollBlueprint, question, options, opts);
+};
+
+// Type augmentation for EventFactory
+declare module "applesauce-core/event-factory" {
+  interface EventFactory {
+    /** Create a NIP-88 poll event */
+    poll(question: string, options: PollOption[], opts?: PollBlueprintOptions): Promise<EventTemplate>;
+  }
 }

@@ -16,8 +16,10 @@ export * from "./picture-post.js";
 export * from "./poll.js";
 export * from "./profile.js";
 export * from "./reaction.js";
-export * from "./register-factory.js";
 export * from "./share.js";
 export * from "./stream.js";
 export * from "./torrent.js";
 export * from "./wrapped-message.js";
+
+// Register the common blueprints with the event factory
+import "../register.js";
