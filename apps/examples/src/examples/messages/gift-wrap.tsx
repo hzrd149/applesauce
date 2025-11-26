@@ -2,6 +2,7 @@ import { ProxySigner } from "applesauce-accounts";
 import { ActionHub } from "applesauce-actions";
 import { SendWrappedMessage } from "applesauce-actions/actions";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
+import { persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import {
   getConversationIdentifierFromMessage,
   getConversationParticipants,
@@ -9,12 +10,10 @@ import {
   getGiftWrapSeal,
   groupMessageEvents,
   persistEncryptedContent,
-  persistEventsToCache,
   Rumor,
-  unixNow,
   unlockGiftWrap,
-} from "applesauce-core/helpers";
-import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "applesauce-core/models";
+} from "applesauce-common/helpers";
+import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "applesauce-common/models";
 import { EventFactory } from "applesauce-core";
 import { CacheRequest } from "applesauce-loaders";
 import { createTimelineLoader } from "applesauce-loaders/loaders";

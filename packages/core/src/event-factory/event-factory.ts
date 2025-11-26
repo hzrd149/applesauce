@@ -2,9 +2,37 @@ import { EventTemplate, NostrEvent, UnsignedEvent } from "../helpers/event.js";
 import { sign, stamp } from "../operations/event.js";
 import { modifyTags, ModifyTagsOptions } from "../operations/tags.js";
 import { buildEvent, EventFactoryTemplate, modifyEvent } from "./methods.js";
-import { EventBlueprint, EventFactoryContext, EventOperation } from "./types.js";
+import { EventBlueprint, EventFactoryContext, EventOperation, IEventFactory } from "./types.js";
 
-export class EventFactory {
+/**
+ * Base class that provides event creation functionality.
+ * This class can be extended by other packages to add additional helpful event creation methods.
+ *
+ * @example
+ * ```ts
+ * // In another package (e.g., applesauce-common)
+ * import { EventFactory } from "applesauce-core/event-factory";
+ * import { NoteBlueprint, ReactionBlueprint } from "applesauce-common/blueprints";
+ *
+ * // Add methods to the prototype
+ * EventFactory.prototype.note = function(content, options) {
+ *   return this.create(NoteBlueprint, content, options);
+ * };
+ *
+ * EventFactory.prototype.reaction = function(event, emoji) {
+ *   return this.create(ReactionBlueprint, event, emoji);
+ * };
+ *
+ * // Extend the type via module augmentation
+ * declare module "applesauce-core/event-factory" {
+ *   interface EventFactory {
+ *     note(content: string, options?: NoteBlueprintOptions): Promise<EventTemplate>;
+ *     reaction(event: NostrEvent, emoji?: string): Promise<EventTemplate>;
+ *   }
+ * }
+ * ```
+ */
+export class EventFactory implements IEventFactory {
   constructor(public context: EventFactoryContext = {}) {}
 
   /** Build an event template with operations */
@@ -89,7 +117,4 @@ export class EventFactory {
   clearClient() {
     this.context.client = undefined;
   }
-
-  // Note: Helper methods like note(), comment(), etc. have been removed.
-  // Import and use blueprints directly from applesauce-common/blueprints
 }

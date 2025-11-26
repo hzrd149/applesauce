@@ -83,6 +83,7 @@
     "@gandlaf21/bc-ur": "^1.1.12",
     "@noble/hashes": "^1.7.1",
     "applesauce-actions": "^4.0.0",
+    "applesauce-common": "workspace:^",
     "applesauce-core": "^4.0.0",
     "nostr-tools": "~2.17",
     "rxjs": "^7.8.1"

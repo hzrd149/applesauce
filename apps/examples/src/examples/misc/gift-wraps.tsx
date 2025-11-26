@@ -1,11 +1,12 @@
-import { EventStore } from "applesauce-core";
-import { kinds, NostrEvent, persistEncryptedContent } from "applesauce-core/helpers";
-import { isGiftWrapUnlocked, unlockGiftWrap } from "applesauce-core/helpers/gift-wraps";
-import { GiftWrapRumorModel, GiftWrapsModel } from "applesauce-core/models";
+import { isGiftWrapUnlocked, unlockGiftWrap } from "applesauce-common/helpers/gift-wrap";
+import { GiftWrapRumorModel, GiftWrapsModel } from "applesauce-common/models/gift-wrap";
+import { EventStore } from "applesauce-core/event-store";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
+import { persistEncryptedContent } from "applesauce-common/helpers/encrypted-content-cache";
 import localforage from "localforage";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";

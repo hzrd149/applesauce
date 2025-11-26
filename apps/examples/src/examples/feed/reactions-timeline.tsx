@@ -1,9 +1,9 @@
+import { getReactionEventPointer } from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   addRelayHintsToPointer,
   getDisplayName,
   getProfilePicture,
-  getReactionEventPointer,
   getSeenRelays,
   mergeRelaySets,
   persistEventsToCache,

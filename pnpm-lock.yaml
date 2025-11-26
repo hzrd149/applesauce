@@ -790,6 +790,9 @@ importers:
       applesauce-actions:
         specifier: ^4.0.0
         version: link:../actions
+      applesauce-common:
+        specifier: workspace:^
+        version: link:../common
       applesauce-core:
         specifier: ^4.0.0
         version: link:../core
@@ -824,6 +827,9 @@ importers:
       '@noble/hashes':
         specifier: ^1.7.1
         version: 1.8.0
+      applesauce-common:
+        specifier: workspace:^
+        version: link:../common
       applesauce-core:
         specifier: ^4.1.0
         version: link:../core

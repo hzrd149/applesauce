@@ -1,13 +1,4 @@
-import { EventStore, mapEventsToStore } from "applesauce-core";
-import {
-  getDisplayName,
-  getProfilePicture,
-  getReplaceableAddress,
-  getSeenRelays,
-  mergeRelaySets,
-  ProfileContent,
-  unixNow,
-} from "applesauce-core/helpers";
+import { StreamChatMessage } from "applesauce-common/blueprints";
 import {
   getStreamHost,
   getStreamImage,
@@ -19,19 +10,26 @@ import {
   getStreamTitle,
   getStreamViewers,
 } from "applesauce-common/helpers/stream";
+import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import {
+  getDisplayName,
+  getProfilePicture,
+  getReplaceableAddress,
+  getSeenRelays,
+  mergeRelaySets,
+  ProfileContent,
+  unixNow,
+} from "applesauce-core/helpers";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
+import { ExtensionSigner } from "applesauce-signers";
 import { kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 import ReactPlayer from "react-player";
 import { startWith } from "rxjs";
-
-import { EventFactory } from "applesauce-core";
-import { StreamChatMessage } from "applesauce-factory/blueprints";
-import { ExtensionSigner } from "applesauce-signers";
-import { useForm } from "react-hook-form";
 import RelayPicker from "../../components/relay-picker";
 
 // Create an event store for all events

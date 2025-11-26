@@ -1,6 +1,8 @@
 // import { Emoji } from "applesauce-common/helpers/emoji";
 import { EventTemplate, NostrEvent, UnsignedEvent } from "../helpers/event.js";
 import { AddressPointer } from "../helpers/pointers.js";
+import { ModifyTagsOptions } from "../operations/tags.js";
+import { EventFactoryTemplate } from "./methods.js";
 
 /** Nostr event signer */
 export interface EventSigner {
@@ -72,3 +74,34 @@ export type EventOperation<
 export type EventBlueprint<T extends EventTemplate | UnsignedEvent | NostrEvent = EventTemplate> = (
   context: EventFactoryContext,
 ) => Promise<T>;
+
+/**
+ * Core helpful event creation interface.
+ * Contains only methods that use blueprints from the core package.
+ * Other packages (like applesauce-common) can extend this interface via module augmentation.
+ */
+export interface IEventFactory {
+  /** Build an event template with operations */
+  build(template: EventFactoryTemplate, ...operations: (EventOperation | undefined)[]): Promise<EventTemplate>;
+  /** Create an event from a blueprint */
+  create<T extends EventTemplate | UnsignedEvent | NostrEvent>(blueprint: EventBlueprint<T>): Promise<T>;
+  create<T extends EventTemplate | UnsignedEvent | NostrEvent, Args extends Array<any>>(
+    blueprint: (...args: Args) => EventBlueprint<T>,
+    ...args: Args
+  ): Promise<T>;
+  /** Modify an existing event with operations and updated the created_at */
+  modify(
+    draft: EventTemplate | UnsignedEvent | NostrEvent,
+    ...operations: (EventOperation | undefined)[]
+  ): Promise<EventTemplate>;
+  /** Modify a lists public and hidden tags and updated the created_at */
+  modifyTags(
+    event: EventTemplate | UnsignedEvent | NostrEvent,
+    tagOperations?: ModifyTagsOptions,
+    eventOperations?: EventOperation | (EventOperation | undefined)[],
+  ): Promise<EventTemplate>;
+  /** Attaches the signers pubkey to an event template */
+  stamp(draft: EventTemplate | UnsignedEvent): Promise<UnsignedEvent>;
+  /** Signs a event template with the signer */
+  sign(draft: EventTemplate | UnsignedEvent): Promise<NostrEvent>;
+}

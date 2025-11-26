@@ -5,7 +5,7 @@ import {
   getHandlerName,
   getHandlerPicture,
   getHandlerSupportedKinds,
-} from "applesauce-core/helpers";
+} from "applesauce-common/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { kinds, NostrEvent } from "nostr-tools";

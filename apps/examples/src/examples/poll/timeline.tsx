@@ -12,7 +12,7 @@ import {
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, mergeRelaySets, NostrEvent, ProfileContent } from "applesauce-core/helpers";
 import { EventFactory } from "applesauce-core";
-import { PollResponseBlueprint } from "applesauce-factory/blueprints";
+import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";
 import { createAddressLoader, createTagValueLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";

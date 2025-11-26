@@ -11,8 +11,8 @@ import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js"
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
 import { EventMemory } from "./event-memory.js";
-import { IAsyncEventDatabase, IAsyncEventStore } from "./interface.js";
 import { EventModels } from "./event-models.js";
+import { IAsyncEventDatabase, IAsyncEventStore } from "./interface.js";
 
 /** An async wrapper around an async event database that handles replaceable events, deletes, and models */
 export class AsyncEventStore extends EventModels implements IAsyncEventStore {

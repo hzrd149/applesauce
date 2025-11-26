@@ -1,16 +1,15 @@
 import { CashuMint, CashuWallet, CheckStateEnum, Proof, Token } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
-import { DeleteBlueprint } from "applesauce-factory/blueprints";
+import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
 import { NostrEvent } from "applesauce-core/helpers/event";
-
+import { WalletHistoryBlueprint } from "../blueprints/history.js";
+import { WalletTokenBlueprint } from "../blueprints/tokens.js";
 import {
   getTokenContent,
   ignoreDuplicateProofs,
   isTokenContentUnlocked,
   WALLET_TOKEN_KIND,
 } from "../helpers/tokens.js";
-import { WalletTokenBlueprint } from "../blueprints/tokens.js";
-import { WalletHistoryBlueprint } from "../blueprints/history.js";
 
 /**
  * Adds a cashu token to the wallet and marks a list of nutzaps as redeemed

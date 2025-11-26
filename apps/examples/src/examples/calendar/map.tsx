@@ -1,4 +1,5 @@
 import { EventStore } from "applesauce-core";
+import { unixNow } from "applesauce-core/helpers";
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
   getCalendarEventEnd,
@@ -9,8 +10,7 @@ import {
   getCalendarEventSummary,
   getCalendarEventTitle,
   TIME_BASED_CALENDAR_EVENT_KIND,
-  unixNow,
-} from "applesauce-core/helpers";
+} from "applesauce-common/helpers";
 import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

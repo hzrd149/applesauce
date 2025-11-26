@@ -1,17 +1,8 @@
 import { ProxySigner } from "applesauce-accounts";
 import { ActionHub } from "applesauce-actions";
 import { SendLegacyMessage } from "applesauce-actions/actions";
-import { defined, EventStore, mapEventsToStore } from "applesauce-core";
-import {
-  getTagValue,
-  lockEncryptedContent,
-  persistEncryptedContent,
-  persistEventsToCache,
-  unixNow,
-  unlockLegacyMessage,
-} from "applesauce-core/helpers";
-import { EncryptedContentModel } from "applesauce-core/models";
-import { EventFactory } from "applesauce-core";
+import { defined, EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { getTagValue, lockEncryptedContent, persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
@@ -29,6 +20,8 @@ import LoginView from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
 import UnlockView from "../../components/unlock-view";
 
+import { persistEncryptedContent, unlockLegacyMessage } from "applesauce-common/helpers";
+import { EncryptedContentModel } from "applesauce-core/models";
 import SecureStorage from "../../extra/encrypted-storage";
 
 const EXPIRATIONS: Record<string, number> = {
@@ -118,7 +111,7 @@ function ContactList({
 
 function Message({ pubkey, message, signer }: { pubkey: string; message: NostrEvent; signer: ExtensionSigner }) {
   const sender = message.pubkey;
-  const content = useObservableMemo(() => eventStore.model(EncryptedContentModel, message.id), [message.id]);
+  const content = useObservableMemo(() => eventStore.model(EncryptedContentModel, message), [message.id]);
 
   const decrypt = async () => {
     await unlockLegacyMessage(message, pubkey, signer);

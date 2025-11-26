@@ -3,6 +3,7 @@ import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
 import { useState } from "react";
 import JsonBlock from "../../components/json-block";
+import { NoteBlueprint } from "applesauce-common/blueprints";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -199,7 +200,7 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
       const factory = new EventFactory({ signer });
 
       // Create and sign a simple text note
-      const noteTemplate = await factory.note(noteText);
+      const noteTemplate = await factory.create(NoteBlueprint, noteText);
       const signedNote = await factory.sign(noteTemplate);
 
       // Set the signed event to display

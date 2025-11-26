@@ -1,4 +1,5 @@
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
   getCalendarEventEnd,
@@ -8,12 +9,9 @@ import {
   getCalendarEventStart,
   getCalendarEventSummary,
   getCalendarEventTitle,
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
   TIME_BASED_CALENDAR_EVENT_KIND,
-} from "applesauce-core/helpers";
-import { CalendarEventRSVPsModel } from "applesauce-core/models";
+} from "applesauce-common/helpers";
+import { CalendarEventRSVPsModel } from "applesauce-common/models";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
