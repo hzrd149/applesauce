@@ -1,10 +1,10 @@
-import { getConversationParticipants, Rumor } from "applesauce-core/helpers";
-import { kinds } from "nostr-tools";
+import { EventFactory } from "applesauce-core/event-factory";
+import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
-
-import { FakeUser } from "../../__tests__/fake-user.js";
-import { EventFactory } from "../../event-factory.js";
-import { WrappedMessageBlueprint, WrappedMessageReplyBlueprint } from "../wrapped-messages.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
+import { Rumor } from "../../helpers/gift-wrap.js";
+import { getConversationParticipants } from "../../helpers/messages.js";
+import { WrappedMessageBlueprint, WrappedMessageReplyBlueprint } from "../wrapped-message.js";
 
 let alice: FakeUser;
 let bob: FakeUser;

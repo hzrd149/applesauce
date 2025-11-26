@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EventFactory } from "../../event-factory.js";
+import { EventFactory } from "applesauce-core/event-factory";
 import { ReactionBlueprint } from "../reaction.js";
 
 describe("EventFactory", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EventFactory } from "../../event-factory.js";
+import { EventFactory } from "applesauce-core/event-factory";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { ShareBlueprint } from "../share.js";
 

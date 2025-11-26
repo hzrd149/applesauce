@@ -22,7 +22,7 @@ import {
   setEncryptedContentCache,
 } from "applesauce-core/helpers/encrypted-content";
 import { notifyEventUpdate } from "applesauce-core/helpers/event";
-import { getGiftWrapSeal, getSealGiftWrap, getSealRumor } from "./gift-wraps.js";
+import { getGiftWrapSeal, getSealGiftWrap, getSealRumor } from "./gift-wrap.js";
 
 /** A symbol that is used to mark encrypted content as being from a cache */
 export const EncryptedContentFromCacheSymbol = Symbol.for("encrypted-content-from-cache");

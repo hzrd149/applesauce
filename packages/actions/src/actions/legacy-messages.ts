@@ -3,7 +3,7 @@ import {
   LegacyMessageBlueprint,
   LegacyMessageBlueprintOptions,
   LegacyMessageReplyBlueprint,
-} from "applesauce-factory/blueprints";
+} from "applesauce-common/blueprints";
 
 import { Action } from "../action-hub.js";
 

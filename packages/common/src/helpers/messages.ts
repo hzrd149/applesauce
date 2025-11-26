@@ -1,6 +1,6 @@
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { isPTag } from "applesauce-core/helpers/tags";
-import { Rumor } from "../helpers/gift-wraps.js";
+import { Rumor } from "./gift-wrap.js";
 
 /**
  * Groups messages into bubble sets based on the pubkey and time

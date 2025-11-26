@@ -1,6 +1,5 @@
 import { MediaAttachment, getSha256FromURL } from "applesauce-common/helpers/file-metadata";
-
-import { Tokens } from "./regexp.js";
+import { Tokens } from "applesauce-core/helpers/regexp";
 
 /** Returns all URLs in a content string that contain a sha256 hash */
 export function getMediaAttachmentURLsFromContent(content: string): MediaAttachment[] {

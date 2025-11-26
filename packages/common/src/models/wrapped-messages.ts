@@ -3,7 +3,7 @@ import { watchEventsUpdates } from "applesauce-core/observable";
 import { kinds } from "applesauce-core/helpers/event";
 import { map } from "rxjs";
 
-import { getGiftWrapRumor, Rumor } from "../helpers/gift-wraps.js";
+import { getGiftWrapRumor, Rumor } from "../helpers/gift-wrap.js";
 import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,

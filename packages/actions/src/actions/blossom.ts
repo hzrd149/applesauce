@@ -1,7 +1,6 @@
 import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-common/helpers/blossom";
-import { TagOperation } from "applesauce-core";
-import { modifyPublicTags, modifyTags } from "applesauce-factory/operations";
-import { addBlossomServerTag, removeBlossomServerTag } from "applesauce-factory/operations/tag/blossom";
+import { addBlossomServer, removeBlossomServer } from "applesauce-common/operations/blossom";
+import { EventOperation } from "applesauce-core/event-factory";
 
 import { Action } from "../action-hub.js";
 
@@ -10,12 +9,12 @@ export function AddBlossomServer(server: string | URL | (string | URL)[]): Actio
   return async function* ({ events, factory, self }) {
     const servers = events.getReplaceable(BLOSSOM_SERVER_LIST_KIND, self);
 
-    const operation = Array.isArray(server) ? server.map((s) => addBlossomServerTag(s)) : addBlossomServerTag(server);
+    const operations = Array.isArray(server) ? server.map((s) => addBlossomServer(s)) : [addBlossomServer(server)];
 
     // Modify or build new event
     const draft = servers
-      ? await factory.modifyTags(servers, operation)
-      : await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, modifyTags(operation));
+      ? await factory.modify(servers, ...operations)
+      : await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, ...operations);
 
     yield await factory.sign(draft);
   };
@@ -26,14 +25,14 @@ export function RemoveBlossomServer(server: string | URL | (string | URL)[]): Ac
   return async function* ({ events, factory, self }) {
     const servers = events.getReplaceable(BLOSSOM_SERVER_LIST_KIND, self);
 
-    const operation = Array.isArray(server)
-      ? server.map((s) => removeBlossomServerTag(s))
-      : removeBlossomServerTag(server);
+    const operations = Array.isArray(server)
+      ? server.map((s) => removeBlossomServer(s))
+      : [removeBlossomServer(server)];
 
     // Modify or build new event
     const draft = servers
-      ? await factory.modifyTags(servers, operation)
-      : await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, modifyTags(operation));
+      ? await factory.modify(servers, ...operations)
+      : await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, ...operations);
 
     yield await factory.sign(draft);
   };
@@ -45,13 +44,13 @@ export function SetDefaultBlossomServer(server: string | URL): Action {
     const servers = events.getReplaceable(BLOSSOM_SERVER_LIST_KIND, self);
 
     const prependTag =
-      (tag: string[]): TagOperation =>
-      (tags) => [tag, ...tags];
-    const operations = [removeBlossomServerTag(server), prependTag(["server", String(server)])];
+      (tag: string[]): EventOperation =>
+      (draft) => ({ ...draft, tags: [tag, ...draft.tags] });
+    const operations = [removeBlossomServer(server), prependTag(["server", String(server)])];
 
     const draft = servers
-      ? await factory.modifyTags(servers, operations)
-      : await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, modifyTags(...operations));
+      ? await factory.modify(servers, ...operations)
+      : await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, ...operations);
 
     yield await factory.sign(draft);
   };
@@ -63,9 +62,9 @@ export function NewBlossomServers(servers?: (string | URL)[]): Action {
     const existing = events.getReplaceable(BLOSSOM_SERVER_LIST_KIND, self);
     if (existing) throw new Error("Blossom servers event already exists");
 
-    const operations: TagOperation[] = servers ? servers.map((s) => addBlossomServerTag(s)) : [];
+    const operations: EventOperation[] = servers ? servers.map((s) => addBlossomServer(s)) : [];
 
-    const draft = await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, modifyPublicTags(...operations));
+    const draft = await factory.build({ kind: BLOSSOM_SERVER_LIST_KIND }, ...operations);
     yield await factory.sign(draft);
   };
 }

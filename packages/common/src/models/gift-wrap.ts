@@ -3,7 +3,7 @@ import { NostrEvent, kinds } from "applesauce-core/helpers/event";
 import { watchEventsUpdates, watchEventUpdates } from "applesauce-core/observable";
 import { identity, map, of } from "rxjs";
 
-import { getGiftWrapRumor, isGiftWrapUnlocked, Rumor } from "../helpers/gift-wraps.js";
+import { getGiftWrapRumor, isGiftWrapUnlocked, Rumor } from "../helpers/gift-wrap.js";
 
 /** A model that returns all gift wrap events for a pubkey, optionally filtered by locked status */
 export function GiftWrapsModel(pubkey: string, unlocked?: boolean): Model<NostrEvent[]> {

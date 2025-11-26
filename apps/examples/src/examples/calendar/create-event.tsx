@@ -1,12 +1,12 @@
-import { DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND } from "applesauce-core/helpers";
+import { DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND } from "applesauce-common/helpers";
+import * as CalendarEventOps from "applesauce-common/operations/calendar-event";
 import { EventFactory, blueprint } from "applesauce-core";
-import { includeReplaceableIdentifier } from "applesauce-factory/operations";
-import * as CalendarEventOps from "applesauce-factory/operations/calendar-event";
-import { setContent } from "applesauce-factory/operations/content";
+import { includeReplaceableIdentifier } from "applesauce-core/operations";
+import { setContent } from "applesauce-core/operations/content";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useState } from "react";
-import { Controller, useFieldArray, useForm, Control, FieldErrors, FieldPath } from "react-hook-form";
+import { Control, Controller, FieldErrors, FieldPath, useFieldArray, useForm } from "react-hook-form";
 
 // Global state management
 const signer = new ExtensionSigner();

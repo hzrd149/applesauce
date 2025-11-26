@@ -1,7 +1,7 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { kinds, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
-import { getIndexableTags } from "applesauce-core/helpers/event";
 import { isETag, isPTag, isTTag } from "applesauce-core/helpers/tags";
+import { getIndexableTags } from "applesauce-core/helpers/filter";
 
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";

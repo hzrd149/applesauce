@@ -34,7 +34,7 @@ export function setThreadParent(parent: NostrEvent): EventOperation {
 }
 
 /** Copies "p" tags from parent event and adds new pubkeys */
-export function includeNofityTags(parent: NostrEvent): EventOperation {
+export function includePubkeyNotificationTags(parent: NostrEvent): EventOperation {
   return async (draft, ctx) => {
     let tags = Array.from(draft.tags);
 

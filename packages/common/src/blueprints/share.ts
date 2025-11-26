@@ -10,10 +10,15 @@ export type ShareBlueprintOptions = MetaTagOptions & ZapOptions;
 export function ShareBlueprint(event: NostrEvent, options?: ShareBlueprintOptions) {
   return blueprint(
     kinds.Repost,
+    // set the kind to 6 or 16 based on the kind of event being shared
     setShareKind(event),
+    // embed the shared event as a JSON string
     embedSharedEvent(event),
+    // include the NIP-18 repost tags
     setShareTags(event),
+    // include the meta tags
     setMetaTags(options),
+    // include the zap split tags
     setZapSplit(options),
   );
 }

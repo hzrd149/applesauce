@@ -1,8 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { EventFactory } from "applesauce-core/event-factory";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { COMMENT_KIND } from "applesauce-core/helpers";
-
-import { EventFactory } from "../../event-factory.js";
+import { describe, expect, it } from "vitest";
+import { COMMENT_KIND } from "../../helpers/comment.js";
 import { CommentBlueprint } from "../comment.js";
 
 describe("CommentBlueprint", () => {

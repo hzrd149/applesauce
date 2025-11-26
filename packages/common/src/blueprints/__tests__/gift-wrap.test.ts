@@ -1,11 +1,11 @@
+import { EventFactory } from "applesauce-core/event-factory";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { describe, expect, it } from "vitest";
-import { FakeUser } from "../../__tests__/fake-user.js";
-import { EventFactory } from "../../event-factory.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
 import { GiftWrapBlueprint } from "../gift-wrap.js";
+import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "../../helpers/gift-wrap.js";
 import { NoteBlueprint } from "../note.js";
-import { WrappedMessageBlueprint } from "../wrapped-messages";
-import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-core/helpers";
+import { WrappedMessageBlueprint } from "../wrapped-message";
 
 const bob = new FakeUser();
 const alice = new FakeUser();

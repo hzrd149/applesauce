@@ -1,18 +1,8 @@
-import { EventOperation, TagOperation } from "../event-factory/types.js";
+import { EventOperation } from "../event-factory/types.js";
 import { isRTag } from "../helpers/tags.js";
 import { isSameURL, normalizeURL } from "../helpers/url.js";
-import { addNameValueTag } from "./tag/common.js";
+import { addRelayTag, removeRelayTag } from "./tag/relay.js";
 import { modifyPublicTags } from "./tags.js";
-
-/** Adds a relay tag */
-function addRelayTag(url: string | URL, tagName = "relay", replace = true): TagOperation {
-  return addNameValueTag([tagName, normalizeURL(url).toString()], replace, (a, b) => isSameURL(a, b));
-}
-
-/** Removes all relay tags matching the relay */
-function removeRelayTag(url: string | URL, tagName = "relay"): TagOperation {
-  return (tags) => tags.filter((t) => !(t[0] === tagName && t[1] && isSameURL(t[1], url)));
-}
 
 function findMatchingRTag(tags: string[][], url: string | URL) {
   return tags.filter(isRTag).find((t) => isSameURL(t[1], url));

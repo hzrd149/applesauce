@@ -2,7 +2,7 @@ import { EventOperation } from "applesauce-core/event-factory";
 import { kinds } from "applesauce-core/helpers/event";
 import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { includeNameValueTag } from "applesauce-core/operations/tags";
-import { Rumor } from "../helpers/gift-wraps.js";
+import { Rumor } from "../helpers/gift-wrap.js";
 import { getConversationParticipants } from "../helpers/messages.js";
 
 /**

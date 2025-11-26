@@ -37,7 +37,6 @@ AppleSauce is built on top of [RxJS](https://rxjs.dev) and uses the observable p
 - **applesauce-relay** - Simple relay connection management with automatic reconnection
 - **applesauce-signers** - Flexible signing interfaces supporting multiple providers
 - **applesauce-loaders** - High-level data loaders for common Nostr patterns
-- **applesauce-factory** - Event creation and manipulation utilities
 
 ## Quick Examples
 

@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-
-import { create } from "../../event-factory.js";
+import { createEvent } from "applesauce-core/event-factory";
 import { ProfileBlueprint } from "../profile.js";
 
 describe("ProfileBlueprint", () => {
   it("should create a kind 0 profile event", async () => {
-    const profile = await create(
+    const profile = await createEvent(
       {},
       ProfileBlueprint({
         name: "alice",
@@ -28,7 +27,7 @@ describe("ProfileBlueprint", () => {
   });
 
   it("should create a profile with all optional fields", async () => {
-    const profile = await create(
+    const profile = await createEvent(
       {},
       ProfileBlueprint({
         name: "bob",
@@ -55,14 +54,14 @@ describe("ProfileBlueprint", () => {
   });
 
   it("should create a minimal profile with just a name", async () => {
-    const profile = await create({}, ProfileBlueprint({ name: "charlie" }));
+    const profile = await createEvent({}, ProfileBlueprint({ name: "charlie" }));
 
     expect(profile.kind).toBe(0);
     expect(profile.content).toBe(JSON.stringify({ name: "charlie" }));
   });
 
   it("should create a profile with empty object", async () => {
-    const profile = await create({}, ProfileBlueprint({}));
+    const profile = await createEvent({}, ProfileBlueprint({}));
 
     expect(profile.kind).toBe(0);
     expect(profile.content).toBe(JSON.stringify({}));

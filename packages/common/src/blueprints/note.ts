@@ -2,6 +2,7 @@ import { blueprint } from "applesauce-core/event-factory";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { MetaTagOptions, setMetaTags, setShortTextContent, TextContentOptions } from "applesauce-core/operations";
 import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
+import { includePubkeyNotificationTags, setThreadParent } from "../operations/note.js";
 
 export type NoteBlueprintOptions = TextContentOptions & MetaTagOptions & ZapOptions;
 
@@ -25,7 +26,7 @@ export function NoteReplyBlueprint(parent: NostrEvent, content: string, options?
     // add NIP-10 tags
     setThreadParent(parent),
     // copy "p" tags from parent
-    includeNofityTags(parent),
+    includePubkeyNotificationTags(parent),
     // set default text content
     setShortTextContent(content, options),
   );

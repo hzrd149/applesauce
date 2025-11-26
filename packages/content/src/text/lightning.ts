@@ -1,9 +1,8 @@
-import { type Transformer } from "unified";
 import { parseBolt11 } from "applesauce-common/helpers/bolt11";
-
-import { LightningInvoice, Root } from "../nast/types.js";
-import { Tokens } from "../helpers/regexp.js";
+import { Tokens } from "applesauce-core/helpers/regexp";
+import { type Transformer } from "unified";
 import { findAndReplace } from "../nast/find-and-replace.js";
+import { LightningInvoice, Root } from "../nast/types.js";
 
 /** Finds and creates lightning invoice nodes in the tree */
 export function lightningInvoices(): Transformer<Root> {

@@ -4,7 +4,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { addNameValueTag, removeNameValueTag } from "applesauce-core/operations/tag/common";
 import { includeSingletonTag, modifyPublicTags } from "applesauce-core/operations/tags";
 import { StreamRole } from "../helpers/stream.js";
-import * as Hashtags from "./tag/hashtags.js";
+import * as Hashtags from "./hashtags.js";
 
 // Live Event (kind:30311) Operations
 
@@ -97,10 +97,10 @@ export function removePinnedMessage(): EventOperation {
 
 /** Adds a hashtag to the live event */
 export function addHashtag(hashtag: string): EventOperation {
-  return modifyPublicTags(Hashtags.addHashtag(hashtag));
+  return Hashtags.addHashtag(hashtag);
 }
 
 /** Removes a hashtag from the live event */
 export function removeHashtag(hashtag: string): EventOperation {
-  return modifyPublicTags(Hashtags.removeHashtag(hashtag));
+  return Hashtags.removeHashtag(hashtag);
 }

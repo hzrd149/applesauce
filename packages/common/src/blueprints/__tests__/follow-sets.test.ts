@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { getHiddenTags } from "applesauce-core/helpers";
 
-import { EventFactory } from "../../event-factory.js";
-import { FollowSetBlueprint } from "../follow-sets.js";
-import { FakeUser } from "../../__tests__/fake-user.js";
+import { EventFactory } from "applesauce-core/event-factory";
+import { FollowSetBlueprint } from "../follow-set.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
 
 describe("FollowSetBlueprint", () => {
   const user = new FakeUser();

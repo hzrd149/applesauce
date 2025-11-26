@@ -3,8 +3,7 @@ import {
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers/calendar-event";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { Calendar } from "applesauce-factory/operations";
-
+import * as Calendar from "applesauce-common/operations/calendar";
 import { Action } from "../action-hub.js";
 
 /** Adds a calendar event to a calendar */

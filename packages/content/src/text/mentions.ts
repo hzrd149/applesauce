@@ -1,9 +1,8 @@
-import { Transformer } from "unified";
+import { Tokens } from "applesauce-core/helpers/regexp";
 import { decode } from "nostr-tools/nip19";
-import { Root } from "../nast/types.js";
-
-import { Tokens } from "../helpers/regexp.js";
+import { Transformer } from "unified";
 import { findAndReplace } from "../nast/find-and-replace.js";
+import { Root } from "../nast/types.js";
 
 /** Finds and creates NIP-19 nostr mentions in the tree */
 export function nostrMentions(): Transformer<Root> {

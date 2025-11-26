@@ -1,6 +1,6 @@
+import { AppDataBlueprint } from "applesauce-common/blueprints/app-data";
 import { APP_DATA_KIND, getAppDataEncryption } from "applesauce-common/helpers/app-data";
-import { AppDataBlueprint } from "applesauce-factory/blueprints/app-data";
-import { AppData } from "applesauce-factory/operations";
+import * as AppData from "applesauce-common/operations/app-data";
 import { Action } from "../action-hub.js";
 
 export function UpdateAppData<T>(identifier: string, data: T): Action {

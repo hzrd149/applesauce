@@ -1,5 +1,5 @@
-import { EventOperation } from "../types.js";
-import { modifyPublicTags } from "./tags.js";
+import { EventOperation } from "applesauce-core/event-factory";
+import { modifyPublicTags } from "applesauce-core/operations";
 
 /** Adds all "g" geohash tags for a given geohash or removes them if null */
 export function setGeohash(geohash: string | null): EventOperation {

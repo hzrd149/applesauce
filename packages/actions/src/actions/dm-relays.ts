@@ -1,8 +1,7 @@
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { kinds } from "applesauce-core/helpers/event";
-import { modifyPublicTags } from "applesauce-factory/operations";
-import { addRelayTag, removeRelayTag } from "applesauce-factory/operations/tag/relay";
-
+import { modifyPublicTags } from "applesauce-core/operations/tags";
+import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
 import { Action } from "../action-hub.js";
 
 function getDMRelaysEvent(events: IEventStoreRead, self: string) {

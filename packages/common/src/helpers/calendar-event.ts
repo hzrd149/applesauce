@@ -1,10 +1,8 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
-
-import { ProfilePointer } from "nostr-tools/nip19";
+import { createPTagFromProfilePointer } from "applesauce-core/helpers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { getTagValue } from "applesauce-core/helpers/event";
-import { getProfilePointerFromPTag } from "applesauce-core/helpers/pointers";
-import { isPTag, isRTag, isTTag } from "applesauce-core/helpers/tags";
+import { getTagValue, NostrEvent } from "applesauce-core/helpers/event";
+import { getProfilePointerFromPTag, ProfilePointer } from "applesauce-core/helpers/pointers";
+import { fillAndTrimTag, isPTag, isRTag, isTTag, NameValueTag } from "applesauce-core/helpers/tags";
 
 // NIP-52 Calendar Event Kinds
 export const DATE_BASED_CALENDAR_EVENT_KIND = 31922;
@@ -125,4 +123,17 @@ export function getCalendarEventReferences(event: NostrEvent): string[] {
   return getOrComputeCachedValue(event, CalendarEventReferencesSymbol, () => {
     return event.tags.filter(isRTag).map((t) => t[1]);
   });
+}
+
+/** Creates a "p" tag for a calendar event participant */
+export function createCalendarEventParticipantTag(participant: CalendarEventParticipant): NameValueTag {
+  const tag = createPTagFromProfilePointer(participant);
+
+  // Add the third "role" value if set
+  if (participant.role) {
+    tag[3] = participant.role;
+    return fillAndTrimTag(tag, 3) as NameValueTag;
+  }
+
+  return tag as NameValueTag;
 }

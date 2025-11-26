@@ -1,7 +1,7 @@
 import { EventOperation } from "applesauce-core/event-factory";
 import { addNameValueTag, removeNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 import { includeNameValueTag, includeSingletonTag, modifyPublicTags } from "applesauce-core/operations/tags";
-import { createCalendarEventParticipantTag } from "../helpers/calendar-event-helper.js";
+import { createCalendarEventParticipantTag } from "../helpers/calendar-event.js";
 import { CalendarEventParticipant } from "../helpers/calendar-event.js";
 import * as Geohash from "./geohash.js";
 

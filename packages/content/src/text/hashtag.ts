@@ -1,9 +1,8 @@
-import { Transformer } from "unified";
 import { getHashtagTag } from "applesauce-common/helpers/hashtag";
-
-import { Hashtag, Root } from "../nast/types.js";
-import { Tokens } from "../helpers/regexp.js";
+import { Tokens } from "applesauce-core/helpers/regexp";
+import { Transformer } from "unified";
 import { findAndReplace } from "../nast/find-and-replace.js";
+import { Hashtag, Root } from "../nast/types.js";
 
 /** Find and create hashtag notes in provided tree */
 export function hashtags(): Transformer<Root> {

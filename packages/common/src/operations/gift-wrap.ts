@@ -16,9 +16,8 @@ import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { unixNow } from "applesauce-core/helpers/time";
 import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
-import { stamp } from "applesauce-core/operations/event";
-import { GiftWrapSymbol, Rumor, RumorSymbol, SealSymbol } from "../helpers/gift-wraps.js";
-import { MetaTagOptions, setMetaTags } from "./common.js";
+import { MetaTagOptions, setMetaTags, stamp } from "applesauce-core/operations/event";
+import { GiftWrapSymbol, Rumor, RumorSymbol, SealSymbol } from "../helpers/gift-wrap.js";
 
 /** Create a timestamp with a random offset of an hour */
 function randomNow() {

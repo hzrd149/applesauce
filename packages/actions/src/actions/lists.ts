@@ -1,7 +1,7 @@
+import * as List from "applesauce-common/operations/list";
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { isAddressPointer } from "applesauce-core/helpers/pointers";
-import { List } from "applesauce-factory/operations";
 import { AddressPointer } from "nostr-tools/nip19";
 
 import { Action } from "../action-hub.js";
