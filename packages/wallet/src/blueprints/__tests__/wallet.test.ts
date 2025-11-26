@@ -1,5 +1,5 @@
 import { bytesToHex } from "@noble/hashes/utils";
-import { create, EventFactory } from "applesauce-factory";
+import { create, EventFactory } from "applesauce-core";
 import { generateSecretKey } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user";

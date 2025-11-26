@@ -1,5 +1,5 @@
 import { Token } from "@cashu/cashu-ts";
-import { blueprint, EventBlueprint } from "applesauce-factory";
+import { blueprint, EventBlueprint } from "applesauce-core";
 import { skip } from "applesauce-factory/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "nostr-tools/nip19";

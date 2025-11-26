@@ -11,7 +11,7 @@ import {
   unlockLegacyMessage,
 } from "applesauce-core/helpers";
 import { EncryptedContentModel } from "applesauce-core/models";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { CacheRequest } from "applesauce-loaders";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";

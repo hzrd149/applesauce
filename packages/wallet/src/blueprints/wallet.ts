@@ -1,4 +1,4 @@
-import { blueprint } from "applesauce-factory";
+import { blueprint } from "applesauce-core";
 
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { WALLET_BACKUP_KIND, WALLET_KIND } from "../helpers/wallet.js";

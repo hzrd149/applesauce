@@ -46,6 +46,26 @@
       "import": "./dist/models/*.js",
       "require": "./dist/models/*.js",
       "types": "./dist/models/*.d.ts"
+    },
+    "./operations": {
+      "import": "./dist/operations/index.js",
+      "require": "./dist/operations/index.js",
+      "types": "./dist/operations/index.d.ts"
+    },
+    "./operations/*": {
+      "import": "./dist/operations/*.js",
+      "require": "./dist/operations/*.js",
+      "types": "./dist/operations/*.d.ts"
+    },
+    "./blueprints": {
+      "import": "./dist/blueprints/index.js",
+      "require": "./dist/blueprints/index.js",
+      "types": "./dist/blueprints/index.d.ts"
+    },
+    "./blueprints/*": {
+      "import": "./dist/blueprints/*.js",
+      "require": "./dist/blueprints/*.js",
+      "types": "./dist/blueprints/*.d.ts"
     }
   },
   "dependencies": {

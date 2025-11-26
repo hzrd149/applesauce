@@ -1,4 +1,4 @@
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
 import { useState } from "react";

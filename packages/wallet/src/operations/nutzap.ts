@@ -1,6 +1,6 @@
 import { Proof } from "@cashu/cashu-ts";
 import { getReplaceableAddress, isAddressPointer, isEvent, isReplaceable } from "applesauce-core/helpers";
-import { EventOperation, TagOperation } from "applesauce-factory";
+import { EventOperation, TagOperation } from "applesauce-core";
 import { modifyPublicTags } from "applesauce-factory/operations";
 import { setContent } from "applesauce-factory/operations/content";
 import { addAddressTag, addEventTag, addPubkeyTag, setSingletonTag } from "applesauce-factory/operations/tag";

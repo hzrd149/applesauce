@@ -1,7 +1,7 @@
 import { ActionHub } from "applesauce-actions";
 import { AddBlossomServer, RemoveBlossomServer, SetDefaultBlossomServer } from "applesauce-actions/actions/blossom";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { useObservableEagerState, useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";

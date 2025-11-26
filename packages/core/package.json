@@ -61,6 +61,21 @@
       "import": "./dist/event-store/index.js",
       "require": "./dist/event-store/index.js",
       "types": "./dist/event-store/index.d.ts"
+    },
+    "./event-factory": {
+      "import": "./dist/event-factory.js",
+      "require": "./dist/event-factory.js",
+      "types": "./dist/event-factory.d.ts"
+    },
+    "./operations": {
+      "import": "./dist/operations/index.js",
+      "require": "./dist/operations/index.js",
+      "types": "./dist/operations/index.d.ts"
+    },
+    "./operations/*": {
+      "import": "./dist/operations/*.js",
+      "require": "./dist/operations/*.js",
+      "types": "./dist/operations/*.d.ts"
     }
   },
   "dependencies": {

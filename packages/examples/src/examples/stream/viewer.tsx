@@ -28,7 +28,7 @@ import { useState } from "react";
 import ReactPlayer from "react-player";
 import { startWith } from "rxjs";
 
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { StreamChatMessage } from "applesauce-factory/blueprints";
 import { ExtensionSigner } from "applesauce-signers";
 import { useForm } from "react-hook-form";

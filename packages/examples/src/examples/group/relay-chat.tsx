@@ -8,7 +8,7 @@ import {
   ProfileContent,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { GroupMessageBlueprint } from "applesauce-factory/blueprints";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";

@@ -1,7 +1,7 @@
 import { defined } from "applesauce-core";
-import { EventFactory, blueprint } from "applesauce-factory";
-import { setContent } from "applesauce-factory/operations/content";
-import { includeNameValueTag, includeSingletonTag } from "applesauce-factory/operations/tags";
+import { EventFactory, blueprint } from "applesauce-core";
+import { setContent } from "applesauce-core/factory-operations/content";
+import { includeNameValueTag, includeSingletonTag } from "applesauce-core/factory-operations/tags";
 import { ExtensionSigner } from "applesauce-signers";
 import { nip19 } from "nostr-tools";
 import { useEffect, useState } from "react";

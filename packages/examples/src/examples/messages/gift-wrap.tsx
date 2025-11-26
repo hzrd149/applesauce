@@ -15,7 +15,7 @@ import {
   unlockGiftWrap,
 } from "applesauce-core/helpers";
 import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "applesauce-core/models";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { CacheRequest } from "applesauce-loaders";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo, useObservableState } from "applesauce-react/hooks";

@@ -3,7 +3,7 @@ import { unlockHiddenTags } from "applesauce-core/helpers";
 import { lastValueFrom } from "rxjs";
 import { generateSecretKey } from "nostr-tools";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { ActionHub } from "applesauce-actions";
 import { bytesToHex } from "@noble/hashes/utils";
 

@@ -1,5 +1,5 @@
 import { DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND } from "applesauce-core/helpers";
-import { EventFactory, blueprint } from "applesauce-factory";
+import { EventFactory, blueprint } from "applesauce-core";
 import { includeReplaceableIdentifier } from "applesauce-factory/operations";
 import * as CalendarEventOps from "applesauce-factory/operations/calendar-event";
 import { setContent } from "applesauce-factory/operations/content";

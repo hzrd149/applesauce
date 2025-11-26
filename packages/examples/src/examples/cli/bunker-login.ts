@@ -1,5 +1,5 @@
 import { defined, EventStore, firstValueFrom, simpleTimeout } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";

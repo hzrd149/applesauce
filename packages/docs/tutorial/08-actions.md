@@ -20,7 +20,7 @@ To create an ActionHub, you need your `EventStore` and `EventFactory` instances:
 ```typescript
 import { ActionHub } from "applesauce-actions";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { ExtensionSigner } from "applesauce-factory/signers";
 
 // Your existing instances

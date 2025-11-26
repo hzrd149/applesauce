@@ -1,5 +1,5 @@
 import { logger } from "applesauce-core";
-import { create, EventSigner } from "applesauce-factory";
+import { create, EventSigner } from "applesauce-core";
 import { generateSecretKey, getPublicKey, verifyEvent } from "nostr-tools";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription } from "rxjs";
 

@@ -1,6 +1,6 @@
 import { IEventStoreRead } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
-import { TagOperation } from "applesauce-factory";
+import { TagOperation } from "applesauce-core";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
 import { addRelayTag, removeRelayTag } from "applesauce-factory/operations/tag/relay";
 

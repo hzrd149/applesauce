@@ -12,7 +12,7 @@ npm install applesauce-actions
 
 ```js
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { PrivateKeySigner } from "applesauce-signers";
 import { ActionHub, Actions } from "applesauce-actions";
 

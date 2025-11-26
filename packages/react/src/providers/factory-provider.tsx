@@ -1,4 +1,4 @@
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { createContext, PropsWithChildren } from "react";
 
 export const FactoryContext = createContext<EventFactory | undefined>(undefined);

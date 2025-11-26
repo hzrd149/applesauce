@@ -1,4 +1,4 @@
-import { EventOperation, TagOperation } from "applesauce-factory";
+import { EventOperation, TagOperation } from "applesauce-core";
 import { ensureMarkedEventPointerTag, Nip10TagMarker } from "applesauce-factory/helpers";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
 import { setSingletonTag } from "applesauce-factory/operations/tag";

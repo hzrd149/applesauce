@@ -9,7 +9,7 @@ The `EventFactory` is initialized with an `EventFactoryContext` that contains co
 ### Basic Usage
 
 ```typescript
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 
 // Create with empty context (minimal setup)
 const factory = new EventFactory();
@@ -23,7 +23,7 @@ const factory = new EventFactory({
 ### With Full Context
 
 ```typescript
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 
 const factory = new EventFactory({
   // Required for signing events

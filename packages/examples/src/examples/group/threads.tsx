@@ -10,7 +10,7 @@ import {
   ProfileContent,
 } from "applesauce-core/helpers";
 import { CommentsModel } from "applesauce-core/models";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { CommentBlueprint } from "applesauce-factory/blueprints";
 import { Content, Groups, includeSingletonTag } from "applesauce-factory/operations";
 import { createAddressLoader } from "applesauce-loaders/loaders";

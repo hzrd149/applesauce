@@ -1,4 +1,4 @@
-import { blueprint, EventBlueprint } from "applesauce-factory";
+import { blueprint, EventBlueprint } from "applesauce-core";
 import { includeSingletonTag } from "applesauce-factory/operations";
 import { setEncryptedContent } from "applesauce-factory/operations/content";
 import { NostrEvent } from "applesauce-core/helpers/event";

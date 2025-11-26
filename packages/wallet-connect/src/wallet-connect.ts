@@ -1,7 +1,7 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { simpleTimeout } from "applesauce-core";
 import { EncryptionMethod } from "applesauce-core/helpers";
-import { create, EventSigner } from "applesauce-factory";
+import { create, EventSigner } from "applesauce-core";
 import { finalizeEvent, getPublicKey, nip04, nip44, NostrEvent, verifyEvent } from "nostr-tools";
 import {
   BehaviorSubject,

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { kinds } from "nostr-tools";
 import { unlockHiddenTags } from "applesauce-core/helpers";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";

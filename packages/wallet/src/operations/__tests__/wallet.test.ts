@@ -1,5 +1,5 @@
 import { unixNow } from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { generateSecretKey } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 

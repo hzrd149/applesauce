@@ -1,7 +1,7 @@
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { EventStore } from "applesauce-core";
 import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { HighlightBlueprint } from "applesauce-factory/blueprints";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";

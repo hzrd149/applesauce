@@ -1,6 +1,13 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { getTagValue } from "applesauce-core/helpers/event-tags";
 
+export type Emoji = {
+  /** The emoji shortcode (without the ::) */
+  shortcode: string;
+  /** The URL to the emoji image */
+  url: string;
+};
+
 /** Gets an "emoji" tag that matches an emoji code */
 export function getEmojiTag(
   tags: { tags: string[][] } | string[][],
@@ -28,13 +35,6 @@ export function getEmojiFromTags(event: { tags: string[][] } | string[][], code:
 export function getPackName(pack: NostrEvent): string | undefined {
   return getTagValue(pack, "title") || getTagValue(pack, "d");
 }
-
-export type Emoji = {
-  /** The emoji shortcode (without the ::) */
-  shortcode: string;
-  /** The URL to the emoji image */
-  url: string;
-};
 
 /** Returns an array of emojis from a NIP-30 emoji pack */
 export function getEmojis(pack: NostrEvent): Emoji[] {

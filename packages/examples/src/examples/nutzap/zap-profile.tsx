@@ -2,7 +2,7 @@ import { CashuMint, CashuWallet, MintQuoteResponse } from "@cashu/cashu-ts";
 import { ActionHub } from "applesauce-actions";
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

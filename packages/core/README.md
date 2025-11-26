@@ -1,9 +1,10 @@
 # applesauce-core
 
-AppleSauce is a collection of utilities for building reactive nostr applications. The core package provides protocol-level functionality including an in-memory event database, generic event utilities, and basic reactive models.
+Applesauce is a collection of utilities for building reactive nostr applications. The core package provides protocol-level functionality including an in-memory event database, generic event utilities, and basic reactive models.
 
 ## Key Components
 
+- **Helpers**: Core utility methods for parsing and extracting data from nostr events
 - **EventStore**: In-memory database for storing and subscribing to nostr events
 - **Helpers**: Core protocol-level utility methods for working with events, tags, filters, and pointers
 - **Models**: Generic models for common nostr data patterns (profiles, reactions, zaps, etc.)

@@ -17,7 +17,7 @@ The `EventFactory` is a builder that:
 First, you'll need a signer. For browser apps, the `ExtensionSigner` works with Nostr browser extensions:
 
 ```typescript
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { ExtensionSigner } from "applesauce-signers";
 
 // Create a signer that uses the browser extension (like Alby or nos2x)

@@ -1,12 +1,15 @@
+import { getOrComputeCachedValue } from "applesauce-core/helpers";
+import { KnownEvent } from "applesauce-core/helpers/event";
+import { getTagValue } from "applesauce-core/helpers/event-tags";
+import {
+  AddressPointer,
+  EventPointer,
+  getAddressPointerFromATag,
+  getEventPointerFromETag,
+} from "applesauce-core/helpers/pointers";
+import { isATag, isETag } from "applesauce-core/helpers/tags";
 import { kinds, nip18, NostrEvent } from "nostr-tools";
 import { isKind } from "nostr-tools/kinds";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
-
-import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
-import { KnownEvent } from "applesauce-core/helpers/event";
-import { getAddressPointerFromATag, getEventPointerFromETag } from "applesauce-core/helpers/pointers";
-import { isATag, isETag } from "applesauce-core/helpers/tags";
 
 /** Type of a known share event */
 export type ShareEvent = KnownEvent<kinds.Repost | kinds.GenericRepost>;

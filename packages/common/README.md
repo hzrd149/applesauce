@@ -49,6 +49,7 @@ thread.subscribe((thread) => {
 ## Supported NIPs
 
 This package includes helpers and models for various NIPs including:
+
 - NIP-10 (Threading)
 - NIP-22 (Comments)
 - NIP-53 (Streams)
@@ -56,4 +57,3 @@ This package includes helpers and models for various NIPs including:
 - NIP-52 (Calendar Events)
 - NIP-88 (Polls)
 - And many more...
-

@@ -1,4 +1,4 @@
-import { blueprint, EventBlueprint } from "applesauce-factory";
+import { blueprint, EventBlueprint } from "applesauce-core";
 import { setContent } from "applesauce-factory/operations/content";
 import { includeSingletonTag } from "applesauce-factory/operations";
 

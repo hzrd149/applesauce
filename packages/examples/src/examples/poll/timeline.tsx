@@ -11,7 +11,7 @@ import {
 } from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, mergeRelaySets, NostrEvent, ProfileContent } from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { PollResponseBlueprint } from "applesauce-factory/blueprints";
 import { createAddressLoader, createTagValueLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";

@@ -9,7 +9,7 @@ Blueprints are pre-configured templates for creating common Nostr events. They e
 The most common way to use blueprints is through an `EventFactory` instance. This allows you to reuse the same context (signer, relay hints, etc.) across multiple events.
 
 ```typescript
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { NoteBlueprint, ReactionBlueprint } from "applesauce-factory/blueprints";
 
 // Create a factory with your context
@@ -42,7 +42,7 @@ For one-time event creation, you can use the `create` function with a context an
 **Method 1: Pass blueprint constructor and arguments separately**
 
 ```typescript
-import { create } from "applesauce-factory";
+import { create } from "applesauce-core";
 import { NoteBlueprint, CommentBlueprint } from "applesauce-factory/blueprints";
 
 // Create a single event with a one-off context
@@ -91,7 +91,7 @@ You can create your own custom blueprints by following the same pattern used by 
 
 ```typescript
 import { kinds } from "nostr-tools";
-import { blueprint } from "applesauce-factory";
+import { blueprint } from "applesauce-core";
 import { includeSingletonTag, MetaTagOptions } from "applesauce-factory/operations";
 
 /** Custom event blueprint */

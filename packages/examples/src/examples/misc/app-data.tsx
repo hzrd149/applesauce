@@ -7,7 +7,7 @@ import {
   isAppDataUnlocked,
   unlockAppData,
 } from "applesauce-common/helpers/app-data";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { DeleteBlueprint } from "applesauce-factory/blueprints";
 import { AppData } from "applesauce-factory/operations";
 import { useObservableMemo } from "applesauce-react/hooks";

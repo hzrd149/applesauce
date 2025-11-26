@@ -1,6 +1,6 @@
 import { from, isObservable, lastValueFrom, Observable, switchMap, tap, toArray } from "rxjs";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { IEventStoreActions, IEventStoreRead } from "applesauce-core";
 
 /** A callback used to tell the upstream app to publish an event */
