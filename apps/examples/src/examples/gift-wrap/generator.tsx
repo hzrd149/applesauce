@@ -1,6 +1,8 @@
 import { randomBytes } from "@noble/hashes/utils";
-import { defined, EventFactory, EventStore } from "applesauce-core";
-import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { defined, EventStore } from "applesauce-core";
+import { nip44 } from "applesauce-core/helpers/encryption";
+import { finalizeEvent, getEventHash, kinds, NostrEvent, UnsignedEvent } from "applesauce-core/helpers/event";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { unixNow } from "applesauce-core/helpers/time";
 import { createAddressLoader } from "applesauce-loaders/loaders";
 import { useObservableState } from "applesauce-react/hooks";
@@ -9,8 +11,19 @@ import { ExtensionSigner } from "applesauce-signers";
 import { useState } from "react";
 import { BehaviorSubject, switchMap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { normalizeToPubkey } from "applesauce-core/helpers";
 
-const pubkey$ = new BehaviorSubject<string | null>(null);
+const totalRandomUsers = [
+  "npub1xtscya34g58tk0z605fvr788k263gsu6cy9x0mhnm87echrgufzsevkk5s",
+  "npub18ams6ewn5aj2n3wt2qawzglx9mr4nzksxhvrdc4gzrecw7n5tvjqctp424",
+  "npub1uac67zc9er54ln0kl6e4qp2y6ta3enfcg7ywnayshvlw9r5w6ehsqq99rx",
+  "npub1gcxzte5zlkncx26j68ez60fzkvtkm9e0vrwdcvsjakxf9mu9qewqlfnj5z",
+  "npub1qny3tkh0acurzla8x3zy4nhrjz5zd8l9sy9jys09umwng00manysew95gx",
+].map(normalizeToPubkey);
+
+const pubkey$ = new BehaviorSubject<string | null>(
+  totalRandomUsers[Math.floor(Math.random() * totalRandomUsers.length)],
+);
 const pool = new RelayPool();
 const eventStore = new EventStore();
 const signer = new ExtensionSigner();
@@ -32,6 +45,16 @@ const mailboxes$ = pubkey$.pipe(
   defined(),
   switchMap((pubkey) => eventStore.mailboxes(pubkey)),
 );
+
+/** Types of broken gift wraps */
+export enum BrokenGiftWrapType {
+  BrokenGiftWrap = "broken-gift-wrap",
+  BrokenSealInGiftWrap = "broken-seal-in-gift-wrap",
+  RandomSealKindInGiftWrap = "random-seal-kind-in-gift-wrap",
+  BrokenRumorInSealInGiftWrap = "broken-rumor-in-seal-in-gift-wrap",
+  RandomRumorKind = "random-rumor-kind",
+  NIP17DMWithRandomBase64 = "nip17-dm-with-random-base64",
+}
 
 /** Generates random base64 encoded data of random length */
 function generateRandomBase64Data(): string {
@@ -230,18 +253,266 @@ function GenerateButton({ generating, currentEventIndex, totalCount, disabled, o
   );
 }
 
+type BrokenTypeSelectorProps = {
+  selectedType: BrokenGiftWrapType;
+  onTypeChange: (type: BrokenGiftWrapType) => void;
+};
+
+function BrokenTypeSelector({ selectedType, onTypeChange }: BrokenTypeSelectorProps) {
+  const types = [
+    {
+      value: BrokenGiftWrapType.BrokenGiftWrap,
+      label: "Broken Gift Wrap",
+      description: "Random base64 content in gift wrap - tests gift wrap decryption failure",
+    },
+    {
+      value: BrokenGiftWrapType.BrokenSealInGiftWrap,
+      label: "Broken Seal in Gift Wrap",
+      description: "Valid gift wrap encryption, but encrypted content is random base64 instead of valid seal JSON",
+    },
+    {
+      value: BrokenGiftWrapType.RandomSealKindInGiftWrap,
+      label: "Random Seal Kind in Gift Wrap",
+      description: "Valid gift wrap with seal that has wrong kind (not 13) - tests seal validation",
+    },
+    {
+      value: BrokenGiftWrapType.BrokenRumorInSealInGiftWrap,
+      label: "Broken Rumor in Seal in Gift Wrap",
+      description: "Valid gift wrap and seal, but rumor content is random base64 instead of valid JSON",
+    },
+    {
+      value: BrokenGiftWrapType.RandomRumorKind,
+      label: "Random Rumor Kind",
+      description: "Valid gift wrap and seal, but rumor has wrong kind (not 14) - tests rumor validation",
+    },
+    {
+      value: BrokenGiftWrapType.NIP17DMWithRandomBase64,
+      label: "NIP-17 DM with Random Base64",
+      description:
+        "Valid gift wrap, seal, and rumor (kind 14), but rumor content is random base64 instead of valid message",
+    },
+  ];
+
+  return (
+    <div className="form-control w-full mb-4">
+      <label className="label">
+        <span className="label-text">Broken Type</span>
+      </label>
+      <select
+        className="select select-bordered w-full"
+        value={selectedType}
+        onChange={(e) => onTypeChange(e.target.value as BrokenGiftWrapType)}
+      >
+        {types.map((type) => (
+          <option key={type.value} value={type.value}>
+            {type.label}
+          </option>
+        ))}
+      </select>
+      <label className="label">
+        <span className="label-text-alt">{types.find((t) => t.value === selectedType)?.description}</span>
+      </label>
+    </div>
+  );
+}
+
+/** Generator functions for different broken gift wrap types */
+async function generateBrokenGiftWrap(pubkey: string): Promise<NostrEvent> {
+  const key = generateSecretKey();
+  const randomContent = generateRandomBase64Data();
+  const event = finalizeEvent(
+    {
+      kind: kinds.GiftWrap,
+      created_at: unixNow(),
+      content: randomContent, // Broken: random base64 data instead of valid encrypted content
+      tags: [["p", pubkey]],
+    },
+    key,
+  );
+
+  return event;
+}
+
+async function generateBrokenSealInGiftWrap(pubkey: string): Promise<NostrEvent> {
+  // Create valid gift wrap encryption but with random base64 as seal content
+  const key = generateSecretKey();
+  const brokenSealContent = generateRandomBase64Data();
+
+  const draft = {
+    kind: kinds.GiftWrap,
+    created_at: unixNow(),
+    content: nip44.encrypt(brokenSealContent, nip44.getConversationKey(key, pubkey)),
+    tags: [["p", pubkey]],
+  };
+
+  return finalizeEvent(draft, key);
+}
+
+async function generateRandomSealKindInGiftWrap(pubkey: string): Promise<NostrEvent> {
+  // Create a seal with wrong kind (use kind 1 instead of 13)
+  const senderPubkey = await signer.getPublicKey();
+  const brokenSeal: UnsignedEvent = {
+    kind: Math.floor(Math.random() * 1000), // Wrong kind - should be 13
+    pubkey: senderPubkey,
+    created_at: unixNow(),
+    content: "",
+    tags: [],
+  };
+
+  // Sign the broken seal
+  const signedSeal = await signer.signEvent(brokenSeal);
+
+  // Encrypt the broken seal in gift wrap
+  const key = generateSecretKey();
+  const plaintext = JSON.stringify(signedSeal);
+  const draft = {
+    kind: kinds.GiftWrap,
+    created_at: unixNow(),
+    content: nip44.encrypt(plaintext, nip44.getConversationKey(key, pubkey)),
+    tags: [["p", pubkey]],
+  };
+
+  return finalizeEvent(draft, key);
+}
+
+async function generateBrokenRumorInSealInGiftWrap(pubkey: string): Promise<NostrEvent> {
+  // Create a rumor with random base64 content
+  const senderPubkey = await signer.getPublicKey();
+  const brokenRumor: UnsignedEvent = {
+    kind: kinds.PrivateDirectMessage,
+    pubkey: senderPubkey,
+    created_at: unixNow(),
+    content: generateRandomBase64Data(), // Broken: random base64 instead of valid message
+    tags: [["p", pubkey]],
+  };
+
+  const rumorId = getEventHash(brokenRumor);
+  const rumorWithId = { ...brokenRumor, id: rumorId };
+
+  // Seal the broken rumor
+  const rumorPlaintext = JSON.stringify(rumorWithId);
+  if (!signer.nip44) throw new Error("Signer with nip44 required");
+  const encrypted = await signer.nip44.encrypt(pubkey, rumorPlaintext);
+
+  const sealDraft: UnsignedEvent = {
+    kind: kinds.Seal,
+    pubkey: senderPubkey,
+    created_at: unixNow(),
+    content: encrypted,
+    tags: [],
+  };
+
+  const seal = await signer.signEvent(sealDraft);
+
+  // Wrap the seal in gift wrap
+  const key = generateSecretKey();
+  const sealPlaintext = JSON.stringify(seal);
+  const giftDraft = {
+    kind: kinds.GiftWrap,
+    created_at: unixNow(),
+    content: nip44.encrypt(sealPlaintext, nip44.getConversationKey(key, pubkey)),
+    tags: [["p", pubkey]],
+  };
+
+  return finalizeEvent(giftDraft, key);
+}
+
+async function generateRandomRumorKind(pubkey: string): Promise<NostrEvent> {
+  // Create a rumor with wrong kind (use kind 1 instead of 14)
+  const senderPubkey = await signer.getPublicKey();
+  const brokenRumor: UnsignedEvent = {
+    kind: Math.floor(Math.random() * 1000), // Wrong kind - should be 14
+    pubkey: senderPubkey,
+    created_at: unixNow(),
+    content: generateRandomBase64Data(),
+    tags: [["p", pubkey]],
+  };
+
+  const rumorId = getEventHash(brokenRumor);
+  const rumorWithId = { ...brokenRumor, id: rumorId };
+
+  // Seal the broken rumor
+  const rumorPlaintext = JSON.stringify(rumorWithId);
+  if (!signer.nip44) throw new Error("Signer with nip44 required");
+  const encrypted = await signer.nip44.encrypt(pubkey, rumorPlaintext);
+
+  const sealDraft: UnsignedEvent = {
+    kind: kinds.Seal,
+    pubkey: senderPubkey,
+    created_at: unixNow(),
+    content: encrypted,
+    tags: [],
+  };
+
+  const seal = await signer.signEvent(sealDraft);
+
+  // Wrap the seal in gift wrap
+  const key = generateSecretKey();
+  const sealPlaintext = JSON.stringify(seal);
+  const giftDraft = {
+    kind: kinds.GiftWrap,
+    created_at: unixNow(),
+    content: nip44.encrypt(sealPlaintext, nip44.getConversationKey(key, pubkey)),
+    tags: [["p", pubkey]],
+  };
+
+  return finalizeEvent(giftDraft, key);
+}
+
+async function generateNIP17DMWithRandomBase64(pubkey: string): Promise<NostrEvent> {
+  // Create a valid rumor structure (kind 14) but with random base64 content
+  const senderPubkey = await signer.getPublicKey();
+  const brokenRumor: UnsignedEvent = {
+    kind: kinds.PrivateDirectMessage,
+    pubkey: senderPubkey,
+    created_at: unixNow(),
+    content: generateRandomBase64Data(), // Broken: random base64 instead of valid message
+    tags: [["p", pubkey]],
+  };
+
+  const rumorId = getEventHash(brokenRumor);
+  const rumorWithId = { ...brokenRumor, id: rumorId };
+
+  // Seal the broken rumor
+  const rumorPlaintext = JSON.stringify(rumorWithId);
+  if (!signer.nip44) throw new Error("Signer with nip44 required");
+  const encrypted = await signer.nip44.encrypt(pubkey, rumorPlaintext);
+
+  const sealDraft: UnsignedEvent = {
+    kind: kinds.Seal,
+    pubkey: senderPubkey,
+    created_at: unixNow(),
+    content: encrypted,
+    tags: [],
+  };
+
+  const seal = await signer.signEvent(sealDraft);
+
+  // Wrap the seal in gift wrap
+  const key = generateSecretKey();
+  const sealPlaintext = JSON.stringify(seal);
+  const giftDraft = {
+    kind: kinds.GiftWrap,
+    created_at: unixNow(),
+    content: nip44.encrypt(sealPlaintext, nip44.getConversationKey(key, pubkey)),
+    tags: [["p", pubkey]],
+  };
+
+  return finalizeEvent(giftDraft, key);
+}
+
 export default function BrokenGiftWrapGenerator() {
   const pubkey = useObservableState(pubkey$);
   const [count, setCount] = useState<number>(100);
   const [minDelay, setMinDelay] = useState<number>(100);
   const [maxDelay, setMaxDelay] = useState<number>(1000);
+  const [brokenType, setBrokenType] = useState<BrokenGiftWrapType>(BrokenGiftWrapType.BrokenGiftWrap);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [eventStatuses, setEventStatuses] = useState<EventStatus[]>([]);
   const [currentEventIndex, setCurrentEventIndex] = useState<number | null>(null);
 
-  const factory = new EventFactory({ signer });
   const mailboxes = useObservableState(mailboxes$);
 
   const handleGenerate = async () => {
@@ -276,22 +547,30 @@ export default function BrokenGiftWrapGenerator() {
 
         setCurrentEventIndex(i);
 
-        // Generate random base64 data
-        const randomContent = generateRandomBase64Data();
-
-        // Create a broken gift wrap event with random base64 content
-        // This will stress test the gift wrapping system by trying to decrypt invalid data
-        const event = await factory.build(
-          {
-            kind: kinds.GiftWrap,
-            created_at: unixNow(),
-            content: randomContent, // Broken: random base64 data instead of valid encrypted content
-            tags: [["p", pubkey]],
-          },
-          // No operations - just create the broken event as-is
-        );
-
-        const signed = await factory.sign(event);
+        // Generate broken gift wrap event based on selected type
+        let signed: NostrEvent;
+        switch (brokenType) {
+          case BrokenGiftWrapType.BrokenGiftWrap:
+            signed = await generateBrokenGiftWrap(pubkey);
+            break;
+          case BrokenGiftWrapType.BrokenSealInGiftWrap:
+            signed = await generateBrokenSealInGiftWrap(pubkey);
+            break;
+          case BrokenGiftWrapType.RandomSealKindInGiftWrap:
+            signed = await generateRandomSealKindInGiftWrap(pubkey);
+            break;
+          case BrokenGiftWrapType.BrokenRumorInSealInGiftWrap:
+            signed = await generateBrokenRumorInSealInGiftWrap(pubkey);
+            break;
+          case BrokenGiftWrapType.RandomRumorKind:
+            signed = await generateRandomRumorKind(pubkey);
+            break;
+          case BrokenGiftWrapType.NIP17DMWithRandomBase64:
+            signed = await generateNIP17DMWithRandomBase64(pubkey);
+            break;
+          default:
+            signed = await generateBrokenGiftWrap(pubkey);
+        }
 
         // Initialize relay statuses for this event (only for available relays)
         const relayStatuses = new Map<string, { ok: boolean; message?: string }>();
@@ -431,6 +710,8 @@ export default function BrokenGiftWrapGenerator() {
             inboxCount={mailboxes?.inboxes?.length ?? null}
             inboxes={mailboxes?.inboxes ?? null}
           />
+
+          <BrokenTypeSelector selectedType={brokenType} onTypeChange={setBrokenType} />
 
           <div className="form-control w-full mb-4">
             <label className="label">

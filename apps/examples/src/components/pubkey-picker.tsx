@@ -1,12 +1,16 @@
 import { getDisplayName, getProfilePicture, mergeRelaySets, normalizeToPubkey } from "applesauce-core/helpers";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
+import { PrimalCache, Vertex } from "applesauce-extra";
 import { NostrEvent } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RelayPicker from "./relay-picker";
 
 // Common relay URLs that support NIP-50 search
 const SEARCH_RELAYS = mergeRelaySets(["wss://relay.nostr.band", "wss://search.nos.today"]);
+
+type SearchMethod = "primal" | "vertex" | "nip50";
 
 interface ProfileSearchResult {
   pubkey: string;
@@ -25,78 +29,195 @@ function ProfileSearchModal({
   onSelect: (pubkey: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMethod, setSearchMethod] = useState<SearchMethod>("primal");
   const [selectedRelay, setSelectedRelay] = useState(SEARCH_RELAYS[0]);
   const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [customRelayUrl, setCustomRelayUrl] = useState("");
+  const [extensionAvailable, setExtensionAvailable] = useState(false);
 
   const pool = useMemo(() => new RelayPool(), []);
 
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim() || !selectedRelay) return;
+  // Check if extension is available
+  useEffect(() => {
+    setExtensionAvailable(typeof window !== "undefined" && !!window.nostr);
+  }, []);
 
-    setIsSearching(true);
-    setSearchResults([]);
+  // Create PrimalCache instance
+  const primal = useMemo(() => {
+    return new PrimalCache();
+  }, []);
 
-    try {
-      const relay = pool.relay(selectedRelay);
+  // Create Vertex instance when extension is available
+  const vertex = useMemo(() => {
+    if (extensionAvailable) {
+      try {
+        const signer = new ExtensionSigner();
+        return new Vertex(signer);
+      } catch (error) {
+        console.error("Failed to create Vertex instance:", error);
+        return null;
+      }
+    }
+    return null;
+  }, [extensionAvailable]);
 
-      const subscription = relay.subscription([
-        {
-          kinds: [0],
-          search: searchQuery.trim(),
-          limit: 20,
-        },
-      ]);
+  // Cleanup PrimalCache and Vertex connections on unmount
+  useEffect(() => {
+    return () => {
+      primal.close();
+      if (vertex) {
+        vertex.close();
+      }
+    };
+  }, [primal, vertex]);
 
+  // Helper function to convert events or pointers to ProfileSearchResult[]
+  const convertToSearchResults = useCallback(
+    (items: (NostrEvent | ProfilePointer)[]): ProfileSearchResult[] => {
       const results: ProfileSearchResult[] = [];
       const seenPubkeys = new Set<string>();
 
-      const sub = subscription.subscribe({
-        next: (response) => {
-          if (response === "EOSE") {
-            setIsSearching(false);
-            sub.unsubscribe();
-          } else {
-            // response is a NostrEvent
-            const event = response;
-            if (seenPubkeys.has(event.pubkey)) return;
-            seenPubkeys.add(event.pubkey);
+      for (const item of items) {
+        const pubkey = item.pubkey;
+        if (seenPubkeys.has(pubkey)) continue;
+        seenPubkeys.add(pubkey);
 
-            try {
-              const profile = JSON.parse(event.content);
-              const displayName = getDisplayName(profile, event.pubkey.slice(0, 8) + "...");
-              const picture = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
+        let profile: NostrEvent | null = null;
+        let profileData: any = null;
 
-              results.push({
-                pubkey: event.pubkey,
-                profile: event,
-                displayName,
-                picture,
-              });
-
-              setSearchResults([...results]);
-            } catch (error) {
-              console.error("Failed to parse profile:", error);
-            }
+        if ("kind" in item && item.kind === 0) {
+          // It's a NostrEvent (from Primal)
+          profile = item;
+          try {
+            profileData = JSON.parse(item.content);
+          } catch (error) {
+            console.error("Failed to parse profile:", error);
+            continue;
           }
-        },
-        error: (error) => {
-          console.error("Search failed:", error);
-          setIsSearching(false);
-        },
-      });
+        } else {
+          // It's a ProfilePointer (from Vertex)
+          // We don't have the profile content, so use null
+          profile = null;
+          profileData = null;
+        }
 
-      // Timeout after 10 seconds
-      setTimeout(() => {
-        setIsSearching(false);
-        sub.unsubscribe();
-      }, 10000);
+        const displayName = getDisplayName(profileData, pubkey.slice(0, 8) + "...");
+        const picture = getProfilePicture(profileData, `https://robohash.org/${pubkey}.png`);
+
+        results.push({
+          pubkey,
+          profile,
+          displayName,
+          picture,
+        });
+      }
+
+      return results;
+    },
+    [],
+  );
+
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) return;
+
+    // Validate search method requirements
+    if (searchMethod === "vertex" && !extensionAvailable) {
+      setSearchError("Nostr extension required for Vertex search. Please install a browser extension like nos2x or Alby.");
+      return;
+    }
+
+    if (searchMethod === "nip50" && !selectedRelay) {
+      setSearchError("Please select a relay for NIP-50 search.");
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchResults([]);
+    setSearchError(null);
+
+    try {
+      if (searchMethod === "primal") {
+        // Primal search
+        const events = await primal.userSearch(searchQuery.trim(), 20);
+        const results = convertToSearchResults(events);
+        setSearchResults(results);
+      } else if (searchMethod === "vertex") {
+        // Vertex search
+        if (!vertex) {
+          throw new Error("Vertex instance not available. Extension may be missing.");
+        }
+        const pointers = await vertex.userSearch(searchQuery.trim(), "globalPagerank", 20);
+        const results = convertToSearchResults(pointers);
+        setSearchResults(results);
+      } else {
+        // NIP-50 relay search
+        const relay = pool.relay(selectedRelay);
+
+        const subscription = relay.subscription([
+          {
+            kinds: [0],
+            search: searchQuery.trim(),
+            limit: 20,
+          },
+        ]);
+
+        const results: ProfileSearchResult[] = [];
+        const seenPubkeys = new Set<string>();
+
+        const sub = subscription.subscribe({
+          next: (response) => {
+            if (response === "EOSE") {
+              setIsSearching(false);
+              sub.unsubscribe();
+            } else {
+              // response is a NostrEvent
+              const event = response;
+              if (seenPubkeys.has(event.pubkey)) return;
+              seenPubkeys.add(event.pubkey);
+
+              try {
+                const profile = JSON.parse(event.content);
+                const displayName = getDisplayName(profile, event.pubkey.slice(0, 8) + "...");
+                const picture = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
+
+                results.push({
+                  pubkey: event.pubkey,
+                  profile: event,
+                  displayName,
+                  picture,
+                });
+
+                setSearchResults([...results]);
+              } catch (error) {
+                console.error("Failed to parse profile:", error);
+              }
+            }
+          },
+          error: (error) => {
+            console.error("Search failed:", error);
+            setSearchError("Search failed. Please try again.");
+            setIsSearching(false);
+          },
+        });
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          setIsSearching(false);
+          sub.unsubscribe();
+        }, 10000);
+        return; // Early return for NIP-50 since it's async via subscription
+      }
+
+      setIsSearching(false);
     } catch (error) {
       console.error("Search failed:", error);
+      const errorMessage = error instanceof Error ? error.message : "Search failed. Please try again.";
+      setSearchError(errorMessage);
       setIsSearching(false);
     }
-  }, [searchQuery, selectedRelay, pool]);
+  }, [searchQuery, searchMethod, selectedRelay, pool, primal, vertex, extensionAvailable, convertToSearchResults]);
 
   const handleCustomRelaySubmit = () => {
     if (customRelayUrl) {
@@ -114,6 +235,7 @@ function ProfileSearchModal({
     setSearchQuery("");
     setSearchResults([]);
     setIsSearching(false);
+    setSearchError(null);
     onClose();
   };
 
@@ -121,6 +243,42 @@ function ProfileSearchModal({
     <dialog className={`modal ${isOpen ? "modal-open" : ""}`}>
       <div className="modal-box max-w-4xl">
         <h3 className="font-bold text-lg mb-4">Search Profiles</h3>
+
+        {/* Search method selector */}
+        <div className="form-control mb-4">
+          <label className="label">
+            <span className="label-text">Search Method</span>
+          </label>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              className={`btn btn-sm ${searchMethod === "primal" ? "btn-primary" : "btn-outline"}`}
+              onClick={() => setSearchMethod("primal")}
+            >
+              Primal
+            </button>
+            <button
+              className={`btn btn-sm ${searchMethod === "vertex" ? "btn-primary" : "btn-outline"}`}
+              onClick={() => setSearchMethod("vertex")}
+              disabled={!extensionAvailable}
+              title={!extensionAvailable ? "Nostr extension required" : ""}
+            >
+              Vertex
+            </button>
+            <button
+              className={`btn btn-sm ${searchMethod === "nip50" ? "btn-primary" : "btn-outline"}`}
+              onClick={() => setSearchMethod("nip50")}
+            >
+              NIP-50 Relay
+            </button>
+          </div>
+          {searchMethod === "vertex" && !extensionAvailable && (
+            <label className="label">
+              <span className="label-text-alt text-warning">
+                Nostr extension required for Vertex search. Install a browser extension like nos2x or Alby.
+              </span>
+            </label>
+          )}
+        </div>
 
         <div className="flex flex-wrap gap-2">
           {/* Search input */}
@@ -136,15 +294,24 @@ function ProfileSearchModal({
             <button
               className="btn btn-primary join-item"
               onClick={handleSearch}
-              disabled={!searchQuery.trim() || isSearching}
+              disabled={!searchQuery.trim() || isSearching || (searchMethod === "vertex" && !extensionAvailable)}
             >
               {isSearching ? <span className="loading loading-spinner loading-sm"></span> : "Search"}
             </button>
           </div>
 
-          {/* Search relay selection */}
-          <RelayPicker value={selectedRelay} onChange={setSelectedRelay} common={SEARCH_RELAYS} />
+          {/* Search relay selection - only show for NIP-50 */}
+          {searchMethod === "nip50" && (
+            <RelayPicker value={selectedRelay} onChange={setSelectedRelay} common={SEARCH_RELAYS} />
+          )}
         </div>
+
+        {/* Search error display */}
+        {searchError && (
+          <div className="alert alert-error mt-4">
+            <span>{searchError}</span>
+          </div>
+        )}
 
         {/* Search results */}
         <div className="max-h-96 overflow-y-auto">
