@@ -1,4 +1,3 @@
-import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
 import {
   createFilterMap,
   FilterMap,
@@ -19,6 +18,8 @@ import type {
   IPool,
   IPoolRelayInput,
   IRelay,
+  NegentropyReadStore,
+  NegentropySyncStore,
   PublishResponse,
   SubscriptionResponse,
 } from "./types.js";
@@ -91,7 +92,7 @@ export class RelayPool implements IPool {
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
     relays: IPoolRelayInput,
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
@@ -172,7 +173,7 @@ export class RelayPool implements IPool {
   /** Negentropy sync events with the relays and an event store */
   sync(
     relays: IPoolRelayInput,
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropySyncStore | NostrEvent[],
     filter: Filter,
     direction?: SyncDirection,
   ): Observable<NostrEvent> {

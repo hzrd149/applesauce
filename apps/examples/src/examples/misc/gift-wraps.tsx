@@ -1,121 +1,31 @@
+import { persistEncryptedContent } from "applesauce-common/helpers/encrypted-content-cache";
 import { isGiftWrapUnlocked, unlockGiftWrap } from "applesauce-common/helpers/gift-wrap";
 import { GiftWrapRumorModel, GiftWrapsModel } from "applesauce-common/models/gift-wrap";
-import { EventStore } from "applesauce-core/event-store";
+import { defined, EventStore } from "applesauce-core";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { persistEncryptedContent } from "applesauce-common/helpers/encrypted-content-cache";
-import localforage from "localforage";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
+import LoginView from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
+import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 
-const storage = new SecureStorage(localforage);
+const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const pubkey$ = new BehaviorSubject<string | null>(null);
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-persistEncryptedContent(eventStore, storage);
-
-function UnlockView({ onUnlock }: { onUnlock: (pubkey?: string) => void }) {
-  const [pin, setPin] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleUnlock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const isValid = await storage.unlock(pin);
-      if (!isValid) return setError("Invalid PIN");
-
-      const pubkey = (await storage.getItem("pubkey")) ?? undefined;
-      onUnlock(pubkey);
-    } catch (err) {
-      setError("Failed to unlock storage");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClear = () => localforage.clear();
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-base-200">
-      <form onSubmit={handleUnlock} className="card w-96 bg-base-100 shadow-xl">
-        <div className="card-body">
-          <h2 className="card-title">Unlock Storage</h2>
-          <div className="form-control">
-            <input
-              type="password"
-              placeholder="Enter PIN"
-              className="input input-bordered"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-          {error && <div className="text-error text-sm">{error}</div>}
-          <div className="card-actions justify-between">
-            <button type="button" className="btn btn-primary" onClick={handleClear}>
-              Clear
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading || !pin}>
-              {loading ? <span className="loading loading-spinner" /> : "Unlock"}
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function LoginView({ onLogin }: { onLogin: (signer: ExtensionSigner, pubkey: string) => void }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleLogin = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const signer = new ExtensionSigner();
-      const pubkey = await signer.getPublicKey();
-
-      onLogin(signer, pubkey);
-    } catch (err) {
-      setError("Failed to login with extension");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-base-200">
-      <div className="card w-96 bg-base-100 shadow-xl">
-        <div className="card-body">
-          <h2 className="card-title">Login Required</h2>
-          <p>Please login with your Nostr extension</p>
-          {error && <div className="text-error text-sm">{error}</div>}
-          <div className="card-actions justify-end">
-            <button onClick={handleLogin} className="btn btn-primary" disabled={loading}>
-              {loading ? <span className="loading loading-spinner" /> : "Login"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ExtensionSigner }) {
   const [unlocking, setUnlocking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const unlocked = isGiftWrapUnlocked(event);
 
   // Subscribe to when the rumor is unlocked
@@ -124,8 +34,11 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: Extension
   const handleUnlock = async () => {
     try {
       setUnlocking(true);
+      setError(null);
       await unlockGiftWrap(event, signer);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to unlock gift wrap";
+      setError(errorMessage);
       console.error("Failed to unlock gift wrap:", err);
     } finally {
       setUnlocking(false);
@@ -133,22 +46,20 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: Extension
   };
 
   return (
-    <div className="card bg-base-100 shadow-md mb-4">
-      <div className="card-body">
-        {unlocked === false ? (
-          <>
-            <h3 className="card-title">Locked Gift Wrap</h3>
-
-            <button className="btn btn-primary" onClick={handleUnlock} disabled={unlocking}>
-              {unlocking ? "Unlocking..." : "Unlock"}
-            </button>
-          </>
-        ) : rumor ? (
-          <pre className="bg-base-300 p-4 rounded-lg overflow-x-auto">
-            <code>{JSON.stringify(rumor, null, 2)}</code>
-          </pre>
-        ) : null}
-      </div>
+    <div className="border-b p-2">
+      {unlocked === false ? (
+        <div className="flex gap-2 justify-between">
+          <h3 className="font-semibold">Locked Gift Wrap</h3>
+          {error && <div className="text-error text-sm">{error}</div>}
+          <button className="btn btn-primary" onClick={handleUnlock} disabled={unlocking}>
+            {unlocking ? "Unlocking..." : "Unlock"}
+          </button>
+        </div>
+      ) : rumor ? (
+        <pre className="bg-base-300 p-4 rounded-lg overflow-x-auto">
+          <code>{JSON.stringify(rumor, null, 2)}</code>
+        </pre>
+      ) : null}
     </div>
   );
 }
@@ -181,7 +92,7 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner 
   }, [loader$]);
 
   return (
-    <div className=" container mx-auto flex flex-col h-screen p-4">
+    <div className="container mx-auto max-w-6xl p-4">
       <div className="flex gap-4 mb-4">
         <RelayPicker value={relay} onChange={setRelay} />
         <select
@@ -195,35 +106,38 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner 
         </select>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {events.map((event) => (
-          <GiftWrapEvent key={event.id} event={event} signer={signer} />
-        ))}
-      </div>
+      {events.map((event) => (
+        <GiftWrapEvent key={event.id} event={event} signer={signer} />
+      ))}
     </div>
   );
 }
 
 export default function App() {
-  const [locked, setLocked] = useState(!storage.unlocked);
-  const [pubkey, setPubkey] = useState<string | null>(null);
+  const storage = useObservableState(storage$);
   const signer = useObservableState(signer$);
+  const pubkey = useObservableState(pubkey$);
 
-  const handleUnlock = async (pubkey?: string) => {
+  const handleUnlock = async (storage: SecureStorage, pubkey?: string) => {
+    storage$.next(storage);
+
     if (pubkey) {
-      setPubkey(pubkey);
+      pubkey$.next(pubkey);
       signer$.next(new ExtensionSigner());
     }
-    setLocked(false);
   };
-
   const handleLogin = async (signer: ExtensionSigner, pubkey: string) => {
     signer$.next(signer);
-    setPubkey(pubkey);
+    pubkey$.next(pubkey);
     if (storage) await storage.setItem("pubkey", pubkey);
   };
 
-  if (locked) return <UnlockView onUnlock={handleUnlock} />;
+  // Show unlock view if storage is not initialized
+  if (!storage) return <UnlockView onUnlock={handleUnlock} />;
+
+  // Show login view if not logged in
   if (!signer || !pubkey) return <LoginView onLogin={handleLogin} />;
+
+  // Show main app view when both storage and login are ready
   return <HomeView pubkey={pubkey} signer={signer} />;
 }

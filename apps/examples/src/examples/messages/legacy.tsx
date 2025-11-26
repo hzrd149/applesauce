@@ -2,9 +2,16 @@ import { ProxySigner } from "applesauce-accounts";
 import { ActionHub } from "applesauce-actions";
 import { SendLegacyMessage } from "applesauce-actions/actions";
 import { defined, EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
-import { getTagValue, lockEncryptedContent, persistEventsToCache, unixNow } from "applesauce-core/helpers";
+import {
+  getDisplayName,
+  getProfilePicture,
+  getTagValue,
+  lockEncryptedContent,
+  persistEventsToCache,
+  unixNow,
+} from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
-import { createTimelineLoader } from "applesauce-loaders/loaders";
+import { createAddressLoader, createEventLoader, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -21,7 +28,7 @@ import RelayPicker from "../../components/relay-picker";
 import UnlockView from "../../components/unlock-view";
 
 import { persistEncryptedContent, unlockLegacyMessage } from "applesauce-common/helpers";
-import { EncryptedContentModel } from "applesauce-core/models";
+import { EncryptedContentModel, ProfileModel } from "applesauce-core/models";
 import SecureStorage from "../../extra/encrypted-storage";
 
 const EXPIRATIONS: Record<string, number> = {
@@ -40,6 +47,18 @@ const pool = new RelayPool();
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
 const actions = new ActionHub(eventStore, factory);
 
+// Create event loaders
+const eventLoader = createEventLoader(pool, { eventStore });
+const addressLoader = createAddressLoader(pool, {
+  eventStore,
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+});
+
+// Attach loaders to store so it can automatically load profiles
+eventStore.eventLoader = eventLoader;
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
+
 // Persist encrypted content
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
@@ -49,6 +68,27 @@ const cacheRequest: CacheRequest = (filters) => getEventsForFilters(cache, filte
 
 // Save all new events to the cache
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
+
+function ContactItem({ contactPubkey, onSelect }: { contactPubkey: string; onSelect: (pubkey: string) => void }) {
+  const profile = useObservableMemo(() => eventStore.model(ProfileModel, contactPubkey), [contactPubkey]);
+  const displayName = getDisplayName(profile, contactPubkey.slice(0, 8) + "...");
+  const avatar = getProfilePicture(profile, `https://robohash.org/${contactPubkey}.png`);
+
+  return (
+    <li
+      className="list-row cursor-pointer hover:bg-base-200 transition-colors rounded-box"
+      onClick={() => onSelect(contactPubkey)}
+    >
+      <div>
+        <img className="size-10 rounded-box" src={avatar} alt={displayName} />
+      </div>
+      <div className="flex-1">
+        <div>{displayName}</div>
+        <div className="text-xs font-semibold opacity-60 break-all">{npubEncode(contactPubkey)}</div>
+      </div>
+    </li>
+  );
+}
 
 function ContactList({
   events,
@@ -77,33 +117,9 @@ function ContactList({
   }, [events, pubkey]);
 
   return (
-    <ul className="list bg-base-100 rounded-box">
+    <ul className="list bg-base-100 rounded-box shadow-none">
       {contacts.map((contactPubkey) => (
-        <li key={contactPubkey} className="list-row">
-          <div>
-            <img className="size-10 rounded-box" src={`https://robohash.org/${contactPubkey}.png`} />
-          </div>
-          <div>
-            <div>{contactPubkey.slice(0, 8)}...</div>
-            <div className="text-xs font-semibold opacity-60 break-all">{npubEncode(contactPubkey)}</div>
-          </div>
-          <button className="btn btn-square btn-ghost" onClick={() => onSelect(contactPubkey)}>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="1.5"
-              stroke="currentColor"
-              className="size-6"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"
-              />
-            </svg>
-          </button>
-        </li>
+        <ContactItem key={contactPubkey} contactPubkey={contactPubkey} onSelect={onSelect} />
       ))}
     </ul>
   );
@@ -183,26 +199,26 @@ function DirectMessageForm({ corraspondant, relay }: { corraspondant: string; re
 
 function DirectMessageView({
   pubkey,
-  corraspondant,
+  correspondent,
   relay,
   signer,
 }: {
   pubkey: string;
-  corraspondant: string;
+  correspondent: string;
   relay: string;
   signer: ExtensionSigner;
 }) {
   const filters = useMemo<Filter[]>(
     () => [
-      { kinds: [4], authors: [corraspondant], "#p": [pubkey] },
-      { kinds: [4], authors: [pubkey], "#p": [corraspondant] },
+      { kinds: [4], authors: [correspondent], "#p": [pubkey] },
+      { kinds: [4], authors: [pubkey], "#p": [correspondent] },
     ],
-    [corraspondant, pubkey],
+    [correspondent, pubkey],
   );
 
   const loader$ = useMemo(
     () => createTimelineLoader(pool, [relay], filters, { eventStore, cache: cacheRequest }),
-    [relay, corraspondant, pubkey],
+    [relay, correspondent, pubkey],
   );
   useEffect(() => {
     loader$().subscribe();
@@ -245,7 +261,7 @@ function DirectMessageView({
       </div>
 
       <div className="flex items-center gap-2 w-full mt-4">
-        <DirectMessageForm corraspondant={corraspondant} relay={relay} />
+        <DirectMessageForm corraspondant={correspondent} relay={relay} />
 
         <button className="btn" onClick={decryptAll}>
           Decrypt all
@@ -289,7 +305,7 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner 
 
   return (
     <div className="flex bg-base-200 overflow-hidden h-screen">
-      <div className="w-sm bg-base-100 p-2 overflow-y-auto flex flex-col gap-2 shrink-0">
+      <div className="w-sm bg-base-100 p-2 overflow-y-auto flex flex-col gap-2 shrink-0 shadow-none">
         <div className="flex gap-2 w-full">
           <RelayPicker className="w-full" value={relay} onChange={setRelay} />
           <button className="btn" onClick={clearCache}>
@@ -303,7 +319,7 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner 
       </div>
       <div className="flex-1 overflow-hidden">
         {selected ? (
-          <DirectMessageView pubkey={pubkey} corraspondant={selected} relay={relay} signer={signer} />
+          <DirectMessageView pubkey={pubkey} correspondent={selected} relay={relay} signer={signer} />
         ) : (
           <div className="flex items-center justify-center h-full text-base-content/50">
             Select a contact to start messaging

@@ -68,7 +68,7 @@ const EventDetails = ({
   }, [event, encryption, unlocked]);
 
   return (
-    <div className="card bg-base-100 shadow-md">
+    <div className="card bg-base-100">
       <div className="card-body">
         <div className="flex justify-between items-start mb-4">
           <h3 className="card-title text-lg">Event Details</h3>
@@ -438,7 +438,7 @@ export default function AppDataExample() {
               {appDataEvents.map((event: NostrEvent) => (
                 <div
                   key={event.id}
-                  className={`card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow ${
+                  className={`card bg-base-100 border-1 cursor-pointer ${
                     selectedEvent?.id === event.id ? "ring-2 ring-primary" : ""
                   }`}
                   onClick={() => setSelectedEvent(event)}

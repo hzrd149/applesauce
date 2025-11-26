@@ -1,6 +1,6 @@
-import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
+import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-core";
 import { ensureHttpURL, type Filter } from "applesauce-core/helpers";
-import { simpleTimeout } from "applesauce-core/observable";
+import { mapEventsToStore, simpleTimeout } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
 import { nip42, type NostrEvent } from "nostr-tools";
 import {
@@ -51,6 +51,8 @@ import {
   CountResponse,
   FilterInput,
   IRelay,
+  NegentropyReadStore,
+  NegentropySyncStore,
   PublishOptions,
   PublishResponse,
   RelayInformation,
@@ -540,7 +542,7 @@ export class Relay implements IRelay {
 
   /** Negentropy sync event ids with the relay and an event store */
   async negentropy(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
@@ -664,7 +666,7 @@ export class Relay implements IRelay {
 
   /** Negentropy sync events with the relay and an event store */
   sync(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropySyncStore,
     filter: Filter,
     direction: SyncDirection = SyncDirection.RECEIVE,
   ): Observable<NostrEvent> {
@@ -703,7 +705,13 @@ export class Relay implements IRelay {
           if (direction & SyncDirection.RECEIVE && need.length > 0) {
             await lastValueFrom(
               this.req({ ids: need }).pipe(
+                // Complete when EOSE is received
                 completeOnEose(),
+                // Add events to the store if its writable
+                Reflect.has(store, "add")
+                  ? mapEventsToStore(store as unknown as IEventStoreActions | IAsyncEventStoreActions)
+                  : identity,
+                // Pass events to observer
                 tap((event) => observer.next(event)),
               ),
             );

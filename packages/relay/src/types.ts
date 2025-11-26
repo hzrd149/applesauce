@@ -1,4 +1,4 @@
-import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
+import type { IAsyncEventStoreActions, IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
 import type { Filter } from "applesauce-core/helpers";
 import type { EventTemplate, NostrEvent } from "nostr-tools";
 import type { RelayInformation as CoreRelayInformation } from "nostr-tools/nip11";
@@ -76,6 +76,16 @@ export type RelayInformation = CoreRelayInformation & {
   attributes?: string[];
 };
 
+/** A read only event store for negentropy sync */
+export type NegentropyReadStore = IEventStoreRead | IAsyncEventStoreRead | NostrEvent[];
+/** A writeable event store for negentropy sync */
+export type NegentropyWriteStore =
+  | (IAsyncEventStoreRead & IAsyncEventStoreActions)
+  | (IEventStoreRead & IAsyncEventStoreActions);
+
+/** An event store that can be used for negentropy sync */
+export type NegentropySyncStore = NegentropyReadStore | NegentropyWriteStore;
+
 export interface IRelay extends MultiplexWebSocket {
   url: string;
 
@@ -108,7 +118,7 @@ export interface IRelay extends MultiplexWebSocket {
   auth(event: NostrEvent): Promise<PublishResponse>;
   /** Negentropy sync event ids with the relay and an event store */
   negentropy(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
@@ -123,11 +133,7 @@ export interface IRelay extends MultiplexWebSocket {
   /** Open a subscription with retries */
   subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse>;
   /** Negentropy sync events with the relay and an event store */
-  sync(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
-    direction?: SyncDirection,
-  ): Observable<NostrEvent>;
+  sync(store: NegentropySyncStore, filter: Filter, direction?: SyncDirection): Observable<NostrEvent>;
 
   /** Get the NIP-11 information document for the relay */
   getInformation(): Promise<RelayInformation | null>;
@@ -146,7 +152,7 @@ export interface IGroup {
   event(event: Parameters<IRelay["event"]>[0]): Observable<PublishResponse>;
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
@@ -171,11 +177,7 @@ export interface IGroup {
   /** Count events on the relays and an event store */
   count(filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>>;
   /** Negentropy sync events with the relay and an event store */
-  sync(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
-    direction?: SyncDirection,
-  ): Observable<NostrEvent>;
+  sync(store: NegentropySyncStore, filter: Filter, direction?: SyncDirection): Observable<NostrEvent>;
 }
 
 /** Signals emitted by the pool */
@@ -202,7 +204,7 @@ export interface IPool extends IPoolSignals {
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
     relays: IPoolRelayInput,
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
     opts?: GroupNegentropySyncOptions,
@@ -231,7 +233,7 @@ export interface IPool extends IPoolSignals {
   /** Negentropy sync events with the relay and an event store */
   sync(
     relays: IPoolRelayInput,
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropySyncStore,
     filter: Filter,
     direction?: SyncDirection,
   ): Observable<NostrEvent>;

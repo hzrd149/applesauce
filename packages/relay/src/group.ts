@@ -25,14 +25,7 @@ import {
   toArray,
 } from "rxjs";
 
-import {
-  EventMemory,
-  filterDuplicateEvents,
-  IAsyncEventStoreActions,
-  IAsyncEventStoreRead,
-  IEventStoreActions,
-  IEventStoreRead,
-} from "applesauce-core";
+import { EventMemory, filterDuplicateEvents, IAsyncEventStoreActions, IEventStoreActions } from "applesauce-core";
 import { type Filter } from "applesauce-core/helpers";
 import { NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import { completeOnEose } from "./operators/complete-on-eose.js";
@@ -45,6 +38,8 @@ import {
   IGroup,
   IGroupRelayInput,
   IRelay,
+  NegentropyReadStore,
+  NegentropySyncStore,
   PublishOptions,
   PublishResponse,
   RequestOptions,
@@ -247,7 +242,7 @@ export class RelayGroup implements IGroup {
 
   /** Negentropy sync events with the relays and an event store */
   async negentropy(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
     opts?: GroupNegentropySyncOptions,
@@ -310,11 +305,7 @@ export class RelayGroup implements IGroup {
   }
 
   /** Negentropy sync events with the relays and an event store */
-  sync(
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
-    filter: Filter,
-    direction?: SyncDirection,
-  ): Observable<NostrEvent> {
+  sync(store: NegentropySyncStore | NostrEvent[], filter: Filter, direction?: SyncDirection): Observable<NostrEvent> {
     // Get an array of relays that support NIP-77 negentropy sync
     return defer(async () => {
       const supported = await Promise.all(

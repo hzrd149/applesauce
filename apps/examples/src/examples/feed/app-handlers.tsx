@@ -317,8 +317,7 @@ export default function AppHandlersExample() {
                     onClick={() => handleKindToggle(kind)}
                     title={kindInfo ? kindInfo.description : `Event kind ${kind}`}
                   >
-                    {kindInfo ? `${kindInfo.emoji} ${kindInfo.name}` : `Kind ${kind}`}
-                    <span className="badge badge-neutral badge-sm ml-1">{count}</span>
+                    {kindInfo ? `${kindInfo.emoji} ${kindInfo.name}` : `Kind ${kind}`} ({count})
                   </button>
                 );
               })}
