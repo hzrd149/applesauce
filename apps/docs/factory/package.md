@@ -1,6 +1,6 @@
 # Factory
 
-The `applesauce-factory` package provides the `EventFactory` and operations for creating and modifying Nostr events.
+The `EventFactory` class is now part of the `applesauce-core` package, providing a unified interface for creating and modifying Nostr events. Blueprints and additional operations are available in the `applesauce-common` package.
 
 ## Features
 
@@ -13,18 +13,38 @@ The `applesauce-factory` package provides the `EventFactory` and operations for 
 
 ## Installation
 
+The EventFactory is part of `applesauce-core`:
+
 :::code-group
 
 ```sh [npm]
-npm install applesauce-factory
+npm install applesauce-core
 ```
 
 ```sh [yarn]
-yarn install applesauce-factory
+yarn install applesauce-core
 ```
 
 ```sh [pnpm]
-pnpm install applesauce-factory
+pnpm install applesauce-core
+```
+
+:::
+
+For blueprints and additional operations, also install `applesauce-common`:
+
+:::code-group
+
+```sh [npm]
+npm install applesauce-common
+```
+
+```sh [yarn]
+yarn install applesauce-common
+```
+
+```sh [pnpm]
+pnpm install applesauce-common
 ```
 
 :::

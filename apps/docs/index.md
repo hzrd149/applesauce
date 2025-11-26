@@ -33,7 +33,7 @@ features:
 
 AppleSauce is built on top of [RxJS](https://rxjs.dev) and uses the observable pattern to provide a reactive, event-driven architecture for Nostr applications.
 
-- **applesauce-core** - Essential utilities for working with Nostr events, keys, protocols, and event storage
+- **applesauce-core** - Essential utilities for working with Nostr events, keys, protocols, event storage, and the EventFactory for creating events
 - **applesauce-relay** - Simple relay connection management with automatic reconnection
 - **applesauce-signers** - Flexible signing interfaces supporting multiple providers
 - **applesauce-loaders** - High-level data loaders for common Nostr patterns

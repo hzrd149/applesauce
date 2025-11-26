@@ -84,7 +84,7 @@ Creates and signs Nostr events using pre-built blueprints.
 
 ```ts
 import { EventFactory } from "applesauce-core";
-import { NoteBlueprint } from "applesauce-factory/blueprints";
+import { NoteBlueprint } from "applesauce-common/blueprints";
 
 const factory = new EventFactory({ signer });
 

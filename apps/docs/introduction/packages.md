@@ -82,20 +82,20 @@ pnpm install applesauce-accounts
 
 ## Factory
 
-The `applesauce-factory` package contains the main `EventFactory` class and a lot of [Blueprints](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-factory.Blueprints.html) and [Operations](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-factory.Operations.html) for creating an modifying nostr events. [see more](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-factory.html)
+The `EventFactory` class is part of the `applesauce-core` package. Blueprints and additional operations are available in the `applesauce-common` package. [see more](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-core.html)
 
 :::code-group
 
 ```sh [npm]
-npm install applesauce-factory
+npm install applesauce-core applesauce-common
 ```
 
 ```sh [yarn]
-yarn install applesauce-factory
+yarn install applesauce-core applesauce-common
 ```
 
 ```sh [pnpm]
-pnpm install applesauce-factory
+pnpm install applesauce-core applesauce-common
 ```
 
 :::

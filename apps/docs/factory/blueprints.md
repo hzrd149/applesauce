@@ -10,7 +10,7 @@ The most common way to use blueprints is through an `EventFactory` instance. Thi
 
 ```typescript
 import { EventFactory } from "applesauce-core";
-import { NoteBlueprint, ReactionBlueprint } from "applesauce-factory/blueprints";
+import { NoteBlueprint, ReactionBlueprint } from "applesauce-common/blueprints";
 
 // Create a factory with your context
 const factory = new EventFactory({
@@ -42,31 +42,31 @@ For one-time event creation, you can use the `create` function with a context an
 **Method 1: Pass blueprint constructor and arguments separately**
 
 ```typescript
-import { create } from "applesauce-core";
-import { NoteBlueprint, CommentBlueprint } from "applesauce-factory/blueprints";
+import { createEvent } from "applesauce-core/event-factory";
+import { NoteBlueprint, CommentBlueprint } from "applesauce-common/blueprints";
 
 // Create a single event with a one-off context
-const note = await create(
+const note = await createEvent(
   { signer: mySigner }, // context
   NoteBlueprint, // blueprint constructor
   "Hello, world!", // blueprint arguments
 );
 
 // Create a comment on an existing event
-const comment = await create({ signer: mySigner }, CommentBlueprint, parentEvent, "Great post!");
+const comment = await createEvent({ signer: mySigner }, CommentBlueprint, parentEvent, "Great post!");
 ```
 
 **Method 2: Call blueprint method directly and pass result**
 
 ```typescript
 // Create a single event with a one-off context
-const note = await create(
+const note = await createEvent(
   { signer: mySigner }, // context
   NoteBlueprint("Hello, world!"), // blueprint called directly
 );
 
 // Create a comment on an existing event
-const comment = await create({ signer: mySigner }, CommentBlueprint(parentEvent, "Great post!"));
+const comment = await createEvent({ signer: mySigner }, CommentBlueprint(parentEvent, "Great post!"));
 ```
 
 ## Available Blueprints
@@ -81,7 +81,7 @@ const comment = await create({ signer: mySigner }, CommentBlueprint(parentEvent,
 - `DeleteBlueprint(events)`
 - `LiveStreamBlueprint(title, options?)`
 
-And a lot more in the [reference](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-factory.Blueprints.html).
+And a lot more in the [reference](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-common.Blueprints.html).
 
 ## Custom Blueprints
 
@@ -91,8 +91,9 @@ You can create your own custom blueprints by following the same pattern used by 
 
 ```typescript
 import { kinds } from "nostr-tools";
-import { blueprint } from "applesauce-core";
-import { includeSingletonTag, MetaTagOptions } from "applesauce-factory/operations";
+import { blueprint } from "applesauce-core/event-factory";
+import { includeSingletonTag, setContent } from "applesauce-core/operations";
+import type { MetaTagOptions } from "applesauce-common/blueprints";
 
 /** Custom event blueprint */
 export function AppConfigBlueprint(config: Record<string, any>) {
@@ -117,10 +118,10 @@ const customEvent = await factory.create(AppConfigBlueprint, { theme: "light" })
 const customEvent2 = await factory.create(AppConfigBlueprint({ theme: "light" }));
 
 // With one-off context (Method 1)
-const advancedEvent = await create({ signer: mySigner }, AppConfigBlueprint, { theme: "light" });
+const advancedEvent = await createEvent({ signer: mySigner }, AppConfigBlueprint, { theme: "light" });
 
 // With one-off context (Method 2)
-const advancedEvent2 = await create({ signer: mySigner }, AppConfigBlueprint({ theme: "light" }));
+const advancedEvent2 = await createEvent({ signer: mySigner }, AppConfigBlueprint({ theme: "light" }));
 ```
 
 ## Blueprint Patterns

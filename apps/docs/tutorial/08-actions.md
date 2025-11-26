@@ -21,7 +21,7 @@ To create an ActionHub, you need your `EventStore` and `EventFactory` instances:
 import { ActionHub } from "applesauce-actions";
 import { EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core";
-import { ExtensionSigner } from "applesauce-factory/signers";
+import { ExtensionSigner } from "applesauce-signers";
 
 // Your existing instances
 const eventStore = new EventStore();

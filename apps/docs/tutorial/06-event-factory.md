@@ -41,7 +41,7 @@ const factory = new EventFactory({
 Let's create a simple text note using the `NoteBlueprint`:
 
 ```typescript
-import { NoteBlueprint } from "applesauce-factory/blueprints";
+import { NoteBlueprint } from "applesauce-common/blueprints";
 
 async function createNote() {
   try {
@@ -68,7 +68,7 @@ EventFactory comes with blueprints for many common event types:
 The `NoteBlueprint` is setup to automatically handle hashtags and mentions.
 
 ```typescript
-import { NoteBlueprint } from "applesauce-factory/blueprints";
+import { NoteBlueprint } from "applesauce-common/blueprints";
 
 // Simple note
 const hashtagsNote = await factory.create(NoteBlueprint, "Just posted my first note! #introductions");
@@ -89,7 +89,7 @@ console.log(mentionsNote.tags);
 The `NoteReplyBlueprint` can be used to create a reply event to another kind 1 note.
 
 ```typescript
-import { NoteReplyBlueprint } from "applesauce-factory/blueprints";
+import { NoteReplyBlueprint } from "applesauce-common/blueprints";
 
 // Reply to an existing note
 const originalNote = {
@@ -104,7 +104,7 @@ const reply = await factory.create(NoteReplyBlueprint, originalNote, "Great poin
 The `ReactionBlueprint` can be used to create a reaction event to any nostr event.
 
 ```typescript
-import { ReactionBlueprint } from "applesauce-factory/blueprints";
+import { ReactionBlueprint } from "applesauce-common/blueprints";
 
 // React to a note with a like
 const reaction = await factory.create(ReactionBlueprint, originalNote, "+");
@@ -118,7 +118,7 @@ const heartReaction = await factory.create(ReactionBlueprint, originalNote, "❤
 The `ShareBlueprint` can be used to create a repost/share event of any nostr event.
 
 ```typescript
-import { ShareBlueprint } from "applesauce-factory/blueprints";
+import { ShareBlueprint } from "applesauce-common/blueprints";
 
 // Share/repost a note
 const repost = await factory.create(ShareBlueprint, originalNote);
@@ -126,10 +126,12 @@ const repost = await factory.create(ShareBlueprint, originalNote);
 
 ## Custom Event Creation
 
-For more complex events, you can use the `build()` method with [operations](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-factory.Operations.EventOperations.html):
+For more complex events, you can use the `build()` method with [operations](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-core.Operations.html):
 
 ```typescript
-import { setContent, includeHashtags, includeAltTag } from "applesauce-factory/operations";
+import { setContent } from "applesauce-core/operations";
+import { includeHashtags } from "applesauce-common/operations";
+import { includeAltTag } from "applesauce-core/operations";
 
 // Build a custom note with specific operations
 const customNote = await factory.build(

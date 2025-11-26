@@ -109,10 +109,10 @@ Hidden tags are used in [NIP-51](https://github.com/nostr-protocol/nips/blob/mas
 
 ## Factory Helpers
 
-The [`applesauce-factory`](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-factory.Helpers.html) package exports some helpers for building events and tags
+The [`applesauce-core`](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-core.Helpers.html) package exports some helpers for building events and tags
 
 Some of the most useful ones are
 
-- [`fillAndTrimTag`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-factory.Helpers.fillAndTrimTag.html) Replaces `undefined` or `null` in tags with `""` and trims to tag down to a set length if it ends with `""`
-- [`createQTagFromEventPointer`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-factory.Helpers.createQTagFromEventPointer.html) Creates a `"q"` tag for from an `EventPointer` to tag quoted events
-- [`createPTagFromProfilePointer`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-factory.Helpers.createPTagFromProfilePointer.html) Creates a `"p"` tag for from a `ProfilePointer` to tag mentioned pubkeys
+- [`fillAndTrimTag`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.fillAndTrimTag.html) Replaces `undefined` or `null` in tags with `""` and trims to tag down to a set length if it ends with `""`
+- [`createQTagFromEventPointer`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.createQTagFromEventPointer.html) Creates a `"q"` tag for from an `EventPointer` to tag quoted events
+- [`createPTagFromProfilePointer`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.createPTagFromProfilePointer.html) Creates a `"p"` tag for from a `ProfilePointer` to tag mentioned pubkeys

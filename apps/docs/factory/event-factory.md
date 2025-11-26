@@ -143,7 +143,8 @@ const signed = await factory.sign(draft);
 Operations are functions that modify events during creation or modification:
 
 ```typescript
-import { setContent, addHashtags, addMentions, includeClientTag } from "applesauce-factory/operations";
+import { setContent, includeClientTag } from "applesauce-core/operations";
+import { includeHashtags } from "applesauce-common/operations";
 
 const event = await factory.build(
   { kind: 1 },

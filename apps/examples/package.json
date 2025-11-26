@@ -24,6 +24,7 @@
     "applesauce-common": "workspace:^",
     "applesauce-content": "^4",
     "applesauce-core": "^4.4.0",
+    "applesauce-extra": "workspace:^",
     "applesauce-loaders": "^4.2.0",
     "applesauce-react": "^4",
     "applesauce-relay": "^4.4.0",

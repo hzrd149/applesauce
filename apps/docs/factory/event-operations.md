@@ -11,7 +11,7 @@ An event operation is a function that takes an event template and returns a modi
 - **Focused**: Each operation handles one specific aspect of event creation/modification
 - **Async-aware**: Operations can be synchronous or asynchronous
 
-See all avaliable event operations in the [reference](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-factory.Operations.EventOperations.html).
+See all available event operations in the [reference](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-core.Operations.html).
 
 ## Type Definition
 
@@ -46,7 +46,7 @@ export function updateCreatedAt(): EventOperation {
 
 ### 2. Tag Manipulation Operations
 
-These operations modify the event's tags array using the [`modifyPublicTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-factory.Operations.EventOperations.modifyPublicTags.html) and [`modifyHiddenTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-factory.Operations.EventOperations.modifyHiddenTags.html) event operations and some [tag operations](./tag-operations.md):
+These operations modify the event's tags array using the [`modifyPublicTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Operations.modifyPublicTags.html) and [`modifyHiddenTags`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Operations.modifyHiddenTags.html) event operations and some [tag operations](./tag-operations.md):
 
 ```typescript
 // Include a singleton tag (only one instance allowed)
