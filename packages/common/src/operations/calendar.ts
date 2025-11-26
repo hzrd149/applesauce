@@ -1,9 +1,8 @@
-import { AddressPointer } from "nostr-tools/nip19";
-import { EventOperation } from "../types.js";
-import { addAddressTag, removeAddressTag } from "./tag/common.js";
-import { includeSingletonTag, modifyPublicTags } from "./tags.js";
+import { EventOperation } from "applesauce-core/event-factory";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { getAddressPointerForEvent, isAddressPointer } from "applesauce-core/helpers";
+import { AddressPointer, getAddressPointerForEvent, isAddressPointer } from "applesauce-core/helpers/pointers";
+import { addAddressTag, removeAddressTag } from "applesauce-core/operations/tag/common";
+import { includeSingletonTag, modifyPublicTags } from "applesauce-core/operations/tags";
 
 /** Sets the title of a calendar */
 export function setTitle(title: string): EventOperation {

@@ -1,6 +1,6 @@
 import { Model } from "applesauce-core/event-store";
 import { createReplaceableAddress, getEventUID, isEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import {
   AddressPointer,

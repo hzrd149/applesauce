@@ -1,8 +1,8 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { blueprint } from "../../../factory/src/event-factory.jsnt-factory.js";
-import { setEncryptedContent } from "../../../factory/src/operations/content.jsoperations/content.js";
-import { setMessageAddress, setMessageParent } from "../../../factory/src/operations/legacy-message.jsgacy-message.js";
-import { MetaTagOptions, setMetaTags } from "../../../factory/src/operations/common.js-operations/common.js";
+import { blueprint } from "applesauce-core/event-factory";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
+import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { setMessageAddress, setMessageParent } from "../operations/legacy-message.js";
 
 export type LegacyMessageBlueprintOptions = MetaTagOptions;
 
@@ -12,7 +12,7 @@ export function LegacyMessageBlueprint(recipient: string, message: string, opts?
     kinds.EncryptedDirectMessage,
     // Encrypt the contents of the message to the recipient
     setEncryptedContent(recipient, message),
-    // Include the nessiary "p" tag of the recipient
+    // Include the necessary "p" tag of the recipient
     setMessageAddress(recipient),
     // Include the meta tags
     setMetaTags(opts),
@@ -27,7 +27,7 @@ export function LegacyMessageReplyBlueprint(parent: NostrEvent, message: string,
     kinds.EncryptedDirectMessage,
     // Encrypt the contents of the message to the recipient
     setEncryptedContent(parent.pubkey, message),
-    // Include the nessiary "p" tag of the recipient
+    // Include the necessary "p" tag of the recipient
     setMessageAddress(parent.pubkey),
     // Include the parent message id
     setMessageParent(parent),

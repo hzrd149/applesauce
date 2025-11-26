@@ -1,9 +1,10 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { blueprint } from "../../../factory/src/event-factory.jsnt-factory.js";
-import { EventBlueprint } from "../../../factory/src/types.jscore/factory-types.js";
-import { StreamChat } from "../../../factory/src/operations/index.jsations/stream-chat.js";
-import { AddressPointer } from "nostr-tools/nip19";
-import { TextContentOptions } from "../../../factory/src/operations/content.jsoperations/content.js";
+import { TextContentOptions } from "applesauce-core/operations";
+import { AddressPointer } from "applesauce-core/helpers/pointers";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { EventBlueprint } from "applesauce-core/event-factory";
+import { blueprint } from "applesauce-core/event-factory";
+import { kinds } from "applesauce-core/helpers/event";
+import { setMessage, setStream } from "../operations/stream-chat.js";
 
 /** Creates a stream chat message */
 export function StreamChatMessage(
@@ -11,5 +12,5 @@ export function StreamChatMessage(
   content: string,
   options?: TextContentOptions,
 ): EventBlueprint {
-  return blueprint(kinds.LiveChatMessage, StreamChat.setMessage(content, options), StreamChat.setStream(stream));
+  return blueprint(kinds.LiveChatMessage, setMessage(content, options), setStream(stream));
 }

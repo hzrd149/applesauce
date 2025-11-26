@@ -63,9 +63,9 @@
       "types": "./dist/event-store/index.d.ts"
     },
     "./event-factory": {
-      "import": "./dist/event-factory.js",
-      "require": "./dist/event-factory.js",
-      "types": "./dist/event-factory.d.ts"
+      "import": "./dist/event-factory/index.js",
+      "require": "./dist/event-factory/index.js",
+      "types": "./dist/event-factory/index.d.ts"
     },
     "./operations": {
       "import": "./dist/operations/index.js",

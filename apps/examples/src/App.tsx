@@ -134,7 +134,7 @@ function ExampleView({ example }: { example?: Example }) {
             <a
               target="_blank"
               className="btn btn-sm btn-ghost btn-square"
-              href={`https://github.com/hzrd149/applesauce/tree/master/packages/examples/src/${path}`}
+              href={`https://github.com/hzrd149/applesauce/tree/master/apps/examples/src/${path}`}
             >
               <ExternalLinkIcon />
             </a>

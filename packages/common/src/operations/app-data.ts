@@ -1,7 +1,8 @@
-import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
 import { EventOperation } from "applesauce-core/event-factory";
-import { setContent as setPlaintextContent, setHiddenContent } from "./content.js";
-import { includeSingletonTag } from "./tags.js";
+import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
+import { setContent as setPlaintextContent } from "applesauce-core/operations/content";
+import { setHiddenContent } from "applesauce-core/operations/hidden-content";
+import { includeSingletonTag } from "applesauce-core/operations/tags";
 
 /** Sets the app data identifier */
 export function setIdentifier(identifier: string): EventOperation {

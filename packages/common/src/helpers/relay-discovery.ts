@@ -1,5 +1,5 @@
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 
 // NIP-66 Relay Discovery Kinds
 export const RELAY_DISCOVERY_KIND = 30166;

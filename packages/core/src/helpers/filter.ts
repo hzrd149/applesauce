@@ -1,6 +1,29 @@
 import equal from "fast-deep-equal";
 import { Filter as CoreFilter, NostrEvent } from "nostr-tools";
-import { getIndexableTags } from "./event-tags.js";
+
+const LETTERS = "abcdefghijklmnopqrstuvwxyz";
+export const INDEXABLE_TAGS = new Set((LETTERS + LETTERS.toUpperCase()).split(""));
+
+export const EventIndexableTagsSymbol = Symbol.for("indexable-tags");
+
+/** Returns a Set of tag names and values that are indexable */
+export function getIndexableTags(event: NostrEvent): Set<string> {
+  let indexable = Reflect.get(event, EventIndexableTagsSymbol) as Set<string> | undefined;
+  if (!indexable) {
+    const tags = new Set<string>();
+
+    for (const tag of event.tags) {
+      if (tag.length >= 2 && tag[0].length === 1 && INDEXABLE_TAGS.has(tag[0])) {
+        tags.add(tag[0] + ":" + tag[1]);
+      }
+    }
+
+    indexable = tags;
+    Reflect.set(event, EventIndexableTagsSymbol, tags);
+  }
+
+  return indexable;
+}
 
 /**
  * Extended Filter type that supports NIP-91 AND operator and NIP-50 search filter field

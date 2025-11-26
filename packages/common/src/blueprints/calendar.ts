@@ -1,8 +1,8 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { AddressPointer } from "nostr-tools/nip19";
+import { blueprint, EventBlueprint } from "applesauce-core/event-factory";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { AddressPointer } from "applesauce-core/helpers/pointers";
 
-import { blueprint, EventBlueprint } from "../../../factory/src/index.js";
-import { addEvent, setTitle } from "../../../factory/src/operations/calendar.js";
+import { addEvent, setTitle } from "../operations/calendar.js";
 
 /** Creates a calendar event with a title and optional events */
 export function CalendarBlueprint(title: string, events?: (NostrEvent | AddressPointer)[]): EventBlueprint {

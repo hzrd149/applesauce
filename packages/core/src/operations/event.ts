@@ -1,13 +1,14 @@
 import { nanoid } from "nanoid";
 
 import { EventOperation } from "../event-factory/types.js";
-import { getTagValue } from "../helpers/event-tags.js";
+import { getTagValue } from "../helpers/event.js";
 import { EventTemplate, isAddressableKind, NostrEvent, UnsignedEvent } from "../helpers/event.js";
 import { eventPipe, skip } from "../helpers/pipeline.js";
 import { ensureSingletonTag } from "../helpers/tags.js";
 import { unixNow } from "../helpers/time.js";
 import { removeSingletonTag, setSingletonTag } from "./tag/common.js";
 import { includeSingletonTag, modifyPublicTags } from "./tags.js";
+import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 
 /** An operation that removes the signature from the event template */
 export function stripSignature<Input extends NostrEvent | UnsignedEvent | EventTemplate>(): EventOperation<
@@ -100,4 +101,45 @@ export function setMetaTags(options?: MetaTagOptions): EventOperation {
     options?.expiration ? setExpirationTimestamp(options.expiration) : skip(),
     options?.alt ? includeAltTag(options.alt) : skip(),
   );
+}
+
+/**
+ * An operation that adds the signers pubkey to the event
+ * @throws {Error} if no signer is provided
+ */
+export function stamp(): EventOperation<EventTemplate, UnsignedEvent> {
+  return async (draft, ctx) => {
+    if (!ctx.signer) throw new Error("Missing signer");
+
+    // Remove old fields from signed nostr event
+    Reflect.deleteProperty(draft, "id");
+    Reflect.deleteProperty(draft, "sig");
+
+    const pubkey = await ctx.signer.getPublicKey();
+    const newDraft = { ...draft, pubkey };
+
+    // copy the plaintext hidden content if its on the draft
+    if (Reflect.has(draft, EncryptedContentSymbol))
+      Reflect.set(newDraft, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
+
+    return newDraft;
+  };
+}
+
+/**
+ * An operation that signs the event
+ * @throws {Error} if no signer is provided
+ */
+export function sign(): EventOperation<EventTemplate | UnsignedEvent, NostrEvent> {
+  return async (draft, ctx) => {
+    if (!ctx.signer) throw new Error("Missing signer");
+    draft = await stamp()(draft, ctx);
+    const signed = await ctx.signer.signEvent(draft);
+
+    // copy the plaintext hidden content if its on the draft
+    if (Reflect.has(draft, EncryptedContentSymbol))
+      Reflect.set(signed, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
+
+    return signed;
+  };
 }

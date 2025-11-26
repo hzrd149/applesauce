@@ -1,6 +1,6 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 
 export const TORRENT_KIND = 2003;
 

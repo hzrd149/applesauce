@@ -1,15 +1,13 @@
-import { getAddressPointerForEvent, getEventPointerForEvent } from "applesauce-core/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
-import { isAddressableKind } from "nostr-tools/kinds";
-
+import { EventOperation } from "applesauce-core/event-factory";
+import { isAddressableKind, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import {
   ensureAddressPointerTag,
   ensureEventPointerTag,
   ensureKTag,
   ensureProfilePointerTag,
-} from "../helpers/common-tags.js";
-import { EventOperation } from "../types.js";
-import { setContent } from "./content.js";
+} from "applesauce-core/helpers/factory";
+import { getAddressPointerForEvent, getEventPointerForEvent } from "applesauce-core/helpers/pointers";
+import { setContent } from "applesauce-core/operations/content";
 
 // TODO: some of these operations should be refactored to use "modifyPublicTags"
 

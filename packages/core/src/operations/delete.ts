@@ -1,9 +1,7 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
-import { isAddressableKind } from "nostr-tools/kinds";
-import { getAddressPointerForEvent } from "applesauce-core/helpers";
-
-import { EventOperation } from "../types.js";
-import { ensureAddressPointerTag, ensureEventPointerTag, ensureKTag } from "../helpers/common-tags.js";
+import { EventOperation } from "../event-factory/types.js";
+import { NostrEvent, isAddressableKind } from "../helpers/event.js";
+import { ensureAddressPointerTag, ensureEventPointerTag, ensureKTag } from "../helpers/factory.js";
+import { getAddressPointerForEvent } from "../helpers/pointers.js";
 
 /** Sets the necessary tags for a NIP-09 delete event to point to a the events being deleted */
 export function setDeleteEvents(events: NostrEvent[]): EventOperation {

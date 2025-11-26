@@ -1,4 +1,4 @@
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import { Rumor } from "../helpers/gift-wraps.js";
 import { getConversationParticipants } from "./messages.js";
 

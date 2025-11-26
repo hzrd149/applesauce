@@ -1,6 +1,6 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 
 // NIP-88 Poll kinds
 export const POLL_KIND = 1068;

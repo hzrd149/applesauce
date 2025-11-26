@@ -1,9 +1,8 @@
+import { EventOperation } from "applesauce-core/event-factory";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { EventPointer } from "nostr-tools/nip19";
-
-import { EventOperation } from "../types.js";
-import { modifyPublicTags } from "./tags.js";
-import { addEventTag } from "./tag/common.js";
+import { EventPointer } from "applesauce-core/helpers/pointers";
+import { addEventTag } from "applesauce-core/operations/tag/common";
+import { modifyPublicTags } from "applesauce-core/operations/tags";
 
 /** Sets the poll event that this response is for using an 'e' tag */
 export function setPollEvent(poll: NostrEvent | EventPointer | string): EventOperation {

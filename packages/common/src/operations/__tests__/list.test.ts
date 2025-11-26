@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { EventTemplate, kinds } from "nostr-tools";
-import { unixNow } from "applesauce-core/helpers";
-import { setDescription, setTitle } from "../../../../factory/src/operations/list";
+import { EventTemplate, unixNow } from "applesauce-core/helpers";
+import { kinds } from "applesauce-core/helpers/event";
+import { describe, expect, it } from "vitest";
+import { setDescription, setTitle } from "../../operations/list";
 
 describe("setTitle", () => {
   it("should override existing title tag", async () => {

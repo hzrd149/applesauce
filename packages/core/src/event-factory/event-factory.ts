@@ -1,15 +1,8 @@
-import { EventTemplate, NostrEvent, UnsignedEvent } from "nostr-tools";
-import { EventBlueprint, EventFactoryContext, EventOperation } from "./types.js";
-import { buildEvent, modifyEvent } from "./methods.js";
+import { EventTemplate, NostrEvent, UnsignedEvent } from "../helpers/event.js";
+import { sign, stamp } from "../operations/event.js";
 import { modifyTags, ModifyTagsOptions } from "../operations/tags.js";
-import { sign, stamp } from "../operations/signer.js";
-
-export type EventFactoryTemplate = {
-  kind: number;
-  content?: string;
-  tags?: string[][];
-  created_at?: number;
-};
+import { buildEvent, EventFactoryTemplate, modifyEvent } from "./methods.js";
+import { EventBlueprint, EventFactoryContext, EventOperation } from "./types.js";
 
 export class EventFactory {
   constructor(public context: EventFactoryContext = {}) {}

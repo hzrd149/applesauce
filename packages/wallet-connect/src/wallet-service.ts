@@ -1,7 +1,8 @@
 import { logger } from "applesauce-core";
-import { create, EventSigner } from "applesauce-core";
-import { generateSecretKey, getPublicKey, verifyEvent } from "nostr-tools";
+import { createEvent, EventSigner } from "applesauce-core/event-factory";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription } from "rxjs";
+import { verifyEvent } from "applesauce-core/helpers/event";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 
 import { bytesToHex } from "@noble/hashes/utils";
 import { WalletLegacyNotificationBlueprint, WalletNotificationBlueprint } from "./blueprints/notification.js";
@@ -244,7 +245,7 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
     notification: T["notification"],
     legacy = false,
   ): Promise<void> {
-    const draft = await create(
+    const draft = await createEvent(
       { signer: this.signer },
       legacy ? WalletLegacyNotificationBlueprint : WalletNotificationBlueprint,
       this.client,
@@ -263,7 +264,7 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
     try {
       // Tell the client which relay to use if there is only one (for nostr+walletauth URI connections)
       const overrideRelay = this.relays.length === 1 ? this.relays[0] : undefined;
-      const draft = await create(
+      const draft = await createEvent(
         { signer: this.signer },
         WalletSupportBlueprint<Methods>,
         this.support,
@@ -386,7 +387,7 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
     response: Method["response"] | Method["error"],
   ): Promise<void> {
     try {
-      const draft = await create({ signer: this.signer }, WalletResponseBlueprint<Method>(requestEvent, response));
+      const draft = await createEvent({ signer: this.signer }, WalletResponseBlueprint<Method>(requestEvent, response));
       const event = await this.signer.signEvent(draft);
       await this.publishMethod(this.relays, event);
     } catch (error) {

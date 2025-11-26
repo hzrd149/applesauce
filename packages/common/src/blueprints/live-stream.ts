@@ -1,8 +1,8 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { blueprint } from "../../../factory/src/event-factory.jsnt-factory.js";
-import { MetaTagOptions, setMetaTags } from "../../../factory/src/operations/common.js-operations/common.js";
-import { setShortTextContent, TextContentOptions } from "../../../factory/src/operations/content.jsoperations/content.js";
-import { includeLiveStreamTag } from "../../../factory/src/operations/live-stream.js/live-stream.js";
+import { blueprint } from "applesauce-core/event-factory";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
+import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { includeLiveStreamTag } from "../operations/live-stream.js";
 
 export type LiveChatMessageBlueprintOptions = TextContentOptions & MetaTagOptions;
 

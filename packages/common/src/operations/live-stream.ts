@@ -1,8 +1,7 @@
+import { EventOperation } from "applesauce-core/event-factory";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { getAddressPointerForEvent } from "applesauce-core/helpers";
-
-import { EventOperation } from "../types.js";
-import { ensureMarkedAddressPointerTag } from "../helpers/common-tags.js";
+import { ensureMarkedAddressPointerTag } from "applesauce-core/helpers/factory";
+import { getAddressPointerForEvent } from "applesauce-core/helpers/pointers";
 
 /** Includes the "a" tag for live streams */
 export function includeLiveStreamTag(stream: NostrEvent): EventOperation {

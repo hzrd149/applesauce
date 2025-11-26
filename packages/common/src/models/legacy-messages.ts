@@ -1,6 +1,6 @@
 import { Model } from "applesauce-core/event-store";
 import { NostrEvent, kinds } from "applesauce-core/helpers/event";
-import { hasNameValueTag } from "applesauce-core/helpers/event-tags";
+import { hasNameValueTag } from "applesauce-core/helpers/event";
 import { map } from "rxjs";
 
 import { getLegacyMessageCorrespondent, getLegacyMessageParent } from "../helpers/legacy-messages.js";

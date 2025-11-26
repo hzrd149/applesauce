@@ -1,7 +1,7 @@
 import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
 import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
 import { KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import {
   HiddenContentSigner,
   isHiddenContentUnlocked,

@@ -13,6 +13,8 @@ export {
   verifiedSymbol,
   verifyEvent,
   getEventHash,
+  finalizeEvent,
+  serializeEvent,
 } from "nostr-tools/pure";
 export {
   binarySearch,
@@ -151,4 +153,23 @@ export function getReplaceableIdentifier(event: NostrEvent): string {
 /** Checks if an event is a NIP-70 protected event */
 export function isProtectedEvent(event: NostrEvent): boolean {
   return event.tags.some((t) => t[0] === "-");
+}
+
+/**
+ * Returns the second index ( tag[1] ) of the first tag that matches the name
+ */
+export function getTagValue<T extends { kind: number; tags: string[][]; content: string }>(
+  event: T,
+  name: string,
+): string | undefined {
+  return event.tags.find((t) => t[0] === name)?.[1];
+}
+
+/** Checks if an event has a public name / value tag*/
+export function hasNameValueTag<T extends { kind: number; tags: string[][]; content: string }>(
+  event: T,
+  name: string,
+  value: string,
+): boolean {
+  return event.tags.some((t) => t[0] === name && t[1] === value);
 }

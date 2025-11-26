@@ -1,8 +1,8 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { blueprint } from "../../../factory/src/event-factory.js";
-import { MetaTagOptions, setMetaTags } from "../../../factory/src/operations/common.js";
-import { setShareTags, embedSharedEvent, setShareKind } from "../../../factory/src/operations/share.js";
-import { setZapSplit, ZapOptions } from "applesauce-common/operations/zap-split.js";
+import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { embedSharedEvent, setShareKind, setShareTags } from "../operations/share.js";
+import { blueprint } from "applesauce-core/event-factory";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
 
 export type ShareBlueprintOptions = MetaTagOptions & ZapOptions;
 

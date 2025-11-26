@@ -1,9 +1,7 @@
-import { getAddressPointerForEvent, isAddressPointer } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { AddressPointer } from "nostr-tools/nip19";
-
-import { ensureAddressPointerTag } from "../helpers/common-tags.js";
-import { eventPipe, skip } from "../helpers/pipeline.js";
+import { ensureAddressPointerTag } from "applesauce-core/helpers/factory";
+import { eventPipe, skip } from "applesauce-core/helpers/pipeline";
+import { AddressPointer, getAddressPointerForEvent, isAddressPointer } from "applesauce-core/helpers/pointers";
 import {
   includeEmojis,
   includeQuoteTags,
@@ -12,8 +10,8 @@ import {
   setContentWarning,
   tagPubkeyMentions,
   TextContentOptions,
-} from "./content.js";
-import { modifyPublicTags } from "./tags.js";
+} from "applesauce-core/operations/content";
+import { modifyPublicTags } from "applesauce-core/operations/tags";
 
 /** Sets the message content for a stream chat event */
 export function setMessage(content: string, options?: TextContentOptions) {

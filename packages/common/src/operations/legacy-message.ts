@@ -1,6 +1,6 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { EventOperation } from "../types.js";
-import { includeNameValueTag } from "./tags.js";
+import { EventOperation } from "applesauce-core/event-factory";
+import { includeNameValueTag } from "applesauce-core/operations/tags";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 
 /** Includes the nip-04 direct message "p" tag */
 export function setMessageAddress(pubkey: string): EventOperation {

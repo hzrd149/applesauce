@@ -1,5 +1,5 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 
 export type Emoji = {
   /** The emoji shortcode (without the ::) */

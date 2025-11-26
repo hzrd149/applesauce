@@ -2,7 +2,7 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { ProfilePointer } from "nostr-tools/nip19";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import { getProfilePointerFromPTag } from "applesauce-core/helpers/pointers";
 import { isPTag, isRTag, isTTag } from "applesauce-core/helpers/tags";
 

@@ -59,7 +59,6 @@
     "applesauce-actions": "^4.0.0",
     "applesauce-content": "^4.0.0",
     "applesauce-core": "^4.0.0",
-    "applesauce-factory": "^4.0.0",
     "hash-sum": "^2.0.0",
     "nostr-tools": "~2.17",
     "observable-hooks": "^4.2.4",

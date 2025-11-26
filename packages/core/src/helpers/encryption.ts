@@ -1,3 +1,6 @@
+// reexport encryption methods from nostr-tools
+export { nip04, nip44 } from "nostr-tools";
+
 /**
  * Checks if a string is encrypted with NIP-04 or NIP-44
  * @see https://github.com/nostr-protocol/nips/pull/1248#issuecomment-2437731316

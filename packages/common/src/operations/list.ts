@@ -1,6 +1,6 @@
-import { EventOperation } from "../types.js";
-import { removeSingletonTag, setSingletonTag } from "./tag/common.js";
-import { modifyPublicTags } from "./tags.js";
+import { EventOperation } from "applesauce-core/event-factory";
+import { removeSingletonTag, setSingletonTag } from "applesauce-core/operations/tag/common";
+import { modifyPublicTags } from "applesauce-core/operations/tags";
 
 /** Sets or removes the "title" tag on a NIP-51 list */
 export function setTitle(title: string | null): EventOperation {

@@ -1,8 +1,7 @@
-import { kinds, NostrEvent } from "nostr-tools";
-
-import { blueprint } from "../../../factory/src/event-factory.jsnt-factory.js";
-import { setContent } from "../../../factory/src/operations/content.jsoperations/content.js";
-import { setDeleteEvents } from "../../../factory/src/operations/delete.jstions/delete.js";
+import { blueprint } from "applesauce-core/event-factory";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { setContent } from "applesauce-core/operations";
+import { setDeleteEvents } from "applesauce-core/operations/delete";
 
 /** A blueprint for a NIP-09 delete event */
 export function DeleteBlueprint(events: NostrEvent[], reason?: string) {

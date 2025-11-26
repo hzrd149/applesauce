@@ -1,6 +1,6 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers";
 import { KnownEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
   EventPointer,

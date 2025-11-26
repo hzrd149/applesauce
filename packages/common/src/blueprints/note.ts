@@ -1,9 +1,7 @@
-import { kinds } from "nostr-tools";
-
-import { blueprint } from "../../../factory/src/event-factory.js";
-import { MetaTagOptions, setMetaTags } from "../../../factory/src/operations/common.js";
-import { setShortTextContent, TextContentOptions } from "../../../factory/src/operations/content.js";
-import { setZapSplit, ZapOptions } from "applesauce-common/operations/zap-split.js";
+import { blueprint } from "applesauce-core/event-factory";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { MetaTagOptions, setMetaTags, setShortTextContent, TextContentOptions } from "applesauce-core/operations";
+import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
 
 export type NoteBlueprintOptions = TextContentOptions & MetaTagOptions & ZapOptions;
 
@@ -14,5 +12,21 @@ export function NoteBlueprint(content: string, options?: NoteBlueprintOptions) {
     setShortTextContent(content, options),
     setZapSplit(options),
     setMetaTags(options),
+  );
+}
+
+/** Short text note reply (kind 1) blueprint */
+export function NoteReplyBlueprint(parent: NostrEvent, content: string, options?: TextContentOptions) {
+  if (parent.kind !== kinds.ShortTextNote)
+    throw new Error("Kind 1 replies should only be used to reply to kind 1 notes");
+
+  return blueprint(
+    kinds.ShortTextNote,
+    // add NIP-10 tags
+    setThreadParent(parent),
+    // copy "p" tags from parent
+    includeNofityTags(parent),
+    // set default text content
+    setShortTextContent(content, options),
   );
 }

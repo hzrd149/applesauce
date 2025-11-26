@@ -1,7 +1,7 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer } from "nostr-tools/nip19";
 
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import { getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { isATag } from "applesauce-core/helpers/tags";
 

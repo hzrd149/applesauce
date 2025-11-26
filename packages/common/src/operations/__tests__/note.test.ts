@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { includeNofityTags } from "../note.js";
-import { FakeUser } from "../../__tests__/fake-user";
+import { FakeUser } from "../../__tests__/fixtures.js";
 
 const user = new FakeUser();
 

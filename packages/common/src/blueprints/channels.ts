@@ -1,9 +1,7 @@
-import { kinds, NostrEvent } from "nostr-tools";
-
-import { blueprint } from "../../../factory/src/event-factory.js";
-import { includeChannelPointerTag } from "../../../factory/src/operations/channel.js";
-import { setShortTextContent, TextContentOptions } from "../../../factory/src/operations/content.js";
-import { includeNofityTags, setThreadParent } from "applesauce-common/operations/note.js";
+import { blueprint } from "applesauce-core/event-factory";
+import { NostrEvent, kinds } from "applesauce-core/helpers/event";
+import { includeChannelPointerTag } from "../operations/channel.js";
+import { setShortTextContent, TextContentOptions } from "applesauce-core/operations";
 
 /** Creates a NIP-28 channel message */
 export function ChannelMessageBlueprint(channel: NostrEvent, message: string, options?: TextContentOptions) {

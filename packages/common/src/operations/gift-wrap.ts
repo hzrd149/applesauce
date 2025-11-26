@@ -1,18 +1,24 @@
-import { EncryptedContentSymbol } from "applesauce-core/helpers/encrypted-content";
-import { EventTemplate, getEventHash, kinds, NostrEvent, UnsignedEvent } from "applesauce-core/helpers/event";
-import { GiftWrapSymbol, Rumor, RumorSymbol, SealSymbol } from "applesauce-core/helpers/gift-wraps";
-import { unixNow } from "applesauce-core/helpers/time";
-import { finalizeEvent, generateSecretKey, nip44 } from "nostr-tools";
-
-import { build } from "../event-factory.js";
-import { eventPipe } from "../helpers/pipeline.js";
-import { EventOperation } from "../types.js";
-import { MetaTagOptions, setMetaTags } from "./common.js";
-import { setEncryptedContent } from "./content.js";
-import { stamp } from "./signer.js";
-
 // Read https://github.com/nostr-protocol/nips/blob/master/59.md#overview for details on rumors and seals
 // Gift wrap (signed random key) -> seal (signed sender key) -> rumor (unsigned)
+
+import { buildEvent, EventOperation } from "applesauce-core/event-factory";
+import { EncryptedContentSymbol } from "applesauce-core/helpers/encrypted-content";
+import { nip44 } from "applesauce-core/helpers/encryption";
+import {
+  EventTemplate,
+  finalizeEvent,
+  getEventHash,
+  kinds,
+  NostrEvent,
+  UnsignedEvent,
+} from "applesauce-core/helpers/event";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { eventPipe } from "applesauce-core/helpers/pipeline";
+import { unixNow } from "applesauce-core/helpers/time";
+import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
+import { stamp } from "applesauce-core/operations/event";
+import { GiftWrapSymbol, Rumor, RumorSymbol, SealSymbol } from "../helpers/gift-wraps.js";
+import { MetaTagOptions, setMetaTags } from "./common.js";
 
 /** Create a timestamp with a random offset of an hour */
 function randomNow() {
@@ -47,7 +53,7 @@ export function sealRumor(pubkey: string): EventOperation<Rumor, NostrEvent> {
     if (!ctx.signer) throw new Error("A signer is required to create a seal");
 
     const plaintext = JSON.stringify(rumor);
-    const unsigned = await build(
+    const unsigned = await buildEvent(
       { kind: kinds.Seal, created_at: randomNow() },
       ctx,
       // Set the encrypted content
@@ -78,7 +84,7 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
     const key = generateSecretKey();
     const plaintext = JSON.stringify(seal);
 
-    const draft = await build(
+    const draft = await buildEvent(
       {
         kind: kinds.GiftWrap,
         created_at: randomNow(),

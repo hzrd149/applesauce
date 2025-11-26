@@ -1,14 +1,14 @@
-import {
-  addEventTag,
-  addNameValueTag,
-  addPubkeyTag,
-  removeEventTag,
-  removeNameValueTag,
-  removePubkeyTag,
-} from "applesauce-factory/operations/tag";
-import { kinds, NostrEvent } from "nostr-tools";
-import { EventPointer } from "nostr-tools/nip19";
 import { IEventStoreRead } from "applesauce-core/event-store";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { EventPointer } from "applesauce-core/helpers/pointers";
+import {
+  addEventPointerTag,
+  addNameValueTag,
+  addProfilePointerTag,
+  removeEventPointerTag,
+  removeNameValueTag,
+  removeProfilePointerTag,
+} from "applesauce-core/operations/tag/common";
 
 import { Action } from "../action-hub.js";
 
@@ -23,7 +23,7 @@ export function MuteUser(pubkey: string, hidden = false): Action {
   return async function* ({ events, factory, self }) {
     const mute = ensureMuteList(events, self);
 
-    const operation = addPubkeyTag(pubkey);
+    const operation = addProfilePointerTag(pubkey);
     const draft = await factory.modifyTags(mute, hidden ? { hidden: operation } : operation);
     yield await factory.sign(draft);
   };
@@ -36,7 +36,7 @@ export function UnmuteUser(pubkey: string, hidden = false): Action {
 
     const draft = await factory.modifyTags(
       mute,
-      hidden ? { hidden: removePubkeyTag(pubkey) } : removePubkeyTag(pubkey),
+      hidden ? { hidden: removeProfilePointerTag(pubkey) } : removeProfilePointerTag(pubkey),
     );
     yield await factory.sign(draft);
   };
@@ -47,7 +47,7 @@ export function MuteThread(thread: string | NostrEvent | EventPointer, hidden = 
   return async function* ({ events, factory, self }) {
     const mute = ensureMuteList(events, self);
 
-    const operation = addEventTag(thread);
+    const operation = addEventPointerTag(thread);
     const draft = await factory.modifyTags(mute, hidden ? { hidden: operation } : operation);
     yield await factory.sign(draft);
   };
@@ -58,7 +58,7 @@ export function UnmuteThread(thread: string | NostrEvent | EventPointer, hidden 
   return async function* ({ events, factory, self }) {
     const mute = ensureMuteList(events, self);
 
-    const operation = removeEventTag(thread);
+    const operation = removeEventPointerTag(thread);
     const draft = await factory.modifyTags(mute, hidden ? { hidden: operation } : operation);
     yield await factory.sign(draft);
   };

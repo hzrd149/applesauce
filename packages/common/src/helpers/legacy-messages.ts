@@ -7,7 +7,7 @@ import {
   UnlockedEncryptedContent,
   unlockEncryptedContent,
 } from "applesauce-core/helpers/encrypted-content";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import { KnownEvent } from "applesauce-core/helpers/event";
 
 /** Type for valid legacy direct messages */

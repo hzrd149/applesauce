@@ -1,11 +1,10 @@
-import { kinds } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { blueprint, EventBlueprint } from "applesauce-core/event-factory";
+import { kinds } from "applesauce-core/helpers/event";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { addPubkeyTag } from "applesauce-core/operations/tag/common";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations/tags";
 
-import { blueprint } from "../../../factory/src/event-factory.jsnt-factory.js";
-import { setDescription, setImage, setTitle } from "../../../factory/src/operations/list.jsrations/list.js";
-import { modifyHiddenTags, modifyPublicTags } from "../../../factory/src/operations/tags.jsry-operations/tags.js";
-import { addPubkeyTag } from "../../../factory/src/operations/tag/common.jsrations/tag/common.js";
-import { EventBlueprint } from "../../../factory/src/types.jscore/factory-types.js";
+import { setDescription, setImage, setTitle } from "../operations/list.js";
 
 /** Creates a new kind 30000 follow set */
 export function FollowSetBlueprint(

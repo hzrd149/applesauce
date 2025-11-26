@@ -14,7 +14,7 @@ import {
 import { ensureNamedValueTag, ensureSingletonTag } from "../../helpers/tags.js";
 
 /** Adds a single "p" tag for a ProfilePointer */
-export function addPubkeyTag(pubkey: string | ProfilePointer, replace = true): TagOperation {
+export function addProfilePointerTag(pubkey: string | ProfilePointer, replace = true): TagOperation {
   return async (tags, { getPubkeyRelayHint }) => {
     const pointer = typeof pubkey === "string" ? { pubkey: pubkey } : { ...pubkey };
 
@@ -33,13 +33,13 @@ export function addPubkeyTag(pubkey: string | ProfilePointer, replace = true): T
 }
 
 /** Removes all "p" tags matching a pubkey */
-export function removePubkeyTag(pubkey: string | ProfilePointer): TagOperation {
+export function removeProfilePointerTag(pubkey: string | ProfilePointer): TagOperation {
   pubkey = typeof pubkey !== "string" ? pubkey.pubkey : pubkey;
   return (tags) => tags.filter((t) => !(t[0] === "p" && t[1] === pubkey));
 }
 
 /** Adds a a single "e" tag for an EventPointer */
-export function addEventTag(id: string | EventPointer, replace = true): TagOperation {
+export function addEventPointerTag(id: string | EventPointer, replace = true): TagOperation {
   return async (tags, { getEventRelayHint }) => {
     const pointer = typeof id === "string" ? { id } : id;
 
@@ -58,13 +58,13 @@ export function addEventTag(id: string | EventPointer, replace = true): TagOpera
 }
 
 /** Removes all "e" tags matching EventPointer or id */
-export function removeEventTag(id: string | EventPointer): TagOperation {
+export function removeEventPointerTag(id: string | EventPointer): TagOperation {
   id = typeof id === "string" ? id : id.id;
   return (tags) => tags.filter((t) => !(t[0] === "e" && t[1] === id));
 }
 
 /** Adds a single "a" tag based on an AddressPointer */
-export function addAddressTag(cord: string | AddressPointer, replace = true): TagOperation {
+export function addAddressPointerTag(cord: string | AddressPointer, replace = true): TagOperation {
   return async (tags, { getPubkeyRelayHint }) => {
     // convert the string into an address pointer object
     const pointer = typeof cord === "string" ? parseCoordinate(cord, true, false) : cord;
@@ -85,7 +85,7 @@ export function addAddressTag(cord: string | AddressPointer, replace = true): Ta
 }
 
 /** Removes all "a" tags for address pointer */
-export function removeAddressTag(cord: string | AddressPointer): TagOperation {
+export function removeAddressPointerTag(cord: string | AddressPointer): TagOperation {
   cord = typeof cord !== "string" ? getCoordinateFromAddressPointer(cord) : cord;
 
   return (tags) => tags.filter((t) => !(t[0] === "a" && t[1] === cord));

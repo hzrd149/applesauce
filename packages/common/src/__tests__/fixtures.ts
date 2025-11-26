@@ -1,8 +1,9 @@
-import { EncryptedContentSigner, unixNow } from "applesauce-core/helpers";
+import { EventSigner } from "applesauce-core/event-factory";
+import { EncryptedContentSigner, EventTemplate, unixNow, UnsignedEvent } from "applesauce-core/helpers";
 import type { NostrEvent } from "nostr-tools";
 import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04, nip44 } from "nostr-tools";
 
-export class FakeUser implements EncryptedContentSigner {
+export class FakeUser implements EncryptedContentSigner, EventSigner {
   key = generateSecretKey();
   pubkey = getPublicKey(this.key);
 
@@ -17,6 +18,14 @@ export class FakeUser implements EncryptedContentSigner {
     decrypt: (pubkey: string, ciphertext: string) =>
       nip44.decrypt(ciphertext, nip44.getConversationKey(this.key, pubkey)),
   };
+
+  getPublicKey() {
+    return this.pubkey;
+  }
+
+  signEvent(draft: EventTemplate | UnsignedEvent) {
+    return finalizeEvent(draft, this.key);
+  }
 
   event(data?: Partial<NostrEvent>): NostrEvent {
     return finalizeEvent(
@@ -36,5 +45,14 @@ export class FakeUser implements EncryptedContentSigner {
 
   profile(profile: any, extra?: Partial<NostrEvent>) {
     return this.event({ kind: kinds.Metadata, content: JSON.stringify({ ...profile }), ...extra });
+  }
+
+  list(tags: string[][] = [], extra?: Partial<NostrEvent>) {
+    return this.event({
+      kind: kinds.Bookmarksets,
+      content: "",
+      tags: [["d", String(Math.round(Math.random() * 10000))], ...tags],
+      ...extra,
+    });
   }
 }

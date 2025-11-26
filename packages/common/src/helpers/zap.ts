@@ -1,6 +1,6 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { KnownEvent, verifyWrappedEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import { getAddressPointerFromATag, getEventPointerFromETag } from "applesauce-core/helpers/pointers";
 import { isATag, isETag } from "applesauce-core/helpers/tags";
 import { kinds, NostrEvent, validateEvent } from "nostr-tools";

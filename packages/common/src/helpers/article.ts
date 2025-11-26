@@ -1,5 +1,5 @@
 import { KnownEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event-tags";
+import { getTagValue } from "applesauce-core/helpers/event";
 import { kinds, NostrEvent } from "nostr-tools";
 
 /** Type for validated article events */

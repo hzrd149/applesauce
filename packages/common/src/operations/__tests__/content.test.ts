@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { EncryptedContentSymbol, setEncryptedContentEncryptionMethod, unixNow } from "applesauce-core/helpers";
+import { buildEvent } from "applesauce-core/event-factory";
 
 import { includeContentHashtags, repairNostrLinks, setContent, setEncryptedContent } from "../content.js";
 import { FakeUser } from "../../__tests__/fake-user";
-import { build } from "../../event-factory";
 
 let user: FakeUser;
 
@@ -85,7 +85,7 @@ describe("setContent", () => {
 
 describe("setEncryptedContent", () => {
   it("should set the encrypted content", async () => {
-    const draft = await build(
+    const draft = await buildEvent(
       { kind: 4 },
       { signer: user },
       setEncryptedContent(user.pubkey, "Hello, world!", "nip04"),

@@ -1,8 +1,7 @@
-import { ProfileContent } from "applesauce-core/helpers";
-import { kinds } from "nostr-tools";
-
-import { blueprint } from "../../../factory/src/event-factory.jsnt-factory.js";
-import { setProfile } from "../../../factory/src/operations/profile.jsions/profile.js";
+import { blueprint } from "applesauce-core/event-factory";
+import { ProfileContent } from "applesauce-core/helpers/profile";
+import { kinds } from "applesauce-core/helpers/event";
+import { setProfile } from "applesauce-core/operations/profile";
 
 /** User Profile (kind 0) blueprint */
 export function ProfileBlueprint(content: ProfileContent) {
