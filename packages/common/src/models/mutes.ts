@@ -5,7 +5,7 @@ import { watchEventUpdates } from "applesauce-core/observable";
 import { type Observable } from "rxjs";
 import { map } from "rxjs/operators";
 
-import { getHiddenMutedThings, getMutedThings, getPublicMutedThings, Mutes } from "../helpers/mutes.js";
+import { getHiddenMutedThings, getMutedThings, getPublicMutedThings, Mutes } from "../helpers/mute.js";
 
 // Import EventModels as a value (class) to modify its prototype
 import { EventModels } from "applesauce-core/event-store";

@@ -3,7 +3,7 @@ import { kinds } from "applesauce-core/helpers/event";
 import { watchEventUpdates } from "applesauce-core/observable";
 import { map } from "rxjs/operators";
 
-import { Bookmarks, getBookmarks, getHiddenBookmarks, getPublicBookmarks } from "../helpers/bookmarks.js";
+import { Bookmarks, getBookmarks, getHiddenBookmarks, getPublicBookmarks } from "../helpers/bookmark.js";
 
 /** A model that returns all the bookmarks of a user */
 export function UserBookmarkModel(pubkey: string): Model<Bookmarks | undefined> {

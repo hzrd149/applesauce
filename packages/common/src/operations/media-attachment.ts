@@ -1,5 +1,5 @@
 import { EventOperation } from "applesauce-core/event-factory";
-import { createImetaTagForAttachment } from "../helpers/file-metadata-helper.js";
+import { createImetaTagForAttachment } from "../helpers/file-metadata.js";
 import { FileMetadata } from "../helpers/file-metadata.js";
 
 /** Adds "imeta" tags on to any event */

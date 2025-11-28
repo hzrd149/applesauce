@@ -34,6 +34,11 @@ interface WordCloudDataPoint {
   value: number;
 }
 
+interface RelayData {
+  url: string;
+  attributes: string[];
+}
+
 /**
  * Counts the number of unique relays that have each attribute
  */
@@ -86,6 +91,44 @@ function prepareWordCloudData(attributeData: AttributeData[]): WordCloudDataPoin
     key: data.attribute,
     value: data.relayCount,
   }));
+}
+
+/**
+ * Extracts relay data with their attributes
+ */
+function extractRelayData(events: NostrEvent[]): RelayData[] {
+  // Map of relay URL -> set of attributes
+  const relayAttributes = new Map<string, Set<string>>();
+
+  // Process each event
+  for (const event of events) {
+    if (!isValidRelayDiscovery(event)) continue;
+
+    const relayUrl = getRelayDiscoveryURL(event);
+    if (!relayUrl) continue;
+
+    const attributes = getRelayDiscoveryAttributes(event);
+    if (attributes.length === 0) continue;
+
+    // Get or create the set of attributes for this relay
+    if (!relayAttributes.has(relayUrl)) {
+      relayAttributes.set(relayUrl, new Set());
+    }
+
+    // Add all attributes for this relay
+    const attributeSet = relayAttributes.get(relayUrl)!;
+    for (const attr of attributes) {
+      attributeSet.add(attr);
+    }
+  }
+
+  // Convert to array and sort by URL
+  return Array.from(relayAttributes.entries())
+    .map(([url, attributes]) => ({
+      url,
+      attributes: Array.from(attributes).sort(),
+    }))
+    .sort((a, b) => a.url.localeCompare(b.url));
 }
 
 export default function RelayDiscoveryAttributes() {
@@ -269,6 +312,12 @@ export default function RelayDiscoveryAttributes() {
     return relaySet.size;
   }, [events]);
 
+  // Extract relay data with attributes
+  const relayData = useMemo(() => {
+    if (!events || events.length === 0) return [];
+    return extractRelayData(events);
+  }, [events]);
+
   // Handle attribute button click - add to input
   const handleAttributeClick = (attribute: string) => {
     if (!attributeInput.includes(attribute)) {
@@ -283,108 +332,240 @@ export default function RelayDiscoveryAttributes() {
         <RelayPicker value={relayUrl} onChange={setRelayUrl} />
       </div>
 
-      {/* Warning if relay doesn't support NIP-91 */}
-      {relayUrl && !supportsNip91 && supportedNips !== null && (
-        <div className="alert alert-warning mb-4">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="stroke-current shrink-0 h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
-          <span>
-            This relay does not support NIP-91 (AND tag filters). Multiple attribute filtering may not work as expected.
-          </span>
-        </div>
-      )}
+      <Nip91Warning relayUrl={relayUrl} supportsNip91={supportsNip91} supportedNips={supportedNips} />
 
-      {/* Attribute input */}
-      <div className="mb-4">
-        <label className="label">
-          <span className="label-text">Filter by attributes (space or comma separated)</span>
-        </label>
-        <input
-          type="text"
-          placeholder="attribute1 attribute2"
-          className="input input-bordered w-full"
-          value={attributeInput}
-          onChange={(e) => setAttributeInput(e.target.value)}
-        />
-        {attributeFilters.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {attributeFilters.map((attr) => (
-              <span key={attr} className="badge badge-primary">
-                {attr}
-                <button
-                  className="ml-1 hover:font-bold"
-                  onClick={() => {
-                    const newFilters = attributeFilters.filter((a) => a !== attr);
-                    setAttributeInput(newFilters.join(" "));
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      <AttributeFilterInput
+        attributeInput={attributeInput}
+        setAttributeInput={setAttributeInput}
+        attributeFilters={attributeFilters}
+      />
 
-      {/* Attribute buttons */}
       {allAttributes.length > 0 && (
-        <div className="mb-4">
-          <label className="label">
-            <span className="label-text">Available attributes (click to add)</span>
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {allAttributes.map((attr) => (
+        <AttributeButtons
+          allAttributes={allAttributes}
+          attributeFilters={attributeFilters}
+          onAttributeClick={handleAttributeClick}
+        />
+      )}
+
+      <StatsDisplay relayUrl={relayUrl} totalRelays={totalRelays} eventCount={events?.length || 0} />
+
+      <WordCloudChart
+        relayUrl={relayUrl}
+        wordCloudData={wordCloudData}
+        chartOptions={chartOptions}
+        containerRef={containerRef}
+      />
+
+      {relayUrl && relayData.length > 0 && (
+        <RelaysTable relayData={relayData} onAttributeClick={handleAttributeClick} />
+      )}
+    </div>
+  );
+}
+
+// Component: NIP-91 Warning
+interface Nip91WarningProps {
+  relayUrl: string | null;
+  supportsNip91: boolean;
+  supportedNips: number[] | null | undefined;
+}
+
+function Nip91Warning({ relayUrl, supportsNip91, supportedNips }: Nip91WarningProps) {
+  if (!relayUrl || supportsNip91 || supportedNips === null) return null;
+
+  return (
+    <div className="alert alert-warning mb-4">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="stroke-current shrink-0 h-6 w-6"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+        />
+      </svg>
+      <span>
+        This relay does not support NIP-91 (AND tag filters). Multiple attribute filtering may not work as expected.
+      </span>
+    </div>
+  );
+}
+
+// Component: Attribute Filter Input
+interface AttributeFilterInputProps {
+  attributeInput: string;
+  setAttributeInput: (value: string) => void;
+  attributeFilters: string[];
+}
+
+function AttributeFilterInput({ attributeInput, setAttributeInput, attributeFilters }: AttributeFilterInputProps) {
+  return (
+    <div className="mb-4">
+      <label className="label">
+        <span className="label-text">Filter by attributes (space or comma separated)</span>
+      </label>
+      <input
+        type="text"
+        placeholder="attribute1 attribute2"
+        className="input input-bordered w-full"
+        value={attributeInput}
+        onChange={(e) => setAttributeInput(e.target.value)}
+      />
+      {attributeFilters.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {attributeFilters.map((attr) => (
+            <span key={attr} className="badge badge-primary">
+              {attr}
               <button
-                key={attr}
-                className="btn btn-sm btn-outline"
-                onClick={() => handleAttributeClick(attr)}
-                disabled={attributeFilters.includes(attr)}
+                className="ml-1 hover:font-bold"
+                onClick={() => {
+                  const newFilters = attributeFilters.filter((a) => a !== attr);
+                  setAttributeInput(newFilters.join(" "));
+                }}
               >
-                {attr}
+                ×
               </button>
-            ))}
-          </div>
+            </span>
+          ))}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Stats */}
-      {relayUrl && (
-        <div className="mb-4 text-sm text-base-content/70">
-          Found {totalRelays} unique relays from {events?.length || 0} NIP-66 reports
-        </div>
-      )}
+// Component: Attribute Buttons
+interface AttributeButtonsProps {
+  allAttributes: string[];
+  attributeFilters: string[];
+  onAttributeClick: (attribute: string) => void;
+}
 
-      {/* Word cloud chart */}
-      {relayUrl ? (
-        wordCloudData ? (
-          <div className="card bg-base-100">
-            <div className="card-body">
-              <div ref={containerRef} style={{ height: "600px" }}>
-                <Chart type="wordCloud" data={wordCloudData} options={chartOptions} />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center text-base-content/70 py-8">
-            No relay discovery events found. Try selecting a different relay.
-          </div>
-        )
-      ) : (
-        <div className="text-center text-base-content/70 py-8">
-          Please select a relay to start exploring relay attributes.
+function AttributeButtons({ allAttributes, attributeFilters, onAttributeClick }: AttributeButtonsProps) {
+  return (
+    <div className="mb-4">
+      <label className="label">
+        <span className="label-text">Available attributes (click to add)</span>
+      </label>
+      <div className="flex flex-wrap gap-2">
+        {allAttributes.map((attr) => (
+          <button
+            key={attr}
+            className="btn btn-sm btn-outline"
+            onClick={() => onAttributeClick(attr)}
+            disabled={attributeFilters.includes(attr)}
+          >
+            {attr}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Component: Stats Display
+interface StatsDisplayProps {
+  relayUrl: string | null;
+  totalRelays: number;
+  eventCount: number;
+}
+
+function StatsDisplay({ relayUrl, totalRelays, eventCount }: StatsDisplayProps) {
+  if (!relayUrl) return null;
+
+  return (
+    <div className="mb-4 text-sm text-base-content/70">
+      Found {totalRelays} unique relays from {eventCount} NIP-66 reports
+    </div>
+  );
+}
+
+// Component: Word Cloud Chart
+interface WordCloudChartProps {
+  relayUrl: string | null;
+  wordCloudData: { labels: string[]; datasets: Array<{ label: string; data: number[] }> } | null;
+  chartOptions: any;
+  containerRef: React.RefObject<HTMLDivElement>;
+}
+
+function WordCloudChart({ relayUrl, wordCloudData, chartOptions, containerRef }: WordCloudChartProps) {
+  if (!relayUrl) {
+    return (
+      <div className="text-center text-base-content/70 py-8">
+        Please select a relay to start exploring relay attributes.
+      </div>
+    );
+  }
+
+  if (!wordCloudData) {
+    return (
+      <div className="text-center text-base-content/70 py-8">
+        No relay discovery events found. Try selecting a different relay.
+      </div>
+    );
+  }
+
+  return (
+    <div className="card bg-base-100 mb-4">
+      <div className="card-body">
+        <div ref={containerRef} style={{ height: "600px" }}>
+          <Chart type="wordCloud" data={wordCloudData} options={chartOptions} />
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+// Component: Relays Table
+interface RelaysTableProps {
+  relayData: RelayData[];
+  onAttributeClick: (attribute: string) => void;
+}
+
+function RelaysTable({ relayData, onAttributeClick }: RelaysTableProps) {
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        <h2 className="text-xl font-bold mb-4">Relays ({relayData.length})</h2>
+        <div className="overflow-x-auto">
+          <table className="table table-zebra">
+            <thead>
+              <tr>
+                <th>Relay URL</th>
+                <th>Attributes</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {relayData.map((relay) => (
+                <tr key={relay.url}>
+                  <td>
+                    <code className="text-sm">{relay.url}</code>
+                  </td>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {relay.attributes.map((attr) => (
+                        <span
+                          key={attr}
+                          className="badge badge-outline cursor-pointer hover:badge-primary"
+                          onClick={() => onAttributeClick(attr)}
+                        >
+                          {attr}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td>{relay.attributes.length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

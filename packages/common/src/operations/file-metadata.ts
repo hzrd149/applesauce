@@ -1,6 +1,6 @@
 import { EventOperation } from "applesauce-core/event-factory";
 import { ensureSingletonTag } from "applesauce-core/helpers";
-import { createFileMetadataTags } from "../helpers/file-metadata-helper.js";
+import { createFileMetadataTags } from "../helpers/file-metadata.js";
 import { FileMetadata } from "../helpers/file-metadata.js";
 
 /** Sets all NIP-94 tags for {@link FileMetadata} */
