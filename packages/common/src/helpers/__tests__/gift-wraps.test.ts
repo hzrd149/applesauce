@@ -14,7 +14,7 @@ import {
   isRumor,
   unlockGiftWrap,
   type Rumor,
-} from "../gift-wraps.js";
+} from "../gift-wrap.js";
 
 let alice: FakeUser;
 let bob: FakeUser;

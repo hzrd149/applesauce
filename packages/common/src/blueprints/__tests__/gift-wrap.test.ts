@@ -5,7 +5,7 @@ import { FakeUser } from "../../__tests__/fixtures.js";
 import { GiftWrapBlueprint } from "../gift-wrap.js";
 import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "../../helpers/gift-wrap.js";
 import { NoteBlueprint } from "../note.js";
-import { WrappedMessageBlueprint } from "../wrapped-message";
+import { WrappedMessageBlueprint } from "../wrapped-message.js";
 
 const bob = new FakeUser();
 const alice = new FakeUser();

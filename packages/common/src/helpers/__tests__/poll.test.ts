@@ -12,7 +12,7 @@ import {
   POLL_RESPONSE_KIND,
 } from "../poll.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { unixNow } from "../time";
+import { unixNow } from "applesauce-core/helpers/time";
 
 const user1 = new FakeUser();
 const user2 = new FakeUser();

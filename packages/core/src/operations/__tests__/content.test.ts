@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { EncryptedContentSymbol, setEncryptedContentEncryptionMethod, unixNow } from "applesauce-core/helpers";
 
 import { includeContentHashtags, repairNostrLinks, setContent, setEncryptedContent } from "../content.js";
-import { FakeUser } from "../../__tests__/fake-user";
+import { FakeUser } from "../../__tests__/fake-user.js";
 import { build } from "../../event-factory";
 
 let user: FakeUser;

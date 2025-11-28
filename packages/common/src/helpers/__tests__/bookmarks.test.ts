@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { kinds } from "nostr-tools";
-import { mergeBookmarks } from "../bookmarks.js";
+import { mergeBookmarks } from "../bookmark.js";
 import { EventPointer, AddressPointer } from "nostr-tools/nip19";
 
 describe("mergeBookmarks", () => {

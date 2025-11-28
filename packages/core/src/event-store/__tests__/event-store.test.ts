@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { unixNow } from "../../helpers";
 import { addSeenRelay, getSeenRelays } from "../../helpers/relays.js";
-import { EventModel } from "../../models/common.js";
+import { EventModel } from "../../models/base.js";
 import { ProfileModel } from "../../models/profile.js";
 import { EventStore } from "../event-store.js";
 

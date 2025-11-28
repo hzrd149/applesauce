@@ -38,7 +38,7 @@ const eventOp = modifyPublicTags(
 );
 
 // Modify hidden tags (requires signer)
-const hiddenOp = modifyHiddenTags(addEventTag("secret-event-id"), addPubkeyTag("secret-pubkey"));
+const hiddenOp = modifyHiddenTags(addEventPointerTag("secret-event-id"), addPubkeyTag("secret-pubkey"));
 
 // Use both in event creation
 const event = await factory.build(
@@ -125,7 +125,7 @@ These operations use the context to fetch relay hints or other information:
 
 ```typescript
 // Add event tag with automatic relay hint
-export function addEventTag(id: string | EventPointer, replace = true): TagOperation {
+export function addEventPointerTag(id: string | EventPointer, replace = true): TagOperation {
   return async (tags, { getEventRelayHint }) => {
     const pointer = typeof id === "string" ? { id } : id;
 
@@ -159,7 +159,7 @@ export function addEventBookmarkTag(event: NostrEvent): TagOperation {
   if (event.kind !== kinds.ShortTextNote && event.kind !== kinds.LongFormArticle)
     throw new Error(`Event kind (${event.kind}) cannot be added to bookmarks`);
 
-  return isReplaceable(event.kind) ? addCoordinateTag(getAddressPointerForEvent(event)) : addEventTag(event.id);
+  return isReplaceable(event.kind) ? addCoordinateTag(getAddressPointerForEvent(event)) : addEventPointerTag(event.id);
 }
 ```
 

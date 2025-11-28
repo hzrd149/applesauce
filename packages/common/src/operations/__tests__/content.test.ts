@@ -3,7 +3,7 @@ import { EncryptedContentSymbol, setEncryptedContentEncryptionMethod, unixNow } 
 import { buildEvent } from "applesauce-core/event-factory";
 
 import { includeContentHashtags, repairNostrLinks, setContent, setEncryptedContent } from "../content.js";
-import { FakeUser } from "../../__tests__/fake-user";
+import { FakeUser } from "../../__tests__/fake-user.js";
 
 let user: FakeUser;
 

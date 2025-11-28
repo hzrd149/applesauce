@@ -3,7 +3,7 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { EventStore } from "../../event-store/event-store.js";
+import { EventStore } from "applesauce-core/event-store";
 import { getReplaceableIdentifier } from "../../helpers/event.js";
 import { CommentsModel } from "../comments.js";
 

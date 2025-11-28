@@ -1,7 +1,7 @@
 import { EncryptedContentSymbol, getHiddenTags, unixNow } from "applesauce-core/helpers";
 import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
-import { FakeUser } from "../../__tests__/fake-user";
+import { FakeUser } from "../../__tests__/fake-user.js";
 import { modifyHiddenTags } from "../tags.js";
 import { build } from "../../../dist";
 

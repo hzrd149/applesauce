@@ -1,11 +1,12 @@
 import { finalizeEvent, kinds, nip04 } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { EventFactory, modify } from "../../../../factory/src/event-factory.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { EncryptedContentSymbol, getHiddenTags, unlockHiddenTags } from "../../helpers";
-import { setEncryptedContent } from "../../operations/content.js";
-import { includeAltTag, modifyPublicTags } from "../../operations/index.js";
-import { addEventTag, removeEventTag, setSingletonTag } from "../../operations/tag/common.js";
+import { setEncryptedContent } from "../../operations/encrypted-content.js";
+import { includeAltTag, modifyPublicTags, setContent } from "../../operations/index.js";
+import { addEventPointerTag, removeEventPointerTag, setSingletonTag } from "../../operations/tag/common.js";
+import { EventFactory } from "../event-factory.js";
+import { modifyEvent } from "../methods";
 
 let factory = new EventFactory();
 let user = new FakeUser();
@@ -28,7 +29,7 @@ beforeEach(() => {
 describe("modify", () => {
   it('should ensure addressable events have "d" tags', async () => {
     expect(
-      await modify(
+      await modifyEvent(
         { kind: kinds.Bookmarksets, tags: [], content: "", created_at: 0 },
         {},
         modifyPublicTags(setSingletonTag(["title", "testing"])),
@@ -45,14 +46,14 @@ describe("modify", () => {
   });
 
   it("should override created_at", async () => {
-    expect(await modify({ kind: kinds.BookmarkList, created_at: 0, content: "", tags: [] }, {})).not.toEqual({
+    expect(await modifyEvent({ kind: kinds.BookmarkList, created_at: 0, content: "", tags: [] }, {})).not.toEqual({
       kind: kinds.BookmarkList,
       created_at: 0,
     });
   });
 
   it("should remove id and sig", async () => {
-    const event = await modify(user.profile({ name: "testing" }), {});
+    const event = await modifyEvent(user.profile({ name: "testing" }), {});
 
     expect(Reflect.has(event, "id")).toBe(false);
     expect(Reflect.has(event, "sig")).toBe(false);
@@ -63,21 +64,21 @@ describe("modify", () => {
     const event = user.profile({ name: "name" });
     Reflect.set(event, symbol, "testing");
 
-    const draft = await modify(event, { signer: user }, includeAltTag("profile"));
+    const draft = await modifyEvent(event, { signer: user }, includeAltTag("profile"));
     expect(Reflect.has(draft, symbol)).toBe(false);
   });
 });
 
 describe("modifyTags", () => {
   it("should apply tag operations to public tags by default", async () => {
-    expect(await factory.modifyTags(user.list([["e", "event-id"]]), removeEventTag("event-id"))).not.toEqual(
+    expect(await factory.modifyTags(user.list([["e", "event-id"]]), removeEventPointerTag("event-id"))).not.toEqual(
       expect.objectContaining({ tags: expect.arrayContaining(["e", "event-id"]) }),
     );
   });
 
   it("should apply public operations", async () => {
     expect(
-      await factory.modifyTags(user.list([["e", "event-id"]]), { public: removeEventTag("event-id") }),
+      await factory.modifyTags(user.list([["e", "event-id"]]), { public: removeEventPointerTag("event-id") }),
     ).not.toEqual(expect.objectContaining({ tags: expect.arrayContaining(["e", "event-id"]) }));
   });
 
@@ -85,12 +86,12 @@ describe("modifyTags", () => {
     factory = new EventFactory();
 
     await expect(async () => {
-      await factory.modifyTags(user.list(), { hidden: removeEventTag("event-id") });
+      await factory.modifyTags(user.list(), { hidden: removeEventPointerTag("event-id") });
     }).rejects.toThrowError("Missing signer");
   });
 
   it("should apply hidden operations", async () => {
-    const draft = await factory.modifyTags(user.list(), { hidden: addEventTag("event-id") });
+    const draft = await factory.modifyTags(user.list(), { hidden: addEventPointerTag("event-id") });
 
     // convert draft to full event
     const signed = await factory.context.signer!.signEvent(draft);
@@ -108,7 +109,7 @@ describe("modifyTags", () => {
     });
 
     // modify the hidden tags
-    const draft = await factory.modifyTags(encryptedList, { hidden: addEventTag("second-event-id") });
+    const draft = await factory.modifyTags(encryptedList, { hidden: addEventPointerTag("second-event-id") });
 
     // convert draft to full event
     const signed = await factory.context.signer!.signEvent(draft);
@@ -132,7 +133,7 @@ describe("modifyTags", () => {
     vi.spyOn(signer.nip04!, "decrypt");
 
     // modify the hidden tags
-    await factory.modifyTags(encryptedList, { hidden: addEventTag("second-event-id") });
+    await factory.modifyTags(encryptedList, { hidden: addEventPointerTag("second-event-id") });
 
     expect(signer.nip04!.decrypt).not.toHaveBeenCalled();
   });
@@ -142,7 +143,7 @@ describe("sign", () => {
   it("should throw if no signer is present", async () => {
     const factory = new EventFactory();
 
-    await expect(async () => factory.sign(await factory.note("testing"))).rejects.toThrow();
+    await expect(async () => factory.sign(await factory.build({ kind: 1 }, setContent("testing")))).rejects.toThrow();
   });
 
   it("should preserve plaintext hidden content", async () => {

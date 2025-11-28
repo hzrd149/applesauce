@@ -9,7 +9,7 @@ import {
 import { kinds } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 
-import { FakeUser } from "../../__tests__/fake-user";
+import { FakeUser } from "../../__tests__/fake-user.js";
 import { giftWrap, sealRumor, toRumor, wrapSeal } from "../gift-wrap.js";
 
 const user = new FakeUser();

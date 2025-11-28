@@ -10,7 +10,7 @@ import {
   createHandlerEventLink,
   createHandlerAddressLink,
   createHandlerLink,
-} from "../app-handlers.js";
+} from "../app-handler.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "nostr-tools/nip19";
 

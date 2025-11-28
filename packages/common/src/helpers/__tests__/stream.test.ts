@@ -120,7 +120,7 @@ import {
   getStreamHashtags,
 } from "../stream.js";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { unixNow } from "../time";
+import { unixNow } from "applesauce-core/helpers/time";
 
 describe("getStreamTitle", () => {
   it("should return the title from title tag", () => {
