@@ -74,57 +74,56 @@ function ProfileSearchModal({
   }, [primal, vertex]);
 
   // Helper function to convert events or pointers to ProfileSearchResult[]
-  const convertToSearchResults = useCallback(
-    (items: (NostrEvent | ProfilePointer)[]): ProfileSearchResult[] => {
-      const results: ProfileSearchResult[] = [];
-      const seenPubkeys = new Set<string>();
+  const convertToSearchResults = useCallback((items: (NostrEvent | ProfilePointer)[]): ProfileSearchResult[] => {
+    const results: ProfileSearchResult[] = [];
+    const seenPubkeys = new Set<string>();
 
-      for (const item of items) {
-        const pubkey = item.pubkey;
-        if (seenPubkeys.has(pubkey)) continue;
-        seenPubkeys.add(pubkey);
+    for (const item of items) {
+      const pubkey = item.pubkey;
+      if (seenPubkeys.has(pubkey)) continue;
+      seenPubkeys.add(pubkey);
 
-        let profile: NostrEvent | null = null;
-        let profileData: any = null;
+      let profile: NostrEvent | null = null;
+      let profileData: any = null;
 
-        if ("kind" in item && item.kind === 0) {
-          // It's a NostrEvent (from Primal)
-          profile = item;
-          try {
-            profileData = JSON.parse(item.content);
-          } catch (error) {
-            console.error("Failed to parse profile:", error);
-            continue;
-          }
-        } else {
-          // It's a ProfilePointer (from Vertex)
-          // We don't have the profile content, so use null
-          profile = null;
-          profileData = null;
+      if ("kind" in item && item.kind === 0) {
+        // It's a NostrEvent (from Primal)
+        profile = item;
+        try {
+          profileData = JSON.parse(item.content);
+        } catch (error) {
+          console.error("Failed to parse profile:", error);
+          continue;
         }
-
-        const displayName = getDisplayName(profileData, pubkey.slice(0, 8) + "...");
-        const picture = getProfilePicture(profileData, `https://robohash.org/${pubkey}.png`);
-
-        results.push({
-          pubkey,
-          profile,
-          displayName,
-          picture,
-        });
+      } else {
+        // It's a ProfilePointer (from Vertex)
+        // We don't have the profile content, so use null
+        profile = null;
+        profileData = null;
       }
 
-      return results;
-    },
-    [],
-  );
+      const displayName = getDisplayName(profileData, pubkey.slice(0, 8) + "...");
+      const picture = getProfilePicture(profileData, `https://robohash.org/${pubkey}.png`);
+
+      results.push({
+        pubkey,
+        profile,
+        displayName,
+        picture,
+      });
+    }
+
+    return results;
+  }, []);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
 
     // Validate search method requirements
     if (searchMethod === "vertex" && !extensionAvailable) {
-      setSearchError("Nostr extension required for Vertex search. Please install a browser extension like nos2x or Alby.");
+      setSearchError(
+        "Nostr extension required for Vertex search. Please install a browser extension like nos2x or Alby.",
+      );
       return;
     }
 

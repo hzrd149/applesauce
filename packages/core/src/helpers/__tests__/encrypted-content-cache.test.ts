@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { EventStore } from "../../event-store/event-store.js";
 import { EncryptedContentSymbol, setEncryptedContentCache, unlockEncryptedContent } from "../encrypted-content.js";
-import { EncryptedContentFromCacheSymbol, persistEncryptedContent } from "applesauce-common/helpers/encrypted-content-cache";
+import {
+  EncryptedContentFromCacheSymbol,
+  persistEncryptedContent,
+} from "applesauce-common/helpers/encrypted-content-cache";
 
 const mockStorage = {
   getItem: vi.fn(),

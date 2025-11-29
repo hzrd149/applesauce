@@ -8,7 +8,9 @@ describe("includePubkeyNotificationTags", () => {
   it('should copy all "p" tags', async () => {
     const parent = user.note("what are you talking about?", { tags: [["p", "pubkey"]] });
 
-    expect(await includePubkeyNotificationTags(parent)({ kind: 1, content: "Im not sure", created_at: 0, tags: [] }, {})).toEqual(
+    expect(
+      await includePubkeyNotificationTags(parent)({ kind: 1, content: "Im not sure", created_at: 0, tags: [] }, {}),
+    ).toEqual(
       expect.objectContaining({
         tags: [
           ["p", "pubkey"],
@@ -21,7 +23,9 @@ describe("includePubkeyNotificationTags", () => {
   it('should not copy "mention" "p" tags', async () => {
     const parent = user.note("what are you talking about?", { tags: [["p", "pubkey", "", "mention"]] });
 
-    expect(await includePubkeyNotificationTags(parent)({ kind: 1, content: "Im not sure", created_at: 0, tags: [] }, {})).toEqual(
+    expect(
+      await includePubkeyNotificationTags(parent)({ kind: 1, content: "Im not sure", created_at: 0, tags: [] }, {}),
+    ).toEqual(
       expect.objectContaining({
         tags: [["p", user.pubkey]],
       }),
@@ -31,7 +35,9 @@ describe("includePubkeyNotificationTags", () => {
   it('should not add duplicate "p" tags', async () => {
     const parent = user.note("what are you talking about?", { tags: [["p", user.pubkey]] });
 
-    expect(await includePubkeyNotificationTags(parent)({ kind: 1, content: "Im not sure", created_at: 0, tags: [] }, {})).toEqual(
+    expect(
+      await includePubkeyNotificationTags(parent)({ kind: 1, content: "Im not sure", created_at: 0, tags: [] }, {}),
+    ).toEqual(
       expect.objectContaining({
         tags: [["p", user.pubkey]],
       }),
