@@ -1,4 +1,4 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { NostrEvent } from "../helpers/event.js";
 import { filter, map, merge, MonoTypeOperatorFunction, tap } from "rxjs";
 import { IEventStoreStreams } from "../event-store/interface.js";
 

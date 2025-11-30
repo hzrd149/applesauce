@@ -1,10 +1,11 @@
-import { getHiddenTags, HiddenContentSigner, isHiddenTagsUnlocked, unlockHiddenTags } from "applesauce-core/helpers";
-import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
-import { getProfilePointerFromPTag } from "applesauce-core/helpers/pointers";
-import { isSafeRelayURL } from "applesauce-core/helpers/relays";
-import { isPTag, processTags } from "applesauce-core/helpers/tags";
 import { ProfilePointer } from "nostr-tools/nip19";
+import { getOrComputeCachedValue } from "./cache.js";
+import { NostrEvent, notifyEventUpdate } from "./event.js";
+import { HiddenContentSigner } from "./hidden-content.js";
+import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "./hidden-tags.js";
+import { getProfilePointerFromPTag } from "./pointers.js";
+import { isSafeRelayURL } from "./relays.js";
+import { isPTag, processTags } from "./tags.js";
 
 export const ContactsRelaysSymbol = Symbol.for("contacts-relays");
 export const PublicContactsSymbol = Symbol.for("public-contacts");

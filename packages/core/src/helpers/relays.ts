@@ -1,4 +1,4 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { NostrEvent } from "./event.js";
 import { normalizeURL } from "./url.js";
 
 export const SeenRelaysSymbol = Symbol.for("seen-relays");

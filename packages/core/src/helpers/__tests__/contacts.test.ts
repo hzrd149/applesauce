@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ProfilePointer } from "nostr-tools/nip19";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { NostrEvent } from "./event.js";
 import { mergeContacts, getRelaysFromContactsEvent } from "../contacts.js";
 
 describe("mergeContacts", () => {

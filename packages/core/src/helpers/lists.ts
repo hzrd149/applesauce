@@ -1,4 +1,4 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { NostrEvent } from "./event.js";
 import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 
