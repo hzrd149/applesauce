@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { AddressPointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { kinds } from "nostr-tools";
+import { describe, expect, it } from "vitest";
 import { mergeBookmarks } from "../bookmark.js";
-import { EventPointer, AddressPointer } from "nostr-tools/nip19";
 
 describe("mergeBookmarks", () => {
   it("should merge bookmarks and handle duplicates", () => {

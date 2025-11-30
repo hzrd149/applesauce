@@ -102,25 +102,25 @@ const TEST_EVENTS: Record<string, NostrEvent> = {
   },
 };
 
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { unixNow } from "applesauce-core/helpers/time";
 import { describe, expect, it } from "vitest";
 import {
-  getStreamTitle,
-  getStreamSummary,
-  getStreamImage,
-  getStreamStatus,
-  getStreamHost,
+  getStreamEndTime,
   getStreamGoalPointer,
-  getStreamStreamingURLs,
+  getStreamHashtags,
+  getStreamHost,
+  getStreamImage,
+  getStreamMaxViewers,
   getStreamRecording,
   getStreamRelays,
   getStreamStartTime,
-  getStreamEndTime,
+  getStreamStatus,
+  getStreamStreamingURLs,
+  getStreamSummary,
+  getStreamTitle,
   getStreamViewers,
-  getStreamMaxViewers,
-  getStreamHashtags,
 } from "../stream.js";
-import { NostrEvent } from "applesauce-core/helpers/event";
-import { unixNow } from "applesauce-core/helpers/time";
 
 describe("getStreamTitle", () => {
   it("should return the title from title tag", () => {

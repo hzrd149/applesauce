@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Mutes, matchMutes } from "../mute.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
+import { Mutes, matchMutes } from "../mute.js";
 
 const mutedUser = new FakeUser();
 const nonMutedUser = new FakeUser();

@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import { Expressions, Tokens } from "applesauce-core/helpers/regexp";
+import { describe, expect, it } from "vitest";
 
 describe("Regular Expressions", () => {
   describe("Expressions.link", () => {

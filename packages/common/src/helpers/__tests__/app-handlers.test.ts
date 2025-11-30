@@ -1,18 +1,18 @@
-import { describe, it, expect } from "vitest";
 import { NostrEvent, kinds } from "nostr-tools";
+import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "nostr-tools/nip19";
+import { describe, expect, it } from "vitest";
+import { FakeUser } from "../../__tests__/fixtures.js";
 import {
-  getHandlerSupportedKinds,
-  getHandlerName,
-  getHandlerPicture,
+  createHandlerAddressLink,
+  createHandlerEventLink,
+  createHandlerLink,
+  createHandlerProfileLink,
   getHandlerDescription,
   getHandlerLinkTemplate,
-  createHandlerProfileLink,
-  createHandlerEventLink,
-  createHandlerAddressLink,
-  createHandlerLink,
+  getHandlerName,
+  getHandlerPicture,
+  getHandlerSupportedKinds,
 } from "../app-handler.js";
-import { FakeUser } from "../../__tests__/fixtures.js";
-import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "nostr-tools/nip19";
 
 // Create a fake user for testing
 const user = new FakeUser();

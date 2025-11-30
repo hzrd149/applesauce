@@ -1,18 +1,18 @@
-import { describe, expect, it } from "vitest";
 import { NostrEvent } from "applesauce-core/helpers/event";
+import { unixNow } from "applesauce-core/helpers/time";
+import { describe, expect, it } from "vitest";
+import { FakeUser } from "../../__tests__/fixtures.js";
 import {
-  getPollQuestion,
-  getPollOptions,
-  getPollRelays,
-  getPollType,
   getPollEndsAt,
-  getPollResponsePollId,
+  getPollOptions,
+  getPollQuestion,
+  getPollRelays,
   getPollResponseOptions,
+  getPollResponsePollId,
+  getPollType,
   POLL_KIND,
   POLL_RESPONSE_KIND,
 } from "../poll.js";
-import { FakeUser } from "../../__tests__/fixtures.js";
-import { unixNow } from "applesauce-core/helpers/time";
 
 const user1 = new FakeUser();
 const user2 = new FakeUser();
