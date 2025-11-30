@@ -1,9 +1,9 @@
 import { EncryptedContentSymbol, getHiddenTags, unixNow } from "applesauce-core/helpers";
 import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
-import { FakeUser } from "../../__tests__/fake-user.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
+import { buildEvent } from "../../event-factory/methods";
 import { modifyHiddenTags } from "../tags.js";
-import { build } from "../../../dist";
 
 describe("modifyHiddenTags", () => {
   let user: FakeUser;
@@ -55,7 +55,7 @@ describe("modifyHiddenTags", () => {
   });
 
   it("should set hidden tags", async () => {
-    const draft = await build(
+    const draft = await buildEvent(
       { kind: 30000 },
       { signer: user },
       modifyHiddenTags((tags) => [...tags, ["e", "test-id"]]),
@@ -65,7 +65,7 @@ describe("modifyHiddenTags", () => {
   });
 
   it("should work multiple times", async () => {
-    const draft = await build(
+    const draft = await buildEvent(
       { kind: 30000 },
       { signer: user },
       modifyHiddenTags((tags) => [...tags, ["e", "test-id"]]),

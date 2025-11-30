@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { EncryptedContentSymbol, setEncryptedContentEncryptionMethod, unixNow } from "applesauce-core/helpers";
-import { buildEvent } from "applesauce-core/event-factory";
+import { buildEvent as build } from "applesauce-core/event-factory";
 
-import { includeContentHashtags, repairNostrLinks, setContent, setEncryptedContent } from "../content.js";
-import { FakeUser } from "../../__tests__/fake-user.js";
+import { includeContentHashtags, repairNostrLinks, setContent } from "applesauce-core/operations/content";
+import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
+import { FakeUser } from "../../__tests__/fixtures.js";
 
 let user: FakeUser;
 
@@ -85,7 +86,7 @@ describe("setContent", () => {
 
 describe("setEncryptedContent", () => {
   it("should set the encrypted content", async () => {
-    const draft = await buildEvent(
+    const draft = await build(
       { kind: 4 },
       { signer: user },
       setEncryptedContent(user.pubkey, "Hello, world!", "nip04"),

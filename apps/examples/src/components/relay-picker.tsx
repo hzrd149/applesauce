@@ -1,8 +1,8 @@
-import { mergeRelaySets } from "applesauce-core/helpers";
+import { relaySet } from "applesauce-core/helpers";
 import { ChangeEvent, useMemo, useState } from "react";
 
 // Common relay URLs that users might want to use
-const COMMON_RELAYS = mergeRelaySets([
+export const COMMON_RELAYS = relaySet([
   "wss://relay.damus.io",
   "wss://relay.snort.social",
   "wss://nos.lol",

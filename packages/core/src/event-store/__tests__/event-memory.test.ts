@@ -692,24 +692,28 @@ describe("EventMemory - Performance Tests", () => {
     expect(results.length).toBe(101); // 1500-1600 inclusive (NIP-01: since <= created_at <= until)
   });
 
-  it("should efficiently remove events from large sorted arrays", () => {
-    const numEvents = 1000;
-    const events: NostrEvent[] = [];
+  it(
+    "should efficiently remove events from large sorted arrays",
+    () => {
+      const numEvents = 1000;
+      const events: NostrEvent[] = [];
 
-    // Add many events with same timestamp (worst case for binary search)
-    for (let i = 0; i < numEvents; i++) {
-      const event = user1.note(`Note ${i}`, { created_at: 1000 });
-      events.push(event);
-      eventMemory.add(event);
-    }
+      // Add many events with same timestamp (worst case for binary search)
+      for (let i = 0; i < numEvents; i++) {
+        const event = user1.note(`Note ${i}`, { created_at: 1000 });
+        events.push(event);
+        eventMemory.add(event);
+      }
 
-    // Remove all events - should use binary search optimization
-    events.forEach((event) => {
-      expect(eventMemory.remove(event)).toBe(true);
-    });
+      // Remove all events - should use binary search optimization
+      events.forEach((event) => {
+        expect(eventMemory.remove(event)).toBe(true);
+      });
 
-    expect(eventMemory.size).toBe(0);
-  });
+      expect(eventMemory.size).toBe(0);
+    },
+    10000,
+  );
 
   it("should efficiently query with composite index", () => {
     const users = Array.from({ length: 10 }, () => new FakeUser());

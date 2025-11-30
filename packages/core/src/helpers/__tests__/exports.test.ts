@@ -28,7 +28,7 @@ describe("exports", () => {
         "MailboxesInboxesSymbol",
         "MailboxesOutboxesSymbol",
         "NostrEvent",
-        "PRESERVE_SYMBOLS",
+        "PRESERVE_EVENT_SYMBOLS",
         "ProfileContentSymbol",
         "PublicContactsSymbol",
         "ReplaceableAddressSymbol",

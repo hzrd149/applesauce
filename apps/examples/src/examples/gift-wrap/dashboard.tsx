@@ -8,13 +8,14 @@ import {
   ProfilePointer,
 } from "applesauce-core/helpers";
 import { createAddressLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
+import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "nostr-tools/nip19";
-import { useMemo, useState } from "react";
-import { map } from "rxjs";
+import { useCallback, useMemo, useState } from "react";
+import { catchError, EMPTY, map } from "rxjs";
 
-import RelayPicker from "../../components/relay-picker";
+import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -65,6 +66,41 @@ function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
 
 export default function GiftWrapDashboard() {
   const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
+  const [pubkey, setPubkey] = useState<string | null>(null);
+
+  // Subscribe to authentication state
+  const challenge = useObservableEagerMemo(() => pool.relay(relay).challenge$, [relay]);
+  const authenticated = useObservableEagerMemo(() => pool.relay(relay).authenticated$, [relay]);
+  const notices = useObservableEagerMemo(() => pool.relay(relay).notices$, [relay]);
+
+  // Get the latest notice (last item in the array)
+  const latestNotice = useMemo(() => {
+    if (!notices || notices.length === 0) return null;
+    return notices[notices.length - 1];
+  }, [notices]);
+
+  const needsAuth = !!challenge;
+
+  // Handle authentication with extension signer
+  const handleAuthenticate = useCallback(async () => {
+    if (!needsAuth || authenticated) return;
+
+    try {
+      const signer = new ExtensionSigner();
+
+      // get the users pubkey
+      setPubkey(await signer.getPublicKey());
+
+      // Authenticate with the relay
+      await pool
+        .relay(relay)
+        .authenticate(signer)
+        .then((response) => console.log("Authentication response:", response))
+        .catch((error) => console.error("Authentication error:", error));
+    } catch (error) {
+      console.error("Authentication failed:", error);
+    }
+  }, [relay, needsAuth, authenticated]);
 
   // Query all gift wrap events from the selected relay
   useObservableMemo(
@@ -74,6 +110,10 @@ export default function GiftWrapDashboard() {
         onlyEvents(),
         // Deduplicate events with the store
         mapEventsToStore(eventStore),
+        catchError((err) => {
+          console.error("Error subscribing to gift wrap events:", err);
+          return EMPTY;
+        }),
       ),
     [relay],
   );
@@ -126,7 +166,55 @@ export default function GiftWrapDashboard() {
             <label className="label">
               <span className="label-text">Select Relay</span>
             </label>
-            <RelayPicker value={relay} onChange={setRelay} />
+            <div className="flex items-center gap-2">
+              <RelayPicker
+                value={relay}
+                onChange={setRelay}
+                common={["wss://auth.nostr1.com/", "wss://nip17.com/", "wss://inbox.relays.land/", ...COMMON_RELAYS]}
+              />
+              {needsAuth && (
+                <div className="flex items-center gap-2">
+                  {authenticated ? (
+                    <div className="badge badge-success">
+                      {pubkey && (
+                        <span>
+                          Authenticated as {npubEncode(pubkey).slice(0, 9)}...{npubEncode(pubkey).slice(-4)}
+                        </span>
+                      )}
+                      {!pubkey && <span>Authenticated</span>}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="badge badge-warning">Auth Required</div>
+                      <button className="btn btn-sm btn-primary" onClick={handleAuthenticate}>
+                        Authenticate
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              {!needsAuth && <div className="badge badge-ghost">No Auth Required</div>}
+            </div>
+            {latestNotice && (
+              <div className="mt-2 w-full">
+                <div className="alert alert-info">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    className="h-6 w-6 shrink-0 stroke-current"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span className="text-sm">{latestNotice}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {giftWrapEvents && giftWrapEvents.length === 0 && (

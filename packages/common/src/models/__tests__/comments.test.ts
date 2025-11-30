@@ -4,7 +4,7 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { EventStore } from "applesauce-core/event-store";
-import { getReplaceableIdentifier } from "../../helpers/event.js";
+import { getReplaceableIdentifier } from "applesauce-core/helpers/event";
 import { CommentsModel } from "../comments.js";
 
 const user = new FakeUser();

@@ -1,15 +1,15 @@
+import { unixNow } from "applesauce-core/helpers";
 import {
   getGiftWrapRumor,
   getGiftWrapSeal,
   getRumorGiftWraps,
   getRumorSeals,
   getSealGiftWrap,
-  unixNow,
-} from "applesauce-core/helpers";
+} from "../../helpers/gift-wrap.js";
 import { kinds } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 
-import { FakeUser } from "../../__tests__/fake-user.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
 import { giftWrap, sealRumor, toRumor, wrapSeal } from "../gift-wrap.js";
 
 const user = new FakeUser();

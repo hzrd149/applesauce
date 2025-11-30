@@ -2,7 +2,7 @@ import { EventFactoryContext, EventOperation, Operation, TagOperation } from "..
 import { EncryptedContentSymbol } from "./encrypted-content.js";
 
 /** An array of Symbols to preserve when building events with {@link eventPipe} */
-export const PRESERVE_SYMBOLS = [EncryptedContentSymbol];
+export const PRESERVE_EVENT_SYMBOLS = new Set([EncryptedContentSymbol]);
 
 export function identity<T>(x: T): T {
   return x;
@@ -13,7 +13,7 @@ export function eventPipe(...operations: (EventOperation | undefined)[]): EventO
   return pipeFromAsyncArray(
     operations.filter((o) => !!o),
     // Preserve the encrypted content, gift wrap symbols
-    PRESERVE_SYMBOLS,
+    PRESERVE_EVENT_SYMBOLS,
   );
 }
 
@@ -32,7 +32,7 @@ export function skip<T>(): (value: T) => T {
  * @param preserve - If set an array of symbols to keep, all other symbols will be removed
  * @internal
  */
-export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?: symbol[]): Operation<T, R> {
+export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?: Set<symbol>): Operation<T, R> {
   if (fns.length === 0) return identity as Operation<any, any>;
 
   return async function piped(input: T, context: EventFactoryContext): Promise<R> {
@@ -44,7 +44,7 @@ export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?:
         const keys = Reflect.ownKeys(result).filter((key) => typeof key === "symbol");
 
         for (const symbol of keys) {
-          if (!preserve.includes(symbol)) Reflect.deleteProperty(result, symbol);
+          if (!preserve.has(symbol)) Reflect.deleteProperty(result, symbol);
         }
       }
 

@@ -13,11 +13,16 @@ import {
   UnsignedEvent,
 } from "applesauce-core/helpers/event";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
-import { eventPipe } from "applesauce-core/helpers/pipeline";
+import { eventPipe, PRESERVE_EVENT_SYMBOLS } from "applesauce-core/helpers/pipeline";
 import { unixNow } from "applesauce-core/helpers/time";
 import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
 import { MetaTagOptions, setMetaTags, stamp } from "applesauce-core/operations/event";
 import { GiftWrapSymbol, Rumor, RumorSymbol, SealSymbol } from "../helpers/gift-wrap.js";
+
+// Preserve gift-wrap and seal symbols when building gift-wrap events
+PRESERVE_EVENT_SYMBOLS.add(GiftWrapSymbol);
+PRESERVE_EVENT_SYMBOLS.add(SealSymbol);
+PRESERVE_EVENT_SYMBOLS.add(RumorSymbol);
 
 /** Create a timestamp with a random offset of an hour */
 function randomNow() {
