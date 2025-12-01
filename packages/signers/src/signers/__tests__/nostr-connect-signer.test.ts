@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import { NEVER } from "rxjs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NostrConnectSigner } from "../nostr-connect-signer.js";
 import { PrivateKeySigner } from "../private-key-signer.js";
 

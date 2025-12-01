@@ -1,9 +1,8 @@
-import { ProfilePointer } from "nostr-tools/nip19";
 import { getOrComputeCachedValue } from "./cache.js";
 import { NostrEvent, notifyEventUpdate } from "./event.js";
 import { HiddenContentSigner } from "./hidden-content.js";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "./hidden-tags.js";
-import { getProfilePointerFromPTag } from "./pointers.js";
+import { getProfilePointerFromPTag, ProfilePointer } from "./pointers.js";
 import { isSafeRelayURL } from "./relays.js";
 import { isPTag, processTags } from "./tags.js";
 

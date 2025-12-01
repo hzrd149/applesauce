@@ -1,6 +1,5 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { getSeenRelays } from "applesauce-core/helpers";
-import { Filter, NostrEvent } from "nostr-tools";
+import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
 import { firstValueFrom, of, Subject, throwError, timer } from "rxjs";
 import { filter, repeat } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

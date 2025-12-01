@@ -1,7 +1,6 @@
 import { Transformer, unified } from "unified";
-import { EventTemplate, NostrEvent } from "nostr-tools";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-
 import { nostrMentions } from "./mentions.js";
 import { cashuTokens } from "./cashu.js";
 import { emojis } from "./emoji.js";
@@ -62,6 +61,5 @@ export function getParsedContent(
 }
 
 export function removeParsedTextContent(event: NostrEvent | EventTemplate) {
-  // @ts-expect-error
-  delete event[TextNoteContentSymbol];
+  Reflect.deleteProperty(event, TextNoteContentSymbol);
 }

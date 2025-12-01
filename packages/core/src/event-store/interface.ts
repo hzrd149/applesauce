@@ -1,9 +1,7 @@
-import { NostrEvent } from "../helpers/event.js";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 import { Observable } from "rxjs";
-
+import { NostrEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
-import { AddressPointerWithoutD } from "../helpers/pointers.js";
+import { AddressPointer, AddressPointerWithoutD, EventPointer } from "../helpers/pointers.js";
 import { IEventStoreModels } from "./event-models.js";
 
 /** The read interface for an event store */

@@ -1,4 +1,3 @@
-import { kinds } from "nostr-tools";
 import {
   canHaveEncryptedContent,
   EncryptedContentSigner,
@@ -13,6 +12,7 @@ import {
   setEncryptedContentEncryptionMethod,
   UnlockedEncryptedContent,
 } from "./encrypted-content.js";
+import { kinds } from "./event.js";
 
 /** Symbol for caching hidden content. Alias for {@link EncryptedContentSymbol} */
 export const HiddenContentSymbol = EncryptedContentSymbol;

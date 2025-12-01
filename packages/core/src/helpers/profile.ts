@@ -1,8 +1,7 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { npubEncode } from "nostr-tools/nip19";
-
 import { getOrComputeCachedValue } from "./cache.js";
+import { NostrEvent, kinds } from "./event.js";
 import { KnownEvent, safeParse } from "./index.js";
+import { npubEncode } from "./pointers.js";
 
 export const ProfileContentSymbol = Symbol.for("profile-content");
 

@@ -1,7 +1,6 @@
-import { EventTemplate, NostrEvent } from "nostr-tools";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
-import { getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
+import { AddressPointer, EventPointer, getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 
 export type ThreadReferences = {

@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bytesToHex } from "@noble/hashes/utils";
-import {
-  mergeAddressPointers,
-  mergeEventPointers,
-  mergeProfilePointers,
-  normalizeToPubkey,
-  normalizeToSecretKey,
-} from "../pointers.js";
+import { mergeAddressPointers, mergeEventPointers, mergeProfilePointers, normalizeToPubkey } from "../pointers.js";
 
 describe("normalizeToPubkey", () => {
   it("should get pubkey from npub", () => {
@@ -38,32 +31,6 @@ describe("normalizeToPubkey", () => {
   it("should throw on invalid string", () => {
     expect(() => {
       normalizeToPubkey("testing");
-    }).toThrow();
-  });
-});
-
-describe("normalizeToSecretKey", () => {
-  it("should get secret key from nsec", () => {
-    expect(bytesToHex(normalizeToSecretKey("nsec1xe7znq745x5n68566l32ru72aajz3pk2cys9lnf3tuexvkw0dldsj8v2lm"))).toEqual(
-      "367c2983d5a1a93d1e9ad7e2a1f3caef642886cac1205fcd315f326659cf6fdb",
-    );
-  });
-
-  it("should get secret key from raw hex", () => {
-    expect(
-      bytesToHex(normalizeToSecretKey("367c2983d5a1a93d1e9ad7e2a1f3caef642886cac1205fcd315f326659cf6fdb")),
-    ).toEqual("367c2983d5a1a93d1e9ad7e2a1f3caef642886cac1205fcd315f326659cf6fdb");
-  });
-
-  it("should throw on invalid hex key", () => {
-    expect(() => {
-      normalizeToSecretKey("209573290");
-    }).toThrow();
-  });
-
-  it("should throw on npub", () => {
-    expect(() => {
-      normalizeToSecretKey("npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr");
     }).toThrow();
   });
 });

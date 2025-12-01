@@ -1,8 +1,8 @@
 import { DecodeResult } from "applesauce-core/helpers";
+import { decodePointer } from "applesauce-core/helpers/pointers";
 import { Tokens } from "applesauce-core/helpers/regexp";
 import { Link, Nodes } from "mdast";
 import { findAndReplace } from "mdast-util-find-and-replace";
-import { decode } from "nostr-tools/nip19";
 import { Transformer } from "unified";
 
 export interface NostrMention extends Link {
@@ -18,7 +18,7 @@ export function remarkNostrMentions(): Transformer<Nodes> {
         try {
           return {
             type: "link",
-            data: decode($1),
+            data: decodePointer($1),
             children: [],
             url: "nostr:" + $1,
           } satisfies NostrMention;

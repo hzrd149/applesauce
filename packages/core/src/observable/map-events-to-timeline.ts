@@ -1,6 +1,5 @@
-import { NostrEvent } from "../helpers/event.js";
-import { insertEventIntoDescendingList } from "nostr-tools/utils";
 import { OperatorFunction, pipe, scan } from "rxjs";
+import { insertEventIntoDescendingList, NostrEvent } from "../helpers/event.js";
 import { withImmediateValueOrDefault } from "./with-immediate-value.js";
 
 /**

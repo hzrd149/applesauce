@@ -1,4 +1,12 @@
-import { kinds, NostrEvent } from "nostr-tools";
+import { logger } from "applesauce-core";
+import { IEventStoreStreams } from "applesauce-core/event-store";
+import {
+  canHaveEncryptedContent,
+  getEncryptedContent,
+  isEncryptedContentUnlocked,
+  setEncryptedContentCache,
+} from "applesauce-core/helpers/encrypted-content";
+import { kinds, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
 import {
   catchError,
   combineLatest,
@@ -13,15 +21,6 @@ import {
   of,
   switchMap,
 } from "rxjs";
-import { IEventStoreStreams } from "applesauce-core/event-store";
-import { logger } from "applesauce-core";
-import {
-  canHaveEncryptedContent,
-  getEncryptedContent,
-  isEncryptedContentUnlocked,
-  setEncryptedContentCache,
-} from "applesauce-core/helpers/encrypted-content";
-import { notifyEventUpdate } from "applesauce-core/helpers/event";
 import { getGiftWrapSeal, getSealGiftWrap, getSealRumor } from "./gift-wrap.js";
 
 /** A symbol that is used to mark encrypted content as being from a cache */

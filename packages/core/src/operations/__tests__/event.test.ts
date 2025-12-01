@@ -1,6 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { unixNow } from "applesauce-core/helpers";
-
+import { describe, expect, it } from "vitest";
+import { unixNow } from "../../helpers";
 import { includeReplaceableIdentifier } from "../event.js";
 
 describe("includeReplaceableIdentifier", () => {

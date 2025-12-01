@@ -1,9 +1,8 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { kinds, NostrEvent } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { unixNow } from "../../helpers";
+import { kinds, NostrEvent } from "../../helpers/event.js";
 import { addSeenRelay, getSeenRelays } from "../../helpers/relays.js";
 import { EventModel } from "../../models/base.js";
 import { ProfileModel } from "../../models/profile.js";

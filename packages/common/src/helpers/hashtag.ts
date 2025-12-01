@@ -1,4 +1,4 @@
-import { EventTemplate, NostrEvent } from "nostr-tools";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { stripInvisibleChar } from "applesauce-core/helpers/string";
 
 export function getHashtagTag(event: NostrEvent | EventTemplate, hashtag: string) {

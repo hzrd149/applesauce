@@ -1,4 +1,3 @@
-import { hexToBytes } from "@noble/hashes/utils";
 import {
   AddressPointer,
   decode,
@@ -34,6 +33,37 @@ import { isHexKey } from "./string.js";
 import { normalizeURL } from "./url.js";
 
 export type DecodeResult = ReturnType<typeof decode>;
+
+/** Decodes any nip-19 encoded entity to a ProfilePointer */
+export function decodeProfilePointer(str: string): ProfilePointer | null {
+  const result = decode(str);
+  const pubkey = getPubkeyFromDecodeResult(result);
+  if (!pubkey) return null;
+
+  return {
+    pubkey,
+    relays: getRelaysFromDecodeResult(result),
+  };
+}
+
+/** Decodes an naddr encoded string to an AddressPointer */
+export function decodeAddressPointer(str: string): AddressPointer | null {
+  const result = decode(str);
+  return result.type === "naddr" ? result.data : null;
+}
+
+/** Decodes a note1 or nevent encoded string to an EventPointer */
+export function decodeEventPointer(str: string): EventPointer | null {
+  const result = decode(str);
+  switch (result.type) {
+    case "note":
+      return { id: result.data };
+    case "nevent":
+      return result.data;
+    default:
+      return null;
+  }
+}
 
 export type AddressPointerWithoutD = Omit<AddressPointer, "identifier"> & {
   identifier?: string;
@@ -263,17 +293,6 @@ export function normalizeToProfilePointer(str: string): ProfilePointer {
     if (!pubkey) throw new Error(`Cant find pubkey in ${decode.type}`);
     const relays = getRelaysFromDecodeResult(decode);
     return { pubkey, relays };
-  }
-}
-
-/** Converts hex to nsec strings into Uint8 secret keys */
-export function normalizeToSecretKey(str: string | Uint8Array): Uint8Array {
-  if (str instanceof Uint8Array) return str;
-  else if (isHexKey(str)) return hexToBytes(str);
-  else {
-    const decode = nip19.decode(str);
-    if (decode.type !== "nsec") throw new Error(`Cant get secret key from ${decode.type}`);
-    return decode.data;
   }
 }
 

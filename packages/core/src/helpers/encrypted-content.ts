@@ -1,5 +1,4 @@
-import { kinds } from "nostr-tools";
-import { notifyEventUpdate } from "./event.js";
+import { kinds, notifyEventUpdate } from "./event.js";
 
 /** A symbol use to store the encrypted content of an event in memory */
 export const EncryptedContentSymbol = Symbol.for("encrypted-content");

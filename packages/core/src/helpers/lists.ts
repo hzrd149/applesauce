@@ -1,15 +1,14 @@
-import { NostrEvent } from "./event.js";
-import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
-import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
-
-import { getReplaceableIdentifier, isReplaceable } from "./event.js";
+import { getReplaceableIdentifier, isAddressableKind, isReplaceable, isReplaceableKind, NostrEvent } from "./event.js";
 import { getHiddenTags } from "./hidden-tags.js";
 import {
+  AddressPointer,
+  EventPointer,
   getAddressPointerForEvent,
   getAddressPointerFromATag,
   getCoordinateFromAddressPointer,
   getEventPointerFromETag,
   getProfilePointerFromPTag,
+  ProfilePointer,
 } from "./pointers.js";
 import { mergeRelaySets } from "./relays.js";
 import { isATag, isETag, isPTag, processTags } from "./tags.js";

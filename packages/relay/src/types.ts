@@ -1,6 +1,6 @@
-import type { IAsyncEventStoreActions, IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
-import type { Filter } from "applesauce-core/helpers";
-import type { EventTemplate, NostrEvent } from "nostr-tools";
+import type { IAsyncEventStoreActions, IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core/event-store";
+import type { Filter } from "applesauce-core/helpers/filter";
+import type { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import type { RelayInformation as CoreRelayInformation } from "nostr-tools/nip11";
 import type { Observable, repeat, retry } from "rxjs";
 import type { WebSocketSubject } from "rxjs/webSocket";

@@ -1,11 +1,11 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
-import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
-
-import { getTagValue } from "applesauce-core/helpers/event";
+import { getTagValue, NostrEvent } from "applesauce-core/helpers/event";
 import {
+  AddressPointer,
+  EventPointer,
   getAddressPointerFromATag,
   getEventPointerFromETag,
   getProfilePointerFromPTag,
+  ProfilePointer,
 } from "applesauce-core/helpers/pointers";
 import { isATag, isETag, isPTag } from "applesauce-core/helpers/tags";
 

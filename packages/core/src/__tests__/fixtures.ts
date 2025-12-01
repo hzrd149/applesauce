@@ -1,7 +1,9 @@
-import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04, nip44 } from "nostr-tools";
 import { EventSigner } from "../event-factory/types";
 import { EncryptedContentSigner } from "../helpers/encrypted-content.js";
-import { EventTemplate, UnsignedEvent, NostrEvent } from "../helpers/event";
+import { nip04, nip44 } from "../helpers/encryption.js";
+import { EventTemplate, NostrEvent, UnsignedEvent, kinds } from "../helpers/event";
+import { finalizeEvent } from "../helpers/event.js";
+import { generateSecretKey, getPublicKey } from "../helpers/keys.js";
 import { unixNow } from "../helpers/time.js";
 
 export class FakeUser implements EncryptedContentSigner, EventSigner {

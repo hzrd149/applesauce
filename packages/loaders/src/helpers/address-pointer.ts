@@ -1,8 +1,6 @@
-import { AddressPointerWithoutD } from "applesauce-core/helpers";
-import { Filter } from "nostr-tools";
-import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
-
-import { AddressPointer } from "nostr-tools/nip19";
+import { isAddressableKind, isReplaceableKind } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
+import { AddressPointer, AddressPointerWithoutD } from "applesauce-core/helpers/pointers";
 import { unique } from "./array.js";
 
 /** Converts an array of address pointers to a filter */

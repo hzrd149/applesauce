@@ -1,8 +1,8 @@
-import { Model } from "applesauce-core/event-store";
-import { kinds } from "applesauce-core/helpers/event";
-import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { map } from "rxjs/operators";
+import { Model } from "../event-store/interface.js";
+import { kinds } from "../helpers/event.js";
 import { getInboxes, getOutboxes } from "../helpers/mailboxes.js";
+import { ProfilePointer } from "../helpers/pointers.js";
 
 /** A model that gets and parses the inbox and outbox relays for a pubkey */
 export function MailboxesModel(

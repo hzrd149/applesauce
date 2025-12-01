@@ -1,8 +1,5 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
-import { AddressPointer } from "nostr-tools/nip19";
-
-import { getTagValue } from "applesauce-core/helpers/event";
-import { getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
+import { getTagValue, NostrEvent } from "applesauce-core/helpers/event";
+import { AddressPointer, getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { isATag } from "applesauce-core/helpers/tags";
 
 /** Gets the title of a calendar */

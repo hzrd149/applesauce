@@ -1,10 +1,9 @@
-import { kinds } from "nostr-tools";
-import { AddressPointer } from "nostr-tools/nip19";
 import { identity, map } from "rxjs";
-
-import { FAVORITE_RELAYS_KIND, getAddressPointersFromList, getRelaysFromList, ReadListTags } from "../helpers/lists.js";
-import { watchEventUpdates } from "../observable/watch-event-updates.js";
 import { Model } from "../event-store/interface.js";
+import { kinds } from "../helpers/event.js";
+import { FAVORITE_RELAYS_KIND, getAddressPointersFromList, getRelaysFromList, ReadListTags } from "../helpers/lists.js";
+import { AddressPointer } from "../helpers/pointers.js";
+import { watchEventUpdates } from "../observable/watch-event-updates.js";
 
 /**
  * A model that returns all favorite relays for a pubkey

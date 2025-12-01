@@ -1,7 +1,6 @@
-import { getReplaceableAddress, getSeenRelays, isReplaceable, mergeRelaySets } from "applesauce-core/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
+import { getReplaceableAddress, isReplaceable, kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { getSeenRelays, mergeRelaySets } from "applesauce-core/helpers/relays";
 import { Observable } from "rxjs";
-
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { UpstreamPool } from "../types.js";
 import { createTagValueLoader, TagValueLoaderOptions } from "./tag-value-loader.js";

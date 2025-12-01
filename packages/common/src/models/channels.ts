@@ -1,9 +1,9 @@
-import { Filter, kinds, NostrEvent } from "nostr-tools";
-import { map } from "rxjs";
-
 import { Model } from "applesauce-core/event-store";
-import { ChannelMetadataContent, getChannelMetadataContent } from "../helpers/channels.js";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import { safeParse } from "applesauce-core/helpers/json";
+import { map } from "rxjs";
+import { ChannelMetadataContent, getChannelMetadataContent } from "../helpers/channels.js";
 
 /** A model that returns a map of hidden messages Map<id, reason> */
 export function ChannelHiddenModel(channel: NostrEvent, authors: string[] = []): Model<Map<string, string>> {

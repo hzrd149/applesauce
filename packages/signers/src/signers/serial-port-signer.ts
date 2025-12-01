@@ -1,11 +1,9 @@
 /// <reference types="@types/dom-serial" />
-import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils";
 import { Point } from "@noble/secp256k1";
-import { base64 } from "@scure/base";
 import { logger } from "applesauce-core";
 import { createDefer, Deferred } from "applesauce-core/promise";
 import { EventTemplate, getEventHash, NostrEvent, verifyEvent } from "nostr-tools";
-
+import { bytesToHex, hexToBytes } from "nostr-tools/utils";
 import { ISigner } from "../interop.js";
 
 type Callback = () => void;
@@ -24,6 +22,19 @@ function xOnlyToXY(p: string) {
 
 const utf8Decoder = new TextDecoder("utf-8");
 const utf8Encoder = new TextEncoder();
+
+// Helper functions for base64 encoding/decoding using built-in browser APIs
+function base64Encode(uint8Array: Uint8Array): string {
+  return btoa(String.fromCharCode(...uint8Array));
+}
+
+function base64Decode(base64: string): Uint8Array {
+  return new Uint8Array(
+    atob(base64)
+      .split("")
+      .map((c) => c.charCodeAt(0)),
+  );
+}
 
 /** A signer that works with [nostr-signing-device](https://github.com/lnbits/nostr-signing-device) */
 export class SerialPortSigner implements ISigner {
@@ -199,13 +210,13 @@ export class SerialPortSigner implements ISigner {
     const sharedSecretStr = await this.callMethodOnDevice(SerialPortSigner.METHOD_SHARED_SECRET, [xOnlyToXY(pubkey)]);
     const sharedSecret = hexToBytes(sharedSecretStr);
 
-    let iv = Uint8Array.from(randomBytes(16));
+    let iv = Uint8Array.from(window.crypto.getRandomValues(new Uint8Array(16)));
     let plaintext = utf8Encoder.encode(text);
     // @ts-ignore
     let cryptoKey = await crypto.subtle.importKey("raw", sharedSecret, { name: "AES-CBC" }, false, ["encrypt"]);
     let ciphertext = await crypto.subtle.encrypt({ name: "AES-CBC", iv }, cryptoKey, plaintext);
-    let ctb64 = base64.encode(new Uint8Array(ciphertext));
-    let ivb64 = base64.encode(new Uint8Array(iv.buffer));
+    let ctb64 = base64Encode(new Uint8Array(ciphertext));
+    let ivb64 = base64Encode(new Uint8Array(iv.buffer));
 
     return `${ctb64}?iv=${ivb64}`;
   }
@@ -217,8 +228,8 @@ export class SerialPortSigner implements ISigner {
 
     // @ts-ignore
     let cryptoKey = await crypto.subtle.importKey("raw", sharedSecret, { name: "AES-CBC" }, false, ["decrypt"]);
-    let ciphertext = base64.decode(ctb64);
-    let iv = base64.decode(ivb64);
+    let ciphertext = base64Decode(ctb64);
+    let iv = base64Decode(ivb64);
 
     // @ts-ignore
     let plaintext = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, cryptoKey, ciphertext);

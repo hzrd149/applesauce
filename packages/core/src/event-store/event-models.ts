@@ -1,10 +1,8 @@
 import hash_sum from "hash-sum";
-import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { Observable, ReplaySubject, finalize, share, timer } from "rxjs";
-
 import { NostrEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
-import { AddressPointerWithoutD } from "../helpers/pointers.js";
+import { AddressPointer, AddressPointerWithoutD, EventPointer, ProfilePointer } from "../helpers/pointers.js";
 import { ProfileContent } from "../helpers/profile.js";
 import { EventModel, FiltersModel, ReplaceableModel, TimelineModel } from "../models/base.js";
 import { ContactsModel } from "../models/contacts.js";

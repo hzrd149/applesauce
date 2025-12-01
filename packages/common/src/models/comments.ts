@@ -1,7 +1,6 @@
 import { Model } from "applesauce-core/event-store";
-import { getReplaceableAddress, NostrEvent } from "applesauce-core/helpers/event";
+import { getReplaceableAddress, isAddressableKind, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
-import { isAddressableKind } from "nostr-tools/kinds";
 import { type Observable } from "rxjs";
 
 import { COMMENT_KIND } from "../helpers/comment.js";

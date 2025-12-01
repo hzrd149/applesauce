@@ -1,4 +1,3 @@
-import { ProfilePointer } from "nostr-tools/nip19";
 import {
   combineLatest,
   combineLatestWith,
@@ -13,7 +12,7 @@ import {
 } from "rxjs";
 import { IEventSubscriptions } from "../event-store/interface.js";
 import { getInboxes, getOutboxes } from "../helpers/mailboxes.js";
-import { addRelayHintsToPointer } from "../helpers/pointers.js";
+import { addRelayHintsToPointer, ProfilePointer } from "../helpers/pointers.js";
 import { removeBlacklistedRelays, selectOptimalRelays, setFallbackRelays } from "../helpers/relay-selection.js";
 
 /** RxJS operator that fetches outboxes for profile pointers from the event store */

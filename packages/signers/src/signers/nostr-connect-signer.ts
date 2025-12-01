@@ -12,7 +12,6 @@ import {
 } from "applesauce-signers";
 import { nanoid } from "nanoid";
 import { EventTemplate, NostrEvent, getPublicKey, kinds, verifyEvent } from "nostr-tools";
-
 import { Subscription, filter, from, repeat, retry } from "rxjs";
 import { isNIP04 } from "../helpers/encryption.js";
 import {

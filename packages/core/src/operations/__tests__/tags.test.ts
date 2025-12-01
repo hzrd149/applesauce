@@ -1,9 +1,10 @@
-import { EncryptedContentSymbol, getHiddenTags, unixNow } from "applesauce-core/helpers";
-import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { buildEvent } from "../../event-factory/methods";
+import { buildEvent } from "../../event-factory/methods.js";
+import { kinds } from "../../helpers/event.js";
+import { unixNow } from "../../helpers/time.js";
 import { modifyHiddenTags } from "../tags.js";
+import { EncryptedContentSymbol, getHiddenTags } from "../../helpers";
 
 describe("modifyHiddenTags", () => {
   let user: FakeUser;

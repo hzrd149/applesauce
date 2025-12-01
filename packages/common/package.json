@@ -73,7 +73,6 @@
     "applesauce-core": "^4.4",
     "hash-sum": "^2.0.0",
     "light-bolt11-decoder": "^3.2.0",
-    "nostr-tools": "^2.18.1",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {

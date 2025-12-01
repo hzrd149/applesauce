@@ -1,11 +1,10 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { KnownEvent, verifyWrappedEvent } from "applesauce-core/helpers/event";
+import { isEvent, KnownEvent, verifyWrappedEvent } from "applesauce-core/helpers/event";
 import { getTagValue } from "applesauce-core/helpers/event";
 import { getAddressPointerFromATag, getEventPointerFromETag } from "applesauce-core/helpers/pointers";
 import { isATag, isETag } from "applesauce-core/helpers/tags";
-import { kinds, NostrEvent, validateEvent } from "nostr-tools";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
-
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { AddressPointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { parseBolt11, ParsedInvoice } from "./bolt11.js";
 
 /** Type for validated zap event */
@@ -98,7 +97,7 @@ export function getZapRequest(zap: NostrEvent): NostrEvent | undefined {
         throw new Error("Invalid zap request JSON.");
       }
 
-      if (!validateEvent(zapRequest)) throw new Error("Zap request is not a valid Nostr event.");
+      if (!isEvent(zapRequest)) throw new Error("Zap request is not a valid Nostr event.");
       if (!verifyWrappedEvent(zapRequest)) throw new Error("Invalid signature on zap request.");
 
       let p = zapRequest.tags.find(([t, v]) => t === "p" && v);

@@ -1,5 +1,5 @@
+import { decodePointer } from "applesauce-core/helpers/pointers";
 import { Tokens } from "applesauce-core/helpers/regexp";
-import { decode } from "nostr-tools/nip19";
 import { Transformer } from "unified";
 import { findAndReplace } from "../nast/find-and-replace.js";
 import { Root } from "../nast/types.js";
@@ -14,7 +14,7 @@ export function nostrMentions(): Transformer<Root> {
           try {
             return {
               type: "mention",
-              decoded: decode($1),
+              decoded: decodePointer($1),
               encoded: $1,
             };
           } catch (error) {}

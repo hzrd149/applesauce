@@ -1,14 +1,8 @@
-import {
-  createFilterMap,
-  FilterMap,
-  isFilterEqual,
-  normalizeURL,
-  OutboxMap,
-  type Filter,
-} from "applesauce-core/helpers";
-import { type NostrEvent } from "nostr-tools";
+import type { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter, isFilterEqual } from "applesauce-core/helpers/filter";
+import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
+import { normalizeURL } from "applesauce-core/helpers/url";
 import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, Subject } from "rxjs";
-
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
 import { Relay, SyncDirection, type RelayOptions } from "./relay.js";

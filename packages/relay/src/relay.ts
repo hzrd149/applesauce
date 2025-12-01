@@ -1,8 +1,10 @@
 import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-core";
-import { ensureHttpURL, type Filter } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
+import { ensureHttpURL } from "applesauce-core/helpers/url";
 import { mapEventsToStore, simpleTimeout } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
-import { nip42, type NostrEvent } from "nostr-tools";
+import { makeAuthEvent } from "nostr-tools/nip42";
 import {
   BehaviorSubject,
   catchError,
@@ -561,7 +563,7 @@ export class Relay implements IRelay {
   authenticate(signer: AuthSigner): Promise<PublishResponse> {
     if (!this.challenge) throw new Error("Have not received authentication challenge");
 
-    const p = signer.signEvent(nip42.makeAuthEvent(this.url, this.challenge));
+    const p = signer.signEvent(makeAuthEvent(this.url, this.challenge));
     const start = p instanceof Promise ? from(p) : of(p);
 
     return lastValueFrom(start.pipe(switchMap((event) => this.auth(event))));

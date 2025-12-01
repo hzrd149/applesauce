@@ -1,6 +1,4 @@
-import { KnownEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event";
-import { kinds, NostrEvent } from "nostr-tools";
+import { getTagValue, kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 
 /** Type for validated article events */
 export type ArticleEvent = KnownEvent<kinds.LongFormArticle>;

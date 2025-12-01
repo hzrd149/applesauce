@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createFiltersFromAddressPointers } from "../address-pointer.js";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers/event";
 
 describe("address pointer helpers", () => {
   describe("createFiltersFromAddressPointers", () => {

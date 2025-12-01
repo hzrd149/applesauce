@@ -10,6 +10,7 @@ export * from "./filter.js";
 export * from "./hidden-content.js";
 export * from "./hidden-tags.js";
 export * from "./json.js";
+export * from "./keys.js";
 export * from "./lists.js";
 export * from "./lru.js";
 export * from "./mailboxes.js";

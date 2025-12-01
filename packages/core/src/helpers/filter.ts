@@ -1,5 +1,6 @@
 import equal from "fast-deep-equal";
-import { Filter as CoreFilter, NostrEvent } from "nostr-tools";
+import { Filter as CoreFilter } from "nostr-tools";
+import { NostrEvent } from "./event.js";
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 export const INDEXABLE_TAGS = new Set((LETTERS + LETTERS.toUpperCase()).split(""));

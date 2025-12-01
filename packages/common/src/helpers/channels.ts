@@ -1,11 +1,13 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "applesauce-core/helpers/pointers";
-import { ChannelMetadata } from "nostr-tools/nip28";
 
 export const ChannelMetadataSymbol = Symbol.for("channel-metadata");
 
-export type ChannelMetadataContent = ChannelMetadata & {
+export type ChannelMetadataContent = {
+  name: string;
+  about: string;
+  picture: string;
   relays?: string[];
 };
 

@@ -1,5 +1,5 @@
-import { kinds } from "nostr-tools";
 import { EncryptionMethod } from "./encrypted-content.js";
+import { kinds } from "./event.js";
 import {
   canHaveHiddenContent,
   getHiddenContent,

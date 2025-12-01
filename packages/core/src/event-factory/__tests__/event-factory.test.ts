@@ -1,7 +1,8 @@
-import { finalizeEvent, kinds, nip04 } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { EncryptedContentSymbol, getHiddenTags, unlockHiddenTags } from "../../helpers";
+import { EncryptedContentSymbol, getHiddenTags, kinds, unlockHiddenTags } from "../../helpers";
+import { nip04 } from "../../helpers/encryption.js";
+import { finalizeEvent } from "../../helpers/event.js";
 import { setEncryptedContent } from "../../operations/encrypted-content.js";
 import { includeAltTag, modifyPublicTags, setContent } from "../../operations/index.js";
 import { addEventPointerTag, removeEventPointerTag, setSingletonTag } from "../../operations/tag/common.js";

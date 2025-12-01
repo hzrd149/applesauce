@@ -1,5 +1,5 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { EventPointer, ProfilePointer } from "nostr-tools/nip19";
+import { EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { getTagValue } from "applesauce-core/helpers/event";
 import {
   addRelayHintsToPointer,

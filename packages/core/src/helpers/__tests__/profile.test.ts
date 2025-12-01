@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { kinds } from "nostr-tools";
-import { npubEncode } from "nostr-tools/nip19";
-
-import { getDisplayName, ProfileContent } from "../profile.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
+import { kinds } from "../event.js";
+import { npubEncode } from "../pointers.js";
+import { getDisplayName, ProfileContent } from "../profile.js";
 
 const user = new FakeUser();
 const event = user.profile({
