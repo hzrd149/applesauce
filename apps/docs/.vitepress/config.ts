@@ -73,6 +73,7 @@ export default defineConfig({
           { text: "Package", link: "/loaders/package" },
           { text: "Event Loader", link: "/loaders/event-loader" },
           { text: "Address Loader", link: "/loaders/address-loader" },
+          { text: "Unified Loader", link: "/loaders/unified-loader" },
           { text: "Timeline Loader", link: "/loaders/timeline-loader" },
           { text: "Tag Value Loader", link: "/loaders/tag-value-loader" },
           { text: "Zaps Loader", link: "/loaders/zaps-loader" },

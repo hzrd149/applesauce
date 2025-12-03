@@ -94,6 +94,51 @@ eventLoader({
 });
 ```
 
+## Unified Event Loader
+
+The Unified Event Loader is a single loader that can handle both `EventPointer` and `AddressPointer` types. It automatically routes to the appropriate loader (`createEventLoader` for events by ID, `createAddressLoader` for addressable/replaceable events) based on the pointer type.
+
+This is the recommended approach when setting up loaders for an EventStore, as it provides a single loader that works with the unified `eventLoader` property.
+
+```ts
+import { createUnifiedEventLoader, createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { EventStore } from "applesauce-core";
+import { RelayPool } from "applesauce-relay";
+
+const eventStore = new EventStore();
+const pool = new RelayPool();
+
+// Option 1: Create and assign manually
+const unifiedLoader = createUnifiedEventLoader(pool, {
+  eventStore,
+  bufferTime: 1000,
+  followRelayHints: true,
+  extraRelays: ["wss://relay.example.com"],
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+});
+
+eventStore.eventLoader = unifiedLoader;
+
+// Option 2: Use the convenience function (recommended)
+createEventLoaderForStore(eventStore, pool, {
+  bufferTime: 1000,
+  followRelayHints: true,
+  extraRelays: ["wss://relay.example.com"],
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+});
+
+// Now the event store can load both events by ID and addressable events
+eventStore.event({ id: "event_id" }).subscribe((event) => {
+  console.log("Loaded event:", event);
+});
+
+eventStore.replaceable({ kind: 0, pubkey: "pubkey" }).subscribe((profile) => {
+  console.log("Loaded profile:", profile);
+});
+```
+
+The unified loader accepts all options from both `EventPointerLoaderOptions` and `AddressLoaderOptions`, making it easy to configure both types of loading in one place.
+
 ## Timeline Loader
 
 The Timeline Loader is designed for fetching paginated Nostr events in chronological order. It maintains state between calls, allowing you to efficiently load timeline events in blocks until you reach a specific timestamp or exhaust available events.
@@ -180,6 +225,11 @@ All loaders accept these common configuration options:
 - `cacheRequest`: A method used to load events from a local cache
 - `followRelayHints`: Whether to follow relay hints (default true)
 - `extraRelays`: An array of relays to always fetch from
+
+### Unified Event Loader Options
+
+The unified event loader accepts all options from both Event Loader and Address Loader options, plus:
+- `lookupRelays`: Fallback lookup relays to check when event can't be found (from Address Loader)
 
 ### Timeline Loader Options
 

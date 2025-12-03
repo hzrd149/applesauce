@@ -335,40 +335,35 @@ if (event) {
 
 ## Fallback event loaders
 
-The event store has three optional loader methods that act as fallbacks when events are not found in the store. These loaders are particularly useful for loading user profiles or other single events on-demand when the UI needs them.
+The event store has an optional `eventLoader` method that acts as a fallback when events are not found in the store. This loader is particularly useful for loading user profiles or other single events on-demand when the UI needs them.
 
 ### Setting up custom loaders
 
-You can implement your own loader methods using any Nostr library or relay connection approach:
+You can implement your own loader method using any Nostr library or relay connection approach. The `eventLoader` accepts both `EventPointer` (for events by ID) and `AddressPointer` (for addressable/replaceable events):
 
 ```ts
 import { EventStore } from "applesauce-core";
+import { EventPointer, AddressPointer } from "applesauce-core/helpers/pointers";
 
 const eventStore = new EventStore();
 
-// Event loader - loads events by ID
+// Unified event loader - handles both events by ID and addressable events
 eventStore.eventLoader = async (pointer) => {
-  console.log("loading event", pointer);
-  const event = await cache.getEventById(pointer.id);
-
-  if (event) return event;
-};
-
-// Replaceable loader - loads kind 0, 3, 1xxxx events
-eventStore.replaceableLoader = async (pointer) => {
-  console.log("loading replaceable event", pointer);
-  return await loadReplaceableEvent(pointer.kind, pointer.pubkey);
-};
-
-// Addressable loader - loads kind 3xxxx events
-eventStore.addressableLoader = async (pointer) => {
-  console.log("loading addressable event", pointer);
-  const event = await fetchAddressableEvent(pointer.kind, pointer.pubkey, pointer.identifier);
-  if (event) return event;
+  // Check if it's an event pointer (has 'id' property)
+  if ("id" in pointer) {
+    console.log("loading event", pointer.id);
+    const event = await cache.getEventById(pointer.id);
+    if (event) return event;
+  } else {
+    // It's an address pointer (has 'kind' and 'pubkey')
+    console.log("loading addressable event", pointer);
+    const event = await fetchAddressableEvent(pointer.kind, pointer.pubkey, pointer.identifier);
+    if (event) return event;
+  }
 };
 ```
 
-Now when events are subscribed to and they don't exist in the store, the loaders will be called automatically.
+Now when events are subscribed to and they don't exist in the store, the loader will be called automatically.
 
 ```ts
 const sub = eventStore
@@ -378,44 +373,78 @@ const sub = eventStore
   });
 
 // Console output:
-// loading replaceable event { kind: 0, pubkey: '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d' }
+// loading addressable event { kind: 0, pubkey: '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d' }
 // Profile loaded: { name: 'fiatjaf', ... }
 ```
 
-The loaders are called automatically and the loaded events are added to the store, making them available for future requests and updating any active subscriptions.
+The loader is called automatically and the loaded events are added to the store, making them available for future requests and updating any active subscriptions.
 
 ### Using with applesauce-loaders
 
-While you can implement loaders with any Nostr library, the `applesauce-relay` and `applesauce-loaders` packages make it much simpler:
+While you can implement loaders with any Nostr library, the `applesauce-relay` and `applesauce-loaders` packages make it much simpler. The recommended approach is to use the unified event loader:
 
 ```ts
 import { EventStore } from "applesauce-core";
-import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-// Create an address loader that handles all addressable and replaceable events
-const addressLoader = createAddressLoader(pool, {
+// Create and assign a unified loader that handles both events by ID and addressable events
+createEventLoaderForStore(eventStore, pool, {
   // Try a local relay first for caching
   cacheRequest: (filters) => pool.relay("ws://localhost:4869").request(filters),
   // Fallback to public relays
   lookupRelays: ["wss://purplepag.es", "wss://relay.damus.io"],
+  // Extra relays to always load from
+  extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
+});
+```
+
+Alternatively, you can create separate loaders and assign them manually:
+
+```ts
+import { EventStore } from "applesauce-core";
+import { createAddressLoader, createEventLoader, createUnifiedEventLoader } from "applesauce-loaders/loaders";
+import { RelayPool } from "applesauce-relay";
+
+const eventStore = new EventStore();
+const pool = new RelayPool();
+
+// Reuseable cache request function
+function cacheRequest(filters: Filter[]) {
+  return pool.relay("ws://localhost:4869").request(filters);
+}
+
+// Option 1: Use unified loader (recommended)
+const unifiedLoader = createUnifiedEventLoader(pool, {
+  eventStore,
+  cacheRequest,
+  lookupRelays: ["wss://purplepag.es", "wss://relay.damus.io"],
+  extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
 });
 
-// Set loaders on event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
+// Note: The unified eventLoader can handle both types, so you only need to set one
+eventStore.eventLoader = unifiedLoader;
 
-// Create an event loader that loads events by ID
+// Option 2: Use separate loaders
+const addressLoader = createAddressLoader(pool, {
+  eventStore,
+  cacheRequest,
+  lookupRelays: ["wss://purplepag.es", "wss://relay.damus.io"],
+});
+
 const eventLoader = createEventLoader(pool, {
-  // Try a local relay first for caching
-  cacheRequest: (filters) => pool.relay("ws://localhost:4869").request(filters),
+  eventStore,
+  cacheRequest,
 });
 
-// Set loader on event store
-eventStore.eventLoader = eventLoader;
+// Create a method that calls the appropriate loader based on the pointer type
+eventStore.eventLoader = (pointer) => {
+  if (isEventPointer(pointer)) return eventLoader(pointer);
+  else return addressLoader(pointer);
+};
 ```
 
 ## Configuration Options

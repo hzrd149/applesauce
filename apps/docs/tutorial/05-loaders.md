@@ -118,6 +118,66 @@ merge(
 });
 ```
 
+## Unified Event Loader
+
+The `createUnifiedEventLoader` function creates a single loader that can handle both `EventPointer` and `AddressPointer` types. This is the recommended approach when setting up loaders for an EventStore.
+
+### Setting up Unified Event Loader
+
+```typescript
+import { createUnifiedEventLoader, createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { EventStore } from "applesauce-core";
+import { RelayPool } from "applesauce-relay";
+
+const eventStore = new EventStore();
+const pool = new RelayPool();
+
+// Option 1: Use the convenience function (recommended)
+createEventLoaderForStore(eventStore, pool, {
+  eventStore,
+  extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+});
+
+// Option 2: Create and assign manually
+const unifiedLoader = createUnifiedEventLoader(pool, {
+  eventStore,
+  extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+});
+
+eventStore.eventLoader = unifiedLoader;
+```
+
+The unified loader automatically routes to the appropriate loader based on the pointer type:
+- `EventPointer` (has `id` property) → uses `createEventLoader`
+- `AddressPointer` (has `kind` and `pubkey`) → uses `createAddressLoader`
+
+### Using with EventStore
+
+Once the unified loader is set up, the EventStore can automatically load both events by ID and addressable events:
+
+```typescript
+// Load an event by ID
+eventStore.event({ id: "event_id" }).subscribe((event) => {
+  console.log("Loaded event:", event);
+});
+
+// Load a profile (replaceable event)
+eventStore.replaceable({ kind: 0, pubkey: "pubkey" }).subscribe((profile) => {
+  console.log("Loaded profile:", profile);
+});
+
+// Load an addressable event
+eventStore.addressable({
+  kind: 30023,
+  pubkey: "pubkey",
+  identifier: "article-id"
+}).subscribe((article) => {
+  console.log("Loaded article:", article);
+});
+```
+
 ## Practical Examples
 
 ### Loading a User's Profile
