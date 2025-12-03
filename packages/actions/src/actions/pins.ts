@@ -1,8 +1,11 @@
-import { getReplaceableAddress, isReplaceable } from "applesauce-core/helpers";
-import { modifyPublicTags } from "applesauce-factory/operations";
-import { addAddressTag, addEventTag, removeAddressTag, removeEventTag } from "applesauce-factory/operations/tag";
-import { kinds, NostrEvent } from "nostr-tools";
-
+import { getReplaceableAddress, isReplaceable, kinds, NostrEvent } from "applesauce-core/helpers/event";
+import {
+  addAddressPointerTag,
+  addEventPointerTag,
+  removeAddressPointerTag,
+  removeEventPointerTag,
+} from "applesauce-core/operations/tag/common";
+import { modifyPublicTags } from "applesauce-core/operations/tags";
 import { Action } from "../action-hub.js";
 
 export const ALLOWED_PIN_KINDS = [kinds.ShortTextNote, kinds.LongFormArticle];
@@ -14,7 +17,9 @@ export function PinNote(note: NostrEvent): Action {
   return async function* ({ events, factory, self }) {
     const pins = events.getReplaceable(kinds.Pinlist, self);
 
-    const operation = isReplaceable(note.kind) ? addAddressTag(getReplaceableAddress(note)) : addEventTag(note.id);
+    const operation = isReplaceable(note.kind)
+      ? addAddressPointerTag(getReplaceableAddress(note))
+      : addEventPointerTag(note.id);
     const draft = pins
       ? await factory.modifyTags(pins, operation)
       : await factory.build({ kind: kinds.Pinlist }, modifyPublicTags(operation));
@@ -30,8 +35,8 @@ export function UnpinNote(note: NostrEvent): Action {
     if (!pins) return;
 
     const operation = isReplaceable(note.kind)
-      ? removeAddressTag(getReplaceableAddress(note))
-      : removeEventTag(note.id);
+      ? removeAddressPointerTag(getReplaceableAddress(note))
+      : removeEventPointerTag(note.id);
     const draft = await factory.modifyTags(pins, operation);
 
     yield await factory.sign(draft);
@@ -46,7 +51,7 @@ export function CreatePinList(pins: NostrEvent[] = []): Action {
 
     const draft = await factory.build(
       { kind: kinds.Pinlist },
-      modifyPublicTags(...pins.map((event) => addEventTag(event.id))),
+      modifyPublicTags(...pins.map((event) => addEventPointerTag(event.id))),
     );
     yield await factory.sign(draft);
   };

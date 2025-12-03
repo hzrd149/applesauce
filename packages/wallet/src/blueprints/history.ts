@@ -1,5 +1,5 @@
-import { blueprint } from "applesauce-factory";
-import { EventPointer } from "nostr-tools/nip19";
+import { blueprint } from "applesauce-core";
+import { EventPointer } from "applesauce-core/helpers/pointers";
 import { HistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
 import { setHistoryContent, setHistoryRedeemed } from "../operations/history.js";
 

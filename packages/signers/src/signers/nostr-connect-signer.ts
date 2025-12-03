@@ -1,5 +1,7 @@
 import { logger } from "applesauce-core";
 import { getHiddenContent, isHexKey, unixNow } from "applesauce-core/helpers";
+import { EventTemplate, NostrEvent, kinds, verifyEvent } from "applesauce-core/helpers/event";
+import { getPublicKey } from "applesauce-core/helpers/keys";
 import { Deferred, createDefer } from "applesauce-core/promise";
 import {
   ISigner,
@@ -11,8 +13,6 @@ import {
   getConnectionMethods,
 } from "applesauce-signers";
 import { nanoid } from "nanoid";
-import { EventTemplate, NostrEvent, getPublicKey, kinds, verifyEvent } from "nostr-tools";
-
 import { Subscription, filter, from, repeat, retry } from "rxjs";
 import { isNIP04 } from "../helpers/encryption.js";
 import {

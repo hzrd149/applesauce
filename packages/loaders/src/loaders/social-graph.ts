@@ -1,9 +1,9 @@
-import { mapEventsToStore } from "applesauce-core";
-import { getProfilePointersFromList, mergeRelaySets } from "applesauce-core/helpers";
-import { kinds, NostrEvent } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { mapEventsToStore } from "applesauce-core/observable";
+import { getProfilePointersFromList } from "applesauce-core/helpers";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { mergeRelaySets } from "applesauce-core/helpers/relays";
 import { firstValueFrom, identity, isObservable, lastValueFrom, Observable, toArray } from "rxjs";
-
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { AddressPointerLoader, LoadableAddressPointer } from "./address-loader.js";
 

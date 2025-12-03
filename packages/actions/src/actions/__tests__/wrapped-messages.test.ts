@@ -1,13 +1,11 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { EventStore } from "applesauce-core";
-import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-core/helpers";
-import { kinds } from "nostr-tools";
+import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-common/helpers/gift-wrap";
+import { EventFactory, EventStore } from "applesauce-core";
+import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
-
-import { FakeUser } from "../../../../factory/src/__tests__/fake-user";
-import { EventFactory } from "../../../../factory/src/event-factory";
-import { ActionHub } from "../../action-hub";
-import { SendWrappedMessage } from "../wrapped-messages";
+import { FakeUser } from "../../__tests__/fake-user.js";
+import { ActionHub } from "../../action-hub.js";
+import { SendWrappedMessage } from "../wrapped-messages.js";
 
 const bob = new FakeUser();
 const alice = new FakeUser();

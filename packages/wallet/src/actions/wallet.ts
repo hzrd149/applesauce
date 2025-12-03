@@ -1,9 +1,8 @@
 import { Action } from "applesauce-actions";
-
-import { getWalletMints, getWalletPrivateKey, isWalletUnlocked, unlockWallet, WALLET_KIND } from "../helpers/wallet.js";
 import { WalletBackupBlueprint, WalletBlueprint } from "../blueprints/wallet.js";
-import { isTokenContentUnlocked, unlockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 import { isHistoryContentUnlocked, unlockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
+import { isTokenContentUnlocked, unlockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
+import { getWalletMints, getWalletPrivateKey, isWalletUnlocked, unlockWallet, WALLET_KIND } from "../helpers/wallet.js";
 
 /** An action that creates a new 17375 wallet event and 375 wallet backup */
 export function CreateWallet(mints: string[], privateKey?: Uint8Array): Action {

@@ -1,7 +1,7 @@
-import { Token } from "@cashu/cashu-ts";
+import { type Token } from "@cashu/cashu-ts";
+import { EventOperation } from "applesauce-core";
 import { EventContentEncryptionMethod } from "applesauce-core/helpers";
-import { EventOperation } from "applesauce-factory";
-import { setEncryptedContent } from "applesauce-factory/operations/content";
+import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
 
 import { TokenContent } from "../helpers/tokens.js";
 

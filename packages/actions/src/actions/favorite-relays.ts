@@ -1,10 +1,10 @@
+import { TagOperation } from "applesauce-core";
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { FAVORITE_RELAYS_KIND } from "applesauce-core/helpers/lists";
-import { TagOperation } from "applesauce-factory";
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
-import { addAddressTag, addRelayTag, removeAddressTag, removeRelayTag } from "applesauce-factory/operations/tag";
-import { AddressPointer } from "nostr-tools/nip19";
-
+import { AddressPointer } from "applesauce-core/helpers/pointers";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
+import { addAddressPointerTag, removeAddressPointerTag } from "applesauce-core/operations/tag/common";
+import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
 import { Action } from "../action-hub.js";
 
 function getFavoriteRelaysEvent(events: IEventStoreRead, self: string) {
@@ -40,7 +40,7 @@ export function AddFavoriteRelaySet(addr: AddressPointer[] | AddressPointer, hid
   return async function* ({ events, factory, self }) {
     const favorites = getFavoriteRelaysEvent(events, self);
 
-    const operation = Array.isArray(addr) ? addr.map((a) => addAddressTag(a)) : addAddressTag(addr);
+    const operation = Array.isArray(addr) ? addr.map((a) => addAddressPointerTag(a)) : addAddressPointerTag(addr);
     const draft = await factory.modifyTags(favorites, hidden ? { hidden: operation } : operation);
     yield await factory.sign(draft);
   };
@@ -51,7 +51,7 @@ export function RemoveFavoriteRelaySet(addr: AddressPointer[] | AddressPointer, 
   return async function* ({ events, factory, self }) {
     const favorites = getFavoriteRelaysEvent(events, self);
 
-    const operation = Array.isArray(addr) ? addr.map((a) => removeAddressTag(a)) : removeAddressTag(addr);
+    const operation = Array.isArray(addr) ? addr.map((a) => removeAddressPointerTag(a)) : removeAddressPointerTag(addr);
     const draft = await factory.modifyTags(favorites, hidden ? { hidden: operation } : operation);
     yield await factory.sign(draft);
   };
@@ -76,10 +76,10 @@ export function NewFavoriteRelays(
     }
 
     if (Array.isArray(sets)) {
-      publicOperations.push(...sets.map((s) => addAddressTag(s)));
+      publicOperations.push(...sets.map((s) => addAddressPointerTag(s)));
     } else {
-      if (sets?.public) publicOperations.push(...(sets?.public ?? []).map((s) => addAddressTag(s)));
-      if (sets?.hidden) hiddenOperations.push(...(sets?.hidden ?? []).map((s) => addAddressTag(s)));
+      if (sets?.public) publicOperations.push(...(sets?.public ?? []).map((s) => addAddressPointerTag(s)));
+      if (sets?.hidden) hiddenOperations.push(...(sets?.hidden ?? []).map((s) => addAddressPointerTag(s)));
     }
 
     const draft = await factory.build(

@@ -1,11 +1,16 @@
-import { Proof } from "@cashu/cashu-ts";
+import { type Proof } from "@cashu/cashu-ts";
+import { EventOperation, TagOperation } from "applesauce-core";
 import { getReplaceableAddress, isAddressPointer, isEvent, isReplaceable } from "applesauce-core/helpers";
-import { EventOperation, TagOperation } from "applesauce-factory";
-import { modifyPublicTags } from "applesauce-factory/operations";
-import { setContent } from "applesauce-factory/operations/content";
-import { addAddressTag, addEventTag, addPubkeyTag, setSingletonTag } from "applesauce-factory/operations/tag";
-import { NostrEvent } from "nostr-tools";
-import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { AddressPointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
+import { modifyPublicTags } from "applesauce-core/operations";
+import { setContent } from "applesauce-core/operations/content";
+import {
+  addAddressPointerTag,
+  addEventPointerTag,
+  addProfilePointerTag,
+  setSingletonTag,
+} from "applesauce-core/operations/tag/common";
 
 /** Sets the cashu proofs for a nutzap event */
 export function setProofs(proofs: Proof[]): EventOperation {
@@ -22,7 +27,7 @@ export function setMint(mint: string): EventOperation {
 
 /** Sets the recipient of a nutzap event */
 export function setRecipient(recipient: string | ProfilePointer): EventOperation {
-  return modifyPublicTags(addPubkeyTag(recipient, true));
+  return modifyPublicTags(addProfilePointerTag(recipient, true));
 }
 
 /** Sets the event that is being nutzapped */
@@ -30,9 +35,11 @@ export function setEvent(event: EventPointer | AddressPointer | NostrEvent): Eve
   let operation: TagOperation;
 
   if (isEvent(event))
-    operation = isReplaceable(event.kind) ? addEventTag(event.id) : addAddressTag(getReplaceableAddress(event));
-  else if (isAddressPointer(event)) operation = addAddressTag(event);
-  else operation = addEventTag(event);
+    operation = isReplaceable(event.kind)
+      ? addEventPointerTag(event.id)
+      : addAddressPointerTag(getReplaceableAddress(event));
+  else if (isAddressPointer(event)) operation = addAddressPointerTag(event);
+  else operation = addEventPointerTag(event);
 
   return modifyPublicTags(operation);
 }

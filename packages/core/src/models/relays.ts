@@ -1,10 +1,9 @@
-import { kinds } from "nostr-tools";
-import { AddressPointer } from "nostr-tools/nip19";
 import { identity, map } from "rxjs";
-
-import { FAVORITE_RELAYS_KIND, getAddressPointersFromList, getRelaysFromList, ReadListTags } from "../helpers/lists.js";
-import { watchEventUpdates } from "../observable/watch-event-updates.js";
 import { Model } from "../event-store/interface.js";
+import { kinds } from "../helpers/event.js";
+import { FAVORITE_RELAYS_KIND, getAddressPointersFromList, getRelaysFromList, ReadListTags } from "../helpers/lists.js";
+import { AddressPointer } from "../helpers/pointers.js";
+import { watchEventUpdates } from "../observable/watch-event-updates.js";
 
 /**
  * A model that returns all favorite relays for a pubkey
@@ -12,12 +11,11 @@ import { Model } from "../event-store/interface.js";
  * @param type - Which types of tags to read
  */
 export function FavoriteRelaysModel(pubkey: string, type?: ReadListTags): Model<string[] | undefined> {
-  return (events) => {
-    return events.replaceable(FAVORITE_RELAYS_KIND, pubkey).pipe(
+  return (events) =>
+    events.replaceable(FAVORITE_RELAYS_KIND, pubkey).pipe(
       type !== "public" ? watchEventUpdates(events) : map(identity),
       map((e) => e && getRelaysFromList(e, type)),
     );
-  };
 }
 
 /**
@@ -26,12 +24,11 @@ export function FavoriteRelaysModel(pubkey: string, type?: ReadListTags): Model<
  * @param type - Which types of tags to read
  */
 export function FavoriteRelaySetsModel(pubkey: string, type?: ReadListTags): Model<AddressPointer[] | undefined> {
-  return (events) => {
-    return events.replaceable(FAVORITE_RELAYS_KIND, pubkey).pipe(
+  return (events) =>
+    events.replaceable(FAVORITE_RELAYS_KIND, pubkey).pipe(
       type !== "public" ? watchEventUpdates(events) : map(identity),
       map((e) => e && getAddressPointersFromList(e, type)),
     );
-  };
 }
 
 /**
@@ -40,12 +37,11 @@ export function FavoriteRelaySetsModel(pubkey: string, type?: ReadListTags): Mod
  * @param type - Which types of tags to read
  */
 export function SearchRelaysModel(pubkey: string, type?: ReadListTags): Model<string[] | undefined> {
-  return (events) => {
-    return events.replaceable(kinds.SearchRelaysList, pubkey).pipe(
+  return (events) =>
+    events.replaceable(kinds.SearchRelaysList, pubkey).pipe(
       type !== "public" ? watchEventUpdates(events) : map(identity),
       map((e) => e && getRelaysFromList(e, type)),
     );
-  };
 }
 
 /**
@@ -54,10 +50,9 @@ export function SearchRelaysModel(pubkey: string, type?: ReadListTags): Model<st
  * @param type - Which types of tags to read
  */
 export function BlockedRelaysModel(pubkey: string, type?: ReadListTags): Model<string[] | undefined> {
-  return (events) => {
-    return events.replaceable(kinds.BlockedRelaysList, pubkey).pipe(
+  return (events) =>
+    events.replaceable(kinds.BlockedRelaysList, pubkey).pipe(
       type !== "public" ? watchEventUpdates(events) : map(identity),
       map((e) => e && getRelaysFromList(e, type)),
     );
-  };
 }

@@ -1,8 +1,8 @@
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex } from "applesauce-core/helpers/event";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { nsecEncode } from "applesauce-core/helpers/pointers";
 import { PrivateKeySigner } from "applesauce-signers/signers/private-key-signer";
-import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
-
 import { SerializedAccount } from "../../types.js";
 import { PrivateKeyAccount } from "../private-key-account.js";
 
@@ -14,7 +14,7 @@ let testHexKey: string;
 beforeEach(() => {
   testKey = generateSecretKey();
   testPubkey = getPublicKey(testKey);
-  testNsec = nip19.nsecEncode(testKey);
+  testNsec = nsecEncode(testKey);
   testHexKey = bytesToHex(testKey);
 });
 

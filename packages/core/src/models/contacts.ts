@@ -1,10 +1,10 @@
-import { kinds } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { Model } from "../event-store/interface.js";
+import { kinds } from "../helpers/event.js";
+import { ProfilePointer } from "../helpers/pointers.js";
+import { watchEventUpdates } from "../observable/watch-event-updates.js";
 import { map } from "rxjs/operators";
 
-import { Model } from "../event-store/interface.js";
 import { getContacts, getHiddenContacts, getPublicContacts } from "../helpers/contacts.js";
-import { watchEventUpdates } from "../observable/index.js";
 
 /** A model that returns all contacts for a user */
 export function ContactsModel(user: string | ProfilePointer): Model<ProfilePointer[]> {

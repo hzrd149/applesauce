@@ -1,11 +1,10 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { kinds, NostrEvent } from "nostr-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { unixNow } from "../../helpers";
+import { kinds, NostrEvent } from "../../helpers/event.js";
 import { addSeenRelay, getSeenRelays } from "../../helpers/relays.js";
-import { EventModel } from "../../models/common.js";
+import { EventModel } from "../../models/base.js";
 import { ProfileModel } from "../../models/profile.js";
 import { EventStore } from "../event-store.js";
 
@@ -209,16 +208,6 @@ describe("model", () => {
     expect(value).not.toBe(undefined);
   });
 
-  it("should emit synchronous undefined if value does not exists", () => {
-    let value: any = 0;
-    eventStore.model(ProfileModel, user.pubkey).subscribe((v) => {
-      value = v;
-    });
-
-    expect(value).not.toBe(0);
-    expect(value).toBe(undefined);
-  });
-
   it("should share latest value", () => {
     eventStore.add(profile);
     const spy = subscribeSpyTo(eventStore.model(EventModel, profile.id));
@@ -238,9 +227,8 @@ describe("event", () => {
 
   it("should emit then event when its added", () => {
     const spy = subscribeSpyTo(eventStore.event(profile.id));
-    expect(spy.getValues()).toEqual([undefined]);
     eventStore.add(profile);
-    expect(spy.getValues()).toEqual([undefined, profile]);
+    expect(spy.getValues()).toEqual([profile]);
   });
 
   it("should emit undefined when event is removed", () => {
@@ -266,9 +254,9 @@ describe("event", () => {
     expect(spy.receivedComplete()).toBe(false);
   });
 
-  it("should emit undefined if event is not found", () => {
+  it("should not emit if event is not found", () => {
     const spy = subscribeSpyTo(eventStore.event(profile.id));
-    expect(spy.getValues()).toEqual([undefined]);
+    expect(spy.getValuesLength()).toEqual(0);
   });
 });
 

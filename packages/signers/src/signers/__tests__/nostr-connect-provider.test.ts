@@ -1,9 +1,8 @@
+import { kinds } from "applesauce-core/helpers/event";
 import { nanoid } from "nanoid";
-import { kinds } from "nostr-tools";
+import { NEVER } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
-
-import { NEVER } from "rxjs";
 import { FakeUser } from "../../__tests__/fake-user";
 import {
   buildSigningPermissions,

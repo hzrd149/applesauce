@@ -1,14 +1,11 @@
-import { logger as baseLogger, EventMemory, filterDuplicateEvents, mapEventsToStore } from "applesauce-core";
-import {
-  createFilterMap,
-  FilterMap,
-  isFilterEqual,
-  mergeFilters,
-  OutboxMap,
-  ProfilePointer,
-} from "applesauce-core/helpers";
+import { logger as baseLogger } from "applesauce-core";
+import { EventMemory } from "applesauce-core/event-store";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter, isFilterEqual, mergeFilters } from "applesauce-core/helpers/filter";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
+import { filterDuplicateEvents, mapEventsToStore } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
-import { Filter, NostrEvent } from "nostr-tools";
 import {
   BehaviorSubject,
   distinctUntilChanged,
@@ -27,7 +24,6 @@ import {
   switchMap,
   tap,
 } from "rxjs";
-
 import { makeCacheRequest } from "../helpers/cache.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { CacheRequest, TimelessFilter, UpstreamPool } from "../types.js";

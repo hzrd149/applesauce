@@ -1,8 +1,8 @@
-import { EventMemory, filterDuplicateEvents } from "applesauce-core";
-import { NostrEvent } from "nostr-tools";
-import { EventPointer } from "nostr-tools/nip19";
+import { EventMemory } from "applesauce-core/event-store";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { EventPointer } from "applesauce-core/helpers/pointers";
+import { filterDuplicateEvents } from "applesauce-core/observable";
 import { bufferTime, catchError, EMPTY, identity, merge, Observable, tap } from "rxjs";
-
 import { makeCacheRequest } from "../helpers/cache.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
 import { batchLoader, unwrap } from "../helpers/loaders.js";

@@ -1,18 +1,29 @@
+import { kinds } from "nostr-tools";
+import { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
 import { NostrEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
-import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
 import { IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
-export { NostrEvent, EventTemplate, UnsignedEvent, verifiedSymbol, verifyEvent, VerifiedEvent } from "nostr-tools/pure";
 export {
+  EventTemplate,
+  NostrEvent,
+  UnsignedEvent,
+  VerifiedEvent,
+  verifiedSymbol,
+  verifyEvent,
+  getEventHash,
+  finalizeEvent,
+  serializeEvent,
+} from "nostr-tools/pure";
+export {
+  binarySearch,
   bytesToHex,
   hexToBytes,
   insertEventIntoAscendingList,
   insertEventIntoDescendingList,
-  binarySearch,
 } from "nostr-tools/utils";
-export * as kinds from "nostr-tools/kinds";
+export { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind, kinds };
 
 /** An event with a known kind. this is used to know if events have been validated */
 export type KnownEvent<K extends number> = Omit<NostrEvent, "kind"> & { kind: K };
@@ -142,4 +153,23 @@ export function getReplaceableIdentifier(event: NostrEvent): string {
 /** Checks if an event is a NIP-70 protected event */
 export function isProtectedEvent(event: NostrEvent): boolean {
   return event.tags.some((t) => t[0] === "-");
+}
+
+/**
+ * Returns the second index ( tag[1] ) of the first tag that matches the name
+ */
+export function getTagValue<T extends { kind: number; tags: string[][]; content: string }>(
+  event: T,
+  name: string,
+): string | undefined {
+  return event.tags.find((t) => t[0] === name)?.[1];
+}
+
+/** Checks if an event has a public name / value tag*/
+export function hasNameValueTag<T extends { kind: number; tags: string[][]; content: string }>(
+  event: T,
+  name: string,
+  value: string,
+): boolean {
+  return event.tags.some((t) => t[0] === name && t[1] === value);
 }

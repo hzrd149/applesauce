@@ -1,8 +1,7 @@
+import { EventFactory } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-factory";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { describe, expect, it } from "vitest";
-
 import { FakeUser } from "../../__tests__/fake-user";
 import { WalletBlueprint } from "../../blueprints/wallet";
 import { WALLET_BACKUP_KIND } from "../../helpers/wallet";

@@ -1,6 +1,7 @@
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import { Observable } from "rxjs";
 import { NostrRequest, UpstreamPool } from "../types.js";
-import { Filter, NostrEvent } from "nostr-tools";
 
 /** Makes a nostr request on the upstream pool */
 export function makeUpstreamRequest(pool: UpstreamPool, relays: string[], filters: Filter[]): Observable<NostrEvent> {

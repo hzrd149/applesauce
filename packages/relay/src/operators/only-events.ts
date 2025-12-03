@@ -1,5 +1,5 @@
 import { filter, OperatorFunction } from "rxjs";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { SubscriptionResponse } from "../types.js";
 
 /** Filter subscription responses and only return the events */

@@ -39,9 +39,8 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^4.0.0",
-    "applesauce-factory": "^4.0.0",
-    "nostr-tools": "~2.17",
+    "applesauce-common": "workspace:^",
+    "applesauce-core": "^4.4",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {

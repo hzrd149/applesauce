@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { beforeEach, describe, expect, it } from "vitest";
 import { ReadonlySigner } from "../readonly-signer.js";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
 
 describe("ReadonlySigner", () => {
   const testPubkey = getPublicKey(generateSecretKey());

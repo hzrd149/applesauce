@@ -9,7 +9,7 @@ import {
   UnlockedHiddenContent,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 export const WALLET_TOKEN_KIND = 7375;
 

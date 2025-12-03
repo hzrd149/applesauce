@@ -1,8 +1,9 @@
-import { EventMemory, filterDuplicateEvents } from "applesauce-core";
-import { mergeRelaySets } from "applesauce-core/helpers";
-import { Filter, NostrEvent } from "nostr-tools";
+import { EventMemory } from "applesauce-core/event-store";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
+import { mergeRelaySets } from "applesauce-core/helpers/relays";
+import { filterDuplicateEvents } from "applesauce-core/observable";
 import { bufferTime, EMPTY, identity, merge, Observable } from "rxjs";
-
 import { unique } from "../helpers/array.js";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { batchLoader, unwrap } from "../helpers/loaders.js";

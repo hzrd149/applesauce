@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "../helpers/event.js";
 import { finalize, MonoTypeOperatorFunction, tap } from "rxjs";
 
 import { IEventClaims } from "../event-store/interface.js";

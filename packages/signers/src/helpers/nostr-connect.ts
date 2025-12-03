@@ -1,6 +1,6 @@
-import { setHiddenContentEncryptionMethod } from "applesauce-core/helpers";
+import { setHiddenContentEncryptionMethod } from "applesauce-core/helpers/hidden-content";
 import { isHexKey } from "applesauce-core/helpers/string";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers/event";
 
 // Set encryption types for nostr connect events
 setHiddenContentEncryptionMethod(kinds.NostrConnect, "nip44");

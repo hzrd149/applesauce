@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "./event.js";
 import { IEventStoreStreams } from "../event-store/interface.js";
 import { bufferTime, filter } from "rxjs";
 import { logger } from "../logger.js";

@@ -1,4 +1,4 @@
-import { EventTemplate, NostrEvent } from "nostr-tools";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 
 import { Root } from "../nast/types.js";
 

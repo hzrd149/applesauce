@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { EncryptedContentSymbol, unixNow } from "applesauce-core/helpers";
 
 import { FakeUser } from "../../__tests__/fake-user.js";

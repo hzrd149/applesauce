@@ -1,11 +1,12 @@
-import { getConversationParticipants, Rumor } from "applesauce-core/helpers";
+import { getConversationParticipants } from "applesauce-common/helpers/messages";
+import { Rumor } from "applesauce-common/helpers/gift-wrap";
 import {
   GiftWrapBlueprint,
   WrappedMessageBlueprint,
   WrappedMessageBlueprintOptions,
   WrappedMessageReplyBlueprint,
-} from "applesauce-factory/blueprints";
-import { GiftWrapOptions } from "applesauce-factory/operations/gift-wrap";
+} from "applesauce-common/blueprints";
+import { GiftWrapOptions } from "applesauce-common/operations/gift-wrap";
 
 import { Action } from "../action-hub.js";
 

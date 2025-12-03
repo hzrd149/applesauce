@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
-import { NostrEvent } from "nostr-tools";
-import { getInboxes, getOutboxes } from "../mailboxes.js";
+import { NostrEvent } from "../event";
+import { getInboxes, getOutboxes } from "../mailboxes";
 
 const emptyEvent: NostrEvent = {
   kind: 10002,

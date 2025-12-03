@@ -1,6 +1,6 @@
-import { blueprint, EventBlueprint } from "applesauce-factory";
-import { setContent } from "applesauce-factory/operations/content";
-import { includeSingletonTag } from "applesauce-factory/operations";
+import { blueprint, EventBlueprint } from "applesauce-core";
+import { setContent } from "applesauce-core/operations/content";
+import { includeSingletonTag } from "applesauce-core/operations/tags";
 
 import { WALLET_INFO_KIND, WalletSupport } from "../helpers/support.js";
 import { TWalletMethod } from "../helpers/methods.js";

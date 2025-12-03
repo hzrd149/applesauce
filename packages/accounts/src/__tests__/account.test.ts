@@ -1,7 +1,8 @@
-import { ISigner, PrivateKeySigner } from "applesauce-signers";
-import { finalizeEvent, generateSecretKey } from "nostr-tools";
+import { finalizeEvent } from "applesauce-core/helpers/event";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { ISigner } from "applesauce-signers";
+import { PrivateKeySigner } from "applesauce-signers/signers/private-key-signer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import { BaseAccount, SignerMismatchError } from "../account.js";
 import { PrivateKeyAccount } from "../accounts/private-key-account.js";
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vitest } from "vitest";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { ActionHub } from "applesauce-actions";
 import { CheckStateEnum } from "@cashu/cashu-ts";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";

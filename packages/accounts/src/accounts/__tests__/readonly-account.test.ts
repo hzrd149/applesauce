@@ -1,7 +1,7 @@
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { nprofileEncode, npubEncode } from "applesauce-core/helpers/pointers";
 import { ReadonlySigner } from "applesauce-signers/signers/readonly-signer";
-import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
-
 import { SerializedAccount } from "../../types.js";
 import { ReadonlyAccount } from "../readonly-account.js";
 
@@ -13,8 +13,8 @@ let testNprofile: string;
 beforeEach(() => {
   testKey = generateSecretKey();
   testPubkey = getPublicKey(testKey);
-  testNpub = nip19.npubEncode(testPubkey);
-  testNprofile = nip19.nprofileEncode({
+  testNpub = npubEncode(testPubkey);
+  testNprofile = nprofileEncode({
     pubkey: testPubkey,
     relays: ["wss://relay.damus.io", "wss://nos.lol"],
   });
@@ -192,7 +192,7 @@ describe("fromPubkey", () => {
     });
 
     it("should extract pubkey from nprofile with relay hints", () => {
-      const nprofileWithRelays = nip19.nprofileEncode({
+      const nprofileWithRelays = nprofileEncode({
         pubkey: testPubkey,
         relays: ["wss://relay1.example.com", "wss://relay2.example.com"],
       });

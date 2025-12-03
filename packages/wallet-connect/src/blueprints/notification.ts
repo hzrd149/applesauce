@@ -1,6 +1,6 @@
-import { blueprint, EventBlueprint } from "applesauce-factory";
-import { includeSingletonTag } from "applesauce-factory/operations";
-import { setEncryptedContent } from "applesauce-factory/operations/content";
+import { blueprint, EventBlueprint } from "applesauce-core/event-factory";
+import { includeSingletonTag } from "applesauce-core/operations/tags";
+import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
 
 import {
   WALLET_NOTIFICATION_KIND,

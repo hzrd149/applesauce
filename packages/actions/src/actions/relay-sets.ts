@@ -1,8 +1,8 @@
+import * as List from "applesauce-common/operations/list";
 import { IEventStoreRead } from "applesauce-core/event-store";
-import { modifyHiddenTags, modifyPublicTags, List } from "applesauce-factory/operations";
-import { addRelayTag, removeRelayTag } from "applesauce-factory/operations/tag";
-import { kinds, NostrEvent } from "nostr-tools";
-
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
+import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
 import { Action } from "../action-hub.js";
 
 function getRelaySetEvent(events: IEventStoreRead, self: string, identifier: NostrEvent | string) {

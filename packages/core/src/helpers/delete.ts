@@ -1,5 +1,4 @@
-import { NostrEvent } from "nostr-tools";
-
+import { NostrEvent } from "./event.js";
 import { isATag, isETag } from "./tags.js";
 
 export function getDeleteIds(deleteEvent: NostrEvent): string[] {

@@ -1,16 +1,15 @@
-import { describe, it, expect, beforeEach, vitest, Mock } from "vitest";
-import { unlockHiddenTags } from "applesauce-core/helpers";
-import { lastValueFrom } from "rxjs";
-import { generateSecretKey } from "nostr-tools";
-import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-factory";
-import { ActionHub } from "applesauce-actions";
 import { bytesToHex } from "@noble/hashes/utils";
-
+import { ActionHub } from "applesauce-actions";
+import { EventStore } from "applesauce-core";
+import { EventFactory } from "applesauce-core/event-factory";
+import { unlockHiddenTags } from "applesauce-core/helpers";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { lastValueFrom } from "rxjs";
+import { beforeEach, describe, expect, it, Mock, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { WalletAddPrivateKey, CreateWallet } from "../wallet.js";
-import { getWalletPrivateKey, unlockWallet, WALLET_BACKUP_KIND } from "../../helpers/wallet.js";
 import { WalletBlueprint } from "../../blueprints/wallet.js";
+import { getWalletPrivateKey, unlockWallet, WALLET_BACKUP_KIND } from "../../helpers/wallet.js";
+import { CreateWallet, WalletAddPrivateKey } from "../wallet.js";
 
 const user = new FakeUser();
 

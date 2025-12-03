@@ -1,8 +1,7 @@
 import { Token } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
-import { NostrEvent } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
-
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { NutzapBlueprint, ProfileNutzapBlueprint } from "../blueprints/zaps.js";
 import { NUTZAP_INFO_KIND, verifyProofsLocked } from "../helpers/zap-info.js";
 
