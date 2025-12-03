@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "applesauce-common": "workspace:^",
+    "applesauce-common": "^4.0.0",
     "applesauce-core": "^4.4",
     "rxjs": "^7.8.1"
   },

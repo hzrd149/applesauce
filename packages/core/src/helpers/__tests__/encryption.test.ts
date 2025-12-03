@@ -2,7 +2,7 @@ import { generateSecretKey, getPublicKey, nip04, nip44 } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 import { isNIP04Encrypted } from "../encryption.js";
 import { bytesToHex } from "nostr-tools/utils";
-import crypto from 'node:crypto'
+import crypto from "node:crypto";
 
 describe("isNIP04Encrypted", () => {
   const key = generateSecretKey();

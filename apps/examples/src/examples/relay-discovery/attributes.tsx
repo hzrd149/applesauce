@@ -15,7 +15,7 @@ import { Chart } from "react-chartjs-2";
 import { useThrottle } from "react-use";
 import { of } from "rxjs";
 
-import RelayPicker from "../../components/relay-picker";
+import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
 
 // Register ChartJS components
 ChartJS.register(WordCloudController, WordElement, CategoryScale, LinearScale, Title, Tooltip);
@@ -329,7 +329,7 @@ export default function RelayDiscoveryAttributes() {
     <div className="container mx-auto p-2 h-full">
       <div className="flex gap-2 justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Relay Discovery Attributes</h1>
-        <RelayPicker value={relayUrl} onChange={setRelayUrl} />
+        <RelayPicker value={relayUrl} onChange={setRelayUrl} common={["wss://relay.nostr.watch/", ...COMMON_RELAYS]} />
       </div>
 
       <Nip91Warning relayUrl={relayUrl} supportsNip91={supportsNip91} supportedNips={supportedNips} />
