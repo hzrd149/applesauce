@@ -229,6 +229,7 @@ All loaders accept these common configuration options:
 ### Unified Event Loader Options
 
 The unified event loader accepts all options from both Event Loader and Address Loader options, plus:
+
 - `lookupRelays`: Fallback lookup relays to check when event can't be found (from Address Loader)
 
 ### Timeline Loader Options

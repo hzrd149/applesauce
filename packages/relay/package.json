@@ -31,6 +31,11 @@
       "require": "./dist/pool.js",
       "types": "./dist/pool.d.ts"
     },
+    "./group": {
+      "import": "./dist/group.js",
+      "require": "./dist/group.js",
+      "types": "./dist/group.d.ts"
+    },
     "./relay": {
       "import": "./dist/relay.js",
       "require": "./dist/relay.js",

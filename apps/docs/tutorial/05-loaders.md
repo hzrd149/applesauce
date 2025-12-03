@@ -150,6 +150,7 @@ eventStore.eventLoader = unifiedLoader;
 ```
 
 The unified loader automatically routes to the appropriate loader based on the pointer type:
+
 - `EventPointer` (has `id` property) → uses `createEventLoader`
 - `AddressPointer` (has `kind` and `pubkey`) → uses `createAddressLoader`
 
@@ -169,13 +170,15 @@ eventStore.replaceable({ kind: 0, pubkey: "pubkey" }).subscribe((profile) => {
 });
 
 // Load an addressable event
-eventStore.addressable({
-  kind: 30023,
-  pubkey: "pubkey",
-  identifier: "article-id"
-}).subscribe((article) => {
-  console.log("Loaded article:", article);
-});
+eventStore
+  .addressable({
+    kind: 30023,
+    pubkey: "pubkey",
+    identifier: "article-id",
+  })
+  .subscribe((article) => {
+    console.log("Loaded article:", article);
+  });
 ```
 
 ## Practical Examples
