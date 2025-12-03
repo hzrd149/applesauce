@@ -46,7 +46,7 @@ jobs:
         run: pnpm build --filter applesauce-docs
 
       - name: Copy vitepress
-        run: cp -r packages/docs/.vitepress/dist/* docs
+        run: cp -r apps/docs/.vitepress/dist/* docs
 
       - name: Install Deno
         uses: denoland/setup-deno@v2

@@ -58,10 +58,10 @@ This repo is setup with [typedoc](https://typedoc.org/) for the typescript docum
 pnpm typedoc
 ```
 
-The `packages/docs` is the package for the docs site
+The `apps/docs` is the package for the docs site
 
 ```bash
-cd packages/docs
+cd apps/docs
 
 # Run vitepress dev
 pnpm dev

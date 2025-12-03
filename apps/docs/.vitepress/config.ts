@@ -9,7 +9,7 @@ export default defineConfig({
     logo: "/logo.png",
 
     editLink: {
-      pattern: "https://github.com/hzrd149/applesauce/edit/master/packages/docs/:path",
+      pattern: "https://github.com/hzrd149/applesauce/edit/master/apps/docs/:path",
     },
 
     search: {

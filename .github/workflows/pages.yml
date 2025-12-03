@@ -63,7 +63,7 @@ jobs:
         run: pnpm build --filter applesauce-docs -- --base /applesauce/
 
       - name: Copy vitepress
-        run: cp -r packages/docs/.vitepress/dist/* docs
+        run: cp -r apps/docs/.vitepress/dist/* docs
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
