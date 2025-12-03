@@ -1,6 +1,6 @@
 import { Proof } from "@cashu/cashu-ts";
 import { getOrComputeCachedValue, mergeRelaySets, safeParse } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 export const NUTZAP_INFO_KIND = 10019;
 

@@ -1,16 +1,14 @@
+import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
+import { KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
+import { getTagValue } from "applesauce-core/helpers/event";
 import {
-  getTagValue,
   HiddenContentSigner,
   isHiddenContentUnlocked,
-  isNIP04Encrypted,
-  KnownEvent,
-  notifyEventUpdate,
   setHiddenContentEncryptionMethod,
-  unixNow,
   UnlockedHiddenContent,
   unlockHiddenContent,
-} from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+} from "applesauce-core/helpers/hidden-content";
+import { unixNow } from "applesauce-core/helpers/time";
 
 import { WalletConnectEncryptionMethod } from "./encryption.js";
 import { TWalletMethod } from "./methods.js";

@@ -1,6 +1,6 @@
 import { Action } from "applesauce-actions";
-import { modifyPublicTags } from "applesauce-factory/operations";
-import { addNameValueTag, removeNameValueTag, setSingletonTag } from "applesauce-factory/operations/tag";
+import { modifyPublicTags } from "applesauce-core/operations/tags";
+import { addNameValueTag, removeNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 
 import { NUTZAP_INFO_KIND } from "../helpers/zap-info.js";
 import { setNutzapInfoMints, setNutzapInfoPubkey, setNutzapInfoRelays } from "../operations/zap-info.js";

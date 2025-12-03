@@ -1,9 +1,9 @@
 import { mapEventsToStore } from "applesauce-core";
-import { mergeRelaySets } from "applesauce-core/helpers";
-import { Filter, kinds, NostrEvent } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { mergeRelaySets } from "applesauce-core/helpers/relays";
 import { EMPTY, identity, merge, Observable } from "rxjs";
-
 import { makeCacheRequest } from "../helpers/cache.js";
 import { unwrap } from "../helpers/loaders.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";

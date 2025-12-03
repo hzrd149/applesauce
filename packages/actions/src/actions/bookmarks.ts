@@ -1,7 +1,7 @@
-import { modifyHiddenTags, modifyPublicTags, List } from "applesauce-factory/operations";
-import { addEventBookmarkTag, removeEventBookmarkTag } from "applesauce-factory/operations/tag";
-import { EventTemplate, kinds, NostrEvent } from "nostr-tools";
-
+import * as List from "applesauce-common/operations/list";
+import { addEventBookmarkTag, removeEventBookmarkTag } from "applesauce-common/operations/tag/bookmarks";
+import { EventTemplate, kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { Action } from "../action-hub.js";
 
 /**

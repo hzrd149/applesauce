@@ -1,39 +1,69 @@
 import {
   AddressPointer,
+  decode,
   EventPointer,
   naddrEncode,
-  ProfilePointer,
   neventEncode,
   noteEncode,
   nprofileEncode,
   npubEncode,
   nsecEncode,
-  decode,
+  ProfilePointer,
 } from "nostr-tools/nip19";
-import { getPublicKey, kinds, nip19, NostrEvent } from "nostr-tools";
 
 // re-export types from nostr-tools/nip19
 export type { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 
 // export nip-19 helpers
 export {
+  decode as decodePointer,
   naddrEncode,
   neventEncode,
   noteEncode,
   nprofileEncode,
   npubEncode,
   nsecEncode,
-  decode as decodePointer,
 } from "nostr-tools/nip19";
 
-import { getReplaceableIdentifier } from "./event.js";
-import { isAddressableKind, isReplaceableKind } from "nostr-tools/kinds";
+import { getPublicKey } from "nostr-tools/pure";
+import { getReplaceableIdentifier, isAddressableKind, isReplaceableKind, kinds, NostrEvent } from "./event.js";
+import { Tokens } from "./regexp.js";
 import { isSafeRelayURL, relaySet } from "./relays.js";
 import { isHexKey } from "./string.js";
-import { hexToBytes } from "@noble/hashes/utils";
 import { normalizeURL } from "./url.js";
 
 export type DecodeResult = ReturnType<typeof decode>;
+
+/** Decodes any nip-19 encoded entity to a ProfilePointer */
+export function decodeProfilePointer(str: string): ProfilePointer | null {
+  const result = decode(str);
+  const pubkey = getPubkeyFromDecodeResult(result);
+  if (!pubkey) return null;
+
+  return {
+    pubkey,
+    relays: getRelaysFromDecodeResult(result),
+  };
+}
+
+/** Decodes an naddr encoded string to an AddressPointer */
+export function decodeAddressPointer(str: string): AddressPointer | null {
+  const result = decode(str);
+  return result.type === "naddr" ? result.data : null;
+}
+
+/** Decodes a note1 or nevent encoded string to an EventPointer */
+export function decodeEventPointer(str: string): EventPointer | null {
+  const result = decode(str);
+  switch (result.type) {
+    case "note":
+      return { id: result.data };
+    case "nevent":
+      return result.data;
+    default:
+      return null;
+  }
+}
 
 export type AddressPointerWithoutD = Omit<AddressPointer, "identifier"> & {
   identifier?: string;
@@ -242,9 +272,9 @@ export function addRelayHintsToPointer<T extends { relays?: string[] }>(pointer:
 export function normalizeToPubkey(str: string): string {
   if (isHexKey(str)) return str.toLowerCase();
   else {
-    const decode = nip19.decode(str);
-    const pubkey = getPubkeyFromDecodeResult(decode);
-    if (!pubkey) throw new Error(`Cant find pubkey in ${decode.type}`);
+    const result = decode(str);
+    const pubkey = getPubkeyFromDecodeResult(result);
+    if (!pubkey) throw new Error(`Cant find pubkey in ${result.type}`);
     return pubkey;
   }
 }
@@ -253,28 +283,32 @@ export function normalizeToPubkey(str: string): string {
 export function normalizeToProfilePointer(str: string): ProfilePointer {
   if (isHexKey(str)) return { pubkey: str.toLowerCase() };
   else {
-    const decode = nip19.decode(str);
+    const result = decode(str);
 
     // Return it if it's a profile pointer
-    if (decode.type === "nprofile") return decode.data;
+    if (result.type === "nprofile") return result.data;
 
     // fallback to just getting the pubkey
-    const pubkey = getPubkeyFromDecodeResult(decode);
-    if (!pubkey) throw new Error(`Cant find pubkey in ${decode.type}`);
-    const relays = getRelaysFromDecodeResult(decode);
+    const pubkey = getPubkeyFromDecodeResult(result);
+    if (!pubkey) throw new Error(`Cant find pubkey in ${result.type}`);
+    const relays = getRelaysFromDecodeResult(result);
     return { pubkey, relays };
   }
 }
 
-/** Converts hex to nsec strings into Uint8 secret keys */
-export function normalizeToSecretKey(str: string | Uint8Array): Uint8Array {
-  if (str instanceof Uint8Array) return str;
-  else if (isHexKey(str)) return hexToBytes(str);
-  else {
-    const decode = nip19.decode(str);
-    if (decode.type !== "nsec") throw new Error(`Cant get secret key from ${decode.type}`);
-    return decode.data;
+/** Returns all NIP-19 pointers in a content string */
+export function getContentPointers(content: string): DecodeResult[] {
+  const mentions = content.matchAll(Tokens.nostrLink);
+
+  const pointers: DecodeResult[] = [];
+  for (const [_, $1] of mentions) {
+    try {
+      const result = decode($1);
+      pointers.push(result);
+    } catch (error) {}
   }
+
+  return pointers;
 }
 
 /**

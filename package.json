@@ -2,6 +2,7 @@
   "name": "applesauce",
   "private": true,
   "scripts": {
+    "dev": "cd apps/examples && pnpm dev",
     "build": "turbo build",
     "test": "turbo build && vitest run",
     "coverage": "turbo build && vitest run --coverage",
@@ -30,5 +31,5 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@9.14.4"
+  "packageManager": "pnpm@10.24.0"
 }

@@ -1,9 +1,9 @@
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import {
   LegacyMessageBlueprint,
   LegacyMessageBlueprintOptions,
   LegacyMessageReplyBlueprint,
-} from "applesauce-factory/blueprints";
-import { kinds, NostrEvent } from "nostr-tools";
+} from "applesauce-common/blueprints";
 
 import { Action } from "../action-hub.js";
 

@@ -1,22 +1,20 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { isAddressableKind } from "nostr-tools/kinds";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 import { EMPTY, filter, mergeMap, Observable, Subject, take } from "rxjs";
-
+import { NostrEvent, kinds } from "../helpers/event.js";
+import { isAddressableKind } from "../helpers/event.js";
 import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
 import { createReplaceableAddress, EventStoreSymbol, FromCacheSymbol, isReplaceable } from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { Filter } from "../helpers/filter.js";
-import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
+import { AddressPointer, AddressPointerWithoutD, EventPointer, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
 import { EventMemory } from "./event-memory.js";
 import { IEventDatabase, IEventStore } from "./interface.js";
-import { EventStoreModelMixin } from "./model-mixin.js";
 import { verifyEvent as nostrVerifyEvent } from "nostr-tools";
+import { EventModels } from "./event-models.js";
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
-export class EventStore extends EventStoreModelMixin(class {}) implements IEventStore {
+export class EventStore extends EventModels implements IEventStore {
   database: IEventDatabase;
 
   /** Optional memory database for ensuring single event instances */

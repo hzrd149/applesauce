@@ -1,8 +1,9 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { simpleTimeout } from "applesauce-core";
 import { EncryptionMethod } from "applesauce-core/helpers";
-import { create, EventSigner } from "applesauce-factory";
-import { finalizeEvent, getPublicKey, nip04, nip44, NostrEvent, verifyEvent } from "nostr-tools";
+import { createEvent, EventSigner } from "applesauce-core";
+import { finalizeEvent, getPublicKey, NostrEvent, verifyEvent } from "applesauce-core/helpers";
+import { nip04, nip44 } from "applesauce-core/helpers/encryption";
 import {
   BehaviorSubject,
   combineLatest,
@@ -305,7 +306,7 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
       const encryption = await firstValueFrom(this.encryption$);
 
       // Create the request event
-      const draft = await create(
+      const draft = await createEvent(
         { signer: this.signer },
         WalletRequestBlueprint,
         this.service!,

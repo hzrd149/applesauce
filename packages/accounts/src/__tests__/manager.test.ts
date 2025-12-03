@@ -1,5 +1,5 @@
-import { bytesToHex } from "@noble/hashes/utils";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { bytesToHex } from "applesauce-core/helpers/event";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PrivateKeyAccount, PrivateKeyAccountSignerData } from "../accounts/private-key-account.js";
 import { AccountManager } from "../manager.js";

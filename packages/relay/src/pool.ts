@@ -1,15 +1,8 @@
-import type { IAsyncEventStoreRead, IEventStoreRead } from "applesauce-core";
-import {
-  createFilterMap,
-  FilterMap,
-  isFilterEqual,
-  normalizeURL,
-  OutboxMap,
-  type Filter,
-} from "applesauce-core/helpers";
-import { type NostrEvent } from "nostr-tools";
+import type { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter, isFilterEqual } from "applesauce-core/helpers/filter";
+import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
+import { normalizeURL } from "applesauce-core/helpers/url";
 import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, Subject } from "rxjs";
-
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
 import { Relay, SyncDirection, type RelayOptions } from "./relay.js";
@@ -19,6 +12,8 @@ import type {
   IPool,
   IPoolRelayInput,
   IRelay,
+  NegentropyReadStore,
+  NegentropySyncStore,
   PublishResponse,
   SubscriptionResponse,
 } from "./types.js";
@@ -91,7 +86,7 @@ export class RelayPool implements IPool {
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
     relays: IPoolRelayInput,
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
@@ -172,7 +167,7 @@ export class RelayPool implements IPool {
   /** Negentropy sync events with the relays and an event store */
   sync(
     relays: IPoolRelayInput,
-    store: IEventStoreRead | IAsyncEventStoreRead | NostrEvent[],
+    store: NegentropySyncStore | NostrEvent[],
     filter: Filter,
     direction?: SyncDirection,
   ): Observable<NostrEvent> {

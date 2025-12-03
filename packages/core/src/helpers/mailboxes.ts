@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "./event.js";
 import { getOrComputeCachedValue } from "./cache.js";
 import { isSafeRelayURL } from "./relays.js";
 import { isRTag } from "./tags.js";

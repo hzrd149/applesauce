@@ -7,15 +7,14 @@
     [
       "applesauce-accounts",
       "applesauce-actions",
+      "applesauce-common",
       "applesauce-content",
       "applesauce-core",
       "applesauce-extra",
-      "applesauce-factory",
       "applesauce-loaders",
       "applesauce-react",
       "applesauce-relay",
       "applesauce-signers",
-      "applesauce-solidjs",
       "applesauce-sqlite",
       "applesauce-wallet-connect",
       "applesauce-wallet"

@@ -1,0 +1,91 @@
+{
+  "name": "applesauce-common",
+  "version": "4.4.0",
+  "description": "Common NIP-specific helpers and models for applesauce",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prebuild": "rimraf dist",
+    "build": "tsc",
+    "watch:build": "tsc --watch > /dev/null",
+    "test": "vitest run --passWithNoTests",
+    "watch:test": "vitest"
+  },
+  "keywords": [
+    "nostr",
+    "applesauce"
+  ],
+  "author": "hzrd149",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./helpers": {
+      "import": "./dist/helpers/index.js",
+      "require": "./dist/helpers/index.js",
+      "types": "./dist/helpers/index.d.ts"
+    },
+    "./helpers/*": {
+      "import": "./dist/helpers/*.js",
+      "require": "./dist/helpers/*.js",
+      "types": "./dist/helpers/*.d.ts"
+    },
+    "./models": {
+      "import": "./dist/models/index.js",
+      "require": "./dist/models/index.js",
+      "types": "./dist/models/index.d.ts"
+    },
+    "./models/*": {
+      "import": "./dist/models/*.js",
+      "require": "./dist/models/*.js",
+      "types": "./dist/models/*.d.ts"
+    },
+    "./operations": {
+      "import": "./dist/operations/index.js",
+      "require": "./dist/operations/index.js",
+      "types": "./dist/operations/index.d.ts"
+    },
+    "./operations/*": {
+      "import": "./dist/operations/*.js",
+      "require": "./dist/operations/*.js",
+      "types": "./dist/operations/*.d.ts"
+    },
+    "./blueprints": {
+      "import": "./dist/blueprints/index.js",
+      "require": "./dist/blueprints/index.js",
+      "types": "./dist/blueprints/index.d.ts"
+    },
+    "./blueprints/*": {
+      "import": "./dist/blueprints/*.js",
+      "require": "./dist/blueprints/*.js",
+      "types": "./dist/blueprints/*.d.ts"
+    }
+  },
+  "dependencies": {
+    "@scure/base": "^1.2.4",
+    "applesauce-core": "^4.4",
+    "hash-sum": "^2.0.0",
+    "light-bolt11-decoder": "^3.2.0",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@hirez_io/observer-spy": "^2.2.0",
+    "@types/debug": "^4.1.12",
+    "@types/hash-sum": "^1.0.2",
+    "nostr-tools": "^2.18",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "funding": {
+    "type": "lightning",
+    "url": "lightning:nostrudel@geyser.fund"
+  }
+}

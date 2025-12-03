@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 
 import { FactoryContext } from "../providers/factory-provider.js";
 

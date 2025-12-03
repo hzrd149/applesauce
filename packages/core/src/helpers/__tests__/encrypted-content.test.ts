@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { kinds } from "nostr-tools";
+import { kinds } from "../event.js";
 import { getEncryptedContentEncryptionMethods, EncryptedContentSigner } from "../encrypted-content.js";
 
 describe("getEncryptedContentEncryptionMethods", () => {

@@ -1,9 +1,11 @@
-import { NostrEvent } from "nostr-tools";
-import { binarySearch, insertEventIntoDescendingList } from "nostr-tools/utils";
-
-import { getIndexableTags, INDEXABLE_TAGS } from "../helpers/event-tags.js";
-import { createReplaceableAddress, isReplaceable } from "../helpers/event.js";
-import { Filter } from "../helpers/filter.js";
+import {
+  binarySearch,
+  createReplaceableAddress,
+  insertEventIntoDescendingList,
+  isReplaceable,
+  NostrEvent,
+} from "../helpers/event.js";
+import { Filter, getIndexableTags, INDEXABLE_TAGS } from "../helpers/filter.js";
 import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
 import { IEventMemory } from "./interface.js";

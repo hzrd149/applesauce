@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "./event.js";
 import { getOrComputeCachedValue } from "./cache.js";
 import { unixNow } from "./time.js";
 

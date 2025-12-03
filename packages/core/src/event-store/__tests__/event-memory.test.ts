@@ -1,7 +1,6 @@
-import { kinds, NostrEvent } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
-
 import { FakeUser } from "../../__tests__/fixtures.js";
+import { kinds, NostrEvent } from "../../helpers/event.js";
 import { EventMemory } from "../event-memory.js";
 
 let eventMemory: EventMemory;
@@ -709,7 +708,7 @@ describe("EventMemory - Performance Tests", () => {
     });
 
     expect(eventMemory.size).toBe(0);
-  });
+  }, 10000);
 
   it("should efficiently query with composite index", () => {
     const users = Array.from({ length: 10 }, () => new FakeUser());

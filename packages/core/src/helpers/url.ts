@@ -9,6 +9,7 @@ export const AUDIO_EXT = [".mp3", ".wav", ".ogg", ".aac", ".m4a"];
 
 /** Checks if a url is a image URL */
 export function isImageURL(url: string | URL) {
+  if (typeof url === "string" && !URL.canParse(url)) return false;
   url = convertToUrl(url);
   const filename = getURLFilename(url);
   return !!filename && IMAGE_EXT.some((ext) => filename.endsWith(ext));
@@ -16,6 +17,7 @@ export function isImageURL(url: string | URL) {
 
 /** Checks if a url is a video URL */
 export function isVideoURL(url: string | URL) {
+  if (typeof url === "string" && !URL.canParse(url)) return false;
   url = convertToUrl(url);
   const filename = getURLFilename(url);
   return !!filename && VIDEO_EXT.some((ext) => filename.endsWith(ext));
@@ -23,6 +25,7 @@ export function isVideoURL(url: string | URL) {
 
 /** Checks if a url is a stream URL */
 export function isStreamURL(url: string | URL) {
+  if (typeof url === "string" && !URL.canParse(url)) return false;
   url = convertToUrl(url);
   const filename = getURLFilename(url);
   return !!filename && STREAM_EXT.some((ext) => filename.endsWith(ext));
@@ -30,6 +33,7 @@ export function isStreamURL(url: string | URL) {
 
 /** Checks if a url is a audio URL */
 export function isAudioURL(url: string | URL) {
+  if (typeof url === "string" && !URL.canParse(url)) return false;
   url = convertToUrl(url);
   const filename = getURLFilename(url);
   return !!filename && AUDIO_EXT.some((ext) => filename.endsWith(ext));

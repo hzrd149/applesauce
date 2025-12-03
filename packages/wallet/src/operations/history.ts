@@ -1,8 +1,7 @@
-import { EventOperation, TagOperation } from "applesauce-factory";
-import { ensureMarkedEventPointerTag, Nip10TagMarker } from "applesauce-factory/helpers";
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
-import { setSingletonTag } from "applesauce-factory/operations/tag";
-import { EventPointer } from "nostr-tools/nip19";
+import { EventOperation, TagOperation } from "applesauce-core/event-factory";
+import { ensureMarkedEventPointerTag, EventPointer, Nip10TagMarker } from "applesauce-core/helpers";
+import { setSingletonTag } from "applesauce-core/operations/tag/common";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations/tags";
 
 import { HistoryContent } from "../helpers/history.js";
 

@@ -1,5 +1,5 @@
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { ISigner } from "applesauce-signers";
-import { EventTemplate, NostrEvent } from "nostr-tools";
 import { Observable } from "rxjs";
 
 /** A signer class that proxies requests to another signer that isn't created yet */

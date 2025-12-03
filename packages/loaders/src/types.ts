@@ -1,4 +1,5 @@
-import { Filter, NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import { Observable } from "rxjs";
 
 /** A flexible method for requesting events from a cache */

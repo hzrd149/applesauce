@@ -1,7 +1,7 @@
 // (C) 2023 Doug Hoyte. MIT license
 // Modified by hzrd149 to be TypeScript and work without the window.cyrpto.subtle API
 
-import { sha256 } from "@noble/hashes/sha256";
+import { sha256 } from "@noble/hashes/sha2";
 
 const PROTOCOL_VERSION = 0x61; // Version 1
 const ID_SIZE = 32;

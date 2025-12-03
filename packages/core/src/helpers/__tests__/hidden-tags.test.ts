@@ -1,6 +1,5 @@
-import { describe, beforeEach, it, expect } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04, NostrEvent } from "nostr-tools";
-
+import { beforeEach, describe, expect, it } from "vitest";
 import { HiddenContentSigner } from "../hidden-content.js";
 import { getHiddenTags, unlockHiddenTags } from "../hidden-tags.js";
 import { unixNow } from "../time.js";

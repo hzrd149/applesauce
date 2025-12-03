@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { EventFactory } from "applesauce-factory";
+import { EventFactory } from "applesauce-core";
 import { EventStore } from "applesauce-core";
 import { ActionHub } from "../../action-hub.js";
 import { FollowUser, NewContacts, UnfollowUser } from "../contacts.js";

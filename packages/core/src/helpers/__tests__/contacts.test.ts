@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { ProfilePointer } from "nostr-tools/nip19";
-import { NostrEvent } from "nostr-tools";
-import { mergeContacts, getRelaysFromContactsEvent } from "../contacts.js";
+import { describe, expect, it } from "vitest";
+import { getRelaysFromContactsEvent, mergeContacts } from "../contacts.js";
+import { NostrEvent } from "../event.js";
+import { ProfilePointer } from "../pointers.js";
 
 describe("mergeContacts", () => {
   it("should merge contacts and remove duplicates", () => {

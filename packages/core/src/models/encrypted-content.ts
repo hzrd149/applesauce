@@ -1,7 +1,7 @@
-import { NostrEvent } from "nostr-tools";
 import { map, of } from "rxjs";
 import { Model } from "../event-store/interface.js";
 import { getEncryptedContent } from "../helpers/encrypted-content.js";
+import { NostrEvent } from "../helpers/event.js";
 import { watchEventUpdates } from "../observable/watch-event-updates.js";
 
 /** A model that returns the encrypted content of an event or event id */

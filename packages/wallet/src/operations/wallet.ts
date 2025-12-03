@@ -1,9 +1,7 @@
-import { bytesToHex } from "@noble/hashes/utils";
-import { EventOperation } from "applesauce-factory";
-import { modifyHiddenTags } from "applesauce-factory/operations";
-import { setSingletonTag } from "applesauce-factory/operations/tag";
-import { NostrEvent } from "nostr-tools";
-
+import { EventOperation } from "applesauce-core/event-factory";
+import { bytesToHex, NostrEvent } from "applesauce-core/helpers/event";
+import { setSingletonTag } from "applesauce-core/operations/tag/common";
+import { modifyHiddenTags } from "applesauce-core/operations/tags";
 import { WALLET_KIND } from "../helpers/wallet.js";
 
 /** Sets the content of a kind 375 wallet backup event */

@@ -1,6 +1,6 @@
 import { combineLatest, filter, map, scan, startWith } from "rxjs";
 import { Model } from "applesauce-core";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { getHistoryRedeemed, isHistoryContentUnlocked, WALLET_HISTORY_KIND } from "../helpers/history.js";
 

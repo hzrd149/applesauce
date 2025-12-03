@@ -1,6 +1,6 @@
-import { EventOperation } from "applesauce-factory";
-import { modifyPublicTags } from "applesauce-factory/operations";
-import { addNameValueTag, setSingletonTag } from "applesauce-factory/operations/tag";
+import { EventOperation } from "applesauce-core";
+import { modifyPublicTags } from "applesauce-core/operations";
+import { addNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 
 /** Sets the relays for a nutzap info event */
 export function setNutzapInfoRelays(relays: string[]): EventOperation {

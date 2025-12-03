@@ -1,5 +1,5 @@
 import { Token } from "@cashu/cashu-ts";
-import { blueprint } from "applesauce-factory";
+import { blueprint } from "applesauce-core";
 import { WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 import { setToken } from "../operations/tokens.js";
 

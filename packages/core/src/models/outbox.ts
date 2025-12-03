@@ -1,7 +1,7 @@
 import hash_sum from "hash-sum";
-import { ProfilePointer } from "nostr-tools/nip19";
 import { identity, map } from "rxjs";
 import { Model } from "../event-store/interface.js";
+import { ProfilePointer } from "../helpers/pointers.js";
 import { selectOptimalRelays, SelectOptimalRelaysOptions } from "../helpers/relay-selection.js";
 import { ignoreBlacklistedRelays, includeMailboxes } from "../observable/relay-selection.js";
 

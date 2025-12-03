@@ -1,9 +1,9 @@
-import { EventTemplate, finalizeEvent, getPublicKey, nip04, nip44 } from "nostr-tools";
-import { encrypt, decrypt } from "nostr-tools/nip49";
-import { createDefer, Deferred } from "applesauce-core/promise";
-
-import { ISigner } from "../interop.js";
 import { normalizeToSecretKey } from "applesauce-core/helpers";
+import { nip04, nip44 } from "applesauce-core/helpers/encryption";
+import { EventTemplate, finalizeEvent } from "applesauce-core/helpers/event";
+import { decryptSecretKey, encryptSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { createDefer, Deferred } from "applesauce-core/promise";
+import { ISigner } from "../interop.js";
 
 /** A NIP-49 (Private Key Encryption) signer */
 export class PasswordSigner implements ISigner {
@@ -48,13 +48,13 @@ export class PasswordSigner implements ISigner {
   public async setPassword(password: string) {
     if (!this.key) throw new Error("Cant set password until unlocked");
 
-    this.ncryptsec = encrypt(this.key, password);
+    this.ncryptsec = encryptSecretKey(this.key, password);
   }
 
   /** Tests if the provided password is correct by decrypting the ncryptsec */
   public async testPassword(password: string) {
     if (this.ncryptsec) {
-      const key = decrypt(this.ncryptsec, password);
+      const key = decryptSecretKey(this.ncryptsec, password);
       if (!key) throw new Error("Failed to decrypt key");
     } else throw new Error("Missing ncryptsec");
   }
@@ -65,7 +65,7 @@ export class PasswordSigner implements ISigner {
 
     if (this.ncryptsec) {
       try {
-        this.key = decrypt(this.ncryptsec, password);
+        this.key = decryptSecretKey(this.ncryptsec, password);
         if (!this.key) throw new Error("Failed to decrypt key");
       } catch (error) {
         throw new Error("failed to decrypt key: " + (error instanceof Error ? error.message : String(error)));

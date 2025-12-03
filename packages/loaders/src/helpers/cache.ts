@@ -1,5 +1,5 @@
-import { markFromCache } from "applesauce-core/helpers";
-import { Filter, NostrEvent } from "nostr-tools";
+import { markFromCache, NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import { from, isObservable, Observable, of, switchMap, tap } from "rxjs";
 import { CacheRequest } from "../types.js";
 

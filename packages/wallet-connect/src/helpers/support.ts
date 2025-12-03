@@ -1,5 +1,5 @@
 import { getOrComputeCachedValue, getTagValue, isEvent } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 
 import { WalletConnectEncryptionMethod } from "./encryption.js";
 import { TWalletMethod } from "./methods.js";

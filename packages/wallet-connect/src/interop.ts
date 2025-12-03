@@ -1,4 +1,5 @@
-import { Filter, NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import { ObservableInput } from "rxjs";
 
 /** A method used to subscribe to events on a set of relays */

@@ -1,6 +1,6 @@
 import { Model } from "applesauce-core";
 import { getReplaceableAddress, isReplaceable, KnownEvent } from "applesauce-core/helpers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { map } from "rxjs";
 
 import { getNutzapPointer, isValidNutzap, NUTZAP_KIND } from "../helpers/nutzap.js";

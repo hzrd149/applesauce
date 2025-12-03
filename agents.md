@@ -38,3 +38,7 @@
 7. **Verify each code example** matches the implementation and would actually work
 
 8. **Run linter** on updated documentation files
+
+# Building examples
+
+Never add drop shadows and avoid using cards, the UI looks better when its simple, clean and uses borders.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { EventIndexableTagsSymbol, getIndexableTags, getTagValue } from "../event-tags";
+import { getTagValue } from "../event.js";
+import { EventIndexableTagsSymbol, getIndexableTags } from "../filter.js";
 
 const event = {
   content: "",

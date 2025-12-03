@@ -1,11 +1,10 @@
-import { useMemo } from "react";
 import { truncateContent } from "applesauce-content/nast";
 import { getParsedContent } from "applesauce-content/text";
-import { EventTemplate, NostrEvent } from "nostr-tools";
-
-import { useRenderNast } from "./use-render-nast.js";
-import { ComponentMap } from "../helpers/nast.js";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
+import { useMemo } from "react";
 import { buildLinkRenderer, LinkRenderer } from "../helpers/build-link-renderer.js";
+import { ComponentMap } from "../helpers/nast.js";
+import { useRenderNast } from "./use-render-nast.js";
 
 export { ComponentMap };
 

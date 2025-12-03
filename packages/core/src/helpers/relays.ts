@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "./event.js";
 import { normalizeURL } from "./url.js";
 
 export const SeenRelaysSymbol = Symbol.for("seen-relays");
@@ -9,17 +9,21 @@ declare module "nostr-tools" {
 }
 
 /** Marks an event as being seen on a relay */
-export function addSeenRelay(event: NostrEvent, relay: string) {
-  if (!event[SeenRelaysSymbol]) event[SeenRelaysSymbol] = new Set();
-
-  event[SeenRelaysSymbol].add(relay);
-
-  return event[SeenRelaysSymbol];
+export function addSeenRelay(event: NostrEvent, relay: string): Set<string> {
+  let seen = Reflect.get(event, SeenRelaysSymbol);
+  if (!seen) {
+    seen = new Set([relay]);
+    Reflect.set(event, SeenRelaysSymbol, seen);
+    return seen;
+  } else {
+    seen.add(relay);
+    return seen;
+  }
 }
 
 /** Returns the set of relays this event was seen on */
-export function getSeenRelays(event: NostrEvent) {
-  return event[SeenRelaysSymbol];
+export function getSeenRelays(event: NostrEvent): Set<string> | undefined {
+  return Reflect.get(event, SeenRelaysSymbol);
 }
 
 const WEBSOCKET_URL_CHECK =

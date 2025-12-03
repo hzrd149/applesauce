@@ -1,9 +1,7 @@
-import { IEventStoreRead } from "applesauce-core";
-import { TagOperation } from "applesauce-factory";
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
-import { addRelayTag, removeRelayTag } from "applesauce-factory/operations/tag/relay";
-import { kinds } from "nostr-tools";
-
+import { IEventStoreRead, TagOperation } from "applesauce-core";
+import { kinds } from "applesauce-core/helpers/event";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
+import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
 import { Action } from "../action-hub.js";
 
 function getBlockedRelaysEvent(events: IEventStoreRead, self: string) {

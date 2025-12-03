@@ -1,21 +1,25 @@
-import { kinds, NostrEvent } from "nostr-tools";
-import { isAddressableKind } from "nostr-tools/kinds";
-import { AddressPointer, EventPointer } from "nostr-tools/nip19";
 import { EMPTY, filter, mergeMap, Observable, Subject, take } from "rxjs";
-
 import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
-import { createReplaceableAddress, EventStoreSymbol, FromCacheSymbol, isReplaceable } from "../helpers/event.js";
+import {
+  createReplaceableAddress,
+  EventStoreSymbol,
+  FromCacheSymbol,
+  isAddressableKind,
+  isReplaceable,
+  kinds,
+  NostrEvent,
+} from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { Filter } from "../helpers/filter.js";
-import { AddressPointerWithoutD, parseCoordinate } from "../helpers/pointers.js";
+import { AddressPointer, AddressPointerWithoutD, EventPointer, parseCoordinate } from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
 import { EventMemory } from "./event-memory.js";
+import { EventModels } from "./event-models.js";
 import { IAsyncEventDatabase, IAsyncEventStore } from "./interface.js";
-import { EventStoreModelMixin } from "./model-mixin.js";
 
 /** An async wrapper around an async event database that handles replaceable events, deletes, and models */
-export class AsyncEventStore extends EventStoreModelMixin(class {}) implements IAsyncEventStore {
+export class AsyncEventStore extends EventModels implements IAsyncEventStore {
   database: IAsyncEventDatabase;
 
   /** Optional memory database for ensuring single event instances */

@@ -1,9 +1,8 @@
+import { getEmojiTag } from "applesauce-common/helpers/emoji";
+import { Tokens } from "applesauce-core/helpers/regexp";
 import { type Transformer } from "unified";
-import { getEmojiTag } from "applesauce-core/helpers/emoji";
-
-import { Emoji, Root } from "../nast/types.js";
-import { Tokens } from "../helpers/regexp.js";
 import { findAndReplace } from "../nast/find-and-replace.js";
+import { Emoji, Root } from "../nast/types.js";
 
 /** Finds and creates emoji nodes in the tree */
 export function emojis(): Transformer<Root> {

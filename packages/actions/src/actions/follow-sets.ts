@@ -1,9 +1,9 @@
+import * as List from "applesauce-common/operations/list";
 import { IEventStoreRead } from "applesauce-core/event-store";
-import { modifyHiddenTags, modifyPublicTags, List } from "applesauce-factory/operations";
-import { addPubkeyTag, removePubkeyTag } from "applesauce-factory/operations/tag";
-import { kinds, NostrEvent } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
-
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
+import { addProfilePointerTag, removeProfilePointerTag } from "applesauce-core/operations/tag/common";
 import { Action } from "../action-hub.js";
 
 function getFollowSetEvent(events: IEventStoreRead, self: string, identifier: NostrEvent | string) {
@@ -36,8 +36,8 @@ export function CreateFollowSet(
       options?.image ? List.setImage(options.image) : undefined,
 
       // add pubkey tags
-      options?.public ? modifyPublicTags(...options.public.map((p) => addPubkeyTag(p))) : undefined,
-      options?.hidden ? modifyHiddenTags(...options.hidden.map((p) => addPubkeyTag(p))) : undefined,
+      options?.public ? modifyPublicTags(...options.public.map((p) => addProfilePointerTag(p))) : undefined,
+      options?.hidden ? modifyHiddenTags(...options.hidden.map((p) => addProfilePointerTag(p))) : undefined,
     );
 
     yield await factory.sign(draft);
@@ -59,7 +59,9 @@ export function AddUserToFollowSet(
   return async function* ({ events, factory, self }) {
     const follows = getFollowSetEvent(events, self, identifier);
 
-    const operations = Array.isArray(pubkey) ? pubkey.map((p) => addPubkeyTag(p)) : addPubkeyTag(pubkey);
+    const operations = Array.isArray(pubkey)
+      ? pubkey.map((p) => addProfilePointerTag(p))
+      : addProfilePointerTag(pubkey);
 
     const draft = await factory.modifyTags(follows, hidden ? { hidden: operations } : operations);
     yield await factory.sign(draft);
@@ -81,7 +83,9 @@ export function RemoveUserFromFollowSet(
   return async function* ({ events, factory, self }) {
     const follows = getFollowSetEvent(events, self, identifier);
 
-    const operations = Array.isArray(pubkey) ? pubkey.map((p) => removePubkeyTag(p)) : removePubkeyTag(pubkey);
+    const operations = Array.isArray(pubkey)
+      ? pubkey.map((p) => removeProfilePointerTag(p))
+      : removeProfilePointerTag(pubkey);
 
     const draft = await factory.modifyTags(follows, hidden ? { hidden: operations } : operations);
     yield await factory.sign(draft);

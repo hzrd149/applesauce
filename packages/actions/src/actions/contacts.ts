@@ -1,7 +1,7 @@
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-factory/operations";
-import { addPubkeyTag, removePubkeyTag } from "applesauce-factory/operations/tag";
-import { EventTemplate, kinds } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { EventTemplate, kinds } from "applesauce-core/helpers/event";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
+import { addProfilePointerTag, removeProfilePointerTag } from "applesauce-core/operations/tag/common";
 import { Action } from "../action-hub.js";
 
 /** An action that adds a pubkey to a users contacts event */
@@ -10,7 +10,7 @@ export function FollowUser(pubkey: string, relay?: string, hidden = false): Acti
     let contacts = events.getReplaceable(kinds.Contacts, self);
 
     const pointer = { pubkey, relays: relay ? [relay] : undefined };
-    const operation = addPubkeyTag(pointer);
+    const operation = addProfilePointerTag(pointer);
 
     let draft: EventTemplate;
 
@@ -34,7 +34,7 @@ export function UnfollowUser(user: string | ProfilePointer, hidden = false): Act
     // Unable to find a contacts event, so we can't unfollow
     if (!contacts) return;
 
-    const operation = removePubkeyTag(user);
+    const operation = removeProfilePointerTag(user);
     const draft = await factory.modifyTags(contacts, hidden ? { hidden: operation } : operation);
     yield await factory.sign(draft);
   };
@@ -48,7 +48,7 @@ export function NewContacts(pubkeys?: (string | ProfilePointer)[]): Action {
 
     const draft = await factory.build(
       { kind: kinds.Contacts },
-      pubkeys ? modifyPublicTags(...pubkeys.map((p) => addPubkeyTag(p))) : undefined,
+      pubkeys ? modifyPublicTags(...pubkeys.map((p) => addProfilePointerTag(p))) : undefined,
     );
     yield await factory.sign(draft);
   };
