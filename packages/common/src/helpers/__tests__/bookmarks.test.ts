@@ -1,5 +1,5 @@
+import { kinds } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer } from "applesauce-core/helpers/pointers";
-import { kinds } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 import { mergeBookmarks } from "../bookmark.js";
 

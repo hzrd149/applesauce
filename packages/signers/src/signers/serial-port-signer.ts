@@ -1,9 +1,15 @@
 /// <reference types="@types/dom-serial" />
 import { Point } from "@noble/secp256k1";
 import { logger } from "applesauce-core";
+import {
+  bytesToHex,
+  EventTemplate,
+  getEventHash,
+  hexToBytes,
+  NostrEvent,
+  verifyEvent,
+} from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
-import { EventTemplate, getEventHash, NostrEvent, verifyEvent } from "nostr-tools";
-import { bytesToHex, hexToBytes } from "nostr-tools/utils";
 import { ISigner } from "../interop.js";
 
 type Callback = () => void;

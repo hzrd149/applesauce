@@ -1,6 +1,6 @@
 import { bytesToHex } from "@noble/hashes/utils";
 import { createEvent, EventFactory } from "applesauce-core/event-factory";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { getWalletMints, getWalletPrivateKey } from "../../helpers/wallet";

@@ -185,7 +185,7 @@ function DirectMessageForm({ corraspondant, relay }: { corraspondant: string; re
         onChange={(e) => setMessage(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
-        className="input input-bordered flex-grow"
+        className="input input-bordered grow"
       />
       <button type="button" className="btn btn-ghost" title="Set expiration" onClick={toggleExpiration}>
         {expiration ? expiration : "--"}

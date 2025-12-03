@@ -1,6 +1,6 @@
-import { EventTemplate, VerifiedEvent, verifyEvent } from "nostr-tools";
-import { ISigner } from "../interop.js";
 import { isHexKey } from "applesauce-core/helpers";
+import { EventTemplate, VerifiedEvent, verifyEvent } from "applesauce-core/helpers/event";
+import { ISigner } from "../interop.js";
 
 /** AN error that is throw when the window.nostr extension is missing */
 export class ExtensionMissingError extends Error {}

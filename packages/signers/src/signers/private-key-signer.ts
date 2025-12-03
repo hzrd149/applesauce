@@ -1,5 +1,7 @@
-import { normalizeToSecretKey } from "applesauce-core/helpers";
-import { EventTemplate, finalizeEvent, generateSecretKey, getPublicKey, nip04, nip44 } from "nostr-tools";
+import { finalizeEvent, normalizeToSecretKey } from "applesauce-core/helpers";
+import { nip04, nip44 } from "applesauce-core/helpers/encryption";
+import { EventTemplate } from "applesauce-core/helpers/event";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { ISigner } from "../interop.js";
 
 /** A Simple signer that holds the private key in memory */

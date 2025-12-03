@@ -7,9 +7,9 @@ import {
   unixNow,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
+import { EventTemplate, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
 import { nanoid } from "nanoid";
-import { EventTemplate, kinds, NostrEvent, verifyEvent } from "nostr-tools";
 import { filter, from, repeat, retry, Subscription } from "rxjs";
 import { isNIP04 } from "../helpers/encryption.js";
 import {

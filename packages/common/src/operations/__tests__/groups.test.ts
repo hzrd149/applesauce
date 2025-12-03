@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
 import { unixNow } from "applesauce-core/helpers";
-import { finalizeEvent, generateSecretKey, NostrEvent } from "nostr-tools";
-import { setGroupPointer, addPreviousRefs } from "../group";
+import { finalizeEvent, NostrEvent } from "applesauce-core/helpers/event";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { describe, expect, it } from "vitest";
+import { addPreviousRefs, setGroupPointer } from "../group";
 
 describe("setGroupPointer", () => {
   it('should include "h" tag', async () => {

@@ -1,4 +1,5 @@
-import { EventTemplate, Filter, NostrEvent } from "nostr-tools";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import { ObservableInput } from "rxjs";
 
 export type ISigner = {

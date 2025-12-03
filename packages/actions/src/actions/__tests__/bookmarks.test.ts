@@ -1,8 +1,6 @@
+import { EventFactory, EventStore } from "applesauce-core";
+import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vitest } from "vitest";
-import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core";
-import { kinds } from "nostr-tools";
-
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { ActionHub } from "../../action-hub.js";
 import { BookmarkEvent, CreateBookmarkList, CreateBookmarkSet, UnbookmarkEvent } from "../bookmarks.js";

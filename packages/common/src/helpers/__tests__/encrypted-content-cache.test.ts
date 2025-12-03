@@ -4,7 +4,7 @@ import {
   setEncryptedContentCache,
   unlockEncryptedContent,
 } from "applesauce-core/helpers/encrypted-content";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { EncryptedContentFromCacheSymbol, persistEncryptedContent } from "../encrypted-content-cache.js";

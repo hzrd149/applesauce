@@ -158,7 +158,7 @@ importers:
         specifier: ^1.0.33
         version: 1.0.33
       nostr-tools:
-        specifier: ^2.17.2
+        specifier: ~2.18
         version: 2.18.2(typescript@5.6.3)
       pastellify:
         specifier: ^0.1.4
@@ -279,8 +279,8 @@ importers:
         specifier: ^11.11.1
         version: 11.11.1
       nostr-tools:
-        specifier: ^2.17.0
-        version: 2.18.1(typescript@5.8.3)
+        specifier: ~2.18
+        version: 2.18.2(typescript@5.8.3)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -327,9 +327,6 @@ importers:
       nanoid:
         specifier: ^5.1.5
         version: 5.1.5
-      nostr-tools:
-        specifier: ~2.17
-        version: 2.17.0(typescript@5.8.3)
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
@@ -352,9 +349,6 @@ importers:
       applesauce-core:
         specifier: ^4.4
         version: link:../core
-      nostr-tools:
-        specifier: ~2.17
-        version: 2.17.0(typescript@5.8.3)
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
@@ -408,6 +402,9 @@ importers:
       '@types/hash-sum':
         specifier: ^1.0.2
         version: 1.0.2
+      nostr-tools:
+        specifier: ^2.18
+        version: 2.18.2(typescript@5.9.3)
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
@@ -543,9 +540,6 @@ importers:
       nanoid:
         specifier: ^5.0.9
         version: 5.1.5
-      nostr-tools:
-        specifier: ~2.17
-        version: 2.17.0(typescript@5.8.3)
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
@@ -587,8 +581,8 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0
       nostr-tools:
-        specifier: ~2.17
-        version: 2.17.0(typescript@5.8.3)
+        specifier: ~2.18
+        version: 2.18.2(typescript@5.8.3)
       observable-hooks:
         specifier: ^4.2.4
         version: 4.2.4(react-dom@19.1.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
@@ -666,9 +660,6 @@ importers:
       nanoid:
         specifier: ^5.0.9
         version: 5.1.5
-      nostr-tools:
-        specifier: ~2.18
-        version: 2.18.2(typescript@5.8.3)
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
@@ -692,25 +683,6 @@ importers:
         specifier: ^0.5.0
         version: 0.5.0(vitest@3.1.4)
 
-  packages/solidjs:
-    dependencies:
-      applesauce-core:
-        specifier: ^4.0.0
-        version: link:../core
-      solid-js:
-        specifier: ^1.9.5
-        version: 1.9.7
-    devDependencies:
-      rimraf:
-        specifier: ^6.0.1
-        version: 6.0.1
-      typescript:
-        specifier: ^5.8.3
-        version: 5.8.3
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.10.1)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.2)
-
   packages/sqlite:
     dependencies:
       applesauce-core:
@@ -729,9 +701,6 @@ importers:
       applesauce-signers:
         specifier: ^4.1.0
         version: link:../signers
-      nostr-tools:
-        specifier: ^2.17.0
-        version: 2.17.0(typescript@5.9.2)
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
@@ -776,14 +745,11 @@ importers:
         specifier: ^4.0.0
         version: link:../actions
       applesauce-common:
-        specifier: workspace:^
+        specifier: ^4.0.0
         version: link:../common
       applesauce-core:
         specifier: ^4.0.0
         version: link:../core
-      nostr-tools:
-        specifier: ~2.17
-        version: 2.17.0(typescript@5.8.3)
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
@@ -813,14 +779,11 @@ importers:
         specifier: ^1.7.1
         version: 1.8.0
       applesauce-common:
-        specifier: workspace:^
+        specifier: ^4.1.0
         version: link:../common
       applesauce-core:
         specifier: ^4.1.0
         version: link:../core
-      nostr-tools:
-        specifier: ~2.17
-        version: 2.17.0(typescript@5.8.3)
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
@@ -831,6 +794,9 @@ importers:
       '@types/debug':
         specifier: ^4.1.12
         version: 4.1.12
+      applesauce-signers:
+        specifier: ^4.1.0
+        version: link:../signers
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
@@ -3636,24 +3602,8 @@ packages:
       typescript:
         optional: true
 
-  nostr-tools@2.17.0:
-    resolution: {integrity: sha512-lrvHM7cSaGhz7F0YuBvgHMoU2s8/KuThihDoOYk8w5gpVHTy0DeUCAgCN8uLGeuSl5MAWekJr9Dkfo5HClqO9w==}
-    peerDependencies:
-      typescript: '>=5.0.0'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
   nostr-tools@2.17.4:
     resolution: {integrity: sha512-LGqpKufnmR93tOjFi4JZv1BTTVIAVfZAaAa+1gMqVfI0wNz2DnCB6UDXmjVTRrjQHMw2ykbk0EZLPzV5UeCIJw==}
-    peerDependencies:
-      typescript: '>=5.0.0'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
-  nostr-tools@2.18.1:
-    resolution: {integrity: sha512-qNun7HI+IT5vPzkpIJmr5kyzUrYkmaDot1JtKtpdw7Nf7g3S2UOxdWA92i79Hbrp+0wKGNGjKPbCCQ9Pwf1djw==}
     peerDependencies:
       typescript: '>=5.0.0'
     peerDependenciesMeta:
@@ -4036,16 +3986,6 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  seroval-plugins@1.3.2:
-    resolution: {integrity: sha512-0QvCV2lM3aj/U3YozDiVwx9zpH0q8A60CTWIv4Jszj/givcudPb48B+rkU5D51NJ0pTpweGMttHjboPa9/zoIQ==}
-    engines: {node: '>=10'}
-    peerDependencies:
-      seroval: ^1.0
-
-  seroval@1.3.2:
-    resolution: {integrity: sha512-RbcPH1n5cfwKrru7v7+zrZvjLurgHhGyso3HTyGtRivGWgYjbOmGuivCQaORNELjNONoK35nj28EoWul9sb1zQ==}
-    engines: {node: '>=10'}
-
   set-harmonic-interval@1.0.1:
     resolution: {integrity: sha512-AhICkFV84tBP1aWqPwLZqFvAwqEoVA9kxNMniGEUvzOlm4vLmOFLiTT3UZ6bziJTy4bOVpzWGTfSCbmaayGx8g==}
     engines: {node: '>=6.9'}
@@ -4081,9 +4021,6 @@ packages:
   slash@3.0.0:
     resolution: {integrity: sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==}
     engines: {node: '>=8'}
-
-  solid-js@1.9.7:
-    resolution: {integrity: sha512-/saTKi8iWEM233n5OSi1YHCCuh66ZIQ7aK2hsToPe4tqGm7qAejU1SwNuTPivbWAYq7SjuHVVYxxuZQNRbICiw==}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -7723,43 +7660,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.6.3
 
-  nostr-tools@2.17.0(typescript@5.8.3):
-    dependencies:
-      '@noble/ciphers': 0.5.3
-      '@noble/curves': 1.2.0
-      '@noble/hashes': 1.3.1
-      '@scure/base': 1.1.1
-      '@scure/bip32': 1.3.1
-      '@scure/bip39': 1.2.1
-      nostr-wasm: 0.1.0
-    optionalDependencies:
-      typescript: 5.8.3
-
-  nostr-tools@2.17.0(typescript@5.9.2):
-    dependencies:
-      '@noble/ciphers': 0.5.3
-      '@noble/curves': 1.2.0
-      '@noble/hashes': 1.3.1
-      '@scure/base': 1.1.1
-      '@scure/bip32': 1.3.1
-      '@scure/bip39': 1.2.1
-      nostr-wasm: 0.1.0
-    optionalDependencies:
-      typescript: 5.9.2
-
   nostr-tools@2.17.4(typescript@5.8.3):
-    dependencies:
-      '@noble/ciphers': 0.5.3
-      '@noble/curves': 1.2.0
-      '@noble/hashes': 1.3.1
-      '@scure/base': 1.1.1
-      '@scure/bip32': 1.3.1
-      '@scure/bip39': 1.2.1
-      nostr-wasm: 0.1.0
-    optionalDependencies:
-      typescript: 5.8.3
-
-  nostr-tools@2.18.1(typescript@5.8.3):
     dependencies:
       '@noble/ciphers': 0.5.3
       '@noble/curves': 1.2.0
@@ -7794,6 +7695,18 @@ snapshots:
       nostr-wasm: 0.1.0
     optionalDependencies:
       typescript: 5.8.3
+
+  nostr-tools@2.18.2(typescript@5.9.3):
+    dependencies:
+      '@noble/ciphers': 0.5.3
+      '@noble/curves': 1.2.0
+      '@noble/hashes': 1.3.1
+      '@scure/base': 1.1.1
+      '@scure/bip32': 1.3.1
+      '@scure/bip39': 1.2.1
+      nostr-wasm: 0.1.0
+    optionalDependencies:
+      typescript: 5.9.3
 
   nostr-wasm@0.1.0: {}
 
@@ -8251,12 +8164,6 @@ snapshots:
 
   semver@7.7.3: {}
 
-  seroval-plugins@1.3.2(seroval@1.3.2):
-    dependencies:
-      seroval: 1.3.2
-
-  seroval@1.3.2: {}
-
   set-harmonic-interval@1.0.1: {}
 
   shebang-command@2.0.0:
@@ -8297,12 +8204,6 @@ snapshots:
       totalist: 3.0.1
 
   slash@3.0.0: {}
-
-  solid-js@1.9.7:
-    dependencies:
-      csstype: 3.1.3
-      seroval: 1.3.2
-      seroval-plugins: 1.3.2(seroval@1.3.2)
 
   source-map-js@1.2.1: {}
 

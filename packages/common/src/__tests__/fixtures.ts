@@ -1,7 +1,15 @@
 import { EventSigner } from "applesauce-core/event-factory";
-import { EncryptedContentSigner, EventTemplate, unixNow, UnsignedEvent } from "applesauce-core/helpers";
-import type { NostrEvent } from "nostr-tools";
-import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04, nip44 } from "nostr-tools";
+import {
+  EncryptedContentSigner,
+  EventTemplate,
+  finalizeEvent,
+  kinds,
+  unixNow,
+  UnsignedEvent,
+} from "applesauce-core/helpers";
+import { nip04, nip44 } from "applesauce-core/helpers/encryption";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 
 export class FakeUser implements EncryptedContentSigner, EventSigner {
   key = generateSecretKey();

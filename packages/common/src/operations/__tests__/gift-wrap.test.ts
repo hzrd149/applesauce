@@ -6,9 +6,8 @@ import {
   getRumorSeals,
   getSealGiftWrap,
 } from "../../helpers/gift-wrap.js";
-import { kinds } from "nostr-tools";
 import { describe, expect, it } from "vitest";
-
+import { kinds } from "applesauce-core/helpers/event";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { giftWrap, sealRumor, toRumor, wrapSeal } from "../gift-wrap.js";
 

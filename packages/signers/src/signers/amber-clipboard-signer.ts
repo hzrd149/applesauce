@@ -1,5 +1,5 @@
-import { EventTemplate, NostrEvent, VerifiedEvent, getEventHash, nip19, verifyEvent } from "nostr-tools";
-import { getPubkeyFromDecodeResult, isHexKey, isHex } from "applesauce-core/helpers";
+import { decodeProfilePointer, isHex, isHexKey } from "applesauce-core/helpers";
+import { EventTemplate, getEventHash, NostrEvent, VerifiedEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
 
 import { ISigner } from "../interop.js";
@@ -96,8 +96,7 @@ export class AmberClipboardSigner implements ISigner {
       this.pubkey = result;
       return result;
     } else if (result.startsWith("npub") || result.startsWith("nprofile")) {
-      const decode = nip19.decode(result);
-      const pubkey = getPubkeyFromDecodeResult(decode);
+      const pubkey = decodeProfilePointer(result)?.pubkey;
       if (!pubkey) throw new Error("Expected npub from clipboard");
       this.pubkey = pubkey;
       return pubkey;

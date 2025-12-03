@@ -1,10 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core";
-import { kinds } from "nostr-tools";
-import { unlockHiddenTags } from "applesauce-core/helpers";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-
+import { EventFactory, EventStore } from "applesauce-core";
+import { unlockHiddenTags } from "applesauce-core/helpers";
+import { kinds } from "applesauce-core/helpers/event";
+import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { ActionHub } from "../../action-hub.js";
 import { AddUserToFollowSet, RemoveUserFromFollowSet } from "../follow-sets.js";

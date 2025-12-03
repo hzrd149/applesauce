@@ -43,7 +43,7 @@
     "ngeohash": "^0.6.3",
     "nostr-idb": "^2.4.0",
     "nostr-social-graph": "^1.0.33",
-    "nostr-tools": "^2.17.2",
+    "nostr-tools": "~2.18",
     "pastellify": "^0.1.4",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",

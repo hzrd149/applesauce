@@ -1,10 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core";
-import { kinds } from "nostr-tools";
-import { getMutedThings, getHiddenMutedThings } from "applesauce-common/helpers/mute";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-
+import { getHiddenMutedThings, getMutedThings } from "applesauce-common/helpers/mute";
+import { EventFactory, EventStore } from "applesauce-core";
+import { kinds } from "applesauce-core/helpers/event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { ActionHub } from "../../action-hub.js";
 import { MuteThread, UnmuteThread } from "../mute.js";

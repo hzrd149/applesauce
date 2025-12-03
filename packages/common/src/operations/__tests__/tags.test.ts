@@ -1,7 +1,7 @@
 import { buildEvent } from "applesauce-core/event-factory";
 import { EncryptedContentSymbol, getHiddenTags, unixNow } from "applesauce-core/helpers";
+import { kinds } from "applesauce-core/helpers/event";
 import { modifyHiddenTags } from "applesauce-core/operations/tags";
-import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 

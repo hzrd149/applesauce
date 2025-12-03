@@ -79,6 +79,7 @@
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/debug": "^4.1.12",
     "@types/hash-sum": "^1.0.2",
+    "nostr-tools": "^2.18",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

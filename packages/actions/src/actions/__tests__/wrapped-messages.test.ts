@@ -1,10 +1,9 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-common/helpers/gift-wrap";
 import { EventFactory, EventStore } from "applesauce-core";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-
 import { ActionHub } from "../../action-hub.js";
 import { SendWrappedMessage } from "../wrapped-messages.js";
 

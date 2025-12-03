@@ -1,4 +1,4 @@
-import { finalizeEvent, kinds, NostrEvent } from "nostr-tools";
+import { finalizeEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { wrapEvent } from "nostr-tools/nip59";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";

@@ -1,5 +1,5 @@
 import { EventFactory } from "applesauce-core/event-factory";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { LegacyMessageBlueprint, LegacyMessageReplyBlueprint } from "../legacy-message.js";

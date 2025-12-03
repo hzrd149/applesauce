@@ -1,6 +1,5 @@
-import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { encryptSecretKey, generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PasswordSigner } from "applesauce-signers/signers/password-signer";
-import { encrypt } from "nostr-tools/nip49";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SerializedAccount } from "../../types.js";
 import { PasswordAccount } from "../password-account.js";
@@ -14,7 +13,7 @@ beforeEach(() => {
   testKey = generateSecretKey();
   testPubkey = getPublicKey(testKey);
   testPassword = "test-password-123";
-  testNcryptsec = encrypt(testKey, testPassword);
+  testNcryptsec = encryptSecretKey(testKey, testPassword);
 });
 
 describe("constructor", () => {

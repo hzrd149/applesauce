@@ -1,5 +1,5 @@
-import { NostrEvent, kinds } from "nostr-tools";
-import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "nostr-tools/nip19";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "applesauce-core/helpers/pointers";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import {

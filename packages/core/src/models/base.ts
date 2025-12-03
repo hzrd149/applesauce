@@ -35,7 +35,6 @@ import { AddressPointer, AddressPointerWithoutD, EventPointer } from "../helpers
 import { claimEvents } from "../observable/claim-events.js";
 import { claimLatest } from "../observable/claim-latest.js";
 import { defined } from "../observable/defined.js";
-import { withImmediateValueOrDefault } from "../observable/with-immediate-value.js";
 
 /** Gets a single event from both types of event stores and returns an observable that completes */
 function getEventFromStores(
@@ -134,8 +133,6 @@ export function EventModel(
       claimLatest(store),
       // ignore duplicate events
       distinctUntilChanged((a, b) => a?.id === b?.id),
-      // always emit undefined so the observable is synchronous
-      withImmediateValueOrDefault(undefined),
     );
 }
 
@@ -179,8 +176,6 @@ export function ReplaceableModel(
       repeat(),
       // claim latest event
       claimLatest(store),
-      // always emit undefined so the observable is synchronous
-      withImmediateValueOrDefault(undefined),
     );
   };
 }

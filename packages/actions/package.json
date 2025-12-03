@@ -41,7 +41,6 @@
   "dependencies": {
     "applesauce-common": "workspace:^",
     "applesauce-core": "^4.4",
-    "nostr-tools": "~2.17",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {

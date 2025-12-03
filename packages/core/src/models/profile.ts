@@ -3,7 +3,6 @@ import { Model } from "../event-store/interface.js";
 import { kinds } from "../helpers/event.js";
 import { ProfilePointer } from "../helpers/pointers.js";
 import { getProfileContent, isValidProfile, ProfileContent } from "../helpers/profile.js";
-import { withImmediateValueOrDefault } from "../observable/with-immediate-value.js";
 
 /** A model that gets and parses the kind 0 metadata for a pubkey */
 export function ProfileModel(user: string | ProfilePointer): Model<ProfileContent | undefined> {
@@ -15,7 +14,5 @@ export function ProfileModel(user: string | ProfilePointer): Model<ProfileConten
       filter(isValidProfile),
       // Parse the profile event into a ProfileContent
       map((event) => event && getProfileContent(event)),
-      // Ensure the model is synchronous
-      withImmediateValueOrDefault(undefined),
     );
 }
