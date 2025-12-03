@@ -1,22 +1,53 @@
-import { getDisplayName, getProfilePicture, mergeRelaySets, normalizeToPubkey } from "applesauce-core/helpers";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import {
+  getDisplayName,
+  getProfilePicture,
+  mergeRelaySets,
+  normalizeToPubkey,
+  ProfileContent,
+} from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { createAddressLoader } from "applesauce-loaders/loaders";
+import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { PrimalCache, Vertex } from "applesauce-extra";
-import { NostrEvent } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lastValueFrom } from "rxjs";
 import RelayPicker from "./relay-picker";
 
 // Common relay URLs that support NIP-50 search
 const SEARCH_RELAYS = mergeRelaySets(["wss://relay.nostr.band", "wss://search.nos.today"]);
 
+// Create an event store for all events
+const eventStore = new EventStore();
+
+// Create a relay pool to make relay connections
+const pool = new RelayPool();
+
+// Create an address loader to load user profiles
+const addressLoader = createAddressLoader(pool, {
+  // Pass all events to the store
+  eventStore,
+  // Fallback to lookup relays if profiles cant be found
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+});
+
+// Add loaders to event store
+// These will be called if the event store doesn't have the requested event
+eventStore.addressableLoader = addressLoader;
+eventStore.replaceableLoader = addressLoader;
+
 type SearchMethod = "primal" | "vertex" | "nip50";
 
 interface ProfileSearchResult {
   pubkey: string;
-  profile: NostrEvent | null;
-  displayName: string;
-  picture: string;
+  relays?: string[];
+}
+
+/** Create a hook for loading a users profile */
+function useProfile(user: ProfilePointer): ProfileContent | undefined {
+  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function ProfileSearchModal({
@@ -36,8 +67,6 @@ function ProfileSearchModal({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [customRelayUrl, setCustomRelayUrl] = useState("");
   const [extensionAvailable, setExtensionAvailable] = useState(false);
-
-  const pool = useMemo(() => new RelayPool(), []);
 
   // Check if extension is available
   useEffect(() => {
@@ -73,49 +102,6 @@ function ProfileSearchModal({
     };
   }, [primal, vertex]);
 
-  // Helper function to convert events or pointers to ProfileSearchResult[]
-  const convertToSearchResults = useCallback((items: (NostrEvent | ProfilePointer)[]): ProfileSearchResult[] => {
-    const results: ProfileSearchResult[] = [];
-    const seenPubkeys = new Set<string>();
-
-    for (const item of items) {
-      const pubkey = item.pubkey;
-      if (seenPubkeys.has(pubkey)) continue;
-      seenPubkeys.add(pubkey);
-
-      let profile: NostrEvent | null = null;
-      let profileData: any = null;
-
-      if ("kind" in item && item.kind === 0) {
-        // It's a NostrEvent (from Primal)
-        profile = item;
-        try {
-          profileData = JSON.parse(item.content);
-        } catch (error) {
-          console.error("Failed to parse profile:", error);
-          continue;
-        }
-      } else {
-        // It's a ProfilePointer (from Vertex)
-        // We don't have the profile content, so use null
-        profile = null;
-        profileData = null;
-      }
-
-      const displayName = getDisplayName(profileData, pubkey.slice(0, 8) + "...");
-      const picture = getProfilePicture(profileData, `https://robohash.org/${pubkey}.png`);
-
-      results.push({
-        pubkey,
-        profile,
-        displayName,
-        picture,
-      });
-    }
-
-    return results;
-  }, []);
-
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
 
@@ -140,7 +126,18 @@ function ProfileSearchModal({
       if (searchMethod === "primal") {
         // Primal search
         const events = await primal.userSearch(searchQuery.trim(), 20);
-        const results = convertToSearchResults(events);
+        // Add events to store
+        for (const event of events) {
+          eventStore.add(event);
+        }
+        // Convert to search results
+        const seenPubkeys = new Set<string>();
+        const results: ProfileSearchResult[] = [];
+        for (const event of events) {
+          if (seenPubkeys.has(event.pubkey)) continue;
+          seenPubkeys.add(event.pubkey);
+          results.push({ pubkey: event.pubkey });
+        }
         setSearchResults(results);
       } else if (searchMethod === "vertex") {
         // Vertex search
@@ -148,75 +145,52 @@ function ProfileSearchModal({
           throw new Error("Vertex instance not available. Extension may be missing.");
         }
         const pointers = await vertex.userSearch(searchQuery.trim(), "globalPagerank", 20);
-        const results = convertToSearchResults(pointers);
+        // Convert pointers to search results
+        const seenPubkeys = new Set<string>();
+        const results: ProfileSearchResult[] = [];
+        for (const pointer of pointers) {
+          if (seenPubkeys.has(pointer.pubkey)) continue;
+          seenPubkeys.add(pointer.pubkey);
+          results.push({ pubkey: pointer.pubkey, relays: pointer.relays });
+        }
         setSearchResults(results);
       } else {
         // NIP-50 relay search
         const relay = pool.relay(selectedRelay);
 
-        const subscription = relay.subscription([
-          {
-            kinds: [0],
-            search: searchQuery.trim(),
-            limit: 20,
-          },
-        ]);
+        const events = await lastValueFrom(
+          relay
+            .request(
+              {
+                kinds: [0],
+                search: searchQuery.trim(),
+                limit: 20,
+              },
+              { id: `search-${Date.now()}` },
+            )
+            .pipe(mapEventsToStore(eventStore), mapEventsToTimeline()),
+        );
 
-        const results: ProfileSearchResult[] = [];
+        // Convert to search results
         const seenPubkeys = new Set<string>();
-
-        const sub = subscription.subscribe({
-          next: (response) => {
-            if (response === "EOSE") {
-              setIsSearching(false);
-              sub.unsubscribe();
-            } else {
-              // response is a NostrEvent
-              const event = response;
-              if (seenPubkeys.has(event.pubkey)) return;
-              seenPubkeys.add(event.pubkey);
-
-              try {
-                const profile = JSON.parse(event.content);
-                const displayName = getDisplayName(profile, event.pubkey.slice(0, 8) + "...");
-                const picture = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
-
-                results.push({
-                  pubkey: event.pubkey,
-                  profile: event,
-                  displayName,
-                  picture,
-                });
-
-                setSearchResults([...results]);
-              } catch (error) {
-                console.error("Failed to parse profile:", error);
-              }
-            }
-          },
-          error: (error) => {
-            console.error("Search failed:", error);
-            setSearchError("Search failed. Please try again.");
-            setIsSearching(false);
-          },
-        });
-
-        // Timeout after 10 seconds
-        setTimeout(() => {
-          setIsSearching(false);
-          sub.unsubscribe();
-        }, 10000);
-        return; // Early return for NIP-50 since it's async via subscription
+        const results: ProfileSearchResult[] = [];
+        for (const event of events) {
+          if (seenPubkeys.has(event.pubkey)) continue;
+          seenPubkeys.add(event.pubkey);
+          results.push({ pubkey: event.pubkey });
+        }
+        setSearchResults(results);
       }
 
       setIsSearching(false);
     } catch (error) {
-      console.error("Search failed:", error);
+      console.error("Search failed:");
+      console.log(error);
       const errorMessage = error instanceof Error ? error.message : "Search failed. Please try again.";
       setSearchError(errorMessage);
       setIsSearching(false);
     }
-  }, [searchQuery, searchMethod, selectedRelay, pool, primal, vertex, extensionAvailable, convertToSearchResults]);
+  }, [searchQuery, searchMethod, selectedRelay, primal, vertex, extensionAvailable]);
 
   const handleCustomRelaySubmit = () => {
     if (customRelayUrl) {
@@ -317,21 +291,12 @@ function ProfileSearchModal({
           {searchResults.length > 0 && (
             <div className="space-y-2">
               {searchResults.map((result) => (
-                <div
+                <ProfileSearchResultItem
                   key={result.pubkey}
-                  className="flex items-center gap-3 p-3 hover:bg-base-200 rounded-lg cursor-pointer transition-colors"
-                  onClick={() => handleSelectProfile(result.pubkey)}
-                >
-                  <div className="avatar">
-                    <div className="w-12 h-12 rounded-full">
-                      <img src={result.picture} alt={result.displayName} />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium">{result.displayName}</div>
-                    <div className="text-sm text-base-content/60 font-mono">{result.pubkey.slice(0, 16)}...</div>
-                  </div>
-                </div>
+                  pubkey={result.pubkey}
+                  relays={result.relays}
+                  onSelect={handleSelectProfile}
+                />
               ))}
             </div>
           )}
@@ -396,6 +361,38 @@ function ProfileSearchModal({
         <button onClick={handleClose}>close</button>
       </form>
     </dialog>
+  );
+}
+
+function ProfileSearchResultItem({
+  pubkey,
+  relays,
+  onSelect,
+}: {
+  pubkey: string;
+  relays?: string[];
+  onSelect: (pubkey: string) => void;
+}) {
+  const profile = useProfile({ pubkey, relays });
+
+  const displayName = getDisplayName(profile, pubkey.slice(0, 8) + "...");
+  const picture = getProfilePicture(profile, `https://robohash.org/${pubkey}.png`);
+
+  return (
+    <div
+      className="flex items-center gap-3 p-3 hover:bg-base-200 rounded-lg cursor-pointer transition-colors"
+      onClick={() => onSelect(pubkey)}
+    >
+      <div className="avatar">
+        <div className="w-12 h-12 rounded-full">
+          <img src={picture} alt={displayName} />
+        </div>
+      </div>
+      <div className="flex-1">
+        <div className="font-medium">{displayName}</div>
+        <div className="text-sm text-base-content/60 font-mono">{pubkey.slice(0, 16)}...</div>
+      </div>
+    </div>
   );
 }
 
