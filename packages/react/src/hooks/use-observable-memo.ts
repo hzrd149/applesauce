@@ -1,6 +1,7 @@
-import { useObservableEagerState, useObservableState } from "observable-hooks";
+import { useObservableEagerState } from "observable-hooks";
 import { useMemo } from "react";
 import { BehaviorSubject, Observable, of } from "rxjs";
+import { useObservableState } from "./use-observable-state.js";
 
 /** A hook that recreates an observable when the dependencies change */
 export function useObservableMemo<T>(factory: () => BehaviorSubject<T>, deps: any[]): T;

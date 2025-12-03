@@ -164,6 +164,14 @@ describe("req", () => {
     const sub = relay.req([{ kinds: [1] }], "sub1");
     sub.subscribe();
     sub.subscribe();
+    sub.subscribe();
+    sub.subscribe();
+
+    // Wait for connection
+    await server.connected;
+
+    // Consume all messages
+    while (server.messagesToConsume.pendingItems.length > 0) await server.nextMessage;
 
     // Wait for all messages to be sent
     await new Promise((resolve) => setTimeout(resolve, 10));

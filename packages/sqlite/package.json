@@ -121,10 +121,10 @@
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/ws": "^8.5.13",
+    "@types/ws": "^8.18.1",
     "applesauce-signers": "^4.1.0",
-    "rimraf": "^6.0.1",
-    "typescript": "^5.7.3",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.15",
     "vitest-websocket-mock": "^0.5.0",
     "ws": "^8.18.3"
