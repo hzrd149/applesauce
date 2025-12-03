@@ -10,6 +10,7 @@ import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
 import { EventMemory } from "./event-memory.js";
 import { IEventDatabase, IEventStore } from "./interface.js";
+import { verifyEvent as nostrVerifyEvent } from "nostr-tools";
 import { EventModels } from "./event-models.js";
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
@@ -67,6 +68,10 @@ export class EventStore extends EventModels implements IEventStore {
       // If no database is provided, its the same as having a memory database
       this.database = this.memory = new EventMemory();
     }
+
+    // Default to signature verification unless the consumer overrides verifyEvent.
+    // This keeps ingestion safe out of the box while still allowing opt-out.
+    this.verifyEvent = nostrVerifyEvent;
 
     // when events are added to the database, add the symbol
     this.insert$.subscribe((event) => {
@@ -218,6 +223,10 @@ export class EventStore extends EventModels implements IEventStore {
 
     // Verify event before inserting into the database
     if (this.verifyEvent && this.verifyEvent(event) === false) return null;
+    if (!this.verifyEvent) {
+      // Warn once per process if verification is unset; consumers can override intentionally.
+      console.warn("[applesauce-core] EventStore.verifyEvent is undefined; signature checks are disabled.");
+    }
 
     // Always add event to memory
     const existing = this.memory?.add(event);
