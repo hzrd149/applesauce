@@ -1,4 +1,4 @@
-import { CashuMint, CashuWallet, CheckStateEnum, Proof, Token } from "@cashu/cashu-ts";
+import { CheckStateEnum, Proof, Token, Wallet, Mint } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -125,8 +125,8 @@ export function ConsolidateTokens(opts?: { ignoreLocked?: boolean }): Action {
 
     // loop over each mint and consolidate proofs
     for (const [mint, tokens] of byMint) {
-      const cashuMint = new CashuMint(mint);
-      const cashuWallet = new CashuWallet(cashuMint);
+      const cashuMint = new Mint(mint);
+      const cashuWallet = new Wallet(cashuMint);
 
       // get all tokens proofs
       const proofs = tokens

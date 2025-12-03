@@ -394,7 +394,7 @@ describe("keepExpired", () => {
     expect(spy.getValues()).toEqual([profile]);
   });
 
-  it("should remove expirted events after expiration", async () => {
+  it("should remove expired events after expiration", async () => {
     eventStore.keepExpired = false;
     const event = user.note("temp note", { tags: [["expiration", String(unixNow() + 1)]] });
 

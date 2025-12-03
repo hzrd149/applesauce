@@ -20,13 +20,16 @@
   "devDependencies": {
     "@changesets/changelog-git": "^0.2.1",
     "@changesets/types": "^6.1.0",
-    "@vitest/browser": "^3.2.4",
-    "@vitest/coverage-v8": "^3.2.4",
-    "playwright": "^1.56.1",
-    "prettier": "^3.6.2",
+    "@vitest/browser": "^4.0.15",
+    "@vitest/browser-playwright": "^4.0.15",
+    "@vitest/coverage-v8": "^4.0.15",
+    "playwright": "^1.57.0",
+    "prettier": "^3.7.4",
     "turbo": "^2.6.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.15",
+    "@hirez_io/observer-spy": "^2.2.0",
+    "vitest-websocket-mock": "^0.5.0"
   },
   "engines": {
     "node": ">=20"

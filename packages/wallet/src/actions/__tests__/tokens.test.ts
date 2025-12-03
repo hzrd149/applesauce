@@ -1,22 +1,20 @@
-import { describe, it, expect, beforeEach, vitest } from "vitest";
-import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core";
-import { ActionHub } from "applesauce-actions";
 import { CheckStateEnum } from "@cashu/cashu-ts";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-
+import { ActionHub } from "applesauce-actions";
+import { EventFactory, EventStore } from "applesauce-core";
+import { beforeEach, describe, expect, it, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { ConsolidateTokens } from "../tokens.js";
 import { WalletTokenBlueprint } from "../../blueprints/tokens.js";
 import { unlockTokenContent, WALLET_TOKEN_KIND } from "../../helpers/tokens.js";
+import { ConsolidateTokens } from "../tokens.js";
 
 // Update the mock to allow controlling the states
 const mockCheckProofsStates = vitest.fn();
 vitest.mock("@cashu/cashu-ts", () => ({
-  CashuMint: vitest.fn(),
-  CashuWallet: vitest.fn().mockImplementation(() => ({
-    checkProofsStates: mockCheckProofsStates,
-  })),
+  Mint: vitest.fn(),
+  Wallet: class MockWallet {
+    checkProofsStates = mockCheckProofsStates;
+  },
   CheckStateEnum: { UNSPENT: "UNSPENT", SPENT: "SPENT" },
 }));
 

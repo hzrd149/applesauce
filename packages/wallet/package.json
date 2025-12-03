@@ -79,7 +79,7 @@
     }
   },
   "dependencies": {
-    "@cashu/cashu-ts": "^2.7.2",
+    "@cashu/cashu-ts": "^3.1.1",
     "@gandlaf21/bc-ur": "^1.1.12",
     "@noble/hashes": "^1.7.1",
     "applesauce-actions": "^4.0.0",
@@ -93,7 +93,7 @@
     "applesauce-signers": "^4.0.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.15"
   },
   "funding": {
     "type": "lightning",
