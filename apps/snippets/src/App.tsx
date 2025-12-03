@@ -1,14 +1,13 @@
 import { mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents } from "applesauce-relay";
-import { type NostrEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
-import { map, Observable } from "rxjs";
+import { map, of } from "rxjs";
 import "./App.css";
 import { CodeSnippetDetails, HomeView, PocketDrawer, PublishView } from "./components";
-import { useSearch } from "./hooks";
 import { usePocketContext } from "./contexts/PocketContext";
-import { eventStore, pool, CODE_SNIPPET_KIND, DEFAULT_RELAYS, isValidEventId } from "./helpers/nostr";
+import { CODE_SNIPPET_KIND, DEFAULT_RELAYS, eventStore, isValidEventId, pool } from "./helpers/nostr";
+import { useSearch } from "./hooks";
 
 function App() {
   // Hash-based routing state
@@ -32,19 +31,11 @@ function App() {
 
   // Create a timeline observable for code snippets from all relays
   const events = useObservableMemo(() => {
-    if (relays.length === 0) {
-      // Return an observable that emits an empty array when there are no relays
-      return new Observable<NostrEvent[]>((subscriber) => {
-        subscriber.next([]);
-        subscriber.complete();
-      });
-    }
+    if (relays.length === 0) return of([]);
 
     return pool
       .subscription(relays, {
         kinds: [CODE_SNIPPET_KIND],
-        // Filter for TypeScript snippets
-        "#l": ["typescript"],
       })
       .pipe(
         // Only get events from relays (ignore EOSE)

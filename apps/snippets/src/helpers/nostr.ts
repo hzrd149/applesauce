@@ -1,6 +1,6 @@
-import { EventStore } from "applesauce-core";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
+import { ApplesauceApp, getPoolWorkerUrl } from "applesauce-threads";
+// When using Vite, import the worker script directly
+import WorkerPool from "applesauce-threads/worker/pool?worker";
 
 // NIP-C0 Code Snippet Kind
 export const CODE_SNIPPET_KIND = 1337;
@@ -20,16 +20,23 @@ export const DEFAULT_RELAYS = [
 // Lookup relays for profile resolution
 export const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
 
+// Create worker - use Vite's worker import in production, fallback to URL in dev
+const worker = import.meta.env?.DEV ? new Worker(getPoolWorkerUrl(), { type: "module" }) : new WorkerPool();
+
+// Create app instance
+const app = new ApplesauceApp(worker);
+
+// Wait for workers to be ready
+await app.ready;
+
+// @ts-expect-error
+window.applesauce = app;
+
 // Create an event store for all events
-export const eventStore = new EventStore();
+export const eventStore = app.eventStore;
 
 // Create a relay pool to make relay connections
-export const pool = new RelayPool();
-
-// Create an address loader to load user profiles
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: LOOKUP_RELAYS,
-});
+export const pool = app.pool;
 
 /**
  * Utility function to check if a string is a valid nevent

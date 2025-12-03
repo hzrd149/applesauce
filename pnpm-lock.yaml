@@ -274,6 +274,9 @@ importers:
       applesauce-signers:
         specifier: ^4.2.0
         version: link:../../packages/signers
+      applesauce-threads:
+        specifier: ^4.0.0
+        version: link:../../packages/threads
       applesauce-wallet:
         specifier: ^4
         version: link:../../packages/wallet
@@ -737,6 +740,46 @@ importers:
       better-sqlite3:
         specifier: ^12.2.0
         version: 12.2.0
+
+  packages/threads:
+    dependencies:
+      applesauce-core:
+        specifier: ^4.4.0
+        version: link:../core
+      applesauce-loaders:
+        specifier: ^4.2.0
+        version: link:../loaders
+      applesauce-relay:
+        specifier: ^4.4.0
+        version: link:../relay
+      applesauce-signers:
+        specifier: ^4.2.0
+        version: link:../signers
+      debug:
+        specifier: ^4.4.3
+        version: 4.4.3
+      nanoid:
+        specifier: ^5.1.6
+        version: 5.1.6
+      rxjs:
+        specifier: ^7.8.1
+        version: 7.8.2
+      web-worker:
+        specifier: ^1.5.0
+        version: 1.5.0
+    devDependencies:
+      '@types/debug':
+        specifier: ^4.1.12
+        version: 4.1.12
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.2
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.15(@types/node@24.10.1)(@vitest/browser-playwright@4.0.15)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.5)(yaml@2.8.2)
 
   packages/wallet:
     dependencies:
@@ -4212,6 +4255,9 @@ packages:
   web-streams-polyfill@3.3.3:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
     engines: {node: '>= 8'}
+
+  web-worker@1.5.0:
+    resolution: {integrity: sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw==}
 
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
@@ -7969,6 +8015,8 @@ snapshots:
 
   web-streams-polyfill@3.3.3:
     optional: true
+
+  web-worker@1.5.0: {}
 
   which@2.0.2:
     dependencies:

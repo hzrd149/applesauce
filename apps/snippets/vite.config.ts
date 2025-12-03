@@ -10,4 +10,7 @@ export default defineConfig({
     sourcemap: true,
   },
   plugins: [react(), tailwindcss()],
+  worker: {
+    format: "es",
+  },
 });

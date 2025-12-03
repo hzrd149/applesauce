@@ -1,0 +1,54 @@
+{
+  "name": "applesauce-threads",
+  "version": "4.4.2",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prebuild": "rimraf dist",
+    "build": "tsc",
+    "watch:build": "tsc --watch > /dev/null",
+    "test": "vitest run --passWithNoTests",
+    "watch:test": "vitest"
+  },
+  "keywords": [
+    "nostr",
+    "applesauce"
+  ],
+  "author": "hzrd149",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./*": {
+      "import": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "dependencies": {
+    "applesauce-core": "^4.4.0",
+    "applesauce-loaders": "^4.2.0",
+    "applesauce-relay": "^4.4.0",
+    "applesauce-signers": "^4.2.0",
+    "debug": "^4.4.3",
+    "nanoid": "^5.1.6",
+    "rxjs": "^7.8.1",
+    "web-worker": "^1.5.0"
+  },
+  "devDependencies": {
+    "@types/debug": "^4.1.12",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.15"
+  },
+  "funding": {
+    "type": "lightning",
+    "url": "lightning:nostrudel@geyser.fund"
+  }
+}

@@ -7,6 +7,7 @@
     [
       "applesauce-accounts",
       "applesauce-actions",
+      "applesauce-threads",
       "applesauce-common",
       "applesauce-content",
       "applesauce-core",
