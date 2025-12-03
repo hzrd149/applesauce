@@ -1,6 +1,7 @@
-import { decode } from "nostr-tools/nip19";
+import { decode, Ncryptsec } from "nostr-tools/nip19";
 import { hexToBytes } from "nostr-tools/utils";
 import { isHexKey } from "./string.js";
+import { encrypt, decrypt } from "nostr-tools/nip49";
 
 // Re-export types from nostr-tools
 export { generateSecretKey, getPublicKey } from "nostr-tools/pure";
@@ -14,4 +15,14 @@ export function normalizeToSecretKey(str: string | Uint8Array): Uint8Array {
     if (result.type !== "nsec") throw new Error(`Cant get secret key from ${result.type}`);
     return result.data;
   }
+}
+
+/** Encrypt a secret key using NIP-49 */
+export function encryptSecretKey(key: Uint8Array, password: string): Ncryptsec {
+  return encrypt(key, password);
+}
+
+/** Decrypt a secret key using NIP-49 */
+export function decryptSecretKey(ncryptsec: Ncryptsec | string, password: string): Uint8Array {
+  return decrypt(ncryptsec, password);
 }

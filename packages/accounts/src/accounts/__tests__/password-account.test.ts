@@ -1,10 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
-import { encrypt, decrypt } from "nostr-tools/nip49";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PasswordSigner } from "applesauce-signers/signers/password-signer";
-
-import { PasswordAccount } from "../password-account.js";
+import { encrypt } from "nostr-tools/nip49";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SerializedAccount } from "../../types.js";
+import { PasswordAccount } from "../password-account.js";
 
 let testKey: Uint8Array;
 let testPubkey: string;

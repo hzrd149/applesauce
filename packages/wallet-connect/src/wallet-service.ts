@@ -52,8 +52,9 @@ export type SerializedWalletService = {
 export type WalletServiceInfo = Partial<Omit<WalletInfo, "methods" | "notifications">>;
 
 /** Options for creating a WalletService */
-export interface WalletServiceOptions<Methods extends TWalletMethod = CommonWalletMethods>
-  extends NostrConnectionMethodsOptions {
+export interface WalletServiceOptions<
+  Methods extends TWalletMethod = CommonWalletMethods,
+> extends NostrConnectionMethodsOptions {
   /** The relays to use for the service */
   relays: string[];
   /** The signer to use for creating and unlocking events */

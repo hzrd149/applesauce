@@ -1,7 +1,6 @@
-import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { bytesToHex, hexToBytes } from "applesauce-core/helpers/event";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers/signers/private-key-signer";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
-
 import { BaseAccount } from "../account.js";
 import { SerializedAccount } from "../types.js";
 

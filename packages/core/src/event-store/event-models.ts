@@ -46,9 +46,9 @@ export interface IEventStoreModels {
  * }
  * ```
  */
-export class EventModels<TStore extends IEventStore | IAsyncEventStore = IEventStore | IAsyncEventStore>
-  implements IEventStoreModels
-{
+export class EventModels<
+  TStore extends IEventStore | IAsyncEventStore = IEventStore | IAsyncEventStore,
+> implements IEventStoreModels {
   /** A directory of all active models */
   models = new Map<ModelConstructor<any, any[], TStore>, Map<string, Observable<any>>>();
 

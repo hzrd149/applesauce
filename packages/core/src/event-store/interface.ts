@@ -180,7 +180,8 @@ export interface IEventFallbackLoaders {
 
 /** Generic async event store interface */
 export interface IAsyncEventStore
-  extends IAsyncEventStoreRead,
+  extends
+    IAsyncEventStoreRead,
     IEventStoreStreams,
     IEventSubscriptions,
     IAsyncEventStoreActions,
@@ -191,7 +192,8 @@ export interface IAsyncEventStore
 
 /** Generic sync event store interface */
 export interface IEventStore
-  extends IEventStoreRead,
+  extends
+    IEventStoreRead,
     IEventStoreStreams,
     IEventSubscriptions,
     IEventStoreActions,

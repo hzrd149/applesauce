@@ -1,6 +1,5 @@
+import { bytesToHex, hexToBytes } from "applesauce-core/helpers/event";
 import { NostrConnectSigner, PrivateKeySigner } from "applesauce-signers";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
-
 import { BaseAccount } from "../account.js";
 import { SerializedAccount } from "../types.js";
 

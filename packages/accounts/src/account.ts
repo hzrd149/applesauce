@@ -1,8 +1,7 @@
+import { getEventHash, NostrEvent, UnsignedEvent } from "applesauce-core/helpers/event";
 import { ISigner } from "applesauce-signers";
 import { nanoid } from "nanoid";
 import { BehaviorSubject } from "rxjs";
-import { getEventHash, NostrEvent, UnsignedEvent } from "nostr-tools";
-
 import { EventTemplate, IAccount, IAccountConstructor, SerializedAccount } from "./types.js";
 
 /** Wraps a promise in an abort signal */
@@ -34,9 +33,11 @@ function wrapInSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 export class SignerMismatchError extends Error {}
 
 /** A base class for all accounts */
-export class BaseAccount<Signer extends ISigner, SignerData, Metadata extends unknown>
-  implements IAccount<Signer, SignerData, Metadata>
-{
+export class BaseAccount<Signer extends ISigner, SignerData, Metadata extends unknown> implements IAccount<
+  Signer,
+  SignerData,
+  Metadata
+> {
   id = nanoid(8);
 
   get type() {

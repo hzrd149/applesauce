@@ -25,7 +25,7 @@ export {
   nsecEncode,
 } from "nostr-tools/nip19";
 
-import { getPublicKey, nip19 } from "nostr-tools";
+import { getPublicKey } from "nostr-tools/pure";
 import { getReplaceableIdentifier, isAddressableKind, isReplaceableKind, kinds, NostrEvent } from "./event.js";
 import { Tokens } from "./regexp.js";
 import { isSafeRelayURL, relaySet } from "./relays.js";
@@ -272,9 +272,9 @@ export function addRelayHintsToPointer<T extends { relays?: string[] }>(pointer:
 export function normalizeToPubkey(str: string): string {
   if (isHexKey(str)) return str.toLowerCase();
   else {
-    const decode = nip19.decode(str);
-    const pubkey = getPubkeyFromDecodeResult(decode);
-    if (!pubkey) throw new Error(`Cant find pubkey in ${decode.type}`);
+    const result = decode(str);
+    const pubkey = getPubkeyFromDecodeResult(result);
+    if (!pubkey) throw new Error(`Cant find pubkey in ${result.type}`);
     return pubkey;
   }
 }
@@ -283,15 +283,15 @@ export function normalizeToPubkey(str: string): string {
 export function normalizeToProfilePointer(str: string): ProfilePointer {
   if (isHexKey(str)) return { pubkey: str.toLowerCase() };
   else {
-    const decode = nip19.decode(str);
+    const result = decode(str);
 
     // Return it if it's a profile pointer
-    if (decode.type === "nprofile") return decode.data;
+    if (result.type === "nprofile") return result.data;
 
     // fallback to just getting the pubkey
-    const pubkey = getPubkeyFromDecodeResult(decode);
-    if (!pubkey) throw new Error(`Cant find pubkey in ${decode.type}`);
-    const relays = getRelaysFromDecodeResult(decode);
+    const pubkey = getPubkeyFromDecodeResult(result);
+    if (!pubkey) throw new Error(`Cant find pubkey in ${result.type}`);
+    const relays = getRelaysFromDecodeResult(result);
     return { pubkey, relays };
   }
 }
@@ -303,8 +303,8 @@ export function getContentPointers(content: string): DecodeResult[] {
   const pointers: DecodeResult[] = [];
   for (const [_, $1] of mentions) {
     try {
-      const decode = nip19.decode($1);
-      pointers.push(decode);
+      const result = decode($1);
+      pointers.push(result);
     } catch (error) {}
   }
 

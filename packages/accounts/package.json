@@ -39,7 +39,6 @@
     }
   },
   "dependencies": {
-    "@noble/hashes": "^1.7.1",
     "applesauce-core": "^4.1.0",
     "applesauce-signers": "^4.1.0",
     "nanoid": "^5.1.5",
