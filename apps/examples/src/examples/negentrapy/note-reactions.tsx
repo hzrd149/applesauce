@@ -8,7 +8,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useDebounce } from "react-use";
 import { BehaviorSubject, map, NEVER, of } from "rxjs";
 import RelayAddForm from "../../components/add-relay-form";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 
 // Create a relay pool for connections
 const pool = new RelayPool();
@@ -17,14 +17,10 @@ const pool = new RelayPool();
 const eventStore = new EventStore();
 
 // Create loaders for the event store
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Attach loaders to the event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Configured relays to sync with (using BehaviorSubject for dynamic management)
 const relays$ = new BehaviorSubject<string[]>([

@@ -16,7 +16,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
-import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { useDebounce } from "react-use";
@@ -107,16 +107,11 @@ const eventStore = new AsyncEventStore(eventDatabase);
 
 const pool = new RelayPool();
 
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-const eventLoader = createEventLoader(pool, { eventStore });
-
-// Add loaders to event store for profile lookups
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
-eventStore.eventLoader = eventLoader;
 
 const viewEvent$ = new BehaviorSubject<NostrEvent | null>(null);
 

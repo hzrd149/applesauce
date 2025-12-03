@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BehaviorSubject, firstValueFrom, toArray } from "rxjs";
 
 import { addRelayHintsToPointer } from "applesauce-core/helpers";
-import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 
 // Global state
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -29,17 +29,10 @@ const factory = new EventFactory({ signer });
 // Create action hub for running actions
 const actionHub = new ActionHub(eventStore, factory);
 
-// Create loaders for single events
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com"],
 });
-const eventLoader = createEventLoader(pool, { eventStore });
-
-// Add loaders to event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
-eventStore.eventLoader = eventLoader;
 
 // Server item component with favicon and reordering
 function ServerItem({

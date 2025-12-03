@@ -1,5 +1,5 @@
 import { EventStore } from "applesauce-core";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
 
 // NIP-C0 Code Snippet Kind
@@ -27,14 +27,9 @@ export const eventStore = new EventStore();
 export const pool = new RelayPool();
 
 // Create an address loader to load user profiles
-export const addressLoader = createAddressLoader(pool, {
-  eventStore,
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: LOOKUP_RELAYS,
 });
-
-// Add loaders to event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 /**
  * Utility function to check if a string is a valid nevent

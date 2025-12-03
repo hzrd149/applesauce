@@ -16,7 +16,7 @@ import {
   unixNow,
 } from "applesauce-core/helpers";
 import { createOutboxMap } from "applesauce-core/helpers";
-import { createAddressLoader, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import {
   ignoreUnhealthyRelaysOnPointers,
@@ -58,16 +58,11 @@ function cacheRequest(filters: Filter[]) {
 // Save all new events to the cache
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
-// Create some loaders using the cache method and the event store
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
 });
-
-// Add loaders to event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Create a liveness tracker and connect to the pool
 const liveness = new RelayLiveness({

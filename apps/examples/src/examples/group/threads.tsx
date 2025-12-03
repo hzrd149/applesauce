@@ -13,7 +13,7 @@ import { COMMENT_KIND, decodeGroupPointer, GroupPointer } from "applesauce-commo
 import { CommentsModel } from "applesauce-common/models";
 import { CommentBlueprint } from "applesauce-common/blueprints";
 import * as Operations from "applesauce-common/operations";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -30,15 +30,11 @@ const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const factory = new EventFactory({ signer });
 
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {

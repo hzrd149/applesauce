@@ -5,5 +5,6 @@ export * from "./reactions-loader.js";
 export * from "./social-graph.js";
 export * from "./tag-value-loader.js";
 export * from "./timeline-loader.js";
+export * from "./unified-event-loader.js";
 export * from "./user-lists-loader.js";
 export * from "./zaps-loader.js";

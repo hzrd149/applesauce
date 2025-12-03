@@ -13,7 +13,7 @@ import { EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, mergeRelaySets, NostrEvent, ProfileContent } from "applesauce-core/helpers";
 import { EventFactory } from "applesauce-core";
 import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";
-import { createAddressLoader, createTagValueLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createTagValueLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -35,14 +35,10 @@ const pollResponseLoader = createTagValueLoader(pool, "e", {
   eventStore,
 });
 
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Add loaders to event store for profile lookups
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {

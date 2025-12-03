@@ -9,7 +9,7 @@ import {
   persistEventsToCache,
   ProfileContent,
 } from "applesauce-core/helpers";
-import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -38,19 +38,12 @@ function cacheRequest(filters: Filter[]) {
 // Save all new events to the cache
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
-// Create some loaders using the cache method and the event store
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
-const eventLoader = createEventLoader(pool, { eventStore, cacheRequest });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
-eventStore.eventLoader = eventLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {

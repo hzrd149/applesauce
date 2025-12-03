@@ -7,7 +7,7 @@ import {
   ProfileContent,
   ProfilePointer,
 } from "applesauce-core/helpers";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -21,14 +21,10 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 // Create an address loader to load user profiles
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
-
-// Add loaders to event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 type RecipientStats = {
   pubkey: string;

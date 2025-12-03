@@ -1,6 +1,6 @@
 import { EventStore, mapEventsToStore, mapEventsToTimeline, Model } from "applesauce-core";
 import { addRelayHintsToPointer, getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
-import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import {
@@ -26,18 +26,11 @@ const eventStore = new EventStore();
 // Create a relay pool for connections
 const pool = new RelayPool();
 
-// Create an address loader
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+const eventLoader = createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
-const eventLoader = createEventLoader(pool, { eventStore });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
-eventStore.eventLoader = eventLoader;
 
 function EventQuery(pointer: EventPointer): Model<NostrEvent | undefined> {
   return (events) =>

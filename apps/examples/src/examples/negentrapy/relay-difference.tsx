@@ -1,6 +1,6 @@
 import { defined, EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, unixNow } from "applesauce-core/helpers";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds } from "nostr-tools";
@@ -22,14 +22,10 @@ const pool = new RelayPool();
 const eventStore = new EventStore();
 
 // Create loaders for the event store
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Attach loaders to the event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Pubkey of user to fetch sync data for
 const pubkey$ = new BehaviorSubject<string | null>(null);

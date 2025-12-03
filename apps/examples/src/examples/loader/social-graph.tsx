@@ -1,6 +1,6 @@
 import { EventStore, Model } from "applesauce-core";
 import { getDisplayName, getProfilePicture, persistEventsToCache, ProfileContent } from "applesauce-core/helpers";
-import { createAddressLoader, createSocialGraphLoader } from "applesauce-loaders/loaders";
+import { createAddressLoader, createEventLoaderForStore, createSocialGraphLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -23,16 +23,19 @@ function cacheRequest(filters: Filter[]) {
 // Save all new events to the cache
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
+  cacheRequest,
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+});
+
+// Create address loader for social graph (needs AddressPointerLoader type)
 const addressLoader = createAddressLoader(pool, {
   eventStore,
   cacheRequest,
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 const graphLoader = createSocialGraphLoader(addressLoader, {
   eventStore,

@@ -1,9 +1,9 @@
 import { remarkNostrMentions } from "applesauce-content/markdown";
-import { EventStore } from "applesauce-core";
+import { defined, EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core";
 import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-common/helpers";
 import { HighlightBlueprint } from "applesauce-common/blueprints";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -17,14 +17,10 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 // Create an address loader to fetch articles
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Add loaders to event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 const signer = new ExtensionSigner();
 const factory = new EventFactory({ signer });
@@ -404,15 +400,18 @@ export default function ArticleHighlighter() {
   const article = useObservableMemo(() => {
     if (!addressPointer) return of(null);
 
-    return addressLoader({
-      kind: addressPointer.kind,
-      pubkey: addressPointer.pubkey,
-      identifier: addressPointer.identifier,
-      relays: addressPointer.relays,
-    }).pipe(
-      filter((event: NostrEvent) => event.kind === kinds.LongFormArticle),
-      take(1),
-    );
+    return eventStore
+      .addressable({
+        kind: addressPointer.kind,
+        pubkey: addressPointer.pubkey,
+        identifier: addressPointer.identifier,
+        relays: addressPointer.relays,
+      })
+      .pipe(
+        defined(),
+        filter((event) => event.kind === kinds.LongFormArticle),
+        take(1),
+      );
   }, [addressPointer?.kind, addressPointer?.pubkey, addressPointer?.identifier, addressPointer?.relays?.join("|")]);
 
   return (

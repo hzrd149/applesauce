@@ -1,7 +1,7 @@
 import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
-import { createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, useObservableMemo, useRenderedContent } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -60,8 +60,8 @@ const components: ComponentMap = {
   ),
 };
 
-const eventLoader = createEventLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+const eventLoader = createEventLoaderForStore(eventStore, pool, {
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band"],
 });
 

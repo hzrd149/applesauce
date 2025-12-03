@@ -52,23 +52,10 @@ export class EventStore extends EventModels implements IEventStore {
   /** A stream of events that have been removed */
   remove$ = new Subject<NostrEvent>();
 
-  /**
-   * A method that will be called when an event isn't found in the store
-   * @experimental
-   */
-  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
-
-  /**
-   * A method that will be called when a replaceable event isn't found in the store
-   * @experimental
-   */
-  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
-
-  /**
-   * A method that will be called when an addressable event isn't found in the store
-   * @experimental
-   */
-  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
+  /** A method that will be called when an event isn't found in the store */
+  eventLoader?: (
+    pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
+  ) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
   constructor(database: IEventDatabase = new EventMemory()) {
     super();

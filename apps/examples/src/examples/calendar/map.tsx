@@ -11,7 +11,7 @@ import {
   getCalendarEventTitle,
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers";
-import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
@@ -30,14 +30,10 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 // Create an address loader to load user profiles
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Add loaders to event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Fix Leaflet default marker icons
 import L from "leaflet";

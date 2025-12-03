@@ -1,6 +1,6 @@
 import { defined, EventStore, firstValueFrom, simpleTimeout } from "applesauce-core";
 import { EventFactory } from "applesauce-core";
-import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
 import { npubEncode } from "nostr-tools/nip19";
@@ -18,13 +18,8 @@ const pool = new RelayPool();
 // Create event store and loaders for handling events
 const eventStore = new EventStore();
 
-const eventLoader = createEventLoader(pool, { eventStore });
-const addressLoader = createAddressLoader(pool, { eventStore });
-
-// Attach loaders to event store
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
-eventStore.eventLoader = eventLoader;
+// Create unified event loader for the store
+createEventLoaderForStore(eventStore, pool);
 
 // Setup nostr connect signer
 NostrConnectSigner.pool = pool;

@@ -13,7 +13,7 @@ import {
   ProfileContent,
   ProfilePointer,
 } from "applesauce-core/helpers";
-import { createAddressLoader, createEventLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -38,19 +38,12 @@ function cacheRequest(filters: Filter[]) {
 // Save all new events to the cache
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
-// Create loaders that load events from relays and cache
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
   lookupRelays: ["wss://purplepag.es/"],
 });
-const eventLoader = createEventLoader(pool, { eventStore, cacheRequest });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
-eventStore.eventLoader = eventLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
@@ -85,10 +78,12 @@ function ZapEvent({ event }: { event: KnownEvent<kinds.Zap> }) {
   // Load the shared event from the pointer
   useEffect(() => {
     if (!pointer) return;
-    const sub = eventLoader(
-      // Add extra relay hints to the pointer to load
-      addRelayHintsToPointer(pointer, getSeenRelays(event)),
-    ).subscribe();
+    const sub = eventStore
+      .event(
+        // Add extra relay hints to the pointer to load
+        addRelayHintsToPointer(pointer, getSeenRelays(event)),
+      )
+      .subscribe();
     return () => sub.unsubscribe();
   }, [pointer, event]);
 

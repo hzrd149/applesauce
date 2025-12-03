@@ -3,7 +3,7 @@ import { ActionHub } from "applesauce-actions";
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { EventFactory } from "applesauce-core";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -51,17 +51,12 @@ const factory = new EventFactory({ signer: signer });
 const actionHub = new ActionHub(eventStore, factory, async () => {});
 
 // Create an address loader to load user profiles
-const addressLoader = createAddressLoader(pool, {
-  // Pass all events to the store
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Profile card component
 function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
@@ -323,11 +318,13 @@ export default function ZapProfile() {
   const nutzapInfo = useObservableMemo(() => {
     if (!selected) return undefined;
 
-    return addressLoader({
-      kind: NUTZAP_INFO_KIND,
-      pubkey: selected,
-      relays: PRESET_NPUBS.find((p) => p.pubkey === selected)?.relays,
-    }).pipe(startWith(undefined));
+    return eventStore
+      .replaceable({
+        kind: NUTZAP_INFO_KIND,
+        pubkey: selected,
+        relays: PRESET_NPUBS.find((p) => p.pubkey === selected)?.relays,
+      })
+      .pipe(startWith(undefined));
   }, [selected]);
 
   return (

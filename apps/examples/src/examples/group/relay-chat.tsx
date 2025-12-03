@@ -10,7 +10,7 @@ import {
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventFactory } from "applesauce-core";
 import { GroupMessageBlueprint } from "applesauce-common/blueprints";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -28,15 +28,11 @@ const factory = new EventFactory({
 
 const pool = new RelayPool();
 
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {

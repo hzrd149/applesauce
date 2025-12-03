@@ -119,7 +119,7 @@ export interface IEventModelMixin<TStore extends IEventStore | IAsyncEventStore>
 export type ModelEventStore<TStore extends IEventStore | IAsyncEventStore> = IEventStoreStreams &
   IEventSubscriptions &
   IEventModelMixin<TStore> &
-  IEventFallbackLoaders &
+  IMissingEventLoader &
   TStore;
 
 /** A computed view of an event set or event store */
@@ -169,13 +169,11 @@ export interface IEventMemory extends IEventStoreRead, IEventClaims {
 }
 
 /** A set of methods that an event store will use to load single events it does not have */
-export interface IEventFallbackLoaders {
+export interface IMissingEventLoader {
   /** A method that will be called when an event isn't found in the store */
-  eventLoader?: (pointer: EventPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
-  /** A method that will be called when a replaceable event isn't found in the store */
-  replaceableLoader?: (pointer: AddressPointerWithoutD) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
-  /** A method that will be called when an addressable event isn't found in the store */
-  addressableLoader?: (pointer: AddressPointer) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
+  eventLoader?: (
+    pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
+  ) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 }
 
 /** Generic async event store interface */
@@ -187,7 +185,7 @@ export interface IAsyncEventStore
     IAsyncEventStoreActions,
     IEventModelMixin<IAsyncEventStore>,
     IEventClaims,
-    IEventFallbackLoaders,
+    IMissingEventLoader,
     IEventStoreModels {}
 
 /** Generic sync event store interface */
@@ -199,5 +197,5 @@ export interface IEventStore
     IEventStoreActions,
     IEventModelMixin<IEventStore>,
     IEventClaims,
-    IEventFallbackLoaders,
+    IMissingEventLoader,
     IEventStoreModels {}

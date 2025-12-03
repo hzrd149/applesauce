@@ -7,7 +7,7 @@ import {
   mergeRelaySets,
   ProfileContent,
 } from "applesauce-core/helpers";
-import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
@@ -24,15 +24,11 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 // Create an address loader to load user profiles
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // NIP-13 Proof of Work calculation
 const PoWDifficultySymbol = Symbol.for("pow-difficulty");

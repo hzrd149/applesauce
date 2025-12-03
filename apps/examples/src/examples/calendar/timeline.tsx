@@ -12,7 +12,7 @@ import {
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers";
 import { CalendarEventRSVPsModel } from "applesauce-common/models";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
@@ -29,17 +29,12 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 // Create an address loader to load user profiles
-const addressLoader = createAddressLoader(pool, {
-  // Pass all events to the store
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
   lookupRelays: ["wss://purplepag.es"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Helper components
 function Avatar({ user }: { user: ProfilePointer }) {

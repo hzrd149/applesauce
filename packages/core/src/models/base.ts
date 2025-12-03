@@ -22,7 +22,7 @@ import {
   tap,
 } from "rxjs";
 
-import { IAsyncEventStore, IEventFallbackLoaders, IEventStore, Model } from "../event-store/interface.js";
+import { IAsyncEventStore, IMissingEventLoader, IEventStore, Model } from "../event-store/interface.js";
 import {
   getEventUID,
   getReplaceableIdentifier,
@@ -74,32 +74,15 @@ function getByFiltersFromStores(
 
 /** If event is undefined, attempt to load using the fallback loader */
 function loadEventUsingFallback(
-  store: IEventFallbackLoaders,
-  pointer: EventPointer,
+  store: IMissingEventLoader,
+  pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
 ): MonoTypeOperatorFunction<NostrEvent | undefined> {
   return switchMap((event) => {
     if (event) return of(event);
 
     // If event was not found, attempt to load
     if (!store.eventLoader) return EMPTY;
-    return from(store.eventLoader(pointer));
-  });
-}
-
-/** If replaceable event is undefined, attempt to load using the fallback loader */
-function loadReplaceableUsingFallback(
-  store: IEventFallbackLoaders,
-  pointer: AddressPointer | AddressPointerWithoutD,
-): MonoTypeOperatorFunction<NostrEvent | undefined> {
-  return switchMap((event) => {
-    if (event) return of(event);
-    else if (pointer.identifier !== undefined) {
-      if (!store.addressableLoader) return EMPTY;
-      return from(store.addressableLoader(pointer as AddressPointer)).pipe(filter((e) => !!e));
-    } else {
-      if (!store.replaceableLoader) return EMPTY;
-      return from(store.replaceableLoader(pointer)).pipe(filter((e) => !!e));
-    }
+    return from(store.eventLoader(pointer)).pipe(filter((e) => !!e));
   });
 }
 
@@ -147,7 +130,7 @@ export function ReplaceableModel(
       // lazily get current event
       defer(() => getReplaceableFromStores(store, pointer)).pipe(
         // If the event isn't found, attempt to load using the fallback loader
-        loadReplaceableUsingFallback(store, pointer),
+        loadEventUsingFallback(store, pointer),
         // Only emit found events
         defined(),
       ),

@@ -11,7 +11,7 @@ import {
   unixNow,
 } from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
-import { createAddressLoader, createEventLoader, createTimelineLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -47,17 +47,11 @@ const pool = new RelayPool();
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
 const actions = new ActionHub(eventStore, factory);
 
-// Create event loaders
-const eventLoader = createEventLoader(pool, { eventStore });
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
-
-// Attach loaders to store so it can automatically load profiles
-eventStore.eventLoader = eventLoader;
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Persist encrypted content
 persistEncryptedContent(eventStore, storage$.pipe(defined()));

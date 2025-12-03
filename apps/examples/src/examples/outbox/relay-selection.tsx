@@ -1,7 +1,7 @@
 import { defined, EventStore, includeMailboxes } from "applesauce-core";
 import { getDisplayName, getProfilePicture, groupPubkeysByRelay } from "applesauce-core/helpers";
 import { selectOptimalRelays } from "applesauce-core/helpers";
-import { createAddressLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
@@ -27,16 +27,12 @@ const pool = new RelayPool();
 const eventStore = new EventStore();
 
 // Create some loaders using the cache method and the event store
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 // Create a liveness tracker and connect to the pool
 const liveness = new RelayLiveness({
@@ -84,7 +80,9 @@ function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
 
     setRefreshing(true);
     try {
-      await firstValueFrom(addressLoader({ kind: 10002, pubkey: previewUser.pubkey, relays: previewUser.relays }));
+      await firstValueFrom(
+        eventStore.replaceable({ kind: 10002, pubkey: previewUser.pubkey, relays: previewUser.relays }),
+      );
     } catch (error) {
       console.error("Failed to refresh mailboxes for user", previewUser.pubkey);
     }

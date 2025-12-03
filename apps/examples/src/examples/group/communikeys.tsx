@@ -1,6 +1,6 @@
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getTagValue, isRTag, ProfileContent } from "applesauce-core/helpers";
-import { createAddressLoader, createTimelineLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
@@ -15,15 +15,11 @@ const COMMUNITY_CREATION_KIND = 10222;
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-const addressLoader = createAddressLoader(pool, {
-  eventStore,
+// Create unified event loader for the store
+// This will be called if the event store doesn't have the requested event
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/"],
 });
-
-// Add loaders to event store
-// These will be called if the event store doesn't have the requested event
-eventStore.addressableLoader = addressLoader;
-eventStore.replaceableLoader = addressLoader;
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
