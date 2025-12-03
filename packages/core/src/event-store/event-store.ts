@@ -10,7 +10,7 @@ import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
 import { EventMemory } from "./event-memory.js";
 import { IEventDatabase, IEventStore } from "./interface.js";
-import { verifyEvent as nostrVerifyEvent } from "nostr-tools";
+import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
 import { EventModels } from "./event-models.js";
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
@@ -26,11 +26,22 @@ export class EventStore extends EventModels implements IEventStore {
   /** Enable this to keep expired events */
   keepExpired = false;
 
-  /**
-   * A method used to verify new events before added them
-   * @returns true if the event is valid, false if it should be ignored
-   */
-  verifyEvent?: (event: NostrEvent) => boolean;
+  /** The method used to verify events */
+  private _verifyEventMethod?: (event: NostrEvent) => boolean = coreVerifyEvent;
+
+  /** Get the method used to verify events */
+  get verifyEvent(): undefined | ((event: NostrEvent) => boolean) {
+    return this._verifyEventMethod;
+  }
+
+  /** Sets the method used to verify events */
+  set verifyEvent(method: undefined | ((event: NostrEvent) => boolean)) {
+    this._verifyEventMethod = method;
+
+    if (method === undefined) {
+      console.warn("[applesauce-core] EventStore.verifyEvent is undefined; signature checks are disabled.");
+    }
+  }
 
   /** A stream of new events added to the store */
   insert$ = new Subject<NostrEvent>();
@@ -68,10 +79,6 @@ export class EventStore extends EventModels implements IEventStore {
       // If no database is provided, its the same as having a memory database
       this.database = this.memory = new EventMemory();
     }
-
-    // Default to signature verification unless the consumer overrides verifyEvent.
-    // This keeps ingestion safe out of the box while still allowing opt-out.
-    this.verifyEvent = nostrVerifyEvent;
 
     // when events are added to the database, add the symbol
     this.insert$.subscribe((event) => {
@@ -223,10 +230,6 @@ export class EventStore extends EventModels implements IEventStore {
 
     // Verify event before inserting into the database
     if (this.verifyEvent && this.verifyEvent(event) === false) return null;
-    if (!this.verifyEvent) {
-      // Warn once per process if verification is unset; consumers can override intentionally.
-      console.warn("[applesauce-core] EventStore.verifyEvent is undefined; signature checks are disabled.");
-    }
 
     // Always add event to memory
     const existing = this.memory?.add(event);

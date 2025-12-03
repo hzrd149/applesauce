@@ -17,6 +17,7 @@ import { unixNow } from "../helpers/time.js";
 import { EventMemory } from "./event-memory.js";
 import { EventModels } from "./event-models.js";
 import { IAsyncEventDatabase, IAsyncEventStore } from "./interface.js";
+import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
 
 /** An async wrapper around an async event database that handles replaceable events, deletes, and models */
 export class AsyncEventStore extends EventModels implements IAsyncEventStore {
@@ -31,11 +32,22 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
   /** Enable this to keep expired events */
   keepExpired = false;
 
-  /**
-   * A method used to verify new events before added them
-   * @returns true if the event is valid, false if it should be ignored
-   */
-  verifyEvent?: (event: NostrEvent) => boolean;
+  /** The method used to verify events */
+  private _verifyEventMethod?: (event: NostrEvent) => boolean = coreVerifyEvent;
+
+  /** Get the method used to verify events */
+  get verifyEvent(): undefined | ((event: NostrEvent) => boolean) {
+    return this._verifyEventMethod;
+  }
+
+  /** Sets the method used to verify events */
+  set verifyEvent(method: undefined | ((event: NostrEvent) => boolean)) {
+    this._verifyEventMethod = method;
+
+    if (method === undefined) {
+      console.warn("[applesauce-core] AsyncEventStore.verifyEvent is undefined; signature checks are disabled.");
+    }
+  }
 
   /** A stream of new events added to the store */
   insert$ = new Subject<NostrEvent>();
