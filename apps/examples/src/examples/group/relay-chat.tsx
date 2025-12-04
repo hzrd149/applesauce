@@ -11,10 +11,11 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventFactory } from "applesauce-core";
 import { GroupMessageBlueprint } from "applesauce-common/blueprints";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { ProfilePointer } from "nostr-tools/nip19";
+import { npubEncode } from "nostr-tools/nip19";
 import { useCallback, useEffect, useState } from "react";
 import { map, startWith } from "rxjs";
 
@@ -135,7 +136,7 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
         onChange={(e) => setMessage(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
-        className="input input-bordered flex-grow"
+        className="input input-bordered grow"
       />
       <button type="submit" disabled={sending || !message.trim()} className="btn btn-primary">
         {sending ? <span className="loading loading-spinner loading-sm"></span> : "Send"}
@@ -147,6 +148,7 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
 export default function RelayGroupExample() {
   const [identifier, setIdentifier] = useState("");
   const [pointer, setPointer] = useState<GroupPointer>();
+  const [pubkey, setPubkey] = useState<string | null>(null);
 
   const setGroup = useCallback(
     (identifier: string) => {
@@ -158,11 +160,107 @@ export default function RelayGroupExample() {
     [setIdentifier, setPointer],
   );
 
+  // Subscribe to authentication state for the current relay
+  const authRequiredForRead = useObservableEagerMemo(
+    () => (pointer ? pool.relay(pointer.relay).authRequiredForRead$ : undefined),
+    [pointer?.relay],
+  );
+  const authenticated = useObservableEagerMemo(
+    () => (pointer ? pool.relay(pointer.relay).authenticated$ : undefined),
+    [pointer?.relay],
+  );
+  const challenge = useObservableEagerMemo(
+    () => (pointer ? pool.relay(pointer.relay).challenge$ : undefined),
+    [pointer?.relay],
+  );
+
+  const needsAuth = !!authRequiredForRead;
+  const authAvailable = !!challenge && !authRequiredForRead;
+
+  // Handle authentication with extension signer
+  const handleAuthenticate = useCallback(async () => {
+    if (authenticated || !pointer) return;
+
+    try {
+      const signer = new ExtensionSigner();
+
+      // get the users pubkey
+      setPubkey(await signer.getPublicKey());
+
+      // Authenticate with the relay
+      await pool
+        .relay(pointer.relay)
+        .authenticate(signer)
+        .then((response) => console.log("Authentication response:", response))
+        .catch((error) => console.error("Authentication error:", error));
+    } catch (error) {
+      console.error("Authentication failed:", error);
+    }
+  }, [pointer, needsAuth, authenticated]);
+
+  const npub = pubkey && npubEncode(pubkey);
+
   return (
     <div className="container mx-auto p-2 h-full overflow-hidden">
-      <div className="flex w-full max-w-xl mb-4">
+      <div className="flex w-full mb-4 items-center gap-2">
         <GroupPicker identifier={identifier} setIdentifier={setGroup} />
+        {pointer && authenticated && npub && <div className="badge badge-success">Authenticated</div>}
       </div>
+
+      {pointer && needsAuth && !authenticated && (
+        <div className="mb-4">
+          <div className="alert alert-warning">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="stroke-current shrink-0 h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-bold">Authentication Required</h3>
+              <div className="text-xs">This relay requires authentication to read group messages.</div>
+              {challenge && <div className="text-xs mt-1">Challenge received: {challenge.slice(0, 10)}...</div>}
+            </div>
+            <button className="btn btn-sm btn-primary" onClick={handleAuthenticate}>
+              Authenticate
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pointer && authAvailable && !authenticated && (
+        <div className="mb-4">
+          <div className="alert alert-info">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="stroke-current shrink-0 h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-bold">Authentication Available</h3>
+              <div className="text-xs">This relay supports authentication but it's not required to read messages.</div>
+            </div>
+            <button className="btn btn-sm btn-primary" onClick={handleAuthenticate}>
+              Authenticate
+            </button>
+          </div>
+        </div>
+      )}
 
       {pointer && <ChatLog pointer={pointer} />}
       {pointer && <SendMessageForm pointer={pointer} />}

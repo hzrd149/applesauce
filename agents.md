@@ -42,3 +42,7 @@
 # Building examples
 
 Never add drop shadows and avoid using cards, the UI looks better when its simple, clean and uses borders.
+
+# Using DaisyUI
+
+THERE IS NO `.form-control` class.

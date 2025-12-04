@@ -2,7 +2,7 @@ import { EventOperation } from "applesauce-core/event-factory";
 import { ensureNamedValueTag } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { includeSingletonTag, modifyPublicTags } from "applesauce-core/operations/tags";
-import { createGroupHTagFromGroupPointer, createGroupTagFromGroupPointer } from "../helpers/groups-helper.js";
+import { createGroupHTagFromGroupPointer, createGroupTagFromGroupPointer } from "../helpers/groups.js";
 import { GroupPointer } from "../helpers/groups.js";
 
 /** Adds a "group" tag to a list */

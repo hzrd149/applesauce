@@ -88,7 +88,7 @@ function CommunityCard({ community }: { community: NostrEvent }) {
   const relays = useMemo(() => community.tags.filter(isRTag).map((r) => r[1]), [community]);
 
   return (
-    <div className="card bg-base-100 shadow-md border border-base-300 hover:shadow-lg transition-shadow">
+    <div className="card bg-base-100 border border-base-300">
       <div className="card-body p-4">
         <div className="flex items-center gap-3 mb-3">
           <div className="avatar">
@@ -122,11 +122,18 @@ function CommunityCard({ community }: { community: NostrEvent }) {
           </div>
         </div>
 
-        <div className="card-actions justify-between items-center mt-4">
-          <div className="text-xs opacity-60">
-            {relays.length} relay{relays.length !== 1 ? "s" : ""}
+        {relays.length > 0 && (
+          <div className="mt-4">
+            <div className="text-sm font-medium mb-2">Relays:</div>
+            <div className="flex flex-col gap-1">
+              {relays.map((relay, index) => (
+                <div key={index} className="text-xs opacity-60 truncate font-mono">
+                  {relay}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -146,7 +153,7 @@ function CommunitiesGrid({ communities }: { communities: NostrEvent[] }) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {communities.map((community) => (
         <CommunityCard key={community.pubkey} community={community} />
       ))}
