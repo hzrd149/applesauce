@@ -1,9 +1,0 @@
-$schema: http://json-schema.org/draft-07/schema#
-title: kind1
-allOf: 
-  - $ref: "@/note.yaml"
-  - type: object
-    properties:
-      kind:
-        const: 1
-        errorMessage: "kind must equal 1"
