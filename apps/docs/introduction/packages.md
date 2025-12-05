@@ -2,7 +2,7 @@
 
 ## Core
 
-The `applesauce-core` package contains the `EventStore` and the majority of the helpers, and models. [see more](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-core.html)
+The `applesauce-core` package contains the core protocol primitives and utilities. [see more](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-core.html)
 
 :::code-group
 
@@ -16,6 +16,26 @@ yarn install applesauce-core
 
 ```sh [pnpm]
 pnpm install applesauce-core
+```
+
+:::
+
+## Common
+
+The `applesauce-common` package contains the helpers, models, and blueprints for common nostr application patterns. [see more](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-common.html)
+
+:::code-group
+
+```sh [npm]
+npm install applesauce-common
+```
+
+```sh [yarn]
+yarn install applesauce-common
+```
+
+```sh [pnpm]
+pnpm install applesauce-common
 ```
 
 :::

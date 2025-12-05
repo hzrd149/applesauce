@@ -33,7 +33,8 @@ features:
 
 AppleSauce is built on top of [RxJS](https://rxjs.dev) and uses the observable pattern to provide a reactive, event-driven architecture for Nostr applications.
 
-- **applesauce-core** - Essential utilities for working with Nostr events, keys, protocols, event storage, and the EventFactory for creating events
+- **applesauce-core** - Core protocol primitives and utilities
+- **applesauce-common** - Helpers, models, and blueprints for common nostr application patterns
 - **applesauce-relay** - Simple relay connection management with automatic reconnection
 - **applesauce-signers** - Flexible signing interfaces supporting multiple providers
 - **applesauce-loaders** - High-level data loaders for common Nostr patterns
@@ -67,12 +68,20 @@ Connect to relays and fetch events with minimal code:
 
 ```typescript
 import { RelayPool, onlyEvents } from "applesauce-relay";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { EventStore } from "applesauce-core";
 
 // Create an event store to hold state (events)
 const store = new EventStore();
 
 // Create a relay connection
 const pool = new RelayPool();
+
+// Create an event store for the UI
+const eventStore = new EventStore();
+
+// Connect the event store to the relay pool
+createEventLoaderForStore(eventStore, pool);
 
 // Subscribe to events from the relay
 pool
@@ -84,4 +93,14 @@ pool
 store.timeline({ kinds: [1] }).subscribe((events) => {
   console.log(`Timeline updated: ${events.length} notes`);
 });
+
+// Subscribe and automatically load profiles from event store
+const profile = eventStore
+  .profile({
+    pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    relays: ["wss://relay.damus.io", "wss://nos.lol"],
+  })
+  .subscribe((profile) => {
+    console.log("Profile:", profile);
+  });
 ```
