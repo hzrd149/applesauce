@@ -39,6 +39,8 @@
 
 8. **Run linter** on updated documentation files
 
+9. **Use bd tool** for all work
+
 # Building examples
 
 Never add drop shadows and avoid using cards, the UI looks better when its simple, clean and uses borders.
