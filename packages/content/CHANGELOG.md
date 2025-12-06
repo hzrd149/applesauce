@@ -1,5 +1,21 @@
 # applesauce-content
 
+## 5.0.0
+
+### Major Changes
+
+- 8861435: Move regular expressions to applesauce-core
+
+### Minor Changes
+
+- d788f94: Remove nostr-tools dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.0.0
+  - applesauce-common@5.0.0
+
 ## 4.0.0
 
 ### Minor Changes

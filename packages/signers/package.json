@@ -1,6 +1,6 @@
 {
   "name": "applesauce-signers",
-  "version": "4.2.0",
+  "version": "5.0.0",
   "description": "Signer classes for applesauce",
   "type": "module",
   "main": "dist/index.js",
@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@noble/secp256k1": "^1.7.1",
-    "applesauce-core": "^4.2.0",
+    "applesauce-core": "^5.0.0",
     "debug": "^4.4.0",
     "nanoid": "^5.0.9",
     "rxjs": "^7.8.2"
