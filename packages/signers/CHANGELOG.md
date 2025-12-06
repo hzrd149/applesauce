@@ -1,5 +1,17 @@
 # applesauce-signer
 
+## 5.0.0
+
+### Minor Changes
+
+- d788f94: Remove `@noble/hashes` and `@scure/base` dependency
+- 6596b3d: Remove direct `nostr-tools` dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.0.0
+
 ## 4.2.0
 
 ### Patch Changes

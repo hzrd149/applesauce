@@ -1,6 +1,6 @@
 {
   "name": "applesauce-sqlite",
-  "version": "4.4.0",
+  "version": "5.0.0",
   "description": "sqlite event databases for applesauce",
   "type": "module",
   "main": "dist/index.js",
@@ -110,7 +110,7 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^4.4.0"
+    "applesauce-core": "^5.0.0"
   },
   "optionalDependencies": {
     "@libsql/client": "^0.15.15",
@@ -122,7 +122,7 @@
     "@hirez_io/observer-spy": "^2.2.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.18.1",
-    "applesauce-signers": "^4.1.0",
+    "applesauce-signers": "^5.0.0",
     "rimraf": "^6.1.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15",
