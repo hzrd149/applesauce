@@ -105,6 +105,17 @@ function MonitorPopup({ event }: { event: MonitorEventWithLocation }) {
       <div className="text-xs text-gray-600 mb-1">
         <strong>Created:</strong> {createdDate.toLocaleString()}
       </div>
+      <div className="text-xs text-gray-600 mb-1">
+        <strong>Pubkey:</strong>
+        <input
+          type="text"
+          readOnly
+          value={event.pubkey}
+          className="w-full mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-700 font-mono text-xs cursor-text"
+          onFocus={(e) => e.target.select()}
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+        />
+      </div>
     </div>
   );
 }

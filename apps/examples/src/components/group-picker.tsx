@@ -10,9 +10,14 @@ export default function GroupPicker({
   const [input, setInput] = useState(identifier);
   useEffect(() => setInput(identifier), [identifier]);
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIdentifier(input);
+  };
+
   return (
     <div className="join">
-      <select className="select join-item w-xs" onChange={(e) => setIdentifier(e.target.value)} value={identifier}>
+      <select className="select join-item w-48" onChange={(e) => setIdentifier(e.target.value)} value={identifier}>
         <option value="">Select group</option>
         <option value="groups.0xchat.com'chachi">chachi</option>
         <option value="groups.hzrd149.com'0a3991">blossom</option>
@@ -23,16 +28,18 @@ export default function GroupPicker({
         <option value="groups.hzrd149.com'a45b2f">applesauce</option>
         <option value="groups.hzrd149.com'79dc07">test group</option>
       </select>
-      <input
-        className="input join-item input-bordered w-full"
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Enter group identifier"
-      />
-      <button className="btn join-item btn-primary" onClick={() => setIdentifier(identifier)}>
-        Load
-      </button>
+      <form className="join-item flex grow" onSubmit={handleSubmit}>
+        <input
+          className="input input-bordered w-full min-w-xs"
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Enter group identifier"
+        />
+        <button type="submit" className="btn btn-primary join-item">
+          Load
+        </button>
+      </form>
     </div>
   );
 }

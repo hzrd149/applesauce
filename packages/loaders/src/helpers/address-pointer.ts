@@ -9,7 +9,7 @@ export function createFilterFromAddressPointers(pointers: AddressPointerWithoutD
 
   filter.kinds = unique(pointers.map((p) => p.kind));
   filter.authors = unique(pointers.map((p) => p.pubkey));
-  const identifiers = unique(pointers.map((p) => p.identifier).filter((d) => !!d) as string[]);
+  const identifiers = unique(pointers.map((p) => p.identifier).filter((d) => d !== undefined) as string[]);
   if (identifiers.length > 0) filter["#d"] = identifiers;
 
   return filter;
@@ -38,7 +38,7 @@ export function createFiltersFromAddressPointers(pointers: AddressPointerWithout
 
 /** Checks if a relay will understand an address pointer */
 export function isLoadableAddressPointer<T extends AddressPointerWithoutD>(pointer: T): boolean {
-  if (isAddressableKind(pointer.kind)) return !!pointer.identifier;
+  if (isAddressableKind(pointer.kind)) return pointer.identifier !== undefined;
   else return isReplaceableKind(pointer.kind);
 }
 

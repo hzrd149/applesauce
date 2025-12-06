@@ -1,5 +1,6 @@
 import { randomBytes } from "@noble/hashes/utils";
 import { defined, EventStore } from "applesauce-core";
+import { normalizeToPubkey } from "applesauce-core/helpers";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import { finalizeEvent, getEventHash, kinds, NostrEvent, UnsignedEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
@@ -7,11 +8,10 @@ import { unixNow } from "applesauce-core/helpers/time";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableState } from "applesauce-react/hooks";
 import { PublishResponse, RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import { PrivateKeySigner } from "applesauce-signers";
 import { useState } from "react";
 import { BehaviorSubject, switchMap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
-import { normalizeToPubkey } from "applesauce-core/helpers";
 
 const totalRandomUsers = [
   "npub1xtscya34g58tk0z605fvr788k263gsu6cy9x0mhnm87echrgufzsevkk5s",
@@ -26,7 +26,7 @@ const pubkey$ = new BehaviorSubject<string | null>(
 );
 const pool = new RelayPool();
 const eventStore = new EventStore();
-const signer = new ExtensionSigner();
+const signer = new PrivateKeySigner();
 
 // Create an address loader to load user profiles and replaceable events
 // Create unified event loader for the store

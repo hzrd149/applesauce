@@ -178,7 +178,7 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
     (pointer, event) =>
       event.kind === pointer.kind &&
       event.pubkey === pointer.pubkey &&
-      (pointer.identifier ? getReplaceableIdentifier(event) === pointer.identifier : true),
+      (pointer.identifier !== undefined ? getReplaceableIdentifier(event) === pointer.identifier : true),
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
   );

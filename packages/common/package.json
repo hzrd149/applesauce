@@ -77,12 +77,17 @@
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
+    "@nostrability/schemata": "github:nostrability/schemata",
     "@types/debug": "^4.1.12",
     "@types/hash-sum": "^1.0.2",
+    "@types/node": "^22.19.1",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "nostr-tools": "^2.18",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.15",
+    "yaml": "^2.8.2"
   },
   "funding": {
     "type": "lightning",

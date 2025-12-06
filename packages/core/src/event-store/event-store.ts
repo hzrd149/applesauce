@@ -113,7 +113,7 @@ export class EventStore extends EventModels implements IEventStore {
     if (expiration && Number.isFinite(expiration)) this.expirations.set(event.id, expiration);
   }
 
-  protected expirationTimeout: number | null = null;
+  protected expirationTimeout: ReturnType<typeof setTimeout> | null = null;
   protected nextExpirationCheck: number | null = null;
   protected handleExpiringEvent(event: NostrEvent) {
     const expiration = getExpirationTimestamp(event);

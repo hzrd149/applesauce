@@ -24,6 +24,10 @@ A lazy stream of values that is active when subscribed to. (see [Observables](ht
 
 Computed state from the event store that can be subscribed to. (see [Models](../core/models.md))
 
+## Loader
+
+A stateful function that loads events from relays or a cache. (see [Loaders](../loaders/package.md))
+
 ## Encrypted content
 
 The `content` field of an event that is encrypted using NIP-04 or NIP-44.
