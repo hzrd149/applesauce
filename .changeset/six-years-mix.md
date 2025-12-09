@@ -2,4 +2,4 @@
 "applesauce-core": major
 ---
 
-Rename `parseCoordinate` to `parseAddressString`
+Rename `parseCoordinate` to `parseReplaceableAddress`

@@ -221,9 +221,9 @@ describe("replaceable events", () => {
 
 describe("filter", () => {
   it("should filter out deleted events", () => {
-    const note1 = userA.note();
-    const note2 = userA.note();
-    const note3 = userB.note();
+    const note1 = userA.note("1");
+    const note2 = userA.note("2");
+    const note3 = userB.note("3");
 
     const deleteEvent: NostrEvent = {
       id: "delete-event-id",

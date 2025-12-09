@@ -5,12 +5,9 @@ describe("exports", () => {
   it("should export the expected functions", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
-        "BlockedRelaysModel",
         "ContactsModel",
         "EncryptedContentModel",
         "EventModel",
-        "FavoriteRelaySetsModel",
-        "FavoriteRelaysModel",
         "FiltersModel",
         "HiddenContactsModel",
         "MailboxesModel",
@@ -18,7 +15,6 @@ describe("exports", () => {
         "ProfileModel",
         "PublicContactsModel",
         "ReplaceableModel",
-        "SearchRelaysModel",
         "TimelineModel",
       ]
     `);

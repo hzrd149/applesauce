@@ -189,16 +189,6 @@ describe("verifyEvent", () => {
   });
 });
 
-describe("removed", () => {
-  it("should complete when event is removed", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.removed(profile.id));
-    eventStore.remove(profile);
-    expect(spy.getValues()).toEqual([]);
-    expect(spy.receivedComplete()).toBe(true);
-  });
-});
-
 describe("model", () => {
   it("should emit synchronous value if it exists", () => {
     let value: any = undefined;

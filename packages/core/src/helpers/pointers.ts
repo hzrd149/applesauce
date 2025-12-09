@@ -70,7 +70,7 @@ export type AddressPointerWithoutD = Omit<AddressPointer, "identifier"> & {
 };
 
 /** Parse the value of an "a" tag into an AddressPointer */
-export function parseAddressString(address: string, requireIdentifier = false): AddressPointer | null {
+export function parseReplaceableAddress(address: string, requireIdentifier = false): AddressPointer | null {
   const parts = address.split(":") as (string | undefined)[];
   const kind = parts[0] ? parseInt(parts[0]) : undefined;
   const pubkey = parts[1];
@@ -164,7 +164,7 @@ export function getEventPointerFromQTag(tag: string[]): EventPointer | null {
 /** Get an AddressPointer from a common "a" tag */
 export function getAddressPointerFromATag(tag: string[]): AddressPointer | null {
   if (!tag[1]) return null;
-  const pointer = parseAddressString(tag[1]);
+  const pointer = parseReplaceableAddress(tag[1]);
   if (!pointer) return null;
   if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [normalizeURL(tag[2])];
   return pointer;

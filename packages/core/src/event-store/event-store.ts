@@ -282,8 +282,8 @@ export class EventStore extends EventModels implements IEventStore {
     // Remove from expiration manager
     this.expiration.forget(eventId);
 
-    // Remove from memory if available
-    if (this.memory) this.memory.remove(event);
+    // Remove from memory if it's not the same as the database
+    if (this.memory !== this.database) this.memory.remove(event);
 
     // Remove the event from the database
     const removed = this.database.remove(event);
@@ -304,8 +304,8 @@ export class EventStore extends EventModels implements IEventStore {
     // Remove from expiration manager
     for (const event of eventsToRemove) this.expiration.forget(event.id);
 
-    // Remove from memory if available
-    if (this.memory) this.memory.removeByFilters(filters);
+    // Remove from memory if it's not the same as the database
+    if (this.memory !== this.database) this.memory.removeByFilters(filters);
 
     // Remove from database
     const removedCount = this.database.removeByFilters(filters);

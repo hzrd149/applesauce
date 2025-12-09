@@ -8,6 +8,7 @@ describe("exports", () => {
         "Blueprints",
         "Helpers",
         "Models",
+        "Observable",
         "Operations",
       ]
     `);

@@ -109,6 +109,6 @@ export class DeleteManager implements IDeleteManager {
    * Filter out all deleted events from an array of events
    */
   filter(events: NostrEvent[]): NostrEvent[] {
-    return events.filter((event) => !this.check(event));
+    return events.filter((event) => this.check(event) === false);
   }
 }

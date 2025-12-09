@@ -11,7 +11,7 @@ import {
   getAddressPointerForEvent,
   getEventPointerForEvent,
   getReplaceableAddressFromPointer,
-  parseAddressString,
+  parseReplaceableAddress,
   ProfilePointer,
 } from "../../helpers/pointers.js";
 import { ensureNamedValueTag, ensureSingletonTag } from "../../helpers/tags.js";
@@ -72,7 +72,7 @@ export function addAddressPointerTag(address: string | AddressPointer | NostrEve
   // convert the string into an address pointer object
   const pointer =
     typeof address === "string"
-      ? parseAddressString(address)
+      ? parseReplaceableAddress(address)
       : isEvent(address)
         ? getAddressPointerForEvent(address)
         : address;
