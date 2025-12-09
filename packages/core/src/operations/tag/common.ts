@@ -1,3 +1,4 @@
+import { NostrEvent } from "nostr-tools";
 import { TagOperation } from "../../event-factory/types.js";
 import {
   createATagFromAddressPointer,
@@ -7,11 +8,14 @@ import {
 import {
   AddressPointer,
   EventPointer,
-  getCoordinateFromAddressPointer,
-  parseCoordinate,
+  getAddressPointerForEvent,
+  getEventPointerForEvent,
+  getReplaceableAddressFromPointer,
+  parseAddressString,
   ProfilePointer,
 } from "../../helpers/pointers.js";
 import { ensureNamedValueTag, ensureSingletonTag } from "../../helpers/tags.js";
+import { getReplaceableAddress, isEvent, skip } from "../../helpers/index.js";
 
 /** Adds a single "p" tag for a ProfilePointer */
 export function addProfilePointerTag(pubkey: string | ProfilePointer, replace = true): TagOperation {
@@ -39,9 +43,9 @@ export function removeProfilePointerTag(pubkey: string | ProfilePointer): TagOpe
 }
 
 /** Adds a a single "e" tag for an EventPointer */
-export function addEventPointerTag(id: string | EventPointer, replace = true): TagOperation {
+export function addEventPointerTag(id: string | EventPointer | NostrEvent, replace = true): TagOperation {
   return async (tags, { getEventRelayHint }) => {
-    const pointer = typeof id === "string" ? { id } : id;
+    const pointer = typeof id === "string" ? { id } : isEvent(id) ? getEventPointerForEvent(id) : id;
 
     // add relay hint
     if (getEventRelayHint && pointer.relays?.[0] === undefined) {
@@ -64,11 +68,18 @@ export function removeEventPointerTag(id: string | EventPointer): TagOperation {
 }
 
 /** Adds a single "a" tag based on an AddressPointer */
-export function addAddressPointerTag(cord: string | AddressPointer, replace = true): TagOperation {
+export function addAddressPointerTag(address: string | AddressPointer | NostrEvent, replace = true): TagOperation {
+  // convert the string into an address pointer object
+  const pointer =
+    typeof address === "string"
+      ? parseAddressString(address)
+      : isEvent(address)
+        ? getAddressPointerForEvent(address)
+        : address;
+  if (!pointer) throw new Error("Unable to resolve address pointer");
+
   return async (tags, { getPubkeyRelayHint }) => {
-    // convert the string into an address pointer object
-    const pointer = typeof cord === "string" ? parseCoordinate(cord, true, false) : cord;
-    const coordinate = typeof cord === "string" ? cord : getCoordinateFromAddressPointer(pointer);
+    const replaceableAddress = typeof address === "string" ? address : getReplaceableAddressFromPointer(pointer);
 
     // add relay hint if there isn't one
     if (getPubkeyRelayHint && pointer.relays?.[0] === undefined) {
@@ -77,7 +88,7 @@ export function addAddressPointerTag(cord: string | AddressPointer, replace = tr
     }
 
     // remove existing "a" tags matching coordinate
-    if (replace) tags = tags.filter((t) => !(t[0] === "a" && t[1] === coordinate));
+    if (replace) tags = tags.filter((t) => !(t[0] === "a" && t[1] === replaceableAddress));
 
     // add "a" tag
     return [...tags, createATagFromAddressPointer(pointer)];
@@ -85,10 +96,17 @@ export function addAddressPointerTag(cord: string | AddressPointer, replace = tr
 }
 
 /** Removes all "a" tags for address pointer */
-export function removeAddressPointerTag(cord: string | AddressPointer): TagOperation {
-  cord = typeof cord !== "string" ? getCoordinateFromAddressPointer(cord) : cord;
+export function removeAddressPointerTag(address: string | AddressPointer | NostrEvent): TagOperation {
+  const addressString =
+    typeof address !== "string"
+      ? isEvent(address)
+        ? getReplaceableAddress(address)
+        : getReplaceableAddressFromPointer(address)
+      : address;
 
-  return (tags) => tags.filter((t) => !(t[0] === "a" && t[1] === cord));
+  if (!addressString) return skip(); // skip if the address string is not valid
+
+  return (tags) => tags.filter((t) => !(t[0] === "a" && t[1] === addressString));
 }
 
 /** Adds a name / value tag */

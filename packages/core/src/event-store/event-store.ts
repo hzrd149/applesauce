@@ -1,17 +1,53 @@
-import { EMPTY, filter, mergeMap, Observable, Subject, take } from "rxjs";
-import { NostrEvent, kinds } from "../helpers/event.js";
-import { isAddressableKind } from "../helpers/event.js";
-import { getDeleteCoordinates, getDeleteIds } from "../helpers/delete.js";
-import { createReplaceableAddress, EventStoreSymbol, FromCacheSymbol, isReplaceable } from "../helpers/event.js";
+import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
+import { Observable, Subject } from "rxjs";
+import {
+  EventStoreSymbol,
+  FromCacheSymbol,
+  getReplaceableIdentifier,
+  isReplaceable,
+  kinds,
+  NostrEvent,
+} from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { Filter } from "../helpers/filter.js";
-import { AddressPointer, AddressPointerWithoutD, EventPointer, parseCoordinate } from "../helpers/pointers.js";
+import {
+  AddressPointer,
+  AddressPointerWithoutD,
+  eventMatchesPointer,
+  EventPointer,
+  isAddressPointer,
+  isEventPointer,
+} from "../helpers/pointers.js";
 import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
+import { DeleteManager } from "./delete-manager.js";
 import { EventMemory } from "./event-memory.js";
-import { IEventDatabase, IEventStore } from "./interface.js";
-import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
 import { EventModels } from "./event-models.js";
+import { ExpirationManager } from "./expiration-manager.js";
+import {
+  DeleteEventNotification,
+  IDeleteManager,
+  IEventDatabase,
+  IEventStore,
+  IExpirationManager,
+} from "./interface.js";
+
+export type EventStoreOptions = {
+  /** Keep deleted events in the store */
+  keepDeleted?: boolean;
+  /** Keep expired events in the store */
+  keepExpired?: boolean;
+  /** Enable this to keep old versions of replaceable events */
+  keepOldVersions?: boolean;
+  /** The database to use for storing events */
+  database?: IEventDatabase;
+  /** Custom {@link IDeleteManager} implementation */
+  deleteManager?: IDeleteManager;
+  /** Custom {@link IExpirationManager} implementation */
+  expirationManager?: IExpirationManager;
+  /** The method used to verify events */
+  verifyEvent?: (event: NostrEvent) => boolean;
+};
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
 export class EventStore extends EventModels implements IEventStore {
@@ -20,11 +56,20 @@ export class EventStore extends EventModels implements IEventStore {
   /** Optional memory database for ensuring single event instances */
   memory: EventMemory;
 
+  /** Manager for handling event deletions with authorization */
+  private deletes: IDeleteManager;
+
+  /** Manager for handling event expirations */
+  private expiration: IExpirationManager;
+
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions = false;
 
-  /** Enable this to keep expired events */
+  /** Keep expired events in the store */
   keepExpired = false;
+
+  /** Keep deleted events in the store */
+  keepDeleted = false;
 
   /** The method used to verify events */
   private _verifyEventMethod?: (event: NostrEvent) => boolean = coreVerifyEvent;
@@ -38,9 +83,8 @@ export class EventStore extends EventModels implements IEventStore {
   set verifyEvent(method: undefined | ((event: NostrEvent) => boolean)) {
     this._verifyEventMethod = method;
 
-    if (method === undefined) {
+    if (method === undefined)
       console.warn("[applesauce-core] EventStore.verifyEvent is undefined; signature checks are disabled.");
-    }
   }
 
   /** A stream of new events added to the store */
@@ -57,15 +101,33 @@ export class EventStore extends EventModels implements IEventStore {
     pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
   ) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
-  constructor(database: IEventDatabase = new EventMemory()) {
+  constructor(options?: EventStoreOptions) {
     super();
-    if (database) {
-      this.database = database;
+    if (options?.database) {
+      this.database = options.database;
       this.memory = new EventMemory();
     } else {
       // If no database is provided, its the same as having a memory database
       this.database = this.memory = new EventMemory();
     }
+
+    // Set options if provided
+    if (options?.keepDeleted !== undefined) this.keepDeleted = options.keepDeleted;
+    if (options?.keepExpired !== undefined) this.keepExpired = options.keepExpired;
+    if (options?.keepOldVersions !== undefined) this.keepOldVersions = options.keepOldVersions;
+    if (options?.verifyEvent) this.verifyEvent = options.verifyEvent;
+
+    // Use provided delete manager or create a default one
+    this.deletes = options?.deleteManager ?? new DeleteManager();
+
+    // Listen to delete notifications and remove matching events
+    this.deletes.deleted$.subscribe(this.handleDeleteNotification.bind(this));
+
+    // Create expiration manager
+    this.expiration = options?.expirationManager ?? new ExpirationManager();
+
+    // Listen to expired events and remove them from the store
+    this.expiration.expired$.subscribe(this.handleExpiredNotification.bind(this));
 
     // when events are added to the database, add the symbol
     this.insert$.subscribe((event) => {
@@ -87,91 +149,37 @@ export class EventStore extends EventModels implements IEventStore {
     return this.memory.add(event);
   }
 
-  // delete state
-  protected deletedIds = new Set<string>();
-  protected deletedCoords = new Map<string, number>();
-  protected checkDeleted(event: string | NostrEvent) {
-    if (typeof event === "string") return this.deletedIds.has(event);
-    else {
-      if (this.deletedIds.has(event.id)) return true;
+  /** Handle a delete event by pointer */
+  private handleDeleteNotification({ pointer, until }: DeleteEventNotification) {
+    // Skip if keeping deleted events
+    if (this.keepDeleted) return;
 
-      if (isAddressableKind(event.kind)) {
-        const identifier = event.tags.find((t) => t[0] === "d")?.[1];
-        const deleted = this.deletedCoords.get(createReplaceableAddress(event.kind, event.pubkey, identifier));
-        if (deleted) return deleted > event.created_at;
+    if (isEventPointer(pointer)) {
+      // For event pointers, get the event by ID and remove if it exists
+      const event = this.getEvent(pointer.id);
+      if (event && until >= event.created_at && eventMatchesPointer(event, pointer)) {
+        this.remove(event);
+      }
+    } else if (isAddressPointer(pointer)) {
+      // For address pointers, get all events matching the address and remove if deleted
+      const events = this.getReplaceableHistory(pointer.kind, pointer.pubkey, pointer.identifier);
+      if (events) {
+        for (const event of events) {
+          // Remove the event if its older than the delete notification and matches the pointer
+          if (until >= event.created_at && eventMatchesPointer(event, pointer)) {
+            this.remove(event);
+          }
+        }
       }
     }
-
-    return false;
   }
 
-  protected expirations = new Map<string, number>();
+  /** Handle an expired event by id */
+  private handleExpiredNotification(id: string) {
+    // Skip if keeping expired events
+    if (this.keepExpired) return;
 
-  /** Adds an event to the expiration map */
-  protected addExpiration(event: NostrEvent) {
-    const expiration = getExpirationTimestamp(event);
-    if (expiration && Number.isFinite(expiration)) this.expirations.set(event.id, expiration);
-  }
-
-  protected expirationTimeout: ReturnType<typeof setTimeout> | null = null;
-  protected nextExpirationCheck: number | null = null;
-  protected handleExpiringEvent(event: NostrEvent) {
-    const expiration = getExpirationTimestamp(event);
-    if (!expiration) return;
-
-    // Add event to expiration map
-    this.expirations.set(event.id, expiration);
-
-    // Exit if the next check is already less than the next expiration
-    if (this.expirationTimeout && this.nextExpirationCheck && this.nextExpirationCheck < expiration) return;
-
-    // Set timeout to prune expired events
-    if (this.expirationTimeout) clearTimeout(this.expirationTimeout);
-    const timeout = expiration - unixNow();
-    this.expirationTimeout = setTimeout(this.pruneExpired.bind(this), timeout * 1000 + 10);
-    this.nextExpirationCheck = expiration;
-  }
-
-  /** Remove expired events from the store */
-  protected pruneExpired() {
-    const now = unixNow();
-    for (const [id, expiration] of this.expirations) {
-      if (expiration <= now) {
-        this.expirations.delete(id);
-        this.remove(id);
-      }
-    }
-
-    // Cleanup timers
-    if (this.expirationTimeout) clearTimeout(this.expirationTimeout);
-    this.nextExpirationCheck = null;
-    this.expirationTimeout = null;
-  }
-
-  // handling delete events
-  protected handleDeleteEvent(deleteEvent: NostrEvent) {
-    const ids = getDeleteIds(deleteEvent);
-    for (const id of ids) {
-      this.deletedIds.add(id);
-
-      // remove deleted events in the database
-      this.remove(id);
-    }
-
-    const coords = getDeleteCoordinates(deleteEvent);
-    for (const coord of coords) {
-      this.deletedCoords.set(coord, Math.max(this.deletedCoords.get(coord) ?? 0, deleteEvent.created_at));
-
-      // Parse the nostr address coordinate
-      const parsed = parseCoordinate(coord);
-      if (!parsed) continue;
-
-      // Remove older versions of replaceable events
-      const events = this.database.getReplaceableHistory(parsed.kind, parsed.pubkey, parsed.identifier) ?? [];
-      for (const event of events) {
-        if (event.created_at < deleteEvent.created_at) this.remove(event);
-      }
-    }
+    this.remove(id);
   }
 
   /** Copies important metadata from and identical event to another */
@@ -192,20 +200,23 @@ export class EventStore extends EventModels implements IEventStore {
    */
   add(event: NostrEvent, fromRelay?: string): NostrEvent | null {
     // Handle delete events differently
-    if (event.kind === kinds.EventDeletion) this.handleDeleteEvent(event);
+    if (event.kind === kinds.EventDeletion) {
+      this.deletes.add(event);
+      return event;
+    }
 
     // Ignore if the event was deleted
-    if (this.checkDeleted(event)) return event;
+    if (this.deletes.check(event)) return event;
 
     // Reject expired events if keepExpired is false
     const expiration = getExpirationTimestamp(event);
     if (this.keepExpired === false && expiration && expiration <= unixNow()) return null;
 
     // Get the replaceable identifier
-    const identifier = isReplaceable(event.kind) ? event.tags.find((t) => t[0] === "d")?.[1] : undefined;
+    const identifier = isReplaceable(event.kind) ? getReplaceableIdentifier(event) : undefined;
 
     // Don't insert the event if there is already a newer version
-    if (!this.keepOldVersions && isReplaceable(event.kind)) {
+    if (this.keepOldVersions === false && isReplaceable(event.kind)) {
       const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
       // If there is already a newer version, copy cached symbols and return existing event
@@ -244,7 +255,7 @@ export class EventStore extends EventModels implements IEventStore {
     if (inserted === event) this.insert$.next(inserted);
 
     // remove all old version of the replaceable event
-    if (!this.keepOldVersions && isReplaceable(event.kind)) {
+    if (this.keepOldVersions === false && isReplaceable(event.kind)) {
       const existing = this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
       if (existing && existing.length > 0) {
@@ -257,15 +268,19 @@ export class EventStore extends EventModels implements IEventStore {
       }
     }
 
-    // Add event to expiration map
-    if (this.keepExpired === false && expiration) this.handleExpiringEvent(inserted);
+    // Add event to expiration manager if it has an expiration tag
+    if (this.keepExpired === false && expiration !== undefined) this.expiration.track(inserted);
 
     return inserted;
   }
 
   /** Removes an event from the store and updates subscriptions */
   remove(event: string | NostrEvent): boolean {
-    let instance = this.memory?.getEvent(typeof event === "string" ? event : event.id);
+    const eventId = typeof event === "string" ? event : event.id;
+    let instance = this.memory?.getEvent(eventId);
+
+    // Remove from expiration manager
+    this.expiration.forget(eventId);
 
     // Remove from memory if available
     if (this.memory) this.memory.remove(event);
@@ -285,6 +300,9 @@ export class EventStore extends EventModels implements IEventStore {
   removeByFilters(filters: Filter | Filter[]): number {
     // Get events that will be removed for notification
     const eventsToRemove = this.getByFilters(filters);
+
+    // Remove from expiration manager
+    for (const event of eventsToRemove) this.expiration.forget(event.id);
 
     // Remove from memory if available
     if (this.memory) this.memory.removeByFilters(filters);
@@ -392,25 +410,5 @@ export class EventStore extends EventModels implements IEventStore {
   /** Removes any event that is not being used by a subscription */
   prune(limit?: number): number {
     return this.memory?.prune(limit) ?? 0;
-  }
-
-  /** Returns an observable that completes when an event is removed */
-  removed(id: string): Observable<never> {
-    const deleted = this.checkDeleted(id);
-    if (deleted) return EMPTY;
-
-    return this.remove$.pipe(
-      // listen for removed events
-      filter((e) => e.id === id),
-      // complete as soon as we find a matching removed event
-      take(1),
-      // switch to empty
-      mergeMap(() => EMPTY),
-    );
-  }
-
-  /** Creates an observable that emits when event is updated */
-  updated(event: string | NostrEvent): Observable<NostrEvent> {
-    return this.update$.pipe(filter((e) => e.id === event || e === event));
   }
 }

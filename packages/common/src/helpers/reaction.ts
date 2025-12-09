@@ -34,10 +34,12 @@ export function getReactionEventPointer(event: NostrEvent): EventPointer | undef
       const p = event.tags.find(isPTag);
       if (p) {
         const author = getProfilePointerFromPTag(p);
-        pointer.author = author.pubkey;
+        if (author) {
+          pointer.author = author.pubkey;
 
-        // Copy relay hints from "p" tag
-        if (author.relays) pointer.relays = mergeRelaySets(author.relays, pointer.relays);
+          // Copy relay hints from "p" tag
+          if (author.relays) pointer.relays = mergeRelaySets(author.relays, pointer.relays);
+        }
       }
     }
 
@@ -59,8 +61,10 @@ export function getReactionAddressPointer(event: NostrEvent): AddressPointer | u
     if (p) {
       const author = getProfilePointerFromPTag(p);
 
-      // Copy relay hints from "p" tag
-      if (author.relays) pointer.relays = mergeRelaySets(author.relays, pointer.relays);
+      if (author && author.pubkey === pointer.pubkey) {
+        // Copy relay hints from "p" tag
+        if (author.relays) pointer.relays = mergeRelaySets(author.relays, pointer.relays);
+      }
     }
 
     return pointer;

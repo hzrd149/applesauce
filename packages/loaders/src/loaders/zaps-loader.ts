@@ -1,6 +1,6 @@
 import { getReplaceableAddress, isReplaceable, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { getSeenRelays, mergeRelaySets } from "applesauce-core/helpers/relays";
-import { Observable } from "rxjs";
+import { EMPTY, Observable } from "rxjs";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { UpstreamPool } from "../types.js";
 import { createTagValueLoader, TagValueLoaderOptions } from "./tag-value-loader.js";
@@ -24,8 +24,12 @@ export function createZapsLoader(pool: UpstreamPool, opts?: ZapsLoaderOptions): 
   return (event, relays) => {
     if (opts?.useSeenRelays ?? true) relays = mergeRelaySets(relays, getSeenRelays(event));
 
-    return isReplaceable(event.kind)
-      ? addressableLoader({ value: getReplaceableAddress(event), relays })
-      : eventLoader({ value: event.id, relays });
+    if (isReplaceable(event.kind)) {
+      const address = getReplaceableAddress(event);
+      if (!address) return EMPTY;
+      return addressableLoader({ value: address, relays });
+    } else {
+      return eventLoader({ value: event.id, relays });
+    }
   };
 }

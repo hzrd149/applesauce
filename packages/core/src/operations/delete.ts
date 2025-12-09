@@ -1,5 +1,5 @@
 import { EventOperation } from "../event-factory/types.js";
-import { NostrEvent, isAddressableKind } from "../helpers/event.js";
+import { NostrEvent, isAddressableKind, isReplaceableKind } from "../helpers/event.js";
 import { ensureAddressPointerTag, ensureEventPointerTag, ensureKTag } from "../helpers/factory.js";
 import { getAddressPointerForEvent } from "../helpers/pointers.js";
 
@@ -12,8 +12,9 @@ export function setDeleteEvents(events: NostrEvent[]): EventOperation {
       tags = ensureKTag(tags, event.kind);
       tags = ensureEventPointerTag(tags, event);
 
-      if (isAddressableKind(event.kind)) {
-        tags = ensureAddressPointerTag(tags, getAddressPointerForEvent(event));
+      if (isAddressableKind(event.kind) || isReplaceableKind(event.kind)) {
+        const pointer = getAddressPointerForEvent(event);
+        if (pointer) tags = ensureAddressPointerTag(tags, pointer);
       }
     }
 

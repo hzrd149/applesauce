@@ -6,5 +6,5 @@ import { isATag } from "applesauce-core/helpers/tags";
 export function getStreamChatMessageStream(message: NostrEvent): AddressPointer | undefined {
   const tag = message.tags.find(isATag);
   if (!tag) return undefined;
-  return getAddressPointerFromATag(tag);
+  return getAddressPointerFromATag(tag) ?? undefined;
 }

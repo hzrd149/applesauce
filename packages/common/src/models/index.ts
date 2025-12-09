@@ -12,6 +12,8 @@ export * from "./user-status.js";
 export * from "./wrapped-messages.js";
 export * from "./zaps.js";
 export * from "./gift-wrap.js";
+export * from "./relays.js";
+export * from "./stream.js";
 
 // Register the common models with the event store
 import "../register.js";

@@ -66,6 +66,16 @@
       "import": "./dist/blueprints/*.js",
       "require": "./dist/blueprints/*.js",
       "types": "./dist/blueprints/*.d.ts"
+    },
+    "./observable": {
+      "import": "./dist/observable/index.js",
+      "require": "./dist/observable/index.js",
+      "types": "./dist/observable/index.d.ts"
+    },
+    "./observable/*": {
+      "import": "./dist/observable/*.js",
+      "require": "./dist/observable/*.js",
+      "types": "./dist/observable/*.d.ts"
     }
   },
   "dependencies": {

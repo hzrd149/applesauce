@@ -5,7 +5,7 @@ import { Filter } from "applesauce-core/helpers/filter";
 import {
   AddressPointer,
   EventPointer,
-  getCoordinateFromAddressPointer,
+  getReplaceableAddressFromPointer,
   isAddressPointer,
   isEventPointer,
 } from "applesauce-core/helpers/pointers";
@@ -55,7 +55,7 @@ export function ThreadModel(root: string | AddressPointer | EventPointer, opts?:
   const replyFilter: Filter = { kinds };
 
   if (isAddressPointer(root)) {
-    rootUID = getCoordinateFromAddressPointer(root);
+    rootUID = getReplaceableAddressFromPointer(root);
     rootFilter.kinds = [root.kind];
     rootFilter.authors = [root.pubkey];
     rootFilter["#d"] = [root.identifier];
@@ -86,7 +86,7 @@ export function ThreadModel(root: string | AddressPointer | EventPointer, opts?:
 
           // add item to parent
           if (refs.reply?.e || refs.reply?.a) {
-            let uid = refs.reply.e ? refs.reply.e.id : getCoordinateFromAddressPointer(refs.reply.a);
+            let uid = refs.reply.e ? refs.reply.e.id : getReplaceableAddressFromPointer(refs.reply.a);
 
             item.parent = items.get(uid);
             if (item.parent) {

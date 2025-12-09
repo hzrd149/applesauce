@@ -52,6 +52,11 @@
       "require": "./dist/observable/index.js",
       "types": "./dist/observable/index.d.ts"
     },
+    "./observable/*": {
+      "import": "./dist/observable/*.js",
+      "require": "./dist/observable/*.js",
+      "types": "./dist/observable/*.d.ts"
+    },
     "./promise": {
       "import": "./dist/promise/index.js",
       "require": "./dist/promise/index.js",

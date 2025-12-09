@@ -10,6 +10,7 @@ import {
   getStreamTitle,
   getStreamViewers,
 } from "applesauce-common/helpers/stream";
+import { StreamChatMessagesModel } from "applesauce-common/models";
 import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
 import {
   getDisplayName,
@@ -29,7 +30,6 @@ import { ProfilePointer } from "nostr-tools/nip19";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import ReactPlayer from "react-player";
-import { startWith } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 // Create an event store for all events
@@ -173,19 +173,18 @@ function StreamChat({ stream }: { stream: NostrEvent }) {
   // Subscribe to chat messages
   useObservableMemo(
     () =>
-      pool
-        .subscription(relays, {
-          kinds: [kinds.LiveChatMessage],
-          "#a": [streamAddress],
-        })
-        .pipe(onlyEvents(), mapEventsToStore(eventStore)),
+      streamAddress
+        ? pool
+            .subscription(relays, {
+              kinds: [kinds.LiveChatMessage],
+              "#a": [streamAddress],
+            })
+            .pipe(onlyEvents(), mapEventsToStore(eventStore))
+        : undefined,
     [streamAddress, relays.join(",")],
   );
 
-  const messages = useObservableMemo(
-    () => eventStore.timeline({ kinds: [kinds.LiveChatMessage], "#a": [streamAddress] }).pipe(startWith([])),
-    [streamAddress],
-  );
+  const messages = useObservableMemo(() => eventStore.model(StreamChatMessagesModel, stream), [stream]);
 
   return (
     <>

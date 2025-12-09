@@ -157,7 +157,9 @@ export default function ZapGraph() {
 
             try {
               // Only update if we can normalize to a valid pubkey
-              setPubkey(normalizeToPubkey(value));
+              const pubkey = normalizeToPubkey(value);
+              if (!pubkey) throw new Error("Invalid pubkey");
+              setPubkey(pubkey);
             } catch (error) {
               // Optionally, you could show an error message here
               console.error("Invalid pubkey or nostr identifier");

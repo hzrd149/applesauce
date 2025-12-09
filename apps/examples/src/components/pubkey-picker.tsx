@@ -412,11 +412,12 @@ export default function PubkeyPicker({
   useEffect(() => {
     if (!inputValue.trim()) return setIsValidPubkey(false);
 
-    try {
-      const normalizedPubkey = normalizeToPubkey(inputValue.trim());
+    const normalizedPubkey = normalizeToPubkey(inputValue.trim());
+
+    if (normalizedPubkey) {
       setIsValidPubkey(true);
       changeRef.current(normalizedPubkey);
-    } catch (error) {
+    } else {
       setIsValidPubkey(false);
     }
   }, [inputValue]);

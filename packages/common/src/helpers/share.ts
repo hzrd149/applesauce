@@ -30,8 +30,8 @@ export function getSharedEventPointer(event: NostrEvent): EventPointer | undefin
     const k = kStr ? parseInt(kStr) : undefined;
 
     const pointer = getEventPointerFromETag(e);
-    if (k !== undefined) pointer.kind = k;
-    return pointer;
+    if (pointer && k !== undefined) pointer.kind = k;
+    return pointer ?? undefined;
   });
 }
 
@@ -41,7 +41,7 @@ export function getSharedAddressPointer(event: NostrEvent): AddressPointer | und
     const a = event.tags.find(isATag);
     if (!a) return undefined;
 
-    return getAddressPointerFromATag(a);
+    return getAddressPointerFromATag(a) ?? undefined;
   });
 }
 

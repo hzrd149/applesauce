@@ -46,21 +46,21 @@ export function getNutzapRecipient(event: NutzapEvent): ProfilePointer;
 export function getNutzapRecipient(event: NostrEvent): ProfilePointer | undefined;
 export function getNutzapRecipient(event: NostrEvent): ProfilePointer | undefined {
   const tag = event.tags.find(isPTag);
-  return tag && getProfilePointerFromPTag(tag);
+  return tag ? (getProfilePointerFromPTag(tag) ?? undefined) : undefined;
 }
 
 /** Returns the event ID being nutzapped from a kind:9321 nutzap event */
 export function getNutzapEventPointer(event: NostrEvent): EventPointer | undefined {
   const tag = event.tags.find((t) => t[0] === "e");
   if (!tag) return;
-  return getEventPointerFromETag(tag);
+  return getEventPointerFromETag(tag) ?? undefined;
 }
 
 /** Returns the event ID being nutzapped from a kind:9321 nutzap event */
 export function getNutzapAddressPointer(event: NostrEvent): AddressPointer | undefined {
   const tag = event.tags.find((t) => t[0] === "a");
   if (!tag) return;
-  return getAddressPointerFromATag(tag);
+  return getAddressPointerFromATag(tag) ?? undefined;
 }
 
 /** Returns the EventPointer or AddressPointer from a kind:9321 nutzap event */

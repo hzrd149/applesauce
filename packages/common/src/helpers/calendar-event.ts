@@ -97,11 +97,18 @@ export function getCalendarEventParticipants(event: NostrEvent): CalendarEventPa
     throw new Error("Event is not a date-based or time-based calendar event");
 
   return getOrComputeCachedValue(event, CalendarEventParticipantsSymbol, () => {
-    return event.tags.filter(isPTag).map((tag) => ({
-      ...getProfilePointerFromPTag(tag),
-      // Third index of tag is optional "role"
-      role: tag[3] || undefined,
-    }));
+    return event.tags
+      .filter(isPTag)
+      .map((tag) => {
+        const pointer = getProfilePointerFromPTag(tag);
+        if (!pointer) return undefined;
+
+        return {
+          ...pointer,
+          role: tag[3] || undefined,
+        };
+      })
+      .filter((p) => p !== undefined);
   });
 }
 

@@ -1,6 +1,6 @@
 import { EventOperation } from "applesauce-core/event-factory";
 import { kinds } from "applesauce-core/helpers/event";
-import { AddressPointer, getCoordinateFromAddressPointer } from "applesauce-core/helpers/pointers";
+import { AddressPointer, getReplaceableAddressFromPointer } from "applesauce-core/helpers/pointers";
 import { fillAndTrimTag } from "applesauce-core/helpers/tags";
 import { includeSingletonTag } from "applesauce-core/operations/tags";
 
@@ -17,7 +17,7 @@ export function setClient(
     if (NEVER_ATTACH_CLIENT_TAG.includes(draft.kind)) return draft;
     else {
       const coordinate = pointer
-        ? getCoordinateFromAddressPointer({
+        ? getReplaceableAddressFromPointer({
             pubkey: pointer.pubkey,
             identifier: pointer.identifier,
             kind: kinds.Handlerinformation,

@@ -49,6 +49,8 @@ export class ReadonlySigner implements ISigner {
 
   /** Creates a ReadonlySigner from a hex public key or NIP-19 npub */
   static fromPubkey(pubkey: string) {
-    return new ReadonlySigner(normalizeToPubkey(pubkey));
+    const hex = normalizeToPubkey(pubkey);
+    if (!hex) throw new Error("Invalid public key");
+    return new ReadonlySigner(hex);
   }
 }

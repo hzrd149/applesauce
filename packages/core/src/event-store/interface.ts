@@ -136,6 +136,56 @@ export type ModelConstructor<
   getKey?: (...args: Args) => string;
 };
 
+export type DeleteEventNotification =
+  | {
+      /** the pointer that was deleted */
+      pointer: EventPointer;
+      /** The unix timestamp the event was deleted at */
+      until: number;
+    }
+  | {
+      /** the address pointer that replaced the event was deleted */
+      pointer: AddressPointer;
+      /** The unix timestamp the replaceable event was deleted at */
+      until: number;
+    };
+
+/** Interface for managing event deletions */
+export interface IDeleteManager {
+  /** A stream of pointers that may have been deleted */
+  deleted$: Observable<DeleteEventNotification>;
+  /** Process a kind 5 delete event */
+  add(deleteEvent: NostrEvent): DeleteEventNotification[];
+  /** Check if an event is deleted */
+  check(event: NostrEvent): boolean;
+  /** filter out all deleted events from an array of events */
+  filter(event: NostrEvent[]): NostrEvent[];
+}
+
+/** Async interface for managing event deletions */
+export interface IAsyncDeleteManager {
+  /** A stream of pointers that may have been deleted */
+  deleted$: Observable<DeleteEventNotification>;
+  /** Process a kind 5 delete event */
+  add(deleteEvent: NostrEvent): Promise<DeleteEventNotification[]>;
+  /** Check if an event is deleted */
+  check(event: NostrEvent): Promise<boolean>;
+  /** filter out all deleted events from an array of events */
+  filter(event: NostrEvent[]): Promise<NostrEvent[]>;
+}
+
+/** Interface for managing event expirations */
+export interface IExpirationManager {
+  /** A stream of event IDs that have expired */
+  expired$: Observable<string>;
+  /** Add an event to the expiration manager to track */
+  track(event: NostrEvent): void;
+  /** Remove an event from expiration tracking */
+  forget(eventId: string): void;
+  /** Check if an event is expired */
+  check(event: NostrEvent): boolean;
+}
+
 /** The base interface for a database of events */
 export interface IEventDatabase extends IEventStoreRead {
   /** Add an event to the database */

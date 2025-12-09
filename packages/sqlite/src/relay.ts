@@ -7,7 +7,7 @@ import { FilterWithSearch } from "./helpers/search.js";
 
 // Create the event store with SQLite backend
 const database = new BetterSqlite3EventDatabase(process.env.DATABASE_PATH || ":memory:");
-const eventStore = new EventStore(database);
+const eventStore = new EventStore({ database });
 
 // Set validation method for event store
 eventStore.verifyEvent = verifyEvent;

@@ -103,7 +103,7 @@ class WorkerRelayEventDatabase implements IAsyncEventDatabase {
 }
 
 const eventDatabase = new WorkerRelayEventDatabase(workerRelay);
-const eventStore = new AsyncEventStore(eventDatabase);
+const eventStore = new AsyncEventStore({ database: eventDatabase });
 
 const pool = new RelayPool();
 

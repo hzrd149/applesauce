@@ -19,13 +19,22 @@ export type UserStatusPointer =
 
 function getStatusPointer(status: NostrEvent): UserStatusPointer | null {
   const pTag = status.tags.find((t) => t[0] === "p" && t[1]);
-  if (pTag) return { type: "nprofile", data: getProfilePointerFromPTag(pTag) };
+  if (pTag) {
+    const pointer = getProfilePointerFromPTag(pTag);
+    if (pointer) return { type: "nprofile", data: pointer };
+  }
 
   const eTag = status.tags.find((t) => t[0] === "e" && t[1]);
-  if (eTag) return { type: "nevent", data: getEventPointerFromETag(eTag) };
+  if (eTag) {
+    const pointer = getEventPointerFromETag(eTag);
+    if (pointer) return { type: "nevent", data: pointer };
+  }
 
   const aTag = status.tags.find((t) => t[0] === "a" && t[1]);
-  if (aTag) return { type: "naddr", data: getAddressPointerFromATag(aTag) };
+  if (aTag) {
+    const pointer = getAddressPointerFromATag(aTag);
+    if (pointer) return { type: "naddr", data: pointer };
+  }
 
   const rTag = status.tags.find((t) => t[0] === "r" && t[1]);
   if (rTag) return { type: "url", data: rTag[1] };

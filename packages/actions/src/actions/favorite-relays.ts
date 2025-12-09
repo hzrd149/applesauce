@@ -1,6 +1,6 @@
+import { FAVORITE_RELAYS_KIND } from "applesauce-common/helpers/lists";
 import { TagOperation } from "applesauce-core";
 import { IEventStoreRead } from "applesauce-core/event-store";
-import { FAVORITE_RELAYS_KIND } from "applesauce-core/helpers/lists";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { addAddressPointerTag, removeAddressPointerTag } from "applesauce-core/operations/tag/common";

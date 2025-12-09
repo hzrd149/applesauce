@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mergeAddressPointers, mergeEventPointers, mergeProfilePointers, normalizeToPubkey } from "../pointers.js";
+import {
+  mergeAddressPointers,
+  mergeEventPointers,
+  mergeProfilePointers,
+  normalizeToPubkey,
+  parseCoordinate,
+} from "../pointers.js";
 
 describe("normalizeToPubkey", () => {
   it("should get pubkey from npub", () => {
@@ -134,5 +140,172 @@ describe("mergeProfilePointers", () => {
     const b = { pubkey: "456", relays: [] };
 
     expect(() => mergeProfilePointers(a, b)).toThrow("Cant merge profile pointers with different pubkeys");
+  });
+});
+
+describe("parseCoordinate", () => {
+  const validPubkey = "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5";
+
+  it("should parse valid coordinate with all parts", () => {
+    const result = parseCoordinate(`30023:${validPubkey}:test-identifier`);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: validPubkey,
+      identifier: "test-identifier",
+    });
+  });
+
+  it("should parse coordinate with empty identifier when requireIdentifier is false", () => {
+    const result = parseCoordinate(`30023:${validPubkey}:`, false);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: validPubkey,
+      identifier: "",
+    });
+  });
+
+  it("should parse coordinate without identifier part when requireIdentifier is false", () => {
+    const result = parseCoordinate(`30023:${validPubkey}`, false);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: validPubkey,
+      identifier: "",
+    });
+  });
+
+  it("should return null when requireIdentifier is true and identifier is empty", () => {
+    const result = parseCoordinate(`30023:${validPubkey}:`, true);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when requireIdentifier is true and identifier is missing", () => {
+    const result = parseCoordinate(`30023:${validPubkey}`, true);
+    expect(result).toBeNull();
+  });
+
+  it("should parse coordinate with requireIdentifier true when identifier is present", () => {
+    const result = parseCoordinate(`30023:${validPubkey}:my-identifier`, true);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: validPubkey,
+      identifier: "my-identifier",
+    });
+  });
+
+  it("should return null when kind is missing", () => {
+    const result = parseCoordinate(`:${validPubkey}:identifier`);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when kind is empty string", () => {
+    const result = parseCoordinate(`:${validPubkey}:identifier`);
+    expect(result).toBeNull();
+  });
+
+  it("should parse valid numeric kind", () => {
+    const result = parseCoordinate(`1:${validPubkey}:identifier`);
+    expect(result).toEqual({
+      kind: 1,
+      pubkey: validPubkey,
+      identifier: "identifier",
+    });
+  });
+
+  it("should return object with NaN kind when kind is not a number", () => {
+    // Note: parseInt("not-a-number") returns NaN, but the function only checks for undefined
+    const result = parseCoordinate(`not-a-number:${validPubkey}:identifier`);
+    expect(result).toEqual({
+      kind: NaN,
+      pubkey: validPubkey,
+      identifier: "identifier",
+    });
+  });
+
+  it("should return null when pubkey is missing", () => {
+    const result = parseCoordinate(`30023::identifier`);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when pubkey is empty string", () => {
+    const result = parseCoordinate(`30023::identifier`);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when pubkey is undefined", () => {
+    const result = parseCoordinate(`30023:`);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when pubkey is not a valid hex key (too short)", () => {
+    const result = parseCoordinate(`30023:abc123:identifier`);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when pubkey is not a valid hex key (too long)", () => {
+    const longPubkey = validPubkey + "123";
+    const result = parseCoordinate(`30023:${longPubkey}:identifier`);
+    expect(result).toBeNull();
+  });
+
+  it("should return null when pubkey contains invalid characters", () => {
+    const invalidPubkey = "g".repeat(64);
+    const result = parseCoordinate(`30023:${invalidPubkey}:identifier`);
+    expect(result).toBeNull();
+  });
+
+  it("should handle pubkey with uppercase hex characters", () => {
+    const upperPubkey = validPubkey.toUpperCase();
+    const result = parseCoordinate(`30023:${upperPubkey}:identifier`);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: upperPubkey,
+      identifier: "identifier",
+    });
+  });
+
+  it("should handle identifier with special characters", () => {
+    const result = parseCoordinate(`30023:${validPubkey}:test_identifier-123`);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: validPubkey,
+      identifier: "test_identifier-123",
+    });
+  });
+
+  it("should only take first part of identifier when identifier contains colons", () => {
+    // Note: split(":") splits on all colons, so parts[2] only gets the first part after the second colon
+    const result = parseCoordinate(`30023:${validPubkey}:part1:part2:part3`);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: validPubkey,
+      identifier: "part1",
+    });
+  });
+
+  it("should handle zero kind", () => {
+    const result = parseCoordinate(`0:${validPubkey}:identifier`);
+    expect(result).toEqual({
+      kind: 0,
+      pubkey: validPubkey,
+      identifier: "identifier",
+    });
+  });
+
+  it("should handle negative kind (parsed as negative number)", () => {
+    const result = parseCoordinate(`-1:${validPubkey}:identifier`);
+    expect(result).toEqual({
+      kind: -1,
+      pubkey: validPubkey,
+      identifier: "identifier",
+    });
+  });
+
+  it("should handle large kind numbers", () => {
+    const result = parseCoordinate(`99999:${validPubkey}:identifier`);
+    expect(result).toEqual({
+      kind: 99999,
+      pubkey: validPubkey,
+      identifier: "identifier",
+    });
   });
 });

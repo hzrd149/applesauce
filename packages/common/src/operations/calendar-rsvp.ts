@@ -35,6 +35,8 @@ export function setCalendarEvent(pointer: NostrEvent | AddressPointer, relay?: s
     throw new Error("RSVP pointer must be to a calendar event");
 
   let addressPointer = isAddressPointer(pointer) ? pointer : getAddressPointerForEvent(pointer);
+  if (addressPointer === null) throw new Error("Calendar event is not addressable");
+
   let eventPointer: EventPointer | undefined = isAddressPointer(pointer)
     ? undefined
     : { id: pointer.id, kind: pointer.kind, author: pointer.pubkey };

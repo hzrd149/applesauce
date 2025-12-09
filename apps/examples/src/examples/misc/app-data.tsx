@@ -7,13 +7,13 @@ import {
   unlockAppData,
 } from "applesauce-common/helpers/app-data";
 import * as AppData from "applesauce-common/operations/app-data";
-import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { EventFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
 import { EncryptionMethod, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 import { useObservableMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner } from "applesauce-signers";
 import { useCallback, useEffect, useState } from "react";
-import { map, NEVER, startWith } from "rxjs";
+import { map, NEVER } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 // Create stores and relay pool
@@ -43,9 +43,9 @@ const EventDetails = ({
 
   const content = useObservableMemo(
     () =>
-      eventStore.updated(event).pipe(
-        startWith(event),
-        map((event) => getAppDataContent(event)),
+      eventStore.event(event.id).pipe(
+        watchEventUpdates(eventStore),
+        map((event) => event && getAppDataContent(event)),
       ),
     [event.id],
   );

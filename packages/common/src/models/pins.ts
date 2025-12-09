@@ -9,5 +9,7 @@ export function UserPinnedModel(pubkey: string): Model<EventPointer[] | undefine
   return (events) =>
     events
       .replaceable(kinds.Pinlist, pubkey)
-      .pipe(map((event) => event && processTags(event.tags.filter(isETag), getEventPointerFromETag)));
+      .pipe(
+        map((event) => event && processTags(event.tags.filter(isETag), (t) => getEventPointerFromETag(t) ?? undefined)),
+      );
 }

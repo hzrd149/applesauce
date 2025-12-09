@@ -70,36 +70,25 @@ export type AddressPointerWithoutD = Omit<AddressPointer, "identifier"> & {
 };
 
 /** Parse the value of an "a" tag into an AddressPointer */
-export function parseCoordinate(a: string): AddressPointerWithoutD | null;
-export function parseCoordinate(a: string, requireD: false): AddressPointerWithoutD | null;
-export function parseCoordinate(a: string, requireD: true): AddressPointer | null;
-export function parseCoordinate(a: string, requireD: false, silent: false): AddressPointerWithoutD;
-export function parseCoordinate(a: string, requireD: true, silent: false): AddressPointer;
-export function parseCoordinate(a: string, requireD: true, silent: true): AddressPointer | null;
-export function parseCoordinate(a: string, requireD: false, silent: true): AddressPointerWithoutD | null;
-export function parseCoordinate(a: string, requireD = false, silent = true): AddressPointerWithoutD | null {
-  const parts = a.split(":") as (string | undefined)[];
+export function parseAddressString(address: string, requireIdentifier = false): AddressPointer | null {
+  const parts = address.split(":") as (string | undefined)[];
   const kind = parts[0] ? parseInt(parts[0]) : undefined;
   const pubkey = parts[1];
-  const d = parts[2];
+  const identifier = parts[2] ?? "";
 
-  if (kind === undefined) {
-    if (silent) return null;
-    else throw new Error("Missing kind");
-  }
-  if (pubkey === undefined || pubkey === "") {
-    if (silent) return null;
-    else throw new Error("Missing pubkey");
-  }
-  if (requireD && d === undefined) {
-    if (silent) return null;
-    else throw new Error("Missing identifier");
-  }
+  // Check valid kind
+  if (kind === undefined) return null;
+
+  // Check valid pubkey
+  if (pubkey === undefined || pubkey === "" || !isHexKey(pubkey)) return null;
+
+  // Return null if identifier is required and missing
+  if (requireIdentifier && identifier === "") return null;
 
   return {
     kind,
     pubkey,
-    identifier: d,
+    identifier,
   };
 }
 
@@ -153,88 +142,63 @@ export function encodeDecodeResult(result: DecodeResult) {
   return "";
 }
 
-/**
- * Gets an EventPointer form a common "e" tag
- * @throws
- */
-export function getEventPointerFromETag(tag: string[]): EventPointer {
-  if (!tag[1]) throw new Error("Missing event id in tag");
-  let pointer: EventPointer = { id: tag[1] };
-  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [tag[2]];
+/** Gets an EventPointer form a common "e" tag */
+export function getEventPointerFromETag(tag: string[]): EventPointer | null {
+  const id = tag[1];
+  if (!id || !isHexKey(id)) return null;
+  const pointer: EventPointer = { id };
+  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [normalizeURL(tag[2])];
   return pointer;
 }
 
-/**
- * Gets an EventPointer form a common "q" tag
- * @throws if the tag is invalid
- */
-export function getEventPointerFromQTag(tag: string[]): EventPointer {
-  if (!tag[1]) throw new Error("Missing event id in tag");
-  let pointer: EventPointer = { id: tag[1] };
-  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [tag[2]];
+/** Gets an EventPointer form a common "q" tag */
+export function getEventPointerFromQTag(tag: string[]): EventPointer | null {
+  const id = tag[1];
+  if (!id || !isHexKey(id)) return null;
+  const pointer: EventPointer = { id };
+  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [normalizeURL(tag[2])];
   if (tag[3] && tag[3].length === 64) pointer.author = tag[3];
-
   return pointer;
 }
 
-/**
- * Get an AddressPointer from a common "a" tag
- * @throws if the tag is invalid
- */
-export function getAddressPointerFromATag(tag: string[]): AddressPointer {
-  if (!tag[1]) throw new Error("Missing coordinate in tag");
-  const pointer = parseCoordinate(tag[1], true, false);
-  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [tag[2]];
+/** Get an AddressPointer from a common "a" tag */
+export function getAddressPointerFromATag(tag: string[]): AddressPointer | null {
+  if (!tag[1]) return null;
+  const pointer = parseAddressString(tag[1]);
+  if (!pointer) return null;
+  if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [normalizeURL(tag[2])];
   return pointer;
 }
 
-/**
- * Gets a ProfilePointer from a common "p" tag
- * @throws if the tag is invalid
- */
-export function getProfilePointerFromPTag(tag: string[]): ProfilePointer {
-  if (!tag[1]) throw new Error("Missing pubkey in tag");
-  if (!isHexKey(tag[1])) throw new Error("Invalid pubkey");
-  const pointer: ProfilePointer = { pubkey: tag[1] };
+/** Gets a ProfilePointer from a common "p" tag */
+export function getProfilePointerFromPTag(tag: string[]): ProfilePointer | null {
+  const pubkey = tag[1];
+  if (!pubkey || !isHexKey(pubkey)) return null;
+  const pointer: ProfilePointer = { pubkey };
   if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [normalizeURL(tag[2])];
   return pointer;
 }
 
 /** Checks if a pointer is an AddressPointer */
 export function isAddressPointer(pointer: DecodeResult["data"]): pointer is AddressPointer {
-  return (
-    typeof pointer !== "string" &&
-    Reflect.has(pointer, "identifier") &&
-    Reflect.has(pointer, "pubkey") &&
-    Reflect.has(pointer, "kind")
-  );
+  return typeof pointer !== "string" && "identifier" in pointer && "pubkey" in pointer && "kind" in pointer;
 }
 
 /** Checks if a pointer is an EventPointer */
 export function isEventPointer(pointer: DecodeResult["data"]): pointer is EventPointer {
-  return typeof pointer !== "string" && Reflect.has(pointer, "id");
+  return typeof pointer !== "string" && "id" in pointer;
 }
 
-/** Returns the coordinate string for an AddressPointer */
-export function getCoordinateFromAddressPointer(pointer: AddressPointer) {
+/** Returns the stringified address pointer */
+export function getReplaceableAddressFromPointer(pointer: AddressPointer): string {
   return pointer.kind + ":" + pointer.pubkey + ":" + pointer.identifier;
 }
 
-/**
- * Returns an AddressPointer for a replaceable event
- * @throws if the event is not replaceable or addressable
- */
-export function getAddressPointerForEvent(event: NostrEvent, relays?: string[]): AddressPointer {
-  if (!isAddressableKind(event.kind) && !isReplaceableKind(event.kind))
-    throw new Error("Cant get AddressPointer for non-replaceable event");
-
+/** Returns an AddressPointer for a replaceable event */
+export function getAddressPointerForEvent(event: NostrEvent, relays?: string[]): AddressPointer | null {
+  if (!isAddressableKind(event.kind) && !isReplaceableKind(event.kind)) return null;
   const d = getReplaceableIdentifier(event);
-  return {
-    identifier: d,
-    kind: event.kind,
-    pubkey: event.pubkey,
-    relays,
-  };
+  return { identifier: d, kind: event.kind, pubkey: event.pubkey, relays };
 }
 
 /** Returns an EventPointer for an event */
@@ -250,16 +214,17 @@ export function getEventPointerForEvent(event: NostrEvent, relays?: string[]): E
 /** Returns a pointer for a given event */
 export function getPointerForEvent(event: NostrEvent, relays?: string[]): DecodeResult {
   if (kinds.isAddressableKind(event.kind) || kinds.isReplaceableKind(event.kind)) {
-    return {
-      type: "naddr",
-      data: getAddressPointerForEvent(event, relays),
-    };
-  } else {
-    return {
-      type: "nevent",
-      data: getEventPointerForEvent(event, relays),
-    };
+    const pointer = getAddressPointerForEvent(event, relays);
+    if (pointer)
+      return {
+        type: "naddr",
+        data: pointer,
+      };
   }
+  return {
+    type: "nevent",
+    data: getEventPointerForEvent(event, relays),
+  };
 }
 
 /** Adds relay hints to a pointer object that has a relays array */
@@ -269,18 +234,18 @@ export function addRelayHintsToPointer<T extends { relays?: string[] }>(pointer:
 }
 
 /** Gets the hex pubkey from any nip-19 encoded string */
-export function normalizeToPubkey(str: string): string {
+export function normalizeToPubkey(str: string): string | null {
   if (isHexKey(str)) return str.toLowerCase();
   else {
     const result = decode(str);
     const pubkey = getPubkeyFromDecodeResult(result);
-    if (!pubkey) throw new Error(`Cant find pubkey in ${result.type}`);
+    if (!pubkey) return null;
     return pubkey;
   }
 }
 
 /** Gets a ProfilePointer from any nip-19 encoded string */
-export function normalizeToProfilePointer(str: string): ProfilePointer {
+export function normalizeToProfilePointer(str: string): ProfilePointer | null {
   if (isHexKey(str)) return { pubkey: str.toLowerCase() };
   else {
     const result = decode(str);
@@ -290,7 +255,7 @@ export function normalizeToProfilePointer(str: string): ProfilePointer {
 
     // fallback to just getting the pubkey
     const pubkey = getPubkeyFromDecodeResult(result);
-    if (!pubkey) throw new Error(`Cant find pubkey in ${result.type}`);
+    if (!pubkey) return null;
     const relays = getRelaysFromDecodeResult(result);
     return { pubkey, relays };
   }
@@ -343,4 +308,24 @@ export function mergeProfilePointers(a: ProfilePointer, b: ProfilePointer): Prof
 
   const relays = relaySet(a.relays, b.relays);
   return { ...a, relays };
+}
+
+/** Checks if an event matches a pointer */
+export function eventMatchesPointer(
+  event: NostrEvent,
+  pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
+): boolean {
+  if (isEventPointer(pointer)) {
+    return (
+      event.id === pointer.id &&
+      // if author is defined, check if it matches the event pubkey
+      (pointer.author ? event.pubkey === pointer.author : true)
+    );
+  } else {
+    return (
+      event.kind === pointer.kind &&
+      event.pubkey === pointer.pubkey &&
+      getReplaceableIdentifier(event) === (pointer.identifier ?? "")
+    );
+  }
 }

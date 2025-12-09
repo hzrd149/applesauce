@@ -31,7 +31,7 @@ export function getHighlightText(event: NostrEvent): string {
 export function getHighlightSourceEventPointer(event: NostrEvent): EventPointer | undefined {
   return getOrComputeCachedValue(event, HighlightSourceEventPointerSymbol, () => {
     const eTag = event.tags.find(isETag);
-    return eTag ? getEventPointerFromETag(eTag) : undefined;
+    return eTag ? (getEventPointerFromETag(eTag) ?? undefined) : undefined;
   });
 }
 
@@ -42,7 +42,7 @@ export function getHighlightSourceEventPointer(event: NostrEvent): EventPointer 
 export function getHighlightSourceAddressPointer(event: NostrEvent): AddressPointer | undefined {
   return getOrComputeCachedValue(event, HighlightSourceAddressPointerSymbol, () => {
     const aTag = event.tags.find(isATag);
-    return aTag ? getAddressPointerFromATag(aTag) : undefined;
+    return aTag ? (getAddressPointerFromATag(aTag) ?? undefined) : undefined;
   });
 }
 
@@ -72,6 +72,7 @@ export function getHighlightAttributions(event: NostrEvent): HighlightAttributio
 
     for (const pTag of pTags) {
       const pointer = getProfilePointerFromPTag(pTag);
+      if (!pointer) continue;
       const role = pTag[3] || "other"; // Role is the 4th element (index 3)
 
       const entry: HighlightAttribution = { ...pointer, role };
