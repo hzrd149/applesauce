@@ -1,7 +1,7 @@
 import { kinds } from "nostr-tools";
 import { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
 import { NostrEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
-import { IEventStore } from "../event-store/interface.js";
+import { IAsyncEventStore, IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
@@ -130,8 +130,8 @@ export function isFromCache(event: NostrEvent) {
 }
 
 /** Returns the EventStore of an event if its been added to one */
-export function getParentEventStore<T extends object>(event: T): IEventStore | undefined {
-  return Reflect.get(event, EventStoreSymbol) as IEventStore | undefined;
+export function getParentEventStore<T extends object>(event: T): IEventStore | IAsyncEventStore | undefined {
+  return Reflect.get(event, EventStoreSymbol) as IEventStore | IAsyncEventStore | undefined;
 }
 
 /** Notifies the events parent store that an event has been updated */

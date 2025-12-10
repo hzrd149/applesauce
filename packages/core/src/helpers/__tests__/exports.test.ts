@@ -157,6 +157,7 @@ describe("exports", () => {
         "isNameValueTag",
         "isPTag",
         "isProtectedEvent",
+        "isQTag",
         "isRTag",
         "isRegularKind",
         "isReplaceable",

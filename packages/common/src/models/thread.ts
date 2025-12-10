@@ -1,23 +1,18 @@
-import { Model } from "applesauce-core/event-store";
-import { createReplaceableAddress, getEventUID, isEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event";
+import { EventModels, Model } from "applesauce-core/event-store";
+import { buildCommonEventRelationFilters } from "applesauce-core/helpers";
+import { getEventUID, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import {
   AddressPointer,
+  eventMatchesPointer,
   EventPointer,
   getReplaceableAddressFromPointer,
   isAddressPointer,
-  isEventPointer,
 } from "applesauce-core/helpers/pointers";
-import { isAddressableKind } from "applesauce-core/helpers/event";
 import { type Observable } from "rxjs";
 import { map } from "rxjs/operators";
-
-import { COMMENT_KIND } from "../helpers/comment.js";
-import { getNip10References, interpretThreadTags, ThreadReferences } from "../helpers/threading.js";
-
-// Import EventModels as a value (class) to modify its prototype
-import { EventModels } from "applesauce-core/event-store";
+import { COMMENT_KIND, getCommentReplyPointer } from "../helpers/comment.js";
+import { getNip10References, ThreadReferences } from "../helpers/threading.js";
 
 export type Thread = {
   root?: ThreadItem;
@@ -115,25 +110,29 @@ export function ThreadModel(root: string | AddressPointer | EventPointer, opts?:
 /** A model that gets all legacy and NIP-10, and NIP-22 replies for an event */
 export function RepliesModel(event: NostrEvent, overrideKinds?: number[]): Model<NostrEvent[]> {
   return (events) => {
-    const kinds = overrideKinds || event.kind === 1 ? [1, COMMENT_KIND] : [COMMENT_KIND];
-    const filter: Filter = { kinds };
+    const filter: Filter = { kinds: overrideKinds || event.kind === 1 ? [1, COMMENT_KIND] : [COMMENT_KIND] };
 
-    if (isEvent(parent) || isEventPointer(event)) filter["#e"] = [event.id];
+    return events.timeline(buildCommonEventRelationFilters(filter, event)).pipe(
+      map((events) =>
+        // Filter for direct replies
+        events.filter((reply) => {
+          if (reply.kind === kinds.ShortTextNote) {
+            // Check if a NIP-10 reply is a direct reply to this event
+            const refs = getNip10References(reply);
+            const pointer = refs.reply?.a || refs.reply?.e;
+            if (!pointer) return false;
+            return eventMatchesPointer(event, pointer);
+          } else if (reply.kind === COMMENT_KIND) {
+            // Check if a NIP-22 reply is a direct reply to this event
+            const pointer = getCommentReplyPointer(reply);
+            if (!pointer) return false;
 
-    const address = isAddressableKind(event.kind)
-      ? createReplaceableAddress(event.kind, event.pubkey, getTagValue(event, "d"))
-      : undefined;
-    if (address) {
-      filter["#a"] = [address];
-    }
-
-    return events.timeline(filter).pipe(
-      map((events) => {
-        return events.filter((e) => {
-          const refs = interpretThreadTags(e.tags);
-          return refs.reply?.e?.[1] === event.id || refs.reply?.a?.[1] === address;
-        });
-      }),
+            if (pointer.type === "address") return eventMatchesPointer(event, pointer);
+            else if (pointer.type === "event") return pointer.id === event.id;
+          }
+          return false;
+        }),
+      ),
     );
   };
 }
