@@ -147,6 +147,7 @@ describe("exports", () => {
         "isExpired",
         "isFilterEqual",
         "isFromCache",
+        "isFromRelay",
         "isHex",
         "isHexKey",
         "isHiddenContactsUnlocked",

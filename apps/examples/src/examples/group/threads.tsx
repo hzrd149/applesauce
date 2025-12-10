@@ -120,7 +120,7 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
     try {
       let draft = await factory.create(CommentBlueprint, event, content);
       // Include the group h tag
-      draft = await factory.modify(draft, Operations.Groups.setGroupPointer(pointer));
+      draft = await factory.modify(draft, Operations.Group.setGroupPointer(pointer));
       // Sign the event
       const signed = await factory.sign(draft);
       // Publish the event
@@ -202,7 +202,7 @@ function NewThreadForm({
       const draft = await factory.build(
         { kind: 11 },
         // Include the "h" tag for the group
-        Operations.Groups.setGroupPointer(pointer),
+        Operations.Group.setGroupPointer(pointer),
         // Set the title
         includeSingletonTag(["title", title]),
         // Set the content and handle hashtags and mentions
