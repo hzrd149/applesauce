@@ -7,15 +7,14 @@ import {
   NostrEvent,
   processTags,
 } from "applesauce-core/helpers";
-import { Observable } from "rxjs";
 import { getNip10References } from "../helpers/threading.js";
 import { CommentsModel } from "../models/comments.js";
 import { RepliesModel } from "../models/thread.js";
 import { EventZapsModel } from "../models/zaps.js";
 import { castEvent, castEvents } from "../observable/cast-event.js";
-import { chainable, ChainableObservable } from "../observable/chainable.js";
-import { getStore } from "./common.js";
-import { castProfile, castZap, createCast, InferCast, Profile, Zap } from "./index.js";
+import { ChainableObservable } from "../observable/chainable.js";
+import { ref } from "./common.js";
+import { castProfile, castZap, createCast, InferCast, Profile } from "./index.js";
 
 function isValidNote(event: NostrEvent): event is KnownEvent<1> {
   return event.kind === kinds.ShortTextNote;
@@ -32,13 +31,6 @@ export const castNote = createCast(isValidNote, {
     return !this.references.reply && !this.references.root;
   },
 
-  /** An observable of the note author */
-  get author$(): ChainableObservable<Profile> {
-    return chainable(
-      getStore(this).replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEvent(castProfile)),
-    );
-  },
-
   /** An array of events that this note is quoting */
   get quotePointers(): EventPointer[] {
     return processTags(
@@ -47,14 +39,22 @@ export const castNote = createCast(isValidNote, {
       (t) => getEventPointerFromQTag(t) ?? undefined,
     );
   },
-  get replies$(): Observable<Note[]> {
-    return getStore(this).model(RepliesModel, this, [kinds.ShortTextNote]).pipe(castEvents(castNote));
+
+  get author$(): ChainableObservable<Profile> {
+    return ref(this, "author$", (store) =>
+      store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEvent(castProfile)),
+    );
   },
-  get comments$(): Observable<NostrEvent[]> {
-    return getStore(this).model(CommentsModel, this);
+  get replies$() {
+    return ref(this, "replies$", (store) =>
+      store.model(RepliesModel, this, [kinds.ShortTextNote]).pipe(castEvents(castNote)),
+    );
   },
-  get zaps$(): Observable<Zap[]> {
-    return getStore(this).model(EventZapsModel, this).pipe(castEvents(castZap));
+  get comments$() {
+    return ref(this, "comments$", (store) => store.model(CommentsModel, this));
+  },
+  get zaps$() {
+    return ref(this, "zaps$", (store) => store.model(EventZapsModel, this).pipe(castEvents(castZap)));
   },
 });
 

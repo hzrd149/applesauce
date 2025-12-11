@@ -20,20 +20,18 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Component to render a single zap */
 function ZapItem({ zap }: { zap: Zap }) {
-  const sender = useObservableMemo(() => zap.sender$, [zap.id]);
+  const picture = useObservableMemo(() => zap.sender$.picture, [zap.id]);
+  const displayName = useObservableMemo(() => zap.sender$.displayName, [zap.id]);
   const amountSats = Math.round(zap.amount / 1000); // Convert msats to sats
 
   return (
     <div className="flex items-center gap-2 text-sm">
       <div className="avatar">
         <div className="w-6 rounded-full">
-          <img
-            src={sender?.picture || `https://robohash.org/${zap.sender}.png`}
-            alt={sender?.displayName || npubEncode(zap.sender)}
-          />
+          <img src={picture || `https://robohash.org/${zap.sender}.png`} alt={displayName || npubEncode(zap.sender)} />
         </div>
       </div>
-      <span className="font-medium">{sender?.displayName || npubEncode(zap.sender)}</span>
+      <span className="font-medium">{displayName || npubEncode(zap.sender)}</span>
       <span className="text-primary">⚡ {amountSats} sats</span>
     </div>
   );
@@ -135,8 +133,6 @@ export default function ThreadExample() {
 
   /** Resolve the authors inboxes for loading events */
   const inboxes = useObservableMemo(() => note?.author$.inboxes$, [note]);
-
-  // const name = useObservableMemo(() => note?.author$.displayName, [note]);
 
   // Load all kind 1 and 9735 events that reference the event
   useObservableMemo(() => {

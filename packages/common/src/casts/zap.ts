@@ -1,4 +1,4 @@
-import { NostrEvent } from "applesauce-core/helpers";
+import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { Observable, of } from "rxjs";
 import {
   getZapAddressPointer,
@@ -13,8 +13,8 @@ import {
   isValidZap,
 } from "../helpers/zap.js";
 import { castEvent } from "../observable/cast-event.js";
-import { getStore } from "./common.js";
-import { castProfile, createCast, InferCast, Profile } from "./index.js";
+import { ref } from "./common.js";
+import { castProfile, createCast, InferCast } from "./index.js";
 
 /** Cast a kind 9735 event to a Zap */
 export const castZap = createCast(isValidZap, {
@@ -47,20 +47,24 @@ export const castZap = createCast(isValidZap, {
   },
 
   /** An observable of the zap sender */
-  get sender$(): Observable<Profile | undefined> {
-    return getStore(this).replaceable({ kind: 0, pubkey: this.sender }).pipe(castEvent(castProfile));
+  get sender$() {
+    return ref(this, "sender$", (store) =>
+      store.replaceable({ kind: kinds.Metadata, pubkey: this.sender }).pipe(castEvent(castProfile)),
+    );
   },
-
-  get recipient$(): Observable<Profile | undefined> {
-    return getStore(this).replaceable({ kind: 0, pubkey: this.recipient }).pipe(castEvent(castProfile));
+  get recipient$() {
+    return ref(this, "recipient$", (store) =>
+      store.replaceable({ kind: kinds.Metadata, pubkey: this.recipient }).pipe(castEvent(castProfile)),
+    );
   },
 
   /** An observable of the zapped event */
   get event$(): Observable<NostrEvent | undefined> {
-    const store = getStore(this);
-    if (this.addressPointer) return store.replaceable(this.addressPointer);
-    if (this.eventPointer) return store.event(this.eventPointer.id);
-    return of(undefined);
+    return ref(this, "event$", (store) => {
+      if (this.addressPointer) return store.replaceable(this.addressPointer);
+      if (this.eventPointer) return store.event(this.eventPointer.id);
+      return of(undefined);
+    });
   },
 });
 

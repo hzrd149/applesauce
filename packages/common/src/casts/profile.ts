@@ -1,7 +1,6 @@
 import { getDisplayName, getProfileContent, getProfilePicture, isValidProfile } from "applesauce-core/helpers/profile";
-import { ProfilePointer } from "nostr-tools/nip19";
-import { map, Observable } from "rxjs";
-import { getStore } from "./common.js";
+import { map } from "rxjs";
+import { ref } from "./common.js";
 import { createCast, InferCast } from "./index.js";
 
 /** Cast a kind 0 event to a Profile */
@@ -19,21 +18,17 @@ export const castProfile = createCast(isValidProfile, {
     return getProfilePicture(this);
   },
 
-  get contacts$(): Observable<ProfilePointer[]> {
-    return getStore(this).contacts(this.pubkey);
+  get contacts$() {
+    return ref(this, "contacts$", (store) => store.contacts(this.pubkey));
   },
-  get mailboxes$(): Observable<{ inboxes: string[]; outboxes: string[] } | undefined> {
-    return getStore(this).mailboxes(this.pubkey);
+  get mailboxes$() {
+    return ref(this, "mailboxes$", (store) => store.mailboxes(this.pubkey));
   },
-  get outboxes$(): Observable<string[] | undefined> {
-    return getStore(this)
-      .mailboxes(this.pubkey)
-      .pipe(map((mailboxes) => mailboxes?.outboxes));
+  get outboxes$() {
+    return this.mailboxes$.pipe(map((mailboxes) => mailboxes?.outboxes));
   },
-  get inboxes$(): Observable<string[] | undefined> {
-    return getStore(this)
-      .mailboxes(this.pubkey)
-      .pipe(map((mailboxes) => mailboxes?.inboxes));
+  get inboxes$() {
+    return this.mailboxes$.pipe(map((mailboxes) => mailboxes?.inboxes));
   },
 });
 
