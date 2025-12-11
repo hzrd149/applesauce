@@ -8,7 +8,6 @@ import { RelayPool } from "applesauce-relay";
 import { nip19 } from "nostr-tools";
 import { EventPointer, npubEncode } from "nostr-tools/nip19";
 import { useEffect, useState } from "react";
-import { switchMap } from "rxjs";
 
 // Setup event store
 const eventStore = new EventStore();
@@ -135,7 +134,9 @@ export default function ThreadExample() {
   }, [eventPointer?.id, eventPointer?.relays?.join("|")]);
 
   /** Resolve the authors inboxes for loading events */
-  const inboxes = useObservableMemo(() => note?.author$.pipe(switchMap((author) => author.inboxes$)), [note]);
+  const inboxes = useObservableMemo(() => note?.author$.inboxes$, [note]);
+
+  // const name = useObservableMemo(() => note?.author$.displayName, [note]);
 
   // Load all kind 1 and 9735 events that reference the event
   useObservableMemo(() => {
