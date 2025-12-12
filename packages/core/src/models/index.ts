@@ -4,4 +4,3 @@ export * from "./encrypted-content.js";
 export * from "./mailboxes.js";
 export * from "./outbox.js";
 export * from "./profile.js";
-export * from "./relays.js";

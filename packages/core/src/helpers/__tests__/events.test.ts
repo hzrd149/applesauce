@@ -6,12 +6,10 @@ import { getReplaceableAddress } from "../event.js";
 const user = new FakeUser();
 
 describe("getReplaceableAddress", () => {
-  it("should throw an error for non-replaceable events", () => {
+  it("should return null for non-replaceable events", () => {
     const normalEvent = user.note("Hello world");
 
-    expect(() => {
-      getReplaceableAddress(normalEvent);
-    }).toThrow("Event is not replaceable or addressable");
+    expect(getReplaceableAddress(normalEvent)).toBeNull();
   });
 
   it("should return the correct address for replaceable events", () => {

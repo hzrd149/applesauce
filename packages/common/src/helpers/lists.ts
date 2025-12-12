@@ -11,7 +11,7 @@ import {
   EventPointer,
   getAddressPointerForEvent,
   getAddressPointerFromATag,
-  getCoordinateFromAddressPointer,
+  getReplaceableAddressFromPointer,
   getEventPointerFromETag,
   getProfilePointerFromPTag,
   ProfilePointer,
@@ -61,9 +61,9 @@ export function isAddressPointerInList(
   pointer: string | AddressPointer,
   type?: ReadListTags,
 ): boolean {
-  const cord = typeof pointer === "string" ? pointer : getCoordinateFromAddressPointer(pointer);
+  const address = typeof pointer === "string" ? pointer : getReplaceableAddressFromPointer(pointer);
   const tags = getListTags(list, type);
-  return tags.some((t) => t[0] === "a" && t[1] === cord);
+  return tags.some((t) => t[0] === "a" && t[1] === address);
 }
 
 /**
@@ -85,9 +85,12 @@ export function isProfilePointerInList(
 
 /** Returns if an event is in a list */
 export function isEventInList(list: NostrEvent, event: NostrEvent): boolean {
-  return isReplaceable(event.kind)
-    ? isAddressPointerInList(list, getAddressPointerForEvent(event))
-    : isEventPointerInList(list, event);
+  if (isReplaceable(event.kind)) {
+    const pointer = getAddressPointerForEvent(event);
+    if (pointer && isAddressPointerInList(list, pointer)) return true;
+  }
+
+  return isEventPointerInList(list, event.id);
 }
 
 /**
@@ -96,7 +99,11 @@ export function isEventInList(list: NostrEvent, event: NostrEvent): boolean {
  * @param type - Which types of tags to read
  */
 export function getEventPointersFromList(list: NostrEvent, type?: ReadListTags): EventPointer[] {
-  return processTags(getListTags(list, type), (tag) => (isETag(tag) ? tag : undefined), getEventPointerFromETag);
+  return processTags(
+    getListTags(list, type),
+    (tag) => (isETag(tag) ? tag : undefined),
+    (t) => getEventPointerFromETag(t) ?? undefined,
+  );
 }
 
 /**
@@ -105,7 +112,11 @@ export function getEventPointersFromList(list: NostrEvent, type?: ReadListTags):
  * @param type - Which types of tags to read
  */
 export function getAddressPointersFromList(list: NostrEvent, type?: ReadListTags): AddressPointer[] {
-  return processTags(getListTags(list, type), (t) => (isATag(t) ? t : undefined), getAddressPointerFromATag);
+  return processTags(
+    getListTags(list, type),
+    (t) => (isATag(t) ? t : undefined),
+    (t) => getAddressPointerFromATag(t) ?? undefined,
+  );
 }
 
 /**
@@ -114,7 +125,11 @@ export function getAddressPointersFromList(list: NostrEvent, type?: ReadListTags
  * @param type - Which types of tags to read
  */
 export function getProfilePointersFromList(list: NostrEvent, type?: ReadListTags): ProfilePointer[] {
-  return processTags(getListTags(list, type), (t) => (isPTag(t) ? t : undefined), getProfilePointerFromPTag);
+  return processTags(
+    getListTags(list, type),
+    (t) => (isPTag(t) ? t : undefined),
+    (t) => getProfilePointerFromPTag(t) ?? undefined,
+  );
 }
 
 /**

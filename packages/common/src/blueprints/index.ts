@@ -7,6 +7,7 @@ export * from "./file-metadata.js";
 export * from "./follow-set.js";
 export * from "./gift-wrap.js";
 export * from "./group.js";
+export * from "./group-mangement.js";
 export * from "./delete.js";
 export * from "./highlight.js";
 export * from "./legacy-message.js";

@@ -26,9 +26,13 @@ export function isDTag(tag: string[]): tag is ["d", string, ...string[]] {
 export function isATag(tag: string[]): tag is ["a", string, ...string[]] {
   return isNameValueTag(tag, "a");
 }
-/** Checks if tag is an "a" tag and has at least one value */
+/** Checks if tag is an "t" tag and has at least one value */
 export function isTTag(tag: string[]): tag is ["t", string, ...string[]] {
   return isNameValueTag(tag, "t");
+}
+/** Checks if tag is an "q" tag and has at least one value */
+export function isQTag(tag: string[]): tag is ["q", string, ...string[]] {
+  return isNameValueTag(tag, "q");
 }
 
 /** Filter and transform tags */

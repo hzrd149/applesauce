@@ -189,16 +189,6 @@ describe("verifyEvent", () => {
   });
 });
 
-describe("removed", () => {
-  it("should complete when event is removed", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.removed(profile.id));
-    eventStore.remove(profile);
-    expect(spy.getValues()).toEqual([]);
-    expect(spy.receivedComplete()).toBe(true);
-  });
-});
-
 describe("model", () => {
   it("should emit synchronous value if it exists", () => {
     let value: any = undefined;
@@ -373,40 +363,5 @@ describe("timeline", () => {
     };
 
     expect(hasDuplicates(spy.getValues())).toBe(false);
-  });
-});
-
-describe("keepExpired", () => {
-  it("should not emit expired events", () => {
-    eventStore.keepExpired = false;
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.replaceable(0, user.pubkey));
-
-    // Insert an expired event
-    const result = eventStore.add(
-      user.profile(
-        { name: "old-name" },
-        { created_at: unixNow() + 100, tags: [["expiration", String(unixNow() - 1000)]] },
-      ),
-    );
-    expect(result).toBe(null);
-
-    expect(spy.getValues()).toEqual([profile]);
-  });
-
-  it("should remove expired events after expiration", async () => {
-    eventStore.keepExpired = false;
-    const event = user.note("temp note", { tags: [["expiration", String(unixNow() + 1)]] });
-
-    // Add evnet to the store
-    expect(eventStore.add(event)).toBe(event);
-
-    const spy = subscribeSpyTo(eventStore.event(event.id));
-
-    // Wait 5 seconds
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-
-    // Should emit undefined after event is expired
-    expect(spy.getValues()).toEqual([expect.objectContaining({ id: event.id }), undefined]);
   });
 });

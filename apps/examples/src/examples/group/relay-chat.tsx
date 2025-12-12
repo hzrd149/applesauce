@@ -11,7 +11,7 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventFactory } from "applesauce-core";
 import { GroupMessageBlueprint } from "applesauce-common/blueprints";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -37,7 +37,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function ChatMessageGroup({ messages }: { messages: NostrEvent[] }) {
@@ -69,7 +69,7 @@ function ChatMessageGroup({ messages }: { messages: NostrEvent[] }) {
 }
 
 function ChatLog({ pointer }: { pointer: GroupPointer }) {
-  const messages = useObservableMemo(
+  const messages = use$(
     () =>
       pool
         .relay(pointer.relay)

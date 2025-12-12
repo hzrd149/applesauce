@@ -1,5 +1,5 @@
 import { mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents } from "applesauce-relay";
 import { useEffect, useState } from "react";
 import { map, of } from "rxjs";

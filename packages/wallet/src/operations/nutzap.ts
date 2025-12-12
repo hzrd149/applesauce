@@ -1,6 +1,6 @@
 import { type Proof } from "@cashu/cashu-ts";
 import { EventOperation, TagOperation } from "applesauce-core";
-import { getReplaceableAddress, isAddressPointer, isEvent, isReplaceable } from "applesauce-core/helpers";
+import { isAddressPointer, isEvent, isReplaceable } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { modifyPublicTags } from "applesauce-core/operations";
@@ -35,9 +35,7 @@ export function setEvent(event: EventPointer | AddressPointer | NostrEvent): Eve
   let operation: TagOperation;
 
   if (isEvent(event))
-    operation = isReplaceable(event.kind)
-      ? addEventPointerTag(event.id)
-      : addAddressPointerTag(getReplaceableAddress(event));
+    operation = isReplaceable(event.kind) ? addEventPointerTag(event.id) : addAddressPointerTag(event);
   else if (isAddressPointer(event)) operation = addAddressPointerTag(event);
   else operation = addEventPointerTag(event);
 

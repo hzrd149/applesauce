@@ -6,7 +6,7 @@ import {
   AddressPointer,
   EventPointer,
   getAddressPointerFromATag,
-  getCoordinateFromAddressPointer,
+  getReplaceableAddressFromPointer,
   getEventPointerFromETag,
   mergeAddressPointers,
   mergeEventPointers,
@@ -29,11 +29,15 @@ export type Bookmarks = {
 
 /** Parses an array of tags into a {@link Bookmarks} object */
 export function parseBookmarkTags(tags: string[][]): Bookmarks {
-  const notes = tags.filter((t) => t[0] === "e" && t[1]).map(getEventPointerFromETag);
+  const notes = tags
+    .filter((t) => t[0] === "e" && t[1])
+    .map(getEventPointerFromETag)
+    .filter((pointer) => pointer !== null);
   const articles = tags
     .filter((t) => t[0] === "a" && t[1])
     .map(getAddressPointerFromATag)
-    .filter((addr) => addr.kind === kinds.LongFormArticle);
+    .filter((pointer) => pointer !== null)
+    .filter((pointer) => pointer.kind === kinds.LongFormArticle);
   const hashtags = tags.filter((t) => t[0] === "t" && t[1]).map((t) => t[1]);
   const urls = tags.filter((t) => t[0] === "r" && t[1]).map((t) => t[1]);
 
@@ -56,7 +60,7 @@ export function mergeBookmarks(...bookmarks: (Bookmarks | undefined)[]): Bookmar
       else notes.set(note.id, note);
     }
     for (const article of bookmark.articles) {
-      const coord = getCoordinateFromAddressPointer(article);
+      const coord = getReplaceableAddressFromPointer(article);
       const existing = articles.get(coord);
       if (existing) articles.set(coord, mergeAddressPointers(existing, article));
       else articles.set(coord, article);

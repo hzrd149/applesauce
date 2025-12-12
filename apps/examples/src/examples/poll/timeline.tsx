@@ -14,7 +14,7 @@ import { getDisplayName, mergeRelaySets, NostrEvent, ProfileContent } from "appl
 import { EventFactory } from "applesauce-core";
 import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";
 import { createEventLoaderForStore, createTagValueLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode, ProfilePointer } from "nostr-tools/nip19";
@@ -42,7 +42,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 interface ResponseItemProps {
@@ -553,7 +553,7 @@ export default function PollGridApp() {
   const [selectedPoll, setSelectedPoll] = useState<NostrEvent | null>(null);
 
   // Subscribe to poll events from the selected relay
-  useObservableMemo(
+  use$(
     () =>
       selectedRelay
         ? pool
@@ -569,7 +569,7 @@ export default function PollGridApp() {
   );
 
   // Get polls from the event store
-  const polls = useObservableMemo(
+  const polls = use$(
     () =>
       eventStore.timeline({ kinds: [POLL_KIND] }).pipe(
         map((timeline) => [...timeline]), // Create a new array for React

@@ -7,7 +7,7 @@ import {
   getProfilePointerFromPTag,
 } from "applesauce-core/helpers/pointers";
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
-import { isPTag } from "applesauce-core/helpers/tags";
+import { isPTag, processTags } from "applesauce-core/helpers/tags";
 import { unixNow } from "applesauce-core/helpers/time";
 
 export type StreamStatus = "live" | "ended" | "planned";
@@ -37,7 +37,7 @@ export function getStreamHost(stream: NostrEvent): ProfilePointer {
 
   for (const tag of stream.tags) {
     if (isPTag(tag) && (!host || (tag[3] && tag[3].toLowerCase() === "host"))) {
-      host = getProfilePointerFromPTag(tag);
+      host = getProfilePointerFromPTag(tag) ?? undefined;
     }
   }
 
@@ -46,14 +46,22 @@ export function getStreamHost(stream: NostrEvent): ProfilePointer {
 
 /** Returns the participants of a stream */
 export function getStreamParticipants(stream: NostrEvent): (ProfilePointer & { role: StreamRole })[] {
-  return stream.tags
-    .filter((t) => isPTag(t) && t[3])
-    .map((t) => ({ ...getProfilePointerFromPTag(t), role: t[3].toLowerCase() as StreamRole }));
+  return processTags(
+    stream.tags,
+    (t) => (isPTag(t) && t[3] ? t : undefined),
+    (t) => {
+      const pointer = getProfilePointerFromPTag(t);
+      if (!pointer) return undefined;
+      return { ...pointer, role: t[3].toLowerCase() as StreamRole };
+    },
+  );
 }
 
 export function getStreamGoalPointer(stream: NostrEvent): EventPointer | undefined {
   const goalTag = stream.tags.find((t) => t[0] === "goal");
-  return goalTag && addRelayHintsToPointer(getEventPointerFromETag(goalTag), getStreamRelays(stream));
+  const pointer = goalTag ? getEventPointerFromETag(goalTag) : undefined;
+  if (!pointer) return undefined;
+  return addRelayHintsToPointer(pointer, getStreamRelays(stream));
 }
 
 /** Gets all the streaming urls for a stream */

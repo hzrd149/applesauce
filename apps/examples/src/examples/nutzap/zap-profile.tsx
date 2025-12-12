@@ -4,7 +4,7 @@ import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { EventFactory } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
@@ -315,7 +315,7 @@ export default function ZapProfile() {
   const [selected, setSelected] = useState<string>("");
 
   // Load nutzap info for selected npub using address loader
-  const nutzapInfo = useObservableMemo(() => {
+  const nutzapInfo = use$(() => {
     if (!selected) return undefined;
 
     return eventStore

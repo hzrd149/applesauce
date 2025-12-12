@@ -34,19 +34,19 @@ export function getRSVPFreeBusy(event: NostrEvent): RSVPFreeBusy | undefined {
 export function getRSVPAddressPointer(event: NostrEvent): AddressPointer | undefined {
   const tag = event.tags.find(isATag);
   if (!tag) return undefined;
-  return getAddressPointerFromATag(tag);
+  return getAddressPointerFromATag(tag) ?? undefined;
 }
 
 /** Gets the referenced calendar event pointer that the RSVP is responding to */
 export function getRSVPEventPointer(event: NostrEvent): EventPointer | undefined {
   const tag = event.tags.find(isETag);
   if (!tag) return undefined;
-  return getEventPointerFromETag(tag);
+  return getEventPointerFromETag(tag) ?? undefined;
 }
 
 /** Gets the profile pointer that the RSVP is responding to */
 export function getRSVPProfilePointer(event: NostrEvent): ProfilePointer | undefined {
   const tag = event.tags.find(isPTag);
   if (!tag) return undefined;
-  return getProfilePointerFromPTag(tag);
+  return getProfilePointerFromPTag(tag) ?? undefined;
 }

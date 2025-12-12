@@ -1,7 +1,7 @@
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getTagValue, isRTag, ProfileContent } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -23,7 +23,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function getCommunityContentTypes(event: NostrEvent) {
@@ -174,7 +174,7 @@ export default function CommunikeysExample() {
   }, [timeline]);
 
   // Load communities from the selected relay
-  const communities = useObservableMemo(() => eventStore.timeline({ kinds: [COMMUNITY_CREATION_KIND] }), [eventStore]);
+  const communities = use$(() => eventStore.timeline({ kinds: [COMMUNITY_CREATION_KIND] }), [eventStore]);
 
   const handleRelayChange = useCallback((relay: string) => {
     setSelectedRelay(relay);

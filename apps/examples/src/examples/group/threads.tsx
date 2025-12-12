@@ -14,7 +14,7 @@ import { CommentsModel } from "applesauce-common/models";
 import { CommentBlueprint } from "applesauce-common/blueprints";
 import * as Operations from "applesauce-common/operations";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NostrEvent } from "applesauce-core/helpers";
@@ -38,7 +38,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function ThreadCard({ event, onSelect }: { event: NostrEvent; onSelect?: (event: NostrEvent) => void }) {
@@ -120,7 +120,7 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
     try {
       let draft = await factory.create(CommentBlueprint, event, content);
       // Include the group h tag
-      draft = await factory.modify(draft, Operations.Groups.setGroupPointer(pointer));
+      draft = await factory.modify(draft, Operations.Group.setGroupPointer(pointer));
       // Sign the event
       const signed = await factory.sign(draft);
       // Publish the event
@@ -156,7 +156,7 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
 
 /** A component for viewing a thread */
 function ThreadView({ event, pointer }: { event: NostrEvent; pointer: GroupPointer }) {
-  useObservableMemo(
+  use$(
     () =>
       pool
         .relay(pointer.relay)
@@ -165,7 +165,7 @@ function ThreadView({ event, pointer }: { event: NostrEvent; pointer: GroupPoint
     [pointer.relay, pointer.id, event.id],
   );
 
-  const replies = useObservableMemo(() => eventStore.model(CommentsModel, event), [event.id]);
+  const replies = use$(() => eventStore.model(CommentsModel, event), [event.id]);
 
   return (
     <div>
@@ -202,7 +202,7 @@ function NewThreadForm({
       const draft = await factory.build(
         { kind: 11 },
         // Include the "h" tag for the group
-        Operations.Groups.setGroupPointer(pointer),
+        Operations.Group.setGroupPointer(pointer),
         // Set the title
         includeSingletonTag(["title", title]),
         // Set the content and handle hashtags and mentions
@@ -256,7 +256,7 @@ function NewThreadForm({
 
 /** A component for listing threads */
 function ThreadsList({ pointer, onSelect }: { pointer: GroupPointer; onSelect: (event: NostrEvent) => void }) {
-  const threads = useObservableMemo(
+  const threads = use$(
     () =>
       pool
         .relay(pointer.relay)

@@ -18,7 +18,7 @@ async function initializeDatabase() {
   try {
     const db = await connect("nostr-events.db");
     eventDatabase = await TursoWasmEventDatabase.fromDatabase(db);
-    eventStore = new AsyncEventStore(eventDatabase);
+    eventStore = new AsyncEventStore({ database: eventDatabase });
     return true;
   } catch (error) {
     console.error("Failed to initialize database:", error);

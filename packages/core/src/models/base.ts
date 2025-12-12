@@ -206,7 +206,8 @@ export function TimelineModel(
           if (!includeOldVersion) {
             for (const e of event) if (isReplaceable(e.kind)) seen.set(getEventUID(e), e);
           }
-          return event;
+          // Always return a new array instance to ensure UI libraries detect changes
+          return [...event];
         }
 
         // create a new timeline and insert the event into it
@@ -216,12 +217,15 @@ export function TimelineModel(
         if (!includeOldVersion && isReplaceable(event.kind)) {
           const uid = getEventUID(event);
           const existing = seen.get(uid);
-          // if this is an older replaceable event, exit
-          if (existing && event.created_at < existing.created_at) return timeline;
+          // if this is an older replaceable event, return a new array instance
+          if (existing && event.created_at < existing.created_at) return [...timeline];
           // update latest version
           seen.set(uid, event);
           // remove old event from timeline
-          if (existing) newTimeline.slice(newTimeline.indexOf(existing), 1);
+          if (existing) {
+            const index = newTimeline.indexOf(existing);
+            if (index !== -1) newTimeline.splice(index, 1);
+          }
         }
 
         // add event into timeline

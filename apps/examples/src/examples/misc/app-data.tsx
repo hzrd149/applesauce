@@ -7,13 +7,13 @@ import {
   unlockAppData,
 } from "applesauce-common/helpers/app-data";
 import * as AppData from "applesauce-common/operations/app-data";
-import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { EventFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
 import { EncryptionMethod, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner } from "applesauce-signers";
 import { useCallback, useEffect, useState } from "react";
-import { map, NEVER, startWith } from "rxjs";
+import { map, NEVER } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 // Create stores and relay pool
@@ -41,11 +41,11 @@ const EventDetails = ({
   const tagCount = event.tags.length;
   const createdAt = new Date(event.created_at * 1000).toLocaleString();
 
-  const content = useObservableMemo(
+  const content = use$(
     () =>
-      eventStore.updated(event).pipe(
-        startWith(event),
-        map((event) => getAppDataContent(event)),
+      eventStore.event(event.id).pipe(
+        watchEventUpdates(eventStore),
+        map((event) => event && getAppDataContent<any>(event)),
       ),
     [event.id],
   );
@@ -122,7 +122,7 @@ const EventDetails = ({
           </div>
         )}
 
-        {encryption && !unlocked && (
+        {encryption !== undefined && !unlocked && (
           <div className="mb-4">
             <button
               className={`btn btn-sm ${isDecrypting ? "btn-disabled" : "btn-primary"}`}
@@ -263,7 +263,7 @@ export default function AppDataExample() {
   const [error, setError] = useState<string | null>(null);
 
   // Get all NIP-78 events from the store
-  const appDataEvents = useObservableMemo(
+  const appDataEvents = use$(
     () =>
       pubkey
         ? eventStore.timeline({ kinds: [APP_DATA_KIND], authors: [pubkey] }).pipe(map((events) => [...events]))

@@ -9,5 +9,8 @@ export function getCalendarTitle(event: NostrEvent) {
 
 /** Gets the address pointers to all the events on the calendar */
 export function getCalendarAddressPointers(event: NostrEvent): AddressPointer[] {
-  return event.tags.filter(isATag).map(getAddressPointerFromATag);
+  return event.tags
+    .filter(isATag)
+    .map(getAddressPointerFromATag)
+    .filter((p) => p !== null);
 }

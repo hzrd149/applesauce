@@ -62,8 +62,8 @@ The [`applesauce-core`](https://hzrd149.github.io/applesauce/typedoc/modules/app
 
 ### Delete events
 
-- [`getDeleteIds`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.getDeleteIds.html) Gets a list of referenced event ids
-- [`getDeleteCoordinates`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.getDeleteCoordinates.html) Get the list of replaceable event coordinates the event is referencing
+- [`getDeleteEventPointers`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.getDeleteEventPointers.html) Gets a list of referenced event ids
+- [`getDeleteAddressPointers`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.getDeleteAddressPointers.html) Get the list of replaceable event coordinates the event is referencing
 
 ### Emojis
 

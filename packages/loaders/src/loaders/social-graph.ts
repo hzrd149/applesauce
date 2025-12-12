@@ -1,8 +1,8 @@
-import { mapEventsToStore } from "applesauce-core/observable";
-import { getProfilePointersFromList } from "applesauce-core/helpers";
+import { getPublicContacts } from "applesauce-core/helpers";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
+import { mapEventsToStore } from "applesauce-core/observable";
 import { firstValueFrom, identity, isObservable, lastValueFrom, Observable, toArray } from "rxjs";
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { AddressPointerLoader, LoadableAddressPointer } from "./address-loader.js";
@@ -61,7 +61,7 @@ export function createSocialGraphLoader(
         );
 
         if (events.length === 0) return;
-        const contacts = getProfilePointersFromList(events[events.length - 1]);
+        const contacts = getPublicContacts(events[events.length - 1]);
 
         // if the distance is greater than 0, add the contacts to the queue
         if (pointer.distance > 0) {

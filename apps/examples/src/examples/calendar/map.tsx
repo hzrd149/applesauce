@@ -12,7 +12,7 @@ import {
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { decode } from "ngeohash";
@@ -132,7 +132,7 @@ export default function CalendarMap() {
   }, [loadMore]);
 
   // Load calendar events from selected relay (following timeline.tsx pattern)
-  const events = useObservableMemo(
+  const events = use$(
     () =>
       eventStore
         .timeline({

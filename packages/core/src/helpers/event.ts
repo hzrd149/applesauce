@@ -1,20 +1,20 @@
 import { kinds } from "nostr-tools";
 import { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
 import { NostrEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
-import { IEventStore } from "../event-store/interface.js";
+import { IAsyncEventStore, IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
 export {
   EventTemplate,
+  finalizeEvent,
+  getEventHash,
   NostrEvent,
+  serializeEvent,
   UnsignedEvent,
   VerifiedEvent,
   verifiedSymbol,
   verifyEvent,
-  getEventHash,
-  finalizeEvent,
-  serializeEvent,
 } from "nostr-tools/pure";
 export {
   binarySearch,
@@ -72,7 +72,7 @@ export function getEventUID(event: NostrEvent) {
   let uid = Reflect.get(event, EventUIDSymbol) as string | undefined;
 
   if (!uid) {
-    if (isAddressableKind(event.kind) || isReplaceableKind(event.kind)) uid = getReplaceableAddress(event);
+    if (isReplaceable(event.kind)) uid = getReplaceableAddress(event) ?? event.id;
     else uid = event.id;
     Reflect.set(event, EventUIDSymbol, uid);
   }
@@ -81,9 +81,8 @@ export function getEventUID(event: NostrEvent) {
 }
 
 /** Returns the replaceable event address for an addressable event */
-export function getReplaceableAddress(event: NostrEvent): string {
-  if (!isAddressableKind(event.kind) && !isReplaceableKind(event.kind))
-    throw new Error("Event is not replaceable or addressable");
+export function getReplaceableAddress(event: NostrEvent): string | null {
+  if (!isReplaceable(event.kind)) return null;
 
   return getOrComputeCachedValue(event, ReplaceableAddressSymbol, () => {
     return createReplaceableAddress(event.kind, event.pubkey, getReplaceableIdentifier(event));
@@ -131,8 +130,8 @@ export function isFromCache(event: NostrEvent) {
 }
 
 /** Returns the EventStore of an event if its been added to one */
-export function getParentEventStore<T extends object>(event: T): IEventStore | undefined {
-  return Reflect.get(event, EventStoreSymbol) as IEventStore | undefined;
+export function getParentEventStore<T extends object>(event: T): IEventStore | IAsyncEventStore | undefined {
+  return Reflect.get(event, EventStoreSymbol) as IEventStore | IAsyncEventStore | undefined;
 }
 
 /** Notifies the events parent store that an event has been updated */

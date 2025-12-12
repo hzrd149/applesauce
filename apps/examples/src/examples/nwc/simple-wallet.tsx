@@ -1,5 +1,5 @@
 import { parseBolt11, ParsedInvoice } from "applesauce-common/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
@@ -96,7 +96,7 @@ function CreateInvoiceModal({
   const [isPaid, setIsPaid] = useState(false);
 
   // Listen for payment notifications
-  const notifications = useObservableMemo(() => wallet?.notifications$, [wallet]);
+  const notifications = use$(() => wallet?.notifications$, [wallet]);
 
   // Check if notifications are supported
   const supportsNotifications = support?.notifications?.includes("payment_received");
@@ -604,7 +604,7 @@ export default function SimpleWalletExample() {
   };
 
   // Get wallet capabilities to check supported methods
-  const support = useObservableMemo(() => wallet?.support$ ?? of(undefined), [wallet]);
+  const support = use$(() => wallet?.support$ ?? of(undefined), [wallet]);
 
   // Fetch wallet balance
   const fetchBalance = async () => {

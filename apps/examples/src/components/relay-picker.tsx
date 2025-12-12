@@ -17,7 +17,7 @@ import {
   relaySet,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -52,12 +52,12 @@ const DEFAULT_DISCOVERY_RELAY = "wss://relay.nostr.watch/";
 
 /** Create a hook for loading a user's profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 /** Create a hook for loading a user's mailboxes */
 function useMailboxes(user: ProfilePointer): { inboxes: string[]; outboxes: string[] } | undefined {
-  return useObservableMemo(() => eventStore.mailboxes(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.mailboxes(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function MonitorCard({
@@ -84,7 +84,7 @@ function MonitorCard({
   );
 
   // Query monitor announcements from discovery relay
-  const monitorAnnouncements = useObservableMemo(() => {
+  const monitorAnnouncements = use$(() => {
     if (!isSelecting || !discoveryRelay || !isSafeRelayURL(discoveryRelay)) return undefined;
 
     const filter: Filter = {
@@ -246,7 +246,7 @@ function MonitorListItem({
 }
 
 function RelayListItem({ relay, onSelect }: { relay: string; onSelect: () => void }) {
-  const info = useObservableMemo(() => infoPool.relay(relay).information$, [relay]);
+  const info = use$(() => infoPool.relay(relay).information$, [relay]);
   const icon =
     info?.icon || new URL("/favicon.ico", relay.replace("wss://", "https://").replace("ws://", "https://")).toString();
 
@@ -378,7 +378,7 @@ export default function RelayPicker({
   const relayValue = discoveryRelay ?? DEFAULT_DISCOVERY_RELAY;
 
   // Query NIP-66 relay discovery events when supportedNips is provided
-  const discoveryEvents = useObservableMemo(() => {
+  const discoveryEvents = use$(() => {
     if (!supportedNips || supportedNips.length === 0) return undefined;
     if (!monitorValue || !relayValue || !isSafeRelayURL(relayValue)) return undefined;
 

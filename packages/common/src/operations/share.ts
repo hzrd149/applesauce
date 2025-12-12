@@ -23,7 +23,8 @@ export function setShareTags(event: NostrEvent): EventOperation {
 
     // add "a" tag
     if (isAddressableKind(event.kind)) {
-      tags = ensureAddressPointerTag(tags, getAddressPointerForEvent(event, hint ? [hint] : undefined));
+      const pointer = getAddressPointerForEvent(event, hint ? [hint] : undefined);
+      if (pointer) tags = ensureAddressPointerTag(tags, pointer);
     }
 
     // add "p" tag for notify

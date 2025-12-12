@@ -60,7 +60,11 @@ export function getContacts(event: NostrEvent): ProfilePointer[] {
 /** Returns only the public contacts from a contacts list event */
 export function getPublicContacts(event: NostrEvent): ProfilePointer[] {
   return getOrComputeCachedValue(event, PublicContactsSymbol, () =>
-    processTags(event.tags, (t) => (isPTag(t) ? t : undefined), getProfilePointerFromPTag),
+    processTags(
+      event.tags,
+      (t) => (isPTag(t) ? t : undefined),
+      (t) => getProfilePointerFromPTag(t) ?? undefined,
+    ),
   );
 }
 
@@ -78,7 +82,11 @@ export function getHiddenContacts(event: NostrEvent): ProfilePointer[] | undefin
   if (!tags) return undefined;
 
   // Parse tags
-  const contacts = processTags(tags, (t) => (isPTag(t) ? t : undefined), getProfilePointerFromPTag);
+  const contacts = processTags(
+    tags,
+    (t) => (isPTag(t) ? t : undefined),
+    (t) => getProfilePointerFromPTag(t) ?? undefined,
+  );
 
   // Set cache and notify event store
   Reflect.set(event, HiddenContactsSymbol, contacts);

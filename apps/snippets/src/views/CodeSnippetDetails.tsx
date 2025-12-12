@@ -1,6 +1,6 @@
 import type { IEventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents } from "applesauce-relay";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -46,7 +46,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
   const { addToPocket, isInPocket } = usePocketContext();
 
   // Get profile for the author
-  const profile = useObservableMemo(() => {
+  const profile = use$(() => {
     if (!event) return NEVER;
     const relaysForProfile = Array.from(getSeenRelays(event) || []);
     return eventStore.profile({ pubkey: event.pubkey, relays: relaysForProfile });
@@ -373,7 +373,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
 // Comment Item Component
 function CommentItem({ comment, eventStore }: { comment: Comment; eventStore: IEventStore }) {
   // Get profile for the comment author
-  const profile = useObservableMemo(() => {
+  const profile = use$(() => {
     const relaysForProfile = Array.from(getSeenRelays(comment.event) || []);
     return eventStore.profile({ pubkey: comment.event.pubkey, relays: relaysForProfile });
   }, [comment.event.pubkey]);

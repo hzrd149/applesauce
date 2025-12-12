@@ -2,7 +2,7 @@ import { ActionHub } from "applesauce-actions";
 import { AddBlossomServer, RemoveBlossomServer, SetDefaultBlossomServer } from "applesauce-actions/actions/blossom";
 import { EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core";
-import { useObservableEagerState, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useCallback, useEffect, useState } from "react";
@@ -181,10 +181,10 @@ export default function BlossomServerManager() {
   const [error, setError] = useState<string | null>(null);
 
   // Get user's mailboxes (outbox relays)
-  const mailboxes = useObservableMemo(() => (pubkey ? eventStore.mailboxes(pubkey) : undefined), [pubkey]);
+  const mailboxes = use$(() => (pubkey ? eventStore.mailboxes(pubkey) : undefined), [pubkey]);
 
   // Get user's blossom servers
-  const servers = useObservableMemo(
+  const servers = use$(
     () =>
       pubkey
         ? eventStore.blossomServers(addRelayHintsToPointer({ pubkey, relays: [] }, mailboxes?.outboxes))

@@ -15,7 +15,7 @@ describe("exports", () => {
         "FileMetadata",
         "Geohash",
         "GiftWrap",
-        "Groups",
+        "Group",
         "Hashtags",
         "Highlight",
         "LegacyMessage",

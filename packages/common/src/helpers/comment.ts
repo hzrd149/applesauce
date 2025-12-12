@@ -79,6 +79,7 @@ export function getCommentAddressPointer(tags: string[][], root = false): Commen
     if (!kind) return null;
 
     const addressPointer = getAddressPointerFromATag(aTag);
+    if (!addressPointer) return null;
     const pointer: CommentAddressPointer = {
       type: "address",
       id: eTag?.[1],

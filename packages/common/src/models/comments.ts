@@ -1,21 +1,12 @@
-import { Model } from "applesauce-core/event-store";
-import { getReplaceableAddress, isAddressableKind, NostrEvent } from "applesauce-core/helpers/event";
-import { Filter } from "applesauce-core/helpers/filter";
+import { EventModels, Model } from "applesauce-core/event-store";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { buildCommonEventRelationFilters } from "applesauce-core/helpers/model";
 import { type Observable } from "rxjs";
-
 import { COMMENT_KIND } from "../helpers/comment.js";
-
-// Import EventModels as a value (class) to modify its prototype
-import { EventModels } from "applesauce-core/event-store";
 
 /** A model that returns all NIP-22 comment replies for the event */
 export function CommentsModel(parent: NostrEvent): Model<NostrEvent[]> {
-  return (events) => {
-    const filters: Filter[] = [{ kinds: [COMMENT_KIND], "#e": [parent.id] }];
-    if (isAddressableKind(parent.kind)) filters.push({ kinds: [COMMENT_KIND], "#a": [getReplaceableAddress(parent)] });
-
-    return events.timeline(filters);
-  };
+  return (events) => events.timeline(buildCommonEventRelationFilters({ kinds: [COMMENT_KIND] }, parent));
 }
 
 // Register this model with EventModels

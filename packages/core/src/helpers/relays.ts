@@ -26,6 +26,11 @@ export function getSeenRelays(event: NostrEvent): Set<string> | undefined {
   return Reflect.get(event, SeenRelaysSymbol);
 }
 
+/** Checks if an event was received from a specific relay */
+export function isFromRelay(event: NostrEvent, relay: string): boolean {
+  return getSeenRelays(event)?.has(relay) === true;
+}
+
 const WEBSOCKET_URL_CHECK =
   /^wss?:\/\/([-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}|localhost)\b([-a-zA-Z0-9()@:%_\+.~#?&\/\/=]*)$/;
 

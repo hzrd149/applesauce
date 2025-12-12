@@ -14,7 +14,7 @@ import {
   ProfilePointer,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useEffect, useMemo, useState } from "react";
@@ -47,7 +47,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 /** A component for rendering user avatars */
@@ -89,7 +89,7 @@ function ZapEvent({ event }: { event: KnownEvent<kinds.Zap> }) {
 
   const relays = useMemo(() => mergeRelaySets(getSeenRelays(event), pointer?.relays), [event, pointer]);
 
-  const zappedEvent = useObservableMemo(() => pointer && eventStore.event(pointer.id), [pointer?.id]);
+  const zappedEvent = use$(() => pointer && eventStore.event(pointer.id), [pointer?.id]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -145,7 +145,7 @@ function ZapEvent({ event }: { event: KnownEvent<kinds.Zap> }) {
 export default function ZapsTimeline() {
   const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
 
-  const zaps = useObservableMemo(
+  const zaps = use$(
     () =>
       pool
         .relay(relay)

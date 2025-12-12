@@ -1,9 +1,9 @@
+import { Model } from "applesauce-core/event-store";
+import { kinds } from "applesauce-core/helpers/event";
+import { AddressPointer } from "applesauce-core/helpers/pointers";
+import { watchEventUpdates } from "applesauce-core/observable";
 import { identity, map } from "rxjs";
-import { Model } from "../event-store/interface.js";
-import { kinds } from "../helpers/event.js";
 import { FAVORITE_RELAYS_KIND, getAddressPointersFromList, getRelaysFromList, ReadListTags } from "../helpers/lists.js";
-import { AddressPointer } from "../helpers/pointers.js";
-import { watchEventUpdates } from "../observable/watch-event-updates.js";
 
 /**
  * A model that returns all favorite relays for a pubkey

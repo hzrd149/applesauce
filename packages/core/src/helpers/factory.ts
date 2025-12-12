@@ -1,9 +1,9 @@
-import { AddressPointer, EventPointer, getCoordinateFromAddressPointer, ProfilePointer } from "./pointers.js";
+import { AddressPointer, EventPointer, getReplaceableAddressFromPointer, ProfilePointer } from "./pointers.js";
 import { fillAndTrimTag, NameValueTag } from "./tags.js";
 
 /** Returns a tag for an address pointer */
 export function createATagFromAddressPointer(pointer: AddressPointer): NameValueTag {
-  const coordinate = getCoordinateFromAddressPointer(pointer);
+  const coordinate = getReplaceableAddressFromPointer(pointer);
   return fillAndTrimTag(["a", coordinate, pointer.relays?.[0]]) as NameValueTag;
 }
 
@@ -114,7 +114,7 @@ export function ensureProfilePointerTag(tags: string[][], pointer: ProfilePointe
 
 /** Adds or merges an AddressPointer into a tags list */
 export function ensureAddressPointerTag(tags: string[][], pointer: AddressPointer): string[][] {
-  const coordinate = getCoordinateFromAddressPointer(pointer);
+  const coordinate = getReplaceableAddressFromPointer(pointer);
   const existing = tags.find((t) => t[0] === "a" && t[1] === coordinate);
 
   if (existing) {
@@ -132,7 +132,7 @@ export function ensureMarkedAddressPointerTag(
   pointer: AddressPointer,
   marker: Nip10TagMarker,
 ): string[][] {
-  const coordinate = getCoordinateFromAddressPointer(pointer);
+  const coordinate = getReplaceableAddressFromPointer(pointer);
   const existing = tags.find((t) => t[0] === "a" && t[1] === coordinate && (t[3] ?? "") === (marker ?? ""));
 
   if (existing) {

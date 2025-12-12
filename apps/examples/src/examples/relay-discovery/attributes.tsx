@@ -6,7 +6,7 @@ import {
 } from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, NostrEvent } from "applesauce-core/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { CategoryScale, Chart as ChartJS, LinearScale, Title, Tooltip } from "chart.js";
 import { WordCloudController, WordElement } from "chartjs-chart-wordcloud";
@@ -153,7 +153,7 @@ export default function RelayDiscoveryAttributes() {
 
   // Get relay instance and check NIP-91 support
   const relay = useMemo(() => (relayUrl ? pool.relay(relayUrl) : null), [relayUrl]);
-  const supportedNips = useObservableMemo(() => relay?.supported$ ?? of(null), [relay]);
+  const supportedNips = use$(() => relay?.supported$ ?? of(null), [relay]);
   const supportsNip91 = supportedNips?.includes(91) ?? false;
 
   // Parse attributes from input (split by space/comma and filter empty)
@@ -187,13 +187,13 @@ export default function RelayDiscoveryAttributes() {
   }, [attributes, supportsNip91, relay]);
 
   // Subscribe to events from relay
-  useObservableMemo(
+  use$(
     () => (relay ? relay.subscription(relayFilter).pipe(onlyEvents(), mapEventsToStore(eventStore)) : undefined),
     [relay, relayFilter],
   );
 
   // Get events from the event store so & tags always work
-  const events = useObservableMemo(
+  const events = use$(
     () =>
       eventStore.timeline(
         attributes.length > 0

@@ -8,7 +8,7 @@ import {
 } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { PrimalCache, Vertex } from "applesauce-extra";
@@ -41,7 +41,7 @@ interface ProfileSearchResult {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function ProfileSearchModal({
@@ -412,11 +412,12 @@ export default function PubkeyPicker({
   useEffect(() => {
     if (!inputValue.trim()) return setIsValidPubkey(false);
 
-    try {
-      const normalizedPubkey = normalizeToPubkey(inputValue.trim());
+    const normalizedPubkey = normalizeToPubkey(inputValue.trim());
+
+    if (normalizedPubkey) {
       setIsValidPubkey(true);
       changeRef.current(normalizedPubkey);
-    } catch (error) {
+    } else {
       setIsValidPubkey(false);
     }
   }, [inputValue]);

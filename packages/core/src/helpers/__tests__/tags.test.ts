@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isATag, isNameValueTag, processTags } from "../tags.js";
+import { FakeUser } from "../../__tests__/fixtures";
 import { getAddressPointerFromATag } from "../pointers.js";
+import { isATag, isNameValueTag, processTags } from "../tags.js";
+
+const user = new FakeUser();
 
 describe("isNameValueTag", () => {
   it("should return true if tag has at least two indexes", () => {
@@ -16,9 +19,12 @@ describe("isNameValueTag", () => {
 
 describe("processTags", () => {
   it("should filter out errors", () => {
-    expect(
-      processTags([["a", "bad coordinate"], ["e"], ["a", "30000:pubkey:list"]], getAddressPointerFromATag),
-    ).toEqual([{ identifier: "list", kind: 30000, pubkey: "pubkey" }]);
+    const result = processTags([["a", "bad coordinate"], ["e"], ["a", `30000:${user.pubkey}:list`]], (t) => {
+      if (t[1] === "bad coordinate") throw new Error("Bad coordinate");
+      return getAddressPointerFromATag(t) ?? undefined;
+    });
+
+    expect(result).toEqual([{ kind: 30000, pubkey: user.pubkey, identifier: "list" }]);
   });
 
   it("should filter out undefined", () => {

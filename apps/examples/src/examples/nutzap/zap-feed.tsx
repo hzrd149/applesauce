@@ -1,7 +1,7 @@
 import { EventStore, mapEventsToStore, mapEventsToTimeline, Model } from "applesauce-core";
 import { addRelayHintsToPointer, getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import {
   getNutzapAmount,
@@ -68,7 +68,7 @@ function NutzapEvent({ event }: { event: NutzapEvent }) {
   const mint = getNutzapMint(event);
   const relays = useMemo(() => Array.from(getSeenRelays(event) ?? []), [event]);
 
-  const zappedEvent = useObservableMemo(
+  const zappedEvent = use$(
     () => (eventPointer ? eventStore.model(EventQuery, addRelayHintsToPointer(eventPointer, relays)) : undefined),
     [eventPointer, relays],
   );
@@ -172,7 +172,7 @@ function ZapSummaryCard({ summary }: { summary: ZapSummary }) {
 export default function ZapFeed() {
   const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
 
-  const nutzaps = useObservableMemo(
+  const nutzaps = use$(
     () =>
       pool
         .relay(relay)

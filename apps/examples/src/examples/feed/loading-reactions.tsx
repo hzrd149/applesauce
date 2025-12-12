@@ -8,7 +8,7 @@ import {
 } from "applesauce-core/helpers";
 import { ReactionsModel } from "applesauce-common/models";
 import { createEventLoaderForStore, createReactionsLoader, createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -35,12 +35,12 @@ const reactionLoader = createReactionsLoader(pool, { eventStore });
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 /** Hook to load and group reactions for a specific event */
 function useReactions(event: NostrEvent) {
-  const reactions = useObservableMemo(
+  const reactions = use$(
     () =>
       eventStore.model(ReactionsModel, event).pipe(
         map((reactions) =>
@@ -58,7 +58,7 @@ function useReactions(event: NostrEvent) {
   );
 
   // Load reactions when component mounts
-  useObservableMemo(() => reactionLoader(event), [event]);
+  use$(() => reactionLoader(event), [event]);
 
   return reactions || {};
 }
@@ -137,7 +137,7 @@ export default function FeedWithReactions() {
   }, [timeline]);
 
   // Subscribe to the timeline from the event store
-  const feed = useObservableMemo(
+  const feed = use$(
     () =>
       eventStore.timeline(filter).pipe(
         // Duplicate the timeline array to make react happy

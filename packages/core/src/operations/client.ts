@@ -1,6 +1,6 @@
 import { EventOperation } from "../event-factory/types.js";
 import { kinds } from "../helpers/event.js";
-import { AddressPointer, getCoordinateFromAddressPointer } from "../helpers/pointers.js";
+import { AddressPointer, getReplaceableAddressFromPointer } from "../helpers/pointers.js";
 import { fillAndTrimTag } from "../helpers/tags.js";
 import { includeSingletonTag } from "./tags.js";
 
@@ -17,7 +17,7 @@ export function setClient(
     if (NEVER_ATTACH_CLIENT_TAG.includes(draft.kind)) return draft;
     else {
       const coordinate = pointer
-        ? getCoordinateFromAddressPointer({
+        ? getReplaceableAddressFromPointer({
             pubkey: pointer.pubkey,
             identifier: pointer.identifier,
             kind: kinds.Handlerinformation,

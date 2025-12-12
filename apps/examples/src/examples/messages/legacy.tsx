@@ -12,7 +12,7 @@ import {
 } from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import localforage from "localforage";
@@ -64,7 +64,7 @@ const cacheRequest: CacheRequest = (filters) => getEventsForFilters(cache, filte
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 function ContactItem({ contactPubkey, onSelect }: { contactPubkey: string; onSelect: (pubkey: string) => void }) {
-  const profile = useObservableMemo(() => eventStore.model(ProfileModel, contactPubkey), [contactPubkey]);
+  const profile = use$(() => eventStore.model(ProfileModel, contactPubkey), [contactPubkey]);
   const displayName = getDisplayName(profile, contactPubkey.slice(0, 8) + "...");
   const avatar = getProfilePicture(profile, `https://robohash.org/${contactPubkey}.png`);
 
@@ -121,7 +121,7 @@ function ContactList({
 
 function Message({ pubkey, message, signer }: { pubkey: string; message: NostrEvent; signer: ExtensionSigner }) {
   const sender = message.pubkey;
-  const content = useObservableMemo(() => eventStore.model(EncryptedContentModel, message), [message.id]);
+  const content = use$(() => eventStore.model(EncryptedContentModel, message), [message.id]);
 
   const decrypt = async () => {
     await unlockLegacyMessage(message, pubkey, signer);
@@ -219,7 +219,7 @@ function DirectMessageView({
   }, [loader$]);
 
   // Create subscription for new events
-  useObservableMemo(
+  use$(
     () =>
       pool
         .relay(relay)
@@ -325,9 +325,9 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner 
 }
 
 function App() {
-  const storage = useObservableState(storage$);
-  const signer = useObservableState(signer$);
-  const pubkey = useObservableState(pubkey$);
+  const storage = use$(storage$);
+  const signer = use$(signer$);
+  const pubkey = use$(pubkey$);
 
   const handleUnlock = async (storage: SecureStorage, pubkey?: string) => {
     storage$.next(storage);

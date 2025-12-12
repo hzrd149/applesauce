@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { type NostrEvent } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 import hljs from "highlight.js/lib/core";
@@ -41,7 +41,7 @@ export default function CodeSnippetCard({ event, onViewFull }: CodeSnippetCardPr
   const { addToPocket, isInPocket } = usePocketContext();
 
   // Get profile for the author
-  const profile = useObservableMemo(() => {
+  const profile = use$(() => {
     const relays = Array.from(getSeenRelays(event) || []);
     return eventStore.profile({ pubkey: event.pubkey, relays });
   }, [event.pubkey]);

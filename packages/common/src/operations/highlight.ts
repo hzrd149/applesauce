@@ -20,17 +20,29 @@ export function setHighlightContent(content: string): EventOperation {
 /** Sets the source event that was highlighted using an 'e' tag */
 export function setSource(source: NostrEvent | EventPointer | AddressPointer | string): EventOperation {
   if (isEvent(source)) {
-    if (isReplaceable(source.kind))
-      return modifyPublicTags(
-        addEventPointerTag(source, true),
-        addAddressPointerTag(getAddressPointerForEvent(source), true),
-      );
-    else return modifyPublicTags(addEventPointerTag(source, true));
+    if (isReplaceable(source.kind)) {
+      const address = getAddressPointerForEvent(source);
+      if (address) {
+        // Include both the event pointer and address pointer
+        return modifyPublicTags(addEventPointerTag(source, true), addAddressPointerTag(address, true));
+      } else {
+        // Just include the event pointer
+        return modifyPublicTags(addEventPointerTag(source, true));
+      }
+    } else {
+      // Include the event pointer for normal events
+      return modifyPublicTags(addEventPointerTag(source, true));
+    }
   } else if (isAddressPointer(source)) {
+    // Include "a" tag for address pointers
     return modifyPublicTags(addAddressPointerTag(source, true));
-  } else if (isEventPointer(source)) return modifyPublicTags(addEventPointerTag(source, true));
-  else if (typeof source === "string") return includeSingletonTag(["r", source]);
-  else throw new Error("Invalid source");
+  } else if (isEventPointer(source)) {
+    // Include "e" tag for event pointers
+    return modifyPublicTags(addEventPointerTag(source, true));
+  } else if (typeof source === "string") {
+    // Include "r" tags for URLs
+    return includeSingletonTag(["r", source]);
+  } else throw new Error("Invalid source");
 }
 
 /** Attribution role types for highlight events */

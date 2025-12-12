@@ -1,4 +1,4 @@
-import { getReplaceableAddress, isReplaceable, kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { isReplaceable, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import {
   addAddressPointerTag,
   addEventPointerTag,
@@ -17,9 +17,7 @@ export function PinNote(note: NostrEvent): Action {
   return async function* ({ events, factory, self }) {
     const pins = events.getReplaceable(kinds.Pinlist, self);
 
-    const operation = isReplaceable(note.kind)
-      ? addAddressPointerTag(getReplaceableAddress(note))
-      : addEventPointerTag(note.id);
+    const operation = isReplaceable(note.kind) ? addAddressPointerTag(note) : addEventPointerTag(note.id);
     const draft = pins
       ? await factory.modifyTags(pins, operation)
       : await factory.build({ kind: kinds.Pinlist }, modifyPublicTags(operation));
@@ -34,9 +32,7 @@ export function UnpinNote(note: NostrEvent): Action {
     const pins = events.getReplaceable(kinds.Pinlist, self);
     if (!pins) return;
 
-    const operation = isReplaceable(note.kind)
-      ? removeAddressPointerTag(getReplaceableAddress(note))
-      : removeEventPointerTag(note.id);
+    const operation = isReplaceable(note.kind) ? removeAddressPointerTag(note) : removeEventPointerTag(note.id);
     const draft = await factory.modifyTags(pins, operation);
 
     yield await factory.sign(draft);

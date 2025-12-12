@@ -21,6 +21,8 @@ export class ReadonlyAccount<Metadata extends unknown> extends BaseAccount<Reado
   /** Creates a ReadonlyAccount from a hex public key or NIP-19 npub */
   static fromPubkey(pubkey: string) {
     const signer = ReadonlySigner.fromPubkey(pubkey);
-    return new ReadonlyAccount(normalizeToPubkey(pubkey), signer);
+    const hex = normalizeToPubkey(pubkey);
+    if (!hex) throw new Error("Invalid public key");
+    return new ReadonlyAccount(hex, signer);
   }
 }
