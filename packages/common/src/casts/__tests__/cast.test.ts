@@ -1,12 +1,18 @@
 import { EventStore } from "applesauce-core/event-store";
 import { isObservable, Observable } from "rxjs";
-import { describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { cast } from "../cast.js";
 import { Note } from "../note.js";
+import { getParentEventStore } from "applesauce-core/helpers";
 
-const user = new FakeUser();
-const store = new EventStore();
+let user = new FakeUser();
+let store = new EventStore();
+
+beforeEach(() => {
+  user = new FakeUser();
+  store = new EventStore();
+});
 
 describe("cast", () => {
   it("should cast an event to a specific class", () => {
@@ -37,8 +43,7 @@ describe("cast", () => {
     });
 
     it("should allow chaining", () => {
-      const event = user.note();
-      store.add(event);
+      const event = store.add(user.note())!;
       const note = cast(event, Note);
       const inboxes = note.author$.inboxes$;
       expect(inboxes).toBeInstanceOf(Observable);
@@ -46,8 +51,7 @@ describe("cast", () => {
     });
 
     it("should return the same observable", () => {
-      const event = user.note();
-      store.add(event);
+      const event = store.add(user.note())!;
       const note = cast(event, Note);
       expect(note.author$).toBe(note.author$);
       expect(note.author$.inboxes$).toBe(note.author$.inboxes$);

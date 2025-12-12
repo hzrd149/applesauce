@@ -1,5 +1,5 @@
 import { mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents } from "applesauce-relay";
 import { type NostrEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
@@ -31,7 +31,7 @@ function App() {
   };
 
   // Create a timeline observable for code snippets from all relays
-  const events = useObservableMemo(() => {
+  const events = use$(() => {
     if (relays.length === 0) {
       // Return an observable that emits an empty array when there are no relays
       return new Observable<NostrEvent[]>((subscriber) => {
