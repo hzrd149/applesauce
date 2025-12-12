@@ -8,7 +8,7 @@ import {
   ProfilePointer,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "nostr-tools/nip19";
@@ -33,7 +33,7 @@ type RecipientStats = {
 
 /** Hook to load a user's profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 /** Component for rendering user avatars */
@@ -99,7 +99,7 @@ export default function GiftWrapDashboard() {
   }, [relay, needsAuth, authenticated]);
 
   // Query all gift wrap events from the selected relay
-  useObservableMemo(
+  use$(
     () =>
       pool.subscription([relay], { kinds: [kinds.GiftWrap] }).pipe(
         // Ignore EOSE
@@ -115,10 +115,7 @@ export default function GiftWrapDashboard() {
   );
 
   // Subscribe to a timeline of gift wrap events
-  const giftWrapEvents = useObservableMemo(
-    () => eventStore.timeline({ kinds: [kinds.GiftWrap] }).pipe(map((t) => [...t])),
-    [],
-  );
+  const giftWrapEvents = use$(() => eventStore.timeline({ kinds: [kinds.GiftWrap] }).pipe(map((t) => [...t])), []);
 
   // Process events to group by recipient and count
   const recipientStats = useMemo(() => {

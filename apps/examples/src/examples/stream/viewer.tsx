@@ -22,7 +22,7 @@ import {
   unixNow,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { kinds, NostrEvent } from "nostr-tools";
@@ -48,7 +48,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function StreamCard({ stream }: { stream: NostrEvent }) {
@@ -171,7 +171,7 @@ function StreamChat({ stream }: { stream: NostrEvent }) {
   const streamAddress = getReplaceableAddress(stream);
 
   // Subscribe to chat messages
-  useObservableMemo(
+  use$(
     () =>
       streamAddress
         ? pool
@@ -184,7 +184,7 @@ function StreamChat({ stream }: { stream: NostrEvent }) {
     [streamAddress, relays.join(",")],
   );
 
-  const messages = useObservableMemo(() => eventStore.model(StreamChatMessagesModel, stream), [stream]);
+  const messages = use$(() => eventStore.model(StreamChatMessagesModel, stream), [stream]);
 
   return (
     <>
@@ -345,7 +345,7 @@ export default function StreamExample() {
   const [selectedStream, setSelectedStream] = useState<NostrEvent | null>(null);
 
   // Subscribe to stream events
-  useObservableMemo(
+  use$(
     () =>
       pool
         .relay(relay)
@@ -362,7 +362,7 @@ export default function StreamExample() {
     [relay],
   );
 
-  const streams = useObservableMemo(() => eventStore.timeline({ kinds: [kinds.LiveEvent] }), []);
+  const streams = use$(() => eventStore.timeline({ kinds: [kinds.LiveEvent] }), []);
 
   if (selectedStream) {
     return <StreamViewer stream={selectedStream} onBack={() => setSelectedStream(null)} />;

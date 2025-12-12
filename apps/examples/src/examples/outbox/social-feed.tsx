@@ -17,7 +17,7 @@ import {
 } from "applesauce-core/helpers";
 import { createOutboxMap } from "applesauce-core/helpers";
 import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
-import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import {
   ignoreUnhealthyRelaysOnPointers,
   onlyEvents,
@@ -155,7 +155,7 @@ const timeline$ = window$.pipe(
 const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
 
 function NoteRelay({ relay }: { relay: string }) {
-  const info = useObservableMemo(() => pool.relay(relay).information$, [relay]);
+  const info = use$(() => pool.relay(relay).information$, [relay]);
   const icon =
     info?.icon || new URL("/favicon.ico", relay.replace("wss://", "https://").replace("ws://", "https://")).toString();
   const name = info?.name || relay.replace("wss://", "").replace("ws://", "");
@@ -179,8 +179,8 @@ function NoteRelay({ relay }: { relay: string }) {
 
 function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
   // Subscribe to the request and wait for the profile event
-  const profile = useObservableMemo(() => eventStore.profile(note.pubkey), [note.pubkey]);
-  const mailboxes = useObservableMemo(() => eventStore.mailboxes(note.pubkey), [note.pubkey]);
+  const profile = use$(() => eventStore.profile(note.pubkey), [note.pubkey]);
+  const mailboxes = use$(() => eventStore.mailboxes(note.pubkey), [note.pubkey]);
 
   const displayName = getDisplayName(profile, note.pubkey.slice(0, 8) + "...");
   const avatarUrl = getProfilePicture(profile, `https://robohash.org/${note.pubkey}.png`);
@@ -221,8 +221,8 @@ function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
 
 // User Avatar Component for sidebar
 function UserAvatar({ user }: { user: ProfilePointer }) {
-  const profile = useObservableMemo(() => eventStore.profile(user), [user.pubkey]);
-  useObservableMemo(() => eventStore.mailboxes(user), [user.pubkey]);
+  const profile = use$(() => eventStore.profile(user), [user.pubkey]);
+  use$(() => eventStore.mailboxes(user), [user.pubkey]);
 
   const displayName = getDisplayName(profile, user.pubkey.slice(0, 8) + "...");
   const avatarUrl = getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`);
@@ -369,16 +369,10 @@ function UserIssuesSection({
 
 // User Preview Modal Component
 function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
-  const previewUser = useObservableState(preview$);
+  const previewUser = use$(preview$);
 
-  const profile = useObservableMemo(
-    () => (previewUser ? eventStore.profile(previewUser) : undefined),
-    [previewUser?.pubkey],
-  );
-  const mailboxes = useObservableMemo(
-    () => (previewUser ? eventStore.mailboxes(previewUser) : undefined),
-    [previewUser?.pubkey],
-  );
+  const profile = use$(() => (previewUser ? eventStore.profile(previewUser) : undefined), [previewUser?.pubkey]);
+  const mailboxes = use$(() => (previewUser ? eventStore.mailboxes(previewUser) : undefined), [previewUser?.pubkey]);
 
   // get the selected user
   const selected = selection?.find((user) => user.pubkey === previewUser?.pubkey);
@@ -560,12 +554,12 @@ function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relay
 
 // Component to show relay connection and coverage
 function RelayConnection({ relay, userCount, totalUsers }: { relay: string; userCount: number; totalUsers: number }) {
-  const info = useObservableMemo(() => pool.relay(relay).information$, [relay]);
+  const info = use$(() => pool.relay(relay).information$, [relay]);
   const relayDisplayName = info?.name || relay.replace("wss://", "").replace("ws://", "");
   const coveragePercentage = totalUsers > 0 ? Math.round((userCount / totalUsers) * 100) : 0;
 
   const instance = useMemo(() => pool.relay(relay), [relay]);
-  const connected = useObservableMemo(() => instance.connected$, [instance]);
+  const connected = use$(() => instance.connected$, [instance]);
 
   const color = useMemo(() => pastellify(relay, { toCSS: true }), [relay]);
   const icon =
@@ -599,7 +593,7 @@ function UnhealthyRelay({ relay }: { relay: string }) {
   const relayDisplayName = relay.replace("wss://", "").replace("ws://", "");
 
   // Get state information from liveness tracker observable
-  const state = useObservableMemo(() => liveness.state(relay), [relay]);
+  const state = use$(() => liveness.state(relay), [relay]);
 
   const color = useMemo(() => pastellify(relay, { toCSS: true }), [relay]);
 
@@ -672,9 +666,9 @@ export default function SocialFeedExample() {
   useObservable(timeline$);
 
   // Select the best relays for the contacts
-  const outboxes = useObservableState(contactsWithOutboxes$);
-  const selection = useObservableMemo(() => selection$, [selection$]);
-  const outboxMap = useObservableMemo(() => selection$.pipe(map(createOutboxMap)), [selection$]);
+  const outboxes = use$(contactsWithOutboxes$);
+  const selection = use$(() => selection$, [selection$]);
+  const outboxMap = use$(() => selection$.pipe(map(createOutboxMap)), [selection$]);
 
   const byPubkey = useMemo(
     () =>
@@ -691,13 +685,13 @@ export default function SocialFeedExample() {
   // Sort relays by popularity (number of users) in descending order
   const sortedRelays = outboxMap ? Object.entries(outboxMap).sort(([, a], [, b]) => b.length - a.length) : [];
 
-  const fallbacks = useObservableState(fallbacks$);
+  const fallbacks = use$(fallbacks$);
 
   // Get unhealthy relays from liveness tracker
-  const unhealthyRelays = useObservableState(liveness.unhealthy$);
+  const unhealthyRelays = use$(liveness.unhealthy$);
 
   // Get the timeline from the event store
-  const feedEvents = useObservableMemo(
+  const feedEvents = use$(
     () => (selection ? eventStore.timeline({ kinds: [1], authors: selection?.map((s) => s.pubkey) }) : of([])),
     [selection],
   );

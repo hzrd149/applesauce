@@ -17,7 +17,7 @@ import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "appl
 import { EventFactory } from "applesauce-core";
 import { CacheRequest } from "applesauce-loaders";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -156,7 +156,7 @@ function MessageGroup({ messages, pubkey }: { messages: Rumor[]; pubkey: string 
 
 function ConversationView({ pubkey, conversation, relay }: { pubkey: string; conversation: string; relay: string }) {
   // Get all messages for this conversation
-  const messages = useObservableMemo(
+  const messages = use$(
     () =>
       eventStore
         .model(WrappedMessagesGroup, pubkey, getConversationParticipants(conversation))
@@ -278,8 +278,8 @@ function GiftWrapDebugModal({ gift }: { gift: NostrEvent }) {
 function HomeView({ pubkey }: { pubkey: string }) {
   const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
   const [selectedConversation, setSelectedConversation] = useState<string>();
-  const signer = useObservableState(signer$);
-  const debug = useObservableState(debug$);
+  const signer = use$(signer$);
+  const debug = use$(debug$);
 
   // Create a loader that loads all gift wraps for a pubkey
   const timeline = useMemo(
@@ -299,7 +299,7 @@ function HomeView({ pubkey }: { pubkey: string }) {
   }, [timeline]);
 
   // Create subscription for new events
-  useObservableMemo(
+  use$(
     () =>
       pool
         .relay(relay)
@@ -309,13 +309,10 @@ function HomeView({ pubkey }: { pubkey: string }) {
   );
 
   // Select all unlocked gift wraps
-  const messages = useObservableMemo(() => eventStore.model(WrappedMessagesModel, pubkey), [pubkey]);
+  const messages = use$(() => eventStore.model(WrappedMessagesModel, pubkey), [pubkey]);
 
   const [decrypting, setDecrypting] = useState(false);
-  const pending = useObservableMemo(
-    () => eventStore.model(GiftWrapsModel, pubkey, true).pipe(map((t) => [...t])),
-    [pubkey],
-  );
+  const pending = use$(() => eventStore.model(GiftWrapsModel, pubkey, true).pipe(map((t) => [...t])), [pubkey]);
   const decryptPending = async () => {
     if (!pending || !signer) return;
     setDecrypting(true);
@@ -382,9 +379,9 @@ function HomeView({ pubkey }: { pubkey: string }) {
 }
 
 function App() {
-  const storage = useObservableState(storage$);
-  const signer = useObservableState(signer$);
-  const pubkey = useObservableState(pubkey$);
+  const storage = use$(storage$);
+  const signer = use$(signer$);
+  const pubkey = use$(pubkey$);
 
   const handleUnlock = async (storage: SecureStorage, pubkey?: string) => {
     storage$.next(storage);

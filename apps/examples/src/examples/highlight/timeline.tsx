@@ -17,7 +17,7 @@ import {
   HighlightAttribution,
 } from "applesauce-common/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { kinds, NostrEvent } from "nostr-tools";
 import { ProfilePointer, nprofileEncode, neventEncode, naddrEncode } from "nostr-tools/nip19";
@@ -42,7 +42,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function HighlightCard({ highlight }: { highlight: NostrEvent }) {
@@ -181,7 +181,7 @@ export default function HighlightTimeline() {
   const [relay, setRelay] = useState("wss://relay.damus.io/");
 
   // Create a timeline observable for highlight events (kind 9802)
-  const highlights = useObservableMemo(
+  const highlights = use$(
     () =>
       pool
         .relay(relay)

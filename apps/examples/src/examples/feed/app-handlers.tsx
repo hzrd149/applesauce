@@ -6,7 +6,7 @@ import {
   getHandlerPicture,
   getHandlerSupportedKinds,
 } from "applesauce-common/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { kinds, NostrEvent } from "nostr-tools";
 import { useMemo, useRef, useState } from "react";
@@ -179,7 +179,7 @@ export default function AppHandlersExample() {
   const [selectedKinds, setSelectedKinds] = useState<Set<number>>(new Set());
 
   // Fetch all application handlers
-  const allHandlers = useObservableMemo(
+  const allHandlers = use$(
     () =>
       pool
         .subscription([relay], {

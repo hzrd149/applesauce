@@ -13,7 +13,7 @@ import {
 } from "applesauce-common/helpers";
 import { CalendarEventRSVPsModel } from "applesauce-common/models";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -38,7 +38,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 // Helper components
 function Avatar({ user }: { user: ProfilePointer }) {
-  const profile = useObservableMemo(() => eventStore.profile(user), [user.pubkey]);
+  const profile = use$(() => eventStore.profile(user), [user.pubkey]);
   const picture = getProfilePicture(profile, `https://robohash.org/${user.pubkey}`);
 
   return (
@@ -57,7 +57,7 @@ function Avatar({ user }: { user: ProfilePointer }) {
 }
 
 function Username({ user }: { user: ProfilePointer }) {
-  const profile = useObservableMemo(() => eventStore.profile(user), [user.pubkey]);
+  const profile = use$(() => eventStore.profile(user), [user.pubkey]);
   return <span>{getDisplayName(profile, "anon")}</span>;
 }
 
@@ -72,7 +72,7 @@ function CalendarEventCard({ event, onSelect }: { event: NostrEvent; onSelect: (
   const relays = useMemo(() => Array.from(getSeenRelays(event) || []), [event]);
 
   // Load RSVPs count
-  const rsvps = useObservableMemo(() => eventStore.model(CalendarEventRSVPsModel, event), [event.id]);
+  const rsvps = use$(() => eventStore.model(CalendarEventRSVPsModel, event), [event.id]);
   const rsvpCount = rsvps?.length || 0;
 
   const isUpcoming = start ? start > Date.now() / 1000 : false;
@@ -157,7 +157,7 @@ function CalendarEventDetails({ event, onBack }: { event: NostrEvent; onBack: ()
   const relays = useMemo(() => Array.from(getSeenRelays(event) || []), [event]);
 
   // Load RSVPs
-  const rsvps = useObservableMemo(() => eventStore.model(CalendarEventRSVPsModel, event), [event.id]);
+  const rsvps = use$(() => eventStore.model(CalendarEventRSVPsModel, event), [event.id]);
 
   return (
     <div className="container mx-auto my-8 px-4 max-w-4xl">
@@ -284,7 +284,7 @@ export default function CalendarTimeline() {
   const [filter, setFilter] = useState<"all" | "upcoming" | "past">("all");
 
   // Create a timeline observable for calendar events
-  const events = useObservableMemo(
+  const events = use$(
     () =>
       pool
         .relay(relay)

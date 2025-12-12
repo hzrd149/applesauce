@@ -2,7 +2,7 @@ import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitl
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { NostrEvent, npubEncode } from "applesauce-core/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -114,7 +114,7 @@ export default function ArticleViewer() {
   const [selected, setSelected] = useState<NostrEvent | null>(null);
 
   // Create a timeline observable for articles
-  const articles = useObservableMemo(
+  const articles = use$(
     () =>
       pool
         .relay(relay)

@@ -17,7 +17,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerState, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { useDebounce } from "react-use";
 import ImportEventsButton from "../../components/import-events-button";
@@ -183,7 +183,7 @@ async function importEventsFromJsonl(
 
 // Profile hook for username lookup
 function useProfile(pubkey: string) {
-  return useObservableMemo(() => eventStore.profile({ pubkey }), [pubkey]);
+  return use$(() => eventStore.profile({ pubkey }), [pubkey]);
 }
 
 // Event row component

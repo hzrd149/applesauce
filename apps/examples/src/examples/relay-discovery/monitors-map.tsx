@@ -16,7 +16,7 @@ import {
   ProfileContent,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -39,7 +39,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 // Fix Leaflet default marker icons
@@ -187,7 +187,7 @@ export default function MonitorsMap() {
   );
 
   // Subscribe to events from relay
-  const events = useObservableMemo(
+  const events = use$(
     () =>
       relay
         ? relay.subscription(relayFilter).pipe(

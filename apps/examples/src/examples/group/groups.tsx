@@ -1,7 +1,7 @@
 import { encodeGroupPointer, getGroupPointerFromMetadata } from "applesauce-common/helpers";
 import { mapEventsToTimeline } from "applesauce-core";
 import { getTagValue, NostrEvent } from "applesauce-core/helpers";
-import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useCallback, useState } from "react";
@@ -89,7 +89,7 @@ function GroupsGrid({ groups, relay }: { groups: NostrEvent[]; relay: string }) 
 export default function GroupsExample() {
   const [selectedRelay, setSelectedRelay] = useState("wss://pyramid.fiatjaf.com/");
 
-  const groups = useObservableMemo(() => {
+  const groups = use$(() => {
     if (!selectedRelay) return undefined;
 
     return pool

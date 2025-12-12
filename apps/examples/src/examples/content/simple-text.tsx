@@ -2,7 +2,7 @@ import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { ComponentMap, useObservableMemo, useRenderedContent } from "applesauce-react/hooks";
+import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { decode, EventPointer } from "nostr-tools/nip19";
@@ -99,9 +99,9 @@ export default function ContentRenderingExample() {
   const [relay, setRelay] = useState<string>("");
 
   // Load the examples on mount
-  useObservableMemo(() => merge(...examples.map(eventLoader)), []);
+  use$(() => merge(...examples.map(eventLoader)), []);
 
-  useObservableMemo(
+  use$(
     () =>
       relay
         ? pool
@@ -115,7 +115,7 @@ export default function ContentRenderingExample() {
     [relay],
   );
 
-  const events = useObservableMemo(() => eventStore.timeline({ kinds: [1] }), []);
+  const events = use$(() => eventStore.timeline({ kinds: [1] }), []);
 
   return (
     <div className="container mx-auto p-2 h-full">

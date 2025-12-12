@@ -1,6 +1,6 @@
 import { AccountManager } from "applesauce-accounts";
 import { registerCommonAccountTypes, PrivateKeyAccount } from "applesauce-accounts/accounts";
-import { useObservableState } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { useCallback, useState } from "react";
 import { merge, Subject } from "rxjs";
 
@@ -36,7 +36,7 @@ manager.active$.subscribe((account) => {
 });
 
 function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> }) {
-  const activeAccount = useObservableState(manager.active$);
+  const activeAccount = use$(manager.active$);
   const [name, setName] = useState(account.metadata?.name || "");
 
   const saveName = useCallback(() => {
@@ -89,7 +89,7 @@ function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> 
 }
 
 export default function AccountManagerExample() {
-  const accounts = useObservableState(manager.accounts$);
+  const accounts = use$(manager.accounts$);
 
   const createNewAccount = useCallback(() => {
     const account = PrivateKeyAccount.generateNew<AccountMetadata>();

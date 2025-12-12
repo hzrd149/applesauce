@@ -1,7 +1,7 @@
 import { defined, EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds } from "nostr-tools";
 import { useEffect, useMemo, useState } from "react";
@@ -76,7 +76,7 @@ interface SyncResult {
 // Component for displaying a relay badge with NIP-77 support indication
 function RelayBadge({ relay }: { relay: string }) {
   const relayInstance = useMemo(() => pool.relay(relay), [relay]);
-  const supported = useObservableState(relayInstance.supported$);
+  const supported = use$(relayInstance.supported$);
   const supportsNIP77 = supported?.includes(77) || false;
 
   // Get hostname for display
@@ -142,7 +142,7 @@ function SyncResultsTable({ results, pubkey }: { results: SyncResult[]; pubkey: 
   }, [allEventIds, validResults]);
 
   // Get profile for the user
-  const profile = useObservableMemo(() => (pubkey ? eventStore.profile({ pubkey }) : of(null)), [pubkey]);
+  const profile = use$(() => (pubkey ? eventStore.profile({ pubkey }) : of(null)), [pubkey]);
 
   if (validResults.length === 0) {
     return (
@@ -259,7 +259,7 @@ export default function RelayDifferenceExample() {
   ];
 
   const pubkey = useObservableEagerState(pubkey$);
-  const mailboxes = useObservableState(mailboxes$);
+  const mailboxes = use$(mailboxes$);
   const [timeFilter, setTimeFilter] = useState(TIME_FILTERS[1]); // Default to "Last day"
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
 

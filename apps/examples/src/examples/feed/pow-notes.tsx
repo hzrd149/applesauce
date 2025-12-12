@@ -8,7 +8,7 @@ import {
   ProfileContent,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -74,7 +74,7 @@ function getTargetDifficulty(event: NostrEvent): number | undefined {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function Note({ note }: { note: NostrEvent }) {
@@ -176,7 +176,7 @@ export default function PoWNotes() {
   }, [timelineLoader]);
 
   // Get all events from the event store
-  const allEvents = useObservableMemo(() => eventStore.timeline({ kinds: [1] }).pipe(map((t) => [...t])), []);
+  const allEvents = use$(() => eventStore.timeline({ kinds: [1] }).pipe(map((t) => [...t])), []);
 
   // Filter and sort events
   const filteredAndSortedEvents = useMemo(() => {

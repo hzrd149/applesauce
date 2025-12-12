@@ -1,7 +1,7 @@
 import { getZapAmount, getZapRecipient, isValidZap } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import {
   BarElement,
@@ -106,7 +106,7 @@ export default function ZapGraph() {
     return createTimelineLoader(pool, [relay], filters, { eventStore });
   }, [relay, filters]);
 
-  const events = useObservableMemo(() => (filters ? eventStore.timeline(filters) : EMPTY), [filters]);
+  const events = use$(() => (filters ? eventStore.timeline(filters) : EMPTY), [filters]);
 
   const loadMore = useCallback(() => {
     if (!loader) return;

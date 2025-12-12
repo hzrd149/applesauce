@@ -1,4 +1,4 @@
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
@@ -251,7 +251,7 @@ export default function WalletConnectExample() {
   }, [parsed]);
 
   // Create WalletConnect instance and get wallet info using the public getter
-  const support = useObservableMemo(() => wallet?.support$, [wallet]);
+  const support = use$(() => wallet?.support$, [wallet]);
 
   return (
     <div className="container mx-auto my-8 px-4">

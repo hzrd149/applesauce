@@ -6,7 +6,7 @@ import { finalizeEvent, getEventHash, kinds, NostrEvent, UnsignedEvent } from "a
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { unixNow } from "applesauce-core/helpers/time";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableState } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { PublishResponse, RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { useState } from "react";
@@ -497,7 +497,7 @@ async function generateNIP17DMWithRandomBase64(pubkey: string): Promise<NostrEve
 }
 
 export default function BrokenGiftWrapGenerator() {
-  const pubkey = useObservableState(pubkey$);
+  const pubkey = use$(pubkey$);
   const [count, setCount] = useState<number>(100);
   const [minDelay, setMinDelay] = useState<number>(100);
   const [maxDelay, setMaxDelay] = useState<number>(1000);
@@ -508,7 +508,7 @@ export default function BrokenGiftWrapGenerator() {
   const [eventStatuses, setEventStatuses] = useState<EventStatus[]>([]);
   const [currentEventIndex, setCurrentEventIndex] = useState<number | null>(null);
 
-  const mailboxes = useObservableState(mailboxes$);
+  const mailboxes = use$(mailboxes$);
 
   const handleGenerate = async () => {
     if (!pubkey) return;

@@ -4,7 +4,7 @@ import { GiftWrapRumorModel, GiftWrapsModel } from "applesauce-common/models/gif
 import { defined, EventStore } from "applesauce-core";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useEffect, useMemo, useState } from "react";
@@ -29,7 +29,7 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: Extension
   const unlocked = isGiftWrapUnlocked(event);
 
   // Subscribe to when the rumor is unlocked
-  const rumor = useObservableMemo(() => eventStore.model(GiftWrapRumorModel, event.id), [event.id]);
+  const rumor = use$(() => eventStore.model(GiftWrapRumorModel, event.id), [event.id]);
 
   const handleUnlock = async () => {
     try {
@@ -114,9 +114,9 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner 
 }
 
 export default function App() {
-  const storage = useObservableState(storage$);
-  const signer = useObservableState(signer$);
-  const pubkey = useObservableState(pubkey$);
+  const storage = use$(storage$);
+  const signer = use$(signer$);
+  const pubkey = use$(pubkey$);
 
   const handleUnlock = async (storage: SecureStorage, pubkey?: string) => {
     storage$.next(storage);

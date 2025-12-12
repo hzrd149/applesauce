@@ -10,3 +10,4 @@ export * from "./use-observable-memo.js";
 export * from "./use-observable.js";
 export * from "./use-render-nast.js";
 export * from "./use-rendered-content.js";
+export * from "./use-$.js";

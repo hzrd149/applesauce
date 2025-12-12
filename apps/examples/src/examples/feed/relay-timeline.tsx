@@ -7,7 +7,7 @@ import {
   ProfileContent,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -33,7 +33,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function Note({ note }: { note: NostrEvent }) {
@@ -63,7 +63,7 @@ export default function RelayTimeline() {
   const [relay, setRelay] = useState("wss://relay.devvul.com");
 
   // Create a timeline observable
-  const events = useObservableMemo(
+  const events = use$(
     () =>
       pool
         .relay(relay)

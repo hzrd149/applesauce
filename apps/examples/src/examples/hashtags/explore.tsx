@@ -2,7 +2,7 @@ import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { Filter, isTTag } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { ComponentMap, useObservableEagerState, useObservableMemo, useRenderedContent } from "applesauce-react/hooks";
+import { ComponentMap, useObservableEagerState, use$, useRenderedContent } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { useMemo, useState } from "react";
 import { map, of } from "rxjs";
@@ -113,7 +113,7 @@ export default function HashtagExploreExample() {
   }, [hashtags]);
 
   // Create filter for local filtering (always uses AND logic)
-  const localEvents = useObservableMemo(() => {
+  const localEvents = use$(() => {
     return eventStore.timeline({
       kinds: [1],
       ["&t"]: hashtags,
@@ -121,7 +121,7 @@ export default function HashtagExploreExample() {
   }, [hashtags]);
 
   // Subscribe to events from relay (always subscribe, but filter may vary)
-  const relayEvents = useObservableMemo(
+  const relayEvents = use$(
     () =>
       relay
         ? relay.subscription(relayFilter).pipe(

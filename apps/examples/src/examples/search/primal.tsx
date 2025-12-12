@@ -2,7 +2,7 @@ import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, ProfileContent } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrimalCache } from "applesauce-extra";
 import { npubEncode, nprofileEncode } from "nostr-tools/nip19";
@@ -23,7 +23,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function ProfileListItem({ user }: { user: ProfilePointer }) {

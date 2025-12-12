@@ -7,7 +7,7 @@ import {
 } from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { isAddressPointer, isEventPointer } from "applesauce-core/helpers";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { Filter, kinds, nip19, NostrEvent } from "nostr-tools";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
@@ -120,7 +120,7 @@ export default function LinkHandlerExample() {
 
   // Second step: Fetch app handlers based on the entity type
   // This observable only runs after parsing is complete
-  const handlers = useObservableMemo(() => {
+  const handlers = use$(() => {
     if (!pointer) return undefined;
 
     // Get the handler kind for the link

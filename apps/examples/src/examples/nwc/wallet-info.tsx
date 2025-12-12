@@ -1,5 +1,5 @@
 import { hexToBytes } from "@noble/hashes/utils";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
@@ -164,7 +164,7 @@ export default function WalletInfoExample() {
   }, [parsed]);
 
   // Get wallet capabilities to check if get_info is supported
-  const support = useObservableMemo(() => wallet?.support$, [wallet]);
+  const support = use$(() => wallet?.support$, [wallet]);
 
   // Fetch wallet info
   const fetchWalletInfo = async () => {

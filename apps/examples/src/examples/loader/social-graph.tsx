@@ -1,7 +1,7 @@
 import { EventStore, Model } from "applesauce-core";
 import { getDisplayName, getProfilePicture, persistEventsToCache, ProfileContent } from "applesauce-core/helpers";
 import { createAddressLoader, createEventLoaderForStore, createSocialGraphLoader } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, useObservableMemo } from "applesauce-react/hooks";
+import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -69,7 +69,7 @@ function FollowDistanceModel(root: string, distance: number): Model<Set<string>>
 
 function useProfile(pubkey: string, relays?: string[]): ProfileContent | undefined {
   const user = useMemo(() => ({ pubkey, relays }), [pubkey, relays?.join("|")]);
-  return useObservableMemo(() => eventStore.profile(user), [pubkey, relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [pubkey, relays?.join("|")]);
 }
 
 function UserAvatar({ pubkey }: { pubkey: string }) {
@@ -121,7 +121,7 @@ export default function SocialGraphLoader() {
   const [relay, setRelay] = useState<string>("wss://index.hzrd149.com/");
 
   // Start loader when root is set
-  useObservableMemo(
+  use$(
     () => (root ? graphLoader({ pubkey: root, distance: level, relays: [relay] }) : undefined),
     [root, level, relay],
   );

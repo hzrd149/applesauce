@@ -1,9 +1,9 @@
 import { Note, Zap } from "applesauce-common/casts";
 import { castEvent } from "applesauce-common/observable";
-import { EventStore } from "applesauce-core";
+import { EventStore } from "applesauce-core/event-store";
 import { kinds, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { nip19 } from "nostr-tools";
 import { EventPointer, npubEncode } from "nostr-tools/nip19";
@@ -20,8 +20,8 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Component to render a single zap */
 function ZapItem({ zap }: { zap: Zap }) {
-  const picture = useObservableMemo(() => zap.sender$.picture, [zap.id]);
-  const displayName = useObservableMemo(() => zap.sender$.displayName, [zap.id]);
+  const picture = use$(() => zap.sender$.picture, [zap.id]);
+  const displayName = use$(() => zap.sender$.displayName, [zap.id]);
   const amountSats = Math.round(zap.amount / 1000); // Convert msats to sats
 
   return (
@@ -39,9 +39,9 @@ function ZapItem({ zap }: { zap: Zap }) {
 
 /** Component to render a single note with author info */
 function NoteItem({ note }: { note: Note }) {
-  const author = useObservableMemo(() => note.author$, [note.id]);
-  const replies = useObservableMemo(() => note.replies$, [note.id]);
-  const zaps = useObservableMemo(() => note.zaps$, [note.id]);
+  const author = use$(() => note.author$, [note.id]);
+  const replies = use$(() => note.replies$, [note.id]);
+  const zaps = use$(() => note.zaps$, [note.id]);
 
   return (
     <div className="bg-base-100 mb-2">
@@ -126,16 +126,16 @@ export default function ThreadExample() {
   }, [neventInput]);
 
   // Load the event and cast it to a note
-  const note = useObservableMemo(() => {
+  const note = use$(() => {
     if (!eventPointer) return undefined;
     return eventStore.event(eventPointer).pipe(castEvent(Note));
   }, [eventPointer?.id, eventPointer?.relays?.join("|")]);
 
   /** Resolve the authors inboxes for loading events */
-  const inboxes = useObservableMemo(() => note?.author$.inboxes$, [note]);
+  const inboxes = use$(() => note?.author$.inboxes$, [note]);
 
   // Load all kind 1 and 9735 events that reference the event
-  useObservableMemo(() => {
+  use$(() => {
     if (!eventPointer) return;
 
     // Request kind 1 events that reference this event

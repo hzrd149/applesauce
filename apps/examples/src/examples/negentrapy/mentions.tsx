@@ -1,7 +1,7 @@
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { useMemo, useState } from "react";
@@ -40,7 +40,7 @@ const mailboxes$ = pubkey$.pipe(
 // Component for displaying a relay badge with NIP-77 support indication
 function RelayBadge({ relay }: { relay: string }) {
   const relayInstance = useMemo(() => pool.relay(relay), [relay]);
-  const supported = useObservableState(relayInstance.supported$);
+  const supported = use$(relayInstance.supported$);
   const supportsNIP77 = supported?.includes(77) || false;
 
   // Get hostname for display
@@ -75,7 +75,7 @@ function MentionEvent({ event }: { event: NostrEvent }) {
   const seenRelays = useMemo(() => getSeenRelays(event), [event]);
 
   // Try to load the profile
-  const profile = useObservableMemo(
+  const profile = use$(
     () => eventStore.profile({ pubkey: event.pubkey, relays: seenRelays && Array.from(seenRelays) }),
     [event.pubkey, seenRelays?.size],
   );
@@ -106,7 +106,7 @@ function MentionEvent({ event }: { event: NostrEvent }) {
 // Component for displaying synced mentions
 function SyncedMentions({ pubkey, active, since }: { pubkey: string | null; active: boolean; since: number }) {
   // Get mentions from the event store
-  const mentions = useObservableMemo(() => {
+  const mentions = use$(() => {
     if (!pubkey) return of([]);
 
     return eventStore
@@ -162,13 +162,13 @@ export default function MentionsExample() {
   ];
 
   const pubkey = useObservableEagerState(pubkey$);
-  const mailboxes = useObservableState(mailboxes$);
+  const mailboxes = use$(mailboxes$);
   const [timeFilter, setTimeFilter] = useState(TIME_FILTERS[1]); // Default to "Last day"
 
   const since = useMemo(() => unixNow() - timeFilter.hours * 60 * 60, [timeFilter]);
 
   // Run the sync when its active
-  useObservableMemo(() => {
+  use$(() => {
     if (!pubkey || !mailboxes?.inboxes || mailboxes.inboxes.length === 0) return NEVER;
 
     const filter: Filter = {

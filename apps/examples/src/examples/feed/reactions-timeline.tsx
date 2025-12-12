@@ -10,7 +10,7 @@ import {
   ProfileContent,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
@@ -47,7 +47,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 /** A component for rendering user avatars */
@@ -77,7 +77,7 @@ function ReactionEvent({ event }: { event: NostrEvent }) {
     return mergeRelaySets(getSeenRelays(event), pointer?.relays);
   }, [event, pointer]);
 
-  const reactedTo = useObservableMemo(
+  const reactedTo = use$(
     () => pointer && eventStore.event(addRelayHintsToPointer(pointer, getSeenRelays(event))),
     [pointer?.id],
   );
@@ -135,7 +135,7 @@ function ReactionEvent({ event }: { event: NostrEvent }) {
 export default function ReactionsTimeline() {
   const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
 
-  const reactions = useObservableMemo(
+  const reactions = use$(
     () =>
       pool
         .relay(relay)

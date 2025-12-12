@@ -1,7 +1,7 @@
 import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
-import { ComponentMap, useObservableEagerState, useObservableMemo, useRenderedContent } from "applesauce-react/hooks";
+import { ComponentMap, useObservableEagerState, use$, useRenderedContent } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -120,7 +120,7 @@ export default function AlgorithmicRelayFeed() {
   }, [relay, needsAuth, authenticated]);
 
   // Create a timeline observable using scan operator to preserve order
-  const events = useObservableMemo(
+  const events = use$(
     () =>
       pool
         .relay(relay)

@@ -2,7 +2,7 @@ import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, ProfileContent } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Vertex } from "applesauce-extra";
 import { ExtensionSigner } from "applesauce-signers";
@@ -31,7 +31,7 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return useObservableMemo(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
 }
 
 function ProfileListItem({ user }: { user: ProfilePointer }) {
@@ -270,8 +270,8 @@ function SearchView({ signer }: { signer: ExtensionSigner }) {
 }
 
 export default function VertexSearch() {
-  const signer = useObservableState(signer$);
-  const pubkey = useObservableState(pubkey$);
+  const signer = use$(signer$);
+  const pubkey = use$(pubkey$);
 
   const handleLogin = async (newSigner: ExtensionSigner, newPubkey: string) => {
     signer$.next(newSigner);

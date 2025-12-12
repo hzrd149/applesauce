@@ -1,5 +1,5 @@
 import { hexToBytes } from "@noble/hashes/utils";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import { parseWalletConnectURI, supportsMethod, Transaction } from "applesauce-wallet-connect/helpers";
@@ -182,7 +182,7 @@ export default function TransactionsExample() {
   }, [parsed]);
 
   // Get wallet capabilities to check if list_transactions is supported
-  const support = useObservableMemo(() => wallet?.support$, [wallet]);
+  const support = use$(() => wallet?.support$, [wallet]);
 
   // Fetch transactions
   const fetchTransactions = useCallback(

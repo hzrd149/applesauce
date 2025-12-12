@@ -4,7 +4,7 @@ import { EventFactory } from "applesauce-core";
 import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-common/helpers";
 import { HighlightBlueprint } from "applesauce-common/blueprints";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { kinds, nip19, NostrEvent } from "nostr-tools";
@@ -397,7 +397,7 @@ export default function ArticleHighlighter() {
   }, [naddr]);
 
   // Load article using address pointer
-  const article = useObservableMemo(() => {
+  const article = use$(() => {
     if (!addressPointer) return of(null);
 
     return eventStore

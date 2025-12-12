@@ -1,6 +1,6 @@
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
-import { useObservableEagerState, useObservableMemo, useObservableState } from "applesauce-react/hooks";
+import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
 import { decode, EventPointer, neventEncode } from "nostr-tools/nip19";
@@ -132,12 +132,12 @@ function EventSelector({
 // Component for displaying a single relay's status
 function RelayStatusRow({ relay }: { relay: string }) {
   const relayInstance = useMemo(() => pool.relay(relay), [relay]);
-  const connected = useObservableMemo(() => relayInstance.connected$, [relayInstance]);
-  const supported = useObservableState(relayInstance.supported$);
+  const connected = use$(() => relayInstance.connected$, [relayInstance]);
+  const supported = use$(relayInstance.supported$);
   const supportsNIP77 = supported?.includes(77) || false;
 
   // Create observable to count number of reactions received from the relay
-  const received = useObservableMemo(
+  const received = use$(
     () =>
       eventStore
         .timeline({ kinds: [kinds.Reaction] })
@@ -216,7 +216,7 @@ function ReactionEvent({ event }: { event: NostrEvent }) {
   const seenRelays = useMemo(() => getSeenRelays(event), [event]);
 
   // Try to load the profile from those relays
-  const profile = useObservableMemo(
+  const profile = use$(
     () => eventStore.profile({ pubkey: event.pubkey, relays: seenRelays && Array.from(seenRelays) }),
     [event.pubkey, seenRelays?.size],
   );
@@ -248,7 +248,7 @@ function ReactionEvent({ event }: { event: NostrEvent }) {
 // Component for displaying synced events
 function SyncedReactions({ pointer, active }: { pointer: EventPointer | null; active: boolean }) {
   // Get reactions from the event store
-  const reactions = useObservableMemo(() => {
+  const reactions = use$(() => {
     if (!pointer) return of([]);
 
     return eventStore
@@ -298,7 +298,7 @@ export default function PoolSyncReactions() {
   const relays = useObservableEagerState(relays$);
 
   // Run the sync when its active
-  useObservableMemo(() => {
+  use$(() => {
     if (!pointer || relays.length === 0) return NEVER;
 
     const filter: Filter = {
