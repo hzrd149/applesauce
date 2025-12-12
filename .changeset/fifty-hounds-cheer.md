@@ -2,4 +2,4 @@
 "applesauce-common": minor
 ---
 
-Add `castNote`, `castProfile`, and `castZap` methods for casts
+Add basic cast system with `Note`, `Profile`, `Zap`, and `Comment` for casting events to classes
