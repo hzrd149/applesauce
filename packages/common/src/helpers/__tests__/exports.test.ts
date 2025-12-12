@@ -286,6 +286,7 @@ describe("exports", () => {
         "isValidRelayDiscovery",
         "isValidRelayMonitorAnnouncement",
         "isValidShare",
+        "isValidStreamChatMessage",
         "isValidTorrent",
         "isValidZap",
         "lockGiftWrap",

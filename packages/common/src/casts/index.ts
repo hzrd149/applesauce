@@ -4,3 +4,4 @@ export * from "./profile.js";
 export * from "./zap.js";
 export * from "./comment.js";
 export * from "./mailboxes.js";
+export * from "./stream.js";

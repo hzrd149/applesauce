@@ -133,16 +133,6 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
         console.error("[applesauce-core] Error handling expired notification:", error);
       });
     });
-
-    // when events are added to the database, add the symbol
-    this.insert$.subscribe((event) => {
-      Reflect.set(event, EventStoreSymbol, this);
-    });
-
-    // when events are removed from the database, remove the symbol
-    this.remove$.subscribe((event) => {
-      Reflect.deleteProperty(event, EventStoreSymbol);
-    });
   }
 
   /** A method to add all events to memory to ensure there is only ever a single instance of an event */
@@ -254,6 +244,9 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     // attach relay this event was from
     if (fromRelay) addSeenRelay(inserted, fromRelay);
 
+    // Set the event store on the event
+    Reflect.set(inserted, EventStoreSymbol, this);
+
     // Emit insert$ signal
     if (inserted === event) this.insert$.next(inserted);
 
@@ -285,6 +278,9 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     // Remove from expiration manager
     this.expiration.forget(eventId);
 
+    // Remove the event store from the event
+    if (instance) Reflect.deleteProperty(instance, EventStoreSymbol);
+
     // Remove from memory if available
     if (this.memory) this.memory.remove(event);
 
@@ -292,9 +288,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     const removed = await this.database.remove(event);
 
     // If the event was removed, notify the subscriptions
-    if (removed && instance) {
-      this.remove$.next(instance);
-    }
+    if (removed && instance) this.remove$.next(instance);
 
     return removed;
   }

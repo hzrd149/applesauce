@@ -12,6 +12,8 @@ describe("exports", () => {
         "Mailboxes",
         "Note",
         "Profile",
+        "Stream",
+        "StreamChatMessage",
         "Zap",
         "cast",
       ]

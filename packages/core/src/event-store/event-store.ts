@@ -128,16 +128,6 @@ export class EventStore extends EventModels implements IEventStore {
 
     // Listen to expired events and remove them from the store
     this.expiration.expired$.subscribe(this.handleExpiredNotification.bind(this));
-
-    // when events are added to the database, add the symbol
-    this.insert$.subscribe((event) => {
-      Reflect.set(event, EventStoreSymbol, this);
-    });
-
-    // when events are removed from the database, remove the symbol
-    this.remove$.subscribe((event) => {
-      Reflect.deleteProperty(event, EventStoreSymbol);
-    });
   }
 
   /** A method to add all events to memory to ensure there is only ever a single instance of an event */
@@ -251,6 +241,9 @@ export class EventStore extends EventModels implements IEventStore {
     // attach relay this event was from
     if (fromRelay) addSeenRelay(inserted, fromRelay);
 
+    // Set the event store on the event
+    Reflect.set(inserted, EventStoreSymbol, this);
+
     // Emit insert$ signal
     if (inserted === event) this.insert$.next(inserted);
 
@@ -282,6 +275,9 @@ export class EventStore extends EventModels implements IEventStore {
     // Remove from expiration manager
     this.expiration.forget(eventId);
 
+    // Remove the event store from the event
+    if (instance) Reflect.deleteProperty(instance, EventStoreSymbol);
+
     // Remove from memory if it's not the same as the database
     if (this.memory !== this.database) this.memory.remove(event);
 
@@ -289,9 +285,7 @@ export class EventStore extends EventModels implements IEventStore {
     const removed = this.database.remove(event);
 
     // If the event was removed, notify the subscriptions
-    if (removed && instance) {
-      this.remove$.next(instance);
-    }
+    if (removed && instance) this.remove$.next(instance);
 
     return removed;
   }
