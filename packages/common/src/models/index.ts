@@ -15,5 +15,8 @@ export * from "./gift-wrap.js";
 export * from "./relays.js";
 export * from "./stream.js";
 
+// Export all models from core
+export * from "applesauce-core/models";
+
 // Register the common models with the event store
 import "../register.js";
