@@ -1,35 +1,45 @@
+import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { getDisplayName, getProfileContent, getProfilePicture, isValidProfile } from "applesauce-core/helpers/profile";
-import { map } from "rxjs";
-import { ref } from "./common.js";
-import { createCast, InferCast } from "./index.js";
+import { castEvent } from "../observable/cast-event.js";
+import { BaseCast, ref } from "./common.js";
+import { Mailboxes } from "./mailboxes.js";
+
+// NOTE: extending BaseCast since there is no need for author$ or comments$
 
 /** Cast a kind 0 event to a Profile */
-export const castProfile = createCast(isValidProfile, {
+export class Profile extends BaseCast<0> {
+  constructor(event: NostrEvent) {
+    if (!isValidProfile(event)) throw new Error("Invalid profile");
+    super(event);
+  }
+  get metadata() {
+    return getProfileContent(this.event);
+  }
   get name() {
-    return getProfileContent(this)?.name;
-  },
+    return this.metadata.name;
+  }
   get displayName() {
-    return getDisplayName(this);
-  },
+    return getDisplayName(this.metadata);
+  }
   get about() {
-    return getProfileContent(this)?.about;
-  },
+    return this.metadata.about;
+  }
   get picture() {
-    return getProfilePicture(this);
-  },
+    return getProfilePicture(this.metadata);
+  }
 
   get contacts$() {
     return ref(this, "contacts$", (store) => store.contacts(this.pubkey));
-  },
+  }
   get mailboxes$() {
-    return ref(this, "mailboxes$", (store) => store.mailboxes(this.pubkey));
-  },
+    return ref(this, "mailboxes$", (store) =>
+      store.replaceable({ kind: kinds.RelayList, pubkey: this.pubkey }).pipe(castEvent(Mailboxes)),
+    );
+  }
   get outboxes$() {
-    return this.mailboxes$.pipe(map((mailboxes) => mailboxes?.outboxes));
-  },
+    return this.mailboxes$.outboxes;
+  }
   get inboxes$() {
-    return this.mailboxes$.pipe(map((mailboxes) => mailboxes?.inboxes));
-  },
-});
-
-export type Profile = InferCast<typeof castProfile>;
+    return this.mailboxes$.outboxes;
+  }
+}

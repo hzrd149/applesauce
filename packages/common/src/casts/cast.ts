@@ -1,28 +1,23 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
 
-/** A type used to cast a nostr event to a specific prototype */
-export type Cast<Event extends NostrEvent = NostrEvent, Proto extends object = object> = (
-  event: NostrEvent,
-) => Event & Proto;
+/** A symbol used to store all the casts for an event */
+export const CASTS_SYMBOL = Symbol.for("casts");
 
-/** Creates a new cast function for a specific event kind */
-export function createCast<Event extends NostrEvent = NostrEvent, Proto extends object = object>(
-  verify: (event: NostrEvent) => event is Event,
-  prototype: Proto & ThisType<Proto & Event>,
-): Cast<Event, Proto> {
-  return (event) => {
-    // If the event is already cast, return it
-    if (Object.getPrototypeOf(event) === prototype) return event as Event & Proto;
-    // If the event has been cast already, throw an error
-    if (Object.getPrototypeOf(event) !== Object.prototype) throw new Error("Event already cast");
-    // If the event is not valid, throw an error
-    if (!verify(event)) throw new Error("Invalid event");
-    // Set the prototype of the event to the prototype
-    Object.setPrototypeOf(event, prototype);
-    // Return the event as the casted event
-    return event as Event & Proto;
-  };
+/** A class that can be used to cast a Nostr event */
+export type CastClass<T extends NostrEvent> = new (event: NostrEvent) => T;
+
+/** Cast a Nostr event to a specific class */
+export function cast<T extends NostrEvent>(event: NostrEvent, cls: CastClass<T>): T {
+  const casts: Map<CastClass<T>, T> = Reflect.get(event, CASTS_SYMBOL);
+
+  // If the event has already been cast to this class, return the existing cast
+  const existing = casts?.get(cls);
+  if (existing) return existing;
+
+  // Create a new instance of the class
+  const cast = new cls(event);
+  if (!casts) Reflect.set(event, CASTS_SYMBOL, new Map([[cls, cast]]));
+  else casts.set(cls, cast);
+
+  return cast;
 }
-
-/** Helper type for inferring the type of a cast function */
-export type InferCast<C extends Cast> = ReturnType<C>;

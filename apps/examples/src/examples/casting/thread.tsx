@@ -1,4 +1,4 @@
-import { castNote, Note, Zap } from "applesauce-common/casts";
+import { Note, Zap } from "applesauce-common/casts";
 import { castEvent } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core";
 import { kinds, relaySet } from "applesauce-core/helpers";
@@ -128,7 +128,7 @@ export default function ThreadExample() {
   // Load the event and cast it to a note
   const note = useObservableMemo(() => {
     if (!eventPointer) return undefined;
-    return eventStore.event(eventPointer).pipe(castEvent(castNote));
+    return eventStore.event(eventPointer).pipe(castEvent(Note));
   }, [eventPointer?.id, eventPointer?.relays?.join("|")]);
 
   /** Resolve the authors inboxes for loading events */

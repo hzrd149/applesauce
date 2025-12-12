@@ -1,4 +1,4 @@
-import { Observable, isObservable, map, of, switchMap } from "rxjs";
+import { Observable, firstValueFrom, isObservable, lastValueFrom, map, of, switchMap, timeout } from "rxjs";
 
 /**
  * A symbol used to mark an Observable as chainable
@@ -37,8 +37,14 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
       if (typeof prop === "string") {
         let prop$: Observable<any>;
 
+        // Extra observalbe helpers to make it easier to work with observables
+        if (prop === "$first") {
+          return (wait: number = 30_000) => firstValueFrom(target.pipe(timeout({ first: wait })));
+        } else if (prop === "$last") {
+          return (wait: number = 30_000) => lastValueFrom(target.pipe(timeout({ first: wait })));
+        }
         // Handle property access for properties ending with $
-        if (prop.endsWith("$")) {
+        else if (prop.endsWith("$")) {
           // Use switchMap to chain to the nested observable
           prop$ = target.pipe(
             switchMap((resolved) => {
@@ -57,8 +63,6 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
             // Access the property on the value
             map((resolved) => (resolved as any)[prop]),
           );
-          // Make it chainable so you can chain further
-          return chainable(prop$) as any;
         }
 
         // Make the chained observable chainable too
@@ -91,10 +95,19 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
  * const inboxes = useObservableMemo(() => inboxes$, [note]);
  * ```
  */
-export type ChainableObservable<T> = Observable<T> & {
-  [K in keyof T as K extends string ? K : never]: K extends `${infer _}$`
-    ? T[K] extends Observable<infer U>
-      ? ChainableObservable<U>
-      : never
-    : ChainableObservable<T[K]>;
-};
+export type ChainableObservable<T> = Observable<T> &
+  Omit<
+    {
+      [K in keyof T as K extends string ? K : never]: K extends `${infer _}$`
+        ? T[K] extends Observable<infer U>
+          ? ChainableObservable<U>
+          : never
+        : ChainableObservable<T[K]>;
+    },
+    "$first" | "$last"
+  > & {
+    /** Returns a promise that resolves with the first value or rejects with a timeout error */
+    $first(first?: number): Promise<T>;
+    /** Returns a promise that resolves with the last value or rejects with a timeout error */
+    $last(max?: number): Promise<T>;
+  };

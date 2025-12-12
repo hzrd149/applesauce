@@ -1,18 +1,16 @@
 import { NostrEvent } from "applesauce-core/helpers";
+import { defined } from "applesauce-core/observable";
 import { map, OperatorFunction } from "rxjs";
-import { Cast, InferCast } from "../casts/index.js";
-import { defined } from "applesauce-core";
+import { cast, CastClass } from "../casts/index.js";
 
 /** Casts an event to a specific type */
-export function castEvent<Event extends NostrEvent, Proto extends object>(
-  cast: Cast<Event, Proto>,
-): OperatorFunction<NostrEvent | undefined, InferCast<typeof cast>> {
+export function castEvent<T extends NostrEvent>(cls: CastClass<T>): OperatorFunction<NostrEvent | undefined, T> {
   return (source) =>
     source.pipe(
       map((event) => {
         if (!event) return undefined;
         try {
-          return cast(event);
+          return cast(event, cls);
         } catch (err) {
           return undefined;
         }
@@ -22,16 +20,14 @@ export function castEvent<Event extends NostrEvent, Proto extends object>(
 }
 
 /** Casts and array of events to an array of casted events */
-export function castEvents<Events extends NostrEvent, Proto extends object>(
-  cast: Cast<Events, Proto>,
-): OperatorFunction<NostrEvent[], InferCast<Cast<Events, Proto>>[]> {
+export function castEvents<T extends NostrEvent>(cls: CastClass<T>): OperatorFunction<NostrEvent[], T[]> {
   return (source) =>
     source.pipe(
       map((events) => {
-        const castedEvents: InferCast<Cast<Events, Proto>>[] = [];
+        const castedEvents: T[] = [];
         for (const event of events) {
           try {
-            const casted = cast(event);
+            const casted = cast(event, cls);
             castedEvents.push(casted);
           } catch {}
         }
