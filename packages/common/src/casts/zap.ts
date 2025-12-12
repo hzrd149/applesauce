@@ -9,17 +9,17 @@ import {
   getZapRecipient,
   getZapRequest,
   getZapSender,
-  getZapSplits,
   isValidZap,
+  ZapEvent,
 } from "../helpers/zap.js";
 import { castEvent } from "../observable/cast-event.js";
-import { BaseCast, ref } from "./common.js";
+import { Cast } from "./cast.js";
 import { Profile } from "./profile.js";
 
 // NOTE: extending BaseCast since there is no need for author$ or comments$
 
 /** Cast a kind 9735 event to a Zap */
-export class Zap extends BaseCast<kinds.Zap> {
+export class Zap extends Cast<ZapEvent> {
   constructor(event: NostrEvent) {
     if (!isValidZap(event)) throw new Error("Invalid zap");
     super(event);
@@ -48,25 +48,22 @@ export class Zap extends BaseCast<kinds.Zap> {
   get eventPointer() {
     return getZapEventPointer(this.event);
   }
-  get splits() {
-    return getZapSplits(this.event);
-  }
 
   /** An observable of the zap sender */
   get sender$() {
-    return ref(this, "sender$", (store) =>
+    return this.$$ref("sender$", (store) =>
       store.replaceable({ kind: kinds.Metadata, pubkey: this.sender }).pipe(castEvent(Profile)),
     );
   }
   get recipient$() {
-    return ref(this, "recipient$", (store) =>
+    return this.$$ref("recipient$", (store) =>
       store.replaceable({ kind: kinds.Metadata, pubkey: this.recipient }).pipe(castEvent(Profile)),
     );
   }
 
   /** An observable of the zapped event */
   get event$() {
-    return ref(this, "event$", (store) => {
+    return this.$$ref("event$", (store) => {
       if (this.addressPointer) return store.replaceable(this.addressPointer);
       if (this.eventPointer) return store.event(this.eventPointer.id);
       return of(undefined);

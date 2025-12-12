@@ -1,10 +1,10 @@
 import { NostrEvent } from "applesauce-core/helpers";
 import { defined } from "applesauce-core/observable";
 import { map, OperatorFunction } from "rxjs";
-import { cast, CastClass } from "../casts/index.js";
+import { Cast, cast, CastConstructor } from "../casts/index.js";
 
 /** Casts an event to a specific type */
-export function castEvent<T extends NostrEvent>(cls: CastClass<T>): OperatorFunction<NostrEvent | undefined, T> {
+export function castEvent<C extends Cast>(cls: CastConstructor<C>): OperatorFunction<NostrEvent | undefined, C> {
   return (source) =>
     source.pipe(
       map((event) => {
@@ -20,11 +20,11 @@ export function castEvent<T extends NostrEvent>(cls: CastClass<T>): OperatorFunc
 }
 
 /** Casts and array of events to an array of casted events */
-export function castEvents<T extends NostrEvent>(cls: CastClass<T>): OperatorFunction<NostrEvent[], T[]> {
+export function castEvents<C extends Cast>(cls: CastConstructor<C>): OperatorFunction<NostrEvent[], C[]> {
   return (source) =>
     source.pipe(
       map((events) => {
-        const castedEvents: T[] = [];
+        const castedEvents: C[] = [];
         for (const event of events) {
           try {
             const casted = cast(event, cls);

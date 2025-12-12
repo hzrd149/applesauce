@@ -1,13 +1,13 @@
-import { kinds, NostrEvent } from "applesauce-core/helpers";
+import { kinds, NostrEvent, ProfileEvent } from "applesauce-core/helpers";
 import { getDisplayName, getProfileContent, getProfilePicture, isValidProfile } from "applesauce-core/helpers/profile";
 import { castEvent } from "../observable/cast-event.js";
-import { BaseCast, ref } from "./common.js";
 import { Mailboxes } from "./mailboxes.js";
+import { Cast } from "./cast.js";
 
 // NOTE: extending BaseCast since there is no need for author$ or comments$
 
 /** Cast a kind 0 event to a Profile */
-export class Profile extends BaseCast<0> {
+export class Profile extends Cast<ProfileEvent> {
   constructor(event: NostrEvent) {
     if (!isValidProfile(event)) throw new Error("Invalid profile");
     super(event);
@@ -29,11 +29,11 @@ export class Profile extends BaseCast<0> {
   }
 
   get contacts$() {
-    return ref(this, "contacts$", (store) => store.contacts(this.pubkey));
+    return this.$$ref("contacts$", (store) => store.contacts(this.event.pubkey));
   }
   get mailboxes$() {
-    return ref(this, "mailboxes$", (store) =>
-      store.replaceable({ kind: kinds.RelayList, pubkey: this.pubkey }).pipe(castEvent(Mailboxes)),
+    return this.$$ref("mailboxes$", (store) =>
+      store.replaceable({ kind: kinds.RelayList, pubkey: this.event.pubkey }).pipe(castEvent(Mailboxes)),
     );
   }
   get outboxes$() {

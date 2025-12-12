@@ -4,6 +4,7 @@ import { Observable, firstValueFrom, isObservable, lastValueFrom, map, of, switc
  * A symbol used to mark an Observable as chainable
  */
 const CHAINABLE_SYMBOL = Symbol.for("chainable-observable");
+const CHAINABLE_CACHE_SYMBOL = Symbol.for("chainable-cache");
 
 /**
  * Wraps an Observable in a Proxy that enables property chaining.
@@ -25,6 +26,9 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
   // Create a Proxy that intercepts property access
   const proxy = new Proxy(observable, {
     get(target, prop) {
+      const cache: Record<string, ChainableObservable<any>> = (observable as any)[CHAINABLE_CACHE_SYMBOL] ||
+      ((observable as any)[CHAINABLE_CACHE_SYMBOL] = {});
+
       // Forward all Observable methods and properties
       if (prop in target || typeof prop === "symbol") {
         const value = (target as any)[prop];
@@ -35,6 +39,11 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
       }
 
       if (typeof prop === "string") {
+        // Return cached observable if it exists
+        const cached = cache[prop];
+        if (cached) return cached;
+
+        // Otherwise, create a new observable
         let prop$: Observable<any>;
 
         // Extra observalbe helpers to make it easier to work with observables
@@ -66,7 +75,9 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
         }
 
         // Make the chained observable chainable too
-        return chainable(prop$) as any;
+        const observable = chainable(prop$) as any;
+        cache[prop] = observable;
+        return observable;
       }
 
       throw new Error(`Unable to access property "${prop}" on chainable observable`);
