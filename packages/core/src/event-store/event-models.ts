@@ -1,28 +1,19 @@
 import hash_sum from "hash-sum";
-import { Observable, ReplaySubject, finalize, share, timer } from "rxjs";
+import { finalize, Observable, ReplaySubject, share, timer } from "rxjs";
 import { NostrEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
-import { AddressPointer, AddressPointerWithoutD, EventPointer, ProfilePointer } from "../helpers/pointers.js";
-import { ProfileContent } from "../helpers/profile.js";
+import {
+  AddressPointer,
+  AddressPointerWithoutD,
+  EventPointer,
+  isEventPointer,
+  ProfilePointer,
+} from "../helpers/pointers.js";
 import { EventModel, FiltersModel, ReplaceableModel, TimelineModel } from "../models/base.js";
 import { ContactsModel } from "../models/contacts.js";
 import { MailboxesModel } from "../models/mailboxes.js";
 import { ProfileModel } from "../models/profile.js";
-import { IAsyncEventStore, IEventStore, ModelConstructor } from "./interface.js";
-
-/**
- * Core helpful subscriptions interface.
- * Contains only methods that use models from the core package.
- * Other packages (like applesauce-common) can extend this interface via module augmentation.
- */
-export interface IEventStoreModels {
-  /** Subscribe to a users profile */
-  profile(user: string | ProfilePointer): Observable<ProfileContent | undefined>;
-  /** Subscribe to a users contacts */
-  contacts(user: string | ProfilePointer): Observable<ProfilePointer[]>;
-  /** Subscribe to a users mailboxes */
-  mailboxes(user: string | ProfilePointer): Observable<{ inboxes: string[]; outboxes: string[] } | undefined>;
-}
+import { IAsyncEventStore, IEventStore, IEventSubscriptions, ModelConstructor } from "./interface.js";
 
 /**
  * Base class that provides model functionality for both sync and async event stores.
@@ -48,7 +39,7 @@ export interface IEventStoreModels {
  */
 export class EventModels<
   TStore extends IEventStore | IAsyncEventStore = IEventStore | IAsyncEventStore,
-> implements IEventStoreModels {
+> implements IEventSubscriptions {
   /** A directory of all active models */
   models = new Map<ModelConstructor<any, any[], TStore>, Map<string, Observable<any>>>();
 
@@ -100,15 +91,14 @@ export class EventModels<
    * @param [onlyNew=false] Only subscribe to new events
    */
   filters(filters: Filter | Filter[], onlyNew = false): Observable<NostrEvent> {
+    if (!Array.isArray(filters)) filters = [filters];
     return this.model(FiltersModel, filters, onlyNew);
   }
 
-  // Helper methods for creating models
-
-  /** Creates a {@link EventModel} */
-  event(pointer: string | EventPointer): Observable<NostrEvent | undefined> {
-    if (typeof pointer === "string") pointer = { id: pointer };
-    return this.model(EventModel, pointer);
+  /** Subscribe to an event by pointer */
+  event(pointer: string | EventPointer | AddressPointer | AddressPointerWithoutD): Observable<NostrEvent | undefined> {
+    if (typeof pointer === "string" || isEventPointer(pointer)) return this.model(EventModel, pointer);
+    else return this.replaceable(pointer);
   }
 
   /** Subscribe to a replaceable event by pointer */
@@ -132,7 +122,7 @@ export class EventModels<
 
   /** Subscribe to an addressable event by pointer */
   addressable(pointer: AddressPointer): Observable<NostrEvent | undefined> {
-    return this.model(ReplaceableModel, pointer);
+    return this.replaceable(pointer);
   }
 
   /** Creates a {@link TimelineModel} */

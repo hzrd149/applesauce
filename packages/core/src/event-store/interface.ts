@@ -1,8 +1,8 @@
 import { Observable } from "rxjs";
 import { NostrEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
-import { AddressPointer, AddressPointerWithoutD, EventPointer } from "../helpers/pointers.js";
-import { IEventStoreModels } from "./event-models.js";
+import { AddressPointer, AddressPointerWithoutD, EventPointer, ProfilePointer } from "../helpers/pointers.js";
+import { ProfileContent } from "../helpers/profile.js";
 
 /** The read interface for an event store */
 export interface IEventStoreRead {
@@ -42,6 +42,22 @@ export interface IAsyncEventStoreRead {
   getByFilters(filters: Filter | Filter[]): Promise<NostrEvent[]>;
   /** Get a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): Promise<NostrEvent[]>;
+}
+
+/** An extended read interface for an event store that supports pointers */
+export interface IEventStoreReadAdvanced extends Omit<IEventStoreRead, "hasEvent" | "getEvent"> {
+  /** Check if the event store has an event with id */
+  hasEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): boolean;
+  /** Get an event by id */
+  getEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): NostrEvent | undefined;
+}
+
+/** An extended async read interface for an event store that supports pointers */
+export interface IAsyncEventStoreReadAdvanced extends Omit<IAsyncEventStoreRead, "hasEvent" | "getEvent"> {
+  /** Check if the event store has an event with id */
+  hasEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): Promise<boolean>;
+  /** Get an event by id */
+  getEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): Promise<NostrEvent | undefined>;
 }
 
 /** The stream interface for an event store */
@@ -92,8 +108,8 @@ export interface IEventClaims {
 
 /** An event store that can be subscribed to */
 export interface IEventSubscriptions {
-  /** Subscribe to an event by id */
-  event(id: string | EventPointer): Observable<NostrEvent | undefined>;
+  /** Subscribe to an event by id or pointer */
+  event(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): Observable<NostrEvent | undefined>;
   /** Subscribe to a replaceable event by pointer */
   replaceable(pointer: AddressPointerWithoutD): Observable<NostrEvent | undefined>;
   /** Subscribe to a replaceable event with legacy arguments */
@@ -104,6 +120,13 @@ export interface IEventSubscriptions {
   filters(filters: Filter | Filter[], onlyNew?: boolean): Observable<NostrEvent>;
   /** Subscribe to a sorted timeline of events that match the filters */
   timeline(filters: Filter | Filter[], onlyNew?: boolean): Observable<NostrEvent[]>;
+
+  /** Subscribe to a users profile */
+  profile(user: string | ProfilePointer): Observable<ProfileContent | undefined>;
+  /** Subscribe to a users contacts */
+  contacts(user: string | ProfilePointer): Observable<ProfilePointer[]>;
+  /** Subscribe to a users mailboxes */
+  mailboxes(user: string | ProfilePointer): Observable<{ inboxes: string[]; outboxes: string[] } | undefined>;
 }
 
 /** Methods for creating common models */
@@ -229,23 +252,21 @@ export interface IMissingEventLoader {
 /** Generic async event store interface */
 export interface IAsyncEventStore
   extends
-    IAsyncEventStoreRead,
+    IAsyncEventStoreReadAdvanced,
     IEventStoreStreams,
     IEventSubscriptions,
     IAsyncEventStoreActions,
     IEventModelMixin<IAsyncEventStore>,
     IEventClaims,
-    IMissingEventLoader,
-    IEventStoreModels {}
+    IMissingEventLoader {}
 
 /** Generic sync event store interface */
 export interface IEventStore
   extends
-    IEventStoreRead,
+    IEventStoreReadAdvanced,
     IEventStoreStreams,
     IEventSubscriptions,
     IEventStoreActions,
     IEventModelMixin<IEventStore>,
     IEventClaims,
-    IMissingEventLoader,
-    IEventStoreModels {}
+    IMissingEventLoader {}

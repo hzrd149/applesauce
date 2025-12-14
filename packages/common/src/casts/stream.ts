@@ -1,3 +1,4 @@
+import { isAudioURL, isStreamURL, isVideoURL } from "applesauce-core/helpers";
 import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "applesauce-core/helpers/pointers";
 import { of } from "rxjs";
@@ -25,20 +26,21 @@ import {
   StreamStatus,
 } from "../helpers/stream.js";
 import { ReactionsModel } from "../models/reactions.js";
+import { SharesModel } from "../models/shares.js";
 import { StreamChatMessagesModel } from "../models/stream.js";
 import { EventZapsModel } from "../models/zaps.js";
-import { castEvent, castEvents } from "../observable/cast-event.js";
-import { Cast } from "./cast.js";
-import { Profile } from "./profile.js";
+import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
+import { EventCast } from "./cast.js";
+import { Share } from "./share.js";
 import { Zap } from "./zap.js";
-import { isAudioURL, isStreamURL, isVideoURL } from "applesauce-core/helpers";
+import { castUser } from "./user.js";
 
 function isValidStream(event: NostrEvent): event is KnownEvent<kinds.LiveEvent> {
   return event.kind === kinds.LiveEvent;
 }
 
 /** Cast a kind 30311 event to a Stream (NIP-53) */
-export class Stream extends Cast<KnownEvent<kinds.LiveEvent>> {
+export class Stream extends EventCast<KnownEvent<kinds.LiveEvent>> {
   constructor(event: NostrEvent) {
     if (!isValidStream(event)) throw new Error("Invalid stream");
     super(event);
@@ -56,10 +58,10 @@ export class Stream extends Cast<KnownEvent<kinds.LiveEvent>> {
     return getStreamStatus(this.event);
   }
   get host() {
-    return getStreamHost(this.event);
+    return castUser(getStreamHost(this.event), this.store);
   }
   get participants() {
-    return getStreamParticipants(this.event);
+    return getStreamParticipants(this.event).map((p) => castUser(p, this.store));
   }
   get goalPointer(): EventPointer | undefined {
     return getStreamGoalPointer(this.event);
@@ -95,22 +97,18 @@ export class Stream extends Cast<KnownEvent<kinds.LiveEvent>> {
     return getStreamHashtags(this.event);
   }
 
-  /** An observable of the stream host profile */
-  get host$() {
-    return this.$$ref("host$", (store) =>
-      store.replaceable({ kind: kinds.Metadata, pubkey: this.host.pubkey }).pipe(castEvent(Profile)),
-    );
-  }
-
   /** An observable of all zaps on this stream */
   get zaps$() {
-    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castEvents(Zap)));
+    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap)));
+  }
+  get shares$() {
+    return this.$$ref("shares$", (store) => store.model(SharesModel, this.event).pipe(castTimelineStream(Share)));
   }
 
   /** An observable of all chat messages for this stream */
   get chat$() {
     return this.$$ref("chat$", (store) => store.model(StreamChatMessagesModel, this.event)).pipe(
-      castEvents(StreamChatMessage),
+      castTimelineStream(StreamChatMessage),
     );
   }
 
@@ -125,7 +123,7 @@ export class Stream extends Cast<KnownEvent<kinds.LiveEvent>> {
 }
 
 /** A cast for a stream chat message */
-export class StreamChatMessage extends Cast<StreamChatMessageEvent> {
+export class StreamChatMessage extends EventCast<StreamChatMessageEvent> {
   constructor(event: NostrEvent) {
     if (!isValidStreamChatMessage(event)) throw new Error("Invalid stream chat message");
     super(event);
@@ -135,16 +133,11 @@ export class StreamChatMessage extends Cast<StreamChatMessageEvent> {
     return getStreamChatMessageStream(this.event);
   }
 
-  get author$() {
-    return this.$$ref("author$", (store) =>
-      store.replaceable({ kind: kinds.Metadata, pubkey: this.event.pubkey }).pipe(castEvent(Profile)),
-    );
-  }
   get stream$() {
-    return this.$$ref("stream$", (store) => store.replaceable(this.stream).pipe(castEvent(Stream)));
+    return this.$$ref("stream$", (store) => store.replaceable(this.stream).pipe(castEventStream(Stream)));
   }
   get zaps$() {
-    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castEvents(Zap)));
+    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap)));
   }
   get reactions$() {
     return this.$$ref("reactions$", (store) => store.model(ReactionsModel, this.event));

@@ -1,13 +1,9 @@
-import { kinds, NostrEvent, ProfileEvent } from "applesauce-core/helpers";
+import { NostrEvent, ProfileEvent } from "applesauce-core/helpers";
 import { getDisplayName, getProfileContent, getProfilePicture, isValidProfile } from "applesauce-core/helpers/profile";
-import { castEvent } from "../observable/cast-event.js";
-import { Mailboxes } from "./mailboxes.js";
-import { Cast } from "./cast.js";
-
-// NOTE: extending BaseCast since there is no need for author$ or comments$
+import { EventCast } from "./cast.js";
 
 /** Cast a kind 0 event to a Profile */
-export class Profile extends Cast<ProfileEvent> {
+export class Profile extends EventCast<ProfileEvent> {
   constructor(event: NostrEvent) {
     if (!isValidProfile(event)) throw new Error("Invalid profile");
     super(event);
@@ -27,19 +23,20 @@ export class Profile extends Cast<ProfileEvent> {
   get picture() {
     return getProfilePicture(this.metadata);
   }
+  get dnsIdentity() {
+    return this.metadata.nip05;
+  }
+  get website() {
+    return this.metadata.website;
+  }
+  get lud16() {
+    return this.metadata.lud16;
+  }
+  get lud06() {
+    return this.metadata.lud06;
+  }
 
-  get contacts$() {
-    return this.$$ref("contacts$", (store) => store.contacts(this.event.pubkey));
-  }
-  get mailboxes$() {
-    return this.$$ref("mailboxes$", (store) =>
-      store.replaceable({ kind: kinds.RelayList, pubkey: this.event.pubkey }).pipe(castEvent(Mailboxes)),
-    );
-  }
-  get outboxes$() {
-    return this.mailboxes$.outboxes;
-  }
-  get inboxes$() {
-    return this.mailboxes$.outboxes;
+  get lightningAddress() {
+    return this.metadata.lud16 || this.metadata.lud06;
   }
 }

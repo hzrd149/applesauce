@@ -1,6 +1,6 @@
 import { StreamChatMessage as StreamChatMessageBlueprint } from "applesauce-common/blueprints";
 import { Stream, StreamChatMessage } from "applesauce-common/casts";
-import { castEvents } from "applesauce-common/observable";
+import { castTimelineStream } from "applesauce-common/observable";
 import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
 import { buildCommonEventRelationFilters, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createZapsLoader } from "applesauce-loaders/loaders";
@@ -30,7 +30,7 @@ createEventLoaderForStore(eventStore, pool, {
 const zapLoader = createZapsLoader(pool, { eventStore });
 
 function StreamCard({ stream }: { stream: Stream }) {
-  const host = use$(() => stream.host$, [stream.id]);
+  const host = use$(() => stream.host.profile$, [stream.id]);
   const { title, summary, image, status, startTime, viewers } = stream;
 
   // Load zaps for the stream
@@ -110,20 +110,20 @@ function StreamGrid({ streams, onStreamSelect }: { streams: Stream[]; onStreamSe
 }
 
 function ChatMessage({ message }: { message: StreamChatMessage }) {
-  const author = use$(() => message.author$, [message.id]);
+  const profile = use$(() => message.author.profile$, [message.id]);
 
   return (
     <div className="chat chat-start">
       <div className="chat-image avatar">
         <div className="w-10 rounded-full">
           <img
-            alt={author?.displayName || message.pubkey}
-            src={author?.picture || `https://robohash.org/${message.pubkey}`}
+            alt={profile?.displayName || message.pubkey}
+            src={profile?.picture || `https://robohash.org/${message.pubkey}`}
           />
         </div>
       </div>
       <div className="chat-header">
-        {author?.displayName || message.pubkey}
+        {profile?.displayName || message.pubkey}
         <time className="text-xs opacity-50 ml-2">{new Date(message.created_at * 1000).toLocaleTimeString()}</time>
       </div>
       <div className="chat-bubble">{message.content}</div>
@@ -183,7 +183,7 @@ function ChatMessageForm({ stream }: { stream: Stream }) {
 }
 
 function StreamInfo({ stream }: { stream: Stream }) {
-  const host = use$(() => stream.host$, [stream.id]);
+  const host = use$(() => stream.host.profile$, [stream.id]);
   const title = stream.title || "Untitled Stream";
   const summary = stream.summary;
   const status = stream.status;
@@ -202,13 +202,13 @@ function StreamInfo({ stream }: { stream: Stream }) {
           <div className="w-12 rounded-full">
             <img
               src={host?.picture || `https://robohash.org/${stream.host.pubkey}`}
-              alt={host?.displayName || stream.host.pubkey}
+              alt={host?.displayName || stream.host.npub}
             />
           </div>
         </div>
         <div className="flex-1">
           <h2 className="font-bold text-xl">{title}</h2>
-          <p className="text-sm text-base-content/70">by {host?.displayName || stream.host.pubkey}</p>
+          <p className="text-sm text-base-content/70">by {host?.displayName || stream.host.npub}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={`badge ${statusColor}`}>{status}</div>
@@ -294,7 +294,7 @@ function StreamViewer({ stream, onBack }: { stream: Stream; onBack: () => void }
 }
 
 export default function StreamCastExample() {
-  const [relay, setRelay] = useState("wss://relay.damus.io");
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
   const [selectedStream, setSelectedStream] = useState<Stream | null>(null);
 
   // Subscribe to stream events
@@ -316,7 +316,7 @@ export default function StreamCastExample() {
   );
 
   // Get streams and cast them to Stream class
-  const streams = use$(() => eventStore.timeline({ kinds: [kinds.LiveEvent] }).pipe(castEvents(Stream)), []);
+  const streams = use$(() => eventStore.timeline({ kinds: [kinds.LiveEvent] }).pipe(castTimelineStream(Stream)), []);
 
   if (selectedStream) {
     return <StreamViewer stream={selectedStream} onBack={() => setSelectedStream(null)} />;

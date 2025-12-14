@@ -1,4 +1,4 @@
-import { kinds, NostrEvent } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers";
 import { of } from "rxjs";
 import {
   getZapAddressPointer,
@@ -12,23 +12,22 @@ import {
   isValidZap,
   ZapEvent,
 } from "../helpers/zap.js";
-import { castEvent } from "../observable/cast-event.js";
-import { Cast } from "./cast.js";
-import { Profile } from "./profile.js";
+import { EventCast } from "./cast.js";
+import { castUser } from "./user.js";
 
 // NOTE: extending BaseCast since there is no need for author$ or comments$
 
 /** Cast a kind 9735 event to a Zap */
-export class Zap extends Cast<ZapEvent> {
+export class Zap extends EventCast<ZapEvent> {
   constructor(event: NostrEvent) {
     if (!isValidZap(event)) throw new Error("Invalid zap");
     super(event);
   }
   get sender() {
-    return getZapSender(this.event);
+    return castUser(getZapSender(this.event), this.store);
   }
   get recipient() {
-    return getZapRecipient(this.event);
+    return castUser(getZapRecipient(this.event), this.store);
   }
   get payment() {
     return getZapPayment(this.event);
@@ -47,18 +46,6 @@ export class Zap extends Cast<ZapEvent> {
   }
   get eventPointer() {
     return getZapEventPointer(this.event);
-  }
-
-  /** An observable of the zap sender */
-  get sender$() {
-    return this.$$ref("sender$", (store) =>
-      store.replaceable({ kind: kinds.Metadata, pubkey: this.sender }).pipe(castEvent(Profile)),
-    );
-  }
-  get recipient$() {
-    return this.$$ref("recipient$", (store) =>
-      store.replaceable({ kind: kinds.Metadata, pubkey: this.recipient }).pipe(castEvent(Profile)),
-    );
   }
 
   /** An observable of the zapped event */

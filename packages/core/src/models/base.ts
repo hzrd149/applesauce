@@ -22,7 +22,7 @@ import {
   tap,
 } from "rxjs";
 
-import { IAsyncEventStore, IMissingEventLoader, IEventStore, Model } from "../event-store/interface.js";
+import { IAsyncEventStore, IEventStore, IMissingEventLoader, Model } from "../event-store/interface.js";
 import {
   getEventUID,
   getReplaceableIdentifier,

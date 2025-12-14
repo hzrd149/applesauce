@@ -1,5 +1,5 @@
 import { Note, Zap } from "applesauce-common/casts";
-import { castEvent } from "applesauce-common/observable";
+import { castEventStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core/event-store";
 import { kinds, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -20,18 +20,21 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Component to render a single zap */
 function ZapItem({ zap }: { zap: Zap }) {
-  const picture = use$(() => zap.sender$.picture, [zap.id]);
-  const displayName = use$(() => zap.sender$.displayName, [zap.id]);
+  const picture = use$(() => zap.sender.profile$.picture, [zap.id]);
+  const displayName = use$(() => zap.sender.profile$.displayName, [zap.id]);
   const amountSats = Math.round(zap.amount / 1000); // Convert msats to sats
 
   return (
     <div className="flex items-center gap-2 text-sm">
       <div className="avatar">
         <div className="w-6 rounded-full">
-          <img src={picture || `https://robohash.org/${zap.sender}.png`} alt={displayName || npubEncode(zap.sender)} />
+          <img
+            src={picture || `https://robohash.org/${zap.sender.pubkey}.png`}
+            alt={displayName || npubEncode(zap.sender.pubkey)}
+          />
         </div>
       </div>
-      <span className="font-medium">{displayName || npubEncode(zap.sender)}</span>
+      <span className="font-medium">{displayName || zap.sender.npub}</span>
       <span className="text-primary">⚡ {amountSats} sats</span>
     </div>
   );
@@ -39,7 +42,7 @@ function ZapItem({ zap }: { zap: Zap }) {
 
 /** Component to render a single note with author info */
 function NoteItem({ note }: { note: Note }) {
-  const author = use$(() => note.author$, [note.id]);
+  const profile = use$(() => note.author.profile$, [note.id]);
   const replies = use$(() => note.replies$, [note.id]);
   const zaps = use$(() => note.zaps$, [note.id]);
 
@@ -50,13 +53,13 @@ function NoteItem({ note }: { note: Note }) {
           <div className="avatar">
             <div className="w-10 rounded-full">
               <img
-                src={author?.picture || `https://robohash.org/${note.pubkey}.png`}
-                alt={author?.displayName || npubEncode(note.pubkey)}
+                src={profile?.picture || `https://robohash.org/${note.pubkey}.png`}
+                alt={profile?.displayName || npubEncode(note.pubkey)}
               />
             </div>
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold">{author?.displayName || npubEncode(note.pubkey)}</h3>
+            <h3 className="font-semibold">{profile?.displayName || npubEncode(note.pubkey)}</h3>
             <p className="text-sm text-base-content/60">{npubEncode(note.pubkey)}</p>
           </div>
           <button
@@ -128,11 +131,11 @@ export default function ThreadExample() {
   // Load the event and cast it to a note
   const note = use$(() => {
     if (!eventPointer) return undefined;
-    return eventStore.event(eventPointer).pipe(castEvent(Note));
+    return eventStore.event(eventPointer).pipe(castEventStream(Note));
   }, [eventPointer?.id, eventPointer?.relays?.join("|")]);
 
   /** Resolve the authors inboxes for loading events */
-  const inboxes = use$(() => note?.author$.inboxes$, [note]);
+  const inboxes = use$(() => note?.author.inboxes$, [note]);
 
   // Load all kind 1 and 9735 events that reference the event
   use$(() => {

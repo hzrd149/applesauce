@@ -223,7 +223,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     if (this.verifyEvent && this.verifyEvent(event) === false) return null;
 
     // Always add event to memory
-    const existing = this.memory?.add(event);
+    const existing = this.memory.add(event);
 
     // If the memory returned a different instance, this is a duplicate event
     if (existing && existing !== event) {
@@ -273,7 +273,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
   /** Removes an event from the store and updates subscriptions */
   async remove(event: string | NostrEvent): Promise<boolean> {
     const eventId = typeof event === "string" ? event : event.id;
-    let instance = this.memory?.getEvent(eventId);
+    let instance = this.memory.getEvent(eventId);
 
     // Remove from expiration manager
     this.expiration.forget(eventId);
@@ -328,30 +328,34 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
   }
 
   /** Check if the store has an event by id */
-  async hasEvent(id: string): Promise<boolean> {
-    // Check if the event exists in memory first, then in the database
-    return (this.memory?.hasEvent(id) ?? false) || (await this.database.hasEvent(id));
+  async hasEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): Promise<boolean> {
+    if (typeof id === "string") return this.memory.hasEvent(id) || this.database.hasEvent(id);
+    // If its a pointer, use the advanced has event method to resolve
+    else if (isEventPointer(id)) return this.memory.hasEvent(id.id) || this.database.hasEvent(id.id);
+    else return this.hasReplaceable(id.kind, id.pubkey, id.identifier);
   }
 
   /** Get an event by id from the store */
-  async getEvent(id: string): Promise<NostrEvent | undefined> {
+  async getEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): Promise<NostrEvent | undefined> {
     // Get the event from memory first, then from the database
-    return this.memory?.getEvent(id) ?? this.mapToMemory(await this.database.getEvent(id));
+    if (typeof id === "string") return this.memory.getEvent(id) ?? this.mapToMemory(await this.database.getEvent(id));
+    // If its a pointer, use the advanced get event method to resolve
+    else if (isEventPointer(id))
+      return this.memory.getEvent(id.id) ?? this.mapToMemory(await this.database.getEvent(id.id));
+    else return this.getReplaceable(id.kind, id.pubkey, id.identifier);
   }
 
   /** Check if the store has a replaceable event */
   async hasReplaceable(kind: number, pubkey: string, d?: string): Promise<boolean> {
     // Check if the event exists in memory first, then in the database
-    return (
-      (this.memory?.hasReplaceable(kind, pubkey, d) ?? false) || (await this.database.hasReplaceable(kind, pubkey, d))
-    );
+    return this.memory.hasReplaceable(kind, pubkey, d) || this.database.hasReplaceable(kind, pubkey, d);
   }
 
   /** Gets the latest version of a replaceable event */
   async getReplaceable(kind: number, pubkey: string, identifier?: string): Promise<NostrEvent | undefined> {
     // Get the event from memory first, then from the database
     return (
-      this.memory?.getReplaceable(kind, pubkey, identifier) ??
+      this.memory.getReplaceable(kind, pubkey, identifier) ??
       this.mapToMemory(await this.database.getReplaceable(kind, pubkey, identifier))
     );
   }
@@ -360,7 +364,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
   async getReplaceableHistory(kind: number, pubkey: string, identifier?: string): Promise<NostrEvent[] | undefined> {
     // Get the events from memory first, then from the database
     return (
-      this.memory?.getReplaceableHistory(kind, pubkey, identifier) ??
+      this.memory.getReplaceableHistory(kind, pubkey, identifier) ??
       (await this.database.getReplaceableHistory(kind, pubkey, identifier))?.map((e) => this.mapToMemory(e) ?? e)
     );
   }
@@ -383,30 +387,30 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
 
   /** Passthrough method for the database.touch */
   touch(event: NostrEvent) {
-    return this.memory?.touch(event);
+    return this.memory.touch(event);
   }
   /** Increments the claim count on the event and touches it */
   claim(event: NostrEvent): void {
-    return this.memory?.claim(event);
+    return this.memory.claim(event);
   }
   /** Checks if an event is claimed by anything */
   isClaimed(event: NostrEvent): boolean {
-    return this.memory?.isClaimed(event) ?? false;
+    return this.memory.isClaimed(event) ?? false;
   }
   /** Decrements the claim count on an event */
   removeClaim(event: NostrEvent): void {
-    return this.memory?.removeClaim(event);
+    return this.memory.removeClaim(event);
   }
   /** Removes all claims on an event */
   clearClaim(event: NostrEvent): void {
-    return this.memory?.clearClaim(event);
+    return this.memory.clearClaim(event);
   }
   /** Pass through method for the database.unclaimed */
   unclaimed(): Generator<NostrEvent> {
-    return this.memory?.unclaimed() || (function* () {})();
+    return this.memory.unclaimed() || (function* () {})();
   }
   /** Removes any event that is not being used by a subscription */
   prune(limit?: number): number {
-    return this.memory?.prune(limit) ?? 0;
+    return this.memory.prune(limit) ?? 0;
   }
 }

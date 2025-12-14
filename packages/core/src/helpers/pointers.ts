@@ -180,13 +180,22 @@ export function getProfilePointerFromPTag(tag: string[]): ProfilePointer | null 
 }
 
 /** Checks if a pointer is an AddressPointer */
-export function isAddressPointer(pointer: DecodeResult["data"]): pointer is AddressPointer {
-  return typeof pointer !== "string" && "identifier" in pointer && "pubkey" in pointer && "kind" in pointer;
+export function isAddressPointer(pointer: any): pointer is AddressPointer {
+  return (
+    typeof pointer === "object" &&
+    pointer !== null &&
+    "identifier" in pointer &&
+    "pubkey" in pointer &&
+    "kind" in pointer &&
+    typeof pointer.identifier === "string" &&
+    typeof pointer.pubkey === "string" &&
+    typeof pointer.kind === "number"
+  );
 }
 
 /** Checks if a pointer is an EventPointer */
-export function isEventPointer(pointer: DecodeResult["data"]): pointer is EventPointer {
-  return typeof pointer !== "string" && "id" in pointer;
+export function isEventPointer(pointer: any): pointer is EventPointer {
+  return typeof pointer === "object" && pointer !== null && "id" in pointer && typeof pointer.id === "string";
 }
 
 /** Returns the stringified address pointer */

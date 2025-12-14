@@ -9,19 +9,20 @@ import {
 } from "applesauce-core/helpers";
 import { getNip10References } from "../helpers/threading.js";
 import { CommentsModel } from "../models/comments.js";
+import { SharesModel } from "../models/shares.js";
 import { RepliesModel } from "../models/thread.js";
 import { EventZapsModel } from "../models/zaps.js";
-import { castEvent, castEvents } from "../observable/cast-event.js";
-import { Cast } from "./cast.js";
+import { castTimelineStream } from "../observable/cast-stream.js";
+import { EventCast } from "./cast.js";
 import { Comment } from "./comment.js";
-import { Profile } from "./profile.js";
+import { Share } from "./share.js";
 import { Zap } from "./zap.js";
 
 function isValidNote(event: NostrEvent): event is KnownEvent<1> {
   return event.kind === kinds.ShortTextNote;
 }
 
-export class Note extends Cast<KnownEvent<1>> {
+export class Note extends EventCast<KnownEvent<1>> {
   constructor(event: NostrEvent) {
     if (!isValidNote(event)) throw new Error("Invalid note");
     super(event);
@@ -45,20 +46,18 @@ export class Note extends Cast<KnownEvent<1>> {
     );
   }
 
-  get author$() {
-    return this.$$ref("author$", (store) =>
-      store.replaceable({ kind: kinds.Metadata, pubkey: this.event.pubkey }).pipe(castEvent(Profile)),
-    );
-  }
   get replies$() {
     return this.$$ref("replies$", (store) =>
-      store.model(RepliesModel, this.event, [kinds.ShortTextNote]).pipe(castEvents(Note)),
+      store.model(RepliesModel, this.event, [kinds.ShortTextNote]).pipe(castTimelineStream(Note)),
     );
   }
   get comments$() {
-    return this.$$ref("comments$", (store) => store.model(CommentsModel, this.event).pipe(castEvents(Comment)));
+    return this.$$ref("comments$", (store) => store.model(CommentsModel, this.event).pipe(castTimelineStream(Comment)));
   }
   get zaps$() {
-    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castEvents(Zap)));
+    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap)));
+  }
+  get shares$() {
+    return this.$$ref("shares$", (store) => store.model(SharesModel, this.event).pipe(castTimelineStream(Share)));
   }
 }

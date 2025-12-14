@@ -1,15 +1,11 @@
-import { EventModels, IEventSubscriptions } from "applesauce-core/event-store";
+import { EventModels, IAsyncEventStore, IEventStore, IEventSubscriptions } from "applesauce-core/event-store";
 import { getParentEventStore, NostrEvent } from "applesauce-core/helpers/event";
 import { Observable } from "rxjs";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
+import { castUser } from "./user.js";
 
-/** Internal helper for getting the parent store of an event */
-function getStore<T extends NostrEvent>(event: T): IEventSubscriptions & EventModels {
-  // Get the event store for the event
-  const store = getParentEventStore(event);
-  if (!store) throw new Error("Event is not attached to an event store");
-  return store as unknown as IEventSubscriptions & EventModels;
-}
+/** The type of event store that is passed to cast references */
+export type CastRefEventStore = IEventSubscriptions & EventModels<IEventStore | IAsyncEventStore>;
 
 /** A symbol used to store all the cast instances for a given event */
 export const CAST_REF_SYMBOL = Symbol.for("cast-ref");
@@ -18,10 +14,10 @@ export const CAST_REF_SYMBOL = Symbol.for("cast-ref");
 export const CASTS_SYMBOL = Symbol.for("casts");
 
 /** A class that can be used to cast a Nostr event */
-export type CastConstructor<C extends Cast<NostrEvent>> = new (event: NostrEvent) => C;
+export type CastConstructor<C extends EventCast<NostrEvent>> = new (event: NostrEvent) => C;
 
 /** Cast a Nostr event to a specific class */
-export function cast<C extends Cast<NostrEvent>>(event: NostrEvent, cls: CastConstructor<C>): C {
+export function castEvent<C extends EventCast<NostrEvent>>(event: NostrEvent, cls: CastConstructor<C>): C {
   const casts: Map<CastConstructor<C>, C> = Reflect.get(event, CASTS_SYMBOL);
 
   // If the event has already been cast to this class, return the existing cast
@@ -37,7 +33,7 @@ export function cast<C extends Cast<NostrEvent>>(event: NostrEvent, cls: CastCon
 }
 
 /** The base class for all casts */
-export class Cast<T extends NostrEvent = NostrEvent> {
+export class EventCast<T extends NostrEvent = NostrEvent> {
   get id() {
     return this.event.id;
   }
@@ -60,6 +56,18 @@ export class Cast<T extends NostrEvent = NostrEvent> {
     return this.event.sig;
   }
 
+  /** Gets the event store for this event cast */
+  get store() {
+    const store = getParentEventStore(this.event);
+    if (!store) throw new Error("Event is not attached to an event store");
+    return store as unknown as CastRefEventStore;
+  }
+
+  /** Get the {@link User} that authored this event */
+  get author() {
+    return castUser(this.event);
+  }
+
   // Enfore kind check in constructor. this will force child classes to verify the event before calling super()
   constructor(readonly event: T) {}
 
@@ -69,14 +77,13 @@ export class Cast<T extends NostrEvent = NostrEvent> {
   /** Internal method for creating a reference */
   protected $$ref<Return extends unknown>(
     key: string,
-    builder: (store: IEventSubscriptions & EventModels) => Observable<Return>,
+    builder: (store: CastRefEventStore) => Observable<Return>,
   ): ChainableObservable<Return> {
     // Return cached observable
     if (this.#refs[key]) return this.#refs[key] as ChainableObservable<Return>;
 
     // Build a new observable and cache it
-    const store = getStore(this.event);
-    const observable = chainable(builder(store));
+    const observable = chainable(builder(this.store));
     this.#refs[key] = observable;
     return observable;
   }
