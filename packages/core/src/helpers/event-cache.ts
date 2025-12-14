@@ -2,7 +2,7 @@ import { NostrEvent } from "./event.js";
 import { IEventStoreStreams } from "../event-store/interface.js";
 import { bufferTime, filter } from "rxjs";
 import { logger } from "../logger.js";
-import { isFromCache } from "./index.js";
+import { isFromCache } from "./event.js";
 
 const log = logger.extend("event-cache");
 

@@ -1,6 +1,6 @@
 import { getOrComputeCachedValue } from "./cache.js";
-import { NostrEvent, kinds } from "./event.js";
-import { KnownEvent, safeParse } from "./index.js";
+import { KnownEvent, NostrEvent, kinds } from "./event.js";
+import { safeParse } from "./json.js";
 import { npubEncode } from "./pointers.js";
 
 export const ProfileContentSymbol = Symbol.for("profile-content");
