@@ -8,13 +8,11 @@ import {
   npubEncode,
 } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
-import { map, Observable, tap } from "rxjs";
+import { defer, from, map, Observable, switchMap, tap } from "rxjs";
 import { MuteModel } from "../models/mutes.js";
 import { castEventStream } from "../observable/cast-stream.js";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { CastRefEventStore } from "./cast.js";
-import { Mailboxes } from "./mailboxes.js";
-import { Profile } from "./profile.js";
 
 /** Cast a nostr event or pointer into a {@link User} */
 export function castUser(event: NostrEvent): User;
@@ -94,7 +92,12 @@ export class User {
 
   get profile$() {
     return this.$$ref("profile$", (store) =>
-      store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile)),
+      defer(() => from(import("./profile.js"))).pipe(
+        map((m) => m.Profile),
+        switchMap((Profile) =>
+          store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile)),
+        ),
+      ),
     );
   }
   get contacts$() {
@@ -107,10 +110,15 @@ export class User {
   }
   get mailboxes$() {
     return this.$$ref("mailboxes$", (store) =>
-      store.replaceable({ kind: kinds.RelayList, pubkey: this.pubkey }).pipe(
-        castEventStream(Mailboxes),
-        // Cache the outboxes for creating a profile pointer relay hints
-        tap((mailboxes) => (this.#outboxes = mailboxes?.outboxes)),
+      defer(() => from(import("./mailboxes.js"))).pipe(
+        map((m) => m.Mailboxes),
+        switchMap((Mailboxes) =>
+          store.replaceable({ kind: kinds.RelayList, pubkey: this.pubkey }).pipe(
+            castEventStream(Mailboxes),
+            // Cache the outboxes for creating a profile pointer relay hints
+            tap((mailboxes) => (this.#outboxes = mailboxes?.outboxes)),
+          ),
+        ),
       ),
     );
   }
