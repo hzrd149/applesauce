@@ -11,26 +11,24 @@ import {
   EventPointer,
   getAddressPointerForEvent,
   getAddressPointerFromATag,
-  getReplaceableAddressFromPointer,
   getEventPointerFromETag,
   getProfilePointerFromPTag,
+  getReplaceableAddressFromPointer,
   ProfilePointer,
 } from "applesauce-core/helpers/pointers";
-import { mergeRelaySets } from "applesauce-core/helpers/relays";
+import { relaySet } from "applesauce-core/helpers/relays";
 import { isATag, isETag, isPTag, processTags } from "applesauce-core/helpers/tags";
-
-export const FAVORITE_RELAYS_KIND = 10012;
 
 export type ReadListTags = "public" | "hidden" | "all";
 
 /** Returns all the tags of a list or set */
 export function getListTags(list: NostrEvent, type?: ReadListTags): string[][] {
   switch (type) {
+    default:
     case "public":
       return list.tags;
     case "hidden":
       return getHiddenTags(list) ?? [];
-    default:
     case "all":
       return [...(getHiddenTags(list) ?? []), ...list.tags];
   }
@@ -138,7 +136,7 @@ export function getProfilePointersFromList(list: NostrEvent, type?: ReadListTags
  * @param type - Which types of tags to read
  */
 export function getRelaysFromList(list: NostrEvent, type?: ReadListTags): string[] {
-  return mergeRelaySets(processTags(getListTags(list, type), (t) => (t[0] === "relay" ? t[1] : undefined)));
+  return relaySet(processTags(getListTags(list, type), (t) => (t[0] === "relay" ? t[1] : undefined)));
 }
 
 /** Returns if an event is a valid list or set */

@@ -1,16 +1,31 @@
 import { getOrComputeCachedValue, notifyEventUpdate } from "applesauce-core/helpers";
-import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import {
   AddressPointer,
   EventPointer,
   getAddressPointerFromATag,
-  getReplaceableAddressFromPointer,
   getEventPointerFromETag,
+  getReplaceableAddressFromPointer,
   mergeAddressPointers,
   mergeEventPointers,
 } from "applesauce-core/helpers/pointers";
+
+/** Type for a validated bookmark list event */
+export type BookmarkListEvent = KnownEvent<kinds.BookmarkList>;
+/** Type for a validated bookmark set event */
+export type BookmarkSetEvent = KnownEvent<kinds.Bookmarksets>;
+
+/** Validates that an event is a valid bookmark list (kind 10000) */
+export function isValidBookmarkList(event: NostrEvent): event is BookmarkListEvent {
+  return event.kind === kinds.BookmarkList;
+}
+
+/** Validates that an event is a valid bookmark set (kind 30003) */
+export function isValidBookmarkSet(event: NostrEvent): event is BookmarkSetEvent {
+  return event.kind === kinds.Bookmarksets;
+}
 
 export const BookmarkPublicSymbol = Symbol.for("bookmark-public");
 export const BookmarkHiddenSymbol = Symbol.for("bookmark-hidden");
@@ -20,12 +35,12 @@ export type UnlockedBookmarks = {
   [BookmarkHiddenSymbol]: Bookmarks;
 };
 
-export type Bookmarks = {
+export interface Bookmarks {
   notes: EventPointer[];
   articles: AddressPointer[];
   hashtags: string[];
   urls: string[];
-};
+}
 
 /** Parses an array of tags into a {@link Bookmarks} object */
 export function parseBookmarkTags(tags: string[][]): Bookmarks {
@@ -77,14 +92,14 @@ export function mergeBookmarks(...bookmarks: (Bookmarks | undefined)[]): Bookmar
 }
 
 /** Returns all the bookmarks of the event */
-export function getBookmarks(bookmark: NostrEvent) {
+export function getBookmarks(bookmark: NostrEvent): Bookmarks {
   const hidden = getHiddenBookmarks(bookmark);
   if (hidden) return mergeBookmarks(hidden, getPublicBookmarks(bookmark));
   else return getPublicBookmarks(bookmark);
 }
 
 /** Returns the public bookmarks of the event */
-export function getPublicBookmarks(bookmark: NostrEvent) {
+export function getPublicBookmarks(bookmark: NostrEvent): Bookmarks {
   return getOrComputeCachedValue(bookmark, BookmarkPublicSymbol, () => parseBookmarkTags(bookmark.tags));
 }
 

@@ -5,13 +5,13 @@ import { watchEventUpdates } from "applesauce-core/observable";
 import { type Observable } from "rxjs";
 import { map } from "rxjs/operators";
 
-import { getHiddenMutedThings, getMutedThings, getPublicMutedThings, Mutes } from "../helpers/mute.js";
+import { getHiddenMutedThings, getMutedThings, getPublicMutedThings, MutedThings } from "../helpers/mute.js";
 
 // Import EventModels as a value (class) to modify its prototype
 import { EventModels } from "applesauce-core/event-store";
 
 /** A model that returns all a users muted things */
-export function MuteModel(user: string | ProfilePointer): Model<Mutes | undefined> {
+export function MuteModel(user: string | ProfilePointer): Model<MutedThings | undefined> {
   if (typeof user === "string") user = { pubkey: user };
 
   return (events) =>
@@ -24,13 +24,13 @@ export function MuteModel(user: string | ProfilePointer): Model<Mutes | undefine
 }
 
 /** A model that returns all a users public muted things */
-export function PublicMuteModel(pubkey: string): Model<Mutes | undefined> {
+export function PublicMuteModel(pubkey: string): Model<MutedThings | undefined> {
   return (events) =>
     events.replaceable(kinds.Mutelist, pubkey).pipe(map((event) => event && getPublicMutedThings(event)));
 }
 
 /** A model that returns all a users hidden muted things */
-export function HiddenMuteModel(pubkey: string): Model<Mutes | null | undefined> {
+export function HiddenMuteModel(pubkey: string): Model<MutedThings | null | undefined> {
   return (events) =>
     events.replaceable(kinds.Mutelist, pubkey).pipe(
       // listen for event updates (hidden tags unlocked)
@@ -50,6 +50,6 @@ EventModels.prototype.mutes = function (user: string | ProfilePointer) {
 declare module "applesauce-core/event-store" {
   interface EventModels {
     /** Subscribe to a users mutes */
-    mutes(user: string | ProfilePointer): Observable<Mutes | undefined>;
+    mutes(user: string | ProfilePointer): Observable<MutedThings | undefined>;
   }
 }

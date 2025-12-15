@@ -7,15 +7,18 @@ describe("exports", () => {
       [
         "CASTS_SYMBOL",
         "CAST_REF_SYMBOL",
-        "Cast",
         "Comment",
+        "EventCast",
         "Mailboxes",
         "Note",
         "Profile",
+        "Share",
         "Stream",
         "StreamChatMessage",
+        "User",
         "Zap",
-        "cast",
+        "castEvent",
+        "castUser",
       ]
     `);
   });

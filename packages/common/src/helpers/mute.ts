@@ -1,21 +1,28 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { kinds, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
-import { isETag, isPTag, isTTag } from "applesauce-core/helpers/tags";
+import { kinds, KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
 import { getIndexableTags } from "applesauce-core/helpers/filter";
+import { isETag, isPTag, isTTag } from "applesauce-core/helpers/tags";
 
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { getNip10References } from "./threading.js";
+
+export type MuteListEvent = KnownEvent<typeof kinds.Mutelist>;
+
+/** Validates that an event is a valid mute list */
+export function isValidMuteList(event: NostrEvent): event is MuteListEvent {
+  return event.kind === kinds.Mutelist;
+}
 
 export const MutePublicSymbol = Symbol.for("mute-public");
 export const MuteHiddenSymbol = Symbol.for("mute-hidden");
 
 /** Type for unlocked mute events */
 export type UnlockedMutes = {
-  [MuteHiddenSymbol]: Mutes;
+  [MuteHiddenSymbol]: MutedThings;
 };
 
-export type Mutes = {
+export type MutedThings = {
   pubkeys: Set<string>;
   threads: Set<string>;
   hashtags: Set<string>;
@@ -23,8 +30,8 @@ export type Mutes = {
 };
 
 /** Merges any number of mute sets */
-export function mergeMutes(...mutes: Mutes[]): Mutes {
-  const mute: Mutes = { pubkeys: new Set(), threads: new Set(), hashtags: new Set(), words: new Set() };
+export function mergeMutes(...mutes: MutedThings[]): MutedThings {
+  const mute: MutedThings = { pubkeys: new Set(), threads: new Set(), hashtags: new Set(), words: new Set() };
   for (const m of mutes) {
     for (const pubkey of m.pubkeys) mute.pubkeys.add(pubkey);
     for (const thread of m.threads) mute.threads.add(thread);
@@ -35,7 +42,7 @@ export function mergeMutes(...mutes: Mutes[]): Mutes {
 }
 
 /** Parses mute tags */
-export function parseMutedTags(tags: string[][]): Mutes {
+export function parseMutedTags(tags: string[][]): MutedThings {
   const pubkeys = new Set(tags.filter(isPTag).map((t) => t[1]));
   const threads = new Set(tags.filter(isETag).map((t) => t[1]));
   const hashtags = new Set(tags.filter(isTTag).map((t) => t[1].toLocaleLowerCase()));
@@ -45,7 +52,7 @@ export function parseMutedTags(tags: string[][]): Mutes {
 }
 
 /** Returns muted things */
-export function getMutedThings(mute: NostrEvent): Mutes {
+export function getMutedThings(mute: NostrEvent): MutedThings {
   const hidden = getHiddenMutedThings(mute);
   const mutes = getPublicMutedThings(mute);
 
@@ -54,7 +61,7 @@ export function getMutedThings(mute: NostrEvent): Mutes {
 }
 
 /** Returns only the public muted things from a mute event */
-export function getPublicMutedThings(mute: NostrEvent): Mutes {
+export function getPublicMutedThings(mute: NostrEvent): MutedThings {
   return getOrComputeCachedValue(mute, MutePublicSymbol, () => parseMutedTags(mute.tags));
 }
 
@@ -64,9 +71,9 @@ export function isHiddenMutesUnlocked<T extends NostrEvent>(mute: T): mute is T 
 }
 
 /** Returns the hidden muted content if the event is unlocked */
-export function getHiddenMutedThings<T extends NostrEvent & UnlockedMutes>(mute: T): Mutes;
-export function getHiddenMutedThings<T extends NostrEvent>(mute: T): Mutes | undefined;
-export function getHiddenMutedThings<T extends NostrEvent>(mute: T): Mutes | undefined {
+export function getHiddenMutedThings<T extends NostrEvent & UnlockedMutes>(mute: T): MutedThings;
+export function getHiddenMutedThings<T extends NostrEvent>(mute: T): MutedThings | undefined;
+export function getHiddenMutedThings<T extends NostrEvent>(mute: T): MutedThings | undefined {
   if (isHiddenMutesUnlocked(mute)) return mute[MuteHiddenSymbol];
 
   // get hidden tags
@@ -83,7 +90,7 @@ export function getHiddenMutedThings<T extends NostrEvent>(mute: T): Mutes | und
 }
 
 /** Unlocks the hidden mutes */
-export async function unlockHiddenMutes(mute: NostrEvent, signer: HiddenContentSigner): Promise<Mutes> {
+export async function unlockHiddenMutes(mute: NostrEvent, signer: HiddenContentSigner): Promise<MutedThings> {
   if (isHiddenMutesUnlocked(mute)) return mute[MuteHiddenSymbol];
 
   // Unlock hidden tags
@@ -109,7 +116,7 @@ export function createMutedWordsRegExp(mutedWords: string[]): RegExp {
 }
 
 /** Returns true if the event matches the mutes */
-export function matchMutes(mutes: Mutes, event: NostrEvent): boolean {
+export function matchMutes(mutes: MutedThings, event: NostrEvent): boolean {
   // Filter on muted pubkeys
   if (mutes.pubkeys.size > 0) {
     if (mutes.pubkeys.has(event.pubkey)) return true;

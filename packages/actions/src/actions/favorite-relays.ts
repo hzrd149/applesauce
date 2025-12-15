@@ -1,4 +1,4 @@
-import { FAVORITE_RELAYS_KIND } from "applesauce-common/helpers/lists";
+import { FAVORITE_RELAYS_KIND } from "applesauce-common/helpers/relay-list";
 import { TagOperation } from "applesauce-core";
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
