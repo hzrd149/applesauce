@@ -1,9 +1,14 @@
-import { defined, watchEventUpdates } from "applesauce-core";
-import { hasHiddenContent, HiddenContentSigner, NostrEvent } from "applesauce-core/helpers";
-import { combineLatest, map, of } from "rxjs";
+import {
+  hasHiddenContent,
+  HiddenContentSigner,
+  isAddressPointer,
+  isEventPointer,
+  NostrEvent,
+} from "applesauce-core/helpers";
+import { defined, watchEventUpdates } from "applesauce-core/observable";
+import { combineLatest, map, of, switchMap } from "rxjs";
 import {
   BookmarkListEvent,
-  Bookmarks,
   BookmarkSetEvent,
   getBookmarks,
   getHiddenBookmarks,
@@ -15,7 +20,7 @@ import {
 import { EventCast } from "./cast.js";
 
 /** Base class for bookmarks lists and sets */
-class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends EventCast<T> implements Bookmarks {
+class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends EventCast<T> {
   constructor(event: T) {
     if (!isValidBookmarkList(event) && !isValidBookmarkSet(event)) throw new Error("Invalid bookmark list or set");
     super(event);
@@ -26,20 +31,14 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
   }
 
   get articles() {
-    return this.bookmarks.articles;
+    return this.bookmarks.filter((pointer) => isAddressPointer(pointer));
   }
   get notes() {
-    return this.bookmarks.notes;
-  }
-  get hashtags() {
-    return this.bookmarks.hashtags;
-  }
-  get urls() {
-    return this.bookmarks.urls;
+    return this.bookmarks.filter((pointer) => isEventPointer(pointer));
   }
 
   get notes$() {
-    return this.$$ref("notes$", (store) => combineLatest(this.notes.map((pointer) => store.event(pointer.id))));
+    return this.$$ref("notes$", (store) => combineLatest(this.notes.map((pointer) => store.event(pointer))));
   }
   get articles$() {
     return this.$$ref("articles$", (store) =>
@@ -64,6 +63,26 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
       ),
     );
   }
+  get hiddenNotes$() {
+    return this.$$ref("hiddenNotes$", (store) =>
+      this.hidden$.pipe(
+        switchMap((hidden) =>
+          combineLatest(hidden.filter((pointer) => isEventPointer(pointer)).map((pointer) => store.event(pointer))),
+        ),
+      ),
+    );
+  }
+  get hiddenArticles$() {
+    return this.$$ref("hiddenArticles$", (store) =>
+      this.hidden$.pipe(
+        switchMap((hidden) =>
+          combineLatest(
+            hidden.filter((pointer) => isAddressPointer(pointer)).map((pointer) => store.replaceable(pointer)),
+          ),
+        ),
+      ),
+    );
+  }
 
   /** Whether the bookmark set has hidden bookmarks */
   get hasHidden() {
@@ -74,7 +93,7 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
     return isHiddenBookmarksUnlocked(this.event);
   }
   /** Unlocks the hidden bookmarks on the bookmark set */
-  async unlock(signer: HiddenContentSigner): Promise<Bookmarks> {
+  async unlock(signer: HiddenContentSigner) {
     return unlockHiddenBookmarks(this.event, signer);
   }
 }

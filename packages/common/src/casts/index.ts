@@ -2,6 +2,7 @@ export * from "./bookmarks.js";
 export * from "./cast.js";
 export * from "./comment.js";
 export * from "./mailboxes.js";
+export * from "./mutes.js";
 export * from "./note.js";
 export * from "./profile.js";
 export * from "./relay-lists.js";

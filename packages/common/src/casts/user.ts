@@ -6,8 +6,8 @@ import {
   NostrEvent,
   nprofileEncode,
   npubEncode,
+  ProfilePointer,
 } from "applesauce-core/helpers";
-import { ProfilePointer } from "nostr-tools/nip19";
 import { defer, from, map, Observable, switchMap, tap } from "rxjs";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
 import { MuteModel } from "../models/mutes.js";
@@ -129,7 +129,7 @@ export class User {
   get inboxes$() {
     return this.mailboxes$.inboxes;
   }
-  get bookmarksList$() {
+  get bookmarks$() {
     return this.$$ref("bookmarks$", (store) =>
       defer(() => from(import("./bookmarks.js").then((m) => m.BookmarksList))).pipe(
         switchMap((BookmarksList) =>
@@ -138,7 +138,6 @@ export class User {
       ),
     );
   }
-
   get favoriteRelays$() {
     return this.$$ref("favoriteRelays$", (store) =>
       defer(() => from(import("./relay-lists.js").then((m) => m.FavoriteRelays))).pipe(
