@@ -5,6 +5,7 @@ describe("exports", () => {
   it("should export the expected functions", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
+        "Article",
         "BlockedRelays",
         "BookmarksList",
         "BookmarksSet",
@@ -13,7 +14,6 @@ describe("exports", () => {
         "Comment",
         "EventCast",
         "FavoriteRelays",
-        "Mailboxes",
         "Mutes",
         "Note",
         "Profile",

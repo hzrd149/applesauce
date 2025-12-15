@@ -17,7 +17,10 @@ import {
   isValidBookmarkSet,
   unlockHiddenBookmarks,
 } from "../helpers/bookmark.js";
+import { castTimelineStream } from "../observable/cast-stream.js";
+import { Article } from "./article.js";
 import { EventCast } from "./cast.js";
+import { Note } from "./note.js";
 
 /** Base class for bookmarks lists and sets */
 class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends EventCast<T> {
@@ -38,11 +41,19 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
   }
 
   get notes$() {
-    return this.$$ref("notes$", (store) => combineLatest(this.notes.map((pointer) => store.event(pointer))));
+    return this.$$ref("notes$", (store) =>
+      combineLatest(this.notes.map((pointer) => store.event(pointer))).pipe(
+        map((arr) => arr.filter((e) => !!e)),
+        castTimelineStream(Note),
+      ),
+    );
   }
   get articles$() {
     return this.$$ref("articles$", (store) =>
-      combineLatest(this.articles.map((pointer) => store.replaceable(pointer))),
+      combineLatest(this.articles.map((pointer) => store.replaceable(pointer))).pipe(
+        map((arr) => arr.filter((e) => !!e)),
+        castTimelineStream(Article),
+      ),
     );
   }
 
@@ -69,6 +80,8 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
         switchMap((hidden) =>
           combineLatest(hidden.filter((pointer) => isEventPointer(pointer)).map((pointer) => store.event(pointer))),
         ),
+        map((arr) => arr.filter((e) => !!e)),
+        castTimelineStream(Note),
       ),
     );
   }
@@ -80,6 +93,8 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
             hidden.filter((pointer) => isAddressPointer(pointer)).map((pointer) => store.replaceable(pointer)),
           ),
         ),
+        map((arr) => arr.filter((e) => !!e)),
+        castTimelineStream(Article),
       ),
     );
   }

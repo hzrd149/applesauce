@@ -192,7 +192,6 @@ describe("exports", () => {
         "getPollResponseVotes",
         "getPollType",
         "getProfilePointersFromList",
-        "getPublicBookmarks",
         "getPublicGroups",
         "getPublicMutedThings",
         "getRSVPAddressPointer",

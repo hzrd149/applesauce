@@ -42,7 +42,7 @@ export function removeProfilePointerTag(pubkey: string | ProfilePointer): TagOpe
   return (tags) => tags.filter((t) => !(t[0] === "p" && t[1] === pubkey));
 }
 
-/** Adds a a single "e" tag for an EventPointer */
+/** Adds a single "e" tag for an EventPointer */
 export function addEventPointerTag(id: string | EventPointer | NostrEvent, replace = true): TagOperation {
   return async (tags, { getEventRelayHint }) => {
     const pointer = typeof id === "string" ? { id } : isEvent(id) ? getEventPointerForEvent(id) : id;

@@ -1,5 +1,5 @@
 import { defined, watchEventUpdates } from "applesauce-core";
-import { hasHiddenTags } from "applesauce-core/helpers";
+import { hasHiddenTags, NostrEvent } from "applesauce-core/helpers";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
 import { map, of } from "rxjs";
 import {
@@ -15,7 +15,7 @@ import { EventCast } from "./cast.js";
 
 /** Class for mute lists (kind 10000) */
 export class Mutes extends EventCast<MuteListEvent> implements MutedThings {
-  constructor(event: MuteListEvent) {
+  constructor(event: NostrEvent) {
     if (!isValidMuteList(event)) throw new Error("Invalid mute list");
     super(event);
   }

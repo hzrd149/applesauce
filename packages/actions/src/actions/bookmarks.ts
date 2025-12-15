@@ -3,6 +3,7 @@ import { addEventBookmarkTag, removeEventBookmarkTag } from "applesauce-common/o
 import { EventTemplate, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { Action } from "../action-hub.js";
+import { AddressPointer, EventPointer } from "applesauce-core/helpers";
 
 /**
  * An action that adds a note or article to the bookmark list or a bookmark set
@@ -10,7 +11,11 @@ import { Action } from "../action-hub.js";
  * @param identifier the "d" tag of the bookmark set or `undefined` for the default bookmark list
  * @param hidden set to true to add to hidden bookmarks
  */
-export function BookmarkEvent(event: NostrEvent, identifier?: string | NostrEvent, hidden = false): Action {
+export function BookmarkEvent(
+  event: NostrEvent | EventPointer | AddressPointer,
+  identifier?: string | NostrEvent,
+  hidden = false,
+): Action {
   return async function* ({ events, factory, self }) {
     let draft: EventTemplate;
     const operation = addEventBookmarkTag(event);
@@ -52,7 +57,11 @@ export function BookmarkEvent(event: NostrEvent, identifier?: string | NostrEven
  * @param identifier the "d" tag of the bookmark set or `undefined` for the default bookmark list
  * @param hidden set to true to remove from hidden bookmarks
  */
-export function UnbookmarkEvent(event: NostrEvent, identifier?: string | NostrEvent, hidden = false): Action {
+export function UnbookmarkEvent(
+  event: NostrEvent | EventPointer | AddressPointer,
+  identifier?: string | NostrEvent,
+  hidden = false,
+): Action {
   return async function* ({ events, factory, self }) {
     let list: NostrEvent | undefined;
     const operation = removeEventBookmarkTag(event);

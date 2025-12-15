@@ -1,3 +1,4 @@
+import { defined, withImmediateValueOrDefault } from "applesauce-core";
 import {
   getParentEventStore,
   isEvent,
@@ -8,9 +9,8 @@ import {
   npubEncode,
   ProfilePointer,
 } from "applesauce-core/helpers";
-import { defer, from, map, Observable, switchMap, tap } from "rxjs";
+import { combineLatest, defer, from, map, Observable, switchMap, tap } from "rxjs";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
-import { MuteModel } from "../models/mutes.js";
 import { castEventStream } from "../observable/cast-stream.js";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { type CastRefEventStore } from "./cast.js";
@@ -103,23 +103,39 @@ export class User {
     );
   }
   get contacts$() {
-    return this.$$ref("contacts$", (store) => store.contacts(this.pubkey)).pipe(
-      map((arr) => arr.map((p) => castUser(p, this.#store))),
+    return this.$$ref("contacts$", (store) =>
+      this.outboxes$.pipe(
+        // Always start without the outboxes
+        withImmediateValueOrDefault(undefined),
+        // Fetch the contacts from the outboxes
+        switchMap((outboxes) => store.contacts({ pubkey: this.pubkey, relays: outboxes })),
+        // Cast to users
+        map((arr) => arr.map((p) => castUser(p, this.#store))),
+      ),
     );
   }
   get mutes$() {
-    return this.$$ref("mutes$", (store) => store.model(MuteModel, this.pubkey));
+    return this.$$ref("mutes$", (store) =>
+      combineLatest([
+        // Import the Mutes class
+        defer(() => import("./mutes.js").then((m) => m.Mutes)),
+        // Always start without the outboxes
+        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+      ]).pipe(
+        // Create the mute list event with the outboxes
+        switchMap(([Mutes, outboxes]) =>
+          store.event({ kind: kinds.Mutelist, pubkey: this.pubkey, relays: outboxes }).pipe(castEventStream(Mutes)),
+        ),
+      ),
+    );
   }
   get mailboxes$() {
     return this.$$ref("mailboxes$", (store) =>
-      defer(() => from(import("./mailboxes.js").then((m) => m.Mailboxes))).pipe(
-        switchMap((Mailboxes) =>
-          store.replaceable({ kind: kinds.RelayList, pubkey: this.pubkey }).pipe(
-            castEventStream(Mailboxes),
-            // Cache the outboxes for creating a profile pointer relay hints
-            tap((mailboxes) => (this.#outboxes = mailboxes?.outboxes)),
-          ),
-        ),
+      store.mailboxes({ pubkey: this.pubkey }).pipe(
+        // Only emit when the mailboxes are found
+        defined(),
+        // Cache the outboxes for creating a profile pointer relay hints
+        tap((mailboxes) => (this.#outboxes = mailboxes?.outboxes)),
       ),
     );
   }
@@ -131,19 +147,33 @@ export class User {
   }
   get bookmarks$() {
     return this.$$ref("bookmarks$", (store) =>
-      defer(() => from(import("./bookmarks.js").then((m) => m.BookmarksList))).pipe(
-        switchMap((BookmarksList) =>
-          store.replaceable({ kind: kinds.BookmarkList, pubkey: this.pubkey }).pipe(castEventStream(BookmarksList)),
+      combineLatest([
+        // Import the BookmarksList class
+        defer(() => from(import("./bookmarks.js").then((m) => m.BookmarksList))),
+        // Get outboxes and start without them
+        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+      ]).pipe(
+        switchMap(([BookmarksList, outboxes]) =>
+          // Fetch the bookmarks list event from the outboxes
+          store
+            .replaceable({ kind: kinds.BookmarkList, pubkey: this.pubkey, relays: outboxes })
+            .pipe(castEventStream(BookmarksList)),
         ),
       ),
     );
   }
   get favoriteRelays$() {
     return this.$$ref("favoriteRelays$", (store) =>
-      defer(() => from(import("./relay-lists.js").then((m) => m.FavoriteRelays))).pipe(
-        switchMap((FavoriteRelaysList) =>
+      combineLatest([
+        // Import the FavoriteRelays class
+        defer(() => from(import("./relay-lists.js").then((m) => m.FavoriteRelays))),
+        // Get outboxes and start without them
+        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+      ]).pipe(
+        // Fetch the favorite relays list event from the outboxes
+        switchMap(([FavoriteRelaysList, outboxes]) =>
           store
-            .replaceable({ kind: FAVORITE_RELAYS_KIND, pubkey: this.pubkey })
+            .replaceable({ kind: FAVORITE_RELAYS_KIND, pubkey: this.pubkey, relays: outboxes })
             .pipe(castEventStream(FavoriteRelaysList)),
         ),
       ),
@@ -151,10 +181,16 @@ export class User {
   }
   get searchRelays$() {
     return this.$$ref("searchRelays$", (store) =>
-      defer(() => from(import("./relay-lists.js").then((m) => m.SearchRelays))).pipe(
-        switchMap((SearchRelaysList) =>
+      combineLatest([
+        // Import the SearchRelays class
+        defer(() => from(import("./relay-lists.js").then((m) => m.SearchRelays))),
+        // Get outboxes and start without them
+        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+      ]).pipe(
+        // Fetch the search relays list event from the outboxes
+        switchMap(([SearchRelaysList, outboxes]) =>
           store
-            .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey })
+            .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey, relays: outboxes })
             .pipe(castEventStream(SearchRelaysList)),
         ),
       ),
@@ -162,10 +198,16 @@ export class User {
   }
   get blockedRelays$() {
     return this.$$ref("blockedRelays$", (store) =>
-      defer(() => from(import("./relay-lists.js").then((m) => m.BlockedRelays))).pipe(
-        switchMap((BlockedRelaysList) =>
+      combineLatest([
+        // Import the BlockedRelays class
+        defer(() => from(import("./relay-lists.js").then((m) => m.BlockedRelays))),
+        // Get outboxes and start without them
+        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+      ]).pipe(
+        // Fetch the blocked relays list event from the outboxes
+        switchMap(([BlockedRelaysList, outboxes]) =>
           store
-            .replaceable({ kind: kinds.BlockedRelaysList, pubkey: this.pubkey })
+            .replaceable({ kind: kinds.BlockedRelaysList, pubkey: this.pubkey, relays: outboxes })
             .pipe(castEventStream(BlockedRelaysList)),
         ),
       ),

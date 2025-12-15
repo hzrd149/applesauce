@@ -2,11 +2,10 @@ import {
   defer,
   distinctUntilChanged,
   EMPTY,
-  endWith,
   filter,
   finalize,
   from,
-  ignoreElements,
+  identity,
   map,
   merge,
   mergeMap,
@@ -14,11 +13,10 @@ import {
   MonoTypeOperatorFunction,
   Observable,
   of,
-  repeat,
   scan,
+  startWith,
   switchMap,
   take,
-  takeUntil,
   tap,
 } from "rxjs";
 
@@ -34,7 +32,6 @@ import { Filter, matchFilters } from "../helpers/filter.js";
 import { AddressPointer, AddressPointerWithoutD, EventPointer } from "../helpers/pointers.js";
 import { claimEvents } from "../observable/claim-events.js";
 import { claimLatest } from "../observable/claim-latest.js";
-import { defined } from "../observable/defined.js";
 
 /** Gets a single event from both types of event stores and returns an observable that completes */
 function getEventFromStores(
@@ -80,9 +77,14 @@ function loadEventUsingFallback(
   return switchMap((event) => {
     if (event) return of(event);
 
+    // If no loader pass value through, should never happen
+    if (!store.eventLoader) return of(event);
+
     // If event was not found, attempt to load
-    if (!store.eventLoader) return EMPTY;
-    return from(store.eventLoader(pointer)).pipe(filter((e) => !!e));
+    return from(store.eventLoader(pointer)).pipe(
+      // Start with `undefined` since its not loaded yet
+      startWith(undefined),
+    );
   });
 }
 
@@ -94,28 +96,26 @@ export function EventModel(
 
   return (store) =>
     merge(
-      // get current event and ignore if there is none
+      // get current event
       defer(() => getEventFromStores(store, pointer)).pipe(
         // If the event isn't found, attempt to load using the fallback loader
-        loadEventUsingFallback(store, pointer),
-        // Only emit found events
-        defined(),
+        store.eventLoader ? loadEventUsingFallback(store, pointer) : identity,
       ),
       // Listen for new events
       store.insert$.pipe(filter((e) => e.id === pointer.id)),
       // emit undefined when deleted
       store.remove$.pipe(
         filter((e) => e.id === pointer.id),
+        // Complete when the event is removed
         take(1),
-        ignoreElements(),
         // Emit undefined when deleted
-        endWith(undefined),
+        map(() => undefined),
       ),
     ).pipe(
+      // ignore duplicate events (true === same)
+      distinctUntilChanged((a, b) => a?.id === b?.id),
       // claim all events
       claimLatest(store),
-      // ignore duplicate events
-      distinctUntilChanged((a, b) => a?.id === b?.id),
     );
 }
 
@@ -130,9 +130,7 @@ export function ReplaceableModel(
       // lazily get current event
       defer(() => getReplaceableFromStores(store, pointer)).pipe(
         // If the event isn't found, attempt to load using the fallback loader
-        loadEventUsingFallback(store, pointer),
-        // Only emit found events
-        defined(),
+        store.eventLoader ? loadEventUsingFallback(store, pointer) : identity,
       ),
       // Subscribe to new events that match the pointer
       store.insert$.pipe(
@@ -144,19 +142,30 @@ export function ReplaceableModel(
         ),
       ),
     ).pipe(
-      // only update if event is newer
-      distinctUntilChanged((prev, event) => {
-        // are the events the same? i.e. is the prev event older
-        return prev.created_at >= event.created_at;
-      }),
-      // Hacky way to extract the current event so takeUntil can access it
+      // Hacky way to extract the current event so it can be used in the remove$ stream
       tap((event) => (current = event)),
-      // complete when event is removed
-      takeUntil(store.remove$.pipe(filter((e) => e.id === current?.id))),
-      // emit undefined when removed
-      endWith(undefined),
-      // keep the observable hot
-      repeat(),
+      // Subscribe to the event being removed
+      mergeWith(
+        store.remove$.pipe(
+          filter((e) => {
+            return e.id === current?.id;
+          }),
+          // Emit undefined when the event is removed
+          map(() => {
+            return undefined;
+          }),
+        ),
+      ),
+      // only update if event is newer (true === same)
+      distinctUntilChanged((prev, event) => {
+        // If the event has changed from undefined to defined or vice versa
+        if (prev === undefined || event === undefined) {
+          return prev === event;
+        }
+
+        // Return if event is newer than the previous event
+        return event.created_at < prev.created_at;
+      }),
       // claim latest event
       claimLatest(store),
     );

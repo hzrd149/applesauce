@@ -73,15 +73,8 @@ export function mergeBookmarks(...bookmarks: (BookmarkPointer[] | undefined)[]):
   return [...notes.values(), ...articles.values()];
 }
 
-/** Returns all the bookmarks of the event */
+/** Returns the bookmarks of the event */
 export function getBookmarks(bookmark: NostrEvent): BookmarkPointer[] {
-  const hidden = getHiddenBookmarks(bookmark);
-  if (hidden) return mergeBookmarks(hidden, getPublicBookmarks(bookmark));
-  else return getPublicBookmarks(bookmark);
-}
-
-/** Returns the public bookmarks of the event */
-export function getPublicBookmarks(bookmark: NostrEvent): BookmarkPointer[] {
   return getOrComputeCachedValue(bookmark, BookmarkPublicSymbol, () => parseBookmarkTags(bookmark.tags));
 }
 

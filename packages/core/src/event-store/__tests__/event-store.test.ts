@@ -218,15 +218,7 @@ describe("event", () => {
   it("should emit then event when its added", () => {
     const spy = subscribeSpyTo(eventStore.event(profile.id));
     eventStore.add(profile);
-    expect(spy.getValues()).toEqual([profile]);
-  });
-
-  it("should emit undefined when event is removed", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.event(profile.id));
-    expect(spy.getValues()).toEqual([profile]);
-    eventStore.remove(profile);
-    expect(spy.getValues()).toEqual([profile, undefined]);
+    expect(spy.getValues()).toEqual([undefined, profile]);
   });
 
   it("should emit new value if event is re-added", () => {
@@ -244,9 +236,17 @@ describe("event", () => {
     expect(spy.receivedComplete()).toBe(false);
   });
 
-  it("should not emit if event is not found", () => {
+  it("should emit undefined if event is not found", () => {
     const spy = subscribeSpyTo(eventStore.event(profile.id));
-    expect(spy.getValuesLength()).toEqual(0);
+    expect(spy.getValues()).toEqual([undefined]);
+  });
+
+  it("should emit undefined when event is removed", () => {
+    eventStore.add(profile);
+    const spy = subscribeSpyTo(eventStore.event(profile.id));
+    expect(spy.getValues()).toEqual([profile]);
+    eventStore.remove(profile);
+    expect(spy.getValues()).toEqual([profile, undefined]);
   });
 });
 
@@ -256,14 +256,6 @@ describe("replaceable", () => {
     const spy = subscribeSpyTo(eventStore.replaceable(0, user.pubkey));
     expect(spy.getValues()).toEqual([profile]);
   });
-
-  it("should emit undefined when event is removed", () => {
-    eventStore.add(profile);
-    const spy = subscribeSpyTo(eventStore.replaceable(0, user.pubkey));
-    eventStore.remove(profile);
-    expect(spy.getValues()).toEqual([profile, undefined]);
-  });
-
   it("should not complete when event is removed", () => {
     eventStore.add(profile);
     const spy = subscribeSpyTo(eventStore.replaceable(0, user.pubkey));
@@ -306,6 +298,18 @@ describe("replaceable", () => {
     const newProfile = user.profile({ name: "new name" }, { created_at: profile.created_at + 500 });
     eventStore.add(newProfile);
     expect(spy.getValues()).toEqual([profile, newProfile]);
+  });
+
+  it("should emit undefined if event is not found", () => {
+    const spy = subscribeSpyTo(eventStore.replaceable(0, user.pubkey));
+    expect(spy.getValues()).toEqual([undefined]);
+  });
+
+  it("should emit undefined when event is removed", () => {
+    eventStore.add(profile);
+    const spy = subscribeSpyTo(eventStore.replaceable(0, user.pubkey));
+    eventStore.remove(profile);
+    expect(spy.getValues()).toEqual([profile, undefined]);
   });
 });
 
