@@ -21,14 +21,20 @@ export function CreateWallet(mints: string[], privateKey?: Uint8Array): Action {
 
 /**
  * Adds a private key to a wallet event
- * @throws if the wallet does not exist or is locked
+ * @throws if the wallet does not exist or cannot be unlocked
  */
 export function WalletAddPrivateKey(privateKey: Uint8Array): Action {
   return async function* ({ events, self, factory }) {
     const wallet = events.getReplaceable(WALLET_KIND, self);
     if (!wallet) throw new Error("Wallet does not exist");
 
-    if (!isWalletUnlocked(wallet)) throw new Error("Wallet is locked");
+    // Unlock the wallet if it's locked
+    if (!isWalletUnlocked(wallet)) {
+      const signer = factory.context.signer;
+      if (!signer) throw new Error("Missing signer");
+      await unlockWallet(wallet, signer);
+    }
+
     if (getWalletPrivateKey(wallet)) throw new Error("Wallet already has a private key");
 
     const draft = await factory.create(WalletBlueprint, getWalletMints(wallet), privateKey);

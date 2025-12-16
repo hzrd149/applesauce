@@ -1,10 +1,10 @@
-import { bytesToHex } from "@noble/hashes/utils";
 import { createEvent, EventFactory } from "applesauce-core/event-factory";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { getWalletMints, getWalletPrivateKey } from "../../helpers/wallet";
 import { WalletBlueprint } from "../wallet";
+import { bytesToHex } from "applesauce-core/helpers";
 
 const user = new FakeUser();
 const factory = new EventFactory({ signer: user });

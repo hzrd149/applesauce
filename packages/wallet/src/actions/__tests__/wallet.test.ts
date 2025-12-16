@@ -1,8 +1,7 @@
-import { bytesToHex } from "@noble/hashes/utils";
 import { ActionHub } from "applesauce-actions";
 import { EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core/event-factory";
-import { unlockHiddenTags } from "applesauce-core/helpers";
+import { bytesToHex, unlockHiddenTags } from "applesauce-core/helpers";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { lastValueFrom } from "rxjs";
 import { beforeEach, describe, expect, it, Mock, vitest } from "vitest";
