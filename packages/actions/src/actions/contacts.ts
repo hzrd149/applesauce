@@ -1,33 +1,28 @@
 import { EventTemplate, kinds } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
+import { modifyPublicTags } from "applesauce-core/operations";
 import { addProfilePointerTag, removeProfilePointerTag } from "applesauce-core/operations/tag/common";
 import { Action } from "../action-hub.js";
 
 /** An action that adds a pubkey to a users contacts event */
-export function FollowUser(pubkey: string, relay?: string, hidden = false): Action {
+export function FollowUser(user: string | ProfilePointer): Action {
   return async function* ({ events, factory, self }) {
     let contacts = events.getReplaceable(kinds.Contacts, self);
 
-    const pointer = { pubkey, relays: relay ? [relay] : undefined };
-    const operation = addProfilePointerTag(pointer);
+    const operation = addProfilePointerTag(user);
 
     let draft: EventTemplate;
 
     // No contact list, create one
-    if (!contacts)
-      draft = await factory.build(
-        { kind: kinds.Contacts },
-        hidden ? modifyHiddenTags(operation) : modifyPublicTags(operation),
-      );
-    else draft = await factory.modifyTags(contacts, hidden ? { hidden: operation } : operation);
+    if (!contacts) draft = await factory.build({ kind: kinds.Contacts }, modifyPublicTags(operation));
+    else draft = await factory.modifyTags(contacts, operation);
 
     yield await factory.sign(draft);
   };
 }
 
 /** An action that removes a pubkey from a users contacts event */
-export function UnfollowUser(user: string | ProfilePointer, hidden = false): Action {
+export function UnfollowUser(user: string | ProfilePointer): Action {
   return async function* ({ events, factory, self }) {
     const contacts = events.getReplaceable(kinds.Contacts, self);
 
@@ -35,7 +30,7 @@ export function UnfollowUser(user: string | ProfilePointer, hidden = false): Act
     if (!contacts) return;
 
     const operation = removeProfilePointerTag(user);
-    const draft = await factory.modifyTags(contacts, hidden ? { hidden: operation } : operation);
+    const draft = await factory.modifyTags(contacts, operation);
     yield await factory.sign(draft);
   };
 }

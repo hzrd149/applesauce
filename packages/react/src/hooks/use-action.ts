@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { finalize } from "rxjs";
-import { ActionConstructor } from "applesauce-actions";
+import { ActionBuilder } from "applesauce-actions";
 
 import { useActionHub } from "./use-action-hub.js";
 
-export function useAction<Args extends Array<any>>(Action: ActionConstructor<Args>, args: Args | undefined) {
+export function useAction<Args extends Array<any>>(Action: ActionBuilder<Args>, args: Args | undefined) {
   const [loading, setLoading] = useState(false);
   const ref = useRef(args);
   ref.current = args;

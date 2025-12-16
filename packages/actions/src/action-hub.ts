@@ -21,7 +21,8 @@ export type Action = (
   ctx: ActionContext,
 ) => Observable<NostrEvent> | AsyncGenerator<NostrEvent> | Generator<NostrEvent>;
 
-export type ActionConstructor<Args extends Array<any>> = (...args: Args) => Action;
+/** A function that takes arguments and returns an action */
+export type ActionBuilder<Args extends Array<any>> = (...args: Args) => Action;
 
 /** The main class that runs actions */
 export class ActionHub {
@@ -54,22 +55,21 @@ export class ActionHub {
   }
 
   /** Run an action and publish events using the publish method */
-  async run<Args extends Array<any>>(Action: ActionConstructor<Args>, ...args: Args): Promise<void> {
+  async run<Args extends Array<any>>(builder: ActionBuilder<Args>, ...args: Args): Promise<void> {
     if (!this.publish) throw new Error("Missing publish method, use ActionHub.exec");
 
     // wait for action to complete and group events
-    const events = await lastValueFrom(this.exec<Args>(Action, ...args).pipe(toArray()));
+    const events = await lastValueFrom(this.exec<Args>(builder, ...args).pipe(toArray()));
 
     // publish events
     for (const event of events) await this.publish(event);
   }
 
   /** Run an action without publishing the events */
-  exec<Args extends Array<any>>(Action: ActionConstructor<Args>, ...args: Args): Observable<NostrEvent> {
+  exec<Args extends Array<any>>(builder: ActionBuilder<Args>, ...args: Args): Observable<NostrEvent> {
     return from(this.getContext()).pipe(
       switchMap((ctx) => {
-        const action = Action(...args);
-        return ActionHub.runAction(ctx, action);
+        return ActionHub.runAction(ctx, builder(...args));
       }),
       tap((event) => this.saveToStore && this.events.add(event)),
     );
