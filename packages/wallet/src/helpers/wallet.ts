@@ -1,6 +1,6 @@
-import { hexToBytes } from "@noble/hashes/utils";
 import {
   getHiddenTags,
+  hasHiddenTags,
   HiddenContentSigner,
   isHiddenTagsUnlocked,
   lockHiddenTags,
@@ -9,10 +9,18 @@ import {
   UnlockedHiddenTags,
   unlockHiddenTags,
 } from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { hexToBytes, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 
 export const WALLET_KIND = 17375;
 export const WALLET_BACKUP_KIND = 375;
+
+/** Validated wallet event */
+export type WalletEvent = KnownEvent<typeof WALLET_KIND>;
+
+/** Checks if an event is a valid wallet event */
+export function isValidWallet(event: NostrEvent): event is WalletEvent {
+  return event.kind === WALLET_KIND && hasHiddenTags(event);
+}
 
 // Enable hidden content for wallet kinds
 setHiddenTagsEncryptionMethod(WALLET_KIND, "nip44");

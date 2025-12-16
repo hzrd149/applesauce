@@ -1,4 +1,4 @@
-import { Observable, firstValueFrom, isObservable, lastValueFrom, map, of, switchMap, timeout } from "rxjs";
+import { Observable, filter, firstValueFrom, isObservable, lastValueFrom, map, of, switchMap, timeout } from "rxjs";
 
 /**
  * A symbol used to mark an Observable as chainable
@@ -25,15 +25,15 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
 
   // Create a Proxy that intercepts property access
   const proxy = new Proxy(observable, {
-    get(target, prop) {
+    get(target$, prop) {
       const cache: Record<string, ChainableObservable<any>> = (observable as any)[CHAINABLE_CACHE_SYMBOL] ||
       ((observable as any)[CHAINABLE_CACHE_SYMBOL] = {});
 
       // Forward all Observable methods and properties
-      if (prop in target || typeof prop === "symbol") {
-        const value = (target as any)[prop];
+      if (prop in target$ || typeof prop === "symbol") {
+        const value = (target$ as any)[prop];
         // If it's a function, bind it to the target
-        if (typeof value === "function") return value.bind(target);
+        if (typeof value === "function") return value.bind(target$);
 
         return value;
       }
@@ -48,16 +48,28 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
 
         // Extra observalbe helpers to make it easier to work with observables
         if (prop === "$first") {
-          return (wait: number = 30_000) => firstValueFrom(target.pipe(timeout({ first: wait })));
+          return (wait: number = 30_000) =>
+            firstValueFrom(
+              target$.pipe(
+                filter((v) => v !== undefined && v !== null),
+                timeout({ first: wait }),
+              ),
+            );
         } else if (prop === "$last") {
-          return (wait: number = 30_000) => lastValueFrom(target.pipe(timeout({ first: wait })));
+          return (wait: number = 30_000) =>
+            lastValueFrom(
+              target$.pipe(
+                filter((v) => v !== undefined && v !== null),
+                timeout({ first: wait }),
+              ),
+            );
         }
         // Handle property access for properties ending with $
         else if (prop.endsWith("$")) {
           // Use switchMap to chain to the nested observable
-          prop$ = target.pipe(
-            switchMap((resolved) => {
-              const value = (resolved as any)[prop];
+          prop$ = target$.pipe(
+            switchMap((target) => {
+              const value = target === undefined || target === null ? target : target[prop as keyof T];
 
               // If value is an observable, return it
               if (isObservable(value)) return value;
@@ -68,9 +80,9 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
         }
         // For non-$ properties, return an Observable of the property value
         else {
-          prop$ = target.pipe(
-            // Access the property on the value
-            map((resolved) => (resolved as any)[prop]),
+          prop$ = target$.pipe(
+            // Access the property on the value if target is not undefined or null
+            map((target) => (target === undefined || target === null ? target : target[prop as keyof T])),
           );
         }
 
@@ -91,6 +103,16 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
 }
 
 /**
+ * Helper type to extract nullable parts (undefined/null) from a type
+ */
+type NullableParts<T> = Extract<T, undefined | null>;
+
+/**
+ * Helper type to get the property type, preserving nullable parts from the parent type
+ */
+type PropChain<T, K extends keyof NonNullable<T>> = NonNullable<T>[K] | NullableParts<T>;
+
+/**
  * A chainable Observable type that allows property chaining.
  * This type maps all properties to chainable observables:
  * - Properties ending with $: extracts inner type from Observable<U> → ChainableObservable<U>
@@ -109,16 +131,16 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
 export type ChainableObservable<T> = Observable<T> &
   Omit<
     {
-      [K in keyof T as K extends string ? K : never]: K extends `${infer _}$`
-        ? T[K] extends Observable<infer U>
-          ? ChainableObservable<U>
+      [K in keyof NonNullable<T> as K extends string ? K : never]: K extends `${infer _}$`
+        ? NonNullable<T>[K] extends Observable<infer U>
+          ? ChainableObservable<U | NullableParts<T>>
           : never
-        : ChainableObservable<T[K]>;
+        : ChainableObservable<PropChain<T, K>>;
     },
     "$first" | "$last"
   > & {
     /** Returns a promise that resolves with the first value or rejects with a timeout error */
-    $first(first?: number): Promise<T>;
+    $first(first?: number): Promise<NonNullable<T>>;
     /** Returns a promise that resolves with the last value or rejects with a timeout error */
-    $last(max?: number): Promise<T>;
+    $last(max?: number): Promise<NonNullable<T>>;
   };

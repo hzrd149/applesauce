@@ -9,9 +9,17 @@ import {
   UnlockedHiddenContent,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 
 export const WALLET_TOKEN_KIND = 7375;
+
+/** Validated wallet token event */
+export type WalletTokenEvent = KnownEvent<typeof WALLET_TOKEN_KIND>;
+
+/** Checks if an event is a valid wallet token event */
+export function isValidWalletToken(event: NostrEvent): event is WalletTokenEvent {
+  return event.kind === WALLET_TOKEN_KIND;
+}
 
 // Enable hidden content for wallet token kind
 setHiddenContentEncryptionMethod(WALLET_TOKEN_KIND, "nip44");

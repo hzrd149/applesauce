@@ -1,10 +1,10 @@
-import { CashuMint, CashuWallet, MintQuoteResponse } from "@cashu/cashu-ts";
+import { Mint, MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
 import { ActionHub } from "applesauce-actions";
-import { EventStore } from "applesauce-core";
+import { EventFactory, EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-core";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
+import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
@@ -14,7 +14,6 @@ import {
   getNutzapInfoRelays,
   NUTZAP_INFO_KIND,
 } from "applesauce-wallet/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
 import { npubEncode } from "nostr-tools/nip19";
 import { useState } from "react";
 import { startWith } from "rxjs/operators";
@@ -181,23 +180,31 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
     setIsProcessing(true);
     try {
       // Create mint and wallet
-      const mint = new CashuMint(firstMint);
-      const wallet = new CashuWallet(mint);
+      const mint = new Mint(firstMint);
+      const wallet = new Wallet(mint);
 
       // Request a quote for minting
-      const quote = await wallet.createMintQuote(amount);
+      const quote = await wallet.createMintQuoteBolt11(amount);
       setQuote(quote);
       setStatus("invoice");
 
       // Start checking payment status
       const checkPayment = async () => {
         try {
-          const quoteStatus = await wallet.checkMintQuote(quote.quote);
+          const quoteStatus = await wallet.checkMintQuoteBolt11(quote.quote);
           if (quoteStatus.state === "PAID") {
             // Mint proofs with P2PK lock
-            const proofs = await wallet.mintProofs(amount, quote.quote, {
-              pubkey: nutzapPubkey,
-            });
+            const proofs = await wallet.mintProofsBolt11(
+              amount,
+              quote.quote,
+              {},
+              {
+                type: "p2pk",
+                options: {
+                  pubkey: nutzapPubkey,
+                },
+              },
+            );
 
             // Create token from proofs
             const tokens = { mint: firstMint, proofs: proofs, unit: "sat" };

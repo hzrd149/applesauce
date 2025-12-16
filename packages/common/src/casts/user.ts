@@ -1,4 +1,3 @@
-import { defined, withImmediateValueOrDefault } from "applesauce-core";
 import {
   getParentEventStore,
   isEvent,
@@ -105,8 +104,6 @@ export class User {
   get contacts$() {
     return this.$$ref("contacts$", (store) =>
       this.outboxes$.pipe(
-        // Always start without the outboxes
-        withImmediateValueOrDefault(undefined),
         // Fetch the contacts from the outboxes
         switchMap((outboxes) => store.contacts({ pubkey: this.pubkey, relays: outboxes })),
         // Cast to users
@@ -120,7 +117,7 @@ export class User {
         // Import the Mutes class
         defer(() => import("./mutes.js").then((m) => m.Mutes)),
         // Always start without the outboxes
-        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+        this.outboxes$,
       ]).pipe(
         // Create the mute list event with the outboxes
         switchMap(([Mutes, outboxes]) =>
@@ -132,8 +129,6 @@ export class User {
   get mailboxes$() {
     return this.$$ref("mailboxes$", (store) =>
       store.mailboxes({ pubkey: this.pubkey }).pipe(
-        // Only emit when the mailboxes are found
-        defined(),
         // Cache the outboxes for creating a profile pointer relay hints
         tap((mailboxes) => (this.#outboxes = mailboxes?.outboxes)),
       ),
@@ -151,7 +146,7 @@ export class User {
         // Import the BookmarksList class
         defer(() => from(import("./bookmarks.js").then((m) => m.BookmarksList))),
         // Get outboxes and start without them
-        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+        this.outboxes$,
       ]).pipe(
         switchMap(([BookmarksList, outboxes]) =>
           // Fetch the bookmarks list event from the outboxes
@@ -168,7 +163,7 @@ export class User {
         // Import the FavoriteRelays class
         defer(() => from(import("./relay-lists.js").then((m) => m.FavoriteRelays))),
         // Get outboxes and start without them
-        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+        this.outboxes$,
       ]).pipe(
         // Fetch the favorite relays list event from the outboxes
         switchMap(([FavoriteRelaysList, outboxes]) =>
@@ -185,7 +180,7 @@ export class User {
         // Import the SearchRelays class
         defer(() => from(import("./relay-lists.js").then((m) => m.SearchRelays))),
         // Get outboxes and start without them
-        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+        this.outboxes$,
       ]).pipe(
         // Fetch the search relays list event from the outboxes
         switchMap(([SearchRelaysList, outboxes]) =>
@@ -202,7 +197,7 @@ export class User {
         // Import the BlockedRelays class
         defer(() => from(import("./relay-lists.js").then((m) => m.BlockedRelays))),
         // Get outboxes and start without them
-        this.outboxes$.pipe(withImmediateValueOrDefault(undefined)),
+        this.outboxes$,
       ]).pipe(
         // Fetch the blocked relays list event from the outboxes
         switchMap(([BlockedRelaysList, outboxes]) =>

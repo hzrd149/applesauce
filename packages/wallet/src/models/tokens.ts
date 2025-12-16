@@ -1,6 +1,6 @@
-import { combineLatest, filter, map, startWith } from "rxjs";
 import { Model } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
+import { combineLatest, filter, map, startWith } from "rxjs";
 
 import {
   getTokenContent,
@@ -19,7 +19,7 @@ function filterDeleted(tokens: NostrEvent[]) {
       if (deleted.has(token.id)) return false;
 
       // add ids to deleted array
-      if (!isTokenContentUnlocked(token)) {
+      if (isTokenContentUnlocked(token)) {
         const details = getTokenContent(token)!;
         for (const id of details.del) deleted.add(id);
       }
@@ -29,8 +29,8 @@ function filterDeleted(tokens: NostrEvent[]) {
     .reverse();
 }
 
-/** A model that subscribes to all token events for a wallet, passing locked will filter by token locked status */
-export function WalletTokensModel(pubkey: string, locked?: boolean | undefined): Model<NostrEvent[]> {
+/** A model that subscribes to all token events for a wallet, passing unlocked will filter by token unlocked status */
+export function WalletTokensModel(pubkey: string, unlocked?: boolean | undefined): Model<NostrEvent[]> {
   return (events) => {
     const updates = events.update$.pipe(
       filter((e) => e.kind === WALLET_TOKEN_KIND && e.pubkey === pubkey),
@@ -41,8 +41,8 @@ export function WalletTokensModel(pubkey: string, locked?: boolean | undefined):
     return combineLatest([updates, timeline]).pipe(
       // filter out locked tokens
       map(([_, tokens]) => {
-        if (locked === undefined) return tokens;
-        else return tokens.filter((t) => isTokenContentUnlocked(t) === locked);
+        if (unlocked === undefined) return tokens;
+        else return tokens.filter((t) => isTokenContentUnlocked(t) === unlocked);
       }),
       // remove deleted events
       map(filterDeleted),
@@ -68,9 +68,9 @@ export function WalletBalanceModel(pubkey: string): Model<Record<string, number>
         // ignore duplicate proofs
         const seen = new Set<string>();
 
-        return tokens.reduce(
+        return tokens.filter(isTokenContentUnlocked).reduce(
           (totals, token) => {
-            const details = getTokenContent(token)!;
+            const details = getTokenContent(token);
             const total = details.proofs.filter(ignoreDuplicateProofs(seen)).reduce((t, p) => t + p.amount, 0);
             return { ...totals, [details.mint]: (totals[details.mint] ?? 0) + total };
           },

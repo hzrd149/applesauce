@@ -1,0 +1,80 @@
+import { EventCast } from "applesauce-common/casts";
+import { castTimelineStream } from "applesauce-common/observable";
+import { HiddenContentSigner } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers/event";
+import { watchEventUpdates } from "applesauce-core/observable";
+import { of } from "rxjs";
+import { map } from "rxjs/operators";
+import {
+  getWalletMints,
+  getWalletPrivateKey,
+  isValidWallet,
+  isWalletUnlocked,
+  unlockWallet,
+  WALLET_BACKUP_KIND,
+  WalletEvent,
+} from "../helpers/wallet.js";
+import { WalletHistoryModel } from "../models/history.js";
+import { WalletBalanceModel, WalletTokensModel } from "../models/tokens.js";
+import { WalletHistory } from "./wallet-history.js";
+import { WalletToken } from "./wallet-token.js";
+
+export class Wallet extends EventCast<WalletEvent> {
+  constructor(event: NostrEvent) {
+    if (!isValidWallet(event)) throw new Error("Invalid wallet event");
+    super(event);
+  }
+
+  // Direct getters (return undefined if locked)
+  get mints() {
+    return getWalletMints(this.event);
+  }
+  get privateKey() {
+    return getWalletPrivateKey(this.event);
+  }
+
+  // Unlocking pattern
+  get unlocked() {
+    return isWalletUnlocked(this.event);
+  }
+  async unlock(signer: HiddenContentSigner) {
+    return unlockWallet(this.event, signer);
+  }
+
+  // Observable that emits when wallet is unlocked
+  get mints$() {
+    return this.$$ref("mints$", (store) =>
+      of(this.event).pipe(
+        watchEventUpdates(store),
+        map((event) => event && getWalletMints(event)),
+      ),
+    );
+  }
+  get balance$() {
+    return this.$$ref("balance$", (store) => store.model(WalletBalanceModel, this.pubkey));
+  }
+  /** The p2pk locking private key for this wallet */
+  get privateKey$() {
+    return this.$$ref("privateKey$", (store) =>
+      of(this.event).pipe(
+        watchEventUpdates(store),
+        map((event) => event && getWalletPrivateKey(event)),
+      ),
+    );
+  }
+
+  // Observables for related events
+  get tokens$() {
+    return this.$$ref("tokens$", (store) =>
+      store.model(WalletTokensModel, this.pubkey).pipe(castTimelineStream(WalletToken)),
+    );
+  }
+  get history$() {
+    return this.$$ref("history$", (store) =>
+      store.model(WalletHistoryModel, this.pubkey).pipe(castTimelineStream(WalletHistory)),
+    );
+  }
+  get backups$() {
+    return this.$$ref("backups$", (store) => store.timeline({ kinds: [WALLET_BACKUP_KIND], authors: [this.pubkey] }));
+  }
+}

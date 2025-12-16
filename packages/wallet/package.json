@@ -47,6 +47,16 @@
       "require": "./dist/models/*.js",
       "types": "./dist/models/*.d.ts"
     },
+    "./casts": {
+      "import": "./dist/casts/index.js",
+      "require": "./dist/casts/index.js",
+      "types": "./dist/casts/index.d.ts"
+    },
+    "./casts/*": {
+      "import": "./dist/casts/*.js",
+      "require": "./dist/casts/*.js",
+      "types": "./dist/casts/*.d.ts"
+    },
     "./blueprints": {
       "import": "./dist/blueprints/index.js",
       "require": "./dist/blueprints/index.js",
@@ -81,7 +91,6 @@
   "dependencies": {
     "@cashu/cashu-ts": "^3.1.1",
     "@gandlaf21/bc-ur": "^1.1.12",
-    "@noble/hashes": "^1.7.1",
     "applesauce-actions": "^4.0.0",
     "applesauce-common": "^4.0.0",
     "applesauce-core": "^4.0.0",

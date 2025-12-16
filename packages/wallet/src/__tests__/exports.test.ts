@@ -7,6 +7,7 @@ describe("exports", () => {
       [
         "Actions",
         "Blueprints",
+        "Casts",
         "Helpers",
         "Models",
         "Operations",

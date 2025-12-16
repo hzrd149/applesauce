@@ -1,8 +1,16 @@
 import { Proof } from "@cashu/cashu-ts";
 import { getOrComputeCachedValue, mergeRelaySets, safeParse } from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 
 export const NUTZAP_INFO_KIND = 10019;
+
+/** Validated nutzap info event */
+export type NutzapInfoEvent = KnownEvent<typeof NUTZAP_INFO_KIND>;
+
+/** Checks if an event is a valid nutzap info event */
+export function isValidNutzapInfo(event: NostrEvent): event is NutzapInfoEvent {
+  return event.kind === NUTZAP_INFO_KIND;
+}
 
 // Symbols for caching computed values
 export const NutzapMintsSymbol = Symbol.for("nutzap-mints");

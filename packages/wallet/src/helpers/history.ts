@@ -1,5 +1,6 @@
 import {
   getHiddenTags,
+  hasHiddenTags,
   HiddenContentSigner,
   isETag,
   isHiddenTagsUnlocked,
@@ -9,9 +10,17 @@ import {
   UnlockedHiddenTags,
   unlockHiddenTags,
 } from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 
 export const WALLET_HISTORY_KIND = 7376;
+
+/** Validated wallet history event */
+export type WalletHistoryEvent = KnownEvent<typeof WALLET_HISTORY_KIND>;
+
+/** Checks if an event is a valid wallet history event */
+export function isValidWalletHistory(event: NostrEvent): event is WalletHistoryEvent {
+  return event.kind === WALLET_HISTORY_KIND && hasHiddenTags(event);
+}
 
 // Enable hidden content for wallet history kind
 setHiddenTagsEncryptionMethod(WALLET_HISTORY_KIND, "nip44");

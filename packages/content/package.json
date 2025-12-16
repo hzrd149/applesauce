@@ -53,7 +53,7 @@
     }
   },
   "dependencies": {
-    "@cashu/cashu-ts": "^2.7.2",
+    "@cashu/cashu-ts": "^3.1.1",
     "@types/hast": "^3.0.4",
     "@types/mdast": "^4.0.4",
     "@types/unist": "^3.0.3",

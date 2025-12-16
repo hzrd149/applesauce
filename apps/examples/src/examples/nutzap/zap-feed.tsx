@@ -1,7 +1,8 @@
 import { EventStore, mapEventsToStore, mapEventsToTimeline, Model } from "applesauce-core";
 import { addRelayHintsToPointer, getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
+import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import {
   getNutzapAmount,
@@ -13,7 +14,6 @@ import {
   NUTZAP_KIND,
   type NutzapEvent,
 } from "applesauce-wallet/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
 import { EMPTY, ignoreElements, iif, map, mergeWith } from "rxjs";

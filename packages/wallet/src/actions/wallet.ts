@@ -1,7 +1,7 @@
 import { Action } from "applesauce-actions";
 import { WalletBackupBlueprint, WalletBlueprint } from "../blueprints/wallet.js";
-import { isHistoryContentUnlocked, unlockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
-import { isTokenContentUnlocked, unlockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
+import { unlockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
+import { unlockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 import { getWalletMints, getWalletPrivateKey, isWalletUnlocked, unlockWallet, WALLET_KIND } from "../helpers/wallet.js";
 
 /** An action that creates a new 17375 wallet event and 375 wallet backup */
@@ -28,7 +28,7 @@ export function WalletAddPrivateKey(privateKey: Uint8Array): Action {
     const wallet = events.getReplaceable(WALLET_KIND, self);
     if (!wallet) throw new Error("Wallet does not exist");
 
-    if (isWalletUnlocked(wallet)) throw new Error("Wallet is locked");
+    if (!isWalletUnlocked(wallet)) throw new Error("Wallet is locked");
     if (getWalletPrivateKey(wallet)) throw new Error("Wallet already has a private key");
 
     const draft = await factory.create(WalletBlueprint, getWalletMints(wallet), privateKey);
@@ -52,16 +52,16 @@ export function UnlockWallet(unlock?: { history?: boolean; tokens?: boolean }): 
     const wallet = events.getReplaceable(WALLET_KIND, self);
     if (!wallet) throw new Error("Wallet does not exist");
 
-    if (isWalletUnlocked(wallet)) await unlockWallet(wallet, signer);
+    await unlockWallet(wallet, signer);
 
     if (unlock?.tokens) {
       const tokens = events.getTimeline({ kinds: [WALLET_TOKEN_KIND], authors: [self] });
-      for (const token of tokens) if (isTokenContentUnlocked(token)) await unlockTokenContent(token, signer);
+      for (const token of tokens) await unlockTokenContent(token, signer);
     }
 
     if (unlock?.history) {
       const history = events.getTimeline({ kinds: [WALLET_HISTORY_KIND], authors: [self] });
-      for (const entry of history) if (isHistoryContentUnlocked(entry)) await unlockHistoryContent(entry, signer);
+      for (const entry of history) await unlockHistoryContent(entry, signer);
     }
   };
 }
