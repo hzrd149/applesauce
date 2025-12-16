@@ -74,13 +74,16 @@ export function parseReplaceableAddress(address: string, requireIdentifier = fal
   const parts = address.split(":") as (string | undefined)[];
   const kind = parts[0] ? parseInt(parts[0]) : undefined;
   const pubkey = parts[1];
-  const identifier = parts[2] ?? "";
 
   // Check valid kind
   if (kind === undefined) return null;
 
   // Check valid pubkey
   if (pubkey === undefined || pubkey === "" || !isHexKey(pubkey)) return null;
+
+  // Reconstruct identifier by joining all remaining parts after pubkey
+  // This handles cases where the identifier contains colons (e.g., URLs)
+  const identifier = parts.slice(2).join(":");
 
   // Return null if identifier is required and missing
   if (requireIdentifier && identifier === "") return null;

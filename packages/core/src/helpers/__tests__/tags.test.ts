@@ -27,6 +27,16 @@ describe("processTags", () => {
     expect(result).toEqual([{ kind: 30000, pubkey: user.pubkey, identifier: "list" }]);
   });
 
+  it("should correctly parse urls as identifier", () => {
+    const result = processTags([["a", `30000:${user.pubkey}:https://identifier.org/`]], (t) => {
+      if (t[1] === "bad coordinate") throw new Error("Bad coordinate");
+      return getAddressPointerFromATag(t) ?? undefined;
+    });
+
+    expect(result).toEqual([{ kind: 30000, pubkey: user.pubkey, identifier: "https://identifier.org/" }]);
+  });
+
+
   it("should filter out undefined", () => {
     expect(
       processTags([["a", "bad coordinate"], ["e"], ["a", "30000:pubkey:list"]], (tag) =>
