@@ -692,16 +692,13 @@ function MuteManager({ user }: { user: User }) {
                     {publicThreads.length === 0 ? (
                       <div className="alert alert-info alert-soft">No public threads muted</div>
                     ) : (
-                      publicThreads.map((threadId, index) => {
-                        const pointer: EventPointer = { id: threadId };
-                        return (
-                          <MutedThreadItem
-                            key={index}
-                            pointer={pointer}
-                            onRemove={() => handleUnmuteThread(pointer, false)}
-                          />
-                        );
-                      })
+                      publicThreads.map((threadId, index) => (
+                        <MutedThreadItem
+                          key={index}
+                          pointer={{ id: threadId }}
+                          onRemove={() => handleUnmuteThread(threadId, false)}
+                        />
+                      ))
                     )}
                   </div>
                 </div>
@@ -718,16 +715,13 @@ function MuteManager({ user }: { user: User }) {
                     {hiddenThreads.length === 0 ? (
                       <div className="alert alert-info alert-soft">No hidden threads muted</div>
                     ) : (
-                      hiddenThreads.map((threadId, index) => {
-                        const pointer: EventPointer = { id: threadId };
-                        return (
-                          <MutedThreadItem
-                            key={index}
-                            pointer={pointer}
-                            onRemove={() => handleUnmuteThread(pointer, true)}
-                          />
-                        );
-                      })
+                      hiddenThreads.map((threadId, index) => (
+                        <MutedThreadItem
+                          key={index}
+                          pointer={{ id: threadId }}
+                          onRemove={() => handleUnmuteThread(threadId, true)}
+                        />
+                      ))
                     )}
                   </div>
                 </div>
