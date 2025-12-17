@@ -6,7 +6,7 @@ import {
   getNutzapInfoRelays,
   isValidNutzapInfo,
   NutzapInfoEvent,
-} from "../helpers/zap-info.js";
+} from "../helpers/nutzap-info.js";
 
 export class NutzapInfo extends EventCast<NutzapInfoEvent> {
   constructor(event: NostrEvent) {

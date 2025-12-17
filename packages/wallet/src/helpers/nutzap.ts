@@ -4,6 +4,7 @@ import {
   getEventPointerFromETag,
   getOrComputeCachedValue,
   getProfilePointerFromPTag,
+  getPublicKey,
   getTagValue,
   isPTag,
   KnownEvent,
@@ -99,4 +100,74 @@ export function isValidNutzap(nutzap: NostrEvent): nutzap is NutzapEvent {
 /** Checks if a nutzap event has already been redeemed based on kind:7376 wallet history events */
 export function isNutzapRedeemed(nutzapId: string, history: NostrEvent[]): boolean {
   return history.some((entry) => getHistoryRedeemed(entry).includes(nutzapId));
+}
+
+/**
+ * Extracts the P2PK locking pubkey from proofs in a nutzap event
+ * @param nutzap the nutzap event containing P2PK-locked proofs
+ * @returns the pubkey that the proofs are locked to, or undefined if not found
+ * @throws {Error} if proofs are not P2PK locked or have inconsistent pubkeys
+ */
+export function getNutzapP2PKPubkey(nutzap: NostrEvent): string | undefined {
+  const proofs = getNutzapProofs(nutzap);
+  if (proofs.length === 0) return undefined;
+
+  let p2pkPubkey: string | undefined;
+
+  for (const proof of proofs) {
+    const secret = safeParse(proof.secret);
+    if (!secret) throw new Error("Proof missing secret");
+    if (!Array.isArray(secret)) throw new Error("Invalid proof secret format");
+    if (secret[0] !== "P2PK") throw new Error("Proof is not P2PK locked");
+
+    const proofPubkey = secret[1]?.data;
+    if (!proofPubkey || typeof proofPubkey !== "string") {
+      throw new Error("P2PK proof missing pubkey data");
+    }
+
+    // Normalize pubkey (add 02 prefix if x-only)
+    const normalizedPubkey = proofPubkey.length === 64 ? `02${proofPubkey}` : proofPubkey;
+
+    if (!p2pkPubkey) {
+      p2pkPubkey = normalizedPubkey;
+    } else if (p2pkPubkey !== normalizedPubkey) {
+      throw new Error("Proofs are locked to different pubkeys");
+    }
+  }
+
+  return p2pkPubkey;
+}
+
+/**
+ * Finds the matching private key for the P2PK lock in a nutzap event's proofs
+ * @param nutzap the nutzap event containing P2PK-locked proofs
+ * @param privateKeys array of private keys to search through
+ * @returns the matching private key, or undefined if none match
+ * @throws {Error} if proofs are not P2PK locked or have inconsistent pubkeys
+ */
+export function findMatchingPrivateKeyForNutzap(nutzap: NostrEvent, privateKeys: Uint8Array[]): Uint8Array | undefined {
+  const p2pkPubkey = getNutzapP2PKPubkey(nutzap);
+  if (!p2pkPubkey) return undefined;
+
+  // Normalize target pubkey to full format (with 02 prefix) for comparison
+  // getNutzapP2PKPubkey already normalizes to full format, so p2pkPubkey is 66 chars
+  const targetPubkeyFull = p2pkPubkey;
+  const targetPubkeyXOnly = p2pkPubkey.length === 66 ? p2pkPubkey.slice(2) : p2pkPubkey;
+
+  for (const privateKey of privateKeys) {
+    try {
+      // Derive public key from private key (returns 64-char x-only format)
+      const derivedPubkey = getPublicKey(privateKey);
+
+      // Compare: derived pubkey is x-only, so compare both formats
+      if (derivedPubkey === targetPubkeyXOnly || `02${derivedPubkey}` === targetPubkeyFull) {
+        return privateKey;
+      }
+    } catch (error) {
+      // Skip invalid private keys
+      continue;
+    }
+  }
+
+  return undefined;
 }

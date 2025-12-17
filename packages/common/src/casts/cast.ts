@@ -9,6 +9,7 @@ import { getParentEventStore, NostrEvent } from "applesauce-core/helpers/event";
 import { Observable } from "rxjs";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { castUser } from "./user.js";
+import { getSeenRelays } from "applesauce-core/helpers";
 
 /** The type of event store that is passed to cast references */
 export type CastRefEventStore = IEventSubscriptions & EventModels<IEventStore | IAsyncEventStore> & IEventStoreStreams;
@@ -72,6 +73,11 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
   /** Get the {@link User} that authored this event */
   get author() {
     return castUser(this.event);
+  }
+
+  /** Return the set of relays this event was seen on */
+  get seen() {
+    return getSeenRelays(this.event);
   }
 
   // Enfore kind check in constructor. this will force child classes to verify the event before calling super()

@@ -60,7 +60,7 @@ export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
 export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
   return async function* ({ factory }) {
     if (spent.length === 0) throw new Error("Cant complete spent with no token events");
-    if (spent.some((s) => isTokenContentUnlocked(s))) throw new Error("Cant complete spend with locked tokens");
+    if (spent.some((s) => !isTokenContentUnlocked(s))) throw new Error("Cant complete spend with locked tokens");
 
     // create the nip-09 delete event for previous events
     const deleteDraft = await factory.create(DeleteBlueprint, spent);
@@ -110,7 +110,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
 export function ConsolidateTokens(opts?: { ignoreLocked?: boolean }): Action {
   return async function* ({ events, factory, self }) {
     const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] })).filter((token) => {
-      if (isTokenContentUnlocked(token)) {
+      if (!isTokenContentUnlocked(token)) {
         if (opts?.ignoreLocked) return false;
         else throw new Error("Token is locked");
       } else return true;
@@ -125,9 +125,6 @@ export function ConsolidateTokens(opts?: { ignoreLocked?: boolean }): Action {
 
     // loop over each mint and consolidate proofs
     for (const [mint, tokens] of byMint) {
-      const cashuMint = new Mint(mint);
-      const cashuWallet = new Wallet(cashuMint);
-
       // get all tokens proofs
       const proofs = tokens
         .map((t) => getTokenContent(t)!.proofs)
@@ -135,24 +132,41 @@ export function ConsolidateTokens(opts?: { ignoreLocked?: boolean }): Action {
         // filter out duplicate proofs
         .filter(ignoreDuplicateProofs());
 
+      // If there are no proofs, just delete the old tokens without interacting with the mint
+      if (proofs.length === 0) {
+        const deleteDraft = await factory.create(DeleteBlueprint, tokens);
+        const signedDelete = await factory.sign(deleteDraft);
+        yield signedDelete;
+        continue;
+      }
+
+      // Only interact with the mint if there are proofs to check
+      const cashuMint = new Mint(mint);
+      const cashuWallet = new Wallet(cashuMint);
+
       // NOTE: this assumes that the states array is the same length and order as the proofs array
       const states = await cashuWallet.checkProofsStates(proofs);
       const notSpent: Proof[] = proofs.filter((_, i) => states[i].state !== CheckStateEnum.SPENT);
 
-      // create delete and token event
+      // create delete event
       const deleteDraft = await factory.create(DeleteBlueprint, tokens);
-      const tokenDraft = await factory.create(
-        WalletTokenBlueprint,
-        { mint, proofs: notSpent },
-        tokens.map((t) => t.id),
-      );
+
+      // Only create a token event if there are unspent proofs
+      const tokenDraft =
+        notSpent.length > 0
+          ? await factory.create(
+              WalletTokenBlueprint,
+              { mint, proofs: notSpent },
+              tokens.map((t) => t.id),
+            )
+          : undefined;
 
       // sign events
-      const signedToken = await factory.sign(tokenDraft);
       const signedDelete = await factory.sign(deleteDraft);
+      const signedToken = tokenDraft ? await factory.sign(tokenDraft) : undefined;
 
       // publish events for mint
-      yield signedToken;
+      if (signedToken) yield signedToken;
       yield signedDelete;
     }
   };

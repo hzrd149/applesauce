@@ -4,7 +4,9 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { map } from "rxjs";
 
 import { buildCommonEventRelationFilters } from "applesauce-core/helpers/model";
+import { getHistoryRedeemed } from "../helpers/history.js";
 import { getNutzapPointer, isValidNutzap, NUTZAP_KIND } from "../helpers/nutzap.js";
+import { WalletHistoryModel } from "./history.js";
 
 /** A model that returns all nutzap events for an event */
 export function EventNutZapzModel(event: NostrEvent): Model<KnownEvent<typeof NUTZAP_KIND>[]> {
@@ -26,4 +28,12 @@ export function ProfileNutZapzModel(pubkey: string): Model<KnownEvent<typeof NUT
       // filter out nutzaps that are for events
       map((zaps) => zaps.filter((zap) => getNutzapPointer(zap) === undefined)),
     );
+}
+
+/** A model that returns all nutzap event ids received by a user */
+export function ReceivedNutzapsModel(pubkey: string): Model<string[]> {
+  return (events) =>
+    events
+      .model(WalletHistoryModel, pubkey, true)
+      .pipe(map((entries) => Array.from(new Set(entries.flatMap(getHistoryRedeemed)))));
 }

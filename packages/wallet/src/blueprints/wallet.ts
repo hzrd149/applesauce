@@ -1,12 +1,29 @@
 import { blueprint } from "applesauce-core";
 
 import { NostrEvent } from "applesauce-core/helpers/event";
+import { modifyHiddenTags } from "applesauce-core/operations";
 import { WALLET_BACKUP_KIND, WALLET_KIND } from "../helpers/wallet.js";
-import { setBackupContent, setMints, setPrivateKey } from "../operations/wallet.js";
+import { setBackupContent, setMintTags, setPrivateKeyTag, setRelayTags } from "../operations/wallet.js";
 
 /** A blueprint to create a new 17375 wallet */
-export function WalletBlueprint(mints: string[], privateKey?: Uint8Array) {
-  return blueprint(WALLET_KIND, setMints(mints), privateKey ? setPrivateKey(privateKey) : undefined);
+export function WalletBlueprint({
+  mints,
+  privateKey,
+  relays,
+}: {
+  mints: string[];
+  privateKey?: Uint8Array;
+  relays?: string[];
+}) {
+  return blueprint(
+    WALLET_KIND,
+    // Use top level modifyHiddenTags to avoid multiple encryption operations
+    modifyHiddenTags(
+      setMintTags(mints),
+      privateKey ? setPrivateKeyTag(privateKey) : undefined,
+      relays ? setRelayTags(relays) : undefined,
+    ),
+  );
 }
 
 /** A blueprint that creates a new 375 wallet backup event */

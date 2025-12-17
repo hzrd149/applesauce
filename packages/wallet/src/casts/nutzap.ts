@@ -32,6 +32,9 @@ export class Nutzap extends EventCast<NutzapEvent> {
   get recipient() {
     return castUser(getNutzapRecipient(this.event), this.store);
   }
+  get sender() {
+    return this.author;
+  }
   get comment() {
     return getNutzapComment(this.event);
   }

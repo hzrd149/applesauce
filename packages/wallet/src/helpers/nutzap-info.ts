@@ -1,5 +1,11 @@
 import { Proof } from "@cashu/cashu-ts";
-import { getOrComputeCachedValue, mergeRelaySets, safeParse } from "applesauce-core/helpers";
+import {
+  getOrComputeCachedValue,
+  getPublicKey,
+  mergeRelaySets,
+  NameValueTag,
+  safeParse,
+} from "applesauce-core/helpers";
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 
 export const NUTZAP_INFO_KIND = 10019;
@@ -53,4 +59,10 @@ export function verifyProofsLocked(proofs: Proof[], info: NostrEvent) {
     if (secret[1].data !== fullPubkey)
       throw new Error("Token proofs must be P2PK locked to the recipient's nutzap pubkey");
   }
+}
+
+/** Creates a pubkey tag for a kind:10019 nutzap info event from a private key */
+export function createNutzapInfoPubkeyTag(key: Uint8Array): NameValueTag<"pubkey"> {
+  const pubkey = "02" + getPublicKey(key);
+  return ["pubkey", pubkey];
 }

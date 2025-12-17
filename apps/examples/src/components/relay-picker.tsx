@@ -478,7 +478,7 @@ export default function RelayPicker({
           </datalist>
         </div>
         <button className="btn join-item" onClick={() => setIsModalOpen(true)}>
-          Settings
+          More
         </button>
       </div>
 

@@ -10,6 +10,7 @@ import { kinds, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/ev
 import {
   catchError,
   combineLatest,
+  combineLatestWith,
   distinct,
   EMPTY,
   filter,
@@ -21,7 +22,7 @@ import {
   of,
   switchMap,
 } from "rxjs";
-import { getGiftWrapSeal, getSealGiftWrap, getSealRumor } from "./gift-wrap.js";
+import { getGiftWrapSeal, getSealGiftWrap, getSealRumor, isGiftWrapUnlocked } from "./gift-wrap.js";
 
 /** A symbol that is used to mark encrypted content as being from a cache */
 export const EncryptedContentFromCacheSymbol = Symbol.for("encrypted-content-from-cache");
@@ -68,20 +69,22 @@ export function persistEncryptedContent(
     .pipe(
       // Look for events that support encrypted content and are locked
       filter((e) => canHaveEncryptedContent(e.kind) && isEncryptedContentUnlocked(e) === false),
+      // Get the storage
+      combineLatestWith(storage$),
       // Get the encrypted content from storage
-      mergeMap((event) =>
-        // Wait for storage to be available
-        storage$.pipe(
-          switchMap((storage) => combineLatest([of(event), getItem(storage, event)])),
-          catchError((error) => {
+      mergeMap(([event, storage]) =>
+        // Get content from storage
+        combineLatest([
+          of(event),
+          getItem(storage, event).catch((error) => {
             log(`Failed to restore encrypted content for ${event.id}`, error);
-            return EMPTY;
+            return of(null);
           }),
-        ),
+        ]),
       ),
     )
     .subscribe(async ([event, content]) => {
-      if (!content) return;
+      if (typeof content !== "string") return;
 
       // Restore the encrypted content and set it as from a cache
       markEncryptedContentFromCache(event);
@@ -130,17 +133,19 @@ export function persistEncryptedContent(
     });
 
   // Persist encrypted content when it is updated or inserted
-  const persist = combineLatest([merge(eventStore.update$, eventStore.insert$), storage$])
+  const persist = merge(eventStore.update$, eventStore.insert$)
     .pipe(
       // Look for events that support encrypted content and are unlocked and not from the cache
       filter(
-        ([event]) =>
+        (event) =>
           canHaveEncryptedContent(event.kind) &&
           isEncryptedContentUnlocked(event) &&
-          !isEncryptedContentFromCache(event),
+          isEncryptedContentFromCache(event) === false,
       ),
       // Only persist the encrypted content once
-      distinct(([event]) => event.id),
+      distinct((event) => event.id),
+      // get the storage
+      combineLatestWith(storage$),
     )
     .subscribe(async ([event, storage]) => {
       try {
@@ -157,26 +162,24 @@ export function persistEncryptedContent(
 
   // Persist seals when the gift warp is unlocked or inserted unlocked
   // This relies on the gift wrap event being updated when a seal is unlocked
-  const persistSeals = combineLatest([merge(eventStore.update$, eventStore.insert$), storage$])
+  const unlockedSeals$ = merge(eventStore.update$, eventStore.insert$).pipe(
+    filter((event) => event.kind === kinds.GiftWrap),
+    filter(isGiftWrapUnlocked),
+    map((gift) => getGiftWrapSeal(gift)),
+    distinct((seal) => seal.id),
+  );
+  const persistSeals = unlockedSeals$
     .pipe(
-      // Look for gift wraps that are unlocked
-      filter(([event]) => event.kind === kinds.GiftWrap && isEncryptedContentUnlocked(event)),
-      // Get the seal event
-      map(([gift, storage]) => [getGiftWrapSeal(gift), storage] as const),
-      // Make sure the seal is defined
-      filter(([seal]) => seal !== undefined),
-      // Make sure seal is unlocked and not from cache
-      filter(([seal]) => isEncryptedContentUnlocked(seal!) && !isEncryptedContentFromCache(seal!)),
-      // Only persist the seal once
-      distinct(([seal]) => seal!.id),
+      filter((seal) => isEncryptedContentFromCache(seal) === false),
+      combineLatestWith(storage$),
     )
     .subscribe(async ([seal, storage]) => {
       if (!seal) return;
       try {
-        const content = getEncryptedContent(seal!);
+        const content = getEncryptedContent(seal);
         if (content) {
-          await storage.setItem(seal!.id, content);
-          log(`Persisted encrypted content for ${seal!.id}`);
+          await storage.setItem(seal.id, content);
+          log(`Persisted encrypted content for ${seal.id}`);
         }
       } catch (error) {
         // Ignore errors when saving encrypted content

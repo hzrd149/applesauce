@@ -1,4 +1,4 @@
-import { Model } from "applesauce-core";
+import { Model, watchEventsUpdates } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { combineLatest, filter, map, startWith } from "rxjs";
 
@@ -10,7 +10,7 @@ import {
 } from "../helpers/tokens.js";
 
 /** removes deleted events from sorted array */
-function filterDeleted(tokens: NostrEvent[]) {
+function filterDeleted<T extends NostrEvent>(tokens: T[]): T[] {
   const deleted = new Set<string>();
   return Array.from(tokens)
     .reverse()
@@ -53,14 +53,11 @@ export function WalletTokensModel(pubkey: string, unlocked?: boolean | undefined
 /** A model that returns the visible balance of a wallet for each mint */
 export function WalletBalanceModel(pubkey: string): Model<Record<string, number>> {
   return (events) => {
-    const updates = events.update$.pipe(
-      filter((e) => e.kind === WALLET_TOKEN_KIND && e.pubkey === pubkey),
-      startWith(undefined),
-    );
-    const timeline = events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] });
-
-    return combineLatest([updates, timeline]).pipe(
-      map(([_, tokens]) => tokens.filter((t) => !isTokenContentUnlocked(t))),
+    return events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }).pipe(
+      // Watch for updates to the tokens
+      watchEventsUpdates(events),
+      // Ignore locked tokens
+      map((tokens) => tokens.filter((t) => isTokenContentUnlocked(t))),
       // filter out deleted tokens
       map(filterDeleted),
       // map tokens to totals
@@ -68,7 +65,7 @@ export function WalletBalanceModel(pubkey: string): Model<Record<string, number>
         // ignore duplicate proofs
         const seen = new Set<string>();
 
-        return tokens.filter(isTokenContentUnlocked).reduce(
+        return tokens.reduce(
           (totals, token) => {
             const details = getTokenContent(token);
             const total = details.proofs.filter(ignoreDuplicateProofs(seen)).reduce((t, p) => t + p.amount, 0);

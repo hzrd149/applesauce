@@ -4,7 +4,7 @@ import { EventFactory, EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
@@ -64,7 +64,7 @@ function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
   const nutzapPubkey = getNutzapInfoPubkey(nutzapInfo);
 
   // Load the actual profile data
-  const profile = useObservableEagerMemo(
+  const profile = use$(
     () => eventStore.profile({ pubkey: nutzapInfo.pubkey, relays: mergeRelaySets(getSeenRelays(nutzapInfo)) }),
     [nutzapInfo],
   );
@@ -182,6 +182,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
       // Create mint and wallet
       const mint = new Mint(firstMint);
       const wallet = new Wallet(mint);
+      await wallet.loadMint(); // Load mint keys
 
       // Request a quote for minting
       const quote = await wallet.createMintQuoteBolt11(amount);
@@ -193,18 +194,8 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
         try {
           const quoteStatus = await wallet.checkMintQuoteBolt11(quote.quote);
           if (quoteStatus.state === "PAID") {
-            // Mint proofs with P2PK lock
-            const proofs = await wallet.mintProofsBolt11(
-              amount,
-              quote.quote,
-              {},
-              {
-                type: "p2pk",
-                options: {
-                  pubkey: nutzapPubkey,
-                },
-              },
-            );
+            // Mint proofs with P2PK lock using the new wallet.ops API
+            const proofs = await (wallet.ops as any).mint(amount, quote.quote).asP2PK({ pubkey: nutzapPubkey }).run();
 
             // Create token from proofs
             const tokens = { mint: firstMint, proofs: proofs, unit: "sat" };

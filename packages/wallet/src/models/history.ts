@@ -13,7 +13,7 @@ export function WalletRedeemedModel(pubkey: string): Model<string[]> {
 }
 
 /** A model that returns a timeline of wallet history events */
-export function WalletHistoryModel(pubkey: string, locked?: boolean | undefined): Model<NostrEvent[]> {
+export function WalletHistoryModel(pubkey: string, unlocked?: boolean | undefined): Model<NostrEvent[]> {
   return (events) => {
     const updates = events.update$.pipe(
       filter((e) => e.kind === WALLET_HISTORY_KIND && e.pubkey === pubkey),
@@ -23,8 +23,8 @@ export function WalletHistoryModel(pubkey: string, locked?: boolean | undefined)
 
     return combineLatest([updates, timeline]).pipe(
       map(([_, history]) => {
-        if (locked === undefined) return history;
-        else return history.filter((entry) => isHistoryContentUnlocked(entry) === locked);
+        if (unlocked === undefined) return history;
+        else return history.filter((entry) => isHistoryContentUnlocked(entry) === unlocked);
       }),
     );
   };

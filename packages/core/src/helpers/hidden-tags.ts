@@ -67,7 +67,7 @@ export function getHiddenTagsEncryptionMethods(kind: number, signer: HiddenConte
 /** Checks if the hidden tags are locked and casts it to the {@link UnlockedHiddenTags} type */
 export function isHiddenTagsUnlocked<T extends { kind: number }>(event: T): event is T & UnlockedHiddenTags {
   if (!canHaveHiddenTags(event.kind)) return false;
-  return isHiddenContentUnlocked(event) && Reflect.has(event, `HiddenTagsSymbol`);
+  return isHiddenContentUnlocked(event) && Reflect.has(event, HiddenTagsSymbol);
 }
 
 /** Returns the hidden tags for an event if they are unlocked */

@@ -5,7 +5,7 @@ import { buildCommonEventRelationFilters } from "applesauce-core/helpers";
 import { switchMap } from "rxjs";
 import { NUTZAP_KIND } from "../helpers/nutzap.js";
 import { WALLET_KIND } from "../helpers/wallet.js";
-import { NUTZAP_INFO_KIND } from "../helpers/zap-info.js";
+import { NUTZAP_INFO_KIND } from "../helpers/nutzap-info.js";
 import { NutzapInfo } from "./nutzap-info.js";
 import { Nutzap } from "./nutzap.js";
 import { Wallet } from "./wallet.js";

@@ -8,6 +8,7 @@ import { map } from "rxjs/operators";
 import {
   getWalletMints,
   getWalletPrivateKey,
+  getWalletRelays,
   isValidWallet,
   isWalletUnlocked,
   unlockWallet,
@@ -18,6 +19,7 @@ import { WalletHistoryModel } from "../models/history.js";
 import { WalletBalanceModel, WalletTokensModel } from "../models/tokens.js";
 import { WalletHistory } from "./wallet-history.js";
 import { WalletToken } from "./wallet-token.js";
+import { ReceivedNutzapsModel } from "../models/nutzap.js";
 
 export class Wallet extends EventCast<WalletEvent> {
   constructor(event: NostrEvent) {
@@ -28,6 +30,9 @@ export class Wallet extends EventCast<WalletEvent> {
   // Direct getters (return undefined if locked)
   get mints() {
     return getWalletMints(this.event);
+  }
+  get relays() {
+    return getWalletRelays(this.event);
   }
   get privateKey() {
     return getWalletPrivateKey(this.event);
@@ -47,6 +52,14 @@ export class Wallet extends EventCast<WalletEvent> {
       of(this.event).pipe(
         watchEventUpdates(store),
         map((event) => event && getWalletMints(event)),
+      ),
+    );
+  }
+  get relays$() {
+    return this.$$ref("relays$", (store) =>
+      of(this.event).pipe(
+        watchEventUpdates(store),
+        map((event) => event && getWalletRelays(event)),
       ),
     );
   }
@@ -76,5 +89,8 @@ export class Wallet extends EventCast<WalletEvent> {
   }
   get backups$() {
     return this.$$ref("backups$", (store) => store.timeline({ kinds: [WALLET_BACKUP_KIND], authors: [this.pubkey] }));
+  }
+  get received$() {
+    return this.$$ref("received$", (store) => store.model(ReceivedNutzapsModel, this.pubkey));
   }
 }
