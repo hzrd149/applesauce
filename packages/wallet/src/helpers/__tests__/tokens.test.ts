@@ -1,13 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { EventFactory } from "applesauce-core";
-import { EncryptedContentSymbol, unixNow } from "applesauce-core/helpers";
+import { buildEvent, EventFactory } from "applesauce-core";
+import { EncryptedContentSymbol, isEncryptedContentUnlocked, unixNow } from "applesauce-core/helpers";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { WalletTokenBlueprint } from "../../blueprints/tokens.js";
-import { decodeTokenFromEmojiString, dumbTokenSelection, encodeTokenToEmoji, unlockTokenContent } from "../tokens.js";
+import {
+  decodeTokenFromEmojiString,
+  dumbTokenSelection,
+  encodeTokenToEmoji,
+  isTokenContentUnlocked,
+  unlockTokenContent,
+  WALLET_TOKEN_KIND,
+} from "../tokens.js";
+import { setToken } from "../../operations/tokens";
 
 const user = new FakeUser();
 const factory = new EventFactory({ signer: user });
+
+describe("isTokenContentUnlocked", () => {
+  it("should return true if only EncryptedContentSymbol is set", async () => {
+    const token = await buildEvent(
+      { kind: WALLET_TOKEN_KIND },
+      { signer: user },
+      setToken({ mint: "https://money.com", proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }] }),
+    ).then((e) => user.signEvent(e));
+
+    expect(isEncryptedContentUnlocked(token)).toBe(true);
+    expect(isTokenContentUnlocked(token)).toBe(true);
+  });
+});
 
 describe("dumbTokenSelection", () => {
   it("should select old tokens first", async () => {

@@ -116,6 +116,9 @@ export class ActionHub {
       } else if (result instanceof Promise) {
         await result;
       }
+
+      // Optionally save the event to the store
+      if (this.saveToStore) this.events.add(event);
     }
   }
 
@@ -132,10 +135,8 @@ export class ActionHub {
       ),
     );
 
-    // Optionally save events to the store
-    if (this.saveToStore) {
-      for (const event of events) this.events.add(event);
-    }
+    // Publish yielded events
+    await this.publish(events);
 
     // publish events
     await Promise.allSettled(events.map((event) => this.publish(event)));
@@ -162,6 +163,7 @@ export class ActionHub {
           mergeWith(publish$),
         );
       }),
+      // NOTE: its necessary to add a tap() here because we are overwriting the publish method above
       // Optionally save all events to the store
       this.saveToStore ? tap((event) => this.events.add(event)) : identity,
     );

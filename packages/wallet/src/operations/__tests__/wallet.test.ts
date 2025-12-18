@@ -23,7 +23,9 @@ describe("setBackupContent", () => {
   });
 
   it("should throw if pubkey does not match", async () => {
-    const wallet = await factory.sign(await factory.create(WalletBlueprint, [], generateSecretKey()));
+    const wallet = await factory.sign(
+      await factory.create(WalletBlueprint, { mints: [], privateKey: generateSecretKey() }),
+    );
     const user2 = new FakeUser();
 
     await expect(
@@ -35,7 +37,9 @@ describe("setBackupContent", () => {
   });
 
   it("should copy the content of the wallet event", async () => {
-    const wallet = await factory.sign(await factory.create(WalletBlueprint, [], generateSecretKey()));
+    const wallet = await factory.sign(
+      await factory.create(WalletBlueprint, { mints: [], privateKey: generateSecretKey() }),
+    );
 
     expect(
       await setBackupContent(wallet)(

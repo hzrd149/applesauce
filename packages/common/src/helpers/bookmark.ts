@@ -80,14 +80,16 @@ export function getBookmarks(bookmark: NostrEvent): BookmarkPointer[] {
 
 /** Checks if the hidden bookmarks are unlocked */
 export function isHiddenBookmarksUnlocked<T extends NostrEvent>(bookmark: T): bookmark is T & UnlockedBookmarks {
-  return isHiddenTagsUnlocked(bookmark) && Reflect.has(bookmark, BookmarkHiddenSymbol);
+  return (
+    isHiddenTagsUnlocked(bookmark) && (BookmarkHiddenSymbol in bookmark || getHiddenBookmarks(bookmark) !== undefined)
+  );
 }
 
 /** Returns the bookmarks of the event if its unlocked */
 export function getHiddenBookmarks<T extends NostrEvent & UnlockedBookmarks>(bookmark: T): BookmarkPointer[];
 export function getHiddenBookmarks<T extends NostrEvent>(bookmark: T): BookmarkPointer[] | undefined;
 export function getHiddenBookmarks<T extends NostrEvent>(bookmark: T): BookmarkPointer[] | undefined {
-  if (isHiddenBookmarksUnlocked(bookmark)) return bookmark[BookmarkHiddenSymbol];
+  if (BookmarkHiddenSymbol in bookmark) return bookmark[BookmarkHiddenSymbol] as BookmarkPointer[];
 
   //get hidden tags
   const tags = getHiddenTags(bookmark);

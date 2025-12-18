@@ -1,4 +1,5 @@
 import {
+  getHiddenContent,
   HiddenContentSigner,
   isHiddenContentUnlocked,
   KnownEvent,
@@ -52,7 +53,14 @@ export type WalletNotification = PaymentReceivedNotification | PaymentSentNotifi
 
 /** Checks if a kind 23196 or 23197 event is locked */
 export function isWalletNotificationUnlocked(notification: any): notification is UnlockedWalletNotification {
-  return isHiddenContentUnlocked(notification) && Reflect.has(notification, WalletNotificationSymbol) === true;
+  // Wrap in try catch to avoid throwing validation errors
+  try {
+    return (
+      WalletNotificationSymbol in notification ||
+      (isHiddenContentUnlocked(notification) && getWalletNotification(notification) !== undefined)
+    );
+  } catch {}
+  return false;
 }
 
 /** Unlocks a kind 23196 or 23197 event */
@@ -60,9 +68,24 @@ export async function unlockWalletNotification(
   notification: NostrEvent,
   signer: HiddenContentSigner,
 ): Promise<WalletNotification | undefined> {
-  if (isWalletNotificationUnlocked(notification)) return notification[WalletNotificationSymbol];
+  if (WalletNotificationSymbol in notification) return notification[WalletNotificationSymbol] as WalletNotification;
 
-  const content = await unlockHiddenContent(notification, signer);
+  await unlockHiddenContent(notification, signer);
+  const parsed = getWalletNotification(notification);
+  if (!parsed) throw new Error("Failed to unlock wallet notification");
+
+  return parsed;
+}
+
+/** Gets the wallet notification from a kind 23196 or 23197 event */
+export function getWalletNotification(notification: NostrEvent): WalletNotification | undefined {
+  if (WalletNotificationSymbol in notification) return notification[WalletNotificationSymbol] as WalletNotification;
+
+  // Get the encrypted content
+  const content = getHiddenContent(notification);
+  if (!content) return undefined;
+
+  // Parse the content as a wallet notification
   const parsed = JSON.parse(content) as WalletNotification;
 
   // Save the parsed content
@@ -70,12 +93,6 @@ export async function unlockWalletNotification(
   notifyEventUpdate(notification);
 
   return parsed;
-}
-
-/** Gets the wallet notification from a kind 23196 or 23197 event */
-export function getWalletNotification(notification: NostrEvent): WalletNotification | undefined {
-  if (isWalletNotificationUnlocked(notification)) return notification[WalletNotificationSymbol];
-  else return undefined;
 }
 
 /** Checks if an event is a valid wallet notification event */

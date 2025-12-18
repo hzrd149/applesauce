@@ -40,6 +40,7 @@ export type UnlockedWallet = UnlockedHiddenTags & {
 
 /** Returns if a wallet is unlocked */
 export function isWalletUnlocked<T extends NostrEvent>(wallet: T): wallet is T & UnlockedWallet {
+  // No need for try catch or proactivly parsing here since it only depends on hidden tags
   return isHiddenTagsUnlocked(wallet);
 }
 
@@ -48,7 +49,7 @@ export function getWalletMints(wallet: UnlockedWallet): string[];
 export function getWalletMints(wallet: NostrEvent): string[];
 export function getWalletMints<T extends NostrEvent>(wallet: T): string[] | undefined {
   // Return cached value if it exists
-  if (Reflect.has(wallet, WalletMintsSymbol)) return Reflect.get(wallet, WalletMintsSymbol) as string[];
+  if (WalletMintsSymbol in wallet) return wallet[WalletMintsSymbol] as string[];
 
   // Get hidden tags
   const tags = getHiddenTags(wallet);
@@ -67,7 +68,7 @@ export function getWalletMints<T extends NostrEvent>(wallet: T): string[] | unde
 export function getWalletPrivateKey(wallet: UnlockedWallet): Uint8Array | null;
 export function getWalletPrivateKey(wallet: NostrEvent): Uint8Array | undefined | null;
 export function getWalletPrivateKey<T extends NostrEvent>(wallet: T): Uint8Array | undefined | null {
-  if (Reflect.has(wallet, WalletPrivateKeySymbol)) return Reflect.get(wallet, WalletPrivateKeySymbol) as Uint8Array;
+  if (WalletPrivateKeySymbol in wallet) return wallet[WalletPrivateKeySymbol] as Uint8Array | null;
 
   // Get hidden tags
   const tags = getHiddenTags(wallet);
@@ -88,7 +89,7 @@ export function getWalletRelays(wallet: UnlockedWallet): string[];
 export function getWalletRelays(wallet: NostrEvent): string[] | undefined;
 export function getWalletRelays<T extends NostrEvent>(wallet: T): string[] | undefined {
   // Return cached value if it exists
-  if (Reflect.has(wallet, WalletRelaysSymbol)) return Reflect.get(wallet, WalletRelaysSymbol) as string[];
+  if (WalletRelaysSymbol in wallet) return wallet[WalletRelaysSymbol] as string[];
 
   // Get hidden tags
   const tags = getHiddenTags(wallet);
@@ -96,7 +97,6 @@ export function getWalletRelays<T extends NostrEvent>(wallet: T): string[] | und
 
   // Get relays
   const urls = tags.filter((t) => t[0] === "relay" && t[1]).map((t) => t[1]);
-
   const relays = relaySet(urls);
 
   // Set the cached value
@@ -110,8 +110,12 @@ export async function unlockWallet(
   wallet: NostrEvent,
   signer: HiddenContentSigner,
 ): Promise<{ mints: string[]; privateKey: Uint8Array | null; relays: string[] }> {
-  if (isWalletUnlocked(wallet))
-    return { mints: getWalletMints(wallet), privateKey: getWalletPrivateKey(wallet), relays: getWalletRelays(wallet) };
+  if (WalletPrivateKeySymbol in wallet && WalletMintsSymbol in wallet && WalletRelaysSymbol in wallet)
+    return {
+      mints: wallet[WalletMintsSymbol] as string[],
+      privateKey: wallet[WalletPrivateKeySymbol] as Uint8Array | null,
+      relays: wallet[WalletRelaysSymbol] as string[],
+    };
 
   // Unlock hidden tags if needed
   await unlockHiddenTags(wallet, signer);

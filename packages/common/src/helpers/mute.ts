@@ -67,14 +67,15 @@ export function getPublicMutedThings(mute: NostrEvent): MutedThings {
 
 /** Checks if the hidden mutes are unlocked */
 export function isHiddenMutesUnlocked<T extends NostrEvent>(mute: T): mute is T & UnlockedMutes {
-  return isHiddenTagsUnlocked(mute) && Reflect.has(mute, MuteHiddenSymbol);
+  // No need for try catch or proactivly parsing here since it only depends on hidden tags
+  return MuteHiddenSymbol in mute || isHiddenTagsUnlocked(mute);
 }
 
 /** Returns the hidden muted content if the event is unlocked */
 export function getHiddenMutedThings<T extends NostrEvent & UnlockedMutes>(mute: T): MutedThings;
 export function getHiddenMutedThings<T extends NostrEvent>(mute: T): MutedThings | undefined;
 export function getHiddenMutedThings<T extends NostrEvent>(mute: T): MutedThings | undefined {
-  if (isHiddenMutesUnlocked(mute)) return mute[MuteHiddenSymbol];
+  if (MuteHiddenSymbol in mute) return mute[MuteHiddenSymbol] as MutedThings;
 
   // get hidden tags
   const tags = getHiddenTags(mute);
@@ -91,7 +92,7 @@ export function getHiddenMutedThings<T extends NostrEvent>(mute: T): MutedThings
 
 /** Unlocks the hidden mutes */
 export async function unlockHiddenMutes(mute: NostrEvent, signer: HiddenContentSigner): Promise<MutedThings> {
-  if (isHiddenMutesUnlocked(mute)) return mute[MuteHiddenSymbol];
+  if (MuteHiddenSymbol in mute) return mute[MuteHiddenSymbol] as MutedThings;
 
   // Unlock hidden tags
   await unlockHiddenTags(mute, signer);

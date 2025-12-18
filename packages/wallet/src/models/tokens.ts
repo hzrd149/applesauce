@@ -1,6 +1,6 @@
 import { Model, watchEventsUpdates } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { combineLatest, filter, map, startWith } from "rxjs";
+import { identity, map } from "rxjs";
 
 import {
   getTokenContent,
@@ -32,18 +32,9 @@ function filterDeleted<T extends NostrEvent>(tokens: T[]): T[] {
 /** A model that subscribes to all token events for a wallet, passing unlocked will filter by token unlocked status */
 export function WalletTokensModel(pubkey: string, unlocked?: boolean | undefined): Model<NostrEvent[]> {
   return (events) => {
-    const updates = events.update$.pipe(
-      filter((e) => e.kind === WALLET_TOKEN_KIND && e.pubkey === pubkey),
-      startWith(undefined),
-    );
-    const timeline = events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] });
-
-    return combineLatest([updates, timeline]).pipe(
+    return events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }).pipe(
       // filter out locked tokens
-      map(([_, tokens]) => {
-        if (unlocked === undefined) return tokens;
-        else return tokens.filter((t) => isTokenContentUnlocked(t) === unlocked);
-      }),
+      unlocked !== undefined ? map((tokens) => tokens.filter((t) => isTokenContentUnlocked(t) === unlocked)) : identity,
       // remove deleted events
       map(filterDeleted),
     );

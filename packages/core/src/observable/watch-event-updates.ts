@@ -33,3 +33,6 @@ export function watchEventsUpdates(eventStore: IEventStoreStreams): MonoTypeOper
     );
   };
 }
+
+/** Alias for watchEventsUpdates */
+export const watchTimelineUpdates = watchEventsUpdates;

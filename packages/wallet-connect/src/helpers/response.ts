@@ -1,8 +1,8 @@
 import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
 import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
-import { KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event";
+import { getTagValue, KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
 import {
+  getHiddenContent,
   HiddenContentSigner,
   isHiddenContentUnlocked,
   setHiddenContentEncryptionMethod,
@@ -32,7 +32,14 @@ export type WalletResponseEvent = KnownEvent<typeof WALLET_RESPONSE_KIND>;
 export function isWalletResponseUnlocked<Method extends TWalletMethod = TWalletMethod>(
   response: any,
 ): response is UnlockedWalletResponse<Method> {
-  return isHiddenContentUnlocked(response) && Reflect.has(response, WalletResponseSymbol) === true;
+  // Wrap in try catch to avoid throwing validation errors
+  try {
+    return (
+      WalletResponseSymbol in response ||
+      (isHiddenContentUnlocked(response) && getWalletResponse(response) !== undefined)
+    );
+  } catch {}
+  return false;
 }
 
 /** Unlocks a kind 23195 event */
@@ -41,15 +48,14 @@ export async function unlockWalletResponse<Method extends TWalletMethod = TWalle
   signer: HiddenContentSigner,
   override?: EncryptionMethod,
 ): Promise<Method["response"] | undefined> {
-  if (isWalletResponseUnlocked(response)) return response[WalletResponseSymbol] as Method["response"];
-
+  if (WalletResponseSymbol in response) return response[WalletResponseSymbol] as Method["response"];
+  // Unlock the hidden content
   const encryption = override ?? (!isNIP04Encrypted(response.content) ? "nip44" : "nip04");
-  const content = await unlockHiddenContent(response, signer, encryption);
-  const parsed = JSON.parse(content) as Method["response"];
+  await unlockHiddenContent(response, signer, encryption);
 
-  // Save the parsed content
-  Reflect.set(response, WalletResponseSymbol, parsed);
-  notifyEventUpdate(response);
+  // Get the wallet response
+  const parsed = getWalletResponse(response);
+  if (!parsed) throw new Error("Failed to unlock wallet response");
 
   return parsed;
 }
@@ -58,8 +64,17 @@ export async function unlockWalletResponse<Method extends TWalletMethod = TWalle
 export function getWalletResponse<Method extends TWalletMethod = TWalletMethod>(
   response: NostrEvent,
 ): Method["response"] | undefined {
-  if (isWalletResponseUnlocked(response)) return response[WalletResponseSymbol] as Method["response"];
-  else return undefined;
+  if (WalletResponseSymbol in response) return response[WalletResponseSymbol] as Method["response"];
+
+  const content = getHiddenContent(response);
+  if (!content) return undefined;
+  const parsed = JSON.parse(content) as Method["response"];
+
+  // Save the parsed content
+  Reflect.set(response, WalletResponseSymbol, parsed);
+  notifyEventUpdate(response);
+
+  return parsed;
 }
 
 /** Returns the client pubkey of client this response is for */

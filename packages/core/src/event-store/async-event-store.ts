@@ -1,12 +1,6 @@
+import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
 import { Observable, Subject } from "rxjs";
-import {
-  EventStoreSymbol,
-  FromCacheSymbol,
-  getReplaceableIdentifier,
-  isReplaceable,
-  kinds,
-  NostrEvent,
-} from "../helpers/event.js";
+import { EventStoreSymbol, getReplaceableIdentifier, isReplaceable, kinds, NostrEvent } from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { Filter } from "../helpers/filter.js";
 import {
@@ -14,23 +8,23 @@ import {
   AddressPointerWithoutD,
   eventMatchesPointer,
   EventPointer,
-  isEventPointer,
   isAddressPointer,
+  isEventPointer,
 } from "../helpers/pointers.js";
-import { addSeenRelay, getSeenRelays } from "../helpers/relays.js";
+import { addSeenRelay } from "../helpers/relays.js";
 import { unixNow } from "../helpers/time.js";
+import { AsyncDeleteManager } from "./async-delete-manager.js";
 import { EventMemory } from "./event-memory.js";
 import { EventModels } from "./event-models.js";
+import { EventStore } from "./event-store.js";
+import { ExpirationManager } from "./expiration-manager.js";
 import {
   DeleteEventNotification,
+  IAsyncDeleteManager,
   IAsyncEventDatabase,
   IAsyncEventStore,
-  IAsyncDeleteManager,
   IExpirationManager,
 } from "./interface.js";
-import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
-import { AsyncDeleteManager } from "./async-delete-manager.js";
-import { ExpirationManager } from "./expiration-manager.js";
 
 export type AsyncEventStoreOptions = {
   /** Keep deleted events in the store */
@@ -90,7 +84,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
   /** A stream of new events added to the store */
   insert$ = new Subject<NostrEvent>();
 
-  /** A stream of events that have been updated */
+  /** A stream of events that have been updated (Warning: this is a very noisy stream, use with caution) */
   update$ = new Subject<NostrEvent>();
 
   /** A stream of events that have been removed */
@@ -175,18 +169,6 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     await this.remove(id);
   }
 
-  /** Copies important metadata from and identical event to another */
-  static mergeDuplicateEvent(source: NostrEvent, dest: NostrEvent) {
-    const relays = getSeenRelays(source);
-    if (relays) {
-      for (const relay of relays) addSeenRelay(dest, relay);
-    }
-
-    // copy the from cache symbol only if its true
-    const fromCache = Reflect.get(source, FromCacheSymbol);
-    if (fromCache && !Reflect.get(dest, FromCacheSymbol)) Reflect.set(dest, FromCacheSymbol, fromCache);
-  }
-
   /**
    * Adds an event to the store and update subscriptions
    * @returns The existing event or the event that was added, if it was ignored returns null
@@ -205,6 +187,9 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     const expiration = getExpirationTimestamp(event);
     if (this.keepExpired === false && expiration && expiration <= unixNow()) return null;
 
+    // Attach relay this event was from
+    if (fromRelay) addSeenRelay(event, fromRelay);
+
     // Get the replaceable identifier
     const identifier = isReplaceable(event.kind) ? getReplaceableIdentifier(event) : undefined;
 
@@ -214,7 +199,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
 
       // If there is already a newer version, copy cached symbols and return existing event
       if (existing && existing.length > 0 && existing[0].created_at >= event.created_at) {
-        AsyncEventStore.mergeDuplicateEvent(event, existing[0]);
+        if (EventStore.copySymbolsToDuplicateEvent(event, existing[0])) await this.update(existing[0]);
         return existing[0];
       }
     }
@@ -228,9 +213,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     // If the memory returned a different instance, this is a duplicate event
     if (existing && existing !== event) {
       // Copy cached symbols and return existing event
-      AsyncEventStore.mergeDuplicateEvent(event, existing);
-      // attach relay this event was from
-      if (fromRelay) addSeenRelay(existing, fromRelay);
+      if (EventStore.copySymbolsToDuplicateEvent(event, existing)) await this.update(existing);
 
       return existing;
     }
@@ -238,17 +221,17 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     // Insert event into database
     const inserted = this.mapToMemory(await this.database.add(event));
 
-    // Copy cached data if its a duplicate event
-    if (event !== inserted) AsyncEventStore.mergeDuplicateEvent(event, inserted);
+    // If the event is the same as the inserted event, its a new event
+    if (inserted === event) {
+      // Set the event store on the event
+      Reflect.set(inserted, EventStoreSymbol, this);
 
-    // attach relay this event was from
-    if (fromRelay) addSeenRelay(inserted, fromRelay);
-
-    // Set the event store on the event
-    Reflect.set(inserted, EventStoreSymbol, this);
-
-    // Emit insert$ signal
-    if (inserted === event) this.insert$.next(inserted);
+      // Emit insert$ signal
+      this.insert$.next(inserted);
+    } else {
+      // Copy cached data if its a duplicate event
+      if (EventStore.copySymbolsToDuplicateEvent(event, inserted)) await this.update(inserted);
+    }
 
     // remove all old version of the replaceable event
     if (this.keepOldVersions === false && isReplaceable(event.kind)) {

@@ -1,6 +1,6 @@
-import { combineLatest, filter, map, scan, startWith } from "rxjs";
 import { Model } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
+import { identity, map, scan } from "rxjs";
 
 import { getHistoryRedeemed, isHistoryContentUnlocked, WALLET_HISTORY_KIND } from "../helpers/history.js";
 
@@ -15,17 +15,12 @@ export function WalletRedeemedModel(pubkey: string): Model<string[]> {
 /** A model that returns a timeline of wallet history events */
 export function WalletHistoryModel(pubkey: string, unlocked?: boolean | undefined): Model<NostrEvent[]> {
   return (events) => {
-    const updates = events.update$.pipe(
-      filter((e) => e.kind === WALLET_HISTORY_KIND && e.pubkey === pubkey),
-      startWith(undefined),
-    );
-    const timeline = events.timeline({ kinds: [WALLET_HISTORY_KIND], authors: [pubkey] });
-
-    return combineLatest([updates, timeline]).pipe(
-      map(([_, history]) => {
-        if (unlocked === undefined) return history;
-        else return history.filter((entry) => isHistoryContentUnlocked(entry) === unlocked);
-      }),
-    );
+    return events
+      .timeline({ kinds: [WALLET_HISTORY_KIND], authors: [pubkey] })
+      .pipe(
+        unlocked !== undefined
+          ? map((events) => events.filter((e) => isHistoryContentUnlocked(e) === unlocked))
+          : identity,
+      );
   };
 }

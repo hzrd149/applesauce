@@ -60,6 +60,15 @@ export type UnlockedTokenContent = UnlockedHiddenContent & {
   [TokenContentSymbol]: TokenContent;
 };
 
+/** Returns if token details are locked */
+export function isTokenContentUnlocked<T extends NostrEvent>(token: T): token is T & UnlockedTokenContent {
+  // Wrap in try catch to avoid throwing validation errors
+  try {
+    return TokenContentSymbol in token || (isHiddenContentUnlocked(token) && getTokenContent(token) !== undefined);
+  } catch {}
+  return false;
+}
+
 /**
  * Returns the decrypted and parsed details of a 7375 token event
  * @throws {Error} If the token content is invalid
@@ -67,7 +76,7 @@ export type UnlockedTokenContent = UnlockedHiddenContent & {
 export function getTokenContent(token: UnlockedTokenContent): TokenContent;
 export function getTokenContent(token: NostrEvent): TokenContent | undefined;
 export function getTokenContent<T extends NostrEvent>(token: T): TokenContent | undefined {
-  if (isTokenContentUnlocked(token)) return token[TokenContentSymbol];
+  if (TokenContentSymbol in token) return token[TokenContentSymbol] as TokenContent;
 
   // Get the hidden content
   const plaintext = getHiddenContent(token);
@@ -87,14 +96,9 @@ export function getTokenContent<T extends NostrEvent>(token: T): TokenContent | 
   return details;
 }
 
-/** Returns if token details are locked */
-export function isTokenContentUnlocked<T extends NostrEvent>(token: T): token is T & UnlockedTokenContent {
-  return isHiddenContentUnlocked(token) && Reflect.has(token, TokenContentSymbol) === true;
-}
-
 /** Decrypts a k:7375 token event */
 export async function unlockTokenContent(token: NostrEvent, signer: HiddenContentSigner): Promise<TokenContent> {
-  if (isTokenContentUnlocked(token)) return token[TokenContentSymbol];
+  if (TokenContentSymbol in token) return token[TokenContentSymbol] as TokenContent;
 
   // Unlock the hidden content
   await unlockHiddenContent(token, signer);

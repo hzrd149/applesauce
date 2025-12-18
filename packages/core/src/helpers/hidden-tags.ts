@@ -67,17 +67,24 @@ export function getHiddenTagsEncryptionMethods(kind: number, signer: HiddenConte
 /** Checks if the hidden tags are locked and casts it to the {@link UnlockedHiddenTags} type */
 export function isHiddenTagsUnlocked<T extends { kind: number }>(event: T): event is T & UnlockedHiddenTags {
   if (!canHaveHiddenTags(event.kind)) return false;
-  return isHiddenContentUnlocked(event) && Reflect.has(event, HiddenTagsSymbol);
+  // Wrap in try catch to avoid throwing validation errors
+  try {
+    return HiddenTagsSymbol in event || (isHiddenContentUnlocked(event) && getHiddenTags(event) !== undefined);
+  } catch {}
+  return false;
 }
 
-/** Returns the hidden tags for an event if they are unlocked */
+/**
+ * Returns the hidden tags for an event if they are unlocked
+ * @throws {Error} If the hidden content is not an array of tags
+ */
 export function getHiddenTags<T extends { kind: number } & UnlockedHiddenTags>(event: T): string[][];
 export function getHiddenTags<T extends { kind: number }>(event: T): string[][] | undefined;
 export function getHiddenTags<T extends { kind: number }>(event: T): string[][] | undefined {
   if (!canHaveHiddenTags(event.kind)) return undefined;
 
   // If the hidden tags are already unlocked, return the cached value
-  if (isHiddenTagsUnlocked(event)) return event[HiddenTagsSymbol];
+  if (HiddenTagsSymbol in event) return event[HiddenTagsSymbol] as string[][];
 
   // unlock hidden content is needed
   const content = getHiddenContent(event);
@@ -105,7 +112,8 @@ export function getHiddenTags<T extends { kind: number }>(event: T): string[][] 
  * @param event The list event to decrypt
  * @param signer A signer to use to decrypt the tags
  * @param override The encryption method to use instead of the default
- * @throws
+ * @throws {Error} If the event kind does not support hidden tags
+ * @throws {Error} If the hidden content is not an array of tags
  */
 export async function unlockHiddenTags<T extends { kind: number; pubkey: string; content: string }>(
   event: T,

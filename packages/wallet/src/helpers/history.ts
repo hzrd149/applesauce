@@ -54,7 +54,13 @@ export function getHistoryRedeemed(history: NostrEvent): string[] {
 
 /** Checks if the history contents are locked */
 export function isHistoryContentUnlocked<T extends NostrEvent>(history: T): history is T & UnlockedHistoryContent {
-  return isHiddenTagsUnlocked(history) && Reflect.has(history, HistoryContentSymbol) === true;
+  // Wrap in try catch to avoid throwing validation errors
+  try {
+    return (
+      HistoryContentSymbol in history || (isHiddenTagsUnlocked(history) && getHistoryContent(history) !== undefined)
+    );
+  } catch {}
+  return false;
 }
 
 /** Returns the parsed content of a 7376 history event */
@@ -62,7 +68,7 @@ export function getHistoryContent<T extends UnlockedHiddenTags>(history: T): His
 export function getHistoryContent<T extends NostrEvent>(history: T): HistoryContent | undefined;
 export function getHistoryContent<T extends NostrEvent>(history: T): HistoryContent | undefined {
   // Return cached value if it exists
-  if (isHistoryContentUnlocked(history)) return history[HistoryContentSymbol];
+  if (HistoryContentSymbol in history) return history[HistoryContentSymbol] as HistoryContent;
 
   // Get hidden tags
   const tags = getHiddenTags(history);
@@ -93,7 +99,7 @@ export function getHistoryContent<T extends NostrEvent>(history: T): HistoryCont
 /** Decrypts a wallet history event */
 export async function unlockHistoryContent(history: NostrEvent, signer: HiddenContentSigner): Promise<HistoryContent> {
   // Return cached value if it exists
-  if (isHistoryContentUnlocked(history)) return history[HistoryContentSymbol];
+  if (HistoryContentSymbol in history) return history[HistoryContentSymbol] as HistoryContent;
 
   // Unlock hidden tags if needed
   await unlockHiddenTags(history, signer);

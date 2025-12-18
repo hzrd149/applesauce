@@ -1,7 +1,7 @@
 import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
-import { KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event";
+import { getTagValue, KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
 import {
+  getHiddenContent,
   HiddenContentSigner,
   isHiddenContentUnlocked,
   setHiddenContentEncryptionMethod,
@@ -32,7 +32,13 @@ export type UnlockedWalletRequest<Method extends TWalletMethod = TWalletMethod> 
 export function isWalletRequestUnlocked<Method extends TWalletMethod = TWalletMethod>(
   request: any,
 ): request is UnlockedWalletRequest<Method> {
-  return isHiddenContentUnlocked(request) && Reflect.has(request, WalletRequestSymbol) === true;
+  // Wrap in try catch to avoid throwing validation errors
+  try {
+    return (
+      WalletRequestSymbol in request || (isHiddenContentUnlocked(request) && getWalletRequest(request) !== undefined)
+    );
+  } catch {}
+  return false;
 }
 
 /** Unlocks a kind 23194 event */
@@ -40,14 +46,11 @@ export async function unlockWalletRequest<Method extends TWalletMethod = TWallet
   request: NostrEvent,
   signer: HiddenContentSigner,
 ): Promise<Method["request"] | undefined> {
-  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol] as Method["request"];
+  if (WalletRequestSymbol in request) return request[WalletRequestSymbol] as Method["request"];
 
-  const content = await unlockHiddenContent(request, signer);
-  const parsed = JSON.parse(content) as Method["request"];
-
-  // Save the parsed content
-  Reflect.set(request, WalletRequestSymbol, parsed);
-  notifyEventUpdate(request);
+  await unlockHiddenContent(request, signer);
+  const parsed = getWalletRequest(request);
+  if (!parsed) throw new Error("Failed to unlock wallet request");
 
   return parsed;
 }
@@ -56,8 +59,17 @@ export async function unlockWalletRequest<Method extends TWalletMethod = TWallet
 export function getWalletRequest<Method extends TWalletMethod = TWalletMethod>(
   request: NostrEvent,
 ): Method["request"] | undefined {
-  if (isWalletRequestUnlocked(request)) return request[WalletRequestSymbol] as Method["request"];
-  else return undefined;
+  if (WalletRequestSymbol in request) return request[WalletRequestSymbol] as Method["request"];
+
+  const content = getHiddenContent(request);
+  if (!content) return undefined;
+  const parsed = JSON.parse(content) as Method["request"];
+
+  // Save the parsed content
+  Reflect.set(request, WalletRequestSymbol, parsed);
+  notifyEventUpdate(request);
+
+  return parsed;
 }
 
 /** Returns the wallet service pubkey from a request */

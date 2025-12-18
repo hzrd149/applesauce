@@ -81,7 +81,9 @@ export function getEncryptedContent<T extends object>(event: T): string | undefi
 }
 
 /** Checks if the encrypted content is unlocked and casts it to the {@link UnlockedEncryptedContent} type */
-export function isEncryptedContentUnlocked<T extends object>(event: T): event is T & UnlockedEncryptedContent {
+export function isEncryptedContentUnlocked<T extends { kind: number }>(
+  event: T,
+): event is T & UnlockedEncryptedContent {
   return Reflect.has(event, EncryptedContentSymbol) === true;
 }
 

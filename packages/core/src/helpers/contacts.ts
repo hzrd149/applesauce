@@ -70,12 +70,15 @@ export function getPublicContacts(event: NostrEvent): ProfilePointer[] {
 
 /** Checks if the hidden contacts are unlocked */
 export function isHiddenContactsUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedContacts {
-  return isHiddenTagsUnlocked(event) && Reflect.has(event, HiddenContactsSymbol);
+  // No need for try catch or proactivly parsing here since it only depends on hidden tags
+  return isHiddenTagsUnlocked(event);
 }
 
 /** Returns only the hidden contacts from a contacts list event */
-export function getHiddenContacts(event: NostrEvent): ProfilePointer[] | undefined {
-  if (isHiddenContactsUnlocked(event)) return event[HiddenContactsSymbol];
+export function getHiddenContacts(event: UnlockedContacts): ProfilePointer[];
+export function getHiddenContacts(event: NostrEvent): ProfilePointer[] | undefined;
+export function getHiddenContacts(event: NostrEvent | UnlockedContacts): ProfilePointer[] | undefined {
+  if (HiddenContactsSymbol in event) return event[HiddenContactsSymbol] as ProfilePointer[];
 
   // Get hidden tags
   const tags = getHiddenTags(event);

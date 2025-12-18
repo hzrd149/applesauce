@@ -1,9 +1,11 @@
-import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
+import { verifyEvent as coreVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
 import { Observable, Subject } from "rxjs";
+import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import {
   EventStoreSymbol,
   FromCacheSymbol,
   getReplaceableIdentifier,
+  isRegularKind,
   isReplaceable,
   kinds,
   NostrEvent,
@@ -90,7 +92,7 @@ export class EventStore extends EventModels implements IEventStore {
   /** A stream of new events added to the store */
   insert$ = new Subject<NostrEvent>();
 
-  /** A stream of events that have been updated */
+  /** A stream of events that have been updated (Warning: this is a very noisy stream, use with caution) */
   update$ = new Subject<NostrEvent>();
 
   /** A stream of events that have been removed */
@@ -173,15 +175,35 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Copies important metadata from and identical event to another */
-  static mergeDuplicateEvent(source: NostrEvent, dest: NostrEvent) {
+  static copySymbolsToDuplicateEvent(source: NostrEvent, dest: NostrEvent) {
+    if (source.kind !== dest.kind) throw new Error("Source and destination events must have the same kind");
+    if (isRegularKind(source.kind) && source.id !== dest.id)
+      throw new Error("Source and destination events must have the same ID");
+    if (
+      isReplaceable(source.kind) &&
+      source.pubkey !== dest.pubkey &&
+      getReplaceableIdentifier(source) !== getReplaceableIdentifier(dest)
+    )
+      throw new Error("Source and destination events must have the same pubkey and replaceable identifier");
+
+    let changed = false;
+
+    // Merge seen relays
     const relays = getSeenRelays(source);
     if (relays) {
       for (const relay of relays) addSeenRelay(dest, relay);
+      changed = true;
     }
 
-    // copy the from cache symbol only if its true
-    const fromCache = Reflect.get(source, FromCacheSymbol);
-    if (fromCache && !Reflect.get(dest, FromCacheSymbol)) Reflect.set(dest, FromCacheSymbol, fromCache);
+    const symbols = [FromCacheSymbol, verifiedSymbol, EncryptedContentSymbol];
+    for (const symbol of symbols) {
+      if (symbol in source && !(symbol in dest)) {
+        Reflect.set(dest, symbol, Reflect.get(source, symbol));
+        changed = true;
+      }
+    }
+
+    return changed;
   }
 
   /**
@@ -202,6 +224,9 @@ export class EventStore extends EventModels implements IEventStore {
     const expiration = getExpirationTimestamp(event);
     if (this.keepExpired === false && expiration && expiration <= unixNow()) return null;
 
+    // Attach relay this event was from
+    if (fromRelay) addSeenRelay(event, fromRelay);
+
     // Get the replaceable identifier
     const identifier = isReplaceable(event.kind) ? getReplaceableIdentifier(event) : undefined;
 
@@ -211,7 +236,7 @@ export class EventStore extends EventModels implements IEventStore {
 
       // If there is already a newer version, copy cached symbols and return existing event
       if (existing && existing.length > 0 && existing[0].created_at >= event.created_at) {
-        EventStore.mergeDuplicateEvent(event, existing[0]);
+        if (EventStore.copySymbolsToDuplicateEvent(event, existing[0])) this.update(existing[0]);
         return existing[0];
       }
     }
@@ -225,9 +250,7 @@ export class EventStore extends EventModels implements IEventStore {
     // If the memory returned a different instance, this is a duplicate event
     if (existing && existing !== event) {
       // Copy cached symbols and return existing event
-      EventStore.mergeDuplicateEvent(event, existing);
-      // attach relay this event was from
-      if (fromRelay) addSeenRelay(existing, fromRelay);
+      if (EventStore.copySymbolsToDuplicateEvent(event, existing)) this.update(existing);
 
       return existing;
     }
@@ -235,17 +258,17 @@ export class EventStore extends EventModels implements IEventStore {
     // Insert event into database
     const inserted = this.mapToMemory(this.database.add(event));
 
-    // Copy cached data if its a duplicate event
-    if (event !== inserted) EventStore.mergeDuplicateEvent(event, inserted);
+    // If the event is the same as the inserted event, its a new event
+    if (inserted === event) {
+      // Set the event store on the event
+      Reflect.set(inserted, EventStoreSymbol, this);
 
-    // attach relay this event was from
-    if (fromRelay) addSeenRelay(inserted, fromRelay);
-
-    // Set the event store on the event
-    Reflect.set(inserted, EventStoreSymbol, this);
-
-    // Emit insert$ signal
-    if (inserted === event) this.insert$.next(inserted);
+      // Emit insert$ signal
+      this.insert$.next(inserted);
+    } else {
+      // Copy cached data if its a duplicate event
+      if (EventStore.copySymbolsToDuplicateEvent(event, inserted)) this.update(inserted);
+    }
 
     // remove all old version of the replaceable event
     if (this.keepOldVersions === false && isReplaceable(event.kind)) {

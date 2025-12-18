@@ -1,4 +1,5 @@
 import { EventMemory } from "applesauce-core/event-store";
+import { safeParse } from "applesauce-core/helpers";
 import {
   EncryptedContentSigner,
   getEncryptedContent,
@@ -107,7 +108,7 @@ export function getRumorGiftWraps(rumor: Rumor): UnlockedGiftWrapEvent[] {
 
 /** Checks if a seal event is locked and casts it to the {@link UnlockedSeal} type */
 export function isSealUnlocked(seal: NostrEvent): seal is UnlockedSeal {
-  return isEncryptedContentUnlocked(seal) === true && Reflect.has(seal, RumorSymbol) === true;
+  return RumorSymbol in seal || (isEncryptedContentUnlocked(seal) === true && getSealRumor(seal) !== undefined);
 }
 
 /** Returns if a gift-wrap event or gift-wrap seal is locked */
@@ -135,7 +136,7 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
   if (seal.kind !== kinds.Seal) return undefined;
 
   // If unlocked return the rumor
-  if (isSealUnlocked(seal)) return seal[RumorSymbol];
+  if (RumorSymbol in seal) return seal[RumorSymbol] as Rumor;
 
   // Get the encrypted content plaintext
   const content = getEncryptedContent(seal);
@@ -144,7 +145,13 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
   if (!content) return undefined;
 
   // Parse the content as a rumor event
-  let rumor = JSON.parse(content) as Rumor;
+  let rumor = safeParse<Rumor>(content);
+
+  // Failed to parse rumor, save undefined and return undefined
+  if (!rumor) {
+    Reflect.set(seal, RumorSymbol, undefined);
+    return undefined;
+  }
 
   // Check if the rumor event already exists in the internal event set
   const existing = internalGiftWrapEvents.getEvent(rumor.id);
@@ -172,7 +179,7 @@ export function getGiftWrapSeal(gift: UnlockedGiftWrapEvent): UnlockedSeal;
 export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined;
 export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined {
   // Returned cached seal if it exists (downstream)
-  if (Reflect.has(gift, SealSymbol)) return Reflect.get(gift, SealSymbol);
+  if (SealSymbol in gift) return gift[SealSymbol] as UnlockedSeal;
 
   // Get the encrypted content
   const content = getEncryptedContent(gift);

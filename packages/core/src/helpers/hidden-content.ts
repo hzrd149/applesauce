@@ -56,7 +56,7 @@ export function getHiddenContent<T extends { kind: number } & UnlockedHiddenCont
 export function getHiddenContent<T extends { kind: number }>(event: T): string | undefined;
 export function getHiddenContent<T extends { kind: number }>(event: T): string | undefined {
   if (!canHaveHiddenContent(event.kind)) return undefined;
-  if (isHiddenContentUnlocked(event)) return event[EncryptedContentSymbol];
+  if (HiddenContentSymbol in event) return Reflect.get(event, HiddenContentSymbol) as string;
   return getEncryptedContent(event);
 }
 
@@ -74,7 +74,7 @@ export async function unlockHiddenContent<T extends { kind: number; pubkey: stri
   if (!canHaveHiddenContent(event.kind)) throw new Error("Event kind does not support hidden content");
 
   // If the encrypted content is already unlocked, return the cached value
-  if (isEncryptedContentUnlocked(event)) return event[EncryptedContentSymbol];
+  if (HiddenContentSymbol in event) return Reflect.get(event, HiddenContentSymbol) as string;
 
   // Get the encryption method from the signer
   const encryption = getEncryptedContentEncryptionMethods(event.kind, signer, override);
