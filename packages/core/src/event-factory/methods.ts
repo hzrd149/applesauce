@@ -1,5 +1,5 @@
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
-import { EventTemplate, NostrEvent, UnsignedEvent } from "../helpers/event.js";
+import { EventTemplate, isEvent, NostrEvent, UnsignedEvent } from "../helpers/event.js";
 import { eventPipe } from "../helpers/pipeline.js";
 import { unixNow } from "../helpers/time.js";
 import { setClient } from "../operations/client.js";
@@ -83,5 +83,8 @@ export async function modifyEvent(
   context: EventFactoryContext,
   ...operations: (EventOperation | undefined)[]
 ): Promise<EventTemplate> {
+  // NOTE: Unwrapping evnet object in order to handle cast events from applesauce-common
+  if ("event" in event && isEvent(event.event)) event = event.event as typeof event;
+
   return await wrapCommon(stripSignature(), stripStamp(), updateCreatedAt(), ...operations)(event, context);
 }

@@ -1,4 +1,4 @@
-import { CheckStateEnum, Proof, Token, Wallet, Mint } from "@cashu/cashu-ts";
+import { CheckStateEnum, Mint, Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -10,99 +10,121 @@ import {
   isTokenContentUnlocked,
   WALLET_TOKEN_KIND,
 } from "../helpers/tokens.js";
+import { getWalletRelays } from "./common.js";
 
 /**
- * Adds a cashu token to the wallet and marks a list of nutzaps as redeemed
+ * Adds a cashu token to the wallet and creates a history event
  * @param token the cashu token to add
- * @param redeemed an array of nutzap event ids to mark as redeemed
+ * @param redeemed an array of event ids to mark as redeemed
  */
-export function ReceiveToken(token: Token, redeemed?: string[], fee?: number): Action {
-  return async function* ({ factory }) {
-    const amount = token.proofs.reduce((t, p) => t + p.amount, 0);
+export function AddToken(token: Token, redeemed?: string[], fee?: number): Action {
+  return async ({ factory, user, publish, signer, sign }) => {
+    const relays = await getWalletRelays(user, signer);
+    const amount = sumProofs(token.proofs);
 
-    const tokenEvent = await factory.sign(await factory.create(WalletTokenBlueprint, token, []));
-    const history = await factory.sign(
-      await factory.create(
+    // Create the token and history events
+    const tokenEvent = await factory.create(WalletTokenBlueprint, token).then(sign);
+    const history = await factory
+      .create(
         WalletHistoryBlueprint,
         { direction: "in", amount, mint: token.mint, created: [tokenEvent.id], fee },
         redeemed ?? [],
-      ),
-    );
+      )
+      .then(sign);
 
-    yield tokenEvent;
-    yield history;
+    // Publish the events
+    await publish([tokenEvent, history], relays);
+  };
+}
+
+/** Similar to the AddToken action but swaps the tokens before receiving them */
+export function ReceiveToken(token: Token): Action {
+  return async ({ run }) => {
+    // Get the cashu wallet
+    const cashuWallet = new Wallet(token.mint);
+    await cashuWallet.loadMint();
+
+    // Swap cashu tokens
+    const receivedProofs = await cashuWallet.ops.receive(token).run();
+
+    // Create a new token with the received proofs
+    const receivedToken: Token = {
+      ...token,
+      proofs: receivedProofs,
+    };
+
+    // Run the add token action
+    await run(AddToken, receivedToken);
   };
 }
 
 /** An action that deletes old tokens and creates a new one but does not add a history event */
 export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
-  return async function* ({ factory }) {
-    // create a delete event for old tokens
-    const deleteDraft = await factory.create(DeleteBlueprint, tokens);
-    // create a new token event
-    const tokenDraft = await factory.create(
-      WalletTokenBlueprint,
-      token,
-      tokens.map((e) => e.id),
-    );
+  return async function* ({ factory, user, publish, signer, sign }) {
+    const relays = await getWalletRelays(user, signer);
 
-    // sign events
-    const signedDelete = await factory.sign(deleteDraft);
-    const signedToken = await factory.sign(tokenDraft);
+    // create a new token event
+    const tokenEvent = await factory
+      .create(
+        WalletTokenBlueprint,
+        token,
+        tokens.map((e) => e.id),
+      )
+      .then(sign);
+    // create a delete event for old tokens
+    const deleteDraft = await factory.create(DeleteBlueprint, tokens).then(sign);
 
     // publish events
-    yield signedDelete;
-    yield signedToken;
+    await publish([tokenEvent, deleteDraft], relays);
   };
 }
 
 /** An action that deletes old token events and adds a spend history item */
 export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
-  return async function* ({ factory }) {
+  return async function* ({ factory, user, publish, signer, sign }) {
     if (spent.length === 0) throw new Error("Cant complete spent with no token events");
-    if (spent.some((s) => !isTokenContentUnlocked(s))) throw new Error("Cant complete spend with locked tokens");
 
-    // create the nip-09 delete event for previous events
-    const deleteDraft = await factory.create(DeleteBlueprint, spent);
+    const unlocked = spent.filter(isTokenContentUnlocked);
+    if (unlocked.length !== spent.length) throw new Error("Cant complete spend with locked tokens");
+    const relays = await getWalletRelays(user, signer);
 
-    const changeAmount = change.proofs.reduce((t, p) => t + p.amount, 0);
+    const changeAmount = sumProofs(change.proofs);
 
     // create a new token event if needed
-    const changeDraft =
+    const tokenEvent =
       changeAmount > 0
-        ? await factory.create(
-            WalletTokenBlueprint,
-            change,
-            spent.map((e) => e.id),
-          )
+        ? await factory
+            .create(
+              WalletTokenBlueprint,
+              change,
+              spent.map((e) => e.id),
+            )
+            .then(sign)
         : undefined;
 
-    const total = spent.reduce(
-      (total, token) => total + getTokenContent(token)!.proofs.reduce((t, p) => t + p.amount, 0),
-      0,
-    );
+    // Get tokens total amount
+    const total = sumProofs(unlocked.map((s) => getTokenContent(s).proofs).flat());
 
     // calculate the amount that was spent
     const diff = total - changeAmount;
 
     // sign delete and token
-    const signedDelete = await factory.sign(deleteDraft);
-    const signedToken = changeDraft && (await factory.sign(changeDraft));
+    const deleteEvent = await factory.create(DeleteBlueprint, spent).then(sign);
 
     // create a history entry
-    const history = await factory.create(
-      WalletHistoryBlueprint,
-      { direction: "out", mint: change.mint, amount: diff, created: signedToken ? [signedToken.id] : [] },
-      [],
-    );
-
-    // sign history
-    const signedHistory = await factory.sign(history);
+    const history = await factory
+      .create(
+        WalletHistoryBlueprint,
+        { direction: "out", mint: change.mint, amount: diff, created: tokenEvent ? [tokenEvent.id] : [] },
+        [],
+      )
+      .then(sign);
 
     // publish events
-    yield signedDelete;
-    if (signedToken) yield signedToken;
-    yield signedHistory;
+    await publish(
+      [tokenEvent, deleteEvent, history].filter((e) => !!e),
+      relays,
+    );
   };
 }
 

@@ -85,7 +85,7 @@ export function getWalletPrivateKey<T extends NostrEvent>(wallet: T): Uint8Array
 
 /** Returns the wallets relays */
 export function getWalletRelays(wallet: UnlockedWallet): string[];
-export function getWalletRelays(wallet: NostrEvent): string[];
+export function getWalletRelays(wallet: NostrEvent): string[] | undefined;
 export function getWalletRelays<T extends NostrEvent>(wallet: T): string[] | undefined {
   // Return cached value if it exists
   if (Reflect.has(wallet, WalletRelaysSymbol)) return Reflect.get(wallet, WalletRelaysSymbol) as string[];
@@ -121,6 +121,7 @@ export async function unlockWallet(
   if (!mints) throw new Error("Failed to unlock wallet mints");
 
   const relays = getWalletRelays(wallet);
+  if (!relays) throw new Error("Failed to unlock wallet relays");
   const key = getWalletPrivateKey(wallet) ?? null;
 
   // Notify the event store

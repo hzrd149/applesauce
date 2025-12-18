@@ -1,18 +1,12 @@
-import {
-  EventModels,
-  IAsyncEventStore,
-  IEventStore,
-  IEventStoreStreams,
-  IEventSubscriptions,
-} from "applesauce-core/event-store";
+import { EventModels, IEventStoreStreams, IEventSubscriptions } from "applesauce-core/event-store";
+import { getSeenRelays } from "applesauce-core/helpers";
 import { getParentEventStore, NostrEvent } from "applesauce-core/helpers/event";
 import { Observable } from "rxjs";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { castUser } from "./user.js";
-import { getSeenRelays } from "applesauce-core/helpers";
 
 /** The type of event store that is passed to cast references */
-export type CastRefEventStore = IEventSubscriptions & EventModels<IEventStore | IAsyncEventStore> & IEventStoreStreams;
+export type CastRefEventStore = IEventSubscriptions & EventModels & IEventStoreStreams;
 
 /** A symbol used to store all the cast instances for a given event */
 export const CAST_REF_SYMBOL = Symbol.for("cast-ref");

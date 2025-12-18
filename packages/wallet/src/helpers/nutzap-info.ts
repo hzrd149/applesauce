@@ -41,6 +41,11 @@ export function getNutzapInfoPubkey(event: NostrEvent): string | undefined {
   return event.tags.find((t) => t[0] === "pubkey")?.[1];
 }
 
+/** Returns the P2PK pubkey from a kind:10019 nutzap info event */
+export function getNutzapInfoP2PKPubkey(event: NostrEvent): string | undefined {
+  return getNutzapInfoPubkey(event);
+}
+
 /**
  * verfies if proofs are locked to nutzap info
  * @throws {Error} if proofs are not locked to nutzap info

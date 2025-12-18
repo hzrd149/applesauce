@@ -1,17 +1,18 @@
 import { Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
+import { castUser } from "applesauce-common/casts";
 import { bytesToHex, NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { WalletHistoryBlueprint } from "../blueprints/history.js";
 import { WalletTokenBlueprint } from "../blueprints/tokens.js";
 import { NutzapBlueprint, ProfileNutzapBlueprint } from "../blueprints/zaps.js";
-import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
-import { getWalletPrivateKey, isWalletUnlocked, unlockWallet, WALLET_KIND } from "../helpers/wallet.js";
 import { NUTZAP_INFO_KIND, verifyProofsLocked } from "../helpers/nutzap-info.js";
+import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
+import { getUnlockedWallet, getWalletRelays } from "./common.js";
 
 /** Creates a NIP-61 nutzap event for an event with a token */
 export function NutzapEvent(event: NostrEvent, token: Token, comment?: string): Action {
-  return async function* ({ events, factory }) {
+  return async function* ({ events, factory, user, signer, sign, publish }) {
     const recipient = event.pubkey;
     const info = events.getReplaceable(NUTZAP_INFO_KIND, recipient);
     if (!info) throw new Error("Nutzap info not found");
@@ -23,22 +24,31 @@ export function NutzapEvent(event: NostrEvent, token: Token, comment?: string): 
     // const mints = getNutzapInfoMints(info);
     // if (!mints.some((m) => m.mint === token.mint)) throw new Error("Token mint not found in nutzap info");
 
-    const nutzap = await factory.sign(await factory.create(NutzapBlueprint, event, token, comment || token.memo));
-    yield nutzap;
+    const relays = await getWalletRelays(user, signer);
+    const nutzap = await factory.create(NutzapBlueprint, event, token, comment || token.memo).then(sign);
+
+    await publish(nutzap, relays);
   };
 }
 
 /** Creates a NIP-61 nutzap event to a users profile */
 export function NutzapProfile(user: string | ProfilePointer, token: Token, comment?: string): Action {
-  return async function* ({ events, factory }) {
-    const info = events.getReplaceable(NUTZAP_INFO_KIND, typeof user === "string" ? user : user.pubkey);
+  return async function* ({ events, factory, sign, publish }) {
+    const target = castUser(user, events);
+
+    // Get the targets nutzap info
+    const info = await target.nutzap$.$first(5_000).catch(() => undefined);
     if (!info) throw new Error("Nutzap info not found");
 
     // Verify all tokens are p2pk locked
     verifyProofsLocked(token.proofs, info);
 
-    const nutzap = await factory.sign(await factory.create(ProfileNutzapBlueprint, user, token, comment || token.memo));
-    yield nutzap;
+    // TODO: if tokens are not locked. swap into new locked tokens
+    // Not implementing this yet because I don't know where the timelock logic should live
+
+    const nutzap = await factory.create(ProfileNutzapBlueprint, target, token, comment || token.memo).then(sign);
+
+    await publish(nutzap, info.relays);
   };
 }
 
@@ -49,8 +59,7 @@ export function NutzapProfile(user: string | ProfilePointer, token: Token, comme
  * @param nutzaps single nutzap event or array of nutzap events
  */
 export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[]): Action {
-  return async function* ({ events, factory, self }) {
-    const signer = factory.context.signer;
+  return async function* ({ factory, user, signer, sign, publish }) {
     if (!signer) throw new Error("Missing signer");
 
     // Normalize to array
@@ -62,12 +71,7 @@ export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[]): Action {
     if (validNutzaps.length === 0) throw new Error("No valid nutzaps with mints and proofs found");
 
     // Get private key from current wallet event
-    const wallet = events.getReplaceable(WALLET_KIND, self);
-    if (!wallet) throw new Error("Wallet not found");
-
-    if (!isWalletUnlocked(wallet)) {
-      await unlockWallet(wallet, signer);
-    }
+    const wallet = await getUnlockedWallet(user, signer);
 
     // Group nutzaps by mint
     const nutzapsByMint = new Map<string, NutzapEvent[]>();
@@ -81,12 +85,10 @@ export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[]): Action {
     }
 
     if (nutzapsByMint.size === 0) throw new Error("No valid nutzaps with mints found");
-
-    const privateKey = getWalletPrivateKey(wallet);
-    if (!privateKey) throw new Error("No private key found in wallet");
+    if (!wallet.privateKey) throw new Error("No private key found in wallet");
 
     // Convert private key to hex string for cashu-ts
-    const privkeyHex = bytesToHex(privateKey);
+    const privkeyHex = bytesToHex(wallet.privateKey);
 
     // Process each mint group separately
     for (const [mint, mintNutzaps] of nutzapsByMint) {
@@ -126,21 +128,17 @@ export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[]): Action {
         unit: "sat",
       };
 
-      const tokenEvent = await factory.sign(await factory.create(WalletTokenBlueprint, receivedToken, []));
+      const tokenEvent = await factory.create(WalletTokenBlueprint, receivedToken, []).then(sign);
 
       // Create history event marking nutzap events as redeemed
       const nutzapIds = mintNutzaps.map((n) => n.id);
-      const history = await factory.sign(
-        await factory.create(
-          WalletHistoryBlueprint,
-          { direction: "in", amount, mint, created: [tokenEvent.id] },
-          nutzapIds,
-        ),
-      );
+      const history = await factory
+        .create(WalletHistoryBlueprint, { direction: "in", amount, mint, created: [tokenEvent.id] }, nutzapIds)
+        .then(sign);
 
-      // Immediately yield both events after successful redeem
-      yield tokenEvent;
-      yield history;
+      // Publish events
+      await publish(tokenEvent, wallet.relays);
+      await publish(history, wallet.relays);
     }
   };
 }

@@ -1,15 +1,16 @@
-import { getEncodedToken } from "@cashu/cashu-ts";
+import { getDecodedToken, getEncodedToken } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionHub } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts";
 import { persistEncryptedContent } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
-import { defined, EventFactory, EventStore, mapEventsToTimeline, simpleTimeout } from "applesauce-core";
+import { defined, EventFactory, EventStore, mapEventsToTimeline } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
   getProfilePicture,
   getTagValue,
+  kinds,
   NostrEvent,
   persistEventsToCache,
   relaySet,
@@ -23,17 +24,18 @@ import {
   ConsolidateTokens,
   CreateWallet,
   ReceiveNutzaps,
+  ReceiveToken,
   RemoveNutzapInfoMint,
   SetWalletMints,
   SetWalletRelays,
   UnlockWallet,
 } from "applesauce-wallet/actions";
 import { Nutzap, Wallet, WalletHistory, WalletToken } from "applesauce-wallet/casts";
-import { NUTZAP_KIND, WALLET_HISTORY_KIND, WALLET_KIND } from "applesauce-wallet/helpers";
+import { getWalletRelays, NUTZAP_KIND, WALLET_HISTORY_KIND, WALLET_KIND } from "applesauce-wallet/helpers";
 import { WALLET_TOKEN_KIND } from "applesauce-wallet/helpers/tokens";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, firstValueFrom, map } from "rxjs";
+import { BehaviorSubject, firstValueFrom, map, of, timeout } from "rxjs";
 import LoginView from "../../components/login-view";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
@@ -55,10 +57,17 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
 const actions = new ActionHub(eventStore, factory, async (event) => {
-  const outboxes = await firstValueFrom(eventStore.mailboxes(event.pubkey).pipe(defined(), simpleTimeout(5_000)));
+  const mailboxes = await firstValueFrom(
+    eventStore.mailboxes(event.pubkey).pipe(defined(), timeout({ first: 5_000, with: () => of(undefined) })),
+  );
+  const wallet = await firstValueFrom(
+    eventStore
+      .replaceable(WALLET_KIND, event.pubkey)
+      .pipe(defined(), timeout({ first: 5_000, with: () => of(undefined) })),
+  );
+  const relays = relaySet(wallet && getWalletRelays(wallet), mailboxes?.outboxes);
 
-  if (!outboxes?.outboxes?.length) throw new Error("No outboxes found");
-  await pool.publish(outboxes.outboxes, event);
+  await pool.publish(relays, event);
 });
 
 // Persist encrypted content
@@ -93,11 +102,7 @@ interface MintInfo {
 // Component to discover mints from Nostr relays
 function MintDiscovery({ onMintsSelected }: { onMintsSelected: (mints: string[]) => void }) {
   const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
-  const [selectedMints, setSelectedMints] = useState<Set<string>>(new Set());
-  const [manualMint, setManualMint] = useState("");
-  const [manualMints, setManualMints] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [selectedMints, setSelectedMints] = useState<string[]>([]);
 
   // Query for kind:38172 events from common relays
   const mintEvents = use$(
@@ -133,193 +138,62 @@ function MintDiscovery({ onMintsSelected }: { onMintsSelected: (mints: string[])
     return Array.from(mintMap.values()).sort((a, b) => b.event.created_at - a.event.created_at);
   }, [mintEvents]);
 
-  // Filter mints based on search query
-  const mints = useMemo(() => {
-    if (!searchQuery.trim()) return allMints;
-
-    const query = searchQuery.toLowerCase().trim();
-    return allMints.filter((mint) => {
-      return (
-        mint.url.toLowerCase().includes(query) ||
-        mint.network.toLowerCase().includes(query) ||
-        mint.pubkey.toLowerCase().includes(query)
-      );
-    });
-  }, [allMints, searchQuery]);
-
-  useEffect(() => {
-    if (mintEvents !== undefined) setLoading(false);
-  }, [mintEvents]);
-
-  const handleToggleMint = useCallback((url: string) => {
-    setSelectedMints((prev) => {
-      const next = new Set(prev);
-      if (next.has(url)) next.delete(url);
-      else next.add(url);
-      return next;
-    });
-  }, []);
-
-  const handleAddManualMint = useCallback(() => {
-    if (!manualMint.trim()) return;
-    const url = manualMint.trim();
-    setManualMints((prev) => {
-      const next = new Set(prev);
-      next.add(url);
-      return next;
-    });
-    setManualMint("");
-  }, [manualMint]);
-
-  const handleRemoveManualMint = useCallback((url: string) => {
-    setManualMints((prev) => {
-      const next = new Set(prev);
-      next.delete(url);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    const allMints = Array.from(new Set([...selectedMints, ...manualMints]));
-    onMintsSelected(allMints);
-  }, [selectedMints, manualMints, onMintsSelected]);
+  const handleToggleMint = (url: string) => {
+    const next = selectedMints.includes(url) ? selectedMints.filter((m) => m !== url) : [...selectedMints, url];
+    setSelectedMints(next);
+    onMintsSelected(next);
+  };
 
   return (
     <div className="space-y-4">
       <div>
         <h3 className="text-lg font-semibold mb-2">Select Mints</h3>
-        <p className="text-sm text-base-content/70 mb-4">
-          Choose one or more ecash mints to use with your wallet. These mints are discovered from Nostr relays.
-        </p>
         <div className="alert alert-warning">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6 shrink-0 stroke-current"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
-          <span>Unknown mints will steal your sats. Only add mints you trust.</span>
+          <span>Only select 2 or 3 mints you trust to avoid losing funds.</span>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <span className="loading loading-spinner loading-md" />
-          <span className="ml-2 text-base-content/70">Discovering mints from relays...</span>
-        </div>
-      ) : allMints.length === 0 ? (
-        <div className="alert alert-info">
-          <span>No mints found on relays. You can still create a wallet and add mints manually later.</span>
-        </div>
-      ) : (
-        <>
-          <div className="mb-4 flex gap-2">
-            <input
-              type="text"
-              className="input input-bordered w-full"
-              placeholder="Search mints by URL, network, or pubkey..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-
-            <RelayPicker value={relay} onChange={setRelay} />
-          </div>
-          {mints.length === 0 ? (
-            <div className="alert alert-info">
-              <span>
-                No mints match your search "{searchQuery}". {allMints.length} mint{allMints.length !== 1 ? "s" : ""}{" "}
-                available.
-              </span>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {mints.map((mint) => {
-                const isSelected = selectedMints.has(mint.url);
-                return (
-                  <div
-                    key={mint.url}
-                    className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                      isSelected ? "border-primary bg-primary/10" : "border-base-300 hover:border-base-content/20"
-                    }`}
-                    onClick={() => handleToggleMint(mint.url)}
-                  >
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-primary mt-1"
-                      checked={isSelected}
-                      onChange={() => handleToggleMint(mint.url)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{mint.url}</div>
-                      <div className="text-xs text-base-content/70 mt-1 space-y-1">
-                        <div>
-                          <span className="font-semibold">Network:</span> {mint.network}
-                        </div>
-                        <div className="font-mono text-xs truncate">
-                          <span className="font-semibold">Pubkey:</span> {mint.pubkey}
-                        </div>
-                      </div>
-                    </div>
+      <div className="mb-4">
+        <RelayPicker value={relay} onChange={setRelay} />
+      </div>
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {allMints.map((mint) => {
+          const isSelected = selectedMints.includes(mint.url);
+          return (
+            <div
+              key={mint.url}
+              className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                isSelected ? "border-primary bg-primary/10" : "border-base-300 hover:border-base-content/20"
+              }`}
+              onClick={() => handleToggleMint(mint.url)}
+            >
+              <input
+                type="checkbox"
+                className="checkbox checkbox-primary mt-1"
+                checked={isSelected}
+                onChange={() => handleToggleMint(mint.url)}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{mint.url}</div>
+                <div className="text-xs text-base-content/70 mt-1 space-y-1">
+                  <div>
+                    <span className="font-semibold">Network:</span> {mint.network}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      <div className="divider" />
-
-      <div>
-        <h3 className="text-lg font-semibold mb-2">Add Mint Manually</h3>
-        <p className="text-sm text-base-content/70 mb-4">
-          If you know a mint URL that wasn't found, you can add it manually.
-        </p>
-        <div className="flex gap-2 mb-4">
-          <input
-            type="text"
-            className="input input-bordered flex-1"
-            placeholder="https://mint.example.com"
-            value={manualMint}
-            onChange={(e) => setManualMint(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleAddManualMint();
-              }
-            }}
-          />
-          <button className="btn btn-primary" onClick={handleAddManualMint} disabled={!manualMint.trim()}>
-            Add
-          </button>
-        </div>
-
-        {manualMints.size > 0 && (
-          <div className="space-y-2">
-            {Array.from(manualMints).map((url) => (
-              <div key={url} className="flex items-center justify-between p-2 bg-base-200 rounded">
-                <span className="font-mono text-sm truncate flex-1">{url}</span>
-                <button className="btn btn-xs btn-error ml-2" onClick={() => handleRemoveManualMint(url)}>
-                  Remove
-                </button>
+                  <div className="font-mono text-xs truncate">
+                    <span className="font-semibold">Pubkey:</span> {mint.pubkey}
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          );
+        })}
       </div>
 
-      {(selectedMints.size > 0 || manualMints.size > 0) && (
+      {selectedMints.length > 0 && (
         <div className="alert alert-success">
           <span>
-            {selectedMints.size + manualMints.size} mint{selectedMints.size + manualMints.size !== 1 ? "s" : ""}{" "}
-            selected
+            {selectedMints.length} mint{selectedMints.length !== 1 ? "s" : ""} selected
           </span>
         </div>
       )}
@@ -336,11 +210,7 @@ function CreateWalletView({ onCreate }: { onCreate: (mints: string[], receiveNut
   const handleCreate = useCallback(async () => {
     if (selectedMints.length === 0) return;
     setCreating(true);
-    try {
-      await onCreate(selectedMints, receiveNutzaps);
-    } finally {
-      setCreating(false);
-    }
+    await onCreate(selectedMints, receiveNutzaps).finally(() => setCreating(false));
   }, [onCreate, selectedMints, receiveNutzaps]);
 
   return (
@@ -348,15 +218,12 @@ function CreateWalletView({ onCreate }: { onCreate: (mints: string[], receiveNut
       <h1 className="text-3xl font-bold mb-6">Create Wallet</h1>
       <div className="bg-base-100 border border-base-300 p-6">
         <h2 className="text-xl font-bold mb-2">No Wallet Found</h2>
-        <p className="text-base-content/70 mb-4">
-          You don't have a wallet yet. Create one to get started with ecash tokens.
-        </p>
 
         <div className="mb-6">
           <MintDiscovery onMintsSelected={setSelectedMints} />
         </div>
 
-        <div className="mb-6">
+        <div className="mb-6 flex gap-2 items-center justify-between">
           <label className="label cursor-pointer">
             <span className="label-text">Receive Nutzaps</span>
             <input
@@ -366,27 +233,10 @@ function CreateWalletView({ onCreate }: { onCreate: (mints: string[], receiveNut
               onChange={(e) => setReceiveNutzaps(e.target.checked)}
             />
           </label>
-          <p className="text-sm text-base-content/70 mt-1">
-            Enable this option to receive nutzaps from other users. A private key will be generated and stored in your
-            wallet.
-          </p>
+          <button className="btn btn-primary " onClick={handleCreate} disabled={creating || selectedMints.length === 0}>
+            {creating ? "Creating..." : "Create Wallet"}
+          </button>
         </div>
-
-        <button className="btn btn-primary" onClick={handleCreate} disabled={creating || selectedMints.length === 0}>
-          {creating ? (
-            <>
-              <span className="loading loading-spinner loading-sm" />
-              Creating...
-            </>
-          ) : (
-            `Create Wallet${selectedMints.length > 0 ? ` with ${selectedMints.length} mint${selectedMints.length !== 1 ? "s" : ""}` : ""}`
-          )}
-        </button>
-        {selectedMints.length === 0 && (
-          <p className="text-sm text-warning mt-2">
-            Please select at least one mint to create a wallet. You can add more mints later in settings.
-          </p>
-        )}
       </div>
     </div>
   );
@@ -399,20 +249,9 @@ function OverviewTab({ wallet }: { wallet: Wallet }) {
   if (!wallet.unlocked) {
     return (
       <div className="flex flex-col items-center justify-center text-center space-y-4">
-        <div className="text-6xl">🔒</div>
         <h2 className="text-2xl font-bold">Wallet Locked</h2>
-        <p className="text-base-content/70 max-w-md">
-          Unlock your wallet to view balances and manage your ecash tokens.
-        </p>
-        <button className="btn btn-primary mt-4" onClick={() => autoUnlock$.next(true)} disabled={autoUnlock}>
-          {autoUnlock ? (
-            <>
-              <span className="loading loading-spinner loading-sm" />
-              Unlocking...
-            </>
-          ) : (
-            "Unlock Wallet"
-          )}
+        <button className="btn btn-primary" onClick={() => autoUnlock$.next(true)} disabled={autoUnlock}>
+          {autoUnlock ? "Unlocking..." : "Unlock Wallet"}
         </button>
       </div>
     );
@@ -447,13 +286,12 @@ function HistoryEntry({ entry }: { entry: WalletHistory }) {
   const unlocked = entry.unlocked;
   const meta = use$(entry.meta$);
 
-  if (!unlocked || !meta) {
+  if (!unlocked || !meta)
     return (
       <div className="py-2 border-b border-base-300">
-        <div className="text-base-content/70">🔒 Locked</div>
+        <div className="text-base-content/70">Locked</div>
       </div>
     );
-  }
 
   return (
     <div className="py-2 border-b border-base-300">
@@ -468,31 +306,11 @@ function HistoryEntry({ entry }: { entry: WalletHistory }) {
   );
 }
 
-function HistoryTab({ history }: { history: WalletHistory[] | undefined }) {
-  return (
-    <>
-      {!history || history.length === 0 ? (
-        <div className="text-base-content/70">No history entries found</div>
-      ) : (
-        <div>
-          {history.map((entry) => (
-            <HistoryEntry key={entry.id} entry={entry} />
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-function TokenEntry({ token, wallet }: { token: WalletToken; wallet: Wallet }) {
+function TokenEntry({ token }: { token: WalletToken }) {
   const isUnlocked = token.unlocked;
   const meta = use$(token.meta$);
   const amount = use$(token.amount$);
-  const relays = use$(wallet.relays$);
   const [copied, setCopied] = useState(false);
-
-  const totalRelays = relays?.length || 0;
-  const seenRelays = token.seen ? Array.from(token.seen).filter((r) => relays?.includes(r)).length : 0;
 
   const encodedToken = useMemo(() => {
     if (!token.mint || !token.proofs) return undefined;
@@ -504,12 +322,12 @@ function TokenEntry({ token, wallet }: { token: WalletToken; wallet: Wallet }) {
     navigator.clipboard.writeText(encodedToken);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [token.id]);
+  }, [encodedToken]);
 
   if (!isUnlocked || !meta) {
     return (
       <div className="py-2 border-b border-base-300">
-        <div className="text-base-content/70">🔒 Locked</div>
+        <div className="text-base-content/70">Locked</div>
       </div>
     );
   }
@@ -519,64 +337,15 @@ function TokenEntry({ token, wallet }: { token: WalletToken; wallet: Wallet }) {
       <div className="flex items-center gap-2">
         <span className="font-medium">{amount} sats</span>
         {meta.mint && <span className="text-sm text-base-content/70 font-mono">{meta.mint}</span>}
-
         <span className="flex-1"></span>
-
-        {totalRelays > 0 && (
-          <span className="text-xs text-base-content/60">
-            {seenRelays}/{totalRelays} relay{totalRelays !== 1 ? "s" : ""}
-          </span>
+        {encodedToken && (
+          <button className="btn btn-xs" onClick={handleCopy}>
+            {copied ? "Copied" : "Copy"}
+          </button>
         )}
-
-        <div className="join">
-          {encodedToken && (
-            <button className="btn btn-xs ghost join-item" onClick={handleCopy}>
-              {copied ? "✅" : "📋"}
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );
-}
-
-function TokensTab({ tokens, wallet }: { tokens: WalletToken[] | undefined; wallet: Wallet }) {
-  return (
-    <>
-      {!tokens || tokens.length === 0 ? (
-        <div className="text-base-content/70">No tokens found</div>
-      ) : (
-        <div>
-          {tokens.map((token) => (
-            <TokenEntry key={token.id} token={token} wallet={wallet} />
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-/** A component for rendering user avatars */
-function Avatar({ user }: { user: User }) {
-  const profile = use$(user.profile$);
-
-  return (
-    <div className="avatar">
-      <div className="w-8 h-8 rounded-full">
-        <img
-          src={getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`)}
-          alt={user.npub}
-          className="w-full h-full object-cover rounded-full"
-        />
-      </div>
-    </div>
-  );
-}
-
-/** A component for rendering usernames */
-function Username({ user }: { user: User }) {
-  const profile = use$(user.profile$);
-  return <span className="font-medium">{getDisplayName(profile, user.pubkey.slice(0, 8) + "...")}</span>;
 }
 
 function NutzapEntry({
@@ -592,6 +361,7 @@ function NutzapEntry({
   const mint = nutzap.mint;
   const comment = nutzap.comment;
   const zappedEvent = use$(nutzap.zapped$);
+  const senderProfile = use$(nutzap.sender.profile$);
   const createdDate = new Date(nutzap.created_at * 1000);
   const [receiving, setReceiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -618,10 +388,20 @@ function NutzapEntry({
   return (
     <div className="py-3 border-b border-base-300">
       <div className="flex items-start gap-3">
-        <Avatar user={nutzap.sender} />
+        <div className="avatar">
+          <div className="w-8 h-8 rounded-full">
+            <img
+              src={getProfilePicture(senderProfile, `https://robohash.org/${nutzap.sender.pubkey}.png`)}
+              alt={nutzap.sender.npub}
+              className="w-full h-full object-cover rounded-full"
+            />
+          </div>
+        </div>
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <Username user={nutzap.sender} />
+            <span className="font-medium">
+              {getDisplayName(senderProfile, nutzap.sender.pubkey.slice(0, 8) + "...")}
+            </span>
             <span className="text-success font-semibold">⚡ {amount} sats</span>
             {mint && (
               <span className="text-xs text-base-content/60 font-mono" title={mint}>
@@ -665,78 +445,41 @@ function NutzapEntry({
 function NutzapsTab({ user }: { user: User }) {
   const wallet = use$(user.wallet$);
   const received = use$(wallet?.received$);
-  const [filter, setFilter] = useState<"all" | "received" | "new">("all");
   const [receiving, setReceiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const nutzaps = use$(
     () => eventStore.timeline({ kinds: [NUTZAP_KIND], "#p": [user.pubkey] }).pipe(castTimelineStream(Nutzap)),
     [user.pubkey],
   );
 
-  const filteredNutzaps = useMemo(() => {
-    if (!nutzaps) return [];
-    if (filter === "all") return nutzaps;
-    if (!received) return filter === "new" ? nutzaps : [];
-
-    const receivedSet = new Set(received);
-    if (filter === "received") {
-      return nutzaps.filter((nutzap) => receivedSet.has(nutzap.id));
-    } else {
-      // filter === "new"
-      return nutzaps.filter((nutzap) => !receivedSet.has(nutzap.id));
-    }
-  }, [nutzaps, received, filter]);
-
-  const newNutzaps = useMemo(() => {
+  const unclaimed = useMemo(() => {
     if (!nutzaps) return [];
     if (!received) return nutzaps;
-    const receivedSet = new Set(received);
-    return nutzaps.filter((nutzap) => !receivedSet.has(nutzap.id));
+    return nutzaps.filter((nutzap) => !received.includes(nutzap.id));
   }, [nutzaps, received]);
 
   const handleReceiveAll = useCallback(async () => {
-    if (!wallet || !wallet.unlocked) {
-      setError("Wallet must be unlocked to receive nutzaps");
-      return;
-    }
-
-    if (newNutzaps.length === 0) {
-      setError("No new nutzaps to receive");
-      return;
-    }
+    if (!wallet || !wallet.unlocked) return setError("Wallet must be unlocked to receive nutzaps");
+    if (unclaimed.length === 0) return setError("No new nutzaps to receive");
 
     setReceiving(true);
     setError(null);
-    setSuccess(false);
 
     try {
-      // Convert Nutzap casts to NostrEvent for the action
-      const nutzapEvents = newNutzaps.map((nutzap) => nutzap.event);
+      const nutzapEvents = unclaimed.map((nutzap) => nutzap.event);
       await actions.run(ReceiveNutzaps, nutzapEvents);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to receive nutzaps:", err);
       setError(err instanceof Error ? err.message : "Failed to receive nutzaps");
     } finally {
       setReceiving(false);
     }
-  }, [wallet, newNutzaps]);
+  }, [wallet, unclaimed]);
 
   return (
     <>
-      <div className="mb-4 flex gap-4 items-center">
-        <select
-          className="select select-bordered w-full max-w-xs"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as "all" | "received" | "new")}
-        >
-          <option value="all">All</option>
-          <option value="received">Received</option>
-          <option value="new">New</option>
-        </select>
-        {newNutzaps.length > 0 && (
+      {unclaimed.length > 0 && (
+        <div className="mb-4">
           <button className="btn btn-primary" onClick={handleReceiveAll} disabled={receiving || !wallet?.unlocked}>
             {receiving ? (
               <>
@@ -744,26 +487,21 @@ function NutzapsTab({ user }: { user: User }) {
                 Receiving...
               </>
             ) : (
-              `Receive All (${newNutzaps.length})`
+              `Receive All (${unclaimed.length})`
             )}
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {error && (
         <div className="alert alert-error mb-4">
           <span>{error}</span>
         </div>
       )}
-      {success && (
-        <div className="alert alert-success mb-4">
-          <span>Successfully received all nutzaps!</span>
-        </div>
-      )}
-      {!filteredNutzaps || filteredNutzaps.length === 0 ? (
+      {!unclaimed || unclaimed.length === 0 ? (
         <div className="text-base-content/70">No incoming nutzap events found</div>
       ) : (
         <div>
-          {filteredNutzaps.map((nutzap) => {
+          {unclaimed.map((nutzap) => {
             const receivedSet = received ? new Set(received) : new Set<string>();
             const isReceived = receivedSet.has(nutzap.id);
             return <NutzapEntry key={nutzap.id} nutzap={nutzap} wallet={wallet} isReceived={isReceived} />;
@@ -777,50 +515,26 @@ function NutzapsTab({ user }: { user: User }) {
 function SyncTokensTool({ wallet }: { wallet: Wallet }) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [syncedCount, setSyncedCount] = useState(0);
 
   const tokens = use$(wallet.tokens$);
   const relays = use$(wallet.relays$);
 
   const handleSync = useCallback(async () => {
-    if (!wallet.unlocked) {
-      setError("Wallet must be unlocked to sync tokens");
-      return;
-    }
-
-    if (!relays || relays.length === 0) {
-      setError("No wallet relays configured. Please add relays in the relay management section.");
-      return;
-    }
-
-    if (!tokens || tokens.length === 0) {
-      setError("No tokens found to sync");
-      return;
-    }
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to sync tokens");
+    if (!relays || relays.length === 0) return setError("No wallet relays configured");
+    if (!tokens || tokens.length === 0) return setError("No tokens found to sync");
 
     setSyncing(true);
     setError(null);
-    setSuccess(false);
-    setSyncedCount(0);
 
     try {
-      let successCount = 0;
       for (const token of tokens) {
         try {
           await pool.publish(relays, token.event);
-          successCount++;
         } catch (err) {
           console.error(`Failed to sync token ${token.id}:`, err);
         }
       }
-
-      setSyncedCount(successCount);
-      setSuccess(true);
-      setTimeout(() => {
-        setSuccess(false);
-        setSyncedCount(0);
-      }, 5000);
     } catch (err) {
       console.error("Failed to sync tokens:", err);
       setError(err instanceof Error ? err.message : "Failed to sync tokens");
@@ -832,10 +546,6 @@ function SyncTokensTool({ wallet }: { wallet: Wallet }) {
   return (
     <div>
       <h3 className="text-lg font-semibold mb-2">Sync Tokens</h3>
-      <p className="text-sm text-base-content/70 mb-4">
-        Broadcast all known token events to your wallet relays. This ensures your tokens are available on all configured
-        relays.
-      </p>
       <button className="btn btn-primary" onClick={handleSync} disabled={syncing}>
         {syncing ? (
           <>
@@ -851,14 +561,6 @@ function SyncTokensTool({ wallet }: { wallet: Wallet }) {
           <span>{error}</span>
         </div>
       )}
-      {success && (
-        <div className="alert alert-success mt-4">
-          <span>
-            Successfully synced {syncedCount} of {tokens?.length || 0} tokens to {relays?.length || 0} relay
-            {relays?.length !== 1 ? "s" : ""}!
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -866,25 +568,15 @@ function SyncTokensTool({ wallet }: { wallet: Wallet }) {
 function ConsolidateTool({ wallet }: { wallet: Wallet }) {
   const [consolidating, setConsolidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  const tokens = use$(wallet.tokens$);
-  const mints = use$(wallet.mints$);
 
   const handleConsolidate = useCallback(async () => {
-    if (!wallet.unlocked) {
-      setError("Wallet must be unlocked to consolidate tokens");
-      return;
-    }
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to consolidate tokens");
 
     setConsolidating(true);
     setError(null);
-    setSuccess(false);
 
     try {
       await actions.run(ConsolidateTokens, { ignoreLocked: true });
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to consolidate tokens:", err);
       setError(err instanceof Error ? err.message : "Failed to consolidate tokens");
@@ -896,13 +588,6 @@ function ConsolidateTool({ wallet }: { wallet: Wallet }) {
   return (
     <div>
       <h3 className="text-lg font-semibold mb-2">Consolidate Tokens</h3>
-      <p className="text-sm text-base-content/70 mb-4">
-        Combine all unlocked token events into a single event per mint. This helps reduce the number of token events in
-        your wallet.
-      </p>
-      <p className="text-sm text-base-content/70 mb-4">
-        {tokens?.length} tokens found accross {mints?.length} mints
-      </p>
       <button className="btn btn-primary" onClick={handleConsolidate} disabled={consolidating}>
         {consolidating ? (
           <>
@@ -918,11 +603,6 @@ function ConsolidateTool({ wallet }: { wallet: Wallet }) {
           <span>{error}</span>
         </div>
       )}
-      {success && (
-        <div className="alert alert-success mt-4">
-          <span>Tokens consolidated successfully!</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -933,7 +613,6 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
   const [newRelay, setNewRelay] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   // Count how many tokens were seen on each relay
   const relayTokenCounts = useMemo(() => {
@@ -957,34 +636,21 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
   }, [relays, tokens]);
 
   const handleAddRelay = useCallback(async () => {
-    if (!newRelay.trim()) {
-      setError("Please enter a relay URL");
-      return;
-    }
-
-    if (!wallet.unlocked) {
-      setError("Wallet must be unlocked to manage relays");
-      return;
-    }
+    if (!newRelay.trim()) return setError("Please enter a relay URL");
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to manage relays");
 
     const currentRelays = relays || [];
     const relayUrl = newRelay.trim();
 
     // Check if relay already exists
-    if (currentRelays.includes(relayUrl)) {
-      setError("This relay is already in your list");
-      return;
-    }
+    if (currentRelays.includes(relayUrl)) return setError("This relay is already in your list");
 
     setSaving(true);
     setError(null);
-    setSuccess(false);
 
     try {
       await actions.run(SetWalletRelays, [...currentRelays, relayUrl]);
       setNewRelay("");
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to add relay:", err);
       setError(err instanceof Error ? err.message : "Failed to add relay");
@@ -995,22 +661,16 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
 
   const handleRemoveRelay = useCallback(
     async (relayToRemove: string) => {
-      if (!wallet.unlocked) {
-        setError("Wallet must be unlocked to manage relays");
-        return;
-      }
+      if (!wallet.unlocked) return setError("Wallet must be unlocked to manage relays");
 
       const currentRelays = relays || [];
       const updatedRelays = currentRelays.filter((r) => r !== relayToRemove);
 
       setSaving(true);
       setError(null);
-      setSuccess(false);
 
       try {
         await actions.run(SetWalletRelays, updatedRelays);
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 3000);
       } catch (err) {
         console.error("Failed to remove relay:", err);
         setError(err instanceof Error ? err.message : "Failed to remove relay");
@@ -1023,10 +683,7 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
 
   return (
     <div>
-      <h3 className="text-lg font-semibold mb-2">Manage Relays</h3>
-      <p className="text-sm text-base-content/70 mb-4">
-        Add or remove relays from your wallet. These relays will be used for publishing wallet events.
-      </p>
+      <h3 className="text-lg font-semibold mb-2">Wallet Relays</h3>
 
       <div className="space-y-2 mb-4">
         {relays && relays.length > 0 ? (
@@ -1086,11 +743,6 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
           <span>{error}</span>
         </div>
       )}
-      {success && (
-        <div className="alert alert-success">
-          <span>Relays updated successfully!</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -1101,37 +753,23 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
   const [newMint, setNewMint] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const handleAddMint = useCallback(async () => {
-    if (!newMint.trim()) {
-      setError("Please enter a mint URL");
-      return;
-    }
-
-    if (!wallet.unlocked) {
-      setError("Wallet must be unlocked to manage mints");
-      return;
-    }
+    if (!newMint.trim()) return setError("Please enter a mint URL");
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to manage mints");
 
     const currentMints = mints || [];
     const mintUrl = newMint.trim();
 
     // Check if mint already exists
-    if (currentMints.includes(mintUrl)) {
-      setError("This mint is already in your list");
-      return;
-    }
+    if (currentMints.includes(mintUrl)) return setError("This mint is already in your list");
 
     setSaving(true);
     setError(null);
-    setSuccess(false);
 
     try {
       await actions.run(SetWalletMints, [...currentMints, mintUrl]);
       setNewMint("");
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to add mint:", err);
       setError(err instanceof Error ? err.message : "Failed to add mint");
@@ -1142,10 +780,7 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
 
   const handleRemoveMint = useCallback(
     async (mintToRemove: string) => {
-      if (!wallet.unlocked) {
-        setError("Wallet must be unlocked to manage mints");
-        return;
-      }
+      if (!wallet.unlocked) return setError("Wallet must be unlocked to manage mints");
 
       // Check if mint has a balance
       const mintBalance = balance?.[mintToRemove] || 0;
@@ -1163,12 +798,9 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
 
       setSaving(true);
       setError(null);
-      setSuccess(false);
 
       try {
         await actions.run(SetWalletMints, updatedMints);
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 3000);
       } catch (err) {
         console.error("Failed to remove mint:", err);
         setError(err instanceof Error ? err.message : "Failed to remove mint");
@@ -1181,10 +813,7 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
 
   return (
     <div>
-      <h3 className="text-lg font-semibold mb-2">Manage Mints</h3>
-      <p className="text-sm text-base-content/70 mb-4">
-        Add or remove mints from your wallet. These are the ecash mints you trust and use for your tokens.
-      </p>
+      <h3 className="text-lg font-semibold mb-2">Wallet Mints</h3>
 
       <div className="space-y-2 mb-4">
         {mints && mints.length > 0 ? (
@@ -1240,11 +869,6 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
           <span>{error}</span>
         </div>
       )}
-      {success && (
-        <div className="alert alert-success">
-          <span>Mints updated successfully!</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -1256,31 +880,21 @@ function NutzapInfoMintManagementTool() {
   const [newMint, setNewMint] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const handleAddMint = useCallback(async () => {
-    if (!newMint.trim()) {
-      setError("Please enter a mint URL");
-      return;
-    }
+    if (!newMint.trim()) return setError("Please enter a mint URL");
 
     const mintUrl = newMint.trim();
 
     // Check if mint already exists
-    if (mints.some((m) => m.mint === mintUrl)) {
-      setError("This mint is already in your list");
-      return;
-    }
+    if (mints.some((m) => m.mint === mintUrl)) return setError("This mint is already in your list");
 
     setSaving(true);
     setError(null);
-    setSuccess(false);
 
     try {
       await actions.run(AddNutzapInfoMint, { url: mintUrl, units: ["sat"] });
       setNewMint("");
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to add mint:", err);
       setError(err instanceof Error ? err.message : "Failed to add mint");
@@ -1292,12 +906,9 @@ function NutzapInfoMintManagementTool() {
   const handleRemoveMint = useCallback(async (mintToRemove: string) => {
     setSaving(true);
     setError(null);
-    setSuccess(false);
 
     try {
       await actions.run(RemoveNutzapInfoMint, mintToRemove);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to remove mint:", err);
       setError(err instanceof Error ? err.message : "Failed to remove mint");
@@ -1309,9 +920,6 @@ function NutzapInfoMintManagementTool() {
   return (
     <div>
       <h3 className="text-lg font-semibold mb-2">Manage Nutzap Info Mints</h3>
-      <p className="text-sm text-base-content/70 mb-4">
-        Add or remove mints from your nutzap info. These mints are used to receive nutzaps from other users.
-      </p>
 
       <div className="space-y-2 mb-4">
         {mints && mints.length > 0 ? (
@@ -1365,19 +973,12 @@ function NutzapInfoMintManagementTool() {
           <span>{error}</span>
         </div>
       )}
-      {success && (
-        <div className="alert alert-success">
-          <span>Mints updated successfully!</span>
-        </div>
-      )}
     </div>
   );
 }
 
 function SettingsTab({ wallet }: { wallet: Wallet }) {
-  if (!wallet.unlocked) {
-    return <div className="text-base-content/70">Unlock your wallet to access settings.</div>;
-  }
+  if (!wallet.unlocked) return <div className="text-base-content/70">Unlock your wallet to access settings.</div>;
 
   return (
     <div className="space-y-6">
@@ -1386,6 +987,97 @@ function SettingsTab({ wallet }: { wallet: Wallet }) {
       <RelayManagementTool wallet={wallet} />
       <SyncTokensTool wallet={wallet} />
       <ConsolidateTool wallet={wallet} />
+    </div>
+  );
+}
+
+function ReceiveTab({ wallet }: { wallet: Wallet }) {
+  const [tokenString, setTokenString] = useState("");
+  const [receiving, setReceiving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleReceive = useCallback(async () => {
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to receive tokens");
+    if (!tokenString.trim()) return setError("Please paste a cashu token");
+
+    setReceiving(true);
+    setError(null);
+
+    try {
+      // Decode the cashu token
+      const token = getDecodedToken(tokenString.trim());
+
+      if (!token) {
+        throw new Error("Failed to decode token. Please check the token format.");
+      }
+
+      // Receive the token using the ReceiveToken action
+      await actions.run(ReceiveToken, token);
+
+      setTokenString("");
+    } catch (err) {
+      console.error("Failed to receive token:", err);
+      setError(err instanceof Error ? err.message : "Failed to receive token");
+    } finally {
+      setReceiving(false);
+    }
+  }, [wallet.unlocked, tokenString]);
+
+  if (!wallet.unlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center space-y-4">
+        <h2 className="text-2xl font-bold">Wallet Locked</h2>
+        <p className="text-base-content/70">Unlock your wallet to receive tokens</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold mb-2">Receive Cashu Token</h3>
+        <p className="text-sm text-base-content/70 mb-4">
+          Paste a cashu token below to receive it into your wallet. The token will be swapped at the mint before being
+          added to your wallet.
+        </p>
+      </div>
+
+      <div className="flex gap-2 flex-col">
+        <label className="label">
+          <span className="label-text">Cashu Token</span>
+        </label>
+        <textarea
+          className="textarea textarea-bordered h-32 font-mono text-sm w-full"
+          placeholder="Paste cashu token here (e.g., cashuAeyJ...)"
+          value={tokenString}
+          onChange={(e) => {
+            setTokenString(e.target.value);
+            setError(null);
+          }}
+          disabled={receiving}
+        />
+      </div>
+
+      <button
+        className="btn btn-primary w-full"
+        onClick={handleReceive}
+        disabled={receiving || !tokenString.trim() || !wallet.unlocked}
+      >
+        {receiving ? (
+          <>
+            <span className="loading loading-spinner loading-sm" />
+            Receiving...
+          </>
+        ) : (
+          "Receive Token"
+        )}
+      </button>
+
+      {error && (
+        <div className="alert alert-error">
+          <span>{error}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1409,7 +1101,12 @@ function WalletManager({ user }: { user: User }) {
 
     return pool.subscription(
       all,
-      { kinds: [WALLET_KIND, WALLET_TOKEN_KIND, WALLET_HISTORY_KIND], authors: [user.pubkey] },
+      [
+        // Wallet events
+        { kinds: [WALLET_KIND, WALLET_TOKEN_KIND, WALLET_HISTORY_KIND], authors: [user.pubkey] },
+        // Wallet delete events
+        { kinds: [kinds.EventDeletion], "#k": [String(WALLET_TOKEN_KIND)] },
+      ],
       { eventStore },
     );
   }, [outboxes?.join(","), relays?.join(","), user.pubkey]);
@@ -1472,17 +1169,26 @@ function WalletManager({ user }: { user: User }) {
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="History" />
         <div className="tab-content bg-base-100 border-base-300 p-6">
-          <HistoryTab history={history} />
+          {history?.map((entry) => (
+            <HistoryEntry key={entry.id} entry={entry} />
+          ))}
         </div>
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Tokens" />
         <div className="tab-content bg-base-100 border-base-300 p-6">
-          <TokensTab tokens={tokens} wallet={wallet} />
+          {tokens?.map((token) => (
+            <TokenEntry key={token.id} token={token} />
+          ))}
         </div>
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Nutzaps" />
         <div className="tab-content bg-base-100 border-base-300 p-6">
           <NutzapsTab user={user} />
+        </div>
+
+        <input type="radio" name="wallet_tabs" className="tab" aria-label="Receive" />
+        <div className="tab-content bg-base-100 border-base-300 p-6">
+          <ReceiveTab wallet={wallet} />
         </div>
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Settings" />

@@ -3,9 +3,10 @@ import { WalletBackupBlueprint, WalletBlueprint } from "../blueprints/wallet.js"
 import { unlockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
 import { NUTZAP_INFO_KIND } from "../helpers/nutzap-info.js";
 import { unlockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
-import { getWalletMints, getWalletPrivateKey, isWalletUnlocked, unlockWallet, WALLET_KIND } from "../helpers/wallet.js";
+import { getWalletMints, unlockWallet, WALLET_KIND } from "../helpers/wallet.js";
 import { setNutzapInfoPubkey } from "../operations/nutzap-info.js";
 import { setMints, setRelays } from "../operations/wallet.js";
+import { getUnlockedWallet } from "./common.js";
 
 /** An action that creates a new 17375 wallet event and 375 wallet backup */
 export function CreateWallet({
@@ -17,7 +18,7 @@ export function CreateWallet({
   privateKey?: Uint8Array;
   relays?: string[];
 }): Action {
-  return async function* ({ events, factory, self }) {
+  return async ({ events, factory, self, publish }) => {
     if (mints.length === 0) throw new Error("At least one mint is required");
 
     const existing = events.getReplaceable(WALLET_KIND, self);
@@ -39,12 +40,10 @@ export function CreateWallet({
       const info = await factory.sign(nutzapInfoDraft);
 
       // Publish all events at the same time
-      yield wallet;
-      yield backup;
-      yield info;
+      await publish([wallet, backup, info], relays);
     } else {
       // Just publish the wallet event
-      yield wallet;
+      await publish(wallet, relays);
     }
   };
 }
@@ -54,36 +53,23 @@ export function CreateWallet({
  * @throws if the wallet does not exist or cannot be unlocked
  */
 export function WalletAddPrivateKey(privateKey: Uint8Array, override = false): Action {
-  return async function* ({ events, self, factory }) {
-    const wallet = events.getReplaceable(WALLET_KIND, self);
-    if (!wallet) throw new Error("Wallet does not exist");
+  return async function* ({ events, self, factory, user, signer, sign, publish }) {
+    const wallet = await getUnlockedWallet(user, signer);
+    if (wallet.privateKey && override !== true) throw new Error("Wallet already has a private key");
 
-    // Unlock the wallet if it's locked
-    if (!isWalletUnlocked(wallet)) {
-      const signer = factory.context.signer;
-      if (!signer) throw new Error("Missing signer");
-      await unlockWallet(wallet, signer);
-    }
-
-    if (getWalletPrivateKey(wallet) && override !== true) throw new Error("Wallet already has a private key");
-
-    const draft = await factory.create(WalletBlueprint, { mints: getWalletMints(wallet), privateKey });
-    const signed = await factory.sign(draft);
+    const signed = await factory.create(WalletBlueprint, { mints: getWalletMints(wallet), privateKey }).then(sign);
 
     // create backup event for wallet
-    const backup = await factory.sign(await factory.create(WalletBackupBlueprint, signed));
+    const backup = await factory.create(WalletBackupBlueprint, signed).then(sign);
 
     // set nutzap info pubkey for receiving nutzaps
     const nutzapInfo = events.getReplaceable(NUTZAP_INFO_KIND, self);
-    const nutzapInfoDraft = nutzapInfo
-      ? await factory.modify(nutzapInfo, setNutzapInfoPubkey(privateKey))
-      : await factory.build({ kind: NUTZAP_INFO_KIND }, setNutzapInfoPubkey(privateKey));
-    const info = await factory.sign(nutzapInfoDraft);
+    const info = nutzapInfo
+      ? await factory.modify(nutzapInfo, setNutzapInfoPubkey(privateKey)).then(sign)
+      : await factory.build({ kind: NUTZAP_INFO_KIND }, setNutzapInfoPubkey(privateKey)).then(sign);
 
     // publish all events at the same time
-    yield signed;
-    yield backup;
-    yield info;
+    await publish([signed, backup, info], wallet.relays);
   };
 }
 
@@ -115,22 +101,10 @@ export function UnlockWallet(unlock?: { history?: boolean; tokens?: boolean }): 
  * @throws if the wallet does not exist or cannot be unlocked
  */
 export function SetWalletMints(mints: string[]): Action {
-  return async function* ({ events, self, factory }) {
-    const wallet = events.getReplaceable(WALLET_KIND, self);
-    if (!wallet) throw new Error("Wallet does not exist");
-
-    // Unlock the wallet if it's locked
-    if (!isWalletUnlocked(wallet)) {
-      const signer = factory.context.signer;
-      if (!signer) throw new Error("Missing signer");
-      await unlockWallet(wallet, signer);
-    }
-
-    const draft = await factory.modify(wallet, setMints(mints));
-    const signed = await factory.sign(draft);
-
-    // publish events
-    yield signed;
+  return async ({ user, signer, factory, sign, publish }) => {
+    const wallet = await getUnlockedWallet(user, signer);
+    const signed = await factory.modify(wallet, setMints(mints)).then(sign);
+    await publish(signed, wallet.relays);
   };
 }
 
@@ -139,21 +113,9 @@ export function SetWalletMints(mints: string[]): Action {
  * @throws if the wallet does not exist or cannot be unlocked
  */
 export function SetWalletRelays(relays: (string | URL)[]): Action {
-  return async function* ({ events, self, factory }) {
-    const wallet = events.getReplaceable(WALLET_KIND, self);
-    if (!wallet) throw new Error("Wallet does not exist");
-
-    // Unlock the wallet if it's locked
-    if (!isWalletUnlocked(wallet)) {
-      const signer = factory.context.signer;
-      if (!signer) throw new Error("Missing signer");
-      await unlockWallet(wallet, signer);
-    }
-
-    const draft = await factory.modify(wallet, setRelays(relays));
-    const signed = await factory.sign(draft);
-
-    // publish events
-    yield signed;
+  return async ({ user, signer, factory, sign, publish }) => {
+    const wallet = await getUnlockedWallet(user, signer);
+    const signed = await factory.modify(wallet, setRelays(relays)).then(sign);
+    await publish(signed, relays.map(String));
   };
 }

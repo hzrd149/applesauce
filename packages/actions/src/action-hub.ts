@@ -1,25 +1,62 @@
-import { from, isObservable, lastValueFrom, Observable, switchMap, tap, toArray } from "rxjs";
-import { NostrEvent } from "applesauce-core/helpers/event";
-import { EventFactory } from "applesauce-core";
-import { IEventStoreActions, IEventStoreRead } from "applesauce-core";
+import { castUser, User } from "applesauce-common/casts/user";
+import { EventFactory, EventSigner } from "applesauce-core/event-factory";
+import {
+  EventModels,
+  IEventStoreActions,
+  IEventStoreRead,
+  IEventStoreStreams,
+  IEventSubscriptions,
+} from "applesauce-core/event-store";
+import { EventTemplate, NostrEvent, UnsignedEvent } from "applesauce-core/helpers/event";
+import {
+  filter,
+  from,
+  identity,
+  isObservable,
+  lastValueFrom,
+  mergeWith,
+  Observable,
+  Subject,
+  switchMap,
+  tap,
+  toArray,
+} from "rxjs";
 
 /** A callback used to tell the upstream app to publish an event */
-export type PublishMethod = (event: NostrEvent) => void | Promise<void>;
+export type PublishMethod = (event: NostrEvent, relays?: string[]) => void | Promise<void> | Observable<any>;
+type UpstreamPool = PublishMethod | { publish: PublishMethod };
 
 /** The context that is passed to actions for them to use to preform actions */
 export type ActionContext = {
   /** The event store to load events from */
-  events: IEventStoreRead;
+  events: IEventStoreRead & IEventStoreStreams & IEventSubscriptions & EventModels;
   /** The pubkey of the signer in the event factory */
   self: string;
+  /** The {@link User} cast that is signing the events */
+  user: User;
+  /** The event signer used to sign events */
+  signer?: EventSigner;
   /** The event factory used to build and modify events */
   factory: EventFactory;
+  /** Sign an event using the event factory */
+  sign: (draft: EventTemplate | UnsignedEvent) => Promise<NostrEvent>;
+  /** The method to publish events to an optional list of relays */
+  publish: (event: NostrEvent | NostrEvent[], relays?: string[]) => Promise<void>;
+  /** Execute a sub-action within the current action context */
+  exec: <Args extends Array<any>>(builder: ActionBuilder<Args>, ...args: Args) => Observable<NostrEvent>;
+  /** Run a sub-action within the current action context and return the events */
+  run: <Args extends Array<any>>(builder: ActionBuilder<Args>, ...args: Args) => Promise<void>;
 };
+
+function unwrap(result: ReturnType<Action>): Observable<NostrEvent | void> {
+  if (isObservable(result)) return result;
+  else return from(result);
+}
 
 /** An action that can be run in a context to preform an action */
 export type Action = (
-  ctx: ActionContext,
-) => Observable<NostrEvent> | AsyncGenerator<NostrEvent> | Generator<NostrEvent>;
+  context: ActionContext,
+) => Promise<void | NostrEvent> | Observable<NostrEvent> | AsyncGenerator<NostrEvent> | Generator<NostrEvent>;
 
 /** A function that takes arguments and returns an action */
 export type ActionBuilder<Args extends Array<any>> = (...args: Args) => Action;
@@ -30,9 +67,9 @@ export class ActionHub {
   saveToStore = true;
 
   constructor(
-    public events: IEventStoreRead & IEventStoreActions,
+    public events: IEventStoreRead & IEventStoreStreams & IEventSubscriptions & IEventStoreActions & EventModels,
     public factory: EventFactory,
-    public publish?: PublishMethod,
+    private publishMethod?: UpstreamPool,
   ) {}
 
   protected context: ActionContext | undefined = undefined;
@@ -41,37 +78,92 @@ export class ActionHub {
     else {
       if (!this.factory.context.signer) throw new Error("Missing signer");
       const self = await this.factory.context.signer.getPublicKey();
-      this.context = { self, events: this.events, factory: this.factory };
+      const user = castUser(self, this.events);
+      this.context = {
+        self,
+        user,
+        events: this.events,
+        signer: this.factory.context.signer,
+        factory: this.factory,
+        publish: this.publish.bind(this),
+        exec: this.exec.bind(this),
+        run: this.run.bind(this),
+        sign: this.factory.sign.bind(this.factory),
+      };
       return this.context;
     }
   }
 
-  /** Runs an action in a ActionContext and converts the result to an Observable */
-  static runAction(ctx: ActionContext, action: Action): Observable<NostrEvent> {
-    const result = action(ctx);
+  /** Internal method for publishing events to relays */
+  async publish(event: NostrEvent | NostrEvent[], relays?: string[]): Promise<void> {
+    if (!this.publishMethod) throw new Error("Missing publish method, use ActionHub.exec");
 
-    if (isObservable(result)) return result;
-    else return from(result);
+    // Unwrap array of events to publish
+    if (Array.isArray(event)) {
+      await Promise.all(event.map((e) => this.publish(e, relays)));
+      return;
+    }
+
+    if (this.publishMethod) {
+      let result: void | Observable<any> | Promise<any>;
+
+      if ("publish" in this.publishMethod) result = this.publishMethod.publish(event, relays);
+      else if (typeof this.publishMethod === "function") result = this.publishMethod(event, relays);
+      else throw new Error("Invalid publish method");
+
+      if (isObservable(result)) {
+        await lastValueFrom(result);
+      } else if (result instanceof Promise) {
+        await result;
+      }
+    }
   }
 
   /** Run an action and publish events using the publish method */
   async run<Args extends Array<any>>(builder: ActionBuilder<Args>, ...args: Args): Promise<void> {
-    if (!this.publish) throw new Error("Missing publish method, use ActionHub.exec");
+    if (!this.publishMethod) throw new Error("Missing publish method, use ActionHub.exec");
 
     // wait for action to complete and group events
-    const events = await lastValueFrom(this.exec<Args>(builder, ...args).pipe(toArray()));
+    const context = await this.getContext();
+    const events = await lastValueFrom(
+      unwrap(builder(...args)(context)).pipe(
+        filter((event) => event !== undefined),
+        toArray(),
+      ),
+    );
+
+    // Optionally save events to the store
+    if (this.saveToStore) {
+      for (const event of events) this.events.add(event);
+    }
 
     // publish events
-    for (const event of events) await this.publish(event);
+    await Promise.allSettled(events.map((event) => this.publish(event)));
   }
 
-  /** Run an action without publishing the events */
+  /**
+   * Run an action without publishing the events
+   * @deprecated Use ActionHub.run() instead
+   */
   exec<Args extends Array<any>>(builder: ActionBuilder<Args>, ...args: Args): Observable<NostrEvent> {
     return from(this.getContext()).pipe(
+      // Run the action
       switchMap((ctx) => {
-        return ActionHub.runAction(ctx, builder(...args));
+        const publish$ = new Subject<NostrEvent>();
+        const context: ActionContext = {
+          ...ctx,
+          publish: async (event) =>
+            Array.isArray(event) ? event.forEach((e) => publish$.next(e)) : publish$.next(event),
+        };
+
+        return unwrap(builder(...args)(context)).pipe(
+          filter((event) => event !== undefined),
+          // Merge the publish() events into the stream
+          mergeWith(publish$),
+        );
       }),
-      tap((event) => this.saveToStore && this.events.add(event)),
+      // Optionally save all events to the store
+      this.saveToStore ? tap((event) => this.events.add(event)) : identity,
     );
   }
 }
