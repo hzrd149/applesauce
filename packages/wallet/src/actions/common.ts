@@ -9,13 +9,8 @@ export async function getUnlockedWallet(user: User, signer?: EventSigner) {
 
   if (!wallet.unlocked) {
     if (!signer) throw new Error("Missing signer");
-    await unlockWallet(wallet, signer);
+    await unlockWallet(wallet.event, signer);
   }
 
   return wallet;
-}
-
-export async function getWalletRelays(user: User, signer?: EventSigner): Promise<string[]> {
-  const wallet = await getUnlockedWallet(user, signer);
-  return wallet.relays!; //Wallet is unlocked
 }

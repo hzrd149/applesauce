@@ -42,9 +42,9 @@ function ZapItem({ zap }: { zap: Zap }) {
 
 /** Component to render a single note with author info */
 function NoteItem({ note }: { note: Note }) {
-  const profile = use$(() => note.author.profile$, [note.id]);
-  const replies = use$(() => note.replies$, [note.id]);
-  const zaps = use$(() => note.zaps$, [note.id]);
+  const profile = use$(note.author.profile$);
+  const replies = use$(note.replies$);
+  const zaps = use$(note.zaps$);
 
   return (
     <div className="bg-base-100 mb-2">
@@ -53,14 +53,14 @@ function NoteItem({ note }: { note: Note }) {
           <div className="avatar">
             <div className="w-10 rounded-full">
               <img
-                src={profile?.picture || `https://robohash.org/${note.pubkey}.png`}
-                alt={profile?.displayName || npubEncode(note.pubkey)}
+                src={profile?.picture || `https://robohash.org/${note.author.pubkey}.png`}
+                alt={profile?.displayName || note.author.npub}
               />
             </div>
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold">{profile?.displayName || npubEncode(note.pubkey)}</h3>
-            <p className="text-sm text-base-content/60">{npubEncode(note.pubkey)}</p>
+            <h3 className="font-semibold">{profile?.displayName || note.author.npub}</h3>
+            <p className="text-sm text-base-content/60">{note.author.npub}</p>
           </div>
           <button
             className="btn btn-sm btn-link"
@@ -71,7 +71,7 @@ function NoteItem({ note }: { note: Note }) {
             print
           </button>
         </div>
-        <p className="whitespace-pre-wrap overflow-hidden text-ellipsis">{note.content.trim()}</p>
+        <p className="whitespace-pre-wrap overflow-hidden text-ellipsis">{note.event.content.trim()}</p>
         {zaps && zaps.length > 0 && (
           <div className="mt-2 pt-2 border-t border-base-300/50">
             <div className="flex items-center gap-2 mb-1">
@@ -82,7 +82,7 @@ function NoteItem({ note }: { note: Note }) {
             </div>
             <div className="flex flex-wrap gap-2">
               {zaps.map((zap) => (
-                <ZapItem key={zap.id} zap={zap} />
+                <ZapItem key={zap.uid} zap={zap} />
               ))}
             </div>
           </div>
@@ -90,7 +90,7 @@ function NoteItem({ note }: { note: Note }) {
         {replies && replies.length > 0 && (
           <div className="ml-2 mt-2 border-l border-base-300/50 pl-3">
             {replies.map((reply) => (
-              <NoteItem key={reply.id} note={reply} />
+              <NoteItem key={reply.uid} note={reply} />
             ))}
           </div>
         )}

@@ -64,7 +64,7 @@ export class Wallet extends EventCast<WalletEvent> {
     );
   }
   get balance$() {
-    return this.$$ref("balance$", (store) => store.model(WalletBalanceModel, this.pubkey));
+    return this.$$ref("balance$", (store) => store.model(WalletBalanceModel, this.event.pubkey));
   }
   /** The p2pk locking private key for this wallet */
   get privateKey$() {
@@ -79,18 +79,20 @@ export class Wallet extends EventCast<WalletEvent> {
   // Observables for related events
   get tokens$() {
     return this.$$ref("tokens$", (store) =>
-      store.model(WalletTokensModel, this.pubkey).pipe(castTimelineStream(WalletToken)),
+      store.model(WalletTokensModel, this.event.pubkey).pipe(castTimelineStream(WalletToken)),
     );
   }
   get history$() {
     return this.$$ref("history$", (store) =>
-      store.model(WalletHistoryModel, this.pubkey).pipe(castTimelineStream(WalletHistory)),
+      store.model(WalletHistoryModel, this.event.pubkey).pipe(castTimelineStream(WalletHistory)),
     );
   }
   get backups$() {
-    return this.$$ref("backups$", (store) => store.timeline({ kinds: [WALLET_BACKUP_KIND], authors: [this.pubkey] }));
+    return this.$$ref("backups$", (store) =>
+      store.timeline({ kinds: [WALLET_BACKUP_KIND], authors: [this.event.pubkey] }),
+    );
   }
   get received$() {
-    return this.$$ref("received$", (store) => store.model(ReceivedNutzapsModel, this.pubkey));
+    return this.$$ref("received$", (store) => store.model(ReceivedNutzapsModel, this.event.pubkey));
   }
 }

@@ -57,7 +57,9 @@ export function WalletAddPrivateKey(privateKey: Uint8Array, override = false): A
     const wallet = await getUnlockedWallet(user, signer);
     if (wallet.privateKey && override !== true) throw new Error("Wallet already has a private key");
 
-    const signed = await factory.create(WalletBlueprint, { mints: getWalletMints(wallet), privateKey }).then(sign);
+    const signed = await factory
+      .create(WalletBlueprint, { mints: getWalletMints(wallet.event), privateKey })
+      .then(sign);
 
     // create backup event for wallet
     const backup = await factory.create(WalletBackupBlueprint, signed).then(sign);
@@ -103,7 +105,7 @@ export function UnlockWallet(unlock?: { history?: boolean; tokens?: boolean }): 
 export function SetWalletMints(mints: string[]): Action {
   return async ({ user, signer, factory, sign, publish }) => {
     const wallet = await getUnlockedWallet(user, signer);
-    const signed = await factory.modify(wallet, setMints(mints)).then(sign);
+    const signed = await factory.modify(wallet.event, setMints(mints)).then(sign);
     await publish(signed, wallet.relays);
   };
 }
@@ -115,7 +117,7 @@ export function SetWalletMints(mints: string[]): Action {
 export function SetWalletRelays(relays: (string | URL)[]): Action {
   return async ({ user, signer, factory, sign, publish }) => {
     const wallet = await getUnlockedWallet(user, signer);
-    const signed = await factory.modify(wallet, setRelays(relays)).then(sign);
+    const signed = await factory.modify(wallet.event, setRelays(relays)).then(sign);
     await publish(signed, relays.map(String));
   };
 }

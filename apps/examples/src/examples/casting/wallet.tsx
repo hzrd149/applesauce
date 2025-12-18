@@ -362,7 +362,7 @@ function NutzapEntry({
   const comment = nutzap.comment;
   const zappedEvent = use$(nutzap.zapped$);
   const senderProfile = use$(nutzap.sender.profile$);
-  const createdDate = new Date(nutzap.created_at * 1000);
+  const createdDate = nutzap.createdAt;
   const [receiving, setReceiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

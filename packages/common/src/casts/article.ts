@@ -29,6 +29,9 @@ export class Article extends EventCast<ArticleEvent> {
   get published() {
     return getArticlePublished(this.event);
   }
+  get publishedDate() {
+    return new Date(this.published * 1000);
+  }
 
   get pointer() {
     return getAddressPointerForEvent(this.event)!;

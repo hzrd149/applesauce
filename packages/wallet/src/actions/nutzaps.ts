@@ -8,7 +8,7 @@ import { WalletTokenBlueprint } from "../blueprints/tokens.js";
 import { NutzapBlueprint, ProfileNutzapBlueprint } from "../blueprints/zaps.js";
 import { NUTZAP_INFO_KIND, verifyProofsLocked } from "../helpers/nutzap-info.js";
 import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
-import { getUnlockedWallet, getWalletRelays } from "./common.js";
+import { getUnlockedWallet } from "./common.js";
 
 /** Creates a NIP-61 nutzap event for an event with a token */
 export function NutzapEvent(event: NostrEvent, token: Token, comment?: string): Action {
@@ -24,10 +24,10 @@ export function NutzapEvent(event: NostrEvent, token: Token, comment?: string): 
     // const mints = getNutzapInfoMints(info);
     // if (!mints.some((m) => m.mint === token.mint)) throw new Error("Token mint not found in nutzap info");
 
-    const relays = await getWalletRelays(user, signer);
+    const wallet = await getUnlockedWallet(user, signer);
     const nutzap = await factory.create(NutzapBlueprint, event, token, comment || token.memo).then(sign);
 
-    await publish(nutzap, relays);
+    await publish(nutzap, wallet.relays);
   };
 }
 
@@ -41,7 +41,7 @@ export function NutzapProfile(user: string | ProfilePointer, token: Token, comme
     if (!info) throw new Error("Nutzap info not found");
 
     // Verify all tokens are p2pk locked
-    verifyProofsLocked(token.proofs, info);
+    verifyProofsLocked(token.proofs, info.event);
 
     // TODO: if tokens are not locked. swap into new locked tokens
     // Not implementing this yet because I don't know where the timelock logic should live

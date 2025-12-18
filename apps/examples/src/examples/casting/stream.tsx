@@ -117,16 +117,16 @@ function ChatMessage({ message }: { message: StreamChatMessage }) {
       <div className="chat-image avatar">
         <div className="w-10 rounded-full">
           <img
-            alt={profile?.displayName || message.pubkey}
-            src={profile?.picture || `https://robohash.org/${message.pubkey}`}
+            alt={profile?.displayName || message.author.pubkey}
+            src={profile?.picture || `https://robohash.org/${message.author.pubkey}`}
           />
         </div>
       </div>
       <div className="chat-header">
-        {profile?.displayName || message.pubkey}
-        <time className="text-xs opacity-50 ml-2">{new Date(message.created_at * 1000).toLocaleTimeString()}</time>
+        {profile?.displayName || message.author.pubkey}
+        <time className="text-xs opacity-50 ml-2">{message.createdAt.toLocaleTimeString()}</time>
       </div>
-      <div className="chat-bubble">{message.content}</div>
+      <div className="chat-bubble">{message.event.content}</div>
     </div>
   );
 }

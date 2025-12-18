@@ -17,7 +17,6 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NostrEvent } from "nostr-tools";
-import { npubEncode } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
@@ -138,8 +137,7 @@ function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?:
       </div>
     );
 
-  const displayName = profile?.displayName ?? npubEncode(note.pubkey ?? "").slice(0, 8) + "...";
-  const timestamp = new Date(note.created_at ?? 0 * 1000).toLocaleString();
+  const displayName = profile?.displayName ?? note.author.npub.slice(0, 8) + "...";
 
   return (
     <div className="card bg-base-100 shadow-sm">
@@ -147,13 +145,13 @@ function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?:
         <div className="card-title flex gap-2 items-center">
           <div className="avatar">
             <div className="w-10 rounded-full">
-              <img src={profile?.picture ?? `https://robohash.org/${note.pubkey}.png`} alt={displayName} />
+              <img src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} alt={displayName} />
             </div>
           </div>
           <div>{displayName}</div>
-          <div className="ms-auto text-sm opacity-60">{timestamp}</div>
+          <div className="ms-auto text-sm opacity-60">{note.createdAt.toLocaleString()}</div>
         </div>
-        <p className="line-clamp-5">{note.content}</p>
+        <p className="line-clamp-5">{note.event.content}</p>
 
         {onRemove && (
           <div className="card-actions justify-end">
@@ -201,8 +199,7 @@ function BookmarkArticle({ pointer, onRemove }: { pointer: AddressPointer; onRem
       </div>
     );
 
-  const displayName = profile?.displayName ?? npubEncode(article?.pubkey ?? "").slice(0, 8) + "...";
-  const publishedDate = article?.published ? new Date(article.published * 1000).toLocaleDateString() : null;
+  const displayName = profile?.displayName ?? article.author.npub.slice(0, 8) + "...";
 
   return (
     <div className="card bg-base-100 shadow-sm">
@@ -210,11 +207,11 @@ function BookmarkArticle({ pointer, onRemove }: { pointer: AddressPointer; onRem
         <div className="card-title flex gap-2 items-center">
           <div className="avatar">
             <div className="w-10 rounded-full">
-              <img src={profile?.picture ?? `https://robohash.org/${article.pubkey}.png`} alt={displayName} />
+              <img src={profile?.picture ?? `https://robohash.org/${article.author.pubkey}.png`} alt={displayName} />
             </div>
           </div>
           <div>{displayName}</div>
-          <div className="ms-auto text-sm opacity-60">{publishedDate}</div>
+          <div className="ms-auto text-sm opacity-60">{article.publishedDate.toLocaleDateString()}</div>
         </div>
         <div className="flex gap-2 w-full">
           {article.image && <img src={article.image} alt={article.title} className="h-48 object-cover aspect-video" />}

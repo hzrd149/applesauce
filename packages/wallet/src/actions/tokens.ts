@@ -10,7 +10,7 @@ import {
   isTokenContentUnlocked,
   WALLET_TOKEN_KIND,
 } from "../helpers/tokens.js";
-import { getWalletRelays } from "./common.js";
+import { getUnlockedWallet } from "./common.js";
 
 /**
  * Adds a cashu token to the wallet and creates a history event
@@ -19,7 +19,7 @@ import { getWalletRelays } from "./common.js";
  */
 export function AddToken(token: Token, redeemed?: string[], fee?: number): Action {
   return async ({ factory, user, publish, signer, sign }) => {
-    const relays = await getWalletRelays(user, signer);
+    const wallet = await getUnlockedWallet(user, signer);
     const amount = sumProofs(token.proofs);
 
     // Create the token and history events
@@ -33,7 +33,7 @@ export function AddToken(token: Token, redeemed?: string[], fee?: number): Actio
       .then(sign);
 
     // Publish the events
-    await publish([tokenEvent, history], relays);
+    await publish([tokenEvent, history], wallet.relays);
   };
 }
 
@@ -61,7 +61,7 @@ export function ReceiveToken(token: Token): Action {
 /** An action that deletes old tokens and creates a new one but does not add a history event */
 export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
   return async function* ({ factory, user, publish, signer, sign }) {
-    const relays = await getWalletRelays(user, signer);
+    const wallet = await getUnlockedWallet(user, signer);
 
     // create a new token event
     const tokenEvent = await factory
@@ -75,7 +75,7 @@ export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
     const deleteDraft = await factory.create(DeleteBlueprint, tokens).then(sign);
 
     // publish events
-    await publish([tokenEvent, deleteDraft], relays);
+    await publish([tokenEvent, deleteDraft], wallet.relays);
   };
 }
 
@@ -86,7 +86,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
 
     const unlocked = spent.filter(isTokenContentUnlocked);
     if (unlocked.length !== spent.length) throw new Error("Cant complete spend with locked tokens");
-    const relays = await getWalletRelays(user, signer);
+    const wallet = await getUnlockedWallet(user, signer);
 
     const changeAmount = sumProofs(change.proofs);
 
@@ -123,7 +123,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
     // publish events
     await publish(
       [tokenEvent, deleteEvent, history].filter((e) => !!e),
-      relays,
+      wallet.relays,
     );
   };
 }

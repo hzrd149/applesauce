@@ -1,6 +1,6 @@
 import { EventModels, IEventStoreStreams, IEventSubscriptions } from "applesauce-core/event-store";
 import { getSeenRelays } from "applesauce-core/helpers";
-import { getParentEventStore, NostrEvent } from "applesauce-core/helpers/event";
+import { getEventUID, getParentEventStore, NostrEvent } from "applesauce-core/helpers/event";
 import { Observable } from "rxjs";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { castUser } from "./user.js";
@@ -38,23 +38,12 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
   get id() {
     return this.event.id;
   }
-  get pubkey() {
-    return this.event.pubkey;
+  get uid() {
+    return getEventUID(this.event);
   }
-  get kind() {
-    return this.event.kind;
-  }
-  get tags() {
-    return this.event.tags;
-  }
-  get content() {
-    return this.event.content;
-  }
-  get created_at() {
-    return this.event.created_at;
-  }
-  get sig() {
-    return this.event.sig;
+
+  get createdAt() {
+    return new Date(this.event.created_at * 1000);
   }
 
   /** Gets the event store for this event cast */
