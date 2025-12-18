@@ -30,7 +30,7 @@ import { SharesModel } from "../models/shares.js";
 import { StreamChatMessagesModel } from "../models/stream.js";
 import { EventZapsModel } from "../models/zaps.js";
 import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 import { Share } from "./share.js";
 import { Zap } from "./zap.js";
 import { castUser } from "./user.js";
@@ -41,9 +41,9 @@ function isValidStream(event: NostrEvent): event is KnownEvent<kinds.LiveEvent> 
 
 /** Cast a kind 30311 event to a Stream (NIP-53) */
 export class Stream extends EventCast<KnownEvent<kinds.LiveEvent>> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidStream(event)) throw new Error("Invalid stream");
-    super(event);
+    super(event, store);
   }
   get title() {
     return getStreamTitle(this.event);
@@ -99,16 +99,18 @@ export class Stream extends EventCast<KnownEvent<kinds.LiveEvent>> {
 
   /** An observable of all zaps on this stream */
   get zaps$() {
-    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap)));
+    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap, store)));
   }
   get shares$() {
-    return this.$$ref("shares$", (store) => store.model(SharesModel, this.event).pipe(castTimelineStream(Share)));
+    return this.$$ref("shares$", (store) =>
+      store.model(SharesModel, this.event).pipe(castTimelineStream(Share, store)),
+    );
   }
 
   /** An observable of all chat messages for this stream */
   get chat$() {
-    return this.$$ref("chat$", (store) => store.model(StreamChatMessagesModel, this.event)).pipe(
-      castTimelineStream(StreamChatMessage),
+    return this.$$ref("chat$", (store) =>
+      store.model(StreamChatMessagesModel, this.event).pipe(castTimelineStream(StreamChatMessage, store)),
     );
   }
 
@@ -124,9 +126,9 @@ export class Stream extends EventCast<KnownEvent<kinds.LiveEvent>> {
 
 /** A cast for a stream chat message */
 export class StreamChatMessage extends EventCast<StreamChatMessageEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidStreamChatMessage(event)) throw new Error("Invalid stream chat message");
-    super(event);
+    super(event, store);
   }
 
   get stream() {
@@ -134,10 +136,10 @@ export class StreamChatMessage extends EventCast<StreamChatMessageEvent> {
   }
 
   get stream$() {
-    return this.$$ref("stream$", (store) => store.replaceable(this.stream).pipe(castEventStream(Stream)));
+    return this.$$ref("stream$", (store) => store.replaceable(this.stream).pipe(castEventStream(Stream, store)));
   }
   get zaps$() {
-    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap)));
+    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap, store)));
   }
   get reactions$() {
     return this.$$ref("reactions$", (store) => store.model(ReactionsModel, this.event));

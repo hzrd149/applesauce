@@ -291,7 +291,7 @@ function MutedPubkeyItem({ pubkey, onRemove }: { pubkey: string; onRemove?: () =
 function MutedThreadItem({ pointer, onRemove }: { pointer: EventPointer | AddressPointer; onRemove?: () => void }) {
   if (isEventPointer(pointer)) {
     const note = use$(
-      () => eventStore.event(pointer).pipe(castEventStream(Note)),
+      () => eventStore.event(pointer).pipe(castEventStream(Note, eventStore)),
       [pointer.id, pointer.relays?.join("|")],
     );
     const profile = use$(() => note?.author.profile$, [note]);
@@ -351,7 +351,7 @@ function MutedThreadItem({ pointer, onRemove }: { pointer: EventPointer | Addres
     );
   } else {
     const article = use$(
-      () => eventStore.replaceable(pointer).pipe(castEventStream(Article)),
+      () => eventStore.replaceable(pointer).pipe(castEventStream(Article, eventStore)),
       [getReplaceableAddressFromPointer(pointer)],
     );
     const profile = use$(() => article?.author.profile$, [article]);

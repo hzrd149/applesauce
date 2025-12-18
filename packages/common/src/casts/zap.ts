@@ -12,16 +12,16 @@ import {
   isValidZap,
   ZapEvent,
 } from "../helpers/zap.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 import { castUser } from "./user.js";
 
 // NOTE: extending BaseCast since there is no need for author$ or comments$
 
 /** Cast a kind 9735 event to a Zap */
 export class Zap extends EventCast<ZapEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidZap(event)) throw new Error("Invalid zap");
-    super(event);
+    super(event, store);
   }
   get sender() {
     return castUser(getZapSender(this.event), this.store);

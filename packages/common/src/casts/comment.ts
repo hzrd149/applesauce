@@ -4,14 +4,14 @@ import { CommentEvent, getCommentReplyPointer, getCommentRootPointer, isValidCom
 import { CommentsModel } from "../models/comments.js";
 import { EventZapsModel } from "../models/zaps.js";
 import { castTimelineStream } from "../observable/cast-stream.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 import { Zap } from "./zap.js";
 
 /** Cast a kind 1111 event to a Comment */
 export class Comment extends EventCast<CommentEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidComment(event)) throw new Error("Invalid comment");
-    super(event);
+    super(event, store);
   }
 
   get rootPointer() {
@@ -42,9 +42,11 @@ export class Comment extends EventCast<CommentEvent> {
   }
 
   get zaps$() {
-    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap)));
+    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap, store)));
   }
   get replies$() {
-    return this.$$ref("replies$", (store) => store.model(CommentsModel, this.event).pipe(castTimelineStream(Comment)));
+    return this.$$ref("replies$", (store) =>
+      store.model(CommentsModel, this.event).pipe(castTimelineStream(Comment, store)),
+    );
   }
 }

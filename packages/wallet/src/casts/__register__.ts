@@ -33,7 +33,9 @@ Object.defineProperty(User.prototype, "wallet$", {
     return this.$$ref("wallet$", (store) =>
       this.outboxes$.pipe(
         switchMap((outboxes) =>
-          store.replaceable({ kind: WALLET_KIND, pubkey: this.pubkey, relays: outboxes }).pipe(castEventStream(Wallet)),
+          store
+            .replaceable({ kind: WALLET_KIND, pubkey: this.pubkey, relays: outboxes })
+            .pipe(castEventStream(Wallet, store)),
         ),
       ),
     );
@@ -44,7 +46,7 @@ Object.defineProperty(User.prototype, "wallet$", {
 Object.defineProperty(User.prototype, "nutzap$", {
   get: function (this: User) {
     return this.$$ref("nutzap$", (store) =>
-      store.replaceable(NUTZAP_INFO_KIND, this.pubkey).pipe(castEventStream(NutzapInfo)),
+      store.replaceable(NUTZAP_INFO_KIND, this.pubkey).pipe(castEventStream(NutzapInfo, store)),
     );
   },
   enumerable: true,
@@ -55,7 +57,7 @@ Note.prototype.nutzaps$ = function (this: Note) {
   return this.$$ref("nutzaps$", (store) =>
     store
       .timeline(buildCommonEventRelationFilters({ kinds: [NUTZAP_KIND] }, this.event))
-      .pipe(castTimelineStream(Nutzap)),
+      .pipe(castTimelineStream(Nutzap, store)),
   );
 };
 Object.defineProperty(Stream.prototype, "nutzaps$", {
@@ -63,7 +65,7 @@ Object.defineProperty(Stream.prototype, "nutzaps$", {
     return this.$$ref("nutzaps$", (store) =>
       store
         .timeline(buildCommonEventRelationFilters({ kinds: [NUTZAP_KIND] }, this.event))
-        .pipe(castTimelineStream(Nutzap)),
+        .pipe(castTimelineStream(Nutzap, store)),
     );
   },
   enumerable: true,

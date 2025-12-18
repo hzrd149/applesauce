@@ -3,12 +3,12 @@ import { Stream, StreamChatMessage } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
 import { buildCommonEventRelationFilters, unixNow } from "applesauce-core/helpers";
-import { createEventLoaderForStore, createZapsLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { kinds } from "nostr-tools";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useForm } from "react-hook-form";
 import ReactPlayer from "react-player";
 import RelayPicker from "../../components/relay-picker";
@@ -27,23 +27,9 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/"],
 });
 
-const zapLoader = createZapsLoader(pool, { eventStore });
-
 function StreamCard({ stream }: { stream: Stream }) {
   const host = use$(() => stream.host.profile$, [stream.id]);
-  const { title, summary, image, status, startTime, viewers } = stream;
-
-  // Load zaps for the stream
-  use$(() => zapLoader(stream.event, stream.relays), [stream.id]);
-
-  const zaps = use$(() => stream.zaps$, [stream.id]);
-  const totalZaps = zaps?.reduce((acc, zap) => acc + zap.amount, 0);
-
-  const statusColor = {
-    live: "badge-success",
-    planned: "badge-warning",
-    ended: "badge-error",
-  }[status];
+  const { title, image, viewers } = stream;
 
   return (
     <div className="card bg-base-100 shadow-md">
@@ -63,45 +49,36 @@ function StreamCard({ stream }: { stream: Stream }) {
             </div>
           </div>
           <span className="text-sm font-medium">{host?.displayName || stream.host.pubkey}</span>
-          <div className={`badge ${statusColor} badge-sm`}>{status}</div>
+          <div className="badge badge-success badge-sm">live</div>
         </div>
 
         <h2 className="card-title text-lg">{title}</h2>
-        {summary && <p className="text-sm text-base-content/70 line-clamp-2">{summary}</p>}
 
-        <div className="flex items-center justify-between text-sm text-base-content/60 mt-2">
-          <div className="flex items-center gap-4">
-            {startTime && (
-              <span>
-                {new Date(startTime * 1000).toLocaleDateString()} {new Date(startTime * 1000).toLocaleTimeString()}
-              </span>
-            )}
-            {viewers !== undefined && <span>{viewers} viewers</span>}
-            {totalZaps !== undefined && <span>⚡ {Math.floor(totalZaps / 1000)} sats</span>}
+        {viewers !== undefined && (
+          <div className="text-sm text-base-content/60 mt-2">
+            <span>{viewers} viewers</span>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
 }
 
 function StreamGrid({ streams, onStreamSelect }: { streams: Stream[]; onStreamSelect: (stream: Stream) => void }) {
-  if (!streams || streams.length === 0) {
+  const liveStreams = streams?.filter((stream) => stream.status === "live") || [];
+
+  if (liveStreams.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-base-content/60">No streams found on this relay</p>
+        <p className="text-base-content/60">No live streams found on this relay</p>
       </div>
     );
   }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {streams.map((stream) => (
-        <div
-          key={stream.id}
-          onClick={() => onStreamSelect(stream)}
-          className="cursor-pointer hover:scale-105 transition-transform"
-        >
+      {liveStreams.map((stream) => (
+        <div key={stream.id} onClick={() => onStreamSelect(stream)} className="cursor-pointer">
           <StreamCard stream={stream} />
         </div>
       ))}
@@ -160,8 +137,9 @@ function ChatMessageForm({ stream }: { stream: Stream }) {
     mode: "all",
   });
 
+  const inboxes = use$(stream.host.inboxes$);
   const send = handleSubmit(async (values) => {
-    const relays = stream.relays;
+    const relays = inboxes || stream.relays;
     if (!relays) throw new Error("No relays found for stream");
 
     const draft = await factory.create(StreamChatMessageBlueprint, stream.event, values.content);
@@ -221,6 +199,8 @@ function StreamInfo({ stream }: { stream: Stream }) {
   );
 }
 
+const StreamPlayer = memo(ReactPlayer);
+
 function StreamViewer({ stream, onBack }: { stream: Stream; onBack: () => void }) {
   const streaming = stream.streamingVideos[0];
   const status = stream.status;
@@ -259,7 +239,7 @@ function StreamViewer({ stream, onBack }: { stream: Stream; onBack: () => void }
           <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
             {streaming && status === "live" ? (
               <div className="w-full h-full">
-                <ReactPlayer src={streaming} playing controls width="100%" height="100%" />
+                <StreamPlayer src={streaming} playing controls width="100%" height="100%" />
               </div>
             ) : status === "ended" ? (
               <div className="text-center text-white">
@@ -284,7 +264,7 @@ function StreamViewer({ stream, onBack }: { stream: Stream; onBack: () => void }
         </div>
 
         {/* Right side - Chat */}
-        <div className="w-sm border-l border-base-300 bg-base-50 overflow-hidden h-full flex flex-col flex-shrink-0">
+        <div className="w-sm border-l border-base-300 bg-base-50 overflow-hidden h-full flex flex-col shrink-0">
           <StreamChat stream={stream} />
           <ChatMessageForm stream={stream} />
         </div>
@@ -316,7 +296,10 @@ export default function StreamCastExample() {
   );
 
   // Get streams and cast them to Stream class
-  const streams = use$(() => eventStore.timeline({ kinds: [kinds.LiveEvent] }).pipe(castTimelineStream(Stream)), []);
+  const streams = use$(
+    () => eventStore.timeline({ kinds: [kinds.LiveEvent] }).pipe(castTimelineStream(Stream, eventStore)),
+    [],
+  );
 
   if (selectedStream) {
     return <StreamViewer stream={selectedStream} onBack={() => setSelectedStream(null)} />;

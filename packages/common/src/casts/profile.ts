@@ -1,12 +1,12 @@
 import { NostrEvent, ProfileEvent } from "applesauce-core/helpers";
 import { getDisplayName, getProfileContent, getProfilePicture, isValidProfile } from "applesauce-core/helpers/profile";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 
 /** Cast a kind 0 event to a Profile */
 export class Profile extends EventCast<ProfileEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidProfile(event)) throw new Error("Invalid profile");
-    super(event);
+    super(event, store);
   }
   get metadata() {
     return getProfileContent(this.event);

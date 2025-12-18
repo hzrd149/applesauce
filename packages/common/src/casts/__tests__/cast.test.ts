@@ -16,34 +16,31 @@ beforeEach(() => {
 describe("cast", () => {
   it("should cast an event to a specific class", () => {
     const event = user.note();
-    const casted = castEvent(event, Note);
+    store.add(event);
+    const casted = castEvent(event, Note, store);
     expect(casted).toBeInstanceOf(Note);
   });
 
   it("should create multiple instances of the same cast", () => {
     const event = user.note();
-    const casted = castEvent(event, Note);
-    const casted2 = castEvent(event, Note);
+    store.add(event);
+    const casted = castEvent(event, Note, store);
+    const casted2 = castEvent(event, Note, store);
     expect(casted).toBe(casted2);
   });
 
   describe("references", () => {
-    it("should throw an error if not attached to an event store", () => {
-      const event = user.note();
-      expect(() => castEvent(event, Note).replies$).toThrow();
-    });
-
     it("should return an observable", () => {
       const event = user.note();
       store.add(event);
-      const note = castEvent(event, Note);
+      const note = castEvent(event, Note, store);
       expect(note.replies$).toBeInstanceOf(Observable);
       expect(isObservable(note.replies$)).toBe(true);
     });
 
     it("should allow chaining", () => {
       const event = store.add(user.note())!;
-      const note = castEvent(event, Note);
+      const note = castEvent(event, Note, store);
       const inboxes = note.author.mailboxes$.inboxes;
       expect(inboxes).toBeInstanceOf(Observable);
       expect(isObservable(inboxes)).toBe(true);
@@ -51,7 +48,7 @@ describe("cast", () => {
 
     it("should return the same observable", () => {
       const event = store.add(user.note())!;
-      const note = castEvent(event, Note);
+      const note = castEvent(event, Note, store);
       expect(note.replies$).toBe(note.replies$);
       expect(note.author.inboxes$).toBe(note.author.inboxes$);
     });

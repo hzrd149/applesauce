@@ -23,7 +23,8 @@ export function setHistoryContent(content: HistoryContent): EventOperation {
     includeHistoryCreatedTags(content.created),
   ];
 
-  if (content.fee !== undefined) operations.push(setSingletonTag(["fee", String(content.fee)], true));
+  if (content.fee !== undefined && content.fee > 0)
+    operations.push(setSingletonTag(["fee", String(content.fee)], true));
   if (content.mint !== undefined) operations.push(setSingletonTag(["mint", content.mint], true));
 
   return modifyHiddenTags(...operations);

@@ -1,4 +1,4 @@
-import { EventCast } from "applesauce-common/casts";
+import { CastRefEventStore, EventCast } from "applesauce-common/casts";
 import { castUser } from "applesauce-common/casts/user";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { of } from "rxjs";
@@ -15,9 +15,9 @@ import {
 } from "../helpers/nutzap.js";
 
 export class Nutzap extends EventCast<NutzapEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidNutzap(event)) throw new Error("Invalid nutzap");
-    super(event);
+    super(event, store);
   }
 
   get proofs() {

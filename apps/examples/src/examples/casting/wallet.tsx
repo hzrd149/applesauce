@@ -448,7 +448,8 @@ function NutzapsTab({ user }: { user: User }) {
   const [receiving, setReceiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nutzaps = use$(
-    () => eventStore.timeline({ kinds: [NUTZAP_KIND], "#p": [user.pubkey] }).pipe(castTimelineStream(Nutzap)),
+    () =>
+      eventStore.timeline({ kinds: [NUTZAP_KIND], "#p": [user.pubkey] }).pipe(castTimelineStream(Nutzap, eventStore)),
     [user.pubkey],
   );
 

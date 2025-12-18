@@ -1,5 +1,5 @@
 import { sumProofs } from "@cashu/cashu-ts";
-import { EventCast } from "applesauce-common/casts";
+import { CastRefEventStore, EventCast } from "applesauce-common/casts";
 import { HiddenContentSigner } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { defined, watchEventUpdates } from "applesauce-core/observable";
@@ -14,9 +14,9 @@ import {
 } from "../helpers/tokens.js";
 
 export class WalletToken extends EventCast<WalletTokenEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidWalletToken(event)) throw new Error("Invalid wallet token");
-    super(event);
+    super(event, store);
   }
 
   get meta() {

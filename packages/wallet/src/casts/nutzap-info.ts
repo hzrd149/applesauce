@@ -1,4 +1,4 @@
-import { EventCast } from "applesauce-common/casts";
+import { CastRefEventStore, EventCast } from "applesauce-common/casts";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import {
   getNutzapInfoMints,
@@ -9,9 +9,9 @@ import {
 } from "../helpers/nutzap-info.js";
 
 export class NutzapInfo extends EventCast<NutzapInfoEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidNutzapInfo(event)) throw new Error("Invalid nutzap info");
-    super(event);
+    super(event, store);
   }
 
   get relays() {

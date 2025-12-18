@@ -1,22 +1,22 @@
-import { EventCast } from "applesauce-common/casts";
+import { CastRefEventStore, EventCast } from "applesauce-common/casts";
 import { HiddenContentSigner } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { watchEventUpdates } from "applesauce-core/observable";
 import { of } from "rxjs";
 import { map } from "rxjs/operators";
 import {
-	getHistoryContent,
-	getHistoryRedeemed,
-	isHistoryContentUnlocked,
-	isValidWalletHistory,
-	unlockHistoryContent,
-	WalletHistoryEvent,
+  getHistoryContent,
+  getHistoryRedeemed,
+  isHistoryContentUnlocked,
+  isValidWalletHistory,
+  unlockHistoryContent,
+  WalletHistoryEvent,
 } from "../helpers/history.js";
 
 export class WalletHistory extends EventCast<WalletHistoryEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidWalletHistory(event)) throw new Error("Invalid wallet history");
-    super(event);
+    super(event, store);
   }
 
   /** The embedded history metadata */

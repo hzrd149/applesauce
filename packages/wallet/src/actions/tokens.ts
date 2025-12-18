@@ -17,35 +17,48 @@ import { getUnlockedWallet } from "./common.js";
  * @param token the cashu token to add
  * @param redeemed an array of event ids to mark as redeemed
  */
-export function AddToken(token: Token, redeemed?: string[], fee?: number): Action {
+export function AddToken(token: Token, options?: { redeemed?: string[]; fee?: number; addHistory?: boolean }): Action {
+  const { redeemed, fee, addHistory = true } = options ?? {};
+
   return async ({ factory, user, publish, signer, sign }) => {
     const wallet = await getUnlockedWallet(user, signer);
     const amount = sumProofs(token.proofs);
 
     // Create the token and history events
     const tokenEvent = await factory.create(WalletTokenBlueprint, token).then(sign);
-    const history = await factory
-      .create(
-        WalletHistoryBlueprint,
-        { direction: "in", amount, mint: token.mint, created: [tokenEvent.id], fee },
-        redeemed ?? [],
-      )
-      .then(sign);
+
+    let history: NostrEvent | undefined;
+    if (addHistory || redeemed?.length) {
+      history = await factory
+        .create(
+          WalletHistoryBlueprint,
+          { direction: "in", amount, mint: token.mint, created: [tokenEvent.id], fee },
+          redeemed,
+        )
+        .then(sign);
+    }
 
     // Publish the events
-    await publish([tokenEvent, history], wallet.relays);
+    await publish(
+      [tokenEvent, history].filter((e) => !!e),
+      wallet.relays,
+    );
   };
 }
 
 /** Similar to the AddToken action but swaps the tokens before receiving them */
-export function ReceiveToken(token: Token): Action {
+export function ReceiveToken(token: Token, options?: { addHistory?: boolean }): Action {
   return async ({ run }) => {
     // Get the cashu wallet
     const cashuWallet = new Wallet(token.mint);
     await cashuWallet.loadMint();
 
+    const amount = sumProofs(token.proofs);
+
     // Swap cashu tokens
     const receivedProofs = await cashuWallet.ops.receive(token).run();
+
+    const fee = amount - sumProofs(receivedProofs);
 
     // Create a new token with the received proofs
     const receivedToken: Token = {
@@ -54,7 +67,7 @@ export function ReceiveToken(token: Token): Action {
     };
 
     // Run the add token action
-    await run(AddToken, receivedToken);
+    await run(AddToken, receivedToken, { ...options, fee });
   };
 }
 

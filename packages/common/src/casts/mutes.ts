@@ -11,13 +11,13 @@ import {
   unlockHiddenMutes,
   type MutedThings,
 } from "../helpers/mute.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 
 /** Class for mute lists (kind 10000) */
 export class Mutes extends EventCast<MuteListEvent> implements MutedThings {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidMuteList(event)) throw new Error("Invalid mute list");
-    super(event);
+    super(event, store);
   }
 
   get mutes() {

@@ -13,7 +13,7 @@ import { SharesModel } from "../models/shares.js";
 import { RepliesModel } from "../models/thread.js";
 import { EventZapsModel } from "../models/zaps.js";
 import { castTimelineStream } from "../observable/cast-stream.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 import { Comment } from "./comment.js";
 import { Share } from "./share.js";
 import { Zap } from "./zap.js";
@@ -23,9 +23,9 @@ function isValidNote(event: NostrEvent): event is KnownEvent<1> {
 }
 
 export class Note extends EventCast<KnownEvent<1>> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidNote(event)) throw new Error("Invalid note");
-    super(event);
+    super(event, store);
   }
   get references() {
     return getNip10References(this.event);
@@ -48,16 +48,20 @@ export class Note extends EventCast<KnownEvent<1>> {
 
   get replies$() {
     return this.$$ref("replies$", (store) =>
-      store.model(RepliesModel, this.event, [kinds.ShortTextNote]).pipe(castTimelineStream(Note)),
+      store.model(RepliesModel, this.event, [kinds.ShortTextNote]).pipe(castTimelineStream(Note, store)),
     );
   }
   get comments$() {
-    return this.$$ref("comments$", (store) => store.model(CommentsModel, this.event).pipe(castTimelineStream(Comment)));
+    return this.$$ref("comments$", (store) =>
+      store.model(CommentsModel, this.event).pipe(castTimelineStream(Comment, store)),
+    );
   }
   get zaps$() {
-    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap)));
+    return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap, store)));
   }
   get shares$() {
-    return this.$$ref("shares$", (store) => store.model(SharesModel, this.event).pipe(castTimelineStream(Share)));
+    return this.$$ref("shares$", (store) =>
+      store.model(SharesModel, this.event).pipe(castTimelineStream(Share, store)),
+    );
   }
 }

@@ -12,20 +12,20 @@ import {
   isValidSearchRelaysList,
   SearchRelaysListEvent,
 } from "../helpers/relay-list.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 
 /** Base class for relay lists */
 class RelayListBase<
   T extends KnownEvent<typeof FAVORITE_RELAYS_KIND | typeof kinds.SearchRelaysList | kinds.BlockedRelaysList>,
 > extends EventCast<T> {
-  constructor(event: T) {
+  constructor(event: T, store: CastRefEventStore) {
     if (
       event.kind !== FAVORITE_RELAYS_KIND &&
       event.kind !== kinds.SearchRelaysList &&
       event.kind !== kinds.BlockedRelaysList
     )
       throw new Error(`Invalid relay list (kind ${event.kind})`);
-    super(event);
+    super(event, store);
   }
 
   /** The public relays in the relay list */
@@ -67,24 +67,24 @@ class RelayListBase<
 
 /** Class for favorite relays lists (kind 10012) */
 export class FavoriteRelays extends RelayListBase<FavoriteRelaysListEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidFavoriteRelaysList(event)) throw new Error("Invalid favorite relays list");
-    super(event);
+    super(event, store);
   }
 }
 
 /** Class for search relays lists (kind 10007) */
 export class SearchRelays extends RelayListBase<SearchRelaysListEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidSearchRelaysList(event)) throw new Error("Invalid search relays list");
-    super(event);
+    super(event, store);
   }
 }
 
 /** Class for blocked relays lists (kind 10006) */
 export class BlockedRelays extends RelayListBase<BlockedRelaysListEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidBlockedRelaysList(event)) throw new Error("Invalid blocked relays list");
-    super(event);
+    super(event, store);
   }
 }

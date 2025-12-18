@@ -1,5 +1,4 @@
 import {
-  getParentEventStore,
   isEvent,
   isHexKey,
   kinds,
@@ -15,16 +14,12 @@ import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { type CastRefEventStore } from "./cast.js";
 
 /** Cast a nostr event or pointer into a {@link User} */
-export function castUser(event: NostrEvent): User;
+export function castUser(event: NostrEvent, store: CastRefEventStore): User;
 export function castUser(user: string | ProfilePointer, store: CastRefEventStore): User;
-export function castUser(user: string | ProfilePointer | NostrEvent, store?: CastRefEventStore): User {
+export function castUser(user: string | ProfilePointer | NostrEvent, store: CastRefEventStore): User {
   if (isEvent(user)) {
-    if (!store) store = getParentEventStore(user) as unknown as CastRefEventStore;
-    if (!store) throw new Error("Event is not attached to an event store");
     return castUser(user.pubkey, store);
   } else {
-    if (!store) throw new Error("Store is required for casting a user");
-
     const pubkey = typeof user === "string" ? user : user.pubkey;
 
     // Skip creating a new instance if this pubkey has already been cast
@@ -96,7 +91,7 @@ export class User {
     return this.$$ref("profile$", (store) =>
       defer(() => from(import("./profile.js").then((m) => m.Profile))).pipe(
         switchMap((Profile) =>
-          store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile)),
+          store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile, store)),
         ),
       ),
     );
@@ -121,7 +116,9 @@ export class User {
       ]).pipe(
         // Create the mute list event with the outboxes
         switchMap(([Mutes, outboxes]) =>
-          store.event({ kind: kinds.Mutelist, pubkey: this.pubkey, relays: outboxes }).pipe(castEventStream(Mutes)),
+          store
+            .event({ kind: kinds.Mutelist, pubkey: this.pubkey, relays: outboxes })
+            .pipe(castEventStream(Mutes, store)),
         ),
       ),
     );
@@ -152,7 +149,7 @@ export class User {
           // Fetch the bookmarks list event from the outboxes
           store
             .replaceable({ kind: kinds.BookmarkList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(BookmarksList)),
+            .pipe(castEventStream(BookmarksList, store)),
         ),
       ),
     );
@@ -169,7 +166,7 @@ export class User {
         switchMap(([FavoriteRelaysList, outboxes]) =>
           store
             .replaceable({ kind: FAVORITE_RELAYS_KIND, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(FavoriteRelaysList)),
+            .pipe(castEventStream(FavoriteRelaysList, store)),
         ),
       ),
     );
@@ -186,7 +183,7 @@ export class User {
         switchMap(([SearchRelaysList, outboxes]) =>
           store
             .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(SearchRelaysList)),
+            .pipe(castEventStream(SearchRelaysList, store)),
         ),
       ),
     );
@@ -203,7 +200,7 @@ export class User {
         switchMap(([BlockedRelaysList, outboxes]) =>
           store
             .replaceable({ kind: kinds.BlockedRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(BlockedRelaysList)),
+            .pipe(castEventStream(BlockedRelaysList, store)),
         ),
       ),
     );
@@ -221,7 +218,7 @@ export class User {
             ])
             .pipe(
               map((events) => events[0] as NostrEvent | undefined),
-              castEventStream(Stream),
+              castEventStream(Stream, store),
             ),
         ),
       ),

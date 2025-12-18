@@ -1,4 +1,4 @@
-import { EventCast } from "applesauce-common/casts";
+import { CastRefEventStore, EventCast } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { HiddenContentSigner } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -22,9 +22,9 @@ import { WalletToken } from "./wallet-token.js";
 import { ReceivedNutzapsModel } from "../models/nutzap.js";
 
 export class Wallet extends EventCast<WalletEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidWallet(event)) throw new Error("Invalid wallet event");
-    super(event);
+    super(event, store);
   }
 
   // Direct getters (return undefined if locked)
@@ -79,12 +79,12 @@ export class Wallet extends EventCast<WalletEvent> {
   // Observables for related events
   get tokens$() {
     return this.$$ref("tokens$", (store) =>
-      store.model(WalletTokensModel, this.event.pubkey).pipe(castTimelineStream(WalletToken)),
+      store.model(WalletTokensModel, this.event.pubkey).pipe(castTimelineStream(WalletToken, store)),
     );
   }
   get history$() {
     return this.$$ref("history$", (store) =>
-      store.model(WalletHistoryModel, this.event.pubkey).pipe(castTimelineStream(WalletHistory)),
+      store.model(WalletHistoryModel, this.event.pubkey).pipe(castTimelineStream(WalletHistory, store)),
     );
   }
   get backups$() {

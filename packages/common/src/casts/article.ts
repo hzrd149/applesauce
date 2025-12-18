@@ -9,12 +9,12 @@ import {
   getArticleTitle,
   isValidArticle,
 } from "../helpers/article.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 
 export class Article extends EventCast<ArticleEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidArticle(event)) throw new Error("Invalid article");
-    super(event);
+    super(event, store);
   }
 
   get title() {

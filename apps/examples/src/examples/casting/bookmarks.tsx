@@ -105,7 +105,7 @@ function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boole
 
 function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?: () => void }) {
   const note = use$(
-    () => eventStore.event(pointer).pipe(castEventStream(Note)),
+    () => eventStore.event(pointer).pipe(castEventStream(Note, eventStore)),
     [pointer.id, pointer.relays?.join("|")],
   );
   const profile = use$(() => note?.author.profile$, [note]);
@@ -167,7 +167,7 @@ function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?:
 
 function BookmarkArticle({ pointer, onRemove }: { pointer: AddressPointer; onRemove?: () => void }) {
   const article = use$(
-    () => eventStore.replaceable(pointer).pipe(castEventStream(Article)),
+    () => eventStore.replaceable(pointer).pipe(castEventStream(Article, eventStore)),
     [getReplaceableAddressFromPointer(pointer)],
   );
   const profile = use$(() => article?.author.profile$, [article]);

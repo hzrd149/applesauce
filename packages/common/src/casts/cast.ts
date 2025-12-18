@@ -15,18 +15,27 @@ export const CAST_REF_SYMBOL = Symbol.for("cast-ref");
 export const CASTS_SYMBOL = Symbol.for("casts");
 
 /** A class that can be used to cast a Nostr event */
-export type CastConstructor<C extends EventCast<NostrEvent>> = new (event: NostrEvent) => C;
+export type CastConstructor<C extends EventCast<NostrEvent>> = new (event: NostrEvent, store: CastRefEventStore) => C;
 
 /** Cast a Nostr event to a specific class */
-export function castEvent<C extends EventCast<NostrEvent>>(event: NostrEvent, cls: CastConstructor<C>): C {
+export function castEvent<C extends EventCast<NostrEvent>>(
+  event: NostrEvent,
+  cls: CastConstructor<C>,
+  store?: CastRefEventStore,
+): C {
   const casts: Map<CastConstructor<C>, C> = Reflect.get(event, CASTS_SYMBOL);
 
   // If the event has already been cast to this class, return the existing cast
   const existing = casts?.get(cls);
   if (existing) return existing;
 
+  if (!store) {
+    store = getParentEventStore(event) as unknown as CastRefEventStore;
+    if (!store) throw new Error("Event is not attached to an event store, an event store must be provided");
+  }
+
   // Create a new instance of the class
-  const cast = new cls(event);
+  const cast = new cls(event, store);
   if (!casts) Reflect.set(event, CASTS_SYMBOL, new Map([[cls, cast]]));
   else casts.set(cls, cast);
 
@@ -46,16 +55,9 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
     return new Date(this.event.created_at * 1000);
   }
 
-  /** Gets the event store for this event cast */
-  get store() {
-    const store = getParentEventStore(this.event);
-    if (!store) throw new Error("Event is not attached to an event store");
-    return store as unknown as CastRefEventStore;
-  }
-
   /** Get the {@link User} that authored this event */
   get author() {
-    return castUser(this.event);
+    return castUser(this.event, this.store);
   }
 
   /** Return the set of relays this event was seen on */
@@ -64,7 +66,10 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
   }
 
   // Enfore kind check in constructor. this will force child classes to verify the event before calling super()
-  constructor(readonly event: T) {}
+  constructor(
+    readonly event: T,
+    public readonly store: CastRefEventStore,
+  ) {}
 
   /** A cache of observable references */
   #refs: Record<string, ChainableObservable<unknown>> = {};

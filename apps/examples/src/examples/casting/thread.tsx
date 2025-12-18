@@ -131,7 +131,7 @@ export default function ThreadExample() {
   // Load the event and cast it to a note
   const note = use$(() => {
     if (!eventPointer) return undefined;
-    return eventStore.event(eventPointer).pipe(castEventStream(Note));
+    return eventStore.event(eventPointer).pipe(castEventStream(Note, eventStore));
   }, [eventPointer?.id, eventPointer?.relays?.join("|")]);
 
   /** Resolve the authors inboxes for loading events */

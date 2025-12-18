@@ -19,14 +19,14 @@ import {
 } from "../helpers/bookmark.js";
 import { castTimelineStream } from "../observable/cast-stream.js";
 import { Article } from "./article.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 import { Note } from "./note.js";
 
 /** Base class for bookmarks lists and sets */
 class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends EventCast<T> {
-  constructor(event: T) {
+  constructor(event: T, store: CastRefEventStore) {
     if (!isValidBookmarkList(event) && !isValidBookmarkSet(event)) throw new Error("Invalid bookmark list or set");
-    super(event);
+    super(event, store);
   }
 
   get bookmarks() {
@@ -44,7 +44,7 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
     return this.$$ref("notes$", (store) =>
       combineLatest(this.notes.map((pointer) => store.event(pointer))).pipe(
         map((arr) => arr.filter((e) => !!e)),
-        castTimelineStream(Note),
+        castTimelineStream(Note, store),
       ),
     );
   }
@@ -52,7 +52,7 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
     return this.$$ref("articles$", (store) =>
       combineLatest(this.articles.map((pointer) => store.replaceable(pointer))).pipe(
         map((arr) => arr.filter((e) => !!e)),
-        castTimelineStream(Article),
+        castTimelineStream(Article, store),
       ),
     );
   }
@@ -81,7 +81,7 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
           combineLatest(hidden.filter((pointer) => isEventPointer(pointer)).map((pointer) => store.event(pointer))),
         ),
         map((arr) => arr.filter((e) => !!e)),
-        castTimelineStream(Note),
+        castTimelineStream(Note, store),
       ),
     );
   }
@@ -94,7 +94,7 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
           ),
         ),
         map((arr) => arr.filter((e) => !!e)),
-        castTimelineStream(Article),
+        castTimelineStream(Article, store),
       ),
     );
   }
@@ -115,16 +115,16 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
 
 /** A class for bookmarks lists (kind 10003) */
 export class BookmarksList extends BookmarksListBase<BookmarkListEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidBookmarkList(event)) throw new Error("Invalid bookmark list");
-    super(event);
+    super(event, store);
   }
 }
 
 /** A class for bookmarks sets (kind 30003) */
 export class BookmarksSet extends BookmarksListBase<BookmarkSetEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidBookmarkSet(event)) throw new Error("Invalid bookmark set");
-    super(event);
+    super(event, store);
   }
 }

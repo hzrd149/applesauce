@@ -6,13 +6,13 @@ import {
   isValidShare,
   ShareEvent,
 } from "../helpers/share.js";
-import { EventCast } from "./cast.js";
+import { CastRefEventStore, EventCast } from "./cast.js";
 
 /** Cast class for kind 6 and 16 share events */
 export class Share extends EventCast<ShareEvent> {
-  constructor(event: NostrEvent) {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidShare(event)) throw new Error("Invalid share");
-    super(event);
+    super(event, store);
   }
 
   get sharedKind() {
