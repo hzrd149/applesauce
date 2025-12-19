@@ -117,6 +117,7 @@ export function getTokenProofsTotal<T extends NostrEvent>(token: T): number | un
 
 /**
  * Selects oldest tokens and proofs that total up to more than the min amount
+ * If mint is undefined, finds a mint with sufficient balance and selects only from that mint
  * @throws {Error} If there are insufficient funds
  */
 export function dumbTokenSelection(
@@ -124,9 +125,50 @@ export function dumbTokenSelection(
   minAmount: number,
   mint?: string,
 ): { events: NostrEvent[]; proofs: Proof[] } {
-  // sort newest to oldest
+  // If mint is not specified, find a mint with sufficient balance
+  let targetMint = mint;
+  if (!targetMint) {
+    // Group tokens by mint and calculate total balance per mint
+    const tokensByMint = new Map<string, NostrEvent[]>();
+    for (const token of tokens) {
+      const content = getTokenContent(token);
+      if (!content) continue; // Skip locked tokens
+      const tokenMint = content.mint;
+      if (!tokenMint) continue;
+      if (!tokensByMint.has(tokenMint)) {
+        tokensByMint.set(tokenMint, []);
+      }
+      tokensByMint.get(tokenMint)!.push(token);
+    }
+
+    // Find a mint with sufficient balance
+    let foundMint: string | undefined;
+    for (const [mintKey, mintTokens] of tokensByMint) {
+      const seen = new Set<string>();
+      let total = 0;
+      for (const token of mintTokens) {
+        const content = getTokenContent(token);
+        if (!content) continue;
+        const proofs = content.proofs.filter(ignoreDuplicateProofs(seen));
+        total += proofs.reduce((t, p) => t + p.amount, 0);
+      }
+      if (total >= minAmount) {
+        foundMint = mintKey;
+        break;
+      }
+    }
+
+    if (!foundMint) throw new Error("Insufficient funds in any mint");
+
+    targetMint = foundMint;
+  }
+
+  // Filter tokens by the target mint and sort newest to oldest
   const sorted = tokens
-    .filter((token) => (mint ? getTokenContent(token)?.mint === mint : true))
+    .filter((token) => {
+      const content = getTokenContent(token);
+      return content?.mint === targetMint;
+    })
     .sort((a, b) => b.created_at - a.created_at);
 
   let amount = 0;
@@ -142,6 +184,11 @@ export function dumbTokenSelection(
 
     // Skip locked tokens
     if (!content) continue;
+
+    // Verify mint matches (should always match due to filter, but double-check for safety)
+    if (content.mint !== targetMint) {
+      throw new Error(`Token mint mismatch: expected ${targetMint}, got ${content.mint}`);
+    }
 
     // Get proofs and total
     const proofs = content.proofs.filter(ignoreDuplicateProofs(seen));

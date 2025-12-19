@@ -7,6 +7,7 @@ import { WalletTokenBlueprint } from "../blueprints/tokens.js";
 import { getProofUID, ignoreDuplicateProofs } from "../helpers/cashu.js";
 import { Couch } from "../helpers/couch.js";
 import {
+  dumbTokenSelection,
   getTokenContent,
   isTokenContentUnlocked,
   UnlockedTokenContent,
@@ -331,6 +332,146 @@ export function RecoverFromCouch(couch: Couch): Action {
 
       // Publish the token event
       await publish(tokenEvent, wallet.relays);
+    }
+  };
+}
+
+/**
+ * Token selection function type that matches dumbTokenSelection signature.
+ * Must return tokens from a single mint and ensure all selected tokens are from that mint.
+ * If mint is undefined, the function should find a mint with sufficient balance.
+ */
+export type TokenSelectionFunction = (
+  tokens: NostrEvent[],
+  minAmount: number,
+  mint?: string,
+) => { events: NostrEvent[]; proofs: Proof[] };
+
+/**
+ * A generic action that safely selects tokens, performs an async operation, and handles change.
+ * This action requires a couch for safety - tokens are stored in the couch before the operation
+ * and can be recovered if something goes wrong.
+ *
+ * @param minAmount The minimum amount of tokens to select (in sats)
+ * @param operation An async function that receives selected proofs and performs the operation.
+ *                  Should return any change proofs. All selected proofs are considered used.
+ * @param options Configuration options including mint filter, required couch, and optional custom token selection
+ *
+ * @example
+ * // Use with NutzapProfile
+ * await run(TokensOperation, 100, async ({ selectedProofs, mint, cashuWallet }) => {
+ *   const { keep, send } = await cashuWallet.ops.send(100, selectedProofs).asP2PK({ pubkey }).run();
+ *   await run(NutzapProfile, recipient, { mint, proofs: send, unit: "sat" });
+ *   return { change: keep };
+ * }, { couch });
+ *
+ * @example
+ * // Use with melt
+ * await run(TokensOperation, meltAmount + feeReserve, async ({ selectedProofs, mint, cashuWallet }) => {
+ *   const meltQuote = await cashuWallet.createMeltQuoteBolt11(invoice);
+ *   const { keep, send } = await cashuWallet.send(meltAmount + meltQuote.fee_reserve, selectedProofs, { includeFees: true });
+ *   const meltResponse = await cashuWallet.meltProofs(meltQuote, send);
+ *   return { change: meltResponse.change };
+ * }, { couch });
+ *
+ * @example
+ * // Use with custom token selection
+ * await run(TokensOperation, 100, async ({ selectedProofs, mint, cashuWallet }) => {
+ *   // ... operation
+ * }, { couch, tokenSelection: myCustomSelectionFunction });
+ */
+export function TokensOperation(
+  minAmount: number,
+  operation: (params: { selectedProofs: Proof[]; mint: string; cashuWallet: Wallet }) => Promise<{ change?: Proof[] }>,
+  options: { mint?: string; couch: Couch; tokenSelection?: TokenSelectionFunction },
+): Action {
+  const { mint, couch, tokenSelection = dumbTokenSelection } = options;
+
+  return async ({ events, self, user, signer, run }) => {
+    if (!signer) throw new Error("Missing signer");
+    if (!couch) throw new Error("Couch is required for TokensOperation");
+
+    await getUnlockedWallet(user, signer);
+
+    // Get all unlocked token events
+    const allTokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
+
+    // Unlock tokens if needed
+    for (const token of allTokens) {
+      if (!isTokenContentUnlocked(token)) {
+        try {
+          await unlockTokenContent(token, signer);
+        } catch {}
+      }
+    }
+
+    // Filter to unlocked tokens
+    const unlockedTokens = allTokens.filter(isTokenContentUnlocked);
+    if (unlockedTokens.length === 0) throw new Error("No unlocked tokens available");
+
+    // Select tokens using the provided token selection function (defaults to dumbTokenSelection)
+    // The selection function will find a mint with sufficient balance if mint is undefined
+    // and ensures all selected tokens are from the same mint
+    const { events: selectedTokenEvents, proofs: selectedProofs } = tokenSelection(unlockedTokens, minAmount, mint);
+
+    if (selectedProofs.length === 0) throw new Error("No proofs selected");
+
+    // Get the mint from the first selected token
+    // The token selection function guarantees all tokens are from the same mint
+    const firstTokenContent = getTokenContent(selectedTokenEvents[0]);
+    if (!firstTokenContent) throw new Error("Unable to get content from selected token");
+
+    const selectedMint = firstTokenContent.mint;
+    if (!selectedMint) throw new Error("Unable to determine mint from selected tokens");
+
+    // Safety check: Verify all selected tokens are from the same mint
+    // (The token selection function should have already ensured this, but verify for safety)
+    for (const tokenEvent of selectedTokenEvents) {
+      const tokenContent = getTokenContent(tokenEvent);
+      if (!tokenContent) throw new Error("Unable to get content from selected token");
+
+      const tokenMint = tokenContent.mint;
+      if (tokenMint !== selectedMint)
+        throw new Error(`Selected tokens must be from the same mint. Found ${tokenMint} and ${selectedMint}`);
+    }
+
+    // Store selected tokens in couch for safety
+    const selectedToken: Token = {
+      mint: selectedMint,
+      proofs: selectedProofs,
+      unit: "sat",
+    };
+    const clearStoredToken = await couch.store(selectedToken);
+
+    try {
+      // Create cashu wallet for the mint
+      const cashuWallet = new Wallet(selectedMint);
+      await cashuWallet.loadMint();
+
+      // Perform the async operation
+      // All selected proofs are considered used - the operation only needs to return change (if any)
+      const { change } = await operation({
+        selectedProofs,
+        mint: selectedMint,
+        cashuWallet,
+      });
+
+      // Create change token from the change proofs returned by the operation (if any)
+      const changeToken: Token = {
+        mint: selectedMint,
+        proofs: change ? change.filter(ignoreDuplicateProofs()) : [],
+        unit: "sat",
+      };
+
+      // Complete the spend with change (if any)
+      // If there's no change, all selected proofs were spent
+      await run(CompleteSpend, selectedTokenEvents, changeToken, couch);
+
+      // Clear the stored token from the couch after successful completion
+      await clearStoredToken();
+    } catch (error) {
+      // If an error occurs, don't clear the couch (tokens remain for recovery)
+      throw error;
     }
   };
 }

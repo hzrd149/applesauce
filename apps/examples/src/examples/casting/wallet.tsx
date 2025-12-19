@@ -28,10 +28,17 @@ import {
   RemoveNutzapInfoMint,
   SetWalletMints,
   SetWalletRelays,
+  TokensOperation,
   UnlockWallet,
 } from "applesauce-wallet/actions";
 import { Nutzap, Wallet, WalletHistory, WalletToken } from "applesauce-wallet/casts";
-import { getWalletRelays, NUTZAP_KIND, WALLET_HISTORY_KIND, WALLET_KIND } from "applesauce-wallet/helpers";
+import {
+  getWalletRelays,
+  IndexedDBCouch,
+  NUTZAP_KIND,
+  WALLET_HISTORY_KIND,
+  WALLET_KIND,
+} from "applesauce-wallet/helpers";
 import { WALLET_TOKEN_KIND } from "applesauce-wallet/helpers/tokens";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,6 +58,9 @@ const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 const autoUnlock$ = new BehaviorSubject<boolean>(false);
+
+// Setup IndexedDB couch for storing tokens during nutzap operations
+const couch = new IndexedDBCouch();
 
 // Setup event store and relay pool
 const eventStore = new EventStore();
@@ -376,7 +386,7 @@ function NutzapEntry({
     setError(null);
 
     try {
-      await actions.run(ReceiveNutzaps, nutzap.event);
+      await actions.run(ReceiveNutzaps, nutzap.event, couch);
     } catch (err) {
       console.error("Failed to receive nutzap:", err);
       setError(err instanceof Error ? err.message : "Failed to receive nutzap");
@@ -468,7 +478,7 @@ function NutzapsTab({ user }: { user: User }) {
 
     try {
       const nutzapEvents = unclaimed.map((nutzap) => nutzap.event);
-      await actions.run(ReceiveNutzaps, nutzapEvents);
+      await actions.run(ReceiveNutzaps, nutzapEvents, couch);
     } catch (err) {
       console.error("Failed to receive nutzaps:", err);
       setError(err instanceof Error ? err.message : "Failed to receive nutzaps");
@@ -577,7 +587,7 @@ function ConsolidateTool({ wallet }: { wallet: Wallet }) {
     setError(null);
 
     try {
-      await actions.run(ConsolidateTokens, { ignoreLocked: true });
+      await actions.run(ConsolidateTokens, { unlockTokens: true, couch });
     } catch (err) {
       console.error("Failed to consolidate tokens:", err);
       setError(err instanceof Error ? err.message : "Failed to consolidate tokens");
@@ -992,6 +1002,210 @@ function SettingsTab({ wallet }: { wallet: Wallet }) {
   );
 }
 
+function SendTab({ wallet }: { wallet: Wallet }) {
+  const balance = use$(wallet.balance$);
+  const mints = use$(wallet.mints$);
+  const [amount, setAmount] = useState("");
+  const [selectedMint, setSelectedMint] = useState<string | undefined>(undefined);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Get available mints with balance
+  const availableMints = useMemo(() => {
+    if (!balance || !mints) return [];
+    return mints.filter((mint) => (balance[mint] || 0) > 0);
+  }, [balance, mints]);
+
+  const handleSend = useCallback(async () => {
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to send tokens");
+    if (!amount.trim()) return setError("Please enter an amount");
+
+    const sendAmount = parseInt(amount.trim(), 10);
+    if (isNaN(sendAmount) || sendAmount <= 0) return setError("Please enter a valid amount");
+
+    // Check if selected mint has sufficient balance
+    if (selectedMint && balance) {
+      const mintBalance = balance[selectedMint] || 0;
+      if (mintBalance < sendAmount) {
+        return setError(`Insufficient balance. Available: ${mintBalance} sats`);
+      }
+    }
+
+    setSending(true);
+    setError(null);
+    setCreatedToken(null);
+
+    try {
+      await actions.run(
+        TokensOperation,
+        sendAmount,
+        async ({ selectedProofs, mint, cashuWallet }) => {
+          // Use wallet.ops.send() to create the token
+          const { keep, send } = await cashuWallet.ops.send(sendAmount, selectedProofs).run();
+
+          // Create the token to send
+          const sendToken = {
+            mint,
+            proofs: send,
+            unit: "sat" as const,
+          };
+
+          // Store the created token for display
+          const encodedToken = getEncodedToken(sendToken);
+          setCreatedToken(encodedToken);
+
+          // Return change (all selected proofs are considered used)
+          return {
+            change: keep.length > 0 ? keep : undefined,
+          };
+        },
+        { mint: selectedMint, couch },
+      );
+
+      // Clear amount after successful send
+      setAmount("");
+    } catch (err) {
+      console.error("Failed to send tokens:", err);
+      setError(err instanceof Error ? err.message : "Failed to send tokens");
+      setCreatedToken(null);
+    } finally {
+      setSending(false);
+    }
+  }, [wallet.unlocked, amount, selectedMint, balance]);
+
+  const handleCopy = useCallback(() => {
+    if (!createdToken) return;
+    navigator.clipboard.writeText(createdToken);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [createdToken]);
+
+  if (!wallet.unlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center space-y-4">
+        <h2 className="text-2xl font-bold">Wallet Locked</h2>
+        <p className="text-base-content/70">Unlock your wallet to send tokens</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold mb-2">Send Cashu Token</h3>
+        <p className="text-sm text-base-content/70 mb-4">
+          Enter an amount to send and optionally select a mint. A cashu token will be created that you can share with
+          the recipient.
+        </p>
+      </div>
+
+      {createdToken ? (
+        <div className="space-y-4">
+          <div className="alert alert-success">
+            <span>Token created successfully!</span>
+          </div>
+
+          <div>
+            <label className="label">
+              <span className="label-text">Created Token</span>
+            </label>
+            <textarea
+              className="textarea textarea-bordered h-32 font-mono text-sm w-full"
+              value={createdToken}
+              readOnly
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button className="btn btn-primary flex-1" onClick={handleCopy}>
+              {copied ? "Copied!" : "Copy Token"}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setCreatedToken(null);
+                setAmount("");
+              }}
+            >
+              Create Another
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2 flex-col">
+            <label className="label">
+              <span className="label-text">Amount (sats)</span>
+            </label>
+            <input
+              type="number"
+              className="input input-bordered w-full"
+              placeholder="Enter amount in sats"
+              value={amount}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setError(null);
+              }}
+              disabled={sending}
+              min="1"
+            />
+            {selectedMint && balance && (
+              <div className="text-sm text-base-content/70">Available: {balance[selectedMint] || 0} sats</div>
+            )}
+          </div>
+
+          {availableMints.length > 0 && (
+            <div className="flex gap-2 flex-col">
+              <label className="label">
+                <span className="label-text">Mint (optional)</span>
+              </label>
+              <select
+                className="select select-bordered w-full"
+                value={selectedMint || ""}
+                onChange={(e) => {
+                  setSelectedMint(e.target.value || undefined);
+                  setError(null);
+                }}
+                disabled={sending}
+              >
+                <option value="">Auto-select (any mint with sufficient balance)</option>
+                {availableMints.map((mint) => (
+                  <option key={mint} value={mint}>
+                    {mint} ({balance?.[mint] || 0} sats)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            className="btn btn-primary w-full"
+            onClick={handleSend}
+            disabled={sending || !amount.trim() || !wallet.unlocked}
+          >
+            {sending ? (
+              <>
+                <span className="loading loading-spinner loading-sm" />
+                Creating Token...
+              </>
+            ) : (
+              "Create Token"
+            )}
+          </button>
+
+          {error && (
+            <div className="alert alert-error">
+              <span>{error}</span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ReceiveTab({ wallet }: { wallet: Wallet }) {
   const [tokenString, setTokenString] = useState("");
   const [receiving, setReceiving] = useState(false);
@@ -1185,6 +1399,11 @@ function WalletManager({ user }: { user: User }) {
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Nutzaps" />
         <div className="tab-content bg-base-100 border-base-300 p-6">
           <NutzapsTab user={user} />
+        </div>
+
+        <input type="radio" name="wallet_tabs" className="tab" aria-label="Send" />
+        <div className="tab-content bg-base-100 border-base-300 p-6">
+          <SendTab wallet={wallet} />
         </div>
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Receive" />

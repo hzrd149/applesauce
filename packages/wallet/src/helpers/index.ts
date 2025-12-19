@@ -6,3 +6,5 @@ export * from "./nutzap-info.js";
 export * from "./nutzap.js";
 export * from "./cashu.js";
 export * from "./couch.js";
+export * from "./local-storage-couch.js";
+export * from "./indexed-db-couch.js";
