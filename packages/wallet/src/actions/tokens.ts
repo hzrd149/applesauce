@@ -1,13 +1,16 @@
-import { CheckStateEnum, Mint, Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
+import { CheckStateEnum, Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { WalletHistoryBlueprint } from "../blueprints/history.js";
 import { WalletTokenBlueprint } from "../blueprints/tokens.js";
+import { getProofUID, ignoreDuplicateProofs } from "../helpers/cashu.js";
+import { Couch } from "../helpers/couch.js";
 import {
   getTokenContent,
-  ignoreDuplicateProofs,
   isTokenContentUnlocked,
+  UnlockedTokenContent,
+  unlockTokenContent,
   WALLET_TOKEN_KIND,
 } from "../helpers/tokens.js";
 import { getUnlockedWallet } from "./common.js";
@@ -47,8 +50,10 @@ export function AddToken(token: Token, options?: { redeemed?: string[]; fee?: nu
 }
 
 /** Similar to the AddToken action but swaps the tokens before receiving them */
-export function ReceiveToken(token: Token, options?: { addHistory?: boolean }): Action {
+export function ReceiveToken(token: Token, options?: { addHistory?: boolean; couch?: Couch }): Action {
   return async ({ run }) => {
+    const { couch, ...restOptions } = options ?? {};
+
     // Get the cashu wallet
     const cashuWallet = new Wallet(token.mint);
     await cashuWallet.loadMint();
@@ -66,8 +71,19 @@ export function ReceiveToken(token: Token, options?: { addHistory?: boolean }): 
       proofs: receivedProofs,
     };
 
-    // Run the add token action
-    await run(AddToken, receivedToken, { ...options, fee });
+    // Store token in couch immediately after receiving it
+    const clearStoredToken = await couch?.store(receivedToken);
+
+    try {
+      // Run the add token action
+      await run(AddToken, receivedToken, { ...restOptions, fee });
+
+      // Clear the stored token from the couch after successful completion
+      await clearStoredToken?.();
+    } catch (error) {
+      // If an error occurs, don't clear the couch (tokens remain for recovery)
+      throw error;
+    }
   };
 }
 
@@ -93,7 +109,7 @@ export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
 }
 
 /** An action that deletes old token events and adds a spend history item */
-export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
+export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch): Action {
   return async function* ({ factory, user, publish, signer, sign }) {
     if (spent.length === 0) throw new Error("Cant complete spent with no token events");
 
@@ -103,106 +119,218 @@ export function CompleteSpend(spent: NostrEvent[], change: Token): Action {
 
     const changeAmount = sumProofs(change.proofs);
 
-    // create a new token event if needed
-    const tokenEvent =
-      changeAmount > 0
-        ? await factory
-            .create(
-              WalletTokenBlueprint,
-              change,
-              spent.map((e) => e.id),
-            )
-            .then(sign)
-        : undefined;
+    // Store change token in couch before creating token event
+    let clearStoredToken: (() => void | Promise<void>) | undefined;
+    if (couch && changeAmount > 0) {
+      clearStoredToken = await couch.store(change);
+    }
 
-    // Get tokens total amount
-    const total = sumProofs(unlocked.map((s) => getTokenContent(s).proofs).flat());
+    try {
+      // create a new token event if needed
+      const tokenEvent =
+        changeAmount > 0
+          ? await factory
+              .create(
+                WalletTokenBlueprint,
+                change,
+                spent.map((e) => e.id),
+              )
+              .then(sign)
+          : undefined;
 
-    // calculate the amount that was spent
-    const diff = total - changeAmount;
+      // Get tokens total amount
+      const total = sumProofs(unlocked.map((s) => getTokenContent(s).proofs).flat());
 
-    // sign delete and token
-    const deleteEvent = await factory.create(DeleteBlueprint, spent).then(sign);
+      // calculate the amount that was spent
+      const diff = total - changeAmount;
 
-    // create a history entry
-    const history = await factory
-      .create(
-        WalletHistoryBlueprint,
-        { direction: "out", mint: change.mint, amount: diff, created: tokenEvent ? [tokenEvent.id] : [] },
-        [],
-      )
-      .then(sign);
+      // sign delete and token
+      const deleteEvent = await factory.create(DeleteBlueprint, spent).then(sign);
 
-    // publish events
-    await publish(
-      [tokenEvent, deleteEvent, history].filter((e) => !!e),
-      wallet.relays,
-    );
+      // create a history entry
+      const history = await factory
+        .create(
+          WalletHistoryBlueprint,
+          { direction: "out", mint: change.mint, amount: diff, created: tokenEvent ? [tokenEvent.id] : [] },
+          [],
+        )
+        .then(sign);
+
+      // publish events
+      await publish(
+        [tokenEvent, deleteEvent, history].filter((e) => !!e),
+        wallet.relays,
+      );
+
+      // Clear the stored token from the couch after successful completion
+      await clearStoredToken?.();
+    } catch (error) {
+      // If an error occurs, don't clear the couch (tokens remain for recovery)
+      throw error;
+    }
   };
 }
 
 /** Combines all unlocked token events into a single event per mint */
-export function ConsolidateTokens(opts?: { ignoreLocked?: boolean }): Action {
-  return async function* ({ events, factory, self }) {
-    const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] })).filter((token) => {
-      if (!isTokenContentUnlocked(token)) {
-        if (opts?.ignoreLocked) return false;
-        else throw new Error("Token is locked");
-      } else return true;
-    });
+export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action {
+  return async function* ({ events, factory, self, sign, user, signer, publish }) {
+    const wallet = await getUnlockedWallet(user, signer);
+    const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
 
-    const byMint = tokens.reduce((map, token) => {
-      const mint = getTokenContent(token)!.mint;
+    // Unlock tokens if requested
+    if (options?.unlockTokens) {
+      if (!signer) throw new Error("Missing signer");
+      for (const token of tokens) {
+        if (!isTokenContentUnlocked(token)) {
+          try {
+            await unlockTokenContent(token, signer);
+          } catch {}
+        }
+      }
+    }
+
+    // Collect unlocked tokens
+    const unlockedTokens = tokens.filter(isTokenContentUnlocked);
+
+    // group tokens by mint
+    const byMint = unlockedTokens.reduce((map, token) => {
+      const mint = getTokenContent(token).mint;
       if (!map.has(mint)) map.set(mint, []);
       map.get(mint)!.push(token);
       return map;
-    }, new Map<string, NostrEvent[]>());
+    }, new Map<string, (UnlockedTokenContent & NostrEvent)[]>());
 
     // loop over each mint and consolidate proofs
     for (const [mint, tokens] of byMint) {
       // get all tokens proofs
       const proofs = tokens
-        .map((t) => getTokenContent(t)!.proofs)
+        .map((token) => getTokenContent(token).proofs)
         .flat()
         // filter out duplicate proofs
         .filter(ignoreDuplicateProofs());
 
       // If there are no proofs, just delete the old tokens without interacting with the mint
       if (proofs.length === 0) {
-        const deleteDraft = await factory.create(DeleteBlueprint, tokens);
-        const signedDelete = await factory.sign(deleteDraft);
-        yield signedDelete;
+        const deleteEvent = await factory.create(DeleteBlueprint, tokens).then(sign);
+        await publish(deleteEvent, wallet.relays);
         continue;
       }
 
       // Only interact with the mint if there are proofs to check
-      const cashuMint = new Mint(mint);
-      const cashuWallet = new Wallet(cashuMint);
+      const cashuWallet = new Wallet(mint);
+      await cashuWallet.loadMint();
 
       // NOTE: this assumes that the states array is the same length and order as the proofs array
       const states = await cashuWallet.checkProofsStates(proofs);
       const notSpent: Proof[] = proofs.filter((_, i) => states[i].state !== CheckStateEnum.SPENT);
 
-      // create delete event
-      const deleteDraft = await factory.create(DeleteBlueprint, tokens);
-
       // Only create a token event if there are unspent proofs
-      const tokenDraft =
+      const tokenEvent =
         notSpent.length > 0
-          ? await factory.create(
-              WalletTokenBlueprint,
-              { mint, proofs: notSpent },
-              tokens.map((t) => t.id),
-            )
+          ? await factory
+              .create(
+                WalletTokenBlueprint,
+                { mint, proofs: notSpent },
+                tokens.map((t) => t.id),
+              )
+              .then(sign)
           : undefined;
 
-      // sign events
-      const signedDelete = await factory.sign(deleteDraft);
-      const signedToken = tokenDraft ? await factory.sign(tokenDraft) : undefined;
+      // create delete event
+      const deleteEvent = await factory.create(DeleteBlueprint, tokens).then(sign);
 
-      // publish events for mint
-      if (signedToken) yield signedToken;
-      yield signedDelete;
+      // Publish events
+      await publish(
+        [tokenEvent, deleteEvent].filter((e) => !!e),
+        wallet.relays,
+      );
+    }
+  };
+}
+
+/**
+ * Recovers tokens from a couch by checking if they exist in the wallet,
+ * verifying they are unspent, and creating token events for any recoverable tokens
+ * @param couch the couch interface to recover tokens from
+ */
+export function RecoverFromCouch(couch: Couch): Action {
+  return async function* ({ events, factory, self, sign, user, signer, publish }) {
+    const wallet = await getUnlockedWallet(user, signer);
+
+    // Get all tokens from the couch
+    const couchTokens = await couch.getAll();
+    if (couchTokens.length === 0) return; // No tokens to recover
+
+    // Get all token events from the wallet
+    const walletTokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
+
+    // Unlock wallet tokens if needed
+    if (signer) {
+      for (const token of walletTokens) {
+        if (!isTokenContentUnlocked(token)) {
+          try {
+            await unlockTokenContent(token, signer);
+          } catch {}
+        }
+      }
+    }
+
+    // Collect all proofs from wallet tokens
+    const walletProofs = walletTokens
+      .filter(isTokenContentUnlocked)
+      .map((token) => getTokenContent(token).proofs)
+      .flat();
+
+    // Create a set of seen proof UIDs from wallet
+    const seenProofUIDs = new Set<string>();
+    walletProofs.forEach((proof) => {
+      seenProofUIDs.add(getProofUID(proof));
+    });
+
+    // Group couch tokens by mint
+    const couchTokensByMint = new Map<string, Token[]>();
+    for (const token of couchTokens) {
+      if (!couchTokensByMint.has(token.mint)) {
+        couchTokensByMint.set(token.mint, []);
+      }
+      couchTokensByMint.get(token.mint)!.push(token);
+    }
+
+    // Process each mint group
+    for (const [mint, tokens] of couchTokensByMint) {
+      // Get all proofs from couch tokens for this mint
+      const couchProofs = tokens.flatMap((token) => token.proofs);
+
+      // Filter out proofs that are already in the wallet
+      const newProofs = couchProofs.filter((proof) => {
+        const uid = getProofUID(proof);
+        if (seenProofUIDs.has(uid)) return false;
+        seenProofUIDs.add(uid);
+        return true;
+      });
+
+      if (newProofs.length === 0) continue; // No new proofs to recover
+
+      // Check if proofs are unspent from the mint
+      const cashuWallet = new Wallet(mint);
+      await cashuWallet.loadMint();
+
+      const states = await cashuWallet.checkProofsStates(newProofs);
+      const unspentProofs: Proof[] = newProofs.filter((_, i) => states[i].state !== CheckStateEnum.SPENT);
+
+      if (unspentProofs.length === 0) continue; // No unspent proofs to recover
+
+      // Create a token event with the recovered proofs
+      const recoveredToken: Token = {
+        mint,
+        proofs: unspentProofs,
+        unit: tokens[0]?.unit,
+      };
+
+      const tokenEvent = await factory.create(WalletTokenBlueprint, recoveredToken).then(sign);
+
+      // Publish the token event
+      await publish(tokenEvent, wallet.relays);
     }
   };
 }

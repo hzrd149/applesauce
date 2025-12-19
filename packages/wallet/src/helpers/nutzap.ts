@@ -14,6 +14,7 @@ import {
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { getHistoryRedeemed } from "./history.js";
+import { getProofP2PKPubkey } from "./cashu.js";
 
 export const NUTZAP_KIND = 9321;
 
@@ -115,22 +116,12 @@ export function getNutzapP2PKPubkey(nutzap: NostrEvent): string | undefined {
   let p2pkPubkey: string | undefined;
 
   for (const proof of proofs) {
-    const secret = safeParse(proof.secret);
-    if (!secret) throw new Error("Proof missing secret");
-    if (!Array.isArray(secret)) throw new Error("Invalid proof secret format");
-    if (secret[0] !== "P2PK") throw new Error("Proof is not P2PK locked");
-
-    const proofPubkey = secret[1]?.data;
-    if (!proofPubkey || typeof proofPubkey !== "string") {
-      throw new Error("P2PK proof missing pubkey data");
-    }
-
-    // Normalize pubkey (add 02 prefix if x-only)
-    const normalizedPubkey = proofPubkey.length === 64 ? `02${proofPubkey}` : proofPubkey;
+    const proofPubkey = getProofP2PKPubkey(proof);
+    if (!proofPubkey) throw new Error("Proof is not P2PK locked");
 
     if (!p2pkPubkey) {
-      p2pkPubkey = normalizedPubkey;
-    } else if (p2pkPubkey !== normalizedPubkey) {
+      p2pkPubkey = proofPubkey;
+    } else if (p2pkPubkey !== proofPubkey) {
       throw new Error("Proofs are locked to different pubkeys");
     }
   }

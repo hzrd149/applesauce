@@ -1,12 +1,7 @@
 import { Proof } from "@cashu/cashu-ts";
-import {
-  getOrComputeCachedValue,
-  getPublicKey,
-  mergeRelaySets,
-  NameValueTag,
-  safeParse,
-} from "applesauce-core/helpers";
+import { getOrComputeCachedValue, getPublicKey, mergeRelaySets, NameValueTag } from "applesauce-core/helpers";
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
+import { getProofP2PKPubkey } from "./cashu.js";
 
 export const NUTZAP_INFO_KIND = 10019;
 
@@ -57,11 +52,9 @@ export function verifyProofsLocked(proofs: Proof[], info: NostrEvent) {
   const fullPubkey = pubkey.length === 64 ? `02${pubkey}` : pubkey;
 
   for (const proof of proofs) {
-    const secret = safeParse(proof.secret);
-    if (!secret) throw new Error(`Cashu token must have a spending condition`);
-    if (!Array.isArray(secret)) throw new Error("Invalid spending condition");
-    if (secret[0] !== "P2PK") throw new Error("Token proofs must be P2PK locked");
-    if (secret[1].data !== fullPubkey)
+    const proofPubkey = getProofP2PKPubkey(proof);
+    if (!proofPubkey) throw new Error("Token proofs must be P2PK locked");
+    if (proofPubkey !== fullPubkey)
       throw new Error("Token proofs must be P2PK locked to the recipient's nutzap pubkey");
   }
 }

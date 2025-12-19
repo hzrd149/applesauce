@@ -2,12 +2,8 @@ import { Model, watchEventsUpdates } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { identity, map } from "rxjs";
 
-import {
-  getTokenContent,
-  ignoreDuplicateProofs,
-  isTokenContentUnlocked,
-  WALLET_TOKEN_KIND,
-} from "../helpers/tokens.js";
+import { ignoreDuplicateProofs } from "../helpers/cashu.js";
+import { getTokenContent, isTokenContentUnlocked, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 
 /** removes deleted events from sorted array */
 function filterDeleted<T extends NostrEvent>(tokens: T[]): T[] {
