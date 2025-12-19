@@ -36,7 +36,6 @@ describe("processTags", () => {
     expect(result).toEqual([{ kind: 30000, pubkey: user.pubkey, identifier: "https://identifier.org/" }]);
   });
 
-
   it("should filter out undefined", () => {
     expect(
       processTags([["a", "bad coordinate"], ["e"], ["a", "30000:pubkey:list"]], (tag) =>

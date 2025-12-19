@@ -14,10 +14,10 @@ importers:
   .:
     dependencies:
       '@changesets/cli':
-        specifier: ^2.29.7
+        specifier: ^2.29.8
         version: 2.29.8(@types/node@22.19.3)
       typedoc:
-        specifier: ^0.28.14
+        specifier: ^0.28.15
         version: 0.28.15(typescript@5.9.3)
     devDependencies:
       '@changesets/changelog-git':
@@ -30,13 +30,13 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       '@vitest/browser':
-        specifier: ^4.0.15
+        specifier: ^4.0.16
         version: 4.0.16(vite@7.3.0(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16)
       '@vitest/browser-playwright':
-        specifier: ^4.0.15
+        specifier: ^4.0.16
         version: 4.0.16(playwright@1.57.0)(vite@7.3.0(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16)
       '@vitest/coverage-v8':
-        specifier: ^4.0.15
+        specifier: ^4.0.16
         version: 4.0.16(@vitest/browser@4.0.16(vite@7.3.0(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16))(vitest@4.0.16)
       playwright:
         specifier: ^1.57.0
@@ -45,13 +45,13 @@ importers:
         specifier: ^3.7.4
         version: 3.7.4
       turbo:
-        specifier: ^2.6.1
+        specifier: ^2.6.3
         version: 2.6.3
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.0.15
+        specifier: ^4.0.16
         version: 4.0.16(@types/node@22.19.3)(@vitest/browser-playwright@4.0.16)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
       vitest-websocket-mock:
         specifier: ^0.5.0

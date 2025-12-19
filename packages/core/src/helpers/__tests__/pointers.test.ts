@@ -272,13 +272,13 @@ describe("parseReplaceableAddress", () => {
     });
   });
 
-  it("should only take first part of identifier when identifier contains colons", () => {
+  it("should only take all identifier when identifier contains colons", () => {
     // Note: split(":") splits on all colons, so parts[2] only gets the first part after the second colon
     const result = parseReplaceableAddress(`30023:${validPubkey}:part1:part2:part3`);
     expect(result).toEqual({
       kind: 30023,
       pubkey: validPubkey,
-      identifier: "part1",
+      identifier: "part1:part2:part3",
     });
   });
 

@@ -4,14 +4,8 @@ import { EncryptedContentSymbol, isEncryptedContentUnlocked, unixNow } from "app
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { WalletTokenBlueprint } from "../../blueprints/tokens.js";
-import {
-  decodeTokenFromEmojiString,
-  dumbTokenSelection,
-  encodeTokenToEmoji,
-  isTokenContentUnlocked,
-  unlockTokenContent,
-  WALLET_TOKEN_KIND,
-} from "../tokens.js";
+import { decodeTokenFromEmojiString, encodeTokenToEmoji } from "../cashu.js";
+import { dumbTokenSelection, isTokenContentUnlocked, unlockTokenContent, WALLET_TOKEN_KIND } from "../tokens.js";
 import { setToken } from "../../operations/tokens";
 
 const user = new FakeUser();

@@ -14,21 +14,21 @@
     "test:browser": "vitest"
   },
   "dependencies": {
-    "@changesets/cli": "^2.29.7",
-    "typedoc": "^0.28.14"
+    "@changesets/cli": "^2.29.8",
+    "typedoc": "^0.28.15"
   },
   "devDependencies": {
     "@changesets/changelog-git": "^0.2.1",
     "@changesets/types": "^6.1.0",
-    "@vitest/browser": "^4.0.15",
-    "@vitest/browser-playwright": "^4.0.15",
-    "@vitest/coverage-v8": "^4.0.15",
+    "@hirez_io/observer-spy": "^2.2.0",
+    "@vitest/browser": "^4.0.16",
+    "@vitest/browser-playwright": "^4.0.16",
+    "@vitest/coverage-v8": "^4.0.16",
     "playwright": "^1.57.0",
     "prettier": "^3.7.4",
-    "turbo": "^2.6.1",
+    "turbo": "^2.6.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.15",
-    "@hirez_io/observer-spy": "^2.2.0",
+    "vitest": "^4.0.16",
     "vitest-websocket-mock": "^0.5.0"
   },
   "engines": {
