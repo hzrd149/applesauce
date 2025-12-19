@@ -1,5 +1,5 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { unixNow } from "../../helpers";
 import { ExpirationManager } from "../expiration-manager.js";
@@ -8,7 +8,12 @@ let expirationManager: ExpirationManager;
 const user = new FakeUser();
 
 beforeEach(() => {
+  vi.useFakeTimers();
   expirationManager = new ExpirationManager();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("track", () => {
@@ -66,7 +71,7 @@ describe("expired$ stream", () => {
     const spy = subscribeSpyTo(expirationManager.expired$);
 
     // Wait for expiration
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await vi.advanceTimersByTimeAsync(1100);
 
     // Should emit the expired event ID
     expect(spy.getValues()).toContain(event.id);

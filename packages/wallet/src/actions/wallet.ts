@@ -8,6 +8,9 @@ import { setNutzapInfoPubkey } from "../operations/nutzap-info.js";
 import { setMints, setRelays } from "../operations/wallet.js";
 import { getUnlockedWallet } from "./common.js";
 
+// Make sure the wallet$ is registered on the user class
+import "../casts/__register__.js";
+
 /** An action that creates a new 17375 wallet event and 375 wallet backup */
 export function CreateWallet({
   mints,
@@ -53,7 +56,7 @@ export function CreateWallet({
  * @throws if the wallet does not exist or cannot be unlocked
  */
 export function WalletAddPrivateKey(privateKey: Uint8Array, override = false): Action {
-  return async function* ({ events, self, factory, user, signer, sign, publish }) {
+  return async ({ events, self, factory, user, signer, sign, publish }) => {
     const wallet = await getUnlockedWallet(user, signer);
     if (wallet.privateKey && override !== true) throw new Error("Wallet already has a private key");
 
@@ -77,7 +80,7 @@ export function WalletAddPrivateKey(privateKey: Uint8Array, override = false): A
 
 /** Unlocks the wallet event and optionally the tokens and history events */
 export function UnlockWallet(unlock?: { history?: boolean; tokens?: boolean }): Action {
-  return async function* ({ events, self, factory }) {
+  return async ({ events, self, factory }) => {
     const signer = factory.context.signer;
     if (!signer) throw new Error("Missing signer");
 

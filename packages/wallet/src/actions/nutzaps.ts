@@ -11,46 +11,67 @@ import { verifyProofsLocked } from "../helpers/nutzap-info.js";
 import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
 import { getUnlockedWallet } from "./common.js";
 
+// Make sure the nutzap$ is registered on the user class
+import "../casts/__register__.js";
+
 /** Creates a NIP-61 nutzap event for an event with a token */
-export function NutzapEvent(event: NostrEvent, token: Token, comment?: string): Action {
+export function NutzapEvent(event: NostrEvent, token: Token, options?: { comment?: string; couch?: Couch }): Action {
   return async ({ events, factory, user, signer, sign, publish }) => {
-    const recipient = castUser(event.pubkey, events);
+    const { comment, couch } = options ?? {};
 
-    // Get the recipient's nutzap info
-    const info = await recipient.nutzap$.$first(5_000).catch(() => undefined);
-    if (!info) throw new Error("Nutzap info not found");
+    const clearStoredToken = await couch?.store(token);
+    try {
+      const recipient = castUser(event.pubkey, events);
 
-    // Get the users wallet
-    const wallet = await getUnlockedWallet(user, signer);
+      // Get the recipient's nutzap info
+      const info = await recipient.nutzap$.$first(5000, undefined);
+      if (!info) throw new Error("Nutzap info not found");
 
-    // Verify all tokens are p2pk locked
-    verifyProofsLocked(token.proofs, info.event);
+      // Get the users wallet
+      const wallet = await getUnlockedWallet(user, signer);
 
-    // Create the nutzap event
-    const nutzap = await factory.create(NutzapBlueprint, event, token, comment || token.memo).then(sign);
+      // Verify all tokens are p2pk locked
+      verifyProofsLocked(token.proofs, info.event);
 
-    // Publish the nutzap event
-    await publish(nutzap, wallet.relays);
+      // Create the nutzap event
+      const nutzap = await factory.create(NutzapBlueprint, event, token, comment || token.memo).then(sign);
+
+      // Publish the nutzap event
+      await publish(nutzap, wallet.relays);
+    } catch {}
+
+    await clearStoredToken?.();
   };
 }
 
 /** Creates a NIP-61 nutzap event to a users profile */
-export function NutzapProfile(user: string | ProfilePointer, token: Token, comment?: string): Action {
+export function NutzapProfile(
+  user: string | ProfilePointer,
+  token: Token,
+  options?: { comment?: string; couch?: Couch },
+): Action {
   return async ({ events, factory, sign, publish }) => {
-    const recipient = castUser(user, events);
+    const { comment, couch } = options ?? {};
 
-    // Get the target's nutzap info
-    const info = await recipient.nutzap$.$first(5_000).catch(() => undefined);
-    if (!info) throw new Error("Nutzap info not found");
+    const clearStoredToken = await couch?.store(token);
+    try {
+      const recipient = castUser(user, events);
 
-    // Verify all tokens are p2pk locked
-    verifyProofsLocked(token.proofs, info.event);
+      // Get the target's nutzap info
+      const info = await recipient.nutzap$.$first(5000, undefined);
+      if (!info) throw new Error("Nutzap info not found");
 
-    // Create the nutzap event
-    const nutzap = await factory.create(ProfileNutzapBlueprint, recipient, token, comment || token.memo).then(sign);
+      // Verify all tokens are p2pk locked
+      verifyProofsLocked(token.proofs, info.event);
 
-    // Publish the nutzap event
-    await publish(nutzap, info.relays);
+      // Create the nutzap event
+      const nutzap = await factory.create(ProfileNutzapBlueprint, recipient, token, comment || token.memo).then(sign);
+
+      // Publish the nutzap event
+      await publish(nutzap, info.relays);
+    } catch {}
+
+    await clearStoredToken?.();
   };
 }
 
@@ -62,7 +83,7 @@ export function NutzapProfile(user: string | ProfilePointer, token: Token, comme
  * @param couch optional couch interface for temporarily storing tokens during the operation
  */
 export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[], couch?: Couch): Action {
-  return async function* ({ factory, user, signer, sign, publish }) {
+  return async ({ factory, user, signer, sign, publish }) => {
     if (!signer) throw new Error("Missing signer");
 
     // Normalize to array

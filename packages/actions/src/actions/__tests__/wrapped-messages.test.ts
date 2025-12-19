@@ -18,6 +18,10 @@ beforeEach(() => {
   events = new EventStore();
   factory = new EventFactory({ signer: bob });
   hub = new ActionHub(events, factory);
+
+  events.add(bob.event({ kind: kinds.DirectMessageRelaysList, tags: [["r", "wss://relay.example.com/"]] }));
+  events.add(alice.event({ kind: kinds.DirectMessageRelaysList, tags: [["r", "wss://relay.example.com/"]] }));
+  events.add(carol.event({ kind: kinds.DirectMessageRelaysList, tags: [["r", "wss://relay.example.com/"]] }));
 });
 
 describe("SendWrappedMessage", () => {

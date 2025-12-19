@@ -7,7 +7,7 @@ import { Action } from "../action-hub.js";
 function ModifyBlossomServersEvent(operations: EventOperation[]): Action {
   return async ({ factory, user, publish, sign }) => {
     const [event, outboxes] = await Promise.all([
-      user.replaceable(BLOSSOM_SERVER_LIST_KIND, user.pubkey).$first(1000, undefined),
+      user.replaceable(BLOSSOM_SERVER_LIST_KIND).$first(1000, undefined),
       user.outboxes$.$first(1000, undefined),
     ]);
 

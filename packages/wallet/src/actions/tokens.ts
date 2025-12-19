@@ -16,6 +16,9 @@ import {
 } from "../helpers/tokens.js";
 import { getUnlockedWallet } from "./common.js";
 
+// Make sure the wallet$ is registered on the user class
+import "../casts/__register__.js";
+
 /**
  * Adds a cashu token to the wallet and creates a history event
  * @param token the cashu token to add
@@ -90,7 +93,7 @@ export function ReceiveToken(token: Token, options?: { addHistory?: boolean; cou
 
 /** An action that deletes old tokens and creates a new one but does not add a history event */
 export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
-  return async function* ({ factory, user, publish, signer, sign }) {
+  return async ({ factory, user, publish, signer, sign }) => {
     const wallet = await getUnlockedWallet(user, signer);
 
     // create a new token event
@@ -111,7 +114,7 @@ export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
 
 /** An action that deletes old token events and adds a spend history item */
 export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch): Action {
-  return async function* ({ factory, user, publish, signer, sign }) {
+  return async ({ factory, user, publish, signer, sign }) => {
     if (spent.length === 0) throw new Error("Cant complete spent with no token events");
 
     const unlocked = spent.filter(isTokenContentUnlocked);
@@ -174,7 +177,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
 
 /** Combines all unlocked token events into a single event per mint */
 export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action {
-  return async function* ({ events, factory, self, sign, user, signer, publish }) {
+  return async ({ events, factory, self, sign, user, signer, publish }) => {
     const wallet = await getUnlockedWallet(user, signer);
     const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
 
@@ -255,7 +258,7 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action 
  * @param couch the couch interface to recover tokens from
  */
 export function RecoverFromCouch(couch: Couch): Action {
-  return async function* ({ events, factory, self, sign, user, signer, publish }) {
+  return async ({ events, factory, self, sign, user, signer, publish }) => {
     const wallet = await getUnlockedWallet(user, signer);
 
     // Get all tokens from the couch

@@ -33,7 +33,9 @@ export function getNutzapInfoMints(event: NostrEvent): { mint: string; units?: s
 
 /** Returns the pubkey for P2PK-locking from a kind:10019 nutzap info event */
 export function getNutzapInfoPubkey(event: NostrEvent): string | undefined {
-  return event.tags.find((t) => t[0] === "pubkey")?.[1];
+  const pubkey = event.tags.find((t) => t[0] === "pubkey")?.[1];
+  if (!pubkey) return undefined;
+  return pubkey.length === 64 ? `02${pubkey}` : pubkey;
 }
 
 /** Returns the P2PK pubkey from a kind:10019 nutzap info event */
@@ -49,13 +51,10 @@ export function verifyProofsLocked(proofs: Proof[], info: NostrEvent) {
   const pubkey = getNutzapInfoPubkey(info);
   if (!pubkey) throw new Error("Nutzap info must have a pubkey");
 
-  const fullPubkey = pubkey.length === 64 ? `02${pubkey}` : pubkey;
-
   for (const proof of proofs) {
     const proofPubkey = getProofP2PKPubkey(proof);
     if (!proofPubkey) throw new Error("Token proofs must be P2PK locked");
-    if (proofPubkey !== fullPubkey)
-      throw new Error("Token proofs must be P2PK locked to the recipient's nutzap pubkey");
+    if (proofPubkey !== pubkey) throw new Error("Token proofs must be P2PK locked to the recipient's nutzap pubkey");
   }
 }
 

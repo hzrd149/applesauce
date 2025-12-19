@@ -123,26 +123,6 @@ describe("ActionHub", () => {
 
       expect(publish).toHaveBeenCalled();
     });
-
-    it("should handle actions that yield multiple events", async () => {
-      const publish = vi.fn().mockResolvedValue(undefined);
-      const event1 = user.note("first");
-      const event2 = user.note("second");
-
-      const actionBuilder = () => {
-        const action: Action = async function* () {
-          yield event1;
-          yield event2;
-        };
-        return action;
-      };
-
-      const hub = new ActionHub(events, factory, publish);
-      await hub.run(actionBuilder);
-
-      // First call is with array of events, then individual events
-      expect(publish).toHaveBeenCalled();
-    });
   });
 
   describe("context", () => {

@@ -1,53 +1,32 @@
-import { Mint, MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
+import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
 import { ActionHub } from "applesauce-actions";
-import { EventFactory, EventStore } from "applesauce-core";
+import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { RelayPool } from "applesauce-relay";
+import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
 import {
   getNutzapInfoMints,
   getNutzapInfoPubkey,
   getNutzapInfoRelays,
+  IndexedDBCouch,
   NUTZAP_INFO_KIND,
 } from "applesauce-wallet/helpers";
 import { npubEncode } from "nostr-tools/nip19";
-import { useState } from "react";
-import { startWith } from "rxjs/operators";
-
-// Preset list of npubs that can be zapped
-const PRESET_NPUBS = [
-  {
-    name: "hzrd149",
-    pubkey: "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5",
-    relays: ["wss://nostrue.com/", "wss://relay.damus.io/"],
-  },
-  {
-    name: "PABLOF7z",
-    pubkey: "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
-    relays: ["wss://f7z.io/", "wss://relay.primal.net/"],
-  },
-  {
-    name: "verbiricha",
-    pubkey: "7fa56f5d6962ab1e3cd424e758c3002b8665f7b0d8dcee9fe9e288d7751ac194",
-    relays: ["wss://frens.nostr1.com/", "wss://pyramid.fiatjaf.com/"],
-  },
-  {
-    name: "calle",
-    pubkey: "50d94fc2d8580c682b071a542f8b1e31a200b0508bab95a33bef0855df281d63",
-    relays: ["wss://relay.damus.io/", "wss://relay.primal.net/"],
-  },
-];
+import { useEffect, useState } from "react";
+import { map } from "rxjs";
+import RelayPicker from "../../components/relay-picker";
 
 // Global state
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const factory = new EventFactory({ signer: signer });
-const actionHub = new ActionHub(eventStore, factory, async () => {});
+const actions = new ActionHub(eventStore, factory, (event, relays) => pool.publish(relays ?? [], event));
+const couch = new IndexedDBCouch();
 
 // Create an address loader to load user profiles
 // Create unified event loader for the store
@@ -56,6 +35,52 @@ createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
   lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
+
+// Timeline item component for displaying nutzap info events
+function TimelineItem({
+  nutzapInfo,
+  onSelect,
+}: {
+  nutzapInfo: NostrEvent;
+  onSelect: (nutzapInfo: NostrEvent) => void;
+}) {
+  const mints = getNutzapInfoMints(nutzapInfo);
+
+  // Load the actual profile data
+  const profile = use$(
+    () => eventStore.profile({ pubkey: nutzapInfo.pubkey, relays: mergeRelaySets(getSeenRelays(nutzapInfo)) }),
+    [nutzapInfo],
+  );
+
+  const displayName = getDisplayName(profile) || npubEncode(nutzapInfo.pubkey);
+  const picture = getProfilePicture(profile, `https://robohash.org/${nutzapInfo.pubkey}.png`);
+
+  return (
+    <div
+      className="card bg-base-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      onClick={() => onSelect(nutzapInfo)}
+    >
+      <div className="card-body p-4">
+        <div className="flex items-center gap-3">
+          <div className="avatar">
+            <div className="w-12 rounded-full">
+              <img src={picture} alt={displayName} />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold truncate">{displayName}</h3>
+            <p className="text-xs opacity-70 truncate">{npubEncode(nutzapInfo.pubkey)}</p>
+          </div>
+          <div className="text-right">
+            <div className="badge badge-primary">
+              {mints.length} mint{mints.length !== 1 ? "s" : ""}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Profile card component
 function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
@@ -155,14 +180,24 @@ function QRCode({ value }: { value: string }) {
 function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent?: () => void }) {
   const [amount, setAmount] = useState(21);
   const [comment, setComment] = useState("");
+  const [selectedMint, setSelectedMint] = useState<string>("");
   const [quote, setQuote] = useState<MintQuoteResponse | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState<"input" | "invoice" | "paid">("input");
 
   const mints = getNutzapInfoMints(nutzapInfo);
-  const firstMint = mints[0]?.mint;
   const rawNutzapPubkey = getNutzapInfoPubkey(nutzapInfo);
   const nutzapRelays = getNutzapInfoRelays(nutzapInfo);
+
+  // Set default selected mint when mints change
+  useEffect(() => {
+    if (mints.length > 0) {
+      // If no mint is selected or the selected mint is not in the current mints, select the first one
+      if (!selectedMint || !mints.some((m) => m.mint === selectedMint)) {
+        setSelectedMint(mints[0].mint);
+      }
+    }
+  }, [mints, selectedMint]);
 
   // Ensure pubkey is properly prefixed with "02" for NIP-61 compliance
   const nutzapPubkey = rawNutzapPubkey
@@ -172,7 +207,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
     : null;
 
   const handleZap = async () => {
-    if (!firstMint || !nutzapPubkey) {
+    if (!selectedMint || !nutzapPubkey) {
       alert("Profile doesn't have proper nutzap info");
       return;
     }
@@ -180,8 +215,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
     setIsProcessing(true);
     try {
       // Create mint and wallet
-      const mint = new Mint(firstMint);
-      const wallet = new Wallet(mint);
+      const wallet = new Wallet(selectedMint);
       await wallet.loadMint(); // Load mint keys
 
       // Request a quote for minting
@@ -189,40 +223,39 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
       setQuote(quote);
       setStatus("invoice");
 
-      // Start checking payment status
-      const checkPayment = async () => {
-        try {
-          const quoteStatus = await wallet.checkMintQuoteBolt11(quote.quote);
-          if (quoteStatus.state === "PAID") {
-            // Mint proofs with P2PK lock using the new wallet.ops API
-            const proofs = await (wallet.ops as any).mint(amount, quote.quote).asP2PK({ pubkey: nutzapPubkey }).run();
+      // Wait for payment using WebSocket (5 minute timeout)
+      try {
+        await wallet.on.onceMintPaid(quote.quote, {
+          timeoutMs: 60_000, // 1 minute
+        });
 
-            // Create token from proofs
-            const tokens = { mint: firstMint, proofs: proofs, unit: "sat" };
+        // Payment received - mint proofs with P2PK lock using the new wallet.ops API
+        const proofs = await wallet.ops.mintBolt11(amount, quote.quote).asP2PK({ pubkey: nutzapPubkey }).run();
 
-            // Create nutzap event
-            await actionHub.exec(NutzapProfile, nutzapInfo.pubkey, tokens, comment).forEach(async (event) => {
-              // Publish to nutzap relays
-              try {
-                await pool.publish(nutzapRelays, event);
-              } catch (error) {
-                console.error("Failed to publish", error);
-              }
-            });
+        // Create token from proofs
+        const tokens = { mint: selectedMint, proofs: proofs, unit: "sat" };
 
-            setStatus("paid");
-            onZapSent?.();
+        // Create nutzap event
+        await actions.exec(NutzapProfile, nutzapInfo.pubkey, tokens, { comment, couch }).forEach(async (event) => {
+          try {
+            await pool.publish(nutzapRelays, event);
+          } catch (error) {
+            console.error("Failed to publish", error);
           }
-        } catch (error) {
-          console.error("Payment check failed:", error);
+        });
+
+        setStatus("paid");
+        onZapSent?.();
+      } catch (paymentError) {
+        const errorMessage = (paymentError as Error).message;
+        if (errorMessage.includes("Timeout") || errorMessage.includes("timeout")) {
+          console.error("Payment timeout:", paymentError);
+          alert("Payment not received within 5 minutes");
+        } else {
+          console.error("Payment failed:", paymentError);
+          alert("Failed to receive payment: " + errorMessage);
         }
-      };
-
-      // Poll for payment every 2 seconds
-      const pollInterval = setInterval(checkPayment, 2000);
-
-      // Stop polling after 5 minutes
-      setTimeout(() => clearInterval(pollInterval), 300000);
+      }
     } catch (error) {
       console.error("Zap failed:", error);
       alert("Failed to create zap: " + error);
@@ -237,12 +270,33 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Zap Profile</h2>
           <form method="dialog">
-            <button className="btn btn-sm btn-circle btn-ghost">✕</button>
+            <button className="btn btn-circle btn-ghost">✕</button>
           </form>
         </div>
 
         {status === "input" && (
           <div className="space-y-4">
+            <div>
+              <label className="label">Mint</label>
+              <select
+                className="select select-bordered w-full"
+                value={selectedMint}
+                onChange={(e) => setSelectedMint(e.target.value)}
+                disabled={mints.length === 0}
+              >
+                {mints.length === 0 ? (
+                  <option value="">No mints available</option>
+                ) : (
+                  mints.map((mint, i) => (
+                    <option key={i} value={mint.mint}>
+                      {mint.mint}
+                      {mint.units && mint.units.length > 0 && ` (${mint.units.join(", ")})`}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
             <div>
               <label className="label">Amount (sats)</label>
               <input
@@ -268,7 +322,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
               <form method="dialog">
                 <button className="btn btn-ghost">Cancel</button>
               </form>
-              <button onClick={handleZap} className="btn btn-primary" disabled={isProcessing}>
+              <button onClick={handleZap} className="btn btn-primary" disabled={isProcessing || !selectedMint}>
                 {isProcessing ? "Processing..." : "Create Zap"}
               </button>
             </div>
@@ -310,20 +364,29 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
 }
 
 export default function ZapProfile() {
-  const [selected, setSelected] = useState<string>("");
+  const [selectedNutzapInfo, setSelectedNutzapInfo] = useState<NostrEvent | null>(null);
+  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
 
-  // Load nutzap info for selected npub using address loader
-  const nutzapInfo = use$(() => {
-    if (!selected) return undefined;
+  // Create a timeline observable for NUTZAP_INFO_KIND events
+  const timeline = use$(() => {
+    if (relay.length === 0) return undefined;
 
-    return eventStore
-      .replaceable({
-        kind: NUTZAP_INFO_KIND,
-        pubkey: selected,
-        relays: PRESET_NPUBS.find((p) => p.pubkey === selected)?.relays,
+    return pool
+      .relay(relay)
+      .subscription({
+        kinds: [NUTZAP_INFO_KIND],
       })
-      .pipe(startWith(undefined));
-  }, [selected]);
+      .pipe(
+        // Only get events from relays (ignore EOSE)
+        onlyEvents(),
+        // deduplicate events using the event store
+        mapEventsToStore(eventStore),
+        // collect all events into a timeline
+        mapEventsToTimeline(),
+        // Duplicate the timeline array to make react happy
+        map((t) => [...t]),
+      );
+  }, [relay]);
 
   return (
     <div className="container mx-auto my-8 p-4">
@@ -331,42 +394,61 @@ export default function ZapProfile() {
         <h1 className="text-3xl font-bold">Nutzap Profile</h1>
       </div>
 
-      <div className="text-center mb-6">
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Choose a profile:</label>
-          <select
-            className="select select-bordered w-full max-w-xs"
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-          >
-            <option value="">Select a profile...</option>
-            {PRESET_NPUBS.map((profile) => (
-              <option key={profile.pubkey} value={profile.pubkey}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
+      {selectedNutzapInfo ? (
+        <div className="space-y-4">
+          <button className="btn" onClick={() => setSelectedNutzapInfo(null)}>
+            ← Back to timeline
+          </button>
+          <ProfileCard nutzapInfo={selectedNutzapInfo} />
+          <ZapModal
+            nutzapInfo={selectedNutzapInfo}
+            onZapSent={() => {
+              // Optionally close modal or show success
+            }}
+          />
         </div>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Relay Selection */}
+          <RelayPicker value={relay} onChange={setRelay} className="flex-1" />
 
-      {selected && !nutzapInfo && (
-        <div className="text-center">
-          <span className="loading loading-spinner loading-lg"></span>
-          <p className="mt-4">Loading nutzap info...</p>
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold mb-2">Recent Nutzap Profiles</h2>
+            <p className="text-sm opacity-70">Click on a profile to view details and zap them</p>
+          </div>
+
+          {!timeline && relay.length > 0 && (
+            <div className="text-center py-8">
+              <span className="loading loading-spinner loading-lg"></span>
+              <p className="mt-4">Loading nutzap profiles...</p>
+            </div>
+          )}
+
+          {relay.length === 0 && (
+            <div className="text-center py-8">
+              <div className="alert alert-warning max-w-md mx-auto">
+                <span>Please add at least one relay to query for nutzap profiles.</span>
+              </div>
+            </div>
+          )}
+
+          {timeline && timeline.length === 0 && relay.length > 0 && (
+            <div className="text-center py-8">
+              <div className="alert alert-info max-w-md mx-auto">
+                <span>No nutzap profiles found. Profiles will appear here as they are discovered.</span>
+              </div>
+            </div>
+          )}
+
+          {timeline && timeline.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {timeline.map((nutzapInfo) => (
+                <TimelineItem key={nutzapInfo.id} nutzapInfo={nutzapInfo} onSelect={setSelectedNutzapInfo} />
+              ))}
+            </div>
+          )}
         </div>
       )}
-
-      {nutzapInfo ? (
-        <ProfileCard nutzapInfo={nutzapInfo} />
-      ) : selected ? (
-        <div className="text-center">
-          <div className="alert alert-warning max-w-md mx-auto">
-            <span>No nutzap info found for this profile</span>
-          </div>
-        </div>
-      ) : null}
-
-      {nutzapInfo && <ZapModal nutzapInfo={nutzapInfo} />}
     </div>
   );
 }

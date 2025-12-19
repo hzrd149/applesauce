@@ -622,18 +622,15 @@ function ConsolidateTool({ wallet }: { wallet: Wallet }) {
 function RecoverFromCouchTool({ wallet }: { wallet: Wallet }) {
   const [recovering, setRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const handleRecover = useCallback(async () => {
     if (!wallet.unlocked) return setError("Wallet must be unlocked to recover tokens from couch");
 
     setRecovering(true);
     setError(null);
-    setSuccess(null);
 
     try {
       await actions.run(RecoverFromCouch, couch);
-      setSuccess("Tokens recovered successfully from couch");
     } catch (err) {
       console.error("Failed to recover tokens from couch:", err);
       setError(err instanceof Error ? err.message : "Failed to recover tokens from couch");
@@ -662,11 +659,6 @@ function RecoverFromCouchTool({ wallet }: { wallet: Wallet }) {
       {error && (
         <div className="alert alert-error mt-4">
           <span>{error}</span>
-        </div>
-      )}
-      {success && (
-        <div className="alert alert-success mt-4">
-          <span>{success}</span>
         </div>
       )}
     </div>

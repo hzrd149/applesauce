@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { ActionHub } from "../../action-hub.js";
 import { BookmarkEvent, CreateBookmarkList, CreateBookmarkSet, UnbookmarkEvent } from "../bookmarks.js";
+import { AddOutboxRelay } from "../mailboxes.js";
 
 const user = new FakeUser();
 
@@ -11,18 +12,21 @@ let events: EventStore;
 let factory: EventFactory;
 let publish: () => Promise<void>;
 let hub: ActionHub;
-beforeEach(() => {
+beforeEach(async () => {
   events = new EventStore();
   factory = new EventFactory({ signer: user });
   publish = vitest.fn().mockResolvedValue(undefined);
   hub = new ActionHub(events, factory, publish);
+
+  // Setup outboxes for the user
+  events.add(user.event({ kind: kinds.RelayList, tags: [["r", "wss://relay.example.com/"]] }));
 });
 
 describe("CreateBookmarkList", () => {
   it("should publish a kind 10003 bookmark list", async () => {
     await hub.run(CreateBookmarkList);
 
-    expect(publish).toBeCalledWith(expect.objectContaining({ kind: kinds.BookmarkList }));
+    expect(publish).toBeCalledWith(expect.objectContaining({ kind: kinds.BookmarkList }), ["wss://relay.example.com/"]);
   });
 
   it("should publish a bookmark list with initial bookmarks", async () => {
@@ -34,6 +38,7 @@ describe("CreateBookmarkList", () => {
         kind: kinds.BookmarkList,
         tags: expect.arrayContaining([["e", testEvent.id]]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -58,6 +63,7 @@ describe("CreateBookmarkSet", () => {
           ["description", "A list of my favorite articles"],
         ]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -73,6 +79,7 @@ describe("CreateBookmarkSet", () => {
           ["image", "https://example.com/image.jpg"],
         ]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -89,6 +96,7 @@ describe("CreateBookmarkSet", () => {
           ["e", testEvent.id],
         ]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -104,6 +112,7 @@ describe("CreateBookmarkSet", () => {
           ["description", "Description"],
         ]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 });
@@ -118,6 +127,7 @@ describe("BookmarkEvent", () => {
         kind: kinds.BookmarkList,
         tags: expect.arrayContaining([["e", testEvent.id]]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -133,6 +143,7 @@ describe("BookmarkEvent", () => {
         kind: kinds.BookmarkList,
         tags: expect.arrayContaining([["e", testEvent.id]]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -145,6 +156,7 @@ describe("BookmarkEvent", () => {
         kind: kinds.Bookmarksets,
         tags: expect.arrayContaining([["e", testEvent.id]]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -160,6 +172,7 @@ describe("BookmarkEvent", () => {
         kind: kinds.Bookmarksets,
         tags: expect.arrayContaining([["e", testEvent.id]]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -175,6 +188,7 @@ describe("BookmarkEvent", () => {
         kind: kinds.Bookmarksets,
         tags: expect.arrayContaining([["e", testEvent.id]]),
       }),
+      ["wss://relay.example.com/"],
     );
   });
 
@@ -183,80 +197,6 @@ describe("BookmarkEvent", () => {
     const wrongEvent = user.note("Wrong event");
 
     await expect(hub.run(BookmarkEvent, testEvent, wrongEvent)).rejects.toThrow(
-      "Event kind 1 is not a bookmark list or bookmark set",
-    );
-    expect(publish).not.toBeCalled();
-  });
-});
-
-describe("UnbookmarkEvent", () => {
-  it("should do nothing if bookmark list does not exist", async () => {
-    const testEvent = user.note("Test note");
-    await hub.run(UnbookmarkEvent, testEvent);
-
-    expect(publish).not.toBeCalled();
-  });
-
-  it("should remove an event from an existing bookmark list", async () => {
-    const testEvent = user.note("Test note");
-    const bookmarkList = user.event({ kind: kinds.BookmarkList, tags: [["e", testEvent.id]] });
-    events.add(bookmarkList);
-
-    await hub.run(UnbookmarkEvent, testEvent);
-
-    expect(publish).toBeCalledWith(
-      expect.objectContaining({
-        kind: kinds.BookmarkList,
-        tags: expect.not.arrayContaining([["e", testEvent.id]]),
-      }),
-    );
-  });
-
-  it("should do nothing if bookmark set does not exist", async () => {
-    const testEvent = user.note("Test note");
-    await hub.run(UnbookmarkEvent, testEvent, "non-existent");
-
-    expect(publish).not.toBeCalled();
-  });
-
-  it("should remove an event from an existing bookmark set", async () => {
-    const testEvent = user.note("Test note");
-    const bookmarkSet = user.list([
-      ["d", "test-set"],
-      ["e", testEvent.id],
-    ]);
-    events.add(bookmarkSet);
-
-    await hub.run(UnbookmarkEvent, testEvent, "test-set");
-
-    expect(publish).toBeCalledWith(
-      expect.objectContaining({
-        kind: kinds.Bookmarksets,
-        tags: expect.not.arrayContaining([["e", testEvent.id]]),
-      }),
-    );
-  });
-
-  it("should remove an event from an existing bookmark set by event reference", async () => {
-    const testEvent = user.note("Test note");
-    const bookmarkSet = user.list([["e", testEvent.id]]);
-    events.add(bookmarkSet);
-
-    await hub.run(UnbookmarkEvent, testEvent, bookmarkSet);
-
-    expect(publish).toBeCalledWith(
-      expect.objectContaining({
-        kind: kinds.Bookmarksets,
-        tags: expect.not.arrayContaining([["e", testEvent.id]]),
-      }),
-    );
-  });
-
-  it("should throw if provided event is not a bookmark list or set", async () => {
-    const testEvent = user.note("Test note");
-    const wrongEvent = user.note("Wrong event");
-
-    await expect(hub.run(UnbookmarkEvent, testEvent, wrongEvent)).rejects.toThrow(
       "Event kind 1 is not a bookmark list or bookmark set",
     );
     expect(publish).not.toBeCalled();

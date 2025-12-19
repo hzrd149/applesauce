@@ -10,6 +10,9 @@ import {
   setNutzapInfoRelays,
 } from "../operations/nutzap-info.js";
 
+// Make sure the nutzap$ is registered on the user class
+import "../casts/__register__.js";
+
 /** An action to add a relay to the kind 10019 nutzap info event */
 export function AddNutzapInfoRelay(relay: string | string[]): Action {
   return async ({ events, factory, self, sign, publish }) => {

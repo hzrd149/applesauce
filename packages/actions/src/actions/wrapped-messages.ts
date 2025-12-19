@@ -23,13 +23,13 @@ export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOpt
     await Promise.allSettled(
       Array.from(pubkeys).map(async (pubkey) => {
         const receiver = castUser(pubkey, events);
-        const [inboxes, directMessageRelays] = await Promise.all([
-          receiver.inboxes$.$first(1_000, undefined),
-          receiver.directMessageRelays$.$first(1_000, undefined),
-        ]);
 
         // Use the dm relays or inboxes as the inbox relays for the participant
-        inboxRelays.set(pubkey, directMessageRelays ?? inboxes ?? undefined);
+        const relays =
+          (await receiver.directMessageRelays$.$first(1_000, undefined)) ??
+          (await receiver.inboxes$.$first(1_000, undefined));
+
+        if (relays) inboxRelays.set(pubkey, relays);
       }),
     );
 

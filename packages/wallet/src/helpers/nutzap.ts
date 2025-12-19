@@ -90,7 +90,6 @@ export function isValidNutzap(nutzap: NostrEvent): nutzap is NutzapEvent {
   if (nutzap.kind !== NUTZAP_KIND) return false;
 
   // Check if the nutzap has a mint, recipient, and proofs
-  if (getNutzapPointer(nutzap) === undefined) return false;
   if (getNutzapMint(nutzap) === undefined) return false;
   if (getNutzapRecipient(nutzap) === undefined) return false;
   if (getNutzapProofs(nutzap).length === 0) return false;

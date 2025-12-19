@@ -21,10 +21,10 @@ export function SetListMetadata(
     image?: string;
   },
 ): Action {
-  return async function* ({ events, factory, sign }) {
+  return async ({ events, factory, sign, publish }) => {
     list = getList(events, list);
 
-    yield await factory
+    const signed = await factory
       .modify(
         list,
         List.setTitle(info.title ?? null),
@@ -32,5 +32,7 @@ export function SetListMetadata(
         List.setImage(info.image ?? null),
       )
       .then(sign);
+
+    await publish(signed);
   };
 }
