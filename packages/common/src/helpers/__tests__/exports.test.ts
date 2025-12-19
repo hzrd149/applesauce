@@ -283,6 +283,7 @@ describe("exports", () => {
         "isValidBookmarkList",
         "isValidBookmarkSet",
         "isValidComment",
+        "isValidDirectMessageRelaysList",
         "isValidFavoriteRelaysList",
         "isValidLegacyMessage",
         "isValidList",

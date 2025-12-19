@@ -205,6 +205,23 @@ export class User {
       ),
     );
   }
+  get directMessageRelays$() {
+    return this.$$ref("dmRelays$", (store) =>
+      combineLatest([
+        // Import the DMRelays class
+        defer(() => from(import("./relay-lists.js").then((m) => m.DirectMessageRelays))),
+        // Get outboxes and start without them
+        this.outboxes$,
+      ]).pipe(
+        // Fetch the DM relays list event from the outboxes
+        switchMap(([DMRelaysList, outboxes]) =>
+          store
+            .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
+            .pipe(castEventStream(DMRelaysList, store)),
+        ),
+      ),
+    );
+  }
 
   /** Get the latest live stream for the user */
   get live$() {

@@ -5,9 +5,11 @@ import { map, of } from "rxjs";
 import { getRelaysFromList } from "../helpers/lists.js";
 import {
   BlockedRelaysListEvent,
+  DMRelaysListEvent,
   FAVORITE_RELAYS_KIND,
   FavoriteRelaysListEvent,
   isValidBlockedRelaysList,
+  isValidDirectMessageRelaysList,
   isValidFavoriteRelaysList,
   isValidSearchRelaysList,
   SearchRelaysListEvent,
@@ -16,13 +18,19 @@ import { CastRefEventStore, EventCast } from "./cast.js";
 
 /** Base class for relay lists */
 class RelayListBase<
-  T extends KnownEvent<typeof FAVORITE_RELAYS_KIND | typeof kinds.SearchRelaysList | kinds.BlockedRelaysList>,
+  T extends KnownEvent<
+    | typeof FAVORITE_RELAYS_KIND
+    | typeof kinds.SearchRelaysList
+    | kinds.BlockedRelaysList
+    | typeof kinds.DirectMessageRelaysList
+  >,
 > extends EventCast<T> {
   constructor(event: T, store: CastRefEventStore) {
     if (
       event.kind !== FAVORITE_RELAYS_KIND &&
       event.kind !== kinds.SearchRelaysList &&
-      event.kind !== kinds.BlockedRelaysList
+      event.kind !== kinds.BlockedRelaysList &&
+      event.kind !== kinds.DirectMessageRelaysList
     )
       throw new Error(`Invalid relay list (kind ${event.kind})`);
     super(event, store);
@@ -85,6 +93,14 @@ export class SearchRelays extends RelayListBase<SearchRelaysListEvent> {
 export class BlockedRelays extends RelayListBase<BlockedRelaysListEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidBlockedRelaysList(event)) throw new Error("Invalid blocked relays list");
+    super(event, store);
+  }
+}
+
+/** Class for DM relays lists (kind 10050, NIP-17) */
+export class DirectMessageRelays extends RelayListBase<DMRelaysListEvent> {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
+    if (!isValidDirectMessageRelaysList(event)) throw new Error("Invalid DM relays list");
     super(event, store);
   }
 }
