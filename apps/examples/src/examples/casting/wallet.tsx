@@ -25,6 +25,7 @@ import {
   CreateWallet,
   ReceiveNutzaps,
   ReceiveToken,
+  RecoverFromCouch,
   RemoveNutzapInfoMint,
   SetWalletMints,
   SetWalletRelays,
@@ -618,6 +619,60 @@ function ConsolidateTool({ wallet }: { wallet: Wallet }) {
   );
 }
 
+function RecoverFromCouchTool({ wallet }: { wallet: Wallet }) {
+  const [recovering, setRecovering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const handleRecover = useCallback(async () => {
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to recover tokens from couch");
+
+    setRecovering(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await actions.run(RecoverFromCouch, couch);
+      setSuccess("Tokens recovered successfully from couch");
+    } catch (err) {
+      console.error("Failed to recover tokens from couch:", err);
+      setError(err instanceof Error ? err.message : "Failed to recover tokens from couch");
+    } finally {
+      setRecovering(false);
+    }
+  }, [wallet.unlocked]);
+
+  return (
+    <div>
+      <h3 className="text-lg font-semibold mb-2">Recover Tokens from Couch</h3>
+      <p className="text-sm text-base-content/70 mb-4">
+        Recover tokens that were stored in the couch during operations. This will check for any tokens in the couch,
+        verify they are unspent, and add them to your wallet if they are not already present.
+      </p>
+      <button className="btn btn-primary" onClick={handleRecover} disabled={recovering}>
+        {recovering ? (
+          <>
+            <span className="loading loading-spinner loading-sm" />
+            Recovering...
+          </>
+        ) : (
+          "Recover Tokens"
+        )}
+      </button>
+      {error && (
+        <div className="alert alert-error mt-4">
+          <span>{error}</span>
+        </div>
+      )}
+      {success && (
+        <div className="alert alert-success mt-4">
+          <span>{success}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RelayManagementTool({ wallet }: { wallet: Wallet }) {
   const relays = use$(wallet.relays$);
   const tokens = use$(wallet.tokens$);
@@ -998,13 +1053,13 @@ function SettingsTab({ wallet }: { wallet: Wallet }) {
       <RelayManagementTool wallet={wallet} />
       <SyncTokensTool wallet={wallet} />
       <ConsolidateTool wallet={wallet} />
+      <RecoverFromCouchTool wallet={wallet} />
     </div>
   );
 }
 
 function SendTab({ wallet }: { wallet: Wallet }) {
   const balance = use$(wallet.balance$);
-  const mints = use$(wallet.mints$);
   const [amount, setAmount] = useState("");
   const [selectedMint, setSelectedMint] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
@@ -1012,11 +1067,11 @@ function SendTab({ wallet }: { wallet: Wallet }) {
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Get available mints with balance
+  // Get available mints from balance (mints that have tokens)
   const availableMints = useMemo(() => {
-    if (!balance || !mints) return [];
-    return mints.filter((mint) => (balance[mint] || 0) > 0);
-  }, [balance, mints]);
+    if (!balance) return [];
+    return Object.keys(balance).filter((mint) => (balance[mint] || 0) > 0);
+  }, [balance]);
 
   const handleSend = useCallback(async () => {
     if (!wallet.unlocked) return setError("Wallet must be unlocked to send tokens");
@@ -1227,7 +1282,7 @@ function ReceiveTab({ wallet }: { wallet: Wallet }) {
       }
 
       // Receive the token using the ReceiveToken action
-      await actions.run(ReceiveToken, token);
+      await actions.run(ReceiveToken, token, { couch });
 
       setTokenString("");
     } catch (err) {

@@ -1,18 +1,13 @@
 import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-common/helpers/blossom";
 import { addBlossomServer, removeBlossomServer } from "applesauce-common/operations/blossom";
 import { EventOperation } from "applesauce-core/event-factory";
-import { firstValueFrom, of, timeout } from "rxjs";
 import { Action } from "../action-hub.js";
 
 // Action to modify or create a new Blossom servers event
 function ModifyBlossomServersEvent(operations: EventOperation[]): Action {
-  return async ({ events, factory, user, publish, sign }) => {
+  return async ({ factory, user, publish, sign }) => {
     const [event, outboxes] = await Promise.all([
-      firstValueFrom(
-        events
-          .replaceable(BLOSSOM_SERVER_LIST_KIND, user.pubkey)
-          .pipe(timeout({ first: 1000, with: () => of(undefined) })),
-      ),
+      user.replaceable(BLOSSOM_SERVER_LIST_KIND, user.pubkey).$first(1000, undefined),
       user.outboxes$.$first(1000, undefined),
     ]);
 

@@ -332,6 +332,9 @@ export function RecoverFromCouch(couch: Couch): Action {
 
       // Publish the token event
       await publish(tokenEvent, wallet.relays);
+
+      // Clear the token from the couch
+      await couch.clear();
     }
   };
 }
