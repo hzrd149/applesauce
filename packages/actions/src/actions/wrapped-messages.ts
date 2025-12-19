@@ -1,14 +1,53 @@
-import { getConversationParticipants } from "applesauce-common/helpers/messages";
-import { Rumor } from "applesauce-common/helpers/gift-wrap";
 import {
   GiftWrapBlueprint,
   WrappedMessageBlueprint,
   WrappedMessageBlueprintOptions,
   WrappedMessageReplyBlueprint,
 } from "applesauce-common/blueprints";
+import { castUser } from "applesauce-common/casts";
+import { Rumor } from "applesauce-common/helpers/gift-wrap";
+import { getConversationParticipants } from "applesauce-common/helpers/messages";
 import { GiftWrapOptions } from "applesauce-common/operations/gift-wrap";
-
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { Action } from "../action-hub.js";
+
+/** Gift wraps a message to a list of participants and publishes it to their inbox relays */
+export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOptions): Action {
+  return async ({ factory, user, publish, events }) => {
+    // Get the pubkeys to send this message to and ensure the sender is included
+    const pubkeys = new Set(getConversationParticipants(message));
+    pubkeys.add(user.pubkey);
+
+    // Get all the users inbox relays
+    const inboxRelays = new Map<string, string[] | undefined>();
+    await Promise.allSettled(
+      Array.from(pubkeys).map(async (pubkey) => {
+        const receiver = castUser(pubkey, events);
+        const [inboxes, directMessageRelays] = await Promise.all([
+          receiver.inboxes$.$first(1_000, undefined),
+          receiver.directMessageRelays$.$first(1_000, undefined),
+        ]);
+
+        // Use the dm relays or inboxes as the inbox relays for the participant
+        inboxRelays.set(pubkey, directMessageRelays ?? inboxes ?? undefined);
+      }),
+    );
+
+    // Create the gift wraps to send
+    const giftWraps: NostrEvent[] = [];
+    for (const pubkey of pubkeys) {
+      giftWraps.push(await factory.create(GiftWrapBlueprint, pubkey, message, opts));
+    }
+
+    // Publish all gift wraps in parallel
+    await Promise.allSettled(
+      giftWraps.map(async (giftWrap) => {
+        const relays = inboxRelays.get(giftWrap.pubkey);
+        await publish(giftWrap, relays);
+      }),
+    );
+  };
+}
 
 /**
  * Sends a NIP-17 wrapped message to a conversation
@@ -22,16 +61,10 @@ export function SendWrappedMessage(
   message: string,
   opts?: WrappedMessageBlueprintOptions & GiftWrapOptions,
 ): Action {
-  return async function* ({ factory, self }) {
+  return async ({ factory, run }) => {
+    // Create the rumor of the message
     const rumor = await factory.create(WrappedMessageBlueprint, participants, message, opts);
-
-    // Get the pubkeys to send this message to and ensure the sender is included
-    const pubkeys = new Set(getConversationParticipants(rumor));
-    pubkeys.add(self);
-
-    for (const pubkey of pubkeys) {
-      yield await factory.create(GiftWrapBlueprint, pubkey, rumor, opts);
-    }
+    await run(GiftWrapMessageToParticipants, rumor, opts);
   };
 }
 
@@ -47,14 +80,9 @@ export function ReplyToWrappedMessage(
   message: string,
   opts?: WrappedMessageBlueprintOptions & GiftWrapOptions,
 ): Action {
-  return async function* ({ factory }) {
+  return async ({ factory, run }) => {
     // Create the reply message
     const rumor = await factory.create(WrappedMessageReplyBlueprint, parent, message, opts);
-
-    // Get the pubkeys to send this message to (will include the sender)
-    const pubkeys = getConversationParticipants(parent);
-    for (const pubkey of pubkeys) {
-      yield await factory.create(GiftWrapBlueprint, pubkey, rumor, opts);
-    }
+    await run(GiftWrapMessageToParticipants, rumor, opts);
   };
 }

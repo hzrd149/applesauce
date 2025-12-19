@@ -21,16 +21,16 @@ export function SetListMetadata(
     image?: string;
   },
 ): Action {
-  return async function* ({ events, factory }) {
+  return async function* ({ events, factory, sign }) {
     list = getList(events, list);
 
-    const draft = await factory.modify(
-      list,
-      List.setTitle(info.title ?? null),
-      List.setDescription(info.description ?? null),
-      List.setImage(info.image ?? null),
-    );
-
-    yield await factory.sign(draft);
+    yield await factory
+      .modify(
+        list,
+        List.setTitle(info.title ?? null),
+        List.setDescription(info.description ?? null),
+        List.setImage(info.image ?? null),
+      )
+      .then(sign);
   };
 }

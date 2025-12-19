@@ -12,7 +12,7 @@ const factory = new EventFactory({ signer: user });
 describe("WalletBlueprint", () => {
   it("should create a wallet event with mints", async () => {
     const draft = await createEvent({ signer: user }, WalletBlueprint, { mints: ["https://mint.money.com"] });
-    const event = await user.signEvent(draft);
+    const event = await factory.sign(draft);
 
     expect(getWalletMints(event)).toEqual(["https://mint.money.com"]);
   });
@@ -23,7 +23,7 @@ describe("WalletBlueprint", () => {
       mints: ["https://mint.money.com"],
       privateKey: key,
     });
-    const event = await user.signEvent(draft);
+    const event = await factory.sign(draft);
 
     const privkey = getWalletPrivateKey(event);
     expect(privkey).toBeDefined();

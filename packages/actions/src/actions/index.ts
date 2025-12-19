@@ -4,7 +4,7 @@ export * from "./blossom.js";
 export * from "./bookmarks.js";
 export * from "./calendar.js";
 export * from "./contacts.js";
-export * from "./dm-relays.js";
+export * from "./direct-message-relays.js";
 export * from "./favorite-relays.js";
 export * from "./follow-sets.js";
 export * from "./legacy-messages.js";

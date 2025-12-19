@@ -30,9 +30,8 @@ describe("persistEncryptedContent", () => {
     const dispose = persistEncryptedContent(eventStore, mockStorage);
     eventStore.add(event);
 
-    // Wait two ticks
-    await Promise.resolve();
-    await Promise.resolve();
+    // Wait
+    await new Promise((res) => setTimeout(res, 10));
 
     expect(mockStorage.getItem).toHaveBeenCalledWith(event.id);
     expect(Reflect.get(event, EncryptedContentSymbol)).toBe("decrypted content");
@@ -48,9 +47,8 @@ describe("persistEncryptedContent", () => {
     const dispose = persistEncryptedContent(eventStore, mockStorage);
     eventStore.add(event);
 
-    // Wait two ticks
-    await Promise.resolve();
-    await Promise.resolve();
+    // Wait
+    await new Promise((res) => setTimeout(res, 10));
 
     expect(mockStorage.getItem).toHaveBeenCalledWith(event.id);
     expect(Reflect.get(event, EncryptedContentSymbol)).toBe("decrypted content");
@@ -83,9 +81,8 @@ describe("persistEncryptedContent", () => {
     const dispose = persistEncryptedContent(eventStore, mockStorage);
     eventStore.add(event);
 
-    // Wait two ticks
-    await Promise.resolve();
-    await Promise.resolve();
+    // Wait
+    await new Promise((res) => setTimeout(res, 10));
 
     // Event should be updated in the store
     const storedEvent = eventStore.getEvent(event.id);

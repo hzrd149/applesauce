@@ -12,6 +12,7 @@ import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
 import { castEventStream } from "../observable/cast-stream.js";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { type CastRefEventStore } from "./cast.js";
+import { getRelaysFromList } from "../helpers/lists.js";
 
 /** Cast a nostr event or pointer into a {@link User} */
 export function castUser(event: NostrEvent, store: CastRefEventStore): User;
@@ -87,6 +88,15 @@ export class User {
     return nprofileEncode(this.pointer);
   }
 
+  // Request methods
+  replaceable(kind: number, identifier?: string, relays?: string[]): ChainableObservable<NostrEvent | undefined> {
+    return chainable(this.#store.replaceable({ kind, pubkey: this.pubkey, identifier, relays }));
+  }
+  addressable(kind: number, identifier: string, relays?: string[]): ChainableObservable<NostrEvent | undefined> {
+    return chainable(this.#store.addressable({ kind, pubkey: this.pubkey, identifier, relays }));
+  }
+
+  // Observable interfaces
   get profile$() {
     return this.$$ref("profile$", (store) =>
       defer(() => from(import("./profile.js").then((m) => m.Profile))).pipe(
@@ -207,17 +217,12 @@ export class User {
   }
   get directMessageRelays$() {
     return this.$$ref("dmRelays$", (store) =>
-      combineLatest([
-        // Import the DMRelays class
-        defer(() => from(import("./relay-lists.js").then((m) => m.DirectMessageRelays))),
-        // Get outboxes and start without them
-        this.outboxes$,
-      ]).pipe(
+      this.outboxes$.pipe(
         // Fetch the DM relays list event from the outboxes
-        switchMap(([DMRelaysList, outboxes]) =>
+        switchMap((outboxes) =>
           store
             .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(DMRelaysList, store)),
+            .pipe(map((event) => event && getRelaysFromList(event))),
         ),
       ),
     );

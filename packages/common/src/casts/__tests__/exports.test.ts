@@ -12,7 +12,6 @@ describe("exports", () => {
         "CASTS_SYMBOL",
         "CAST_REF_SYMBOL",
         "Comment",
-        "DirectMessageRelays",
         "EventCast",
         "FavoriteRelays",
         "Mutes",

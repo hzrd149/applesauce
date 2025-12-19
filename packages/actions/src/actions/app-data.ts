@@ -4,14 +4,14 @@ import * as AppData from "applesauce-common/operations/app-data";
 import { Action } from "../action-hub.js";
 
 export function UpdateAppData<T>(identifier: string, data: T): Action {
-  return async function* ({ self, factory, events }) {
+  return async ({ self, factory, events, user, publish, sign }) => {
     const event = events.getReplaceable(APP_DATA_KIND, self, identifier);
     const encryption = !!event && getAppDataEncryption(event);
 
-    const draft = event
-      ? await factory.modify(event, AppData.setContent(data, encryption))
-      : await factory.create(AppDataBlueprint, identifier, data, encryption);
+    const signed = event
+      ? await factory.modify(event, AppData.setContent(data, encryption)).then(sign)
+      : await factory.create(AppDataBlueprint, identifier, data, encryption).then(sign);
 
-    yield await factory.sign(draft);
+    await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
 }

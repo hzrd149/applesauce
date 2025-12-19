@@ -3,7 +3,6 @@ import { Observable, filter, firstValueFrom, isObservable, lastValueFrom, map, o
 /**
  * A symbol used to mark an Observable as chainable
  */
-const CHAINABLE_SYMBOL = Symbol.for("chainable-observable");
 const CHAINABLE_CACHE_SYMBOL = Symbol.for("chainable-cache");
 
 /**
@@ -20,9 +19,6 @@ const CHAINABLE_CACHE_SYMBOL = Symbol.for("chainable-cache");
  * ```
  */
 export function chainable<T>(observable: Observable<T>): ChainableObservable<T> {
-  // If already chainable, return as-is
-  if (Reflect.has(observable, CHAINABLE_SYMBOL)) return observable as ChainableObservable<T>;
-
   // Create a Proxy that intercepts property access
   const proxy = new Proxy(observable, {
     get(target$, prop) {
@@ -48,19 +44,23 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
 
         // Extra observalbe helpers to make it easier to work with observables
         if (prop === "$first") {
-          return (wait: number = 30_000) =>
+          return (...args: [] | [number] | [number, any]) =>
             firstValueFrom(
               target$.pipe(
                 filter((v) => v !== undefined && v !== null),
-                timeout({ first: wait }),
+                args.length === 2
+                  ? timeout({ first: args[0], with: () => of(args[1]) })
+                  : timeout({ first: args[0] ?? 10_000 }),
               ),
             );
         } else if (prop === "$last") {
-          return (wait: number = 30_000) =>
+          return (...args: [] | [number] | [number, any]) =>
             lastValueFrom(
               target$.pipe(
                 filter((v) => v !== undefined && v !== null),
-                timeout({ first: wait }),
+                args.length === 2
+                  ? timeout({ first: args[0], with: () => of(args[1]) })
+                  : timeout({ first: args[0] ?? 10_000 }),
               ),
             );
         }
@@ -95,9 +95,6 @@ export function chainable<T>(observable: Observable<T>): ChainableObservable<T> 
       throw new Error(`Unable to access property "${prop}" on chainable observable`);
     },
   }) as any as ChainableObservable<T>;
-
-  // Mark as chainable
-  Reflect.set(proxy, CHAINABLE_SYMBOL, true);
 
   return proxy;
 }
@@ -141,6 +138,8 @@ export type ChainableObservable<T> = Observable<T> &
   > & {
     /** Returns a promise that resolves with the first value or rejects with a timeout error */
     $first(first?: number): Promise<NonNullable<T>>;
+    $first<V>(first?: number, fallback?: V): Promise<NonNullable<T> | V>;
     /** Returns a promise that resolves with the last value or rejects with a timeout error */
     $last(max?: number): Promise<NonNullable<T>>;
+    $last<V>(max?: number, fallback?: V): Promise<NonNullable<T> | V>;
   };

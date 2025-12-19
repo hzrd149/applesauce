@@ -19,7 +19,6 @@ export * from "./highlight.js";
 export * from "./legacy-messages.js";
 export * from "./lists.js";
 export * from "./lnurl.js";
-export * from "./mailboxes.js";
 export * from "./messages.js";
 export * from "./mute.js";
 export * from "./picture-post.js";

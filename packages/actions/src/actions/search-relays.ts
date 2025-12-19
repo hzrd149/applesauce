@@ -1,42 +1,47 @@
-import { IEventStoreRead } from "applesauce-core/event-store";
 import { TagOperation } from "applesauce-core/event-factory";
 import { kinds } from "applesauce-core/helpers/event";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
-
 import { Action } from "../action-hub.js";
 
-function getSearchRelaysEvent(events: IEventStoreRead, self: string) {
-  const event = events.getReplaceable(kinds.SearchRelaysList, self);
-  if (!event) throw new Error("Can't find search relays event");
-  return event;
+function ModifySearchRelaysEvent(operations: TagOperation[], hidden = false): Action {
+  return async ({ factory, user, publish, sign }) => {
+    const [event, outboxes] = await Promise.all([
+      user.replaceable(kinds.SearchRelaysList).$first(1000, undefined),
+      user.outboxes$.$first(1000, undefined),
+    ]);
+
+    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
+
+    // Modify or build new event
+    const signed = event
+      ? await factory.modify(event, operation).then(sign)
+      : await factory.build({ kind: kinds.SearchRelaysList }, operation).then(sign);
+
+    // Publish the event to the user's outboxes
+    await publish(signed, outboxes);
+  };
 }
 
 /** An action that adds a relay to the 10007 search relays event */
 export function AddSearchRelay(relay: string | string[], hidden = false): Action {
-  return async function* ({ events, factory, self }) {
-    const search = getSearchRelaysEvent(events, self);
-
-    const operation = Array.isArray(relay) ? relay.map((r) => addRelayTag(r)) : addRelayTag(relay);
-    const draft = await factory.modifyTags(search, hidden ? { hidden: operation } : operation);
-    yield await factory.sign(draft);
-  };
+  return ModifySearchRelaysEvent(
+    Array.isArray(relay) ? relay.map((r) => addRelayTag(r)) : [addRelayTag(relay)],
+    hidden,
+  );
 }
 
 /** An action that removes a relay from the 10007 search relays event */
 export function RemoveSearchRelay(relay: string | string[], hidden = false): Action {
-  return async function* ({ events, factory, self }) {
-    const search = getSearchRelaysEvent(events, self);
-
-    const operation = Array.isArray(relay) ? relay.map((r) => removeRelayTag(r)) : removeRelayTag(relay);
-    const draft = await factory.modifyTags(search, hidden ? { hidden: operation } : operation);
-    yield await factory.sign(draft);
-  };
+  return ModifySearchRelaysEvent(
+    Array.isArray(relay) ? relay.map((r) => removeRelayTag(r)) : [removeRelayTag(relay)],
+    hidden,
+  );
 }
 
 /** Creates a new search relays event */
 export function NewSearchRelays(relays?: string[] | { public?: string[]; hidden?: string[] }): Action {
-  return async function* ({ events, factory, self }) {
+  return async ({ events, factory, self, user, publish }) => {
     const search = events.getReplaceable(kinds.SearchRelaysList, self);
     if (search) throw new Error("Search relays event already exists");
 
@@ -54,6 +59,7 @@ export function NewSearchRelays(relays?: string[] | { public?: string[]; hidden?
       publicOperations.length ? modifyPublicTags(...publicOperations) : undefined,
       hiddenOperations.length ? modifyHiddenTags(...hiddenOperations) : undefined,
     );
-    yield await factory.sign(draft);
+    const signed = await factory.sign(draft);
+    await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
 }
