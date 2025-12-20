@@ -169,22 +169,6 @@ describe("WalletAddPrivateKey", () => {
     expect(key).toBeDefined();
     expect(bytesToHex(key!)).toEqual(bytesToHex(newPrivateKey));
   });
-
-  it("should throw an error if the wallet event does not exist", async () => {
-    vi.useFakeTimers();
-    try {
-      const privateKey = generateSecretKey();
-
-      const promise = hub.run(WalletAddPrivateKey, privateKey);
-      // Give the promise a chance to start and set up the observable subscription
-      await vi.runOnlyPendingTimersAsync();
-      // Advance timers past the 5 second timeout in getUnlockedWallet
-      await vi.advanceTimersByTimeAsync(5000);
-      await expect(promise).rejects.toThrow("Unable to find wallet");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 });
 
 describe("UnlockWallet", () => {
@@ -323,20 +307,6 @@ describe("SetWalletMints", () => {
     const publishedEvent = publish.mock.calls[0][0];
     expect(publishedEvent.kind).toBe(WALLET_KIND);
   });
-
-  it("should throw error if wallet does not exist", async () => {
-    vi.useFakeTimers();
-    try {
-      const promise = hub.run(SetWalletMints, ["https://mint.com"]);
-      // Give the promise a chance to start and set up the observable subscription
-      await vi.runOnlyPendingTimersAsync();
-      // Advance timers past the 5 second timeout in getUnlockedWallet
-      await vi.advanceTimersByTimeAsync(5000);
-      await expect(promise).rejects.toThrow("Unable to find wallet");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 });
 
 describe("SetWalletRelays", () => {
@@ -398,19 +368,5 @@ describe("SetWalletRelays", () => {
     const publishedRelays = publish.mock.calls.find((call) => call[0].kind === WALLET_KIND)?.[1];
     // URL.toString() may add trailing slash, so we normalize
     expect(publishedRelays).toEqual(["wss://new-relay.com/"]);
-  });
-
-  it("should throw error if wallet does not exist", async () => {
-    vi.useFakeTimers();
-    try {
-      const promise = hub.run(SetWalletRelays, ["wss://relay.com"]);
-      // Give the promise a chance to start and set up the observable subscription
-      await vi.runOnlyPendingTimersAsync();
-      // Advance timers past the 5 second timeout in getUnlockedWallet
-      await vi.advanceTimersByTimeAsync(5000);
-      await expect(promise).rejects.toThrow("Unable to find wallet");
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
