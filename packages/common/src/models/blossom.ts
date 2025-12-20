@@ -9,13 +9,13 @@ import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/
 import { EventModels } from "applesauce-core/event-store";
 
 /** A model that returns a users blossom servers */
-export function UserBlossomServersModel(user: string | ProfilePointer): Model<URL[]> {
+export function UserBlossomServersModel(user: string | ProfilePointer): Model<URL[] | undefined> {
   if (typeof user === "string") user = { pubkey: user };
 
   return (store) =>
     store
       .replaceable({ kind: BLOSSOM_SERVER_LIST_KIND, pubkey: user.pubkey, relays: user.relays })
-      .pipe(map((event) => (event ? getBlossomServersFromList(event) : [])));
+      .pipe(map((event) => event && getBlossomServersFromList(event)));
 }
 
 // Register this model with EventModels
@@ -28,6 +28,6 @@ EventModels.prototype.blossomServers = function (user: string | ProfilePointer) 
 declare module "applesauce-core/event-store" {
   interface EventModels {
     /** Subscribe to a users blossom servers */
-    blossomServers(user: string | ProfilePointer): Observable<URL[]>;
+    blossomServers(user: string | ProfilePointer): Observable<URL[] | undefined>;
   }
 }
