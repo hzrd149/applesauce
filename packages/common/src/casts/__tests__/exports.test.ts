@@ -17,6 +17,7 @@ describe("exports", () => {
         "Mutes",
         "Note",
         "Profile",
+        "Reaction",
         "SearchRelays",
         "Share",
         "Stream",

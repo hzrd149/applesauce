@@ -1,23 +1,13 @@
-import { getReactionEventPointer } from "applesauce-common/helpers";
+import { castUser, Reaction, User } from "applesauce-common/casts";
+import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import {
-  addRelayHintsToPointer,
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
-  mergeRelaySets,
-  persistEventsToCache,
-  ProfileContent,
-} from "applesauce-core/helpers";
+import { encodePointer, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { Filter, kinds, NostrEvent } from "nostr-tools";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { Filter, kinds } from "nostr-tools";
 import { useMemo, useState } from "react";
-import { map } from "rxjs";
-
 import RelayPicker from "../../components/relay-picker";
 
 // Setup event store
@@ -45,75 +35,65 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
-/** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
-}
-
 /** A component for rendering user avatars */
-function Avatar({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
-  const profile = useProfile({ pubkey, relays });
+function Avatar({ user }: { user: User }) {
+  const picture = use$(user.profile$.picture);
 
   return (
     <div className="avatar">
       <div className="w-8 rounded-full">
-        <img src={getProfilePicture(profile, `https://robohash.org/${pubkey}.png`)} />
+        <img src={picture || `https://robohash.org/${user.pubkey}.png`} />
       </div>
     </div>
   );
 }
 
 /** A component for rendering usernames */
-function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
-  const profile = useProfile({ pubkey, relays });
+function Username({ user }: { user: User }) {
+  const displayName = use$(user.profile$.displayName);
 
-  return <>{getDisplayName(profile, "unknown")}</>;
+  return <>{displayName || user.pubkey.slice(0, 8) + "..."}</>;
 }
 
-function ReactionEvent({ event }: { event: NostrEvent }) {
-  const pointer = useMemo(() => getReactionEventPointer(event), [event]);
-
-  const relays = useMemo(() => {
-    return mergeRelaySets(getSeenRelays(event), pointer?.relays);
-  }, [event, pointer]);
-
-  const reactedTo = use$(
-    () => pointer && eventStore.event(addRelayHintsToPointer(pointer, getSeenRelays(event))),
-    [pointer?.id],
-  );
+function ReactionEvent({ reaction }: { reaction: Reaction }) {
+  const pointer = reaction.pointer;
+  const reactedTo = use$(reaction.reactedTo$);
+  const reactedToUser = useMemo(() => reactedTo && castUser(reactedTo, eventStore), [reactedTo]);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2 items-center">
-        <Avatar pubkey={event.pubkey} relays={relays} />
+        <Avatar user={reaction.author} />
         <h2>
           <span className="font-bold">
-            <Username pubkey={event.pubkey} relays={relays} />
+            <Username user={reaction.author} />
           </span>
-          <span> reacted {event.content} to</span>
+          <span> reacted {reaction.content} to</span>
         </h2>
-        <time className="ms-auto text-sm text-gray-500">{new Date(event.created_at * 1000).toLocaleString()}</time>
+        <time className="ms-auto text-sm text-gray-500">{reaction.createdAt.toLocaleString()}</time>
       </div>
 
       {reactedTo ? (
         <div className="card bg-base-100 shadow-md">
           <div className="card-body">
-            <div className="flex items-center gap-4">
-              <Avatar pubkey={reactedTo.pubkey} relays={relays} />
-              <h2 className="card-title">
-                <Username pubkey={reactedTo.pubkey} relays={relays} />
-              </h2>
-            </div>
+            {reactedToUser && (
+              <div className="flex items-center gap-4">
+                <Avatar user={reactedToUser} />
+                <h2 className="card-title">
+                  <Username user={reactedToUser} />
+                </h2>
+              </div>
+            )}
             <p>{reactedTo.content}</p>
           </div>
         </div>
       ) : pointer ? (
         <div className="card bg-base-200 shadow-md opacity-50">
-          <div className="card-body">
+          <div className="card-body overflow-hidden">
             <div className="flex items-center gap-4">
               <span className="loading loading-dots loading-lg" />
               <div className="flex flex-col gap-1">
-                <p className="text-sm font-mono">Loading event: {pointer.id}</p>
+                <p className="text-sm font-mono">{encodePointer(reaction.pointer)}</p>
                 {pointer.relays && pointer.relays.length > 0 && (
                   <p className="text-xs text-gray-500">Checking relays: {pointer.relays.join(", ")}</p>
                 )}
@@ -121,13 +101,7 @@ function ReactionEvent({ event }: { event: NostrEvent }) {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="card bg-error text-error-content shadow-md">
-          <div className="card-body">
-            <p>Invalid reaction: no event pointer found</p>
-          </div>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -141,10 +115,14 @@ export default function ReactionsTimeline() {
         .relay(relay)
         .subscription({ kinds: [kinds.Reaction], limit: 20 })
         .pipe(
+          // Filter out EOSE messages
           onlyEvents(),
+          // Add all events to the store
           mapEventsToStore(eventStore),
+          // Gather events into a timeline
           mapEventsToTimeline(),
-          map((events) => [...events]),
+          // Create reaction classes for events
+          castTimelineStream(Reaction),
         ),
     [relay],
   );
@@ -156,8 +134,8 @@ export default function ReactionsTimeline() {
       </div>
 
       <div className="flex flex-col gap-4">
-        {reactions?.map((event) => (
-          <ReactionEvent key={event.id} event={event} />
+        {reactions?.map((reaction) => (
+          <ReactionEvent key={reaction.id} reaction={reaction} />
         ))}
       </div>
     </div>

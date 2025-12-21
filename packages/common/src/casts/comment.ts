@@ -2,9 +2,11 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { of } from "rxjs";
 import { CommentEvent, getCommentReplyPointer, getCommentRootPointer, isValidComment } from "../helpers/comment.js";
 import { CommentsModel } from "../models/comments.js";
+import { ReactionsModel } from "../models/reactions.js";
 import { EventZapsModel } from "../models/zaps.js";
 import { castTimelineStream } from "../observable/cast-stream.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
+import { Reaction } from "./reaction.js";
 import { Zap } from "./zap.js";
 
 /** Cast a kind 1111 event to a Comment */
@@ -47,6 +49,11 @@ export class Comment extends EventCast<CommentEvent> {
   get replies$() {
     return this.$$ref("replies$", (store) =>
       store.model(CommentsModel, this.event).pipe(castTimelineStream(Comment, store)),
+    );
+  }
+  get reactions$() {
+    return this.$$ref("reactions$", (store) =>
+      store.model(ReactionsModel, this.event).pipe(castTimelineStream(Reaction, store)),
     );
   }
 }

@@ -9,7 +9,10 @@ import {
   getArticleTitle,
   isValidArticle,
 } from "../helpers/article.js";
+import { ReactionsModel } from "../models/reactions.js";
+import { castTimelineStream } from "../observable/cast-stream.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
+import { Reaction } from "./reaction.js";
 
 export class Article extends EventCast<ArticleEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
@@ -50,5 +53,10 @@ export class Article extends EventCast<ArticleEvent> {
   /** An observable of the address with relay hints from the authors outboxes */
   get address$() {
     return this.pointer$.pipe(map((pointer) => naddrEncode(pointer)));
+  }
+  get reactions$() {
+    return this.$$ref("reactions$", (store) =>
+      store.model(ReactionsModel, this.event).pipe(castTimelineStream(Reaction, store)),
+    );
   }
 }

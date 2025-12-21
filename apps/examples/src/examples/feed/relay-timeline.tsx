@@ -1,19 +1,12 @@
+import { castEvent, Note } from "applesauce-common/casts";
+import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import {
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
-  mergeRelaySets,
-  ProfileContent,
-} from "applesauce-core/helpers";
+import { Filter, getDisplayName, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
-import { NostrEvent } from "applesauce-core/helpers";
-import { ProfilePointer } from "nostr-tools/nip19";
-import { useMemo, useState } from "react";
-import { map } from "rxjs";
-
+import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
+import { useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 
 // Create an event store for all events
@@ -22,38 +15,59 @@ const eventStore = new EventStore();
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
 
+const cache = await openDB();
+function cacheRequest(filters: Filter[]) {
+  return getEventsForFilters(cache, filters);
+}
+persistEventsToCache(eventStore, (events) => addEvents(cache, events));
+
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  // Make the cache requests attempt to load from a local relay
-  cacheRequest: (filters) => pool.relay("ws://localhost:4869").request(filters),
-  // Fallback to lookup relays if profiles cant be found
+  cacheRequest,
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
-/** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+function ReplyingTo({ note }: { note: Note }) {
+  const profile = use$(note.author.profile$);
+  const truncateContent = (content: string, maxLength: number = 120) => {
+    if (content.length <= maxLength) return content;
+    return content.slice(0, maxLength) + "...";
+  };
+
+  return (
+    <div className="mb-4 p-3 bg-base-200 rounded-lg border-l-4 border-primary">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="avatar">
+          <div className="w-8 rounded-full">
+            <img src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} alt="Replying to profile" />
+          </div>
+        </div>
+        <span className="text-sm font-semibold text-base-content/70">Replying to {getDisplayName(profile)}</span>
+      </div>
+      <p className="text-sm text-base-content/60 italic">{truncateContent(note.event.content)}</p>
+    </div>
+  );
 }
 
-function Note({ note }: { note: NostrEvent }) {
-  // Subscribe to the request and wait for the profile event
-  const profile = useProfile(
-    useMemo(() => ({ pubkey: note.pubkey, relays: mergeRelaySets(getSeenRelays(note)) }), [note]),
-  );
+function NoteEvent({ note }: { note: Note }) {
+  const profile = use$(note.author.profile$);
+  const replyingToEvent = use$(note.replyingTo$);
+  const replyingToNote = replyingToEvent ? castEvent(replyingToEvent, Note, note.store) : null;
 
   return (
     <div className="card bg-base-100 shadow-md">
       <div className="card-body">
+        {replyingToNote && <ReplyingTo note={replyingToNote} />}
         <div className="flex items-center gap-4">
           <div className="avatar">
             <div className="w-12 rounded-full">
-              <img src={getProfilePicture(profile, `https://robohash.org/${note.pubkey}.png`)} alt="Profile" />
+              <img src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} alt="Profile" />
             </div>
           </div>
           <h2 className="card-title">{getDisplayName(profile)}</h2>
         </div>
-        <p>{note.content}</p>
+        <p>{note.event.content}</p>
       </div>
     </div>
   );
@@ -75,8 +89,8 @@ export default function RelayTimeline() {
           mapEventsToStore(eventStore),
           // collect all events into a timeline
           mapEventsToTimeline(),
-          // Duplicate the timeline array to make react happy
-          map((t) => [...t]),
+          // Cast events to Notes
+          castTimelineStream(Note),
         ),
     [relay],
   );
@@ -86,8 +100,8 @@ export default function RelayTimeline() {
       <RelayPicker value={relay} onChange={setRelay} />
 
       <div className="flex flex-col gap-4 py-4">
-        {events?.map((event) => (
-          <Note key={event.id} note={event} />
+        {events?.map((note) => (
+          <NoteEvent key={note.id} note={note} />
         ))}
       </div>
     </div>

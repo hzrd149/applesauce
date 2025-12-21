@@ -5,6 +5,7 @@ export * from "./comment.js";
 export * from "./mutes.js";
 export * from "./note.js";
 export * from "./profile.js";
+export * from "./reaction.js";
 export * from "./relay-lists.js";
 export * from "./share.js";
 export * from "./stream.js";

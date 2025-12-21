@@ -6,7 +6,10 @@ import {
   isValidShare,
   ShareEvent,
 } from "../helpers/share.js";
+import { ReactionsModel } from "../models/reactions.js";
+import { castTimelineStream } from "../observable/cast-stream.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
+import { Reaction } from "./reaction.js";
 
 /** Cast class for kind 6 and 16 share events */
 export class Share extends EventCast<ShareEvent> {
@@ -34,5 +37,10 @@ export class Share extends EventCast<ShareEvent> {
 
   get shared$() {
     return this.$$ref("shared$", (store) => store.event(this.sharedPointer));
+  }
+  get reactions$() {
+    return this.$$ref("reactions$", (store) =>
+      store.model(ReactionsModel, this.event).pipe(castTimelineStream(Reaction, store)),
+    );
   }
 }

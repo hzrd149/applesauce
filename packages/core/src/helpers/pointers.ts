@@ -145,6 +145,14 @@ export function encodeDecodeResult(result: DecodeResult) {
   return "";
 }
 
+/** Encodes a pointer to a NIP-19 string */
+export function encodePointer(pointer: AddressPointer | EventPointer | ProfilePointer): string {
+  if (isAddressPointer(pointer)) return naddrEncode(pointer);
+  else if (isEventPointer(pointer)) return neventEncode(pointer);
+  else if (isProfilePointer(pointer)) return nprofileEncode(pointer);
+  else return "";
+}
+
 /** Gets an EventPointer form a common "e" tag */
 export function getEventPointerFromETag(tag: string[]): EventPointer | null {
   const id = tag[1];
@@ -193,6 +201,19 @@ export function isAddressPointer(pointer: any): pointer is AddressPointer {
     typeof pointer.identifier === "string" &&
     typeof pointer.pubkey === "string" &&
     typeof pointer.kind === "number"
+  );
+}
+
+/** Checks if a pointer is a ProfilePointer */
+export function isProfilePointer(pointer: any): pointer is ProfilePointer {
+  return (
+    typeof pointer === "object" &&
+    pointer !== null &&
+    "pubkey" in pointer &&
+    typeof pointer.pubkey === "string" &&
+    // Ensure its not an event or address pointer since they both have a pubkey fields
+    !isEventPointer(pointer) &&
+    !isAddressPointer(pointer)
   );
 }
 
