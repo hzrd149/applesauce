@@ -469,6 +469,11 @@ describe("EventMemory - Query Filters", () => {
       expect(results).toContainEqual(events[1]);
       expect(results).toContainEqual(events[2]);
     });
+
+    it("should work with and empty store", () => {
+      const results = eventMemory.getByFilters({ since: 1500, until: 3500 });
+      expect(results).toHaveLength(0);
+    });
   });
 
   describe("combined filters", () => {
@@ -559,6 +564,11 @@ describe("EventMemory - Timeline", () => {
     expect(timeline).toHaveLength(2);
     expect(timeline[0].created_at).toBe(3000);
     expect(timeline[1].created_at).toBe(1000);
+  });
+
+  it("should work with and empty store", () => {
+    const timeline = eventMemory.getTimeline({});
+    expect(timeline).toHaveLength(0);
   });
 });
 

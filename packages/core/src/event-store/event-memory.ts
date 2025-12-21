@@ -359,6 +359,9 @@ export class EventMemory implements IEventMemory {
 
   /** Iterates over all events by time */
   *iterateTime(since: number | undefined, until: number | undefined): Generator<NostrEvent> {
+    // Early return if array is empty
+    if (this.created_at.length === 0) return;
+
     let startIndex = 0;
     let endIndex = this.created_at.length - 1;
 
@@ -368,7 +371,9 @@ export class EventMemory implements IEventMemory {
           return mid.created_at - until;
         })
       : undefined;
-    if (start) startIndex = start[0];
+    if (start) {
+      startIndex = Math.max(0, Math.min(start[0], this.created_at.length - 1));
+    }
 
     // If since is set, use binary search to find better end index
     const end = since
@@ -376,7 +381,12 @@ export class EventMemory implements IEventMemory {
           return mid.created_at - since;
         })
       : undefined;
-    if (end) endIndex = end[0];
+    if (end) {
+      endIndex = Math.max(0, Math.min(end[0], this.created_at.length - 1));
+    }
+
+    // Ensure startIndex <= endIndex
+    if (startIndex > endIndex) return;
 
     // Yield events in the range, filtering by exact bounds
     for (let i = startIndex; i <= endIndex; i++) {
