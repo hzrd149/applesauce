@@ -1,14 +1,21 @@
+import { User } from "applesauce-common/casts";
+import { encodeGroupPointer } from "applesauce-common/helpers";
+import { use$ } from "applesauce-react/hooks";
 import { useEffect, useState } from "react";
 
 export default function GroupPicker({
   identifier,
   setIdentifier,
+  user,
 }: {
   identifier: string;
   setIdentifier: (identifier: string) => void;
+  user?: User;
 }) {
   const [input, setInput] = useState(identifier);
   useEffect(() => setInput(identifier), [identifier]);
+
+  const groups = use$(user?.groups$.groups);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,14 +26,26 @@ export default function GroupPicker({
     <div className="join">
       <select className="select join-item w-48" onChange={(e) => setIdentifier(e.target.value)} value={identifier}>
         <option value="">Select group</option>
-        <option value="groups.0xchat.com'chachi">chachi</option>
-        <option value="groups.hzrd149.com'0a3991">blossom</option>
-        <option value="relay.groups.nip29.com'Miz7w4srsmygbqy2">zap.stream</option>
-        <option value="groups.0xchat.com'925b1aa20cd1b68dd9a0130e35808d66772fe082cf3f95294dd5755c7ea1ed59">
-          Robosats
-        </option>
-        <option value="groups.hzrd149.com'a45b2f">applesauce</option>
-        <option value="groups.hzrd149.com'79dc07">test group</option>
+        {groups && (
+          <optgroup label="Public Groups">
+            {groups.map((group) => (
+              <option key={group.id} value={encodeGroupPointer(group)}>
+                {group.name || encodeGroupPointer(group)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Public Groups">
+          <option value="groups.0xchat.com'chachi">chachi</option>
+          <option value="groups.hzrd149.com'0a3991">blossom</option>
+          <option value="relay.groups.nip29.com'Miz7w4srsmygbqy2">zap.stream</option>
+          <option value="groups.0xchat.com'NkeVhXuWHGKKJCpn">grimoire</option>
+          <option value="groups.0xchat.com'925b1aa20cd1b68dd9a0130e35808d66772fe082cf3f95294dd5755c7ea1ed59">
+            Robosats
+          </option>
+          <option value="groups.hzrd149.com'a45b2f">applesauce</option>
+          <option value="groups.hzrd149.com'79dc07">test group</option>
+        </optgroup>
       </select>
       <form className="join-item flex grow" onSubmit={handleSubmit}>
         <input

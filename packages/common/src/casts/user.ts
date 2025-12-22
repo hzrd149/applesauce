@@ -8,11 +8,12 @@ import {
   ProfilePointer,
 } from "applesauce-core/helpers";
 import { combineLatest, defer, from, map, Observable, switchMap, tap } from "rxjs";
+import { GROUPS_LIST_KIND } from "../helpers/groups.js";
+import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
 import { castEventStream } from "../observable/cast-stream.js";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { type CastRefEventStore } from "./cast.js";
-import { getRelaysFromList } from "../helpers/lists.js";
 
 /** Cast a nostr event or pointer into a {@link User} */
 export function castUser(event: NostrEvent, store: CastRefEventStore): User;
@@ -141,10 +142,10 @@ export class User {
       ),
     );
   }
-  get outboxes$() {
+  get outboxes$(): ChainableObservable<string[] | undefined> {
     return this.mailboxes$.outboxes;
   }
-  get inboxes$() {
+  get inboxes$(): ChainableObservable<string[] | undefined> {
     return this.mailboxes$.inboxes;
   }
   get bookmarks$() {
@@ -223,6 +224,24 @@ export class User {
           store
             .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
             .pipe(map((event) => event && getRelaysFromList(event))),
+        ),
+      ),
+    );
+  }
+
+  /** Gets the users list of NIP-29 groups */
+  get groups$() {
+    return this.$$ref("groups$", (store) =>
+      combineLatest([
+        // Import the BlockedRelays class
+        defer(() => from(import("./groups.js").then((m) => m.GroupsList))),
+        // Get outboxes and start without them
+        this.outboxes$,
+      ]).pipe(
+        switchMap(([GroupsList, outboxes]) =>
+          store
+            .replaceable({ kind: GROUPS_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+            .pipe(castEventStream(GroupsList, store)),
         ),
       ),
     );

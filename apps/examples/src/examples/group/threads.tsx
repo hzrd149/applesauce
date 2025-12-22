@@ -36,13 +36,11 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/"],
 });
 
-/** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
-}
-
 function ThreadCard({ event, onSelect }: { event: NostrEvent; onSelect?: (event: NostrEvent) => void }) {
-  const profile = useProfile({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) });
+  const profile = use$(
+    () => eventStore.profile({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) }),
+    [event.pubkey],
+  );
 
   return (
     <div className="card bg-base-200 shadow-md">
@@ -76,7 +74,10 @@ function ThreadCard({ event, onSelect }: { event: NostrEvent; onSelect?: (event:
 
 function ThreadReply({ event }: { event: NostrEvent }) {
   const raw = useRef<HTMLDialogElement>(null);
-  const profile = useProfile({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) });
+  const profile = use$(
+    () => eventStore.profile({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) }),
+    [event.pubkey],
+  );
 
   return (
     <div className="chat chat-start">

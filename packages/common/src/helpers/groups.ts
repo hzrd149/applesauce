@@ -1,6 +1,7 @@
-import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
+import { getOrComputeCachedValue, notifyEventUpdate } from "applesauce-core/helpers";
 import { getReplaceableIdentifier, getTagValue, NostrEvent } from "applesauce-core/helpers/event";
-import { getHiddenTags } from "applesauce-core/helpers/hidden-tags";
+import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
+import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { processTags } from "applesauce-core/helpers/tags";
 import { normalizeURL } from "applesauce-core/helpers/url";
 
@@ -80,18 +81,55 @@ export function getPublicGroups(bookmark: NostrEvent): GroupPointer[] {
   );
 }
 
+/** Type for unlocked groups */
+export type UnlockedGroups = {
+  [GroupsHiddenSymbol]: GroupPointer[];
+};
+
 /** Returns all the hidden groups from a k:10009 list */
-export function getHiddenGroups(bookmark: NostrEvent): GroupPointer[] | undefined {
+export function getHiddenGroups<T extends NostrEvent & UnlockedGroups>(bookmark: T): GroupPointer[];
+export function getHiddenGroups<T extends NostrEvent>(bookmark: T): GroupPointer[] | undefined;
+export function getHiddenGroups<T extends NostrEvent>(bookmark: T): GroupPointer[] | undefined {
+  if (GroupsHiddenSymbol in bookmark) return bookmark[GroupsHiddenSymbol] as GroupPointer[];
+
   return getOrComputeCachedValue(bookmark, GroupsHiddenSymbol, () => {
+    //get hidden tags
     const tags = getHiddenTags(bookmark);
-    return (
-      tags &&
-      processTags(
-        bookmark.tags.filter((t) => t[0] === "group"),
-        getGroupPointerFromGroupTag,
-      )
+    if (!tags) return undefined;
+
+    // parse groups from hidden tags
+    const groups = processTags(
+      tags.filter((t) => t[0] === "group"),
+      getGroupPointerFromGroupTag,
     );
+
+    // set cached value
+    Reflect.set(bookmark, GroupsHiddenSymbol, groups);
+
+    return groups;
   });
+}
+
+/** Checks if the hidden groups are unlocked */
+export function isHiddenGroupsUnlocked<T extends NostrEvent>(bookmark: T): bookmark is T & UnlockedGroups {
+  return isHiddenTagsUnlocked(bookmark) && (GroupsHiddenSymbol in bookmark || getHiddenGroups(bookmark) !== undefined);
+}
+
+/** Unlocks the hidden groups on a groups event */
+export async function unlockHiddenGroups(bookmark: NostrEvent, signer: HiddenContentSigner): Promise<GroupPointer[]> {
+  if (isHiddenGroupsUnlocked(bookmark)) return bookmark[GroupsHiddenSymbol];
+
+  // unlock hidden tags
+  await unlockHiddenTags(bookmark, signer);
+
+  // get hidden groups
+  const groups = getHiddenGroups(bookmark);
+  if (!groups) throw new Error("Failed to unlock hidden groups");
+
+  // notify event store
+  notifyEventUpdate(bookmark);
+
+  return groups;
 }
 
 /** Gets a {@link GroupPointer} from a group event by reading the "h" tag */

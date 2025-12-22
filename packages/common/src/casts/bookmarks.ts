@@ -5,7 +5,7 @@ import {
   isEventPointer,
   NostrEvent,
 } from "applesauce-core/helpers";
-import { defined, watchEventUpdates } from "applesauce-core/observable";
+import { watchEventUpdates } from "applesauce-core/observable";
 import { combineLatest, map, of, switchMap } from "rxjs";
 import {
   BookmarkListEvent,
@@ -69,32 +69,40 @@ class BookmarksListBase<T extends BookmarkListEvent | BookmarkSetEvent> extends 
         watchEventUpdates(store),
         // Get hidden bookmarks
         map((event) => event && getHiddenBookmarks(event)),
-        /** Only emit when the hidden bookmarks are unlocked */
-        defined(),
       ),
     );
   }
   get hiddenNotes$() {
     return this.$$ref("hiddenNotes$", (store) =>
       this.hidden$.pipe(
-        switchMap((hidden) =>
-          combineLatest(hidden.filter((pointer) => isEventPointer(pointer)).map((pointer) => store.event(pointer))),
-        ),
-        map((arr) => arr.filter((e) => !!e)),
-        castTimelineStream(Note, store),
+        switchMap((hidden) => {
+          if (hidden === undefined) return of(undefined);
+
+          const eventPointers = hidden.filter((pointer) => isEventPointer(pointer));
+          if (eventPointers.length === 0) return of([]);
+
+          return combineLatest(eventPointers.map((pointer) => store.event(pointer))).pipe(
+            map((arr) => arr.filter((e) => !!e)),
+            castTimelineStream(Note, store),
+          );
+        }),
       ),
     );
   }
   get hiddenArticles$() {
     return this.$$ref("hiddenArticles$", (store) =>
       this.hidden$.pipe(
-        switchMap((hidden) =>
-          combineLatest(
-            hidden.filter((pointer) => isAddressPointer(pointer)).map((pointer) => store.replaceable(pointer)),
-          ),
-        ),
-        map((arr) => arr.filter((e) => !!e)),
-        castTimelineStream(Article, store),
+        switchMap((hidden) => {
+          if (hidden === undefined) return of(undefined);
+
+          const addressPointers = hidden.filter((pointer) => isAddressPointer(pointer));
+          if (addressPointers.length === 0) return of([]);
+
+          return combineLatest(addressPointers.map((pointer) => store.replaceable(pointer))).pipe(
+            map((arr) => arr.filter((e) => !!e)),
+            castTimelineStream(Article, store),
+          );
+        }),
       ),
     );
   }

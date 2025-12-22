@@ -5,7 +5,7 @@ import {
   getHandlerPicture,
   getHandlerSupportedKinds,
 } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline, Models } from "applesauce-core";
 import { isAddressPointer, isEventPointer } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
@@ -14,11 +14,64 @@ import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19"
 import { useEffect, useRef, useState } from "react";
 import { map } from "rxjs";
 
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import RelayPicker from "../../components/relay-picker";
 
 // Create stores and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
+
+createEventLoaderForStore(eventStore, pool, {
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+});
+
+function PointerPreview({ pointer }: { pointer: AddressPointer | EventPointer | ProfilePointer }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Load event for event pointers or address pointers
+  const event = use$(() => {
+    if (isEventPointer(pointer)) {
+      return eventStore.model(Models.EventModel, pointer);
+    } else if (isAddressPointer(pointer)) {
+      return eventStore.model(Models.ReplaceableModel, pointer);
+    }
+    return undefined;
+  }, [pointer]);
+
+  return (
+    <div className="my-4">
+      <div className="bg-base-200 p-4 rounded-box">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-semibold">Decoded Data</h2>
+          {(isEventPointer(pointer) || isAddressPointer(pointer)) && (
+            <button className="btn btn-sm" onClick={() => setIsExpanded(!isExpanded)}>
+              {isExpanded ? "Hide" : "Show"} Event Preview
+            </button>
+          )}
+        </div>
+        <div className="overflow-auto">
+          <pre>{JSON.stringify(pointer, null, 2)}</pre>
+        </div>
+      </div>
+
+      {isExpanded && (isEventPointer(pointer) || isAddressPointer(pointer)) && (
+        <div className="mt-4 bg-base-200 p-4 rounded-box">
+          <h3 className="text-lg font-semibold mb-2">Event Preview</h3>
+          {event ? (
+            <div className="overflow-auto">
+              <pre className="text-sm">{JSON.stringify(event, null, 2)}</pre>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="loading loading-spinner loading-sm"></div>
+              <span className="text-sm">Loading event...</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function HandlerCard({
   handler,
@@ -184,14 +237,7 @@ export default function LinkHandlerExample() {
         </div>
       )}
 
-      {pointer && (
-        <div className="my-4">
-          <h2 className="text-xl font-semibold mb-2">Decoded Data</h2>
-          <div className="bg-base-200 p-4 rounded-box overflow-auto">
-            <pre>{JSON.stringify(pointer, null, 2)}</pre>
-          </div>
-        </div>
-      )}
+      {pointer && <PointerPreview pointer={pointer} />}
 
       {pointer && handlers && handlers.length > 0 ? (
         <div>

@@ -1,47 +1,33 @@
-import { decodeGroupPointer, groupMessageEvents, GroupPointer } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import {
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
-  mergeRelaySets,
-  ProfileContent,
-} from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
-import { EventFactory } from "applesauce-core";
 import { GroupMessageBlueprint } from "applesauce-common/blueprints";
+import { castUser } from "applesauce-common/casts";
+import { decodeGroupPointer, groupMessageEvents, GroupPointer } from "applesauce-common/helpers";
+import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
+import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { ProfilePointer } from "nostr-tools/nip19";
 import { npubEncode } from "nostr-tools/nip19";
-import { useCallback, useEffect, useState } from "react";
-import { map, startWith } from "rxjs";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
 import GroupPicker from "../../components/group-picker";
 
 const eventStore = new EventStore();
 const signer = new ExtensionSigner();
-const factory = new EventFactory({
-  signer,
-});
-
+const factory = new EventFactory({ signer });
 const pool = new RelayPool();
 
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/"],
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
-/** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
-}
-
 function ChatMessageGroup({ messages }: { messages: NostrEvent[] }) {
-  const profile = useProfile({ pubkey: messages[0].pubkey, relays: mergeRelaySets(getSeenRelays(messages[0])) });
+  const profile = use$(
+    () => eventStore.profile({ pubkey: messages[0].pubkey, relays: mergeRelaySets(getSeenRelays(messages[0])) }),
+    [messages[0].pubkey],
+  );
 
   const time = messages[0].created_at;
 
@@ -75,11 +61,12 @@ function ChatLog({ pointer }: { pointer: GroupPointer }) {
         .relay(pointer.relay)
         .subscription({ kinds: [9], "#h": [pointer.id], limit: 100 })
         .pipe(
+          // ignore EOSE
           onlyEvents(),
+          // map to store
           mapEventsToStore(eventStore),
+          // map to timeline
           mapEventsToTimeline(),
-          map((t) => [...t]),
-          startWith([]),
         ),
     [pointer.relay, pointer?.id],
   );
@@ -149,6 +136,7 @@ export default function RelayGroupExample() {
   const [identifier, setIdentifier] = useState("");
   const [pointer, setPointer] = useState<GroupPointer>();
   const [pubkey, setPubkey] = useState<string | null>(null);
+  const user = useMemo(() => (pubkey ? castUser(pubkey, eventStore) : undefined), [pubkey]);
 
   const setGroup = useCallback(
     (identifier: string) => {
@@ -177,6 +165,11 @@ export default function RelayGroupExample() {
   const needsAuth = !!authRequiredForRead;
   const authAvailable = !!challenge && !authRequiredForRead;
 
+  const handleSignIn = useCallback(async () => {
+    const pubkey = await signer.getPublicKey();
+    setPubkey(pubkey);
+  }, [user]);
+
   // Handle authentication with extension signer
   const handleAuthenticate = useCallback(async () => {
     if (authenticated || !pointer) return;
@@ -203,7 +196,12 @@ export default function RelayGroupExample() {
   return (
     <div className="container mx-auto p-2 h-full overflow-hidden">
       <div className="flex w-full mb-4 items-center gap-2">
-        <GroupPicker identifier={identifier} setIdentifier={setGroup} />
+        <GroupPicker identifier={identifier} setIdentifier={setGroup} user={user} />
+        {!pubkey && (
+          <button className="btn" onClick={handleSignIn}>
+            Sign in
+          </button>
+        )}
         {pointer && authenticated && npub && <div className="badge badge-success">Authenticated</div>}
       </div>
 
