@@ -11,5 +11,6 @@ export * from "./relay-lists.js";
 export * from "./report.js";
 export * from "./share.js";
 export * from "./stream.js";
+export * from "./torrent.js";
 export * from "./user.js";
 export * from "./zap.js";

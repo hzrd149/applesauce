@@ -11,6 +11,7 @@ import { kinds, nip19, NostrEvent } from "nostr-tools";
 import { AddressPointer, npubEncode } from "nostr-tools/nip19";
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { filter, of, take } from "rxjs";
 
 const eventStore = new EventStore();
@@ -336,7 +337,7 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
 
         <div ref={contentRef} className="prose prose-lg max-w-none select-text" onMouseUp={handleMouseUp}>
           <ReactMarkdown
-            remarkPlugins={[remarkNostrMentions]}
+            remarkPlugins={[remarkGfm, remarkNostrMentions]}
             components={{
               h1: ({ node, ...props }) => <h1 className="text-3xl font-bold my-4" {...props} />,
               h2: ({ node, ...props }) => <h2 className="text-2xl font-bold my-3" {...props} />,
@@ -349,6 +350,16 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
               ),
               code: ({ node, ...props }) => <code className="bg-base-300 rounded px-1" {...props} />,
               pre: ({ node, ...props }) => <pre className="bg-base-300 rounded p-4 my-2 overflow-x-auto" {...props} />,
+              table: ({ node, ...props }) => (
+                <div className="overflow-x-auto my-4">
+                  <table className="table table-zebra w-full" {...props} />
+                </div>
+              ),
+              thead: ({ node, ...props }) => <thead className="bg-base-200" {...props} />,
+              tbody: ({ node, ...props }) => <tbody {...props} />,
+              tr: ({ node, ...props }) => <tr {...props} />,
+              th: ({ node, ...props }) => <th {...props} />,
+              td: ({ node, ...props }) => <td {...props} />,
             }}
           >
             {article.content}

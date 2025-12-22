@@ -5,3 +5,4 @@ import "./note.js";
 import "./reaction.js";
 import "./share.js";
 import "./poll.js";
+import "./torrent.js";

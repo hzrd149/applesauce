@@ -66,6 +66,11 @@ export function setTorrentCategoryPath(categoryPath: string): EventOperation {
   return modifyPublicTags(setSingletonTag(["i", `tcat:${categoryPath}`]));
 }
 
+/** Removes the category path (tcat) */
+export function removeTorrentCategoryPath(): EventOperation {
+  return modifyPublicTags((tags) => tags.filter((t) => !(t[0] === "i" && t[1]?.startsWith("tcat:"))));
+}
+
 /** Adds an external identifier */
 export function addTorrentExternalIdentifier(identifier: TorrentExternalIdentifier): EventOperation {
   return modifyPublicTags(addNameValueTag(["i", identifier.identifier], false));

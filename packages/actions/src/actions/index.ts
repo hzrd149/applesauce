@@ -3,6 +3,7 @@ export * from "./blocked-relays.js";
 export * from "./blossom.js";
 export * from "./bookmarks.js";
 export * from "./calendar.js";
+export * from "./comment.js";
 export * from "./contacts.js";
 export * from "./direct-message-relays.js";
 export * from "./favorite-relays.js";

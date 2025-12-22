@@ -24,6 +24,7 @@ describe("exports", () => {
         "Share",
         "Stream",
         "StreamChatMessage",
+        "Torrent",
         "User",
         "Zap",
         "castEvent",

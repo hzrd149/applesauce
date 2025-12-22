@@ -264,6 +264,7 @@ describe("exports", () => {
         "isAddressPointerInList",
         "isCommentAddressPointer",
         "isCommentEventPointer",
+        "isCommentExternalPointer",
         "isEncryptedContentFromCache",
         "isEventInList",
         "isEventPointerInList",

@@ -1,4 +1,5 @@
-import { blueprint } from "applesauce-core/event-factory";
+import { blueprint, EventFactory } from "applesauce-core/event-factory";
+import { EventTemplate } from "applesauce-core/helpers/event";
 import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { setContent } from "applesauce-core/operations/content";
 import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
@@ -56,4 +57,17 @@ export function TorrentBlueprint(infoHash: string, content: string, options?: To
       : undefined,
     setMetaTags({ ...options, alt: options?.alt ?? `Torrent: ${options?.title ?? infoHash}` }),
   );
+}
+
+// Register this blueprint with EventFactory
+EventFactory.prototype.torrent = function (infoHash: string, content: string, options?: TorrentBlueprintOptions) {
+  return this.create(TorrentBlueprint, infoHash, content, options);
+};
+
+// Type augmentation for EventFactory
+declare module "applesauce-core/event-factory" {
+  interface EventFactory {
+    /** Create a NIP-35 torrent event (kind 2003) */
+    torrent(infoHash: string, content: string, options?: TorrentBlueprintOptions): Promise<EventTemplate>;
+  }
 }

@@ -21,6 +21,7 @@ describe("exports", () => {
         "CreateBookmarkList",
         "CreateBookmarkSet",
         "CreateCalendar",
+        "CreateComment",
         "CreateFollowSet",
         "CreateMailboxes",
         "CreateProfile",

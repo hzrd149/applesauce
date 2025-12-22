@@ -173,6 +173,16 @@ export function isCommentAddressPointer(pointer: any): pointer is CommentAddress
   );
 }
 
+/** Checks if a pointer is a {@link CommentExternalPointer} */
+export function isCommentExternalPointer(pointer: any): pointer is CommentExternalPointer<keyof ExternalIdentifiers> {
+  return (
+    pointer?.type === "external" &&
+    Reflect.has(pointer, "kind") &&
+    Reflect.has(pointer, "identifier") &&
+    typeof pointer.kind === "string"
+  );
+}
+
 /** Checks if a comment event is valid */
 export function isValidComment(comment: NostrEvent): comment is CommentEvent {
   return (

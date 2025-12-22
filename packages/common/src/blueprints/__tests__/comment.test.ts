@@ -1,68 +1,59 @@
 import { EventFactory } from "applesauce-core/event-factory";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { describe, expect, it } from "vitest";
-import { COMMENT_KIND } from "../../helpers/comment.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
+import { COMMENT_KIND, CommentPointer } from "../../helpers/comment.js";
 import { CommentBlueprint } from "../comment.js";
+
+const user = new FakeUser();
 
 describe("CommentBlueprint", () => {
   const factory = new EventFactory();
 
   it("should handle replying to an article", async () => {
-    const article: NostrEvent = {
+    const article: NostrEvent = user.event({
       content: "# The case against edits...",
-      created_at: 1730991377,
-      id: "caa65d8b3b11d887da7188f3fe75c33d7be80d3df8c46f241a275b9075888674",
       kind: 30023,
-      pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
-      sig: "eb30514d222b3ed83a2b3addd8242abe039d88f43330f1f06a1efba8840ea46ce687f60d582237f28bb88845a65de421d25bdda7eb2cb3d3c125b986722c230b",
       tags: [
         ["d", "ad84e3b3"],
         ["title", "The case against edits"],
         ["published_at", "1730973840"],
         ["t", "nostr"],
       ],
-    };
+    });
 
-    expect(await factory.create(CommentBlueprint, article, "why?")).toEqual(
+    const comment = await factory.create(CommentBlueprint, article, "why?");
+
+    expect(comment).toEqual(
       expect.objectContaining({
         kind: COMMENT_KIND,
         content: "why?",
         tags: [
-          ["A", "30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:ad84e3b3"],
-          [
-            "E",
-            "caa65d8b3b11d887da7188f3fe75c33d7be80d3df8c46f241a275b9075888674",
-            "",
-            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
-          ],
+          // Root tags
+          ["A", `30023:${article.pubkey}:ad84e3b3`],
+          ["E", article.id, "", article.pubkey],
           ["K", "30023"],
-          ["P", "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"],
-          ["a", "30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:ad84e3b3"],
-          [
-            "e",
-            "caa65d8b3b11d887da7188f3fe75c33d7be80d3df8c46f241a275b9075888674",
-            "",
-            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
-          ],
+          ["P", article.pubkey],
+          // Reply tags
+          ["a", `30023:${article.pubkey}:ad84e3b3`],
+          ["e", article.id, "", article.pubkey],
           ["k", "30023"],
-          ["p", "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"],
+          ["p", article.pubkey],
         ],
       }),
     );
   });
 
   it("should include root P and reply p tags for author", async () => {
-    const parent: NostrEvent = {
+    const parent = user.event({
       content: "Awesome",
-      created_at: 1740149695,
-      id: "parent-event-id",
       kind: 1111,
-      pubkey: "pubkey",
-      sig: "sig",
       tags: [
+        // Root tags
         ["E", "86c0b95589b016ffb703bfc080d49e54106e74e2d683295119c3453e494dbe6f"],
         ["K", "1621"],
         ["P", "e4336cd525df79fa4d3af364fd9600d4b10dce4215aa4c33ed77ea0842344b10"],
+        // Reply tags
         [
           "e",
           "3bc9097ffc1c1fcd035f01ca2397099a032c2543cb121de6ab5af9b4a9d649f1",
@@ -72,15 +63,54 @@ describe("CommentBlueprint", () => {
         ["k", "1111"],
         ["p", "a008def15796fba9a0d6fab04e8fd57089285d9fd505da5a83fe8aad57a3564d"],
       ],
-    };
+    });
 
-    expect(await factory.create(CommentBlueprint, parent, "yea it is")).toEqual(
+    const comment = await factory.create(CommentBlueprint, parent, "yea it is");
+
+    expect(comment).toEqual(
       expect.objectContaining({
         content: "yea it is",
+        kind: 1111,
         tags: expect.arrayContaining([
+          // Root tags
+          [
+            "E",
+            "86c0b95589b016ffb703bfc080d49e54106e74e2d683295119c3453e494dbe6f",
+            "",
+            "e4336cd525df79fa4d3af364fd9600d4b10dce4215aa4c33ed77ea0842344b10",
+          ],
+          ["K", "1621"],
           ["P", "e4336cd525df79fa4d3af364fd9600d4b10dce4215aa4c33ed77ea0842344b10"],
-          ["p", "pubkey"],
+          // Reply tags
+          ["e", parent.id, "", user.pubkey],
+          ["k", "1111"],
+          ["p", user.pubkey],
         ]),
+      }),
+    );
+  });
+
+  it("should handle commenting on an external CommentPointer", async () => {
+    const externalPointer: CommentPointer = {
+      type: "external",
+      kind: "podcast:item:guid",
+      identifier: "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f",
+    };
+
+    const comment = await factory.create(CommentBlueprint, externalPointer, "Great episode!");
+
+    expect(comment).toEqual(
+      expect.objectContaining({
+        kind: COMMENT_KIND,
+        content: "Great episode!",
+        tags: [
+          // Root tags (capitalized)
+          ["I", "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f"],
+          ["K", "podcast:item:guid"],
+          // Reply tags (lowercase)
+          ["i", "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f"],
+          ["k", "podcast:item:guid"],
+        ],
       }),
     );
   });
