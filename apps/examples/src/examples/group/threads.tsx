@@ -1,24 +1,15 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import {
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
-  mergeRelaySets,
-  ProfileContent,
-} from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-core";
-import { setShortTextContent } from "applesauce-core/operations/content";
-import { includeSingletonTag } from "applesauce-core/operations/tags";
+import { CommentBlueprint } from "applesauce-common/blueprints";
 import { COMMENT_KIND, decodeGroupPointer, GroupPointer } from "applesauce-common/helpers";
 import { CommentsModel } from "applesauce-common/models";
-import { CommentBlueprint } from "applesauce-common/blueprints";
 import * as Operations from "applesauce-common/operations";
+import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets, NostrEvent } from "applesauce-core/helpers";
+import { setShortTextContent } from "applesauce-core/operations/content";
+import { includeSingletonTag } from "applesauce-core/operations/tags";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents, RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { NostrEvent } from "applesauce-core/helpers";
-import { ProfilePointer } from "nostr-tools/nip19";
 import { useCallback, useRef, useState } from "react";
 import { map, startWith } from "rxjs";
 

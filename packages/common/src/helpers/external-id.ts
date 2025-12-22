@@ -26,15 +26,17 @@ export type ParseResult = {
   [P in keyof ExternalIdentifiers]: ExternalPointer<P>;
 }[keyof ExternalIdentifiers];
 
-/**
- * Parses a NIP-73 external identifier
- * @throws
- */
+/** Casts a string to a valid external pointer */
+export function isValidExternalPointer(identifier: string): identifier is `${keyof ExternalIdentifiers}1${string}` {
+  return parseExternalPointer(identifier) !== null;
+}
+
+/** Parses a NIP-73 external identifier */
 export function parseExternalPointer<Prefix extends keyof ExternalIdentifiers>(
   identifier: `${Prefix}1${string}`,
 ): ExternalPointer<Prefix>;
-export function parseExternalPointer(identifier: string): ParseResult;
-export function parseExternalPointer(identifier: string): ParseResult {
+export function parseExternalPointer(identifier: string): ParseResult | null;
+export function parseExternalPointer(identifier: string): ParseResult | null {
   if (identifier.startsWith("#")) return { kind: "#", identifier: identifier as ExternalIdentifiers["#"] };
   if (identifier.startsWith("geo:")) return { kind: "geo", identifier: identifier as ExternalIdentifiers["geo"] };
   if (identifier.startsWith("podcast:guid:"))
@@ -46,17 +48,14 @@ export function parseExternalPointer(identifier: string): ParseResult {
   if (identifier.startsWith("isan:")) return { kind: "isan", identifier: identifier as ExternalIdentifiers["isan"] };
   if (identifier.startsWith("doi:")) return { kind: "doi", identifier: identifier as ExternalIdentifiers["doi"] };
 
-  throw new Error("Failed to parse external identifier");
+  return null;
 }
 
-/**
- * Gets an ExternalPointer for a "i" tag
- * @throws
- */
+/** Gets an ExternalPointer for a "i" tag */
 export function getExternalPointerFromTag<Prefix extends keyof ExternalIdentifiers>(
   tag: string[],
-): ExternalPointer<Prefix>;
-export function getExternalPointerFromTag(tag: string[]): ParseResult;
-export function getExternalPointerFromTag(tag: string[]): ParseResult {
+): ExternalPointer<Prefix> | null;
+export function getExternalPointerFromTag(tag: string[]): ParseResult | null;
+export function getExternalPointerFromTag(tag: string[]): ParseResult | null {
   return parseExternalPointer(tag[1]);
 }

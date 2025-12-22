@@ -11,17 +11,21 @@ export type ChannelMetadataContent = {
   relays?: string[];
 };
 
-function parseChannelMetadataContent(channel: NostrEvent) {
+function parseChannelMetadataContent(channel: NostrEvent): ChannelMetadataContent | null {
   const metadata = JSON.parse(channel.content) as ChannelMetadataContent;
-  if (metadata.name === undefined) throw new Error("Missing name");
-  if (metadata.about === undefined) throw new Error("Missing about");
-  if (metadata.picture === undefined) throw new Error("Missing picture");
-  if (metadata.relays && !Array.isArray(metadata.relays)) throw new Error("Invalid relays");
+  if (
+    metadata.name === undefined ||
+    metadata.about === undefined ||
+    metadata.picture === undefined ||
+    (metadata.relays && !Array.isArray(metadata.relays))
+  )
+    return null;
+
   return metadata;
 }
 
 /** Gets the parsed metadata on a channel creation or channel metadata event */
-export function getChannelMetadataContent(channel: NostrEvent) {
+export function getChannelMetadataContent(channel: NostrEvent): ChannelMetadataContent | null {
   return getOrComputeCachedValue(channel, ChannelMetadataSymbol, () => {
     return parseChannelMetadataContent(channel);
   });

@@ -41,15 +41,9 @@ export function ChannelMetadataModel(channel: NostrEvent): Model<ChannelMetadata
     let latest = channel;
     return events.filters(filters).pipe(
       map((event) => {
-        try {
-          if (event.pubkey === latest.pubkey && event.created_at > latest.created_at) {
-            latest = event;
-          }
+        if (event.pubkey === latest.pubkey && event.created_at > latest.created_at) latest = event;
 
-          return getChannelMetadataContent(latest);
-        } catch (error) {
-          return undefined;
-        }
+        return getChannelMetadataContent(latest) ?? undefined;
       }),
     );
   };

@@ -251,7 +251,7 @@ describe("getCommentAddressPointer", () => {
     });
   });
 
-  it("should throw if missing K tag", () => {
+  it("should return null if missing K tag", () => {
     // root
     expect(
       getCommentAddressPointer(

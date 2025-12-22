@@ -6,10 +6,10 @@ import {
   KnownEvent,
   NostrEvent,
 } from "applesauce-core/helpers/event";
-import { ExternalIdentifiers, ExternalPointer, getExternalPointerFromTag } from "applesauce-core/helpers/external-id";
 import { getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 import { fillAndTrimTag } from "applesauce-core/helpers/tags";
+import { ExternalIdentifiers, ExternalPointer, getExternalPointerFromTag } from "./external-id.js";
 
 export const COMMENT_KIND = 1111;
 
@@ -102,9 +102,12 @@ export function getCommentExternalPointer(
   const iTag = tags.find((t) => t[0] === (root ? "I" : "i"));
 
   if (iTag) {
+    const pointer = getExternalPointerFromTag(iTag);
+    if (!pointer) return null;
+
     return {
       type: "external",
-      ...getExternalPointerFromTag(iTag),
+      ...pointer,
     };
   }
   return null;

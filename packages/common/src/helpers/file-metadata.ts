@@ -39,10 +39,7 @@ export type FileMetadata = {
 /** Alias for {@link FileMetadata} */
 export type MediaAttachment = FileMetadata;
 
-/**
- * Parses file metadata tags into {@link FileMetadata}
- * @throws
- */
+/** Parses file metadata tags into {@link FileMetadata} */
 export function parseFileMetadataTags(tags: string[][]): FileMetadata {
   const fields: Record<string, string> = {};
   let fallback: string[] | undefined = undefined;

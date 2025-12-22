@@ -1,6 +1,6 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { isETag, isPTag } from "applesauce-core/helpers/tags";
+import { isETag, isNameValueTag, isPTag } from "applesauce-core/helpers/tags";
 
 export const ParsedReportSymbol = Symbol("parsed-report");
 
@@ -14,7 +14,7 @@ export enum ReportReason {
   other = "other",
 }
 
-export type ReportedUser = { type: "user"; event: NostrEvent; pubkey: string; reason?: ReportReason };
+export type ReportedUser = { type: "user"; event: NostrEvent; pubkey: string; reason?: ReportReason; comment?: string };
 export type ReportedEvent = {
   type: "event";
   event: NostrEvent;
@@ -26,29 +26,34 @@ export type ReportedEvent = {
 };
 
 /** Reads a report event as either a user or event report */
-export function getReported(report: NostrEvent): ReportedEvent | ReportedUser {
+export function getReported(report: NostrEvent): ReportedEvent | ReportedUser | null {
   return getOrComputeCachedValue(report, ParsedReportSymbol, () => {
-    const p = report.tags.find(isPTag);
-    if (!p) throw new Error("Report missing p tag");
+    const pTag = report.tags.find(isPTag);
+    if (!pTag) return null;
 
     const comment = report.content ? report.content.trim() : undefined;
-    const e = report.tags.find(isETag);
+    const eTag = report.tags.find(isETag);
 
     // Event report
-    if (e) {
+    if (eTag) {
       const blobs = report.tags.filter((t) => t[0] === "x" && t[1]).map((t) => t[1]);
       return {
         type: "event",
         event: report,
         comment,
-        id: e[1],
-        pubkey: p[1],
-        reason: e[2] as unknown as ReportReason,
+        id: eTag[1],
+        pubkey: pTag[1],
+        reason: eTag[2] as unknown as ReportReason,
         blobs,
       };
     }
 
     // User report
-    return { type: "user", event: report, comment, pubkey: p[1], reason: p[2] as unknown as ReportReason };
+    return { type: "user", event: report, comment, pubkey: pTag[1], reason: pTag[2] as unknown as ReportReason };
   });
+}
+
+/** Gets the server tags from a report event (for blob reports) */
+export function getReportServers(report: NostrEvent): string[] {
+  return report.tags.filter((t) => isNameValueTag(t, "server") && t[1]).map((t) => t[1]);
 }

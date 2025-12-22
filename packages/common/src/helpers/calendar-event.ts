@@ -1,12 +1,25 @@
 import { createPTagFromProfilePointer } from "applesauce-core/helpers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { getTagValue, NostrEvent } from "applesauce-core/helpers/event";
+import { getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { getProfilePointerFromPTag, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { fillAndTrimTag, isPTag, isRTag, isTTag, NameValueTag } from "applesauce-core/helpers/tags";
 
 // NIP-52 Calendar Event Kinds
 export const DATE_BASED_CALENDAR_EVENT_KIND = 31922;
 export const TIME_BASED_CALENDAR_EVENT_KIND = 31923;
+
+export type DateBasedCalendarEvent = KnownEvent<typeof DATE_BASED_CALENDAR_EVENT_KIND>;
+export type TimeBasedCalendarEvent = KnownEvent<typeof TIME_BASED_CALENDAR_EVENT_KIND>;
+
+/** Checks if an event is a date-based calendar event */
+export function isValidDateBasedCalendarEvent(event: NostrEvent): event is DateBasedCalendarEvent {
+  return event.kind === DATE_BASED_CALENDAR_EVENT_KIND;
+}
+
+/** Checks if an event is a time-based calendar event */
+export function isValidTimeBasedCalendarEvent(event: NostrEvent): event is TimeBasedCalendarEvent {
+  return event.kind === TIME_BASED_CALENDAR_EVENT_KIND;
+}
 
 // Calendar Event Participant
 export type CalendarEventParticipant = ProfilePointer & {
@@ -69,9 +82,6 @@ export function getCalendarEventEnd(event: NostrEvent): number | undefined {
 
 /** Gets all locations from a calendar event */
 export function getCalendarEventLocations(event: NostrEvent): string[] {
-  if (event.kind !== DATE_BASED_CALENDAR_EVENT_KIND && event.kind !== TIME_BASED_CALENDAR_EVENT_KIND)
-    throw new Error("Event is not a date-based or time-based calendar event");
-
   return getOrComputeCachedValue(event, CalendarEventLocationsSymbol, () => {
     return event.tags.filter((t) => t[0] === "location" && t[1]).map((t) => t[1]);
   });
@@ -79,9 +89,6 @@ export function getCalendarEventLocations(event: NostrEvent): string[] {
 
 /** Gets the geohash of a calendar event */
 export function getCalendarEventGeohash(event: NostrEvent): string | undefined {
-  if (event.kind !== DATE_BASED_CALENDAR_EVENT_KIND && event.kind !== TIME_BASED_CALENDAR_EVENT_KIND)
-    throw new Error("Event is not a date-based or time-based calendar event");
-
   return getOrComputeCachedValue(event, CalendarEventGeohashSymbol, () => {
     let hash: string | undefined = undefined;
     for (const tag of event.tags) {
@@ -93,9 +100,6 @@ export function getCalendarEventGeohash(event: NostrEvent): string | undefined {
 
 /** Gets all participants from a calendar event */
 export function getCalendarEventParticipants(event: NostrEvent): CalendarEventParticipant[] {
-  if (event.kind !== DATE_BASED_CALENDAR_EVENT_KIND && event.kind !== TIME_BASED_CALENDAR_EVENT_KIND)
-    throw new Error("Event is not a date-based or time-based calendar event");
-
   return getOrComputeCachedValue(event, CalendarEventParticipantsSymbol, () => {
     return event.tags
       .filter(isPTag)
@@ -114,9 +118,6 @@ export function getCalendarEventParticipants(event: NostrEvent): CalendarEventPa
 
 /** Gets all hashtags from a calendar event */
 export function getCalendarEventHashtags(event: NostrEvent): string[] {
-  if (event.kind !== DATE_BASED_CALENDAR_EVENT_KIND && event.kind !== TIME_BASED_CALENDAR_EVENT_KIND)
-    throw new Error("Event is not a date-based or time-based calendar event");
-
   return getOrComputeCachedValue(event, CalendarEventHashtagsSymbol, () => {
     return event.tags.filter(isTTag).map((t) => t[1]);
   });
@@ -124,9 +125,6 @@ export function getCalendarEventHashtags(event: NostrEvent): string[] {
 
 /** Gets all references from a calendar event */
 export function getCalendarEventReferences(event: NostrEvent): string[] {
-  if (event.kind !== DATE_BASED_CALENDAR_EVENT_KIND && event.kind !== TIME_BASED_CALENDAR_EVENT_KIND)
-    throw new Error("Event is not a date-based or time-based calendar event");
-
   return getOrComputeCachedValue(event, CalendarEventReferencesSymbol, () => {
     return event.tags.filter(isRTag).map((t) => t[1]);
   });
