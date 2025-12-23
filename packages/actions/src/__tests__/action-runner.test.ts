@@ -1,9 +1,8 @@
+import { EventFactory, EventStore } from "applesauce-core";
+import { kinds } from "applesauce-core/helpers/event";
 import { from } from "rxjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { EventFactory } from "applesauce-core";
-import { EventStore } from "applesauce-core";
-import { kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { Action, ActionRunner } from "../action-hub.js";
+import { Action, ActionRunner } from "../action-runner.js";
 import { CreateProfile } from "../actions/profile.js";
 import { FakeUser } from "./fake-user.js";
 

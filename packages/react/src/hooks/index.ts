@@ -1,6 +1,6 @@
 export * from "./use-account-manager.js";
 export * from "./use-accounts.js";
-export * from "./use-action-hub.js";
+export * from "./use-action-runner.js";
 export * from "./use-action.js";
 export * from "./use-active-account.js";
 export * from "./use-event-factory.js";

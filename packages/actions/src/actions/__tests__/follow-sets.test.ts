@@ -4,7 +4,7 @@ import { unlockHiddenTags } from "applesauce-core/helpers";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { ActionRunner } from "../../action-hub.js";
+import { ActionRunner } from "../../action-runner.js";
 import { AddUserToFollowSet, RemoveUserFromFollowSet } from "../follow-sets.js";
 
 const user = new FakeUser();

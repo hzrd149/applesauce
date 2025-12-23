@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { finalize } from "rxjs";
 import { ActionBuilder } from "applesauce-actions";
 
-import { useActionRunner } from "./use-action-hub.js";
+import { useActionRunner } from "./use-action-runner.js";
 
 export function useAction<Args extends Array<any>>(Action: ActionBuilder<Args>, args: Args | undefined) {
   const [loading, setLoading] = useState(false);

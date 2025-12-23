@@ -2,7 +2,7 @@ import { EventFactory, EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { ActionRunner } from "../../action-hub.js";
+import { ActionRunner } from "../../action-runner.js";
 import { BookmarkEvent, CreateBookmarkList, CreateBookmarkSet, UnbookmarkEvent } from "../bookmarks.js";
 import { AddOutboxRelay } from "../mailboxes.js";
 
