@@ -129,6 +129,9 @@ export class Relay implements IRelay {
   information$: Observable<RelayInformation | null>;
   protected _nip11: RelayInformation | null = null;
 
+  /** An observable that emits the icon URL for the relay, or the favicon.ico URL for the relay */
+  icon$: Observable<string | undefined>;
+
   /** An observable that emits the limitations for the relay */
   limitations$: Observable<RelayInformation["limitation"] | null>;
 
@@ -256,6 +259,9 @@ export class Relay implements IRelay {
       map((info) =>
         info && Array.isArray(info.supported_nips) ? info.supported_nips.filter((n) => typeof n === "number") : null,
       ),
+    );
+    this.icon$ = this.information$.pipe(
+      map((info) => info?.icon || new URL("/favicon.ico", ensureHttpURL(this.url)).toString()),
     );
 
     // Create observables that track if auth is required for REQ or EVENT

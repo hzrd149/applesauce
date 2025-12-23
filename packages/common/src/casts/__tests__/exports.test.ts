@@ -19,6 +19,8 @@ describe("exports", () => {
         "Note",
         "Profile",
         "Reaction",
+        "RelayDiscovery",
+        "RelayMonitor",
         "Report",
         "SearchRelays",
         "Share",

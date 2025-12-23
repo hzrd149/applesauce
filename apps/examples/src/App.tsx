@@ -1,7 +1,7 @@
 import Prism from "prismjs";
 import "prismjs/themes/prism.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import SideNav from "./components/Nav";
+import SideNav from "./components/nav";
 import { ErrorBoundary } from "react-error-boundary";
 import "@xterm/xterm/css/xterm.css";
 

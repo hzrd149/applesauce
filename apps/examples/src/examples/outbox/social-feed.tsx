@@ -7,17 +7,18 @@ import {
   mapEventsToStore,
 } from "applesauce-core";
 import {
+  createOutboxMap,
   Filter,
   getDisplayName,
   getProfilePicture,
   getSeenRelays,
+  NostrEvent,
   persistEventsToCache,
   relaySet,
   unixNow,
 } from "applesauce-core/helpers";
-import { createOutboxMap } from "applesauce-core/helpers";
 import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
-import { useObservableEagerState, use$ } from "applesauce-react/hooks";
+import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import {
   ignoreUnhealthyRelaysOnPointers,
   onlyEvents,
@@ -27,7 +28,6 @@ import {
 } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
@@ -156,8 +156,7 @@ const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
 
 function NoteRelay({ relay }: { relay: string }) {
   const info = use$(() => pool.relay(relay).information$, [relay]);
-  const icon =
-    info?.icon || new URL("/favicon.ico", relay.replace("wss://", "https://").replace("ws://", "https://")).toString();
+  const icon = use$(() => pool.relay(relay).icon$, [relay]);
   const name = info?.name || relay.replace("wss://", "").replace("ws://", "");
   const color = pastellify(relay, { toCSS: true });
 
@@ -562,8 +561,7 @@ function RelayConnection({ relay, userCount, totalUsers }: { relay: string; user
   const connected = use$(() => instance.connected$, [instance]);
 
   const color = useMemo(() => pastellify(relay, { toCSS: true }), [relay]);
-  const icon =
-    info?.icon || new URL("/favicon.ico", relay.replace("wss://", "https://").replace("ws://", "https://")).toString();
+  const icon = use$(() => pool.relay(relay).icon$, [relay]);
 
   return (
     <div

@@ -246,9 +246,7 @@ function MonitorListItem({
 }
 
 function RelayListItem({ relay, onSelect }: { relay: string; onSelect: () => void }) {
-  const info = use$(() => infoPool.relay(relay).information$, [relay]);
-  const icon =
-    info?.icon || new URL("/favicon.ico", relay.replace("wss://", "https://").replace("ws://", "https://")).toString();
+  const icon = use$(() => infoPool.relay(relay).icon$, [relay]);
 
   return (
     <button className="btn btn-sm btn-ghost w-full justify-start text-left font-mono text-xs" onClick={onSelect}>

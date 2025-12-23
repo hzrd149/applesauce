@@ -1,8 +1,7 @@
 import { defined, EventStore, includeMailboxes } from "applesauce-core";
-import { getDisplayName, getProfilePicture, groupPubkeysByRelay } from "applesauce-core/helpers";
-import { selectOptimalRelays } from "applesauce-core/helpers";
+import { getDisplayName, getProfilePicture, groupPubkeysByRelay, selectOptimalRelays } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerState, use$ } from "applesauce-react/hooks";
+import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { ProfilePointer } from "nostr-tools/nip19";
@@ -254,10 +253,8 @@ function UserAvatar({ user }: { user: ProfilePointer }) {
 function RelayRow({ relay, users, totalUsers }: { relay: string; users: ProfilePointer[]; totalUsers: number }) {
   const [expanded, setExpanded] = useState(false);
   const info = use$(() => pool.relay(relay).information$, [relay]);
-
   const relayDisplayName = info?.name || relay.replace("wss://", "").replace("ws://", "");
-  const icon =
-    info?.icon || new URL("/favicon.ico", relay.replace("wss://", "https://").replace("ws://", "https://")).toString();
+  const icon = use$(() => pool.relay(relay).icon$, [relay]);
 
   return (
     <tr>
