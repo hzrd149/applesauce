@@ -221,3 +221,23 @@ pnpm install applesauce-wallet
 ```
 
 :::
+
+## Wallet-Connect
+
+The `applesauce-wallet-connect` package provides a complete implementation of [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md) Nostr Wallet Connect for both clients and services.
+
+:::code-group
+
+```sh [npm]
+npm install applesauce-wallet-connect
+```
+
+```sh [yarn]
+yarn install applesauce-wallet-connect
+```
+
+```sh [pnpm]
+pnpm install applesauce-wallet-connect
+```
+
+:::

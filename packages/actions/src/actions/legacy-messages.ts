@@ -6,7 +6,7 @@ import {
 import { castUser } from "applesauce-common/casts";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 /** Sends a legacy NIP-04 message to a recipient */
 export function SendLegacyMessage(recipient: string, message: string, opts?: LegacyMessageBlueprintOptions): Action {
@@ -32,7 +32,7 @@ export function ReplyToLegacyMessage(
   message: string,
   opts?: LegacyMessageBlueprintOptions,
 ): Action {
-  return async ({ factory, sign, publish, events, }) => {
+  return async ({ factory, sign, publish, events }) => {
     if (parent.kind !== kinds.EncryptedDirectMessage)
       throw new Error("Legacy messages can only reply to other legacy messages");
 

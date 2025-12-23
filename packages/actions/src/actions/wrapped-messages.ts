@@ -9,7 +9,7 @@ import { Rumor } from "applesauce-common/helpers/gift-wrap";
 import { getConversationParticipants } from "applesauce-common/helpers/messages";
 import { GiftWrapOptions } from "applesauce-common/operations/gift-wrap";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 /** Gift wraps a message to a list of participants and publishes it to their inbox relays */
 export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOptions): Action {

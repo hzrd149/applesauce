@@ -7,7 +7,7 @@ import {
   removeEventPointerTag,
 } from "applesauce-core/operations/tag/common";
 import { modifyPublicTags } from "applesauce-core/operations/tags";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyPinListEvent(operations: TagOperation[]): Action {
   return async ({ factory, user, publish, sign }) => {

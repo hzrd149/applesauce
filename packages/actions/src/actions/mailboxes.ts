@@ -6,7 +6,7 @@ import {
   removeInboxRelay,
   removeOutboxRelay,
 } from "applesauce-core/operations/mailboxes";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 /** An action to create a new kind 10002 relay list event */
 export function CreateMailboxes(inboxes: string[], outboxes: string[]): Action {

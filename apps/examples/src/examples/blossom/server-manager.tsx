@@ -1,4 +1,4 @@
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { AddBlossomServer, RemoveBlossomServer, SetDefaultBlossomServer } from "applesauce-actions/actions/blossom";
 import { EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core";
@@ -27,11 +27,11 @@ const signer = new ExtensionSigner();
 const factory = new EventFactory({ signer });
 
 // Create action hub for running actions
-const actionHub = new ActionHub(eventStore, factory);
+const actions = new ActionRunner(eventStore, factory);
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com"],
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
 // Server item component with favicon and reordering
@@ -199,7 +199,7 @@ export default function BlossomServerManager() {
 
       try {
         setError(null);
-        const events = await firstValueFrom(actionHub.exec(AddBlossomServer, url).pipe(toArray()));
+        const events = await firstValueFrom(actions.exec(AddBlossomServer, url).pipe(toArray()));
 
         // Publish the event to outbox relays
         for (const event of events) await pool.publish(mailboxes.outboxes, event);
@@ -218,7 +218,7 @@ export default function BlossomServerManager() {
 
       try {
         setError(null);
-        const events = await firstValueFrom(actionHub.exec(RemoveBlossomServer, server).pipe(toArray()));
+        const events = await firstValueFrom(actions.exec(RemoveBlossomServer, server).pipe(toArray()));
 
         // Publish the event to outbox relays
         for (const event of events) await pool.publish(mailboxes.outboxes, event);
@@ -237,7 +237,7 @@ export default function BlossomServerManager() {
 
       try {
         setError(null);
-        const events = await firstValueFrom(actionHub.exec(SetDefaultBlossomServer, server).pipe(toArray()));
+        const events = await firstValueFrom(actions.exec(SetDefaultBlossomServer, server).pipe(toArray()));
 
         // Publish the event to outbox relays
         for (const event of events) await pool.publish(mailboxes.outboxes, event);

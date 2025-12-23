@@ -1,5 +1,5 @@
 import { ProxySigner } from "applesauce-accounts";
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { SendWrappedMessage } from "applesauce-actions/actions";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import { persistEventsToCache, unixNow } from "applesauce-core/helpers";
@@ -47,7 +47,7 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionHub(eventStore, factory);
+const actions = new ActionRunner(eventStore, factory);
 
 // Persist encrypted content
 persistEncryptedContent(eventStore, storage$.pipe(defined()));

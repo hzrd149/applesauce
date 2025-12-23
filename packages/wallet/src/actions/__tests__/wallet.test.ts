@@ -1,4 +1,4 @@
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core/event-factory";
@@ -27,12 +27,12 @@ const signer = new FakeUser();
 let events: EventStore;
 let factory: EventFactory;
 let publish: Mock<(...args: any[]) => Promise<void>>;
-let hub: ActionHub;
+let hub: ActionRunner;
 beforeEach(() => {
   events = new EventStore();
   factory = new EventFactory({ signer });
   publish = vitest.fn().mockResolvedValue(undefined);
-  hub = new ActionHub(events, factory, publish);
+  hub = new ActionRunner(events, factory, publish);
   // Clear User cache to ensure clean state between tests
   User.cache.clear();
 });
@@ -260,7 +260,7 @@ describe("UnlockWallet", () => {
 
   it("should throw error if signer is missing", async () => {
     const factoryWithoutSigner = new EventFactory({});
-    const hubWithoutSigner = new ActionHub(events, factoryWithoutSigner, publish);
+    const hubWithoutSigner = new ActionRunner(events, factoryWithoutSigner, publish);
 
     const walletEvent = await factory.sign(
       await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"] }),

@@ -2,7 +2,7 @@ import { EventFactory, EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { ActionHub } from "../../action-hub.js";
+import { ActionRunner } from "../../action-hub.js";
 import { BookmarkEvent, CreateBookmarkList, CreateBookmarkSet, UnbookmarkEvent } from "../bookmarks.js";
 import { AddOutboxRelay } from "../mailboxes.js";
 
@@ -11,12 +11,12 @@ const user = new FakeUser();
 let events: EventStore;
 let factory: EventFactory;
 let publish: () => Promise<void>;
-let hub: ActionHub;
+let hub: ActionRunner;
 beforeEach(async () => {
   events = new EventStore();
   factory = new EventFactory({ signer: user });
   publish = vitest.fn().mockResolvedValue(undefined);
-  hub = new ActionHub(events, factory, publish);
+  hub = new ActionRunner(events, factory, publish);
 
   // Setup outboxes for the user
   events.add(user.event({ kind: kinds.RelayList, tags: [["r", "wss://relay.example.com/"]] }));

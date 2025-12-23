@@ -1,4 +1,4 @@
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { CreateComment } from "applesauce-actions/actions";
 import { Article, Comment } from "applesauce-common/casts";
 import { CommentsModel } from "applesauce-common/models";
@@ -18,7 +18,7 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const factory = new EventFactory({ signer });
-const actionHub = new ActionHub(eventStore, factory, async (event, relays) => {
+const actionHub = new ActionRunner(eventStore, factory, async (event, relays) => {
   if (relays && relays.length > 0) {
     await pool.publish(relays, event);
   } else {

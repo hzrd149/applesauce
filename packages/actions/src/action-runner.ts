@@ -41,7 +41,7 @@ export type Action = (context: ActionContext) => Promise<void>;
 export type ActionBuilder<Args extends Array<any>> = (...args: Args) => Action;
 
 /** The main class that runs actions */
-export class ActionHub {
+export class ActionRunner {
   /** Whether to save all events created by actions to the event store */
   saveToStore = true;
 
@@ -74,7 +74,7 @@ export class ActionHub {
 
   /** Internal method for publishing events to relays */
   async publish(event: NostrEvent | NostrEvent[], relays?: string[]): Promise<void> {
-    if (!this.publishMethod) throw new Error("Missing publish method, use ActionHub.exec");
+    if (!this.publishMethod) throw new Error("Missing publish method, use ActionRunner.exec");
 
     // Unwrap array of events to publish
     if (Array.isArray(event)) {
@@ -132,3 +132,6 @@ export class ActionHub {
     );
   }
 }
+
+/** @deprecated Use ActionRunner instead */
+export const ActionHub = ActionRunner;

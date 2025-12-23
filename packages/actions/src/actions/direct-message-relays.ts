@@ -3,7 +3,7 @@ import { kinds } from "applesauce-core/helpers/event";
 import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
 import { modifyPublicTags } from "applesauce-core/operations/tags";
 import { of, timeout } from "rxjs";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyDirectMessageRelaysEvent(operations: TagOperation[]): Action {
   return async ({ events, factory, self, user, publish, sign }) => {

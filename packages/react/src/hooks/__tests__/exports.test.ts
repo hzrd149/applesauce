@@ -10,7 +10,7 @@ describe("exports", () => {
         "useAccountManager",
         "useAccounts",
         "useAction",
-        "useActionHub",
+        "useActionRunner",
         "useActiveAccount",
         "useEventFactory",
         "useEventModel",

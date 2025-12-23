@@ -5,7 +5,7 @@ import { getReplaceableIdentifier } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { addProfilePointerTag, removeProfilePointerTag } from "applesauce-core/operations/tag/common";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyFollowSetEvent(operations: TagOperation[], set: NostrEvent | string, hidden = false): Action {
   const identifier = typeof set === "string" ? set : getReplaceableIdentifier(set);

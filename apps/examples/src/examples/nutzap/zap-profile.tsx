@@ -1,5 +1,5 @@
 import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -25,7 +25,7 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const factory = new EventFactory({ signer: signer });
-const actions = new ActionHub(eventStore, factory, (event, relays) => pool.publish(relays ?? [], event));
+const actions = new ActionRunner(eventStore, factory, (event, relays) => pool.publish(relays ?? [], event));
 const couch = new IndexedDBCouch();
 
 // Create an address loader to load user profiles

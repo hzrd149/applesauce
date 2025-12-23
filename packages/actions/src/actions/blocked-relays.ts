@@ -3,13 +3,17 @@ import { kinds } from "applesauce-core/helpers/event";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
 import { of, timeout } from "rxjs";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 // Action to generally modify the blocked relays event
 function ModifyBlockedRelaysEvent(operations: EventOperation[]): Action {
   return async ({ events, factory, user, publish, sign }) => {
     const [event, outboxes] = await Promise.all([
-      firstValueFrom(events.replaceable(kinds.BlockedRelaysList, user.pubkey).pipe(timeout({ first: 1000, with: () => of(undefined) }))),
+      firstValueFrom(
+        events
+          .replaceable(kinds.BlockedRelaysList, user.pubkey)
+          .pipe(timeout({ first: 1000, with: () => of(undefined) })),
+      ),
       user.outboxes$.$first(1000, undefined),
     ]);
 

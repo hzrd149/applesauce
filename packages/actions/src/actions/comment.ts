@@ -3,7 +3,7 @@ import { castUser } from "applesauce-common/casts";
 import { CommentPointer, isCommentAddressPointer, isCommentEventPointer } from "applesauce-common/helpers/comment";
 import { relaySet } from "applesauce-core/helpers";
 import { isEvent, NostrEvent } from "applesauce-core/helpers/event";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 /**
  * Extracts the pubkey from a parent event or CommentPointer.

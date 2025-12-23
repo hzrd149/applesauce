@@ -1,11 +1,33 @@
 # applesauce-common
 
-AppleSauce is a collection of utilities for building reactive nostr applications. The common package provides NIP-specific helpers and models for working with various Nostr Improvement Proposals (NIPs).
+AppleSauce is a collection of utilities for building reactive nostr applications. The common package provides NIP-specific helpers, models, operations, and utilities for working with various Nostr Improvement Proposals (NIPs). This package contains all the extra functionality that applications can use with nostr events that is not directly related to the core protocol.
+
+## Installation
+
+```bash
+npm install applesauce-common
+```
+
+or
+
+```bash
+yarn add applesauce-common
+```
+
+or
+
+```bash
+pnpm add applesauce-common
+```
 
 ## Key Components
 
 - **Helpers**: NIP-specific utility methods for parsing and extracting data from nostr events
-- **Models**: Complex subscriptions for NIP-specific nostr data patterns
+- **Models**: Complex reactive subscriptions for NIP-specific nostr data patterns
+- **Operations**: Functions for creating and constructing nostr events according to various NIPs
+- **Blueprints**: Event blueprints and templates for creating properly formatted nostr events
+- **Casts**: Type casting utilities for converting between different event representations
+- **Observable**: Observable utilities and operators for working with reactive streams of nostr events
 
 ## Documentation
 
@@ -48,12 +70,31 @@ thread.subscribe((thread) => {
 
 ## Supported NIPs
 
-This package includes helpers and models for various NIPs including:
+This package includes helpers, models, and operations for various NIPs including:
 
 - NIP-10 (Threading)
+- NIP-18 (Reposts)
 - NIP-22 (Comments)
-- NIP-53 (Streams)
 - NIP-23 (Articles)
+- NIP-25 (Reactions)
+- NIP-28 (Channels)
 - NIP-52 (Calendar Events)
+- NIP-53 (Streams)
+- NIP-57 (Zaps)
 - NIP-88 (Polls)
 - And many more...
+
+## Exports
+
+The package provides several export paths:
+
+- `applesauce-common` - Main exports (Helpers, Models, Operations, etc.)
+- `applesauce-common/helpers` - All helper functions
+- `applesauce-common/helpers/*` - Individual helper modules
+- `applesauce-common/models` - All model functions
+- `applesauce-common/models/*` - Individual model modules
+- `applesauce-common/operations` - All operation functions
+- `applesauce-common/operations/*` - Individual operation modules
+- `applesauce-common/blueprints` - Event blueprints
+- `applesauce-common/casts` - Type casting utilities
+- `applesauce-common/observable` - Observable utilities

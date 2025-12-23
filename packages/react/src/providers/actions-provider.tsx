@@ -1,9 +1,9 @@
 import { createContext, PropsWithChildren } from "react";
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 
-export const ActionsContext = createContext<ActionHub | undefined>(undefined);
+export const ActionsContext = createContext<ActionRunner | undefined>(undefined);
 
-/** Provides an ActionHub to the component tree */
-export function ActionsProvider({ actionHub, children }: PropsWithChildren<{ actionHub?: ActionHub }>) {
+/** Provides an ActionRunner to the component tree */
+export function ActionsProvider({ actionHub, children }: PropsWithChildren<{ actionHub?: ActionRunner }>) {
   return <ActionsContext.Provider value={actionHub}>{children}</ActionsContext.Provider>;
 }

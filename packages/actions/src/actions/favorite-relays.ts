@@ -4,7 +4,7 @@ import { AddressPointer } from "applesauce-core/helpers/pointers";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { addAddressPointerTag, removeAddressPointerTag } from "applesauce-core/operations/tag/common";
 import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyFavoriteRelaysEvent(operations: TagOperation[], hidden = false): Action {
   return async ({ factory, user, publish, sign }) => {

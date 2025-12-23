@@ -1,2 +1,2 @@
-export * from "./action-hub.js";
+export * from "./action-runner.js";
 export * as Actions from "./actions/index.js";

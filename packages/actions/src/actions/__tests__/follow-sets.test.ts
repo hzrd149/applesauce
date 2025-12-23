@@ -4,7 +4,7 @@ import { unlockHiddenTags } from "applesauce-core/helpers";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { ActionHub } from "../../action-hub.js";
+import { ActionRunner } from "../../action-hub.js";
 import { AddUserToFollowSet, RemoveUserFromFollowSet } from "../follow-sets.js";
 
 const user = new FakeUser();
@@ -13,12 +13,12 @@ const testIdentifier = "test-list";
 
 let events: EventStore;
 let factory: EventFactory;
-let hub: ActionHub;
+let hub: ActionRunner;
 
 beforeEach(() => {
   events = new EventStore();
   factory = new EventFactory({ signer: user });
-  hub = new ActionHub(events, factory);
+  hub = new ActionRunner(events, factory);
 
   // Add a follow set event to work with
   const followSet = user.event({

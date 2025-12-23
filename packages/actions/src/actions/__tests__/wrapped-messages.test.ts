@@ -4,20 +4,20 @@ import { EventFactory, EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { ActionHub } from "../../action-hub.js";
+import { ActionRunner } from "../../action-hub.js";
 import { SendWrappedMessage } from "../wrapped-messages.js";
 
 const bob = new FakeUser();
 const alice = new FakeUser();
 const carol = new FakeUser();
 let factory: EventFactory;
-let hub: ActionHub;
+let hub: ActionRunner;
 let events: EventStore;
 
 beforeEach(() => {
   events = new EventStore();
   factory = new EventFactory({ signer: bob });
-  hub = new ActionHub(events, factory);
+  hub = new ActionRunner(events, factory);
 
   events.add(bob.event({ kind: kinds.DirectMessageRelaysList, tags: [["r", "wss://relay.example.com/"]] }));
   events.add(alice.event({ kind: kinds.DirectMessageRelaysList, tags: [["r", "wss://relay.example.com/"]] }));
@@ -67,7 +67,7 @@ describe("SendWrappedMessage", () => {
 
   it("should throw error when no signer is provided", async () => {
     const factory = new EventFactory();
-    const hub = new ActionHub(events, factory);
+    const hub = new ActionRunner(events, factory);
 
     const spy = subscribeSpyTo(hub.exec(SendWrappedMessage, alice.pubkey, "hello world"), { expectErrors: true });
     await spy.onError();

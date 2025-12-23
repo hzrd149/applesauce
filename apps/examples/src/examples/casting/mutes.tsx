@@ -1,5 +1,5 @@
 import { ProxySigner } from "applesauce-accounts";
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import {
   MuteHashtag,
   MuteThread,
@@ -39,7 +39,7 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionHub(eventStore, factory, async (event) => {
+const actions = new ActionRunner(eventStore, factory, async (event) => {
   // Get the users outboxes
   const mailboxes = await firstValueFrom(eventStore.mailboxes(event.pubkey).pipe(defined(), simpleTimeout(5_000)));
 

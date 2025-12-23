@@ -3,7 +3,7 @@ import { TagOperation } from "applesauce-core";
 import { getReplaceableIdentifier, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
 import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyRelaySetEvent(operations: TagOperation[], set: NostrEvent | string, hidden = false): Action {
   const identifier = typeof set === "string" ? set : getReplaceableIdentifier(set);

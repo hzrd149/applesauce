@@ -104,3 +104,92 @@ const profile = eventStore
     console.log("Profile:", profile);
   });
 ```
+
+### React relay timeline
+
+Casts make it incredibly easy to subscribe to user profiles and other metadata around events. Here's a complete React example:
+
+```tsx
+import { castEvent, Note } from "applesauce-common/casts";
+import { castTimelineStream } from "applesauce-common/observable";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { use$ } from "applesauce-react/hooks";
+import { onlyEvents, RelayPool } from "applesauce-relay";
+import { useState } from "react";
+
+// Create an event store for storing events
+const eventStore = new EventStore();
+// And a relay pool for managing connections
+const pool = new RelayPool();
+
+// Connect the event store to the relay pool for automatic event loading
+createEventLoaderForStore(eventStore, pool, {
+  // Fallback relays to find profiles and NIP-65 events
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+});
+
+function ReplyingTo({ note }: { note: Note }) {
+  // Subscribe to the profile of the note being replied to
+  const profile = use$(note.author.profile$);
+
+  return (
+    <div className="reply-context">
+      <p>Replying to {profile.displayName}</p>
+      <p className="reply-content">{note.event.content}</p>
+    </div>
+  );
+}
+
+function NoteComponent({ note }: { note: Note }) {
+  // Subscribe to the author's profile - automatically loads and updates reactively
+  const profile = use$(note.author.profile$);
+  // Subscribe to fetch the event this note is replying to
+  const replyingTo = use$(note.replyingTo$);
+  // Cast the replying-to event to a Note if it exists
+  const replyingToNote = replyingTo ? castEvent(replyingTo, Note, note.store) : null;
+
+  return (
+    <div className="note">
+      {replyingToNote && <ReplyingTo note={replyingToNote} />}
+      <div className="note-header">
+        <img className="avatar" src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} />
+        <h3 className="author-name">{profile.displayName}</h3>
+      </div>
+      <p className="note-content">{note.event.content}</p>
+    </div>
+  );
+}
+
+export default function Timeline() {
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
+
+  // Subscribe to a timeline of notes from a relay
+  // The castTimelineStream automatically transforms events into Note objects
+  const notes = use$(
+    () =>
+      pool
+        .relay(relay)
+        .subscription({ kinds: [1] })
+        .pipe(
+          // Ignore EOSE messages
+          onlyEvents(),
+          // Add all events to the store
+          mapEventsToStore(eventStore),
+          // Sort events into an array
+          mapEventsToTimeline(),
+          // Cast events to Note objects
+          castTimelineStream(Note),
+        ),
+    [relay],
+  );
+
+  return (
+    <div className="timeline">
+      {notes?.map((note) => (
+        <NoteComponent key={note.id} note={note} />
+      ))}
+    </div>
+  );
+}
+```

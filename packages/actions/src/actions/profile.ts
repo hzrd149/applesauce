@@ -1,7 +1,7 @@
 import { kinds } from "applesauce-core/helpers/event";
 import { ProfileContent } from "applesauce-core/helpers/profile";
 import * as Profile from "applesauce-core/operations/profile";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 /** An action that creates a new kind 0 profile event for a user */
 export function CreateProfile(content: ProfileContent): Action {

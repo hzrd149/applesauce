@@ -18,12 +18,12 @@ Actions are common pre-built async operations that apps can perform. They use:
 - `EventFactory` to build and sign new nostr events
 - A `publish` method to publish or save the resulting events
 
-The package provides an `ActionHub` class that combines these components into a single manager for easier action execution.
+The package provides an `ActionRunner` class that combines these components into a single manager for easier action execution.
 
 ## Basic Usage
 
 ```typescript
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { FollowUser } from "applesauce-actions/actions";
 
 async function publishEvent(event: NostrEvent) {
@@ -31,7 +31,7 @@ async function publishEvent(event: NostrEvent) {
 }
 
 // Create an action hub with your event store, factory and publish method
-const hub = new ActionHub(eventStore, eventFactory, publishEvent);
+const hub = new ActionRunner(eventStore, eventFactory, publishEvent);
 
 // Example: Follow a user
 await hub

@@ -1,5 +1,5 @@
 import { ProxySigner } from "applesauce-accounts";
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { BookmarkEvent, UnbookmarkEvent } from "applesauce-actions/actions";
 import { Article, castUser, Note, User } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
@@ -30,7 +30,7 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionHub(eventStore, factory);
+const actions = new ActionRunner(eventStore, factory);
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {

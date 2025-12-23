@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EventFactory } from "applesauce-core";
 import { EventStore } from "applesauce-core";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { Action, ActionHub } from "../action-hub.js";
+import { Action, ActionRunner } from "../action-hub.js";
 import { CreateProfile } from "../actions/profile.js";
 import { FakeUser } from "./fake-user.js";
 
@@ -16,25 +16,25 @@ beforeEach(() => {
   factory = new EventFactory({ signer: user });
 });
 
-describe("ActionHub", () => {
+describe("ActionRunner", () => {
   describe("constructor", () => {
-    it("should create an ActionHub with events and factory", () => {
-      const hub = new ActionHub(events, factory);
+    it("should create an ActionRunner with events and factory", () => {
+      const hub = new ActionRunner(events, factory);
       expect(hub.events).toBe(events);
       expect(hub.factory).toBe(factory);
       expect(hub.saveToStore).toBe(true);
     });
 
-    it("should create an ActionHub with publish method", () => {
+    it("should create an ActionRunner with publish method", () => {
       const publish = vi.fn();
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       expect(hub.events).toBe(events);
       expect(hub.factory).toBe(factory);
     });
 
-    it("should create an ActionHub with publish object", () => {
+    it("should create an ActionRunner with publish object", () => {
       const publish = vi.fn();
-      const hub = new ActionHub(events, factory, { publish });
+      const hub = new ActionRunner(events, factory, { publish });
       expect(hub.events).toBe(events);
       expect(hub.factory).toBe(factory);
     });
@@ -42,14 +42,14 @@ describe("ActionHub", () => {
 
   describe("run", () => {
     it("should throw if publish method is not set", async () => {
-      const hub = new ActionHub(events, factory);
+      const hub = new ActionRunner(events, factory);
       await expect(hub.run(CreateProfile, { name: "fiatjaf" })).rejects.toThrow("Missing publish method");
     });
 
     it("should run action and publish events using function publish method", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
 
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -66,7 +66,7 @@ describe("ActionHub", () => {
     it("should run action and publish events using object publish method", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
 
-      const hub = new ActionHub(events, factory, { publish });
+      const hub = new ActionRunner(events, factory, { publish });
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe("ActionHub", () => {
       const publish = vi.fn().mockResolvedValue(undefined);
       const addSpy = vi.spyOn(events, "add");
 
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(addSpy).toHaveBeenCalled();
@@ -99,7 +99,7 @@ describe("ActionHub", () => {
       const publish = vi.fn().mockResolvedValue(undefined);
       const addSpy = vi.spyOn(events, "add");
 
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       hub.saveToStore = false;
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
@@ -109,7 +109,7 @@ describe("ActionHub", () => {
     it("should handle publish method returning Observable", async () => {
       const publish = vi.fn().mockReturnValue(from([undefined]));
 
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -118,7 +118,7 @@ describe("ActionHub", () => {
     it("should handle publish method returning Promise", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
 
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -128,7 +128,7 @@ describe("ActionHub", () => {
   describe("context", () => {
     it("should create context with correct properties", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       const actionBuilder = () => {
         const action: Action = async function* (ctx) {
           expect(ctx.events).toBe(events);
@@ -151,7 +151,7 @@ describe("ActionHub", () => {
 
     it("should reuse context across multiple calls", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
-      const hub = new ActionHub(events, factory, publish);
+      const hub = new ActionRunner(events, factory, publish);
       let firstContext: any;
       let secondContext: any;
 

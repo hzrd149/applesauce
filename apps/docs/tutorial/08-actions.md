@@ -1,24 +1,24 @@
-# 8. Running Actions with ActionHub
+# 8. Running Actions with ActionRunner
 
-The `ActionHub` is the central orchestrator for running actions in your Nostr application. It combines your EventStore, EventFactory, and publishing logic into a unified interface, making it simple to execute complex actions that read from your local data and publish new events to the network.
+The `ActionRunner` is the central orchestrator for running actions in your Nostr application. It combines your EventStore, EventFactory, and publishing logic into a unified interface, making it simple to execute complex actions that read from your local data and publish new events to the network.
 
-## What is ActionHub?
+## What is ActionRunner?
 
-ActionHub is a class that:
+ActionRunner is a class that:
 
 - **Executes pre-built actions** - Like following users, creating contact lists, etc.
 - **Handles event creation and publishing** - Automatically creates, signs, and publishes events
 - **Provides error handling** - Gracefully handles validation and publishing errors
 - **Offers flexible execution modes** - Automatic publishing or manual control
 
-## Setting up ActionHub
+## Setting up ActionRunner
 
 ### Basic Setup
 
-To create an ActionHub, you need your `EventStore` and `EventFactory` instances:
+To create an ActionRunner, you need your `EventStore` and `EventFactory` instances:
 
 ```typescript
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core";
 import { ExtensionSigner } from "applesauce-signers";
@@ -28,8 +28,8 @@ const eventStore = new EventStore();
 const signer = new ExtensionSigner();
 const eventFactory = new EventFactory({ signer });
 
-// Create ActionHub without automatic publishing
-const actionHub = new ActionHub(eventStore, eventFactory);
+// Create ActionRunner without automatic publishing
+const actionHub = new ActionRunner(eventStore, eventFactory);
 ```
 
 ### With Custom Publishing Logic
@@ -48,8 +48,8 @@ function publish(event: NostrEvent) {
   return pool.publish(event, defaultRelays);
 }
 
-// Create ActionHub with automatic publishing
-const actionHub = new ActionHub(eventStore, eventFactory, publish);
+// Create ActionRunner with automatic publishing
+const actionHub = new ActionRunner(eventStore, eventFactory, publish);
 ```
 
 ## Running Actions
@@ -198,10 +198,10 @@ if (result.success) {
 
 ### Disable Automatic EventStore Saving
 
-By default, `ActionHub` saves all generated events to your `EventStore`. You can disable this:
+By default, `ActionRunner` saves all generated events to your `EventStore`. You can disable this:
 
 ```typescript
-const actionHub = new ActionHub(eventStore, eventFactory, publish);
+const actionHub = new ActionRunner(eventStore, eventFactory, publish);
 actionHub.saveToStore = false; // Disable automatic saving
 
 // Now events are only published, not saved to local store
@@ -213,7 +213,7 @@ await actionHub.run(FollowUser, pubkey, relayHint);
 You might want to save events only after successful publishing:
 
 ```typescript
-const actionHub = new ActionHub(eventStore, eventFactory);
+const actionHub = new ActionRunner(eventStore, eventFactory);
 actionHub.saveToStore = false; // Disable automatic saving
 
 // Manual event handling with conditional saving
@@ -233,13 +233,13 @@ await actionHub.exec(FollowUser, pubkey, relayHint).forEach(async (event) => {
 
 ## Best Practices
 
-### 1. Single ActionHub Instance
+### 1. Single ActionRunner Instance
 
-Create one ActionHub instance for your entire application:
+Create one ActionRunner instance for your entire application:
 
 ```typescript
 // app.ts
-export const actionHub = new ActionHub(eventStore, eventFactory, publish);
+export const actionHub = new ActionRunner(eventStore, eventFactory, publish);
 
 // other-file.ts
 import { actionHub } from "./app";
@@ -260,7 +260,7 @@ try {
 
 ## Key Concepts
 
-- **ActionHub orchestrates** EventStore, EventFactory, and publishing
+- **ActionRunner orchestrates** EventStore, EventFactory, and publishing
 - **Actions are pre-built** functions for common Nostr operations
 - **`hub.run()` provides automatic** event creation and publishing
 - **`hub.exec()` gives manual control** over event handling

@@ -10,7 +10,7 @@ import {
   removeNameValueTag,
   removeProfilePointerTag,
 } from "applesauce-core/operations/tag/common";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyMuteEvent(operations: TagOperation[], hidden = false): Action {
   return async ({ factory, user, publish, sign }) => {

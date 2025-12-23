@@ -1,5 +1,5 @@
 import { ProxySigner } from "applesauce-accounts";
-import { ActionHub } from "applesauce-actions";
+import { ActionRunner } from "applesauce-actions";
 import { FollowUser, UnfollowUser } from "applesauce-actions/actions";
 import { castUser, User } from "applesauce-common/casts";
 import { defined, EventFactory, EventStore } from "applesauce-core";
@@ -22,7 +22,7 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionHub(eventStore, factory);
+const actions = new ActionRunner(eventStore, factory);
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {

@@ -2,14 +2,14 @@ import { useCallback, useRef, useState } from "react";
 import { finalize } from "rxjs";
 import { ActionBuilder } from "applesauce-actions";
 
-import { useActionHub } from "./use-action-hub.js";
+import { useActionRunner } from "./use-action-hub.js";
 
 export function useAction<Args extends Array<any>>(Action: ActionBuilder<Args>, args: Args | undefined) {
   const [loading, setLoading] = useState(false);
   const ref = useRef(args);
   ref.current = args;
 
-  const hub = useActionHub();
+  const hub = useActionRunner();
   const run = useCallback(async () => {
     if (args === undefined) return;
 

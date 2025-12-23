@@ -4,7 +4,7 @@ import { TagOperation } from "applesauce-core";
 import { AddressPointer, EventPointer } from "applesauce-core/helpers";
 import { getReplaceableIdentifier, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyBookmarkSetEvent(operations: TagOperation[], set: NostrEvent | string, hidden = false): Action {
   const identifier = typeof set === "string" ? set : getReplaceableIdentifier(set);

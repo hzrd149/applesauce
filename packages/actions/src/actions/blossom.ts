@@ -1,7 +1,7 @@
 import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-common/helpers/blossom";
 import { addBlossomServer, removeBlossomServer } from "applesauce-common/operations/blossom";
 import { EventOperation } from "applesauce-core/event-factory";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 // Action to modify or create a new Blossom servers event
 function ModifyBlossomServersEvent(operations: EventOperation[]): Action {

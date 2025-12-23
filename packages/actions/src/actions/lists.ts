@@ -2,7 +2,7 @@ import * as List from "applesauce-common/operations/list";
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, isAddressPointer } from "applesauce-core/helpers/pointers";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function getList(events: IEventStoreRead, address: NostrEvent | AddressPointer) {
   const list = isAddressPointer(address)

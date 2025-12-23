@@ -7,7 +7,7 @@ import { EventOperation } from "applesauce-core/event-factory";
 import { AddressPointer } from "applesauce-core/helpers";
 import { isEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { firstValueFrom, of, timeout } from "rxjs";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyCalendarEvent(calendar: NostrEvent | AddressPointer, operations: EventOperation[]): Action {
   return async ({ factory, user, publish, events, sign }) => {

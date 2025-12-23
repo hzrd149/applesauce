@@ -4,7 +4,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { modifyPublicTags } from "applesauce-core/operations";
 import { addProfilePointerTag, removeProfilePointerTag } from "applesauce-core/operations/tag/common";
 import { firstValueFrom, of, timeout } from "rxjs";
-import { Action } from "../action-hub.js";
+import { Action } from "../action-runner.js";
 
 function ModifyContactsEvent(operations: TagOperation[]): Action {
   return async ({ events, factory, user, publish, sign }) => {
