@@ -23,6 +23,9 @@ export class Profile extends EventCast<ProfileEvent> {
   get picture() {
     return getProfilePicture(this.metadata);
   }
+  get banner() {
+    return this.metadata.banner;
+  }
   get dnsIdentity() {
     return this.metadata.nip05;
   }
@@ -38,5 +41,14 @@ export class Profile extends EventCast<ProfileEvent> {
 
   get lightningAddress() {
     return this.metadata.lud16 || this.metadata.lud06;
+  }
+  get bot() {
+    return this.metadata.bot;
+  }
+  get birthday() {
+    return this.metadata.birthday;
+  }
+  get languages() {
+    return this.metadata.languages;
   }
 }
