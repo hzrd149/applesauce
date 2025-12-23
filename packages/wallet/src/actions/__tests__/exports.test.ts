@@ -15,6 +15,7 @@ describe("exports", () => {
         "NutzapProfile",
         "ReceiveNutzaps",
         "ReceiveToken",
+        "RecommendMint",
         "RecoverFromCouch",
         "RemoveNutzapInfoMint",
         "RemoveNutzapInfoRelay",
@@ -26,6 +27,7 @@ describe("exports", () => {
         "SetWalletRelays",
         "TokensOperation",
         "UnlockWallet",
+        "UpdateMintRecommendation",
         "UpdateNutzapInfo",
         "WalletAddPrivateKey",
       ]

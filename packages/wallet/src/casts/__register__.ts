@@ -9,12 +9,15 @@ import { NUTZAP_INFO_KIND } from "../helpers/nutzap-info.js";
 import { NutzapInfo } from "./nutzap-info.js";
 import { Nutzap } from "./nutzap.js";
 import { Wallet } from "./wallet.js";
+import { MintRecommendation } from "./mint-recommendation.js";
+import { MINT_RECOMMENDATION_KIND } from "../helpers/mint-recommendation.js";
 
 // Extend the User class with wallet$ observable
 declare module "applesauce-common/casts/user" {
   interface User {
     readonly wallet$: ChainableObservable<Wallet | undefined>;
     readonly nutzap$: ChainableObservable<NutzapInfo | undefined>;
+    readonly mintRecommendation$: ChainableObservable<MintRecommendation | undefined>;
   }
 }
 declare module "applesauce-common/casts/stream" {
@@ -47,6 +50,17 @@ Object.defineProperty(User.prototype, "nutzap$", {
   get: function (this: User) {
     return this.$$ref("nutzap$", (store) =>
       store.replaceable(NUTZAP_INFO_KIND, this.pubkey).pipe(castEventStream(NutzapInfo, store)),
+    );
+  },
+  enumerable: true,
+  configurable: false,
+});
+Object.defineProperty(User.prototype, "mintRecommendation$", {
+  get: function (this: User) {
+    return this.$$ref("mintRecommendation$", (store) =>
+      store
+        .timeline({ kinds: [MINT_RECOMMENDATION_KIND], authors: [this.pubkey] })
+        .pipe(castTimelineStream(MintRecommendation, store)),
     );
   },
   enumerable: true,
