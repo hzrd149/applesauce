@@ -8,6 +8,8 @@ describe("exports", () => {
         "Relay",
         "RelayGroup",
         "RelayLiveness",
+        "RelayManagement",
+        "RelayManagementError",
         "RelayPool",
         "ReqCloseError",
         "SyncDirection",
