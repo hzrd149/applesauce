@@ -1,5 +1,17 @@
 # applesauce-wallet-connect
 
+## 5.0.0
+
+### Minor Changes
+
+- 6596b3d: Remove direct `nostr-tools` dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-common@5.0.0
+  - applesauce-core@5.0.0
+
 ## 4.1.0
 
 ### Minor Changes

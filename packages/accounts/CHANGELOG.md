@@ -1,5 +1,18 @@
 # applesauce-accounts
 
+## 5.0.0
+
+### Minor Changes
+
+- 4f749e1: Remove `@noble/hashes` dependency
+- 6596b3d: Remove direct `nostr-tools` dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-signers@5.0.0
+  - applesauce-core@5.0.0
+
 ## 4.1.0
 
 ### Minor Changes

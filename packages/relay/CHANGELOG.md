@@ -1,5 +1,19 @@
 # applesauce-relay
 
+## 5.0.0
+
+### Minor Changes
+
+- 41499f9: Add `createEventLoaderForStore` method for easily creating the `EventStore.eventLoader` method using a relay pool or relay request method
+- 41499f9: Add `createUnifiedEventLoader` for both event pointers and address pointers
+
+### Patch Changes
+
+- cc794a3: Fix `Relay.sync` and `RelayPool.sync` not adding events to event store
+- d788f94: Remove direct imports from nostr-tools
+- Updated dependencies
+  - applesauce-core@5.0.0
+
 ## 4.4.2
 
 ### Patch Changes
