@@ -1,5 +1,14 @@
 # applesauce-extra
 
+## 5.0.0
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-relay@5.0.0
+  - applesauce-signers@5.0.0
+  - applesauce-core@5.0.0
+
 ## 4.1.0
 
 ### Minor Changes

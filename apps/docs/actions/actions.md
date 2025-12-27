@@ -112,9 +112,7 @@ function ModifyContactsEvent(operations: TagOperation[]): Action {
   return async ({ events, factory, user, publish, sign }) => {
     const [event, outboxes] = await Promise.all([
       firstValueFrom(
-        events.replaceable(kinds.Contacts, user.pubkey).pipe(
-          timeout({ first: 1000, with: () => of(undefined) })
-        )
+        events.replaceable(kinds.Contacts, user.pubkey).pipe(timeout({ first: 1000, with: () => of(undefined) })),
       ),
       user.outboxes$.$first(1000, undefined),
     ]);
@@ -183,10 +181,12 @@ function SetDisplayName(displayName: string): Action {
     content.display_name = displayName;
 
     // Create a new profile event with updated content
-    const signed = await factory.modify(profile.event, (event) => {
-      event.content = JSON.stringify(content);
-      return event;
-    }).then(sign);
+    const signed = await factory
+      .modify(profile.event, (event) => {
+        event.content = JSON.stringify(content);
+        return event;
+      })
+      .then(sign);
 
     // Publish the event
     const outboxes = await user.outboxes$.$first(1000, undefined);
@@ -203,9 +203,7 @@ Actions can publish multiple events if needed:
 function CreateUserSetup(profile: ProfileContent, initialFollows: string[]): Action {
   return async ({ factory, user, publish, sign }) => {
     // Create profile
-    const profileSigned = await factory
-      .build({ kind: kinds.Metadata }, setProfileContent(profile))
-      .then(sign);
+    const profileSigned = await factory.build({ kind: kinds.Metadata }, setProfileContent(profile)).then(sign);
     await publish(profileSigned);
 
     // Create contacts list
