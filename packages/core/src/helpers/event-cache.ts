@@ -17,7 +17,7 @@ const log = logger.extend("event-cache");
  */
 export function persistEventsToCache(
   eventStore: IEventStoreStreams,
-  write: (events: NostrEvent[]) => Promise<void>,
+  write: (events: NostrEvent[]) => Promise<any>,
   opts?: { maxBatchSize?: number; batchTime?: number },
 ): () => void {
   const time = opts?.batchTime ?? 5_000;

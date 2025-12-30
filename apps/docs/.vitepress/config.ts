@@ -142,15 +142,22 @@ export default defineConfig({
         text: "Storing events",
         items: [
           {
-            text: "SQLite",
-            link: "/sqlite/index",
+            text: "IndexedDB",
             items: [
-              { text: "Better SQLite3", link: "/sqlite/better-sqlite3" },
-              { text: "Native SQLite", link: "/sqlite/native" },
-              { text: "Bun SQLite", link: "/sqlite/bun" },
-              { text: "LibSQL", link: "/sqlite/libsql" },
-              { text: "Turso", link: "/sqlite/turso" },
-              { text: "Turso Wasm", link: "/sqlite/turso-wasm" },
+              { text: "nostr-idb", link: "/storage/indexeddb/nostr-idb" },
+              { text: "window.nostrdb.js", link: "/storage/indexeddb/window.nostrdb.js" },
+            ],
+          },
+          {
+            text: "SQLite",
+            link: "/storage/sqlite/index",
+            items: [
+              { text: "Better SQLite3", link: "/storage/sqlite/better-sqlite3" },
+              { text: "Native SQLite", link: "/storage/sqlite/native" },
+              { text: "Bun SQLite", link: "/storage/sqlite/bun" },
+              { text: "LibSQL", link: "/storage/sqlite/libsql" },
+              { text: "Turso", link: "/storage/sqlite/turso" },
+              { text: "Turso Wasm", link: "/storage/sqlite/turso-wasm" },
             ],
           },
         ],
