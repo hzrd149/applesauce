@@ -103,7 +103,7 @@
     "@types/node": "^22.19.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "nostr-tools": "^2.18",
+    "nostr-tools": "^2.19",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^4.0.15",

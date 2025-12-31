@@ -2,11 +2,6 @@ import { NostrEvent } from "./event.js";
 import { normalizeURL } from "./url.js";
 
 export const SeenRelaysSymbol = Symbol.for("seen-relays");
-declare module "nostr-tools" {
-  export interface Event {
-    [SeenRelaysSymbol]?: Set<string>;
-  }
-}
 
 /** Marks an event as being seen on a relay */
 export function addSeenRelay(event: NostrEvent, relay: string): Set<string> {
