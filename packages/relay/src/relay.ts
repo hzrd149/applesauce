@@ -87,6 +87,12 @@ export type RelayOptions = {
   publishTimeout?: number;
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive?: number;
+  /** Default retry config for subscription() method */
+  subscriptionRetry?: RetryConfig;
+  /** Default retry config for request() method */
+  requestRetry?: RetryConfig;
+  /** Default retry config for publish() method */
+  publishRetry?: RetryConfig;
 };
 
 export class Relay implements IRelay {
@@ -177,6 +183,13 @@ export class Relay implements IRelay {
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive = 30_000;
 
+  /** Default retry config for subscription() method */
+  protected subscriptionRetry: RetryConfig;
+  /** Default retry config for request() method */
+  protected requestRetry: RetryConfig;
+  /** Default retry config for publish() method */
+  protected publishRetry: RetryConfig;
+
   // Subjects that track if an "auth-required" message has been received for REQ or EVENT
   protected receivedAuthRequiredForReq = new BehaviorSubject(false);
   protected receivedAuthRequiredForEvent = new BehaviorSubject(false);
@@ -209,6 +222,11 @@ export class Relay implements IRelay {
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
     if (opts?.publishTimeout !== undefined) this.publishTimeout = opts.publishTimeout;
     if (opts?.keepAlive !== undefined) this.keepAlive = opts.keepAlive;
+
+    // Set retry configs
+    this.subscriptionRetry = { ...DEFAULT_RETRY_CONFIG, ...(opts?.subscriptionRetry ?? {}) };
+    this.requestRetry = { ...DEFAULT_RETRY_CONFIG, ...(opts?.requestRetry ?? {}) };
+    this.publishRetry = { ...DEFAULT_RETRY_CONFIG, ...(opts?.publishRetry ?? {}) };
 
     // Create an observable that tracks boolean authentication state
     this.authenticated$ = this.authenticationResponse$.pipe(map((response) => response?.ok === true));
@@ -631,7 +649,7 @@ export class Relay implements IRelay {
   subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
-      this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
+      this.customRetryOperator(opts?.reconnect ?? true, this.subscriptionRetry),
       // Create resubscribe logic (repeat operator)
       this.customRepeatOperator(opts?.resubscribe),
       // Single subscription
@@ -643,7 +661,7 @@ export class Relay implements IRelay {
   request(filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent> {
     return this.req(filters, opts?.id).pipe(
       // Retry on connection errors
-      this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
+      this.customRetryOperator(opts?.reconnect ?? true, this.requestRetry),
       // Create resubscribe logic (repeat operator)
       this.customRepeatOperator(opts?.resubscribe),
       // Complete when EOSE is received
@@ -665,7 +683,7 @@ export class Relay implements IRelay {
           return of(result);
         }),
         // Retry the publish until it succeeds or the number of retries is reached
-        this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, DEFAULT_RETRY_CONFIG),
+        this.customRetryOperator(opts?.reconnect ?? true, this.publishRetry),
         // Add timeout for publishing
         this.customTimeoutOperator(opts?.timeout, this.publishTimeout),
       ),

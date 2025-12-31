@@ -17,12 +17,6 @@ export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">
 /** Options for the publish method on the pool and relay */
 export type PublishOptions = {
   /**
-   * Number of times to retry the publish. default is 10
-   * @see https://rxjs.dev/api/index/function/retry
-   * @deprecated use `reconnect` instead
-   */
-  retries?: number | Parameters<typeof retry>[0];
-  /**
    * Whether to reconnect when socket fails to connect. default is true (10 retries with 1 second delay)
    * @see https://rxjs.dev/api/index/function/retry
    */
@@ -38,12 +32,6 @@ export type RequestOptions = SubscriptionOptions;
 export type SubscriptionOptions = {
   /** Custom REQ id for the subscription */
   id?: string;
-  /**
-   * Number of times to retry the subscription if the relay fails to connect. default is 10
-   * @see https://rxjs.dev/api/index/function/retry
-   * @deprecated use `reconnect` instead
-   */
-  retries?: number | Parameters<typeof retry>[0];
   /**
    * Whether to resubscribe if the subscription is closed by the relay. default is false
    * @see https://rxjs.dev/api/index/function/repeat
