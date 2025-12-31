@@ -7,12 +7,12 @@ import { setDeleteEvents } from "applesauce-core/operations/delete";
 import { EventFactory } from "applesauce-core/event-factory";
 
 /** A blueprint for a NIP-09 delete event */
-export function DeleteBlueprint(events: NostrEvent[], reason?: string) {
+export function DeleteBlueprint(events: (string | NostrEvent)[], reason?: string) {
   return blueprint(kinds.EventDeletion, reason ? setContent(reason) : undefined, setDeleteEvents(events));
 }
 
 // Register this blueprint with EventFactory
-EventFactory.prototype.delete = function (events: NostrEvent[], reason?: string) {
+EventFactory.prototype.delete = function (events: (string | NostrEvent)[], reason?: string) {
   return this.create(DeleteBlueprint, events, reason);
 };
 
@@ -20,6 +20,6 @@ EventFactory.prototype.delete = function (events: NostrEvent[], reason?: string)
 declare module "applesauce-core/event-factory" {
   interface EventFactory {
     /** Create a NIP-09 delete event */
-    delete(events: NostrEvent[], reason?: string): Promise<EventTemplate>;
+    delete(events: (string | NostrEvent)[], reason?: string): Promise<EventTemplate>;
   }
 }
