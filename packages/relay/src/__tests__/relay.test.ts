@@ -1,7 +1,7 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
 import { firstValueFrom, of, Subject, throwError, timer } from "rxjs";
-import { filter, repeat } from "rxjs/operators";
+import { filter, repeat, retry } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
@@ -230,7 +230,7 @@ describe("req", () => {
     vi.useFakeTimers();
 
     // @ts-expect-error
-    relay.ready$.next(false);
+    relay._ready$.next(false);
 
     const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
 
@@ -244,7 +244,7 @@ describe("req", () => {
 
   it("should wait when relay isn't ready", async () => {
     // @ts-expect-error
-    relay.ready$.next(false);
+    relay._ready$.next(false);
 
     subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
 
@@ -254,7 +254,7 @@ describe("req", () => {
     expect(server.messages.length).toBe(0);
 
     // @ts-expect-error
-    relay.ready$.next(true);
+    relay._ready$.next(true);
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
   });
@@ -464,7 +464,7 @@ describe("event", () => {
     vi.useFakeTimers();
 
     // @ts-expect-error
-    relay.ready$.next(false);
+    relay._ready$.next(false);
 
     const spy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
 
@@ -496,7 +496,7 @@ describe("event", () => {
 
   it("should wait when relay isn't ready", async () => {
     // @ts-expect-error
-    relay.ready$.next(false);
+    relay._ready$.next(false);
 
     subscribeSpyTo(relay.event(mockEvent));
 
@@ -506,7 +506,7 @@ describe("event", () => {
     expect(server.messages.length).toBe(0);
 
     // @ts-expect-error
-    relay.ready$.next(true);
+    relay._ready$.next(true);
 
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
   });
@@ -719,14 +719,12 @@ describe("createReconnectTimer", () => {
       wasClean: false,
     });
 
-    // @ts-expect-error
-    expect(relay.ready$.value).toBe(false);
+    expect(relay.ready).toBe(false);
 
     // Fast-forward time by 10ms
     await vi.advanceTimersByTimeAsync(5000);
 
-    // @ts-expect-error
-    expect(relay.ready$.value).toBe(true);
+    expect(relay.ready).toBe(true);
   });
 });
 
@@ -848,8 +846,8 @@ describe("request", () => {
     await server.closed;
   });
 
-  it("should support retries on connection errors", async () => {
-    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { retries: 5 }), { expectErrors: true });
+  it("should support reconnect on connection errors", async () => {
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { reconnect: 5 }), { expectErrors: true });
 
     await server.connected;
     server.close({ wasClean: false, code: 1000, reason: "error message" });
@@ -1078,7 +1076,7 @@ describe("count", () => {
 
   it("should wait when relay isn't ready", async () => {
     // @ts-expect-error
-    relay.ready$.next(false);
+    relay._ready$.next(false);
 
     subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
 
@@ -1088,7 +1086,7 @@ describe("count", () => {
     expect(server.messages.length).toBe(0);
 
     // @ts-expect-error
-    relay.ready$.next(true);
+    relay._ready$.next(true);
 
     await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
   });

@@ -106,10 +106,10 @@ export class Relay implements IRelay {
   protected socket: WebSocketSubject<any>;
 
   /** Internal subject that tracks the ready state of the relay */
-  #ready$ = new BehaviorSubject(true);
+  protected _ready$ = new BehaviorSubject(true);
 
   /** Whether the relay is ready for subscriptions or event publishing. setting this to false will cause all .req and .event observables to hang until the relay is ready */
-  ready$ = this.#ready$.asObservable();
+  ready$ = this._ready$.asObservable();
 
   /** A method that returns an Observable that emits when the relay should reconnect */
   reconnectTimer: (error: CloseEvent | Error, attempts: number) => Observable<number>;
@@ -164,7 +164,7 @@ export class Relay implements IRelay {
 
   // sync state
   get ready() {
-    return this.#ready$.value;
+    return this._ready$.value;
   }
   get connected() {
     return this.connected$.value;
@@ -386,10 +386,12 @@ export class Relay implements IRelay {
     if (!this.ready) return;
 
     this.error$.next(error instanceof Error ? error : new Error("Connection error"));
-    this.#ready$.next(false);
+    this._ready$.next(false);
     this.reconnectTimer(error, this.attempts$.value)
       .pipe(take(1))
-      .subscribe(() => this.#ready$.next(true));
+      .subscribe(() => {
+        this._ready$.next(true);
+      });
   }
 
   /** Wait for authentication state, make connection and then wait for authentication if required */
