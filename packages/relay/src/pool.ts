@@ -24,6 +24,9 @@ export class RelayPool implements IPool {
     return this.relays$.value;
   }
 
+  /** Whether to ignore relays that are ready=false */
+  ignoreOffline = true;
+
   /** A signal when a relay is added */
   add$ = new Subject<IRelay>();
   /** A signal when a relay is removed */
@@ -44,17 +47,22 @@ export class RelayPool implements IPool {
     relay = new Relay(url, this.options);
     this.relays.set(url, relay);
     this.relays$.next(this.relays);
-    this.add$.next(relay);
     return relay;
   }
 
   /** Create a group of relays */
-  group(relays: IPoolRelayInput): RelayGroup {
-    return new RelayGroup(
-      Array.isArray(relays)
-        ? relays.map((url) => this.relay(url))
-        : relays.pipe(map((urls) => urls.map((url) => this.relay(url)))),
-    );
+  group(relays: IPoolRelayInput, ignoreOffline = this.ignoreOffline): RelayGroup {
+    let input = Array.isArray(relays)
+      ? relays.map((url) => this.relay(url))
+      : relays.pipe(map((urls) => urls.map((url) => this.relay(url))));
+
+    if (ignoreOffline) {
+      // Filter out the offline relays
+      if (Array.isArray(input)) input = input.filter((relay) => relay.ready);
+      else input = input.pipe(map((relays) => relays.filter((relay) => relay.ready)));
+    }
+
+    return new RelayGroup(input);
   }
 
   /** Removes a relay from the pool and defaults to closing the connection */
@@ -75,12 +83,14 @@ export class RelayPool implements IPool {
 
   /** Make a REQ to multiple relays that does not deduplicate events */
   req(relays: IPoolRelayInput, filters: FilterInput, id?: string): Observable<SubscriptionResponse> {
-    return this.group(relays).req(filters, id);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).req(filters, id);
   }
 
   /** Send an EVENT message to multiple relays */
   event(relays: IPoolRelayInput, event: NostrEvent): Observable<PublishResponse> {
-    return this.group(relays).event(event);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).event(event);
   }
 
   /** Negentropy sync event ids with the relays and an event store */
@@ -91,7 +101,7 @@ export class RelayPool implements IPool {
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
   ): Promise<boolean> {
-    return this.group(relays).negentropy(store, filter, reconcile, opts);
+    return this.group(relays, false).negentropy(store, filter, reconcile, opts);
   }
 
   /** Publish an event to multiple relays */
