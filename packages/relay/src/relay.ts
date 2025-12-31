@@ -240,12 +240,21 @@ export class Relay implements IRelay {
       this.connected$.next(true);
       this.attempts$.next(0);
       this.error$.next(null);
+
+      // Reset to clean state
       this.resetState();
     });
     this.close$.subscribe((event) => {
-      this.log("Disconnected");
-      this.connected$.next(false);
+      if (this.connected$.value) this.log("Disconnected");
+      else this.log("Failed to connect");
+
+      // Chnaged the connected state to false
+      if (this.connected$.value) this.connected$.next(false);
+
+      // Increment the attempts counter
       this.attempts$.next(this.attempts$.value + 1);
+
+      // Reset the state
       this.resetState();
 
       // Start the reconnect timer if the connection was not closed cleanly
