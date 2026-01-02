@@ -124,6 +124,10 @@ export default defineConfig({
               { text: "Markdown", link: "/apps/content/markdown" },
             ],
           },
+          {
+            text: "Encryption",
+            items: [{ text: "Caching", link: "/apps/encryption/caching" }],
+          },
         ],
       },
       {
