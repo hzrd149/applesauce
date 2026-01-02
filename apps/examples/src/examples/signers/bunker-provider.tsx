@@ -5,13 +5,6 @@ import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 
-// Extend Window interface to include nostr property
-declare global {
-  interface Window {
-    nostr?: any;
-  }
-}
-
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
 

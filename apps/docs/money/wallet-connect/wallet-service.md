@@ -85,8 +85,6 @@ WalletService.publishMethod = pool.publish.bind(pool);
 const service = new WalletService(options);
 ```
 
-For more details on setting up relay methods, see the [Nostr Connect documentation](../signers/nostr-connect.md).
-
 ## Handling Authentication Requests
 
 ### Processing Auth URIs

@@ -26,7 +26,7 @@ Computed state from the event store that can be subscribed to. (see [Models](../
 
 ## Loader
 
-A stateful function that loads events from relays or a cache. (see [Loaders](../loaders/package.md))
+A stateful function that loads events from relays or a cache. (see [Loaders](../loading/loaders/package.md))
 
 ## Encrypted content
 

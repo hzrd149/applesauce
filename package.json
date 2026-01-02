@@ -11,7 +11,8 @@
     "release": "pnpm run -r build && changeset publish",
     "prerelease-next": "turbo build && vitest run",
     "release-next": "changeset version --snapshot next && changeset publish --tag next --no-git-tag && git reset --hard HEAD && git clean -fd",
-    "test:browser": "vitest"
+    "test:browser": "vitest",
+    "docs": "cd apps/docs && pnpm dev"
   },
   "dependencies": {
     "@changesets/cli": "^2.29.8",

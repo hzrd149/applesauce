@@ -37,13 +37,6 @@ import { BehaviorSubject, debounceTime, map, of, shareReplay, switchMap } from "
 
 import PubkeyPicker from "../../components/pubkey-picker";
 
-// Extend Window interface to include nostr property
-declare global {
-  interface Window {
-    nostr?: any;
-  }
-}
-
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
 const pool = new RelayPool();
