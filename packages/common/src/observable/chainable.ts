@@ -10,13 +10,6 @@ const CHAINABLE_CACHE_SYMBOL = Symbol.for("chainable-cache");
  * When accessing a property ending with `$`, it uses switchMap to chain
  * to that property's observable value.
  * When accessing a non-observable property, it returns an Observable of that property's value.
- *
- * @example
- * ```ts
- * const author$ = chainable(note.author$);
- * const outboxes$ = author$.outboxes$; // Observable<string[] | undefined>
- * const displayName$ = author$.displayName; // Observable<string | undefined>
- * ```
  */
 export function chainable<T>(observable: Observable<T>): ChainableObservable<T> {
   // Create a Proxy that intercepts property access
@@ -117,13 +110,6 @@ type PropChain<T, K extends keyof NonNullable<T>> = NonNullable<T>[K] | Nullable
  *
  * Note: TypeScript has limitations inferring through Proxy types. For better
  * type inference, you may need to explicitly type the result:
- *
- * @example
- * ```ts
- * const inboxes$: Observable<string[] | undefined> = note?.author$.inboxes$;
- * const displayName$: Observable<string | undefined> = note?.author$.displayName;
- * const inboxes = useObservableMemo(() => inboxes$, [note]);
- * ```
  */
 export type ChainableObservable<T> = Observable<T> &
   Omit<

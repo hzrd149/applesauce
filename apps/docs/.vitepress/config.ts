@@ -76,13 +76,22 @@ export default defineConfig({
         text: "Creating events",
         items: [
           {
-            text: "Factory",
-            link: "/factory/index",
+            text: "Signers",
+            link: "/creating/signers",
             items: [
-              { text: "Event Factory", link: "/factory/event-factory" },
-              { text: "Blueprints", link: "/factory/blueprints" },
-              { text: "Event Operations", link: "/factory/event-operations" },
-              { text: "Tag Operations", link: "/factory/tag-operations" },
+              { text: "Signers", link: "/creating/signers/signers" },
+              { text: "Nostr Connect", link: "/creating/signers/nostr-connect" },
+              { text: "Bunker Provider", link: "/creating/signers/bunker-provider" },
+            ],
+          },
+          {
+            text: "Factory",
+            link: "/creating/factory",
+            items: [
+              { text: "Event Factory", link: "/creating/factory/event-factory" },
+              { text: "Blueprints", link: "/creating/factory/blueprints" },
+              { text: "Event Operations", link: "/creating/factory/event-operations" },
+              { text: "Tag Operations", link: "/creating/factory/tag-operations" },
             ],
           },
         ],
@@ -91,31 +100,30 @@ export default defineConfig({
         text: "Building apps",
         items: [
           {
-            text: "Signers",
-            link: "/signers/index",
-            items: [
-              { text: "Signers", link: "/signers/signers" },
-              { text: "Nostr Connect", link: "/signers/nostr-connect" },
-              { text: "Bunker Provider", link: "/signers/bunker-provider" },
-            ],
-          },
-          {
             text: "Accounts",
-            link: "/accounts/index",
+            link: "/apps/accounts",
             items: [
-              { text: "Manager", link: "/accounts/manager" },
-              { text: "Accounts", link: "/accounts/accounts" },
+              { text: "Manager", link: "/apps/accounts/manager" },
+              { text: "Accounts", link: "/apps/accounts/accounts" },
             ],
           },
           {
             text: "Actions",
-            link: "/actions/index",
+            link: "/apps/actions",
             items: [
-              { text: "Action Runner", link: "/actions/action-runner" },
-              { text: "Actions", link: "/actions/actions" },
+              { text: "Action Runner", link: "/apps/actions/action-runner" },
+              { text: "Actions", link: "/apps/actions/actions" },
             ],
           },
-          { text: "React", link: "/react/index", items: [{ text: "use$", link: "/react/use-observable" }] },
+          { text: "React", link: "/apps/react", items: [{ text: "use$", link: "/apps/react/use-observable" }] },
+          {
+            text: "Content",
+            link: "/apps/content",
+            items: [
+              { text: "Text", link: "/apps/content/text" },
+              { text: "Markdown", link: "/apps/content/markdown" },
+            ],
+          },
         ],
       },
       {
@@ -163,14 +171,6 @@ export default defineConfig({
               { text: "Turso Wasm", link: "/storage/databases/turso-wasm" },
             ],
           },
-        ],
-      },
-      {
-        text: "Content",
-        link: "/content/package",
-        items: [
-          { text: "Text", link: "/content/text" },
-          { text: "Markdown", link: "/content/markdown" },
         ],
       },
       {

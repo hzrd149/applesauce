@@ -15,8 +15,6 @@ import {
 import { CastRefEventStore, EventCast } from "./cast.js";
 import { castUser } from "./user.js";
 
-// NOTE: extending BaseCast since there is no need for author$ or comments$
-
 /** Cast a kind 9735 event to a Zap */
 export class Zap extends EventCast<ZapEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
