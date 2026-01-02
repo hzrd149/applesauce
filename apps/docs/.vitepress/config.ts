@@ -141,24 +141,26 @@ export default defineConfig({
       },
       {
         text: "Storing events",
+        link: "/storage",
         items: [
           {
-            text: "IndexedDB",
+            text: "Caching",
+            link: "/storage/caching",
             items: [
-              { text: "nostr-idb", link: "/storage/indexeddb/nostr-idb" },
-              { text: "window.nostrdb.js", link: "/storage/indexeddb/window.nostrdb.js" },
+              { text: "nostr-idb", link: "/storage/caching/nostr-idb" },
+              { text: "window.nostrdb.js", link: "/storage/caching/window.nostrdb.js" },
             ],
           },
           {
-            text: "SQLite",
-            link: "/storage/sqlite/index",
+            text: "Databases",
+            link: "/storage/databases",
             items: [
-              { text: "Better SQLite3", link: "/storage/sqlite/better-sqlite3" },
-              { text: "Native SQLite", link: "/storage/sqlite/native" },
-              { text: "Bun SQLite", link: "/storage/sqlite/bun" },
-              { text: "LibSQL", link: "/storage/sqlite/libsql" },
-              { text: "Turso", link: "/storage/sqlite/turso" },
-              { text: "Turso Wasm", link: "/storage/sqlite/turso-wasm" },
+              { text: "Better SQLite3", link: "/storage/databases/better-sqlite3" },
+              { text: "Native SQLite", link: "/storage/databases/native" },
+              { text: "Bun SQLite", link: "/storage/databases/bun" },
+              { text: "LibSQL", link: "/storage/databases/libsql" },
+              { text: "Turso", link: "/storage/databases/turso" },
+              { text: "Turso Wasm", link: "/storage/databases/turso-wasm" },
             ],
           },
         ],
