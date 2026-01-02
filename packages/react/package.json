@@ -1,6 +1,6 @@
 {
   "name": "applesauce-react",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "React hooks for applesauce",
   "type": "module",
   "main": "dist/index.js",
@@ -55,10 +55,10 @@
     }
   },
   "dependencies": {
-    "applesauce-accounts": "^4.0.0",
-    "applesauce-actions": "^4.0.0",
-    "applesauce-content": "^4.0.0",
-    "applesauce-core": "^4.0.0",
+    "applesauce-accounts": "^5.0.0",
+    "applesauce-actions": "^5.0.0",
+    "applesauce-content": "^5.0.0",
+    "applesauce-core": "^5.0.0",
     "hash-sum": "^2.0.0",
     "observable-hooks": "^4.2.4",
     "react": "^18.3.1",

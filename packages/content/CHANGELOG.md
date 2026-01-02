@@ -1,5 +1,22 @@
 # applesauce-content
 
+## 5.0.0
+
+### Major Changes
+
+- 8861435: Move regular expressions to applesauce-core
+
+### Minor Changes
+
+- b698156: Bump `@cashu/cashu-ts` to `3.1.1`
+- d788f94: Remove nostr-tools dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-common@5.0.0
+  - applesauce-core@5.0.0
+
 ## 4.0.0
 
 ### Minor Changes

@@ -1,5 +1,27 @@
 # applesauce-relay
 
+## 5.0.0
+
+### Major Changes
+
+- 1ff4283: Remove `retries` option in request, subscription, and publish methods. use `reconnect` instead
+- c2bd9a2: Lower default retry count from 10 to 3
+- c2bd9a2: Ignore unreacheable (ready=false) relays by default in `request`, `subscription`, `publish` and `sync` in `RelayPool`
+
+### Minor Changes
+
+- 41499f9: Add `createEventLoaderForStore` method for easily creating the `EventStore.eventLoader` method using a relay pool or relay request method
+- 1ff4283: Added `subscriptionReconnect`, `requestReconnect`, and `publishRetry` options to Relay and RelayPool class for default retry limits
+- 41499f9: Add `createUnifiedEventLoader` for both event pointers and address pointers
+- eb68078: Bump `nostr-tools` to `2.19`
+
+### Patch Changes
+
+- cc794a3: Fix `Relay.sync` and `RelayPool.sync` not adding events to event store
+- d788f94: Remove direct imports from nostr-tools
+- Updated dependencies
+  - applesauce-core@5.0.0
+
 ## 4.4.2
 
 ### Patch Changes

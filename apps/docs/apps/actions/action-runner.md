@@ -117,9 +117,7 @@ const customPublish = async (event: NostrEvent) => {
 await hub.exec(NewContacts).forEach(customPublish);
 
 // Follow user with custom handling
-await hub
-  .exec(FollowUser, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
-  .forEach(customPublish);
+await hub.exec(FollowUser, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d").forEach(customPublish);
 ```
 
 #### Using RxJS Subscriptions for Advanced Control

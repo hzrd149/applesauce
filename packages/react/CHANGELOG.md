@@ -1,5 +1,20 @@
 # applesauce-react
 
+## 5.0.0
+
+### Minor Changes
+
+- 5d7d423: Add new `use$` hook that replaces `useObservableState` and `useObservableMemo`
+- 6596b3d: Remove direct `nostr-tools` dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-actions@5.0.0
+  - applesauce-content@5.0.0
+  - applesauce-core@5.0.0
+  - applesauce-accounts@5.0.0
+
 ## 4.0.0
 
 ### Minor Changes

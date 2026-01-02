@@ -1,5 +1,16 @@
 # applesauce-loaders
 
+## 5.0.0
+
+### Minor Changes
+
+- 6596b3d: Remove unused `nostr-tools` dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.0.0
+
 ## 4.2.0
 
 ### Minor Changes
