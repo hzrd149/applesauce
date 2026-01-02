@@ -1,5 +1,35 @@
 # applesauce-core
 
+## 5.0.0
+
+### Major Changes
+
+- e6a85d5: Remove `addCoordinateTag` tag operation, use `addAddressTag` instead
+- e824b26: Remove unused `EventStore.deleted` and `EventStore.updated` methods
+- e824b26: Rename `getCoordinateFromAddressPointer` to `getReplaceableAddressFromPointer`
+- ba7dfed: Remove `IEventStoreSubscriptions` interface
+- e6a85d5: Removed `removeCoordinateTag` tag operation, use `removeAddressTag` instead
+- c5ad95c: Verify event signatures by default
+- e824b26: Rename `parseCoordinate` to `parseReplaceableAddress`
+- e824b26: Update `EventStore` to take options in constructor
+- ba7dfed: Remove `events` and `replaceableSet` methods on event stores
+- 41499f9: Replace experimental `eventLoader`, `replaceableLoader`, and `addressableLoader` with a single `eventLoader` method
+- e6a85d5: Move event factory to core
+- ba7dfed: Remove `IEventStoreModels` interface
+
+### Minor Changes
+
+- 82bc46f: Add helper methods for NIP-66 relay discovery
+- fc21438: Add support for NIP-35 torrents
+- eb68078: Bump `nostr-tools` to `2.19`
+- c147899: Support `AddressPointers` in `EventStore.event` and `EventStore.getEvent`
+- 4f749e1: Add `encryptSecretKey` and `decryptSecretKey` methods
+- e824b26: Add `DeleteManager` and `SyncDeleteManager` classes to correctly handle delete events
+
+### Patch Changes
+
+- acc6e6c: Fix URL helpers throwing on invalid URLs
+
 ## 4.4.2
 
 ### Patch Changes

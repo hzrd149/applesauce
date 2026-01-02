@@ -1,5 +1,21 @@
 # applesauce-wallet
 
+## 5.0.0
+
+### Minor Changes
+
+- 36e021a: Remove unused `@noble/hashes` dependency
+- b698156: Add wallet and token event casts
+- 6596b3d: Remove direct `nostr-tools` dependency
+- 14a2201: Add support for NIP-87 cashu mint discovery
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-actions@5.0.0
+  - applesauce-common@5.0.0
+  - applesauce-core@5.0.0
+
 ## 4.0.0
 
 ### Major Changes

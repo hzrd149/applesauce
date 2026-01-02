@@ -1,5 +1,23 @@
 # applesauce-actions
 
+## 5.0.0
+
+### Major Changes
+
+- 5d7d423: Changed `Action` from an async generator of events to an async method that calls a `publish` method
+- 08f8aa4: Rename `ActionHub` to `ActionRunner`
+
+### Minor Changes
+
+- 0cd0f1c: Extend action context to allow sub actions and casting
+- 6596b3d: Remove unused `nostr-tools` dependency
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-common@5.0.0
+  - applesauce-core@5.0.0
+
 ## 4.0.0
 
 ### Minor Changes
