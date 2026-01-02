@@ -1,6 +1,6 @@
 # Accounts
 
-The [account classes](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-accounts.Accounts.html) are simple wrappers around various [Signers](../signers/signers.md) and expose a `toJSON` and `fromJSON` method to let you save them to localStorage or indexeddb databases
+The [account classes](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-accounts.Accounts.html) are simple wrappers around various [Signers](../../creating/signers/signers.md) and expose a `toJSON` and `fromJSON` method to let you save them to localStorage or indexeddb databases
 
 ## Built-in account types
 

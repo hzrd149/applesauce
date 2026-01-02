@@ -1,22 +1,5 @@
 # Getting Started
 
-Ready to build reactive Nostr applications with applesauce? Follow our step-by-step tutorial that will teach you everything you need to know.
-
-## 📚 [Complete Tutorial](../tutorial/00-introduction)
-
-Our beginner-friendly tutorial covers:
-
-1. **[Event Store](../tutorial/01-event-store.md)** - The reactive database at the heart of applesauce
-2. **[Helpers](../tutorial/02-helpers.md)** - Extract and parse data from Nostr events
-3. **[Models](../tutorial/03-models.md)** - Build reactive UI components
-4. **[Relay Pool](../tutorial/04-relays.md)** - Connect to Nostr relays and receive events
-5. **[Loaders](../tutorial/05-loaders.md)** - Load specific events on-demand
-6. **[Event Factory](../tutorial/06-event-factory.md)** - Create and sign events
-7. **[Publishing](../tutorial/07-publishing.md)** - Publish events to relays
-8. **[Actions](../tutorial/08-actions.md)** - Run complex actions like following users
-
-Each section includes complete code examples and builds toward a working social media application.
-
 ## Quick Overview
 
 Applesauce consists of several key components that work together:
@@ -94,6 +77,5 @@ const signed = await factory.sign(note);
 
 ## Next Steps
 
-- **Start with the [tutorial](../tutorial/00-introduction.md)** to learn step-by-step
 - **Browse the [examples](https://hzrd149.github.io/applesauce/examples)** to see whats possible
 - **Check the [API documentation](https://hzrd149.github.io/applesauce/typedoc/)** for detailed reference

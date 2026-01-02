@@ -8,13 +8,6 @@ import { useMemo, useState } from "react";
 import { BehaviorSubject, map, NEVER, of, startWith, switchMap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 
-// Extend Window interface to include nostr property
-declare global {
-  interface Window {
-    nostr?: any;
-  }
-}
-
 // Create relay pool for connections
 const pool = new RelayPool();
 

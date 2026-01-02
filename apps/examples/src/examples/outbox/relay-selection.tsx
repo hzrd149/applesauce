@@ -11,13 +11,6 @@ import { BehaviorSubject, firstValueFrom, shareReplay, switchMap, throttleTime }
 
 import PubkeyPicker from "../../components/pubkey-picker";
 
-// Extend Window interface to include nostr property
-declare global {
-  interface Window {
-    nostr?: any;
-  }
-}
-
 // The pubkey of the user to view
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
