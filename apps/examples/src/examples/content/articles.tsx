@@ -18,7 +18,7 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const factory = new EventFactory({ signer });
-const actionHub = new ActionRunner(eventStore, factory, async (event, relays) => {
+const actions = new ActionRunner(eventStore, factory, async (event, relays) => {
   if (relays && relays.length > 0) {
     await pool.publish(relays, event);
   } else {
@@ -107,7 +107,7 @@ function CommentsSection({ article }: { article: Article }) {
 
     try {
       setIsSubmitting(true);
-      await actionHub.run(CreateComment, article.event, commentText.trim());
+      await actions.run(CreateComment, article.event, commentText.trim());
       setCommentText("");
     } catch (err) {
       console.error("Failed to create comment:", err);
