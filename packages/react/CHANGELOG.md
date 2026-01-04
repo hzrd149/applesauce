@@ -1,5 +1,11 @@
 # applesauce-react
 
+## 5.0.1
+
+### Patch Changes
+
+- d243cf8: Fix react dependency being locked to v18
+
 ## 5.0.0
 
 ### Minor Changes
