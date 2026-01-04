@@ -634,9 +634,6 @@ importers:
       observable-hooks:
         specifier: ^4.2.4
         version: 4.2.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
@@ -645,8 +642,11 @@ importers:
         specifier: ^1.0.2
         version: 1.0.2
       '@types/react':
-        specifier: ^18.3.18
+        specifier: ^18.0.0 || ^19.0.0
         version: 18.3.27
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 18.3.1
       rimraf:
         specifier: ^6.0.1
         version: 6.1.2
