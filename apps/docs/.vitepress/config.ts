@@ -180,6 +180,7 @@ export default defineConfig({
       {
         text: "Migrations",
         items: [
+          { text: "v4 to v5", link: "/migration/v4-v5" },
           { text: "v2 to v3", link: "/migration/v2-v3" },
           { text: "v1 to v2", link: "/migration/v1-v2" },
         ],
