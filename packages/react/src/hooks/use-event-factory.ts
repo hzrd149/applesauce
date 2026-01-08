@@ -3,6 +3,7 @@ import { EventFactory } from "applesauce-core";
 
 import { FactoryContext } from "../providers/factory-provider.js";
 
+/** Gets the {@link EventFactory} from the {@link EventFactoryProvider} */
 export function useEventFactory(require: false): EventFactory | undefined;
 export function useEventFactory(require: true): EventFactory;
 export function useEventFactory(): EventFactory;

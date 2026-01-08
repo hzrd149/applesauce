@@ -616,18 +616,6 @@ importers:
 
   packages/react:
     dependencies:
-      applesauce-accounts:
-        specifier: ^5.0.0
-        version: link:../accounts
-      applesauce-actions:
-        specifier: ^5.0.0
-        version: link:../actions
-      applesauce-content:
-        specifier: ^5.0.0
-        version: link:../content
-      applesauce-core:
-        specifier: ^5.0.0
-        version: link:../core
       hash-sum:
         specifier: ^2.0.0
         version: 2.0.0
@@ -656,6 +644,19 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.0.16(@types/node@22.19.3)(@vitest/browser-playwright@4.0.16)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
+    optionalDependencies:
+      applesauce-accounts:
+        specifier: ^5.0.0
+        version: link:../accounts
+      applesauce-actions:
+        specifier: ^5.0.0
+        version: link:../actions
+      applesauce-content:
+        specifier: ^5.0.0
+        version: link:../content
+      applesauce-core:
+        specifier: ^5.0.0
+        version: link:../core
 
   packages/relay:
     dependencies:
