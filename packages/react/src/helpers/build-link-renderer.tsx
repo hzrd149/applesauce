@@ -1,10 +1,11 @@
+import { Link } from "applesauce-content/nast";
 import { memo, useMemo } from "react";
 import { ComponentMap } from "./nast.js";
-import { Link } from "applesauce-content/nast";
 
 export type LinkRenderer = (url: URL, node: Link) => JSX.Element | false | null;
 
-export function buildLinkRenderer(handlers: LinkRenderer[]) {
+/** Creates a link renderer component that can be used in the {@link ComponentMap} */
+export function buildLinkRenderer(handlers: LinkRenderer[]): ComponentMap["link"] {
   const LinkRenderer: ComponentMap["link"] = ({ node }) => {
     const content = useMemo(() => {
       try {

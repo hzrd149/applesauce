@@ -5,7 +5,7 @@ import { of } from "rxjs";
 import { useEventStore } from "./use-event-store.js";
 import { useObservableEagerMemo } from "./use-observable-memo.js";
 
-/** Runs and subscribes to a model on the event store */
+/** Runs and subscribes to a model on the {@link EventStore} */
 export function useEventModel<T extends unknown, Args extends Array<any>>(
   factory: ModelConstructor<T, Args>,
   args?: Args | null,
