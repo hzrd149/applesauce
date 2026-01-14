@@ -1,8 +1,8 @@
 import { logger } from "applesauce-core";
 import { createEvent, EventSigner } from "applesauce-core/event-factory";
-import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription } from "rxjs";
 import { verifyEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription, tap } from "rxjs";
 
 import { bytesToHex } from "@noble/hashes/utils";
 import { WalletLegacyNotificationBlueprint, WalletNotificationBlueprint } from "./blueprints/notification.js";
@@ -197,11 +197,14 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
     );
 
     // Subscribe to request events and handle them
-    this.subscription = this.events$.pipe(mergeMap((requestEvent) => this.handleRequestEvent(requestEvent))).subscribe({
-      error: (error) => {
-        this.log("Error handling wallet request:", error);
-      },
-    });
+    this.subscription = this.events$
+      .pipe(
+        mergeMap((requestEvent) => this.handleRequestEvent(requestEvent)),
+        tap({ error: (error) => this.log("Error handling wallet request:", error) }),
+        // Keep listening even if an error is thrown
+        retry(Infinity),
+      )
+      .subscribe();
 
     // Publish wallet support event
     await this.publishSupportEvent();
