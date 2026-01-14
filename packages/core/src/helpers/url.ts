@@ -63,7 +63,7 @@ export function ensureWebSocketURL<T extends string | URL>(url: T): T {
   const p = typeof url === "string" ? new URL(ensureProtocol(url, "wss:")) : new URL(url);
   if (p.protocol === "http:") p.protocol = "ws:";
   else if (p.protocol === "https:") p.protocol = "wss:";
-  else p.protocol = "wss:";
+  else if (p.protocol !== "ws:") p.protocol = "wss:";
 
   // return a string if a string was passed in
   // @ts-expect-error
@@ -75,7 +75,7 @@ export function ensureHttpURL<T extends string | URL>(url: T): T {
   const p = typeof url === "string" ? new URL(ensureProtocol(url, "http:")) : new URL(url);
   if (p.protocol === "ws:") p.protocol = "http:";
   else if (p.protocol === "wss:") p.protocol = "https:";
-  else p.protocol = "https:";
+  else if (p.protocol !== "http:") p.protocol = "https:";
 
   // return a string if a string was passed in
   // @ts-expect-error
