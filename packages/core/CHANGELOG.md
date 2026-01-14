@@ -1,5 +1,12 @@
 # applesauce-core
 
+## 5.0.1
+
+### Patch Changes
+
+- 39975fd: Fix `ensureHttpURL` converting `http:` URLs into `https:`
+- 39975fd: Fix `ensureWebSocketURL` converting `ws:` URLs to `wss:`
+
 ## 5.0.0
 
 ### Major Changes
