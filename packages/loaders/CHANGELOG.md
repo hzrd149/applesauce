@@ -1,5 +1,11 @@
 # applesauce-loaders
 
+## 5.0.2
+
+### Patch Changes
+
+- 4f908b6: Fix incorrect types on unified event loader
+
 ## 5.0.0
 
 ### Minor Changes

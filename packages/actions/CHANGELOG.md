@@ -1,5 +1,11 @@
 # applesauce-actions
 
+## 5.0.2
+
+### Patch Changes
+
+- 9612054: Fix ActionRunner cache causing actions to have wrong `user` when accounts change
+
 ## 5.0.0
 
 ### Major Changes
