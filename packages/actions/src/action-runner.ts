@@ -51,25 +51,20 @@ export class ActionRunner {
     private publishMethod?: UpstreamPool,
   ) {}
 
-  protected context: ActionContext | undefined = undefined;
   protected async getContext() {
-    if (this.context) return this.context;
-    else {
-      if (!this.factory.context.signer) throw new Error("Missing signer");
-      const self = await this.factory.context.signer.getPublicKey();
-      const user = castUser(self, this.events);
-      this.context = {
-        self,
-        user,
-        events: this.events,
-        signer: this.factory.context.signer,
-        factory: this.factory,
-        publish: this.publish.bind(this),
-        run: this.run.bind(this),
-        sign: this.factory.sign.bind(this.factory),
-      };
-      return this.context;
-    }
+    if (!this.factory.context.signer) throw new Error("Missing signer");
+    const self = await this.factory.context.signer.getPublicKey();
+    const user = castUser(self, this.events);
+    return {
+      self,
+      user,
+      events: this.events,
+      signer: this.factory.context.signer,
+      factory: this.factory,
+      publish: this.publish.bind(this),
+      run: this.run.bind(this),
+      sign: this.factory.sign.bind(this.factory),
+    };
   }
 
   /** Internal method for publishing events to relays */
