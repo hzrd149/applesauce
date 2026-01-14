@@ -1,5 +1,12 @@
 # applesauce-wallet-connect
 
+## 5.0.3
+
+### Patch Changes
+
+- 360e4cd: Fix incorrectly defaulting to nip-44 encryption when missing "encryption" tag
+- 360e4cd: Fix request parsing error causing connection to close
+
 ## 5.0.0
 
 ### Minor Changes
