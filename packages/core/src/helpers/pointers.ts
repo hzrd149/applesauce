@@ -1,11 +1,16 @@
 import {
   AddressPointer,
   decode,
+  DecodedResult,
   EventPointer,
+  NAddr,
   naddrEncode,
+  NEvent,
   neventEncode,
   noteEncode,
+  NProfile,
   nprofileEncode,
+  NPub,
   npubEncode,
   nsecEncode,
   ProfilePointer,
@@ -24,6 +29,7 @@ export {
   npubEncode,
   nsecEncode,
 } from "nostr-tools/nip19";
+export type { NAddr, NEvent, NProfile, NPub } from "nostr-tools/nip19";
 
 import { getPublicKey } from "nostr-tools/pure";
 import { getReplaceableIdentifier, isAddressableKind, isReplaceableKind, kinds, NostrEvent } from "./event.js";
@@ -32,11 +38,22 @@ import { isSafeRelayURL, relaySet } from "./relays.js";
 import { isHexKey } from "./string.js";
 import { normalizeURL } from "./url.js";
 
-export type DecodeResult = ReturnType<typeof decode>;
+// re-export legacy DecodeResult type
+export type DecodeResult = DecodedResult;
+
+/** Decodes a string and handles errors */
+function safeDecode(str: string): DecodedResult | null {
+  try {
+    return decode(str);
+  } catch {
+    return null;
+  }
+}
 
 /** Decodes any nip-19 encoded entity to a ProfilePointer */
 export function decodeProfilePointer(str: string): ProfilePointer | null {
-  const result = decode(str);
+  const result = safeDecode(str);
+  if (!result) return null;
   const pubkey = getPubkeyFromDecodeResult(result);
   if (!pubkey) return null;
 
@@ -48,13 +65,16 @@ export function decodeProfilePointer(str: string): ProfilePointer | null {
 
 /** Decodes an naddr encoded string to an AddressPointer */
 export function decodeAddressPointer(str: string): AddressPointer | null {
-  const result = decode(str);
+  const result = safeDecode(str);
+  if (!result) return null;
   return result.type === "naddr" ? result.data : null;
 }
 
 /** Decodes a note1 or nevent encoded string to an EventPointer */
 export function decodeEventPointer(str: string): EventPointer | null {
-  const result = decode(str);
+  const result = safeDecode(str);
+  if (!result) return null;
+
   switch (result.type) {
     case "note":
       return { id: result.data };
@@ -267,10 +287,13 @@ export function addRelayHintsToPointer<T extends { relays?: string[] }>(pointer:
 }
 
 /** Gets the hex pubkey from any nip-19 encoded string */
+export function normalizeToPubkey(str: NPub): string;
+export function normalizeToPubkey(str: string): string | null;
 export function normalizeToPubkey(str: string): string | null {
   if (isHexKey(str)) return str.toLowerCase();
   else {
-    const result = decode(str);
+    const result = safeDecode(str);
+    if (!result) return null;
     const pubkey = getPubkeyFromDecodeResult(result);
     if (!pubkey) return null;
     return pubkey;
@@ -278,10 +301,14 @@ export function normalizeToPubkey(str: string): string | null {
 }
 
 /** Gets a ProfilePointer from any nip-19 encoded string */
+export function normalizeToProfilePointer(str: NProfile): ProfilePointer;
+export function normalizeToProfilePointer(str: NPub): ProfilePointer;
+export function normalizeToProfilePointer(str: string): ProfilePointer | null;
 export function normalizeToProfilePointer(str: string): ProfilePointer | null {
   if (isHexKey(str)) return { pubkey: str.toLowerCase() };
   else {
-    const result = decode(str);
+    const result = safeDecode(str);
+    if (!result) return null;
 
     // Return it if it's a profile pointer
     if (result.type === "nprofile") return result.data;
@@ -294,6 +321,40 @@ export function normalizeToProfilePointer(str: string): ProfilePointer | null {
   }
 }
 
+/** Gets an AddressPointer from any nip-19 encoded string */
+export function normalizeToAddressPointer(str: NAddr): AddressPointer;
+export function normalizeToAddressPointer(str: string): AddressPointer | null;
+export function normalizeToAddressPointer(str: string): AddressPointer | null {
+  // Handle <kind>:<pubkey>:<identifier> format
+  if (str.includes(":")) return parseReplaceableAddress(str);
+
+  // Decode nip-19 encoded string
+  const result = safeDecode(str);
+  if (!result) return null;
+  return result.type === "naddr" ? result.data : null;
+}
+
+/** Gets an EventPointer from any nip-19 encoded string */
+export function normalizeToEventPointer(str: NEvent): EventPointer;
+export function normalizeToEventPointer(str: string): EventPointer | null;
+export function normalizeToEventPointer(str: string): EventPointer | null {
+  // Handle <event-id> format
+  if (isHexKey(str)) return { id: str.toLowerCase() };
+
+  // Decode nip-19 encoded string
+  const result = safeDecode(str);
+  if (!result) return null;
+
+  switch (result.type) {
+    case "nevent":
+      return result.data;
+    case "note":
+      return { id: result.data };
+    default:
+      return null;
+  }
+}
+
 /** Returns all NIP-19 pointers in a content string */
 export function getContentPointers(content: string): DecodeResult[] {
   const mentions = content.matchAll(Tokens.nostrLink);
@@ -301,7 +362,8 @@ export function getContentPointers(content: string): DecodeResult[] {
   const pointers: DecodeResult[] = [];
   for (const [_, $1] of mentions) {
     try {
-      const result = decode($1);
+      const result = safeDecode($1);
+      if (!result) continue;
       pointers.push(result);
     } catch (error) {}
   }

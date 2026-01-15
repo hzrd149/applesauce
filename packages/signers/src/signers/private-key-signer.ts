@@ -31,6 +31,8 @@ export class PrivateKeySigner implements ISigner {
 
   /** Creates a PrivateKeySigner from a hex private key or NIP-19 nsec */
   static fromKey(privateKey: Uint8Array | string) {
-    return new PrivateKeySigner(normalizeToSecretKey(privateKey));
+    const key = normalizeToSecretKey(privateKey);
+    if (!key) throw new Error("Invalid private key");
+    return new PrivateKeySigner(key);
   }
 }

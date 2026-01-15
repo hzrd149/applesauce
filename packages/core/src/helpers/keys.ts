@@ -1,19 +1,29 @@
-import { decode, Ncryptsec } from "nostr-tools/nip19";
+import { decode, Ncryptsec, NSec } from "nostr-tools/nip19";
+import { decrypt, encrypt } from "nostr-tools/nip49";
 import { hexToBytes } from "nostr-tools/utils";
 import { isHexKey } from "./string.js";
-import { encrypt, decrypt } from "nostr-tools/nip49";
 
 // Re-export types from nostr-tools
 export { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
 /** Converts hex to nsec strings into Uint8 secret keys */
-export function normalizeToSecretKey(str: string | Uint8Array): Uint8Array {
-  if (str instanceof Uint8Array) return str;
-  else if (isHexKey(str)) return hexToBytes(str);
+export function normalizeToSecretKey(str: NSec): Uint8Array;
+export function normalizeToSecretKey(str: string | Uint8Array): Uint8Array | null;
+export function normalizeToSecretKey(str: string | Uint8Array): Uint8Array | null {
+  if (str instanceof Uint8Array) {
+    // Ignore invalid lengths
+    if (str.length !== 32) return null;
+
+    return str;
+  } else if (isHexKey(str)) return hexToBytes(str);
   else {
-    const result = decode(str);
-    if (result.type !== "nsec") throw new Error(`Cant get secret key from ${result.type}`);
-    return result.data;
+    try {
+      const result = decode(str);
+      if (result.type !== "nsec") return null;
+      return result.data;
+    } catch {
+      return null;
+    }
   }
 }
 
