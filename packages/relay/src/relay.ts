@@ -82,6 +82,12 @@ export enum SyncDirection {
 /** An error that is thrown when a REQ is closed from the relay side */
 export class ReqCloseError extends Error {}
 
+/** A dummy filter that will return empty results */
+const PING_FILTER: Filter = {
+  ids: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+  limit: 0,
+};
+
 export type RelayOptions = {
   /** Custom WebSocket implementation */
   WebSocket?: WebSocketSubjectConfig<any>["WebSocketCtor"];
@@ -93,6 +99,12 @@ export type RelayOptions = {
   publishTimeout?: number;
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive?: number;
+  /** Enable/disable ping functionality (default false) */
+  enablePing?: boolean;
+  /** How often to send pings in milliseconds (default 29000) */
+  pingFrequency?: number;
+  /** How long to wait for EOSE response in milliseconds (default 20000) */
+  pingTimeout?: number;
   /** Default retry config for subscription() method */
   subscriptionRetry?: RetryConfig;
   /** Default retry config for request() method */
@@ -139,6 +151,9 @@ export class Relay implements IRelay {
    * @note Subscribing to this will not connect to the relay
    */
   notice$: Observable<string>;
+
+  /** Timestamp of the last message received from the relay */
+  private lastMessageReceivedAt = 0;
 
   /** An observable that emits the NIP-11 information document for the relay */
   information$: Observable<RelayInformation | null>;
@@ -195,6 +210,13 @@ export class Relay implements IRelay {
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive = 30_000;
 
+  /** Enable/disable ping functionality (default false) */
+  enablePing = false;
+  /** How often to send pings in milliseconds (default 29000) */
+  pingFrequency = 29_000;
+  /** How long to wait for EOSE response in milliseconds (default 20000) */
+  pingTimeout = 20_000;
+
   /** Default retry config for subscription() method */
   protected subscriptionReconnect: RetryConfig;
   /** Default retry config for request() method */
@@ -234,6 +256,9 @@ export class Relay implements IRelay {
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
     if (opts?.publishTimeout !== undefined) this.publishTimeout = opts.publishTimeout;
     if (opts?.keepAlive !== undefined) this.keepAlive = opts.keepAlive;
+    if (opts?.enablePing !== undefined) this.enablePing = opts.enablePing;
+    if (opts?.pingFrequency !== undefined) this.pingFrequency = opts.pingFrequency;
+    if (opts?.pingTimeout !== undefined) this.pingTimeout = opts.pingTimeout;
 
     // Set retry configs
     this.subscriptionReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.subscriptionRetry ?? {}) };
@@ -347,7 +372,15 @@ export class Relay implements IRelay {
     );
 
     const allMessagesSubject = new Subject<any>();
-    const listenForAllMessages = this.socket.pipe(tap((message) => allMessagesSubject.next(message)));
+    const listenForAllMessages = this.socket.pipe(
+      tap((message) => {
+        // Update the last message received at timestamp
+        this.lastMessageReceivedAt = Date.now();
+
+        // Pass to the message subject
+        allMessagesSubject.next(message);
+      }),
+    );
 
     // Create passive observables for messages and notices
     this.message$ = allMessagesSubject.asObservable();
@@ -358,13 +391,56 @@ export class Relay implements IRelay {
       map((m) => m[1]),
     );
 
+    // Create ping health check observable
+    const pingHealthCheck = this.connected$.pipe(
+      // Switch based on connection state
+      switchMap((connected) => {
+        // Only run when connected and ping is enabled
+        if (!connected || !this.enablePing) return NEVER;
+
+        // Start timer that emits periodically
+        return timer(this.pingFrequency, this.pingFrequency).pipe(
+          // For each ping, create a dummy REQ and wait for EOSE
+          mergeMap(() => {
+            // Skip ping if we have received a message in the last pingFrequency milliseconds
+            if (Date.now() - this.lastMessageReceivedAt < this.pingFrequency) return NEVER;
+
+            // Send a ping request
+            this.send(["REQ", "ping:" + nanoid(), PING_FILTER]);
+
+            // Wait for the EOSE response
+            return this.message$.pipe(
+              // Complete after first message received
+              take(1),
+              // Add timeout to detect unresponsive connections
+              timeout({
+                first: this.pingTimeout,
+                with: () => {
+                  console.warn(`Relay connection has become unresponsive: ${this.url}`);
+                  return NEVER;
+                },
+              }),
+            );
+          }),
+        );
+      }),
+      // Catch errors to prevent breaking the watchTower
+      catchError(() => NEVER),
+    );
+
     // Merge all watchers
     this.watchTower = this.ready$.pipe(
       switchMap((ready) => {
         if (!ready) return NEVER;
 
         // Only start the watch tower if the relay is ready
-        return merge(listenForAllMessages, listenForNotice, ListenForChallenge, this.information$).pipe(
+        return merge(
+          listenForAllMessages,
+          listenForNotice,
+          ListenForChallenge,
+          this.information$,
+          pingHealthCheck,
+        ).pipe(
           // Never emit any values
           ignoreElements(),
           // Start the reconnect timer if the connection has an error
