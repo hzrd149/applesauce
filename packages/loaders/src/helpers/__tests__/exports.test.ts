@@ -16,6 +16,7 @@ describe("exports", () => {
         "groupAddressPointersByPubkey",
         "groupAddressPointersByPubkeyOrKind",
         "isLoadableAddressPointer",
+        "loadAsyncMap",
         "makeCacheRequest",
         "makeUpstreamRequest",
         "normalizeIdentityJson",
