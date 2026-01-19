@@ -246,7 +246,7 @@ The casting system provides classes for common Nostr event types:
 - **`Mutes`** - Kind 10000 (Mute lists)
 - **`BookmarksList`** - Kind 10003 (Bookmarks)
 - **`Stream`** - Kind 30311 (Live streams)
-- [And more...](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-common.Casts.html)
+- [And more...](https://applesauce.build/typedoc/modules/applesauce-common.Casts.html)
 
 ## User Class
 

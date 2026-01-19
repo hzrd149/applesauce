@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "nostr-tools/nip19";
 import {
   mergeAddressPointers,
   mergeEventPointers,
   mergeProfilePointers,
+  normalizeToAddressPointer,
+  normalizeToEventPointer,
+  normalizeToProfilePointer,
   normalizeToPubkey,
   parseReplaceableAddress,
 } from "../pointers.js";
@@ -28,16 +32,12 @@ describe("normalizeToPubkey", () => {
     );
   });
 
-  it("should throw on invalid hex pubkey", () => {
-    expect(() => {
-      normalizeToPubkey("5028372");
-    }).toThrow();
+  it("should return null on invalid hex pubkey", () => {
+    expect(normalizeToPubkey("5028372")).toBeNull();
   });
 
-  it("should throw on invalid string", () => {
-    expect(() => {
-      normalizeToPubkey("testing");
-    }).toThrow();
+  it("should return null on invalid string", () => {
+    expect(normalizeToPubkey("testing")).toBeNull();
   });
 });
 
@@ -307,5 +307,379 @@ describe("parseReplaceableAddress", () => {
       pubkey: validPubkey,
       identifier: "identifier",
     });
+  });
+});
+
+describe("normalizeToProfilePointer", () => {
+  const testPubkey = "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5";
+  const testRelays = ["wss://relay1.example.com", "wss://relay2.example.com"];
+
+  it("should return ProfilePointer from hex pubkey", () => {
+    const result = normalizeToProfilePointer(testPubkey);
+    expect(result).toEqual({
+      pubkey: testPubkey.toLowerCase(),
+    });
+  });
+
+  it("should return ProfilePointer from hex pubkey with uppercase", () => {
+    const upperPubkey = testPubkey.toUpperCase();
+    const result = normalizeToProfilePointer(upperPubkey);
+    expect(result).toEqual({
+      pubkey: testPubkey.toLowerCase(),
+    });
+  });
+
+  it("should return ProfilePointer from npub", () => {
+    const npub = npubEncode(testPubkey);
+    const result = normalizeToProfilePointer(npub);
+    expect(result).toEqual({
+      pubkey: testPubkey,
+    });
+  });
+
+  it("should return ProfilePointer from nprofile without relays", () => {
+    const nprofile = nprofileEncode({
+      pubkey: testPubkey,
+    });
+    const result = normalizeToProfilePointer(nprofile);
+    expect(result).toMatchObject({
+      pubkey: testPubkey,
+    });
+    // nprofileEncode may include empty relays array
+    if (result?.relays) {
+      expect(result.relays).toEqual([]);
+    }
+  });
+
+  it("should return ProfilePointer from nprofile with relays", () => {
+    const nprofile = nprofileEncode({
+      pubkey: testPubkey,
+      relays: testRelays,
+    });
+    const result = normalizeToProfilePointer(nprofile);
+    expect(result).toEqual({
+      pubkey: testPubkey,
+      relays: testRelays,
+    });
+  });
+
+  it("should extract pubkey from naddr and return ProfilePointer", () => {
+    const naddr = naddrEncode({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+      relays: testRelays,
+    });
+    const result = normalizeToProfilePointer(naddr);
+    expect(result).toEqual({
+      pubkey: testPubkey,
+      relays: testRelays,
+    });
+  });
+
+  it("should extract pubkey from naddr without relays", () => {
+    const naddr = naddrEncode({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+    });
+    const result = normalizeToProfilePointer(naddr);
+    expect(result).toMatchObject({
+      pubkey: testPubkey,
+    });
+    // naddrEncode may include empty relays array
+    if (result?.relays) {
+      expect(result.relays).toEqual([]);
+    }
+  });
+
+  it("should return null for invalid string", () => {
+    const result = normalizeToProfilePointer("invalid-string");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for empty string", () => {
+    const result = normalizeToProfilePointer("");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for note encoded string", () => {
+    const note = noteEncode("abc123def4567890123456789012345678901234567890123456789012345678");
+    const result = normalizeToProfilePointer(note);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for nevent encoded string without author", () => {
+    const nevent = neventEncode({
+      id: "abc123def4567890123456789012345678901234567890123456789012345678",
+    });
+    const result = normalizeToProfilePointer(nevent);
+    expect(result).toBeNull();
+  });
+});
+
+describe("normalizeToAddressPointer", () => {
+  const testPubkey = "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5";
+  const testRelays = ["wss://relay1.example.com", "wss://relay2.example.com"];
+
+  it("should parse address format (kind:pubkey:identifier)", () => {
+    const address = `30023:${testPubkey}:test-identifier`;
+    const result = normalizeToAddressPointer(address);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+    });
+  });
+
+  it("should parse address format with empty identifier", () => {
+    const address = `30023:${testPubkey}:`;
+    const result = normalizeToAddressPointer(address);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "",
+    });
+  });
+
+  it("should parse address format without identifier", () => {
+    const address = `30023:${testPubkey}`;
+    const result = normalizeToAddressPointer(address);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "",
+    });
+  });
+
+  it("should return AddressPointer from naddr", () => {
+    const naddr = naddrEncode({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+      relays: testRelays,
+    });
+    const result = normalizeToAddressPointer(naddr);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+      relays: testRelays,
+    });
+  });
+
+  it("should return AddressPointer from naddr without relays", () => {
+    const naddr = naddrEncode({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+    });
+    const result = normalizeToAddressPointer(naddr);
+    expect(result).toMatchObject({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+    });
+    // naddrEncode may include empty relays array
+    if (result?.relays) {
+      expect(result.relays).toEqual([]);
+    }
+  });
+
+  it("should return null for npub", () => {
+    const npub = npubEncode(testPubkey);
+    const result = normalizeToAddressPointer(npub);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for nprofile", () => {
+    const nprofile = nprofileEncode({
+      pubkey: testPubkey,
+    });
+    const result = normalizeToAddressPointer(nprofile);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for note", () => {
+    const note = noteEncode("abc123def4567890123456789012345678901234567890123456789012345678");
+    const result = normalizeToAddressPointer(note);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for nevent", () => {
+    const nevent = neventEncode({
+      id: "abc123def4567890123456789012345678901234567890123456789012345678",
+    });
+    const result = normalizeToAddressPointer(nevent);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for invalid string", () => {
+    const result = normalizeToAddressPointer("invalid-string");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for empty string", () => {
+    const result = normalizeToAddressPointer("");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for hex pubkey without colons", () => {
+    const result = normalizeToAddressPointer(testPubkey);
+    expect(result).toBeNull();
+  });
+
+  it("should handle address format with identifier containing colons", () => {
+    const address = `30023:${testPubkey}:part1:part2:part3`;
+    const result = normalizeToAddressPointer(address);
+    expect(result).toEqual({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "part1:part2:part3",
+    });
+  });
+});
+
+describe("normalizeToEventPointer", () => {
+  const testEventId = "abc123def4567890123456789012345678901234567890123456789012345678";
+  const testPubkey = "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5";
+  const testRelays = ["wss://relay1.example.com", "wss://relay2.example.com"];
+
+  it("should return EventPointer from hex event id", () => {
+    const result = normalizeToEventPointer(testEventId);
+    expect(result).toEqual({
+      id: testEventId.toLowerCase(),
+    });
+  });
+
+  it("should return EventPointer from hex event id with uppercase", () => {
+    const upperEventId = testEventId.toUpperCase();
+    const result = normalizeToEventPointer(upperEventId);
+    expect(result).toEqual({
+      id: testEventId.toLowerCase(),
+    });
+  });
+
+  it("should return EventPointer from note", () => {
+    const note = noteEncode(testEventId);
+    const result = normalizeToEventPointer(note);
+    expect(result).toEqual({
+      id: testEventId,
+    });
+  });
+
+  it("should return EventPointer from nevent without optional fields", () => {
+    const nevent = neventEncode({
+      id: testEventId,
+    });
+    const result = normalizeToEventPointer(nevent);
+    expect(result).toMatchObject({
+      id: testEventId,
+    });
+    // neventEncode may include undefined/empty optional fields
+    expect(result?.id).toBe(testEventId);
+  });
+
+  it("should return EventPointer from nevent with relays", () => {
+    const nevent = neventEncode({
+      id: testEventId,
+      relays: testRelays,
+    });
+    const result = normalizeToEventPointer(nevent);
+    expect(result).toEqual({
+      id: testEventId,
+      relays: testRelays,
+    });
+  });
+
+  it("should return EventPointer from nevent with kind", () => {
+    const nevent = neventEncode({
+      id: testEventId,
+      kind: 1,
+    });
+    const result = normalizeToEventPointer(nevent);
+    expect(result).toMatchObject({
+      id: testEventId,
+      kind: 1,
+    });
+    // neventEncode may include undefined/empty optional fields
+    expect(result?.id).toBe(testEventId);
+    expect(result?.kind).toBe(1);
+  });
+
+  it("should return EventPointer from nevent with author", () => {
+    const nevent = neventEncode({
+      id: testEventId,
+      author: testPubkey,
+    });
+    const result = normalizeToEventPointer(nevent);
+    expect(result).toMatchObject({
+      id: testEventId,
+      author: testPubkey,
+    });
+    // neventEncode may include undefined/empty optional fields
+    expect(result?.id).toBe(testEventId);
+    expect(result?.author).toBe(testPubkey);
+  });
+
+  it("should return EventPointer from nevent with all fields", () => {
+    const nevent = neventEncode({
+      id: testEventId,
+      kind: 1,
+      author: testPubkey,
+      relays: testRelays,
+    });
+    const result = normalizeToEventPointer(nevent);
+    expect(result).toEqual({
+      id: testEventId,
+      kind: 1,
+      author: testPubkey,
+      relays: testRelays,
+    });
+  });
+
+  it("should return null for npub", () => {
+    const npub = npubEncode(testPubkey);
+    const result = normalizeToEventPointer(npub);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for nprofile", () => {
+    const nprofile = nprofileEncode({
+      pubkey: testPubkey,
+    });
+    const result = normalizeToEventPointer(nprofile);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for naddr", () => {
+    const naddr = naddrEncode({
+      kind: 30023,
+      pubkey: testPubkey,
+      identifier: "test-identifier",
+    });
+    const result = normalizeToEventPointer(naddr);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for invalid string", () => {
+    const result = normalizeToEventPointer("invalid-string");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for empty string", () => {
+    const result = normalizeToEventPointer("");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for address format string", () => {
+    const address = `30023:${testPubkey}:identifier`;
+    const result = normalizeToEventPointer(address);
+    expect(result).toBeNull();
+  });
+
+  it("should return null for invalid hex key (too short)", () => {
+    const result = normalizeToEventPointer("abc123");
+    expect(result).toBeNull();
   });
 });

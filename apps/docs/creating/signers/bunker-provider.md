@@ -1,6 +1,6 @@
 # Nostr Connect Provider
 
-The [`NostrConnectProvider`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.NostrConnectProvider.html) is a server-side implementation of a [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) remote signer. It allows clients to connect and request signing operations through encrypted Nostr events.
+The [`NostrConnectProvider`](https://applesauce.build/typedoc/classes/applesauce-signers.NostrConnectProvider.html) is a server-side implementation of a [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) remote signer. It allows clients to connect and request signing operations through encrypted Nostr events.
 
 ## Upstream signer
 

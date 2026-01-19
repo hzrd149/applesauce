@@ -1,6 +1,6 @@
 # Nostr Connect
 
-The [`NostrConnectSigner`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-signers.NostrConnectSigner.html) is a client side implementation of a [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) remote signer.
+The [`NostrConnectSigner`](https://applesauce.build/typedoc/classes/applesauce-signers.NostrConnectSigner.html) is a client side implementation of a [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) remote signer.
 
 ## Relay Communication
 

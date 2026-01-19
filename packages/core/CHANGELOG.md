@@ -1,5 +1,19 @@
 # applesauce-core
 
+## 5.0.3
+
+### Patch Changes
+
+- ec01ebb: Fix `normalizeToProfilePointer` method throwing error on bad bech32 string
+- ec01ebb: Fix `normalizeToSecretKey` throwing on bad bech32 string
+
+## 5.0.1
+
+### Patch Changes
+
+- 39975fd: Fix `ensureHttpURL` converting `http:` URLs into `https:`
+- 39975fd: Fix `ensureWebSocketURL` converting `ws:` URLs to `wss:`
+
 ## 5.0.0
 
 ### Major Changes

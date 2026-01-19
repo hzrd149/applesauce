@@ -36,6 +36,7 @@ describe("exports", () => {
         "isWalletRequestExpired",
         "isWalletRequestUnlocked",
         "isWalletResponseUnlocked",
+        "nip47EncryptionMethodToNip07EncryptionMethod",
         "parseWalletAuthURI",
         "parseWalletConnectURI",
         "supportsEncryption",

@@ -6,7 +6,7 @@ See the [remark docs](https://remark.js.org/) and [unified docs](https://unified
 
 ## Nostr Mentions
 
-The [`remarkNostrMentions`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-content.Markdown.remarkNostrMentions.html) is a remark transformer plugin that automatically linkifies [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md) `nostr:` URIs and [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) identifiers in markdown content. As a unified.js plugin, it integrates seamlessly with the remark markdown processing pipeline.
+The [`remarkNostrMentions`](https://applesauce.build/typedoc/functions/applesauce-content.Markdown.remarkNostrMentions.html) is a remark transformer plugin that automatically linkifies [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md) `nostr:` URIs and [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) identifiers in markdown content. As a unified.js plugin, it integrates seamlessly with the remark markdown processing pipeline.
 
 ## Installation
 

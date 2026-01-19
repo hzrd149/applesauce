@@ -1,6 +1,6 @@
 # Wallet Actions
 
-The `applesauce-wallet` package provides a set of [Actions](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-wallet.Actions.html) for common wallet operations.
+The `applesauce-wallet` package provides a set of [Actions](https://applesauce.build/typedoc/modules/applesauce-wallet.Actions.html) for common wallet operations.
 
 ## CreateWallet
 

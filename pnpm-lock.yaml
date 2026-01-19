@@ -81,6 +81,9 @@ importers:
       '@fontsource/roboto':
         specifier: ^5.2.9
         version: 5.2.9
+      '@hookform/resolvers':
+        specifier: ^3.9.1
+        version: 3.10.0(react-hook-form@7.69.0(react@18.3.1))
       '@noble/ciphers':
         specifier: ^1.3.0
         version: 1.3.0
@@ -230,7 +233,10 @@ importers:
         version: 4.1.18
       window.nostrdb.js:
         specifier: ^0.5.0
-        version: 0.5.0(hono@4.11.3)(typescript@5.6.3)(zod@4.2.1)
+        version: 0.5.0(hono@4.11.3)(typescript@5.6.3)(zod@4.3.5)
+      zod:
+        specifier: ^4.3.5
+        version: 4.3.5
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.18
@@ -1338,6 +1344,11 @@ packages:
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
+
+  '@hookform/resolvers@3.10.0':
+    resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
+    peerDependencies:
+      react-hook-form: ^7.0.0
 
   '@iconify-json/simple-icons@1.2.63':
     resolution: {integrity: sha512-xZl2UWCwE58VlqZ+pDPmaUhE2tq8MVSTJRr4/9nzzHlDdjJ0Ud1VxNXPrwTSgESKY29iCQw3S0r2nJTSNNngHw==}
@@ -5427,8 +5438,8 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.2.1:
-    resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}
+  zod@4.3.5:
+    resolution: {integrity: sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -5783,9 +5794,9 @@ snapshots:
       outvariant: 1.4.0
       static-browser-server: 1.0.3
 
-  '@contextvm/sdk@0.1.47(hono@4.11.3)(typescript@5.6.3)(zod@4.2.1)':
+  '@contextvm/sdk@0.1.47(hono@4.11.3)(typescript@5.6.3)(zod@4.3.5)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.25.1(hono@4.11.3)(zod@4.2.1)
+      '@modelcontextprotocol/sdk': 1.25.1(hono@4.11.3)(zod@4.3.5)
       applesauce-relay: 4.4.2(typescript@5.6.3)
       nostr-tools: 2.18.2(typescript@5.6.3)
       pino: 10.1.0
@@ -6037,6 +6048,10 @@ snapshots:
     dependencies:
       hono: 4.11.3
 
+  '@hookform/resolvers@3.10.0(react-hook-form@7.69.0(react@18.3.1))':
+    dependencies:
+      react-hook-form: 7.69.0(react@18.3.1)
+
   '@iconify-json/simple-icons@1.2.63':
     dependencies:
       '@iconify/types': 2.0.0
@@ -6204,7 +6219,7 @@ snapshots:
       - '@swc/core'
       - '@swc/wasm'
 
-  '@modelcontextprotocol/sdk@1.25.1(hono@4.11.3)(zod@4.2.1)':
+  '@modelcontextprotocol/sdk@1.25.1(hono@4.11.3)(zod@4.3.5)':
     dependencies:
       '@hono/node-server': 1.19.7(hono@4.11.3)
       ajv: 8.17.1
@@ -6220,8 +6235,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.2.1
-      zod-to-json-schema: 3.25.1(zod@4.2.1)
+      zod: 4.3.5
+      zod-to-json-schema: 3.25.1(zod@4.3.5)
     transitivePeerDependencies:
       - hono
       - supports-color
@@ -10555,10 +10570,10 @@ snapshots:
 
   wildcard@2.0.1: {}
 
-  window.nostrdb.js@0.5.0(hono@4.11.3)(typescript@5.6.3)(zod@4.2.1):
+  window.nostrdb.js@0.5.0(hono@4.11.3)(typescript@5.6.3)(zod@4.3.5):
     dependencies:
-      '@contextvm/sdk': 0.1.47(hono@4.11.3)(typescript@5.6.3)(zod@4.2.1)
-      '@modelcontextprotocol/sdk': 1.25.1(hono@4.11.3)(zod@4.2.1)
+      '@contextvm/sdk': 0.1.47(hono@4.11.3)(typescript@5.6.3)(zod@4.3.5)
+      '@modelcontextprotocol/sdk': 1.25.1(hono@4.11.3)(zod@4.3.5)
       applesauce-extra: 4.1.0(typescript@5.6.3)
       applesauce-loaders: 4.2.0(typescript@5.6.3)
       applesauce-relay: 4.4.2(typescript@5.6.3)
@@ -10620,12 +10635,12 @@ snapshots:
 
   youtube-video-element@1.8.1: {}
 
-  zod-to-json-schema@3.25.1(zod@4.2.1):
+  zod-to-json-schema@3.25.1(zod@4.3.5):
     dependencies:
-      zod: 4.2.1
+      zod: 4.3.5
 
   zod@3.25.76: {}
 
-  zod@4.2.1: {}
+  zod@4.3.5: {}
 
   zwitch@2.0.4: {}

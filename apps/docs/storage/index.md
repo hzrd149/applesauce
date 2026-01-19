@@ -1,10 +1,10 @@
 # Storing Events
 
-AppleSauce provides two distinct approaches for persisting Nostr events: [Event Databases](./databases/index) and [Event Caching](./caching/index). Understanding the differences between these approaches is crucial for choosing the right solution for your application.
+Applesauce provides two distinct approaches for persisting Nostr events: [Event Databases](./databases/index) and [Event Caching](./caching/index). Understanding the differences between these approaches is crucial for choosing the right solution for your application.
 
 ## Event Databases
 
-Event databases are persistent storage backends designed for the [`AsyncEventStore`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.AsyncEventStore.html). They implement the [`IAsyncEventDatabase`](https://hzrd149.github.io/applesauce/typedoc/interfaces/applesauce-core.IAsyncEventDatabase.html) interface and serve as the primary persistence layer for applications that need to store large volumes of events.
+Event databases are persistent storage backends designed for the [`AsyncEventStore`](https://applesauce.build/typedoc/classes/applesauce-core.AsyncEventStore.html). They implement the [`IAsyncEventDatabase`](https://applesauce.build/typedoc/interfaces/applesauce-core.IAsyncEventDatabase.html) interface and serve as the primary persistence layer for applications that need to store large volumes of events.
 
 **Key Characteristics:**
 
@@ -22,7 +22,7 @@ Event databases are persistent storage backends designed for the [`AsyncEventSto
 
 ## Event Caching
 
-Event caching is designed to work alongside the synchronous [`EventStore`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.EventStore.html). It leverages the in-memory nature of the sync event store while providing persistent storage for frequently accessed events through a non-blocking caching layer.
+Event caching is designed to work alongside the synchronous [`EventStore`](https://applesauce.build/typedoc/classes/applesauce-core.EventStore.html). It leverages the in-memory nature of the sync event store while providing persistent storage for frequently accessed events through a non-blocking caching layer.
 
 **Key Characteristics:**
 

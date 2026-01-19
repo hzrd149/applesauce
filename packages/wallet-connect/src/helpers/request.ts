@@ -1,3 +1,4 @@
+import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
 import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
 import { getTagValue, KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
 import {
@@ -10,7 +11,7 @@ import {
 } from "applesauce-core/helpers/hidden-content";
 import { unixNow } from "applesauce-core/helpers/time";
 
-import { WalletConnectEncryptionMethod } from "./encryption.js";
+import { WalletConnectEncryptionMethod, nip47EncryptionMethodToNip07EncryptionMethod } from "./encryption.js";
 import { TWalletMethod } from "./methods.js";
 
 export const WALLET_REQUEST_KIND = 23194;
@@ -45,10 +46,15 @@ export function isWalletRequestUnlocked<Method extends TWalletMethod = TWalletMe
 export async function unlockWalletRequest<Method extends TWalletMethod = TWalletMethod>(
   request: NostrEvent,
   signer: HiddenContentSigner,
+  override?: EncryptionMethod,
 ): Promise<Method["request"] | undefined> {
   if (WalletRequestSymbol in request) return request[WalletRequestSymbol] as Method["request"];
 
-  await unlockHiddenContent(request, signer);
+  // Get the encryption method from the tag or default to nip04 (pre NIP-47)
+  const encryption: EncryptionMethod =
+    override ?? nip47EncryptionMethodToNip07EncryptionMethod(getWalletRequestEncryption(request));
+
+  await unlockHiddenContent(request, signer, encryption);
   const parsed = getWalletRequest(request);
   if (!parsed) throw new Error("Failed to unlock wallet request");
 

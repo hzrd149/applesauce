@@ -1,6 +1,6 @@
 # Event Caching
 
-Event caching is designed to work alongside the synchronous [`EventStore`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.EventStore.html). It's generally implemented using the [`persistEventsToCache`](https://hzrd149.github.io/applesauce/typedoc/functions/applesauce-core.Helpers.persistEventsToCache.html) helper method and a `cacheRequest` function that plugs into event loaders.
+Event caching is designed to work alongside the synchronous [`EventStore`](https://applesauce.build/typedoc/classes/applesauce-core.EventStore.html). It's generally implemented using the [`persistEventsToCache`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.persistEventsToCache.html) helper method and a `cacheRequest` function that plugs into event loaders.
 
 ## Overview
 
@@ -109,7 +109,7 @@ eventLoader({ id: "event-id" }).subscribe((event) => {
 
 ## Integration with Event Loaders
 
-Event caching integrates seamlessly with AppleSauce's event loaders. The key is that cache operations happen through event loaders, not directly through the event store, so they don't block the synchronous event store:
+Event caching integrates seamlessly with Applesauce's event loaders. The key is that cache operations happen through event loaders, not directly through the event store, so they don't block the synchronous event store:
 
 ```ts
 import { EventStore } from "applesauce-core";

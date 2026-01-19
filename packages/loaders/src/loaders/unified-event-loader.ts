@@ -1,16 +1,14 @@
 import { filterDuplicateEvents, IMissingEventLoader } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { AddressPointer, AddressPointerWithoutD, EventPointer, isEventPointer } from "applesauce-core/helpers/pointers";
+import { isEventPointer } from "applesauce-core/helpers/pointers";
 import { Observable } from "rxjs";
 import { UpstreamPool } from "../types.js";
-import { AddressLoaderOptions, createAddressLoader } from "./address-loader.js";
-import { createEventLoader, EventPointerLoaderOptions } from "./event-loader.js";
+import { AddressLoaderOptions, createAddressLoader, LoadableAddressPointer } from "./address-loader.js";
+import { createEventLoader, EventPointerLoaderOptions, LoadableEventPointer } from "./event-loader.js";
 
 export type UnifiedEventLoaderOptions = Partial<EventPointerLoaderOptions & AddressLoaderOptions>;
 
-export type UnifiedEventLoader = (
-  pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
-) => Observable<NostrEvent>;
+export type UnifiedEventLoader = (pointer: LoadableEventPointer | LoadableAddressPointer) => Observable<NostrEvent>;
 
 /**
  * Create a unified event loader that can handle both EventPointer and AddressPointer types.
@@ -38,7 +36,7 @@ export function createUnifiedEventLoader(pool: UpstreamPool, opts?: UnifiedEvent
   });
 
   // Return a unified loader that routes based on pointer type
-  return (pointer: EventPointer | AddressPointer | AddressPointerWithoutD) => {
+  return (pointer: LoadableEventPointer | LoadableAddressPointer) => {
     // Check if it's an EventPointer (has 'id' property)
     if (isEventPointer(pointer)) {
       return eventLoader(pointer);

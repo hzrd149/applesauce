@@ -3,7 +3,7 @@
 layout: home
 
 hero:
-  name: "AppleSauce"
+  name: "Applesauce"
   text: "Modular SDK for Nostr"
   tagline: Build reactive nostr UI with less code
   actions:
@@ -12,17 +12,17 @@ hero:
       link: /introduction/getting-started
     - theme: alt
       text: Reference
-      link: https://hzrd149.github.io/applesauce/typedoc/index.html
+      link: https://applesauce.build/typedoc/index.html
     - theme: alt
       text: Examples
-      link: https://hzrd149.github.io/applesauce/examples/
+      link: https://applesauce.build/examples/
     - theme: alt
       text: Migrations
       link: /migration/v1-v2
 
 features:
   - title: Reactive
-    details: AppleSauce is built using RxJS observables, which makes subscribing to events simple and reactive and avoids messy state management.
+    details: Applesauce is built using RxJS observables, which makes subscribing to events simple and reactive and avoids messy state management.
   - title: No Lock-in
     details: All the packages are designed to work with generic interfaces so its possible to use any other nostr libraries.
   - title: Modular
@@ -31,7 +31,7 @@ features:
 
 ## Core Packages
 
-AppleSauce is built on top of [RxJS](https://rxjs.dev) and uses the observable pattern to provide a reactive, event-driven architecture for Nostr applications.
+Applesauce is built on top of [RxJS](https://rxjs.dev) and uses the observable pattern to provide a reactive, event-driven architecture for Nostr applications.
 
 - **applesauce-core** - Core protocol primitives and utilities
 - **applesauce-common** - Helpers, models, and blueprints for common nostr application patterns

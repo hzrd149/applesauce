@@ -49,6 +49,7 @@ export async function unlockWalletResponse<Method extends TWalletMethod = TWalle
   override?: EncryptionMethod,
 ): Promise<Method["response"] | undefined> {
   if (WalletResponseSymbol in response) return response[WalletResponseSymbol] as Method["response"];
+
   // Unlock the hidden content
   const encryption = override ?? (!isNIP04Encrypted(response.content) ? "nip44" : "nip04");
   await unlockHiddenContent(response, signer, encryption);

@@ -1,12 +1,12 @@
 # nostr-idb Package
 
-The `nostr-idb` package provides a browser-based IndexedDB storage solution for Nostr events, allowing you to cache events locally in web applications built with AppleSauce.
+The `nostr-idb` package provides a browser-based IndexedDB storage solution for Nostr events, allowing you to cache events locally in web applications built with Applesauce.
 
 ## Overview
 
 `nostr-idb` is a lightweight IndexedDB wrapper specifically designed for storing and querying Nostr events in web browsers. The `NostrIDB` class provides a full relay-like API with automatic batching, in-memory index caching, and subscription management.
 
-The package integrates seamlessly with AppleSauce's event store system, providing persistent local caching that improves application performance and enables offline functionality.
+The package integrates seamlessly with Applesauce's event store system, providing persistent local caching that improves application performance and enables offline functionality.
 
 :::info Complete API Documentation
 
@@ -43,9 +43,9 @@ pnpm install nostr-idb
 
 ## Basic Usage
 
-### Setting Up with AppleSauce
+### Setting Up with Applesauce
 
-The `NostrIDB` class integrates with AppleSauce's event loaders through a cache request function:
+The `NostrIDB` class integrates with Applesauce's event loaders through a cache request function:
 
 ```js
 import { EventStore } from "applesauce-core";
@@ -101,7 +101,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 ### With Event Loaders
 
-The most common use case is integrating the cache with AppleSauce's event loaders:
+The most common use case is integrating the cache with Applesauce's event loaders:
 
 ```js
 import { EventStore } from "applesauce-core";

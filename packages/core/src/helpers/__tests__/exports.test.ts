@@ -185,6 +185,8 @@ describe("exports", () => {
         "mergeRelaySets",
         "naddrEncode",
         "neventEncode",
+        "normalizeToAddressPointer",
+        "normalizeToEventPointer",
         "normalizeToProfilePointer",
         "normalizeToPubkey",
         "normalizeToSecretKey",
