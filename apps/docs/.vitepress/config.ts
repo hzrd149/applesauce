@@ -18,9 +18,9 @@ export default defineConfig({
 
     nav: [
       { text: "Home", link: "/" },
-      { text: "Examples", link: "https://hzrd149.github.io/applesauce/examples" },
-      { text: "Snippets", link: "https://hzrd149.github.io/applesauce/snippets" },
-      { text: "Reference", link: "https://hzrd149.github.io/applesauce/typedoc/index.html" },
+      { text: "Examples", link: "https://applesauce.build/examples" },
+      { text: "Snippets", link: "https://applesauce.build/snippets" },
+      { text: "Reference", link: "https://applesauce.build/typedoc/index.html" },
     ],
 
     sidebar: [

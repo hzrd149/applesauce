@@ -336,4 +336,4 @@ try {
 - `RateLimitedError`: When too many requests are made
 - `UserRejectedError`: When the user rejects the operation
 
-For a complete list of error types and their meanings, see the [typedocs](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-wallet-connect.WalletConnect.html).
+For a complete list of error types and their meanings, see the [typedocs](https://applesauce.build/typedoc/classes/applesauce-wallet-connect.WalletConnect.html).

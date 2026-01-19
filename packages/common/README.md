@@ -33,8 +33,8 @@ pnpm add applesauce-common
 
 For detailed documentation and guides, visit:
 
-- [Getting Started](https://hzrd149.github.io/applesauce/introduction/getting-started)
-- [API Reference](https://hzrd149.github.io/applesauce/typedoc/)
+- [Getting Started](https://applesauce.build/introduction/getting-started)
+- [API Reference](https://applesauce.build/typedoc/)
 
 ## Example
 

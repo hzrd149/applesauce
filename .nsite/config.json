@@ -1,11 +1,17 @@
 {
-  "relays": ["wss://relay.nsite.lol", "wss://nostrue.com", "wss://relay.damus.io", "wss://relay.primal.net"],
-  "servers": ["https://nostr.download", "https://cdn.hzrd149.com"],
-  "profile": {
-    "name": "AppleSauce",
-    "about": "AppleSauce docs"
-  },
-  "publishProfile": true,
-  "publishServerList": true,
-  "publishRelayList": true
+  "bunkerPubkey": "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5",
+  "relays": [
+    "wss://nos.lol",
+    "wss://relay.damus.io",
+    "wss://relay.primal.net"
+  ],
+  "servers": [
+    "https://cdn.hzrd149.com",
+    "https://nostr.download",
+    "https://cdn.nostrcheck.me",
+    "https://blossom.primal.net"
+  ],
+  "id": "applesauce",
+  "title": "Applesauce",
+  "description": "Flexable typescript nostr SDK"
 }

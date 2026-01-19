@@ -2,7 +2,7 @@
 
 A collection of functional loading methods to make common event loading patterns easier.
 
-[Documentation](https://hzrd149.github.io/applesauce/loaders/package.html) [typedoc](https://hzrd149.github.io/applesauce/typedoc/modules/applesauce-loaders.html)
+[Documentation](https://applesauce.build/loaders/package.html) [typedoc](https://applesauce.build/typedoc/modules/applesauce-loaders.html)
 
 ## Address Loader
 

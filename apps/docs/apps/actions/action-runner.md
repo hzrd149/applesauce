@@ -1,6 +1,6 @@
 # Action Hub
 
-The [ActionRunner](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-actions.ActionRunner.html) class is the central orchestrator for running actions in your Nostr application. It combines an event store, event factory, and optional publish method into a unified interface, making it simple to execute actions that read from your local event store and publish new events to the Nostr network.
+The [ActionRunner](https://applesauce.build/typedoc/classes/applesauce-actions.ActionRunner.html) class is the central orchestrator for running actions in your Nostr application. It combines an event store, event factory, and optional publish method into a unified interface, making it simple to execute actions that read from your local event store and publish new events to the Nostr network.
 
 ## Creating an Action Hub
 
@@ -67,7 +67,7 @@ The ActionRunner provides two primary methods for executing actions: `.run()` fo
 
 ### Using `.run()` - Automatic Publishing
 
-The [ActionRunner.run](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-actions.ActionRunner.html#run) method executes an action and automatically publishes all generated events using the publish method provided during ActionRunner creation.
+The [ActionRunner.run](https://applesauce.build/typedoc/classes/applesauce-actions.ActionRunner.html#run) method executes an action and automatically publishes all generated events using the publish method provided during ActionRunner creation.
 
 Actions can specify which relays to publish to by passing a `relays` array as the second argument to the `publish` function in their context. If no relays are specified, the publish method will use its default behavior (often determined by the user's outboxes or default relays).
 
@@ -95,7 +95,7 @@ await hub.run(UnfollowUser, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4
 
 ### Using `.exec()` - Manual Event Handling
 
-The [ActionRunner.exec](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-actions.ActionRunner.html#exec) method executes an action and returns an RxJS Observable of events, giving you complete control over how events are handled and published.
+The [ActionRunner.exec](https://applesauce.build/typedoc/classes/applesauce-actions.ActionRunner.html#exec) method executes an action and returns an RxJS Observable of events, giving you complete control over how events are handled and published.
 
 #### Using RxJS forEach for Simple Cases
 

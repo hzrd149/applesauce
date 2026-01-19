@@ -72,7 +72,7 @@ pnpm build
 
 ## React
 
-The `applesauce-react` package contains various hooks and providers for using applesauce in react components, [Docs](https://hzrd149.github.io/applesauce/react/getting-started.html)
+The `applesauce-react` package contains various hooks and providers for using applesauce in react components, [Docs](https://applesauce.build/react/getting-started.html)
 
 ## Contributing
 

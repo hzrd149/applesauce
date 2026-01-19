@@ -122,7 +122,7 @@ The `Relay` class supports [NIP-42](https://github.com/nostr-protocol/nips/blob/
 - `authenticated$` - An observable that tracks the authentication state of the relay.
 - `authenticate` - An async method that can be used to authenticate the relay.
 
-More information about authentication can be found in the [typedocs](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-relay.Relay).
+More information about authentication can be found in the [typedocs](https://applesauce.build/typedoc/classes/applesauce-relay.Relay).
 
 ```typescript
 // Listen for authentication challenges

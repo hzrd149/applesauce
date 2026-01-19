@@ -23,7 +23,7 @@ const eventStore = new EventStore(database);
 
 ## Adding Events
 
-To add events to the event store you can use the [`eventStore.add`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.EventStore.html#add) method.
+To add events to the event store you can use the [`eventStore.add`](https://applesauce.build/typedoc/classes/applesauce-core.EventStore.html#add) method.
 
 Adding events to the event store will update any subscriptions that match that event:
 

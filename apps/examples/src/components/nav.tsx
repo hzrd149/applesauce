@@ -34,7 +34,7 @@ export default function SideNav() {
             <a href="https://hzrd149.github.io/applesauce">Documentation</a>
           </li>
           <li>
-            <a href="https://hzrd149.github.io/applesauce/typedoc/">Reference</a>
+            <a href="https://applesauce.build/typedoc/">Reference</a>
           </li>
         </ul>
       </div>

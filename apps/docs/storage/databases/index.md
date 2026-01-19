@@ -1,6 +1,6 @@
 # Event Databases
 
-Event databases are persistent storage backends designed to work with the [`AsyncEventStore`](https://hzrd149.github.io/applesauce/typedoc/classes/applesauce-core.AsyncEventStore.html). They implement the [`IAsyncEventDatabase`](https://hzrd149.github.io/applesauce/typedoc/interfaces/applesauce-core.IAsyncEventDatabase.html) interface and are designed for backends and servers that need to store large amounts of events.
+Event databases are persistent storage backends designed to work with the [`AsyncEventStore`](https://applesauce.build/typedoc/classes/applesauce-core.AsyncEventStore.html). They implement the [`IAsyncEventDatabase`](https://applesauce.build/typedoc/interfaces/applesauce-core.IAsyncEventDatabase.html) interface and are designed for backends and servers that need to store large amounts of events.
 
 ## Overview
 
