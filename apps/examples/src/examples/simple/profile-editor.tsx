@@ -176,7 +176,8 @@ function ProfileEditor({ user }: { user: User }) {
   // Get current values for preview
   const currentBanner = watchedValues.banner || profile?.metadata.banner || "";
   const currentPicture = watchedValues.picture || profile?.metadata.picture || profile?.metadata.image || "";
-  const currentDisplayName = watchedValues.display_name || profile?.metadata.display_name || profile?.metadata.displayName || "";
+  const currentDisplayName =
+    watchedValues.display_name || profile?.metadata.display_name || profile?.metadata.displayName || "";
   const currentName = watchedValues.name || profile?.metadata.name || "";
   const currentWebsite = watchedValues.website || profile?.metadata.website || "";
   const currentNip05 = watchedValues.nip05 || profile?.metadata.nip05 || "";
@@ -274,9 +275,7 @@ function ProfileEditor({ user }: { user: User }) {
                   />
                 )}
               />
-              {errors.display_name && (
-                <span className="text-error">{errors.display_name.message}</span>
-              )}
+              {errors.display_name && <span className="text-error">{errors.display_name.message}</span>}
               <Controller
                 name="name"
                 control={control}

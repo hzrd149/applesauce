@@ -1,5 +1,5 @@
 import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { ensureHttpURL } from "applesauce-core/helpers/url";
 import { mapEventsToStore, simpleTimeout } from "applesauce-core/observable";
@@ -58,6 +58,7 @@ import {
   PublishOptions,
   PublishResponse,
   RelayInformation,
+  RelayStatus,
   RequestOptions,
   SubscriptionOptions,
   SubscriptionResponse,
@@ -141,6 +142,10 @@ export class Relay implements IRelay {
   challenge$ = new BehaviorSubject<string | null>(null);
   /** Boolean authentication state (will be false if auth failed) */
   authenticated$: Observable<boolean>;
+  /** The pubkey of the authenticated user, or null if not authenticated */
+  authenticatedAs$: Observable<string | null>;
+  /** The authentication event sent to the relay */
+  authentication$ = new BehaviorSubject<KnownEvent<kinds.ClientAuth> | null>(null);
   /** The response to the last AUTH message sent to the relay */
   authenticationResponse$ = new BehaviorSubject<PublishResponse | null>(null);
   /** The notices from the relay */
@@ -165,6 +170,9 @@ export class Relay implements IRelay {
   /** Observable of the timestamp when last message was received */
   private _lastMessageAt$ = new BehaviorSubject<number>(0);
   lastMessageAt$ = this._lastMessageAt$.asObservable();
+
+  /** Observable of relay status (connection, authentication, and ready state) */
+  status$: Observable<RelayStatus>;
 
   /** An observable that emits the NIP-11 information document for the relay */
   information$: Observable<RelayInformation | null>;
@@ -203,6 +211,12 @@ export class Relay implements IRelay {
   }
   get authenticated() {
     return this.authenticationResponse?.ok === true;
+  }
+  get authentication() {
+    return this.authentication$.value;
+  }
+  get authenticatedAs() {
+    return this.authenticated ? (this.authentication?.pubkey ?? null) : null;
   }
   get authenticationResponse() {
     return this.authenticationResponse$.value;
@@ -253,6 +267,7 @@ export class Relay implements IRelay {
     // NOTE: only update the values if they need to be changed, otherwise this will cause an infinite loop
     if (this.challenge$.value !== null) this.challenge$.next(null);
     if (this.authenticationResponse$.value) this.authenticationResponse$.next(null);
+    if (this.authentication$.value !== null) this.authentication$.next(null);
     if (this.notices$.value.length > 0) this.notices$.next([]);
 
     if (this.receivedAuthRequiredForReq.value) this.receivedAuthRequiredForReq.next(false);
@@ -285,6 +300,20 @@ export class Relay implements IRelay {
 
     // Create an observable that tracks boolean authentication state
     this.authenticated$ = this.authenticationResponse$.pipe(map((response) => response?.ok === true));
+
+    // Create an observable that returns the pubkey when authenticated, or null otherwise
+    this.authenticatedAs$ = combineLatest([this.authenticated$, this.authentication$]).pipe(
+      map(([authenticated, authEvent]) => (authenticated && authEvent ? authEvent.pubkey : null)),
+    );
+
+    // Create status$ observable by combining state observables
+    this.status$ = combineLatest({
+      url: of(this.url),
+      connected: this.connected$,
+      authenticated: this.authenticated$,
+      authenticatedAs: this.authenticatedAs$,
+      ready: this._ready$,
+    }).pipe(shareReplay(1));
 
     /** Use the static method to create a new reconnect method for this relay */
     this.reconnectTimer = Relay.createReconnectTimer(url);
@@ -705,6 +734,9 @@ export class Relay implements IRelay {
 
   /** send and AUTH message */
   auth(event: NostrEvent): Promise<PublishResponse> {
+    // Save the authentication event
+    this.authentication$.next(event as KnownEvent<kinds.ClientAuth>);
+
     return lastValueFrom(
       this.event(event, "AUTH").pipe(
         // update authenticated

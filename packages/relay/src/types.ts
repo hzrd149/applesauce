@@ -12,6 +12,20 @@ export type SubscriptionResponse = NostrEvent | "EOSE";
 export type PublishResponse = { ok: boolean; message?: string; from: string };
 export type CountResponse = { count: number };
 
+/** Status information for a single relay */
+export interface RelayStatus {
+  /** Relay URL */
+  url: string;
+  /** WebSocket connection state (true = socket is open) */
+  connected: boolean;
+  /** Authentication state (true = successfully authenticated) */
+  authenticated: boolean;
+  /** The pubkey of the authenticated user, or null if not authenticated */
+  authenticatedAs: string | null;
+  /** Application-layer ready state (true = safe to use) */
+  ready: boolean;
+}
+
 export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">;
 
 /** Options for the publish method on the pool and relay */
@@ -82,6 +96,7 @@ export interface IRelay extends MultiplexWebSocket {
   message$: Observable<any>;
   notice$: Observable<string>;
   connected$: Observable<boolean>;
+  ready$: Observable<boolean>;
   challenge$: Observable<string | null>;
   authenticated$: Observable<boolean>;
   notices$: Observable<string[]>;
@@ -90,8 +105,10 @@ export interface IRelay extends MultiplexWebSocket {
   closing$: Observable<void>;
   error$: Observable<Error | null>;
   lastMessageAt$: Observable<number>;
+  status$: Observable<RelayStatus>;
 
   readonly connected: boolean;
+  readonly ready: boolean;
   readonly authenticated: boolean;
   readonly challenge: string | null;
   readonly notices: string[];
@@ -138,6 +155,9 @@ export interface IRelay extends MultiplexWebSocket {
 export type IGroupRelayInput = IRelay[] | Observable<IRelay[]>;
 
 export interface IGroup {
+  /** Observable of relay status for all relays in the group */
+  status$: Observable<Record<string, RelayStatus>>;
+
   /** Send a REQ message */
   req(filters: Parameters<IRelay["req"]>[0], id?: string): Observable<SubscriptionResponse>;
   /** Send an EVENT message */
@@ -181,6 +201,9 @@ export interface IPoolSignals {
 export type IPoolRelayInput = string[] | Observable<string[]>;
 
 export interface IPool extends IPoolSignals {
+  /** Observable of relay status for all relays in the pool */
+  status$: Observable<Record<string, RelayStatus>>;
+
   /** Get or create a relay */
   relay(url: string): IRelay;
   /** Create a relay group */

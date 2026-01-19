@@ -21,6 +21,8 @@ import {
   of,
   scan,
   share,
+  shareReplay,
+  startWith,
   switchMap,
   take,
   takeWhile,
@@ -41,6 +43,7 @@ import {
   NegentropySyncStore,
   PublishOptions,
   PublishResponse,
+  RelayStatus,
   RequestOptions,
   SubscriptionOptions,
   SubscriptionResponse,
@@ -73,6 +76,10 @@ function errorToPublishResponse(relay: IRelay): MonoTypeOperatorFunction<Publish
 
 export class RelayGroup implements IGroup {
   protected relays$: BehaviorSubject<IRelay[]> | Observable<IRelay[]> = new BehaviorSubject<IRelay[]>([]);
+
+  /** Observable of relay status for all relays in the group */
+  status$: Observable<Record<string, RelayStatus>>;
+
   get relays(): IRelay[] {
     if (this.relays$ instanceof BehaviorSubject) return this.relays$.value;
     throw new Error("This group was created with an observable, relays are not available");
@@ -80,6 +87,30 @@ export class RelayGroup implements IGroup {
 
   constructor(relays: IGroupRelayInput) {
     this.relays$ = Array.isArray(relays) ? new BehaviorSubject(relays) : relays;
+
+    // Initialize status$ observable
+    this.status$ = this.relays$.pipe(
+      switchMap((relays) => {
+        // If no relays, return empty record
+        if (relays.length === 0) return of({} as Record<string, RelayStatus>);
+
+        // Merge all relay status streams
+        return merge(...relays.map((relay) => relay.status$)).pipe(
+          // Accumulate into a Record
+          scan(
+            (acc, status) => ({
+              ...acc,
+              [status.url]: status,
+            }),
+            {} as Record<string, RelayStatus>,
+          ),
+          // Start with initial empty state
+          startWith({} as Record<string, RelayStatus>),
+        );
+      }),
+      // Share the subscription
+      shareReplay(1),
+    );
   }
 
   /** Whether this group is controlled by an upstream observable */
