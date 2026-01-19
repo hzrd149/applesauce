@@ -13,7 +13,7 @@ import "prismjs/components/prism-typescript";
 Prism.manual = true;
 
 import examples, { Example } from "./examples";
-import { CodeIcon, ExternalLinkIcon } from "./components/items";
+import { CodeIcon, ExternalLinkIcon, CopyIcon, CheckIcon } from "./components/icons";
 import { BrowserTerminalInterface, setTerminalInterface, TerminalInterface } from "./cli/terminal-interface";
 import { useMount, useUnmount } from "react-use";
 
@@ -72,9 +72,23 @@ function ExampleView({ example }: { example?: Example }) {
   const [Component, setComponent] = useState<(() => JSX.Element) | null>();
   const [CliApp, setCliApp] = useState<(() => Promise<void>) | null>();
   const [mode, setMode] = useState<"code" | "preview">("preview");
+  const [copied, setCopied] = useState(false);
 
   // set mode to preview when example changes
   useEffect(() => setMode("preview"), [example]);
+
+  // Handle copy to clipboard
+  const handleCopy = async () => {
+    if (!source) return;
+
+    try {
+      await navigator.clipboard.writeText(source);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy code:", err);
+    }
+  };
 
   // load selected example
   useEffect(() => {
@@ -129,6 +143,16 @@ function ExampleView({ example }: { example?: Example }) {
               onClick={() => setMode(mode === "code" ? "preview" : "code")}
             >
               <CodeIcon /> Source
+            </button>
+
+            <button
+              className={`btn btn-sm ${copied ? "btn-success" : "btn-ghost"}`}
+              onClick={handleCopy}
+              disabled={!source}
+              title="Copy code to clipboard"
+            >
+              {copied ? <CheckIcon /> : <CopyIcon />}
+              {copied ? "Copied!" : "Copy"}
             </button>
 
             <a
