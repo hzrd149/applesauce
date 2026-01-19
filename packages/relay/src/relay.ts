@@ -196,6 +196,9 @@ export class Relay implements IRelay {
   /** An observable that emits when underlying websocket is closing due to unsubscription */
   closing$ = new Subject<void>();
 
+  /** Tracks active req() operations by subscription ID */
+  reqs$ = new BehaviorSubject<Record<string, Filter[]>>({});
+
   // sync state
   get ready() {
     return this._ready$.value;
@@ -226,6 +229,9 @@ export class Relay implements IRelay {
   }
   get lastMessageAt() {
     return this._lastMessageAt$.value;
+  }
+  get reqs() {
+    return this.reqs$.value;
   }
 
   /** If an EOSE message is not seen in this time, emit one locally (default 10s)  */
@@ -306,15 +312,6 @@ export class Relay implements IRelay {
       map(([authenticated, authEvent]) => (authenticated && authEvent ? authEvent.pubkey : null)),
     );
 
-    // Create status$ observable by combining state observables
-    this.status$ = combineLatest({
-      url: of(this.url),
-      connected: this.connected$,
-      authenticated: this.authenticated$,
-      authenticatedAs: this.authenticatedAs$,
-      ready: this._ready$,
-    }).pipe(shareReplay(1));
-
     /** Use the static method to create a new reconnect method for this relay */
     this.reconnectTimer = Relay.createReconnectTimer(url);
 
@@ -392,6 +389,17 @@ export class Relay implements IRelay {
         take(1),
       )
       .subscribe(() => this.log("Auth required for EVENT"));
+
+    // Create status$ observable by combining state observables
+    this.status$ = combineLatest({
+      url: of(this.url),
+      connected: this.connected$,
+      authenticated: this.authenticated$,
+      authenticatedAs: this.authenticatedAs$,
+      ready: this._ready$,
+      authRequiredForRead: this.authRequiredForRead$,
+      authRequiredForPublish: this.authRequiredForPublish$,
+    }).pipe(shareReplay(1));
 
     // Update the notices state
     const listenForNotice = this.socket.pipe(
@@ -617,9 +625,18 @@ export class Relay implements IRelay {
     // Create an observable that controls sending the filters and closing the REQ
     const control = input.pipe(
       // Send the filters when they change
-      tap((filters) => this.socket.next(["REQ", id, ...filters])),
+      tap((filters) => {
+        this.socket.next(["REQ", id, ...filters]);
+        // Add to tracking when REQ is sent
+        this.reqs$.next({ ...this.reqs$.value, [id]: filters });
+      }),
       // Send the CLOSE message when unsubscribed or input completes
-      finalize(() => this.socket.next(["CLOSE", id])),
+      finalize(() => {
+        this.socket.next(["CLOSE", id]);
+        // Remove from tracking when REQ closes
+        const { [id]: _, ...rest } = this.reqs$.value;
+        this.reqs$.next(rest);
+      }),
       // Once filters have been sent, switch to listening for messages
       switchMap(() => messages),
     );

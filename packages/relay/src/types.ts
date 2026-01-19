@@ -24,6 +24,10 @@ export interface RelayStatus {
   authenticatedAs: string | null;
   /** Application-layer ready state (true = safe to use) */
   ready: boolean;
+  /** Whether authentication is required for read operations (REQ/COUNT) */
+  authRequiredForRead: boolean;
+  /** Whether authentication is required for publish operations (EVENT) */
+  authRequiredForPublish: boolean;
 }
 
 export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">;
