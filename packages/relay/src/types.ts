@@ -89,11 +89,13 @@ export interface IRelay extends MultiplexWebSocket {
   close$: Observable<CloseEvent>;
   closing$: Observable<void>;
   error$: Observable<Error | null>;
+  lastMessageAt$: Observable<number>;
 
   readonly connected: boolean;
   readonly authenticated: boolean;
   readonly challenge: string | null;
   readonly notices: string[];
+  readonly lastMessageAt: number;
 
   /** Force close the connection */
   close(): void;
