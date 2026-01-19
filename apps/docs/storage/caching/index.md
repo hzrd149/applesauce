@@ -109,7 +109,7 @@ eventLoader({ id: "event-id" }).subscribe((event) => {
 
 ## Integration with Event Loaders
 
-Event caching integrates seamlessly with AppleSauce's event loaders. The key is that cache operations happen through event loaders, not directly through the event store, so they don't block the synchronous event store:
+Event caching integrates seamlessly with Applesauce's event loaders. The key is that cache operations happen through event loaders, not directly through the event store, so they don't block the synchronous event store:
 
 ```ts
 import { EventStore } from "applesauce-core";

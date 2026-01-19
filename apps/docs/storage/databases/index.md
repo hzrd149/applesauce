@@ -54,7 +54,7 @@ Event databases are optimized for storing and querying large numbers of events:
 
 ## Available Implementations
 
-AppleSauce provides several event database implementations:
+Applesauce provides several event database implementations:
 
 ### SQLite-Based Databases
 

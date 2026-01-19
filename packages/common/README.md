@@ -1,6 +1,6 @@
 # applesauce-common
 
-AppleSauce is a collection of utilities for building reactive nostr applications. The common package provides NIP-specific helpers, models, operations, and utilities for working with various Nostr Improvement Proposals (NIPs). This package contains all the extra functionality that applications can use with nostr events that is not directly related to the core protocol.
+Applesauce is a collection of utilities for building reactive nostr applications. The common package provides NIP-specific helpers, models, operations, and utilities for working with various Nostr Improvement Proposals (NIPs). This package contains all the extra functionality that applications can use with nostr events that is not directly related to the core protocol.
 
 ## Installation
 

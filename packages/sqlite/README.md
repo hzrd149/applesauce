@@ -1,6 +1,6 @@
 # applesauce-sqlite
 
-A SQLite3 event database implementation for AppleSauce, providing persistent storage for Nostr events. This package extends the core `applesauce-core` functionality by replacing the default in-memory event database with a persistent SQLite database.
+A SQLite3 event database implementation for Applesauce, providing persistent storage for Nostr events. This package extends the core `applesauce-core` functionality by replacing the default in-memory event database with a persistent SQLite database.
 
 ## Key Features
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "name": "AppleSauce",
+  "name": "Applesauce",
   "entryPoints": ["packages/*"],
   "entryPointStrategy": "packages",
   "packageOptions": {

@@ -1,6 +1,6 @@
-# AppleSauce
+# Applesauce
 
-AppleSauce is a collection typescript libraries to make building nostr web clients easier and is used in [noStrudel](https://github.com/hzrd149/nostrudel)
+Applesauce is a collection typescript libraries to make building nostr web clients easier and is used in [noStrudel](https://github.com/hzrd149/nostrudel)
 
 The full documentation can be found on the [documentation](https://hzrd149.github.io/applesauce) site.
 
