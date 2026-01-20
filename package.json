@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@changesets/cli": "^2.29.8",
-    "typedoc": "^0.28.15"
+    "typedoc": "^0.28.16"
   },
   "devDependencies": {
     "@changesets/changelog-git": "^0.2.1",
@@ -26,8 +26,8 @@
     "@vitest/browser-playwright": "^4.0.16",
     "@vitest/coverage-v8": "^4.0.16",
     "playwright": "^1.57.0",
-    "prettier": "^3.7.4",
-    "turbo": "^2.6.3",
+    "prettier": "^3.8.0",
+    "turbo": "^2.7.5",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16",
     "vitest-websocket-mock": "^0.5.0"
