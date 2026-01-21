@@ -1,5 +1,13 @@
 # applesauce-common
 
+## 5.1.0
+
+### Patch Changes
+
+- 86a49ce: Fix `User` chainable observables not synchronously emitting values
+- Updated dependencies
+  - applesauce-core@5.1.0
+
 ## 5.0.0
 
 ### Major Changes
