@@ -13,7 +13,7 @@ describe("chainable", () => {
     expect(value).toBe(10);
   });
 
-  it('should support deep properties', () => {
+  it("should support deep properties", () => {
     const base = of({ first: { second: { value: 10 } } });
     const chain = chainable(base).first.second.value;
 
@@ -22,10 +22,12 @@ describe("chainable", () => {
     expect(value).toBe(10);
   });
 
-  it('should support deep chainable observables', () => {
-    const base = of({ get first$() {
-      return of({value: 10})
-    }})
+  it("should support deep chainable observables", () => {
+    const base = of({
+      get first$() {
+        return of({ value: 10 });
+      },
+    });
     const chain = chainable(base).first$.value;
 
     let value = 0;
