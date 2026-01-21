@@ -1,19 +1,15 @@
-import { defined } from "applesauce-core";
-import { EventFactory, blueprint } from "applesauce-core";
+import { EventFactory, blueprint, defined } from "applesauce-core";
 import { setContent } from "applesauce-core/operations/content";
 import { includeNameValueTag, includeSingletonTag } from "applesauce-core/operations/tags";
-import { ExtensionSigner } from "applesauce-signers";
-import { nip19 } from "nostr-tools";
-import { useEffect, useState } from "react";
+import { use$ } from "applesauce-react/hooks";
+import { useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { firstValueFrom } from "rxjs";
-
-import { CodeEditorPanel, MetadataPanel, type FieldArrayOperations } from "../components";
-import { CODE_SNIPPET_KIND, eventStore, pool } from "../helpers/nostr";
-
-// Setup signer and factory
-const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
+import { AccountDisplay, CodeEditorPanel, MetadataPanel, type FieldArrayOperations } from "../components";
+import { CODE_SNIPPET_KIND } from "../helpers/nostr";
+import { accounts } from "../services/accounts";
+import { eventStore } from "../services/event-store";
+import { pool } from "../services/pool";
 
 // Language to extension mapping
 const LANGUAGE_EXTENSIONS: Record<string, string> = {
@@ -34,7 +30,6 @@ const LANGUAGE_EXTENSIONS: Record<string, string> = {
 
 // Form data types
 type CodeSnippetFormData = {
-  title?: string;
   name: string;
   description: string;
   code: string;
@@ -73,18 +68,29 @@ function CodeSnippetBlueprint(data: CodeSnippetFormData) {
 interface PublishViewProps {
   onBack: () => void;
   onPublishSuccess?: (eventId: string) => void;
+  onNavigateToSignin: () => void;
 }
 
-export default function PublishView({ onBack, onPublishSuccess }: PublishViewProps) {
+export default function PublishView({ onBack, onPublishSuccess, onNavigateToSignin }: PublishViewProps) {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
   const [noSignerWarning, setNoSignerWarning] = useState(false);
   const [publishedEventId, setPublishedEventId] = useState<string | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [pubkey, setPubkey] = useState<string | null>(null);
   const [outboxRelays, setOutboxRelays] = useState<string[]>([]);
   const [loadingOutbox, setLoadingOutbox] = useState(false);
+
+  // Get active account from accounts service
+  const activeAccount = use$(() => accounts.active$, []);
+
+  // Derive state from active account
+  const isLoggedIn = !!activeAccount;
+
+  // Create factory with active account's signer
+  const factory = useMemo(() => {
+    if (!activeAccount) return null;
+    return new EventFactory({ signer: activeAccount });
+  }, [activeAccount]);
 
   const {
     control,
@@ -93,7 +99,6 @@ export default function PublishView({ onBack, onPublishSuccess }: PublishViewPro
     formState: { errors },
   } = useForm<CodeSnippetFormData>({
     defaultValues: {
-      title: "",
       name: "",
       description: "",
       code: "",
@@ -129,27 +134,17 @@ export default function PublishView({ onBack, onPublishSuccess }: PublishViewPro
     }
   }, [watchedLanguage, watchedFilename, setValue]);
 
-  // Login and fetch outbox relays
-  const handleLogin = async () => {
-    try {
-      setLoadingOutbox(true);
-      setError(null);
+  // Fetch outbox relays when account changes
+  useEffect(() => {
+    if (!activeAccount?.pubkey) {
+      setOutboxRelays([]);
+      return;
+    }
 
-      // Check for window.nostr signer
-      if (typeof window === "undefined" || !(window as any).nostr) {
-        setNoSignerWarning(true);
-        setError("No Nostr extension found. Please install a Nostr browser extension like Alby or nos2x.");
-        setLoadingOutbox(false);
-        return;
-      }
-
-      const userPubkey = await signer.getPublicKey();
-      setPubkey(userPubkey);
-      setIsLoggedIn(true);
-
-      // Fetch outbox relays
+    const fetchOutboxRelays = async () => {
       try {
-        const mailboxes = await firstValueFrom(eventStore.mailboxes(userPubkey).pipe(defined()));
+        setLoadingOutbox(true);
+        const mailboxes = await firstValueFrom(eventStore.mailboxes(activeAccount.pubkey).pipe(defined()));
 
         if (mailboxes?.outboxes?.length) {
           setOutboxRelays(mailboxes.outboxes);
@@ -159,19 +154,13 @@ export default function PublishView({ onBack, onPublishSuccess }: PublishViewPro
       } catch (err) {
         console.warn("Could not fetch outbox relays:", err);
         setOutboxRelays([]);
+      } finally {
+        setLoadingOutbox(false);
       }
-    } catch (err) {
-      console.error("Login failed:", err);
-      setError(err instanceof Error ? err.message : "Failed to login");
-    } finally {
-      setLoadingOutbox(false);
-    }
-  };
+    };
 
-  useEffect(() => {
-    // Auto-login on mount
-    handleLogin();
-  }, []);
+    fetchOutboxRelays();
+  }, [activeAccount?.pubkey]);
 
   const {
     fields: tagFields,
@@ -218,7 +207,7 @@ export default function PublishView({ onBack, onPublishSuccess }: PublishViewPro
         return;
       }
 
-      if (!isLoggedIn) {
+      if (!isLoggedIn || !activeAccount || !factory) {
         setError("Please login first");
         return;
       }
@@ -265,7 +254,7 @@ export default function PublishView({ onBack, onPublishSuccess }: PublishViewPro
   return (
     <div className="min-h-screen bg-base-300 flex flex-col">
       {/* Header */}
-      <div className="navbar bg-base-100 shadow-sm border-b border-base-300 flex-none">
+      <div className="navbar bg-base-100 border-b border-base-300 flex-none">
         <div className="flex-1">
           <button onClick={onBack} className="btn btn-ghost">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -276,16 +265,7 @@ export default function PublishView({ onBack, onPublishSuccess }: PublishViewPro
           <span className="ml-4 font-semibold">Publish Code Snippet</span>
         </div>
         <div className="flex-none gap-2">
-          {isLoggedIn && pubkey ? (
-            <div className="flex items-center gap-2">
-              <span className="opacity-70">{nip19.npubEncode(pubkey).substring(0, 12)}...</span>
-              <div className="badge badge-success">Connected</div>
-            </div>
-          ) : (
-            <button onClick={handleLogin} className="btn btn-primary" disabled={loadingOutbox}>
-              {loadingOutbox ? "Connecting..." : "Login"}
-            </button>
-          )}
+          <AccountDisplay onNavigateToSignin={onNavigateToSignin} />
         </div>
       </div>
 
@@ -333,7 +313,6 @@ export default function PublishView({ onBack, onPublishSuccess }: PublishViewPro
             } as FieldArrayOperations
           }
           setValue={setValue}
-          onLogin={handleLogin}
           handleSubmit={handleSubmit}
           onSubmit={onSubmit}
         />

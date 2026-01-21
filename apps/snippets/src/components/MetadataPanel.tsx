@@ -34,7 +34,7 @@ interface MetadataPanelProps {
   depFields: FieldArrayOperations;
   relayFields: FieldArrayOperations;
   setValue: UseFormSetValue<any>;
-  onLogin: () => void;
+  onLogin?: () => void;
   handleSubmit: UseFormHandleSubmit<any>;
   onSubmit: (data: any) => void;
 }
@@ -86,19 +86,6 @@ export default function MetadataPanel({
                 />
               </svg>
             }
-          />
-
-          <Controller
-            name="title"
-            control={control}
-            render={({ field }) => (
-              <input
-                {...field}
-                type="text"
-                placeholder="Snippet Title (optional)"
-                className="input input-bordered w-full"
-              />
-            )}
           />
 
           <Controller

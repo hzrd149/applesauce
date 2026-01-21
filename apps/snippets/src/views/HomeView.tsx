@@ -1,5 +1,5 @@
 import { type NostrEvent } from "nostr-tools";
-import { CodeSnippetCard, EmptyState, LoadingSpinner, RelaySelector } from "../components";
+import { AccountDisplay, CodeSnippetCard, EmptyState, LoadingSpinner, RelaySelector } from "../components";
 
 interface HomeViewProps {
   events: NostrEvent[] | null;
@@ -12,6 +12,7 @@ interface HomeViewProps {
   hasActiveSearch: boolean;
   onViewFull: (eventId: string) => void;
   onNavigateToPublish: () => void;
+  onNavigateToSignin: () => void;
 }
 
 export default function HomeView({
@@ -25,6 +26,7 @@ export default function HomeView({
   hasActiveSearch,
   onViewFull,
   onNavigateToPublish,
+  onNavigateToSignin,
 }: HomeViewProps) {
   // Use filtered events for display
   const displayEvents = filteredEvents;
@@ -32,7 +34,7 @@ export default function HomeView({
   return (
     <div className="min-h-screen bg-base-200">
       {/* Header */}
-      <div className="navbar bg-base-100 shadow-sm">
+      <div className="navbar bg-base-100">
         <div className="flex-1">
           <a className="btn btn-ghost text-xl">Applesauce Code Snippets</a>
         </div>
@@ -47,6 +49,7 @@ export default function HomeView({
             MCP code snippets
           </a>
           <RelaySelector relays={relays} onAddRelay={onAddRelay} onRemoveRelay={onRemoveRelay} />
+          <AccountDisplay onNavigateToSignin={onNavigateToSignin} />
         </div>
       </div>
 
@@ -63,14 +66,14 @@ export default function HomeView({
             <input
               type="text"
               placeholder="Search code snippets..."
-              className="input input-bordered input-lg w-full pl-4 pr-12 text-lg shadow-md focus:shadow-xl transition-all duration-200 bg-base-100 border-2 focus:border-primary"
+              className="input input-bordered input-lg w-full pl-4 pr-12 text-lg bg-base-100 border-2 focus:border-primary"
               value={searchQuery}
               onChange={(e) => updateSearchQuery(e.target.value)}
             />
             {searchQuery && (
               <button
                 onClick={() => updateSearchQuery("")}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-base-content/40 hover:text-base-content/80 focus:outline-none transition-colors duration-200 p-1 rounded-full hover:bg-base-200"
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-base-content/40 focus:outline-none p-1 rounded-full"
                 title="Clear search"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

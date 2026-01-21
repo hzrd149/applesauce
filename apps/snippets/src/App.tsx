@@ -5,14 +5,16 @@ import { type NostrEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
 import { map, Observable } from "rxjs";
 import "./App.css";
-import { CodeSnippetDetails, HomeView, PocketDrawer, PublishView } from "./components";
-import { useSearch } from "./hooks";
+import { CodeSnippetDetails, HomeView, PocketDrawer, PublishView, SignInView } from "./components";
 import { usePocketContext } from "./contexts/PocketContext";
-import { eventStore, pool, CODE_SNIPPET_KIND, DEFAULT_RELAYS, isValidEventId } from "./helpers/nostr";
+import { CODE_SNIPPET_KIND, DEFAULT_RELAYS, isValidEventId } from "./helpers/nostr";
+import { useSearch } from "./hooks";
+import { eventStore } from "./services/event-store";
+import { pool } from "./services/pool";
 
 function App() {
   // Hash-based routing state
-  const [currentView, setCurrentView] = useState<"home" | "details" | "publish">("home");
+  const [currentView, setCurrentView] = useState<"home" | "details" | "publish" | "signin">("home");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   // Relay state management
@@ -71,6 +73,9 @@ function App() {
       if (hash === "publish") {
         setCurrentView("publish");
         setSelectedEventId(null);
+      } else if (hash === "signin") {
+        setCurrentView("signin");
+        setSelectedEventId(null);
       } else if (hash) {
         // Check if it's a valid event identifier (nevent or hex id)
         if (isValidEventId(hash)) {
@@ -104,21 +109,30 @@ function App() {
     window.location.hash = "publish";
   };
 
+  const navigateToSignin = () => {
+    window.location.hash = "signin";
+  };
+
   // Handle viewing pocket item by navigating to details
   const handleViewPocketItem = (eventId: string) => {
     navigateToDetails(eventId);
   };
 
+  // Render signin view
+  if (currentView === "signin") {
+    return <SignInView onBack={navigateToHome} onSignInSuccess={navigateToHome} />;
+  }
+
   // Render publish view
   if (currentView === "publish") {
-    return <PublishView onBack={navigateToHome} onPublishSuccess={navigateToDetails} />;
+    return <PublishView onBack={navigateToHome} onPublishSuccess={navigateToDetails} onNavigateToSignin={navigateToSignin} />;
   }
 
   // Render details view if hash is present
   if (currentView === "details" && selectedEventId) {
     return (
       <>
-        <CodeSnippetDetails eventId={selectedEventId} relays={relays} onBack={navigateToHome} />
+        <CodeSnippetDetails eventId={selectedEventId} relays={relays} onBack={navigateToHome} onNavigateToSignin={navigateToSignin} />
         <PocketDrawer
           pocketItems={pocketItems}
           onRemoveItem={removeFromPocket}
@@ -144,6 +158,7 @@ function App() {
         hasActiveSearch={hasActiveSearch}
         onViewFull={navigateToDetails}
         onNavigateToPublish={navigateToPublish}
+        onNavigateToSignin={navigateToSignin}
       />
       <PocketDrawer
         pocketItems={pocketItems}

@@ -1,6 +1,4 @@
-import { EventStore } from "applesauce-core";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
+import { relaySet } from "applesauce-core/helpers";
 
 // NIP-C0 Code Snippet Kind
 export const CODE_SNIPPET_KIND = 1337;
@@ -9,27 +7,19 @@ export const CODE_SNIPPET_KIND = 1337;
 export const COMMENT_KIND = 1111;
 
 // Default relays for the application
-export const DEFAULT_RELAYS = [
+export const DEFAULT_RELAYS = relaySet([
   "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://nostr.land",
   "wss://relay.snort.social",
-  "wss://relay.nostr.band",
-];
+]);
 
 // Lookup relays for profile resolution
-export const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
-
-// Create an event store for all events
-export const eventStore = new EventStore();
-
-// Create a relay pool to make relay connections
-export const pool = new RelayPool();
-
-// Create an address loader to load user profiles
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: LOOKUP_RELAYS,
-});
+export const LOOKUP_RELAYS = relaySet([
+  "wss://purplepag.es",
+  "wss://index.hzrd149.com",
+  "wss://indexer.coracle.social",
+]);
 
 /**
  * Utility function to check if a string is a valid nevent
