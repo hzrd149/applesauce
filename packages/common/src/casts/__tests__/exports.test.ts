@@ -11,6 +11,7 @@ describe("exports", () => {
         "BookmarksSet",
         "CASTS_SYMBOL",
         "CAST_REF_SYMBOL",
+        "CodeSnippet",
         "Comment",
         "EventCast",
         "FavoriteRelays",
