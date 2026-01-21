@@ -7,7 +7,20 @@ import {
   npubEncode,
   ProfilePointer,
 } from "applesauce-core/helpers";
-import { combineLatest, defer, from, map, Observable, switchMap, tap } from "rxjs";
+import {
+  combineLatest,
+  defer,
+  from,
+  map,
+  MonoTypeOperatorFunction,
+  Observable,
+  of,
+  ReplaySubject,
+  share,
+  shareReplay,
+  switchMap,
+  tap,
+} from "rxjs";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
@@ -35,7 +48,22 @@ export function castUser(user: string | ProfilePointer | NostrEvent, store: Cast
   }
 }
 
+function memoize<T>(): MonoTypeOperatorFunction<T> {
+  return share({
+    connector: () => new ReplaySubject(1),
+    resetOnRefCountZero: false,
+    resetOnComplete: false,
+  });
+}
+
 // IMPORTANT: this class MUST use async import() to import the other classes so that we do not get circular dependency errors
+const Circular = {
+  Profile: defer(() => from(import("./profile.js"))).pipe(memoize()),
+  Mutes: defer(() => from(import("./mutes.js"))).pipe(memoize()),
+  Bookmarks: defer(() => from(import("./bookmarks.js"))).pipe(memoize()),
+  RelayLists: defer(() => from(import("./relay-lists.js"))).pipe(memoize()),
+  Groups: defer(() => from(import("./groups.js"))).pipe(memoize()),
+};
 
 /** A class for a user */
 export class User {
@@ -100,8 +128,8 @@ export class User {
   // Observable interfaces
   get profile$() {
     return this.$$ref("profile$", (store) =>
-      defer(() => from(import("./profile.js").then((m) => m.Profile))).pipe(
-        switchMap((Profile) =>
+      Circular.Profile.pipe(
+        switchMap(({ Profile }) =>
           store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile, store)),
         ),
       ),
@@ -119,14 +147,9 @@ export class User {
   }
   get mutes$() {
     return this.$$ref("mutes$", (store) =>
-      combineLatest([
-        // Import the Mutes class
-        defer(() => import("./mutes.js").then((m) => m.Mutes)),
-        // Always start without the outboxes
-        this.outboxes$,
-      ]).pipe(
+      combineLatest([Circular.Mutes, this.outboxes$]).pipe(
         // Create the mute list event with the outboxes
-        switchMap(([Mutes, outboxes]) =>
+        switchMap(([{ Mutes }, outboxes]) =>
           store
             .event({ kind: kinds.Mutelist, pubkey: this.pubkey, relays: outboxes })
             .pipe(castEventStream(Mutes, store)),
@@ -150,13 +173,8 @@ export class User {
   }
   get bookmarks$() {
     return this.$$ref("bookmarks$", (store) =>
-      combineLatest([
-        // Import the BookmarksList class
-        defer(() => from(import("./bookmarks.js").then((m) => m.BookmarksList))),
-        // Get outboxes and start without them
-        this.outboxes$,
-      ]).pipe(
-        switchMap(([BookmarksList, outboxes]) =>
+      combineLatest([Circular.Bookmarks, this.outboxes$]).pipe(
+        switchMap(([{ BookmarksList }, outboxes]) =>
           // Fetch the bookmarks list event from the outboxes
           store
             .replaceable({ kind: kinds.BookmarkList, pubkey: this.pubkey, relays: outboxes })
@@ -167,51 +185,36 @@ export class User {
   }
   get favoriteRelays$() {
     return this.$$ref("favoriteRelays$", (store) =>
-      combineLatest([
-        // Import the FavoriteRelays class
-        defer(() => from(import("./relay-lists.js").then((m) => m.FavoriteRelays))),
-        // Get outboxes and start without them
-        this.outboxes$,
-      ]).pipe(
+      combineLatest([Circular.RelayLists, this.outboxes$]).pipe(
         // Fetch the favorite relays list event from the outboxes
-        switchMap(([FavoriteRelaysList, outboxes]) =>
+        switchMap(([{ FavoriteRelays }, outboxes]) =>
           store
             .replaceable({ kind: FAVORITE_RELAYS_KIND, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(FavoriteRelaysList, store)),
+            .pipe(castEventStream(FavoriteRelays, store)),
         ),
       ),
     );
   }
   get searchRelays$() {
     return this.$$ref("searchRelays$", (store) =>
-      combineLatest([
-        // Import the SearchRelays class
-        defer(() => from(import("./relay-lists.js").then((m) => m.SearchRelays))),
-        // Get outboxes and start without them
-        this.outboxes$,
-      ]).pipe(
+      combineLatest([Circular.RelayLists, this.outboxes$]).pipe(
         // Fetch the search relays list event from the outboxes
-        switchMap(([SearchRelaysList, outboxes]) =>
+        switchMap(([{ SearchRelays }, outboxes]) =>
           store
             .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(SearchRelaysList, store)),
+            .pipe(castEventStream(SearchRelays, store)),
         ),
       ),
     );
   }
   get blockedRelays$() {
     return this.$$ref("blockedRelays$", (store) =>
-      combineLatest([
-        // Import the BlockedRelays class
-        defer(() => from(import("./relay-lists.js").then((m) => m.BlockedRelays))),
-        // Get outboxes and start without them
-        this.outboxes$,
-      ]).pipe(
+      combineLatest([Circular.RelayLists, this.outboxes$]).pipe(
         // Fetch the blocked relays list event from the outboxes
-        switchMap(([BlockedRelaysList, outboxes]) =>
+        switchMap(([{ BlockedRelays }, outboxes]) =>
           store
             .replaceable({ kind: kinds.BlockedRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(BlockedRelaysList, store)),
+            .pipe(castEventStream(BlockedRelays, store)),
         ),
       ),
     );
@@ -232,13 +235,8 @@ export class User {
   /** Gets the users list of NIP-29 groups */
   get groups$() {
     return this.$$ref("groups$", (store) =>
-      combineLatest([
-        // Import the BlockedRelays class
-        defer(() => from(import("./groups.js").then((m) => m.GroupsList))),
-        // Get outboxes and start without them
-        this.outboxes$,
-      ]).pipe(
-        switchMap(([GroupsList, outboxes]) =>
+      combineLatest([Circular.Groups, this.outboxes$]).pipe(
+        switchMap(([{ GroupsList }, outboxes]) =>
           store
             .replaceable({ kind: GROUPS_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
             .pipe(castEventStream(GroupsList, store)),

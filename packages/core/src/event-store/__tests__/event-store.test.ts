@@ -311,6 +311,14 @@ describe("replaceable", () => {
     eventStore.remove(profile);
     expect(spy.getValues()).toEqual([profile, undefined]);
   });
+
+  it("should support sync observables when event exists", () => {
+    eventStore.add(profile);
+    const observable = eventStore.replaceable(0, user.pubkey);
+    let value: NostrEvent | undefined = undefined;
+    observable.subscribe((v) => (value = v));
+    expect(value).toBe(profile);
+  });
 });
 
 describe("timeline", () => {
