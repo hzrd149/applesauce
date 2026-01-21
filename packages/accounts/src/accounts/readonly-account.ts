@@ -4,7 +4,7 @@ import { BaseAccount } from "../account.js";
 import { SerializedAccount } from "../types.js";
 
 /** An account that cannot sign or encrypt anything */
-export class ReadonlyAccount<Metadata extends unknown> extends BaseAccount<ReadonlySigner, void, Metadata> {
+export class ReadonlyAccount<Metadata extends unknown = unknown> extends BaseAccount<ReadonlySigner, void, Metadata> {
   static readonly type = "readonly";
 
   toJSON() {
@@ -13,16 +13,18 @@ export class ReadonlyAccount<Metadata extends unknown> extends BaseAccount<Reado
     });
   }
 
-  static fromJSON<Metadata extends unknown>(json: SerializedAccount<void, Metadata>): ReadonlyAccount<Metadata> {
+  static fromJSON<Metadata extends unknown = unknown>(
+    json: SerializedAccount<void, Metadata>,
+  ): ReadonlyAccount<Metadata> {
     const account = new ReadonlyAccount<Metadata>(json.pubkey, new ReadonlySigner(json.pubkey));
     return super.loadCommonFields(account, json);
   }
 
   /** Creates a ReadonlyAccount from a hex public key or NIP-19 npub */
-  static fromPubkey(pubkey: string) {
+  static fromPubkey<Metadata extends unknown = unknown>(pubkey: string): ReadonlyAccount<Metadata> {
     const signer = ReadonlySigner.fromPubkey(pubkey);
     const hex = normalizeToPubkey(pubkey);
     if (!hex) throw new Error("Invalid public key");
-    return new ReadonlyAccount(hex, signer);
+    return new ReadonlyAccount<Metadata>(hex, signer);
   }
 }

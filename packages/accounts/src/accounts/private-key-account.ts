@@ -9,7 +9,7 @@ export type PrivateKeyAccountSignerData = {
 };
 
 /** A simple account that hold the private key in memory */
-export class PrivateKeyAccount<Metadata extends unknown> extends BaseAccount<
+export class PrivateKeyAccount<Metadata extends unknown = unknown> extends BaseAccount<
   PrivateKeySigner,
   PrivateKeyAccountSignerData,
   Metadata
@@ -22,7 +22,7 @@ export class PrivateKeyAccount<Metadata extends unknown> extends BaseAccount<
     });
   }
 
-  static fromJSON<Metadata extends unknown>(
+  static fromJSON<Metadata extends unknown = unknown>(
     json: SerializedAccount<PrivateKeyAccountSignerData, Metadata>,
   ): PrivateKeyAccount<Metadata> {
     const key = hexToBytes(json.signer.key);
@@ -31,14 +31,14 @@ export class PrivateKeyAccount<Metadata extends unknown> extends BaseAccount<
   }
 
   /** Creates a PrivateKeyAccount from a hex private key or NIP-19 nsec */
-  static fromKey<Metadata extends unknown>(privateKey: Uint8Array | string): PrivateKeyAccount<Metadata> {
+  static fromKey<Metadata extends unknown = unknown>(privateKey: Uint8Array | string): PrivateKeyAccount<Metadata> {
     const signer = PrivateKeySigner.fromKey(privateKey);
     const pubkey = getPublicKey(signer.key);
     return new PrivateKeyAccount(pubkey, signer);
   }
 
   /** Creates a new PrivateKeyAccount with a random private key */
-  static generateNew<Metadata extends unknown>(): PrivateKeyAccount<Metadata> {
+  static generateNew<Metadata extends unknown = unknown>(): PrivateKeyAccount<Metadata> {
     const key = generateSecretKey();
     return PrivateKeyAccount.fromKey(key);
   }
