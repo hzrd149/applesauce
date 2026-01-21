@@ -58,8 +58,8 @@
     "react": "^18.0.0 || ^19.0.0"
   },
   "dependencies": {
-    "observable-hooks": "^4.2.4",
     "hash-sum": "^2.0.0",
+    "observable-hooks": "^4.2.4",
     "rxjs": "^7.8.1"
   },
   "optionalDependencies": {
@@ -69,12 +69,12 @@
     "applesauce-core": "^5.0.0"
   },
   "devDependencies": {
+    "@types/hash-sum": "^1.0.2",
+    "@types/react": "^18.0.0 || ^19.0.0",
     "applesauce-accounts": "^5.0.0",
     "applesauce-actions": "^5.0.0",
     "applesauce-content": "^5.0.0",
     "applesauce-core": "^5.0.0",
-    "@types/hash-sum": "^1.0.2",
-    "@types/react": "^18.0.0 || ^19.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
