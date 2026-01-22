@@ -15,6 +15,7 @@ export * from "./gift-wrap.js";
 export * from "./relay-lists.js";
 export * from "./stream.js";
 export * from "./shares.js";
+export * from "./zap-goals.js";
 
 // Export all models from core
 export * from "applesauce-core/models";

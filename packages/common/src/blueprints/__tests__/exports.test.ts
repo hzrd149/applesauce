@@ -41,6 +41,7 @@ describe("exports", () => {
         "TorrentBlueprint",
         "WrappedMessageBlueprint",
         "WrappedMessageReplyBlueprint",
+        "ZapGoalBlueprint",
       ]
     `);
   });

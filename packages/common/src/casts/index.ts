@@ -17,3 +17,4 @@ export * from "./stream.js";
 export * from "./torrent.js";
 export * from "./user.js";
 export * from "./zap.js";
+export * from "./zap-goal.js";

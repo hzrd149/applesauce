@@ -30,6 +30,7 @@ describe("exports", () => {
         "Torrent",
         "User",
         "Zap",
+        "ZapGoal",
         "castEvent",
         "castUser",
       ]

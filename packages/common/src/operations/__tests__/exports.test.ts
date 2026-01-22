@@ -33,6 +33,7 @@ describe("exports", () => {
         "Torrent",
         "WrappedMessage",
         "Zap",
+        "ZapGoal",
       ]
     `);
   });

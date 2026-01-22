@@ -25,5 +25,6 @@ export * as StreamChat from "./stream-chat.js";
 export * as Torrent from "./torrent.js";
 export * as WrappedMessage from "./wrapped-message.js";
 export * as Zap from "./zap-split.js";
+export * as ZapGoal from "./zap-goal.js";
 
 export * as TagOperations from "./tag/index.js";
