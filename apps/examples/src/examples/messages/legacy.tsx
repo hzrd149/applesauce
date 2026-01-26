@@ -1,3 +1,14 @@
+/*---
+title: Legacy Messages
+description: Send and receive legacy encrypted direct messages (NIP-04)
+tags:
+  - messages
+  - legacy
+  - nip-04
+  - dm
+related:
+  - messages/gift-wrap
+---*/
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { SendLegacyMessage } from "applesauce-actions/actions";

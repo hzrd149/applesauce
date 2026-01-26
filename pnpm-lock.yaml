@@ -99,6 +99,9 @@ importers:
       '@snort/worker-relay':
         specifier: ^1.5.0
         version: 1.5.0
+      '@std/front-matter':
+        specifier: jsr:^1.0.9
+        version: '@jsr/std__front-matter@1.0.9'
       '@tursodatabase/database-wasm':
         specifier: ^0.2.2
         version: 0.2.2
@@ -1416,8 +1419,20 @@ packages:
   '@jsr/scure__base@1.2.6':
     resolution: {integrity: sha512-oZvJweJ4VMgVHJdsp8wwcG7t1U8aZLe0h8f4oNSFfavGqOKhpmi0b9mZ8vXLtGzBGiqVjK8Mon1NVMzTJincLQ==, tarball: https://npm.jsr.io/~/11/@jsr/scure__base/1.2.6.tgz}
 
+  '@jsr/std__collections@1.1.4':
+    resolution: {integrity: sha512-IcnL/e43DIDDnuOlCVgIBnwF2Bhseh84qvhqj6aKCyvktFiTALBxCqVQIiIRY7DCot7Ofndi6gLV5f+iiQP+bA==, tarball: https://npm.jsr.io/~/11/@jsr/std__collections/1.1.4.tgz}
+
   '@jsr/std__encoding@0.224.3':
     resolution: {integrity: sha512-zAuX2QV1zwJ5RSmrnDGVerAtN3pBXpYYNlGzhERW9AiQ1UJd2/xruyB3i5NdTWy2OK2pjETswOj+0+prYTPlxQ==, tarball: https://npm.jsr.io/~/11/@jsr/std__encoding/0.224.3.tgz}
+
+  '@jsr/std__front-matter@1.0.9':
+    resolution: {integrity: sha512-CSz8B8ABdHk9O1sbeIhR+hwIfrIImhTzCMxPWnFmwtuoIHoOAqHQJKmKFl0r2MYD5TZlN+t+Z+0wlp0dfU0TaA==, tarball: https://npm.jsr.io/~/11/@jsr/std__front-matter/1.0.9.tgz}
+
+  '@jsr/std__toml@1.0.11':
+    resolution: {integrity: sha512-+LZAizoPAPwMDmRZr86/xPrbO8E0Oq0BJ70mr1fNMobJ/6X6v15Jk16ZClFGukWgzBMd8ggiMWnzp24+N3VNZg==, tarball: https://npm.jsr.io/~/11/@jsr/std__toml/1.0.11.tgz}
+
+  '@jsr/std__yaml@1.0.11':
+    resolution: {integrity: sha512-uSVzU72mlSkYU2Gxm2ECUoVrd6cY1n7krZ8l75QWwyGuasP1LKyLvEO3veVujKwOwthLQD7oBQvPpYNwYzt15A==, tarball: https://npm.jsr.io/~/11/@jsr/std__yaml/1.0.11.tgz}
 
   '@kurkle/color@0.3.4':
     resolution: {integrity: sha512-M5UknZPHRu3DEDWoipU6sE8PdkZ6Z/S+v4dD+Ke8IaNlpdSQah50lz1KtcFBa2vsdOnwbbnxJwVM4wty6udA5w==}
@@ -6316,7 +6331,20 @@ snapshots:
 
   '@jsr/scure__base@1.2.6': {}
 
+  '@jsr/std__collections@1.1.4': {}
+
   '@jsr/std__encoding@0.224.3': {}
+
+  '@jsr/std__front-matter@1.0.9':
+    dependencies:
+      '@jsr/std__toml': 1.0.11
+      '@jsr/std__yaml': 1.0.11
+
+  '@jsr/std__toml@1.0.11':
+    dependencies:
+      '@jsr/std__collections': 1.1.4
+
+  '@jsr/std__yaml@1.0.11': {}
 
   '@kurkle/color@0.3.4': {}
 

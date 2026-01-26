@@ -1,3 +1,13 @@
+/*---
+title: Relay Difference
+description: Compare events across different relays to see differences in data availability
+tags:
+  - negentrapy
+  - relay
+  - comparison
+related:
+  - negentrapy/mentions
+---*/
 import { defined, EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";

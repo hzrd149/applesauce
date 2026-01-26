@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "nostr": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@nostrbook/mcp@latest"]
+    },
+    "local-rag": {
+      "command": "npx",
+      "args": ["-y", "mcp-local-rag"],
+      "env": {
+        "BASE_DIR": "./"
+      }
+    }
+  }
+}

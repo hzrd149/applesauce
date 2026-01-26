@@ -1,3 +1,13 @@
+/*---
+title: Profile Editor
+description: Edit and update your Nostr profile with a live preview of changes
+tags:
+  - profile
+  - forms
+  - actions
+related:
+  - simple/event-deletion
+---*/
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { UpdateProfile } from "applesauce-actions/actions";

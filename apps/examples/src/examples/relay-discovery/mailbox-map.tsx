@@ -1,3 +1,14 @@
+/*---
+title: Mailbox Map
+description: Visualize mailbox relays on a map with geolocation data
+tags:
+  - relay-discovery
+  - mailbox
+  - map
+related:
+  - relay-discovery/monitors-map
+  - relay-discovery/contacts-relays
+---*/
 import { RelayMonitor } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";

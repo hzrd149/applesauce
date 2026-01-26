@@ -1,3 +1,14 @@
+/*---
+title: Gift Wrap Timeline
+description: Display a timeline of gift-wrapped events with decryption support
+tags:
+  - gift-wrap
+  - timeline
+  - encryption
+related:
+  - gift-wrap/dashboard
+  - gift-wrap/generator
+---*/
 import { persistEncryptedContent } from "applesauce-common/helpers/encrypted-content-cache";
 import { isGiftWrapUnlocked, unlockGiftWrap } from "applesauce-common/helpers/gift-wrap";
 import { GiftWrapRumorModel, GiftWrapsModel } from "applesauce-common/models/gift-wrap";

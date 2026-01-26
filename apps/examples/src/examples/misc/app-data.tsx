@@ -1,3 +1,14 @@
+/*---
+title: App Data
+description: Store and retrieve application-specific data using NIP-78 app-specific events
+tags:
+  - misc
+  - app-data
+  - nip-78
+  - storage
+related:
+  - misc/nip-19-links
+---*/
 import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
 import {
   APP_DATA_KIND,

@@ -1,3 +1,14 @@
+/*---
+title: Using Nostr Tools
+description: Integrate nostr-tools library with Applesauce loaders for event loading
+tags:
+  - loader
+  - nostr-tools
+  - integration
+related:
+  - loader/using-ndk
+  - loader/using-nostrify
+---*/
 import { castEvent, Note } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { UpstreamPool } from "applesauce-loaders";

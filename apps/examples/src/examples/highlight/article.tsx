@@ -1,3 +1,15 @@
+/*---
+title: Create Article Highlights
+description: Create and publish highlights on articles by selecting text, with markdown rendering and mention support
+tags:
+  - highlight
+  - article
+  - markdown
+  - nip-84
+related:
+  - highlight/timeline
+  - content/articles
+---*/
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { defined, EventStore } from "applesauce-core";
 import { EventFactory } from "applesauce-core";

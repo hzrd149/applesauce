@@ -1,3 +1,12 @@
+/*---
+title: Highlight Timeline
+description: Display a timeline of highlighted articles and content
+tags:
+  - highlight
+  - timeline
+related:
+  - highlight/article
+---*/
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   getDisplayName,

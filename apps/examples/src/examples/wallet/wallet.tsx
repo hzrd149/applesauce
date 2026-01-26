@@ -1,3 +1,27 @@
+/*---
+title: Wallet
+description: Full-featured Cashu wallet with token management, nutzaps, and Lightning integration
+tags:
+  - wallet
+  - cashu
+  - tokens
+  - nutzaps
+dependencies:
+  - @cashu/cashu-ts
+  - applesauce-accounts
+  - applesauce-actions
+  - applesauce-common
+  - applesauce-core
+  - applesauce-loaders
+  - applesauce-react
+  - applesauce-relay
+  - applesauce-signers
+  - applesauce-wallet
+  - nostr-idb
+related:
+  - wallet/mint-discovery
+  - nwc/simple-wallet
+---*/
 import { getDecodedToken, getEncodedToken } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";

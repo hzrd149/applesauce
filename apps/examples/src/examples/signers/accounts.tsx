@@ -1,3 +1,14 @@
+/*---
+title: Account Manager
+description: Manage multiple Nostr accounts with different signers and switch between them
+tags:
+  - signers
+  - accounts
+  - management
+related:
+  - signers/password
+  - signers/bunker
+---*/
 import { AccountManager } from "applesauce-accounts";
 import { registerCommonAccountTypes, PrivateKeyAccount } from "applesauce-accounts/accounts";
 import { use$ } from "applesauce-react/hooks";

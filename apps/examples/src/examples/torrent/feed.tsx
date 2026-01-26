@@ -1,3 +1,13 @@
+/*---
+title: Torrent Feed
+description: Display torrent files shared on Nostr with metadata and download information
+tags:
+  - torrent
+  - feed
+  - files
+related:
+  - feed/relay-timeline
+---*/
 import { Reaction, Torrent, Zap } from "applesauce-common/casts";
 import { TORRENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";

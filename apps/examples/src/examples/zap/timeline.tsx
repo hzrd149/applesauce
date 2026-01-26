@@ -1,3 +1,14 @@
+/*---
+title: Zap Timeline
+description: Display a timeline of zaps (Lightning payments) with amounts and recipients
+tags:
+  - zap
+  - timeline
+  - lightning
+related:
+  - zap/graph
+  - nutzap/zap-feed
+---*/
 import { getZapAmount, getZapEventPointer, getZapSender, isValidZap } from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {

@@ -1,3 +1,15 @@
+/*---
+title: Gift Wrap Messages
+description: Send and receive encrypted gift-wrapped direct messages
+tags:
+  - messages
+  - gift-wrap
+  - encryption
+  - dm
+related:
+  - messages/legacy
+  - gift-wrap/timeline
+---*/
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { SendWrappedMessage } from "applesauce-actions/actions";

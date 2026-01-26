@@ -1,3 +1,14 @@
+/*---
+title: App Handlers
+description: Browse and interact with Nostr app handlers (NIP-89) to discover applications and their supported event kinds
+tags:
+  - feed
+  - handlers
+  - nip-89
+  - apps
+related:
+  - feed/relay-timeline
+---*/
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   createHandlerLink,

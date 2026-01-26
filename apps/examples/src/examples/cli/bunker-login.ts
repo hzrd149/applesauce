@@ -1,3 +1,21 @@
+/*---
+title: Bunker Login (CLI)
+description: Interactive CLI example for authenticating with Nostr Connect (NIP-46) using bunker URIs or QR codes
+tags:
+  - cli
+  - signers
+  - nostr-connect
+  - bunker
+dependencies:
+  - applesauce-core
+  - applesauce-loaders
+  - applesauce-relay
+  - applesauce-signers
+  - nostr-tools
+related:
+  - signers/bunker
+  - signers/bunker-provider
+---*/
 import { defined, EventStore, firstValueFrom, simpleTimeout } from "applesauce-core";
 import { EventFactory } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";

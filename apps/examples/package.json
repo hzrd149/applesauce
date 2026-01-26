@@ -19,6 +19,7 @@
     "@nostr-dev-kit/ndk": "^2.18.1",
     "@nostrify/nostrify": "jsr:^0.46.5",
     "@snort/worker-relay": "^1.5.0",
+    "@std/front-matter": "jsr:^1.0.9",
     "@tursodatabase/database-wasm": "^0.2.2",
     "@types/qrcode-terminal": "^0.12.2",
     "@xterm/xterm": "^5.5.0",

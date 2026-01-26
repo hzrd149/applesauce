@@ -1,3 +1,13 @@
+/*---
+title: Mutes
+description: Manage your mute list to hide content from specific users
+tags:
+  - casting
+  - mutes
+  - moderation
+related:
+  - casting/contacts
+---*/
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import {

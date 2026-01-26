@@ -1,3 +1,12 @@
+/*---
+title: Primal Search
+description: Search for users and content using Primal search API
+tags:
+  - search
+  - primal
+related:
+  - search/vertex
+---*/
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, ProfileContent } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";

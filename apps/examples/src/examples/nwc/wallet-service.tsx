@@ -1,3 +1,14 @@
+/*---
+title: Wallet Service
+description: Implement a wallet service that handles Nostr Wallet Connect requests and payments
+tags:
+  - nwc
+  - wallet
+  - service
+  - server
+related:
+  - nwc/simple-wallet
+---*/
 import { parseBolt11 } from "applesauce-common/helpers";
 import { unixNow } from "applesauce-core/helpers";
 import { useObservableEagerState } from "applesauce-react/hooks";

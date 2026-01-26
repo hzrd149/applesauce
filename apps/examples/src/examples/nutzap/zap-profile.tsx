@@ -1,3 +1,21 @@
+/*---
+title: Nutzap Profile
+description: Display nutzap information on user profiles with mint details
+tags:
+  - nutzap
+  - profile
+  - lightning
+dependencies:
+  - @cashu/cashu-ts
+  - applesauce-actions
+  - applesauce-common
+  - applesauce-core
+  - applesauce-react
+  - applesauce-relay
+related:
+  - nutzap/zap-feed
+  - nutzap/contacts
+---*/
 import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
 import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";

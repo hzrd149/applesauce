@@ -1,3 +1,20 @@
+/*---
+title: Using NDK
+description: Integrate NDK (Nostr Development Kit) with Applesauce loaders for event loading
+tags:
+  - loader
+  - ndk
+  - integration
+dependencies:
+  - @nostr-dev-kit/ndk
+  - applesauce-common
+  - applesauce-core
+  - applesauce-loaders
+  - applesauce-react
+related:
+  - loader/using-nostrify
+  - loader/using-nostr-tools
+---*/
 import NDK from "@nostr-dev-kit/ndk";
 import { castEvent, Note } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";

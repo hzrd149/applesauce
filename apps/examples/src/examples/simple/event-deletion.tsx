@@ -1,3 +1,13 @@
+/*---
+title: Event Deletion
+description: Delete notes and events from the Nostr network using deletion events
+tags:
+  - deletion
+  - events
+  - timeline
+related:
+  - simple/profile-editor
+---*/
 import { ProxySigner } from "applesauce-accounts";
 import { castUser, Note, User } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";

@@ -1,3 +1,13 @@
+/*---
+title: Password Signer
+description: Create and manage signers with password-based encryption for private keys
+tags:
+  - signers
+  - password
+  - encryption
+related:
+  - signers/accounts
+---*/
 import { PasswordSigner } from "applesauce-signers";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { useCallback, useState } from "react";
