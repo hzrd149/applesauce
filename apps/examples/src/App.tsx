@@ -233,11 +233,11 @@ function ExampleView({ example }: { example?: Example }) {
         {/* Page content */}
         {mode === "preview" ? (
           CliApp ? (
-            <ErrorBoundary fallbackRender={({ error }) => <div className="text-red-500">{error.message}</div>}>
+            <ErrorBoundary fallbackRender={({ error }) => <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>}>
               <CliExample app={CliApp} />
             </ErrorBoundary>
           ) : Component ? (
-            <ErrorBoundary fallbackRender={({ error }) => <div className="text-red-500">{error.message}</div>}>
+            <ErrorBoundary fallbackRender={({ error }) => <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>}>
               <Component />
             </ErrorBoundary>
           ) : (
