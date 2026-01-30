@@ -13,9 +13,12 @@ import {
 import { MINT_RECOMMENDATION_KIND } from "../helpers/mint-recommendation.js";
 import { MintRecommendation } from "./mint-recommendation.js";
 
+/** A cast for a NIP-87 cashu mint info event */
 export class MintInfo extends EventCast<CashuMintInfoEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
-    if (!isValidCashuMintInfo(event)) throw new Error("Invalid cashu mint info event");
+    if (!isValidCashuMintInfo(event)) {
+      throw new Error("Invalid cashu mint info event");
+    }
     super(event, store);
   }
 

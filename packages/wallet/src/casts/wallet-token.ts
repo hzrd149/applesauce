@@ -13,6 +13,7 @@ import {
   WalletTokenEvent,
 } from "../helpers/tokens.js";
 
+/** A cast for a NIP-60 wallet token event */
 export class WalletToken extends EventCast<WalletTokenEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidWalletToken(event)) throw new Error("Invalid wallet token");

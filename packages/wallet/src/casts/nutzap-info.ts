@@ -8,6 +8,7 @@ import {
   NutzapInfoEvent,
 } from "../helpers/nutzap-info.js";
 
+/** A cast for a pubkey's NIP-61 nutzap info event */
 export class NutzapInfo extends EventCast<NutzapInfoEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidNutzapInfo(event)) throw new Error("Invalid nutzap info");

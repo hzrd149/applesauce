@@ -21,6 +21,7 @@ import { WalletHistory } from "./wallet-history.js";
 import { WalletToken } from "./wallet-token.js";
 import { ReceivedNutzapsModel } from "../models/nutzap.js";
 
+/** A cast for a NIP-60 wallet event */
 export class Wallet extends EventCast<WalletEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidWallet(event)) throw new Error("Invalid wallet event");
@@ -89,7 +90,10 @@ export class Wallet extends EventCast<WalletEvent> {
   }
   get backups$() {
     return this.$$ref("backups$", (store) =>
-      store.timeline({ kinds: [WALLET_BACKUP_KIND], authors: [this.event.pubkey] }),
+      store.timeline({
+        kinds: [WALLET_BACKUP_KIND],
+        authors: [this.event.pubkey],
+      }),
     );
   }
   get received$() {
