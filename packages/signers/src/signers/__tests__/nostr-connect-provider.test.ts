@@ -396,3 +396,175 @@ describe("initiated by client", () => {
     );
   });
 });
+
+describe("ping", () => {
+  it("should respond with pong", async () => {
+    const client = new FakeUser();
+    const signer = new FakeUser();
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer,
+      relays: ["wss://relay.nsec.app"],
+    });
+
+    await provider.start();
+
+    // Connect first
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.Connect,
+            params: [signer.pubkey],
+          } satisfies NostrConnectRequest<NostrConnectMethod.Connect>),
+        ),
+      }),
+    );
+
+    // Send ping
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.Ping,
+            params: [],
+          } satisfies NostrConnectRequest<NostrConnectMethod.Ping>),
+        ),
+      }),
+    );
+
+    // Should send pong response (2 calls: connect response + ping response)
+    expect(pool.publish).toHaveBeenCalledTimes(2);
+    expect(pool.publish).toHaveBeenLastCalledWith(
+      ["wss://relay.nsec.app"],
+      expect.objectContaining({
+        kind: kinds.NostrConnect,
+        pubkey: signer.pubkey,
+        tags: [["p", client.pubkey]],
+      }),
+    );
+  });
+});
+
+describe("switch_relays", () => {
+  it("should return null by default", async () => {
+    const client = new FakeUser();
+    const signer = new FakeUser();
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer,
+      relays: ["wss://relay.nsec.app"],
+    });
+
+    await provider.start();
+
+    // Connect first
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.Connect,
+            params: [signer.pubkey],
+          } satisfies NostrConnectRequest<NostrConnectMethod.Connect>),
+        ),
+      }),
+    );
+
+    // Send switch_relays request
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.SwitchRelays,
+            params: [],
+          } satisfies NostrConnectRequest<NostrConnectMethod.SwitchRelays>),
+        ),
+      }),
+    );
+
+    // Should send null response (no change)
+    // 2 calls: connect response + switch_relays response
+    expect(pool.publish).toHaveBeenCalledTimes(2);
+    expect(pool.publish).toHaveBeenLastCalledWith(
+      ["wss://relay.nsec.app"],
+      expect.objectContaining({
+        kind: kinds.NostrConnect,
+        pubkey: signer.pubkey,
+        tags: [["p", client.pubkey]],
+      }),
+    );
+  });
+
+  it("should return new relays from callback", async () => {
+    const client = new FakeUser();
+    const signer = new FakeUser();
+    const newRelays = ["wss://relay1.example.com", "wss://relay2.example.com"];
+    const onSwitchRelays = vi.fn().mockResolvedValue(newRelays);
+
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer,
+      relays: ["wss://relay.nsec.app"],
+      onSwitchRelays,
+    });
+
+    await provider.start();
+
+    // Connect first
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.Connect,
+            params: [signer.pubkey],
+          } satisfies NostrConnectRequest<NostrConnectMethod.Connect>),
+        ),
+      }),
+    );
+
+    // Send switch_relays request
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.SwitchRelays,
+            params: [],
+          } satisfies NostrConnectRequest<NostrConnectMethod.SwitchRelays>),
+        ),
+      }),
+    );
+
+    // Should have called the callback
+    expect(onSwitchRelays).toHaveBeenCalledWith(client.pubkey);
+
+    // Should send new relays response
+    // 2 calls: connect response + switch_relays response
+    expect(pool.publish).toHaveBeenCalledTimes(2);
+    expect(pool.publish).toHaveBeenLastCalledWith(
+      ["wss://relay.nsec.app"],
+      expect.objectContaining({
+        kind: kinds.NostrConnect,
+        pubkey: signer.pubkey,
+        tags: [["p", client.pubkey]],
+      }),
+    );
+  });
+});
