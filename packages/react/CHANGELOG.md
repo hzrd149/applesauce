@@ -1,5 +1,11 @@
 # applesauce-react
 
+## 5.1.0
+
+### Minor Changes
+
+- d10d67b: Add support for padding arguments to `useAction().run()`
+
 ## 5.0.1
 
 ### Patch Changes

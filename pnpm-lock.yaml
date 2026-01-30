@@ -112,34 +112,34 @@ importers:
         specifier: ^5.5.0
         version: 5.5.0
       applesauce-accounts:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../../packages/accounts
       applesauce-actions:
         specifier: ^5.0.0
         version: link:../../packages/actions
       applesauce-common:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../../packages/common
       applesauce-content:
         specifier: ^5.0.0
         version: link:../../packages/content
       applesauce-core:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../../packages/core
       applesauce-extra:
         specifier: ^5.0.0
         version: link:../../packages/extra
       applesauce-loaders:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../../packages/loaders
       applesauce-react:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../../packages/react
       applesauce-relay:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../../packages/relay
       applesauce-signers:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../../packages/signers
       applesauce-sqlite:
         specifier: ^5.0.0
@@ -287,31 +287,31 @@ importers:
         specifier: ^5.2.9
         version: 5.2.9
       applesauce-accounts:
-        specifier: ^5
+        specifier: ^5.1.0
         version: link:../../packages/accounts
       applesauce-actions:
         specifier: ^5
         version: link:../../packages/actions
       applesauce-common:
-        specifier: ^5
+        specifier: ^5.1.0
         version: link:../../packages/common
       applesauce-content:
         specifier: ^5
         version: link:../../packages/content
       applesauce-core:
-        specifier: ^5
+        specifier: ^5.1.0
         version: link:../../packages/core
       applesauce-loaders:
-        specifier: ^5
+        specifier: ^5.1.0
         version: link:../../packages/loaders
       applesauce-react:
-        specifier: ^5
+        specifier: ^5.1.0
         version: link:../../packages/react
       applesauce-relay:
-        specifier: ^5
+        specifier: ^5.1.0
         version: link:../../packages/relay
       applesauce-signers:
-        specifier: ^5
+        specifier: ^5.1.0
         version: link:../../packages/signers
       applesauce-wallet:
         specifier: ^5
@@ -372,10 +372,10 @@ importers:
   packages/accounts:
     dependencies:
       applesauce-core:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../core
       applesauce-signers:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../signers
       nanoid:
         specifier: ^5.1.5
@@ -434,7 +434,7 @@ importers:
         specifier: ^1.2.4
         version: 1.2.6
       applesauce-core:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../core
       hash-sum:
         specifier: ^2.0.0
@@ -604,7 +604,7 @@ importers:
   packages/loaders:
     dependencies:
       applesauce-core:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -617,7 +617,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       applesauce-signers:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../signers
       rimraf:
         specifier: ^6.0.1
@@ -664,7 +664,7 @@ importers:
         version: 4.0.16(@types/node@22.19.3)(@vitest/browser-playwright@4.0.16)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
     optionalDependencies:
       applesauce-accounts:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../accounts
       applesauce-actions:
         specifier: ^5.0.0
@@ -673,7 +673,7 @@ importers:
         specifier: ^5.0.0
         version: link:../content
       applesauce-core:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../core
 
   packages/relay:
@@ -682,7 +682,7 @@ importers:
         specifier: ^1.7.1
         version: 1.8.0
       applesauce-core:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -698,7 +698,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       applesauce-signers:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../signers
       rimraf:
         specifier: ^6.0.1
@@ -719,7 +719,7 @@ importers:
         specifier: ^1.7.1
         version: 1.7.2
       applesauce-core:
-        specifier: ^5.0.0
+        specifier: ^5.1.0
         version: link:../core
       debug:
         specifier: ^4.4.0

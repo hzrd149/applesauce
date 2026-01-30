@@ -1,5 +1,14 @@
 # applesauce-accounts
 
+## 5.1.0
+
+### Patch Changes
+
+- 12c906a: Fix required typescript generic types on accounts
+- Updated dependencies
+  - applesauce-core@5.1.0
+  - applesauce-signers@5.1.0
+
 ## 5.0.0
 
 ### Minor Changes

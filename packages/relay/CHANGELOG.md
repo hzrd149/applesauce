@@ -1,5 +1,21 @@
 # applesauce-relay
 
+## 5.1.0
+
+### Minor Changes
+
+- bb832f6: Add `Relay.authentcation$` observable for exposing the sent authentication event
+- bb832f6: Add `Relay.status$` observable for easily subscribing to all status observables
+- bb832f6: Add `Relay.authenticatedAs$` observable for accessing pubkey of authentication event
+- f58a5c0: Add `enablePing` to `Relay` to monitor for unresponsive connections
+- bb832f6: Add `Relay.reqs$` observable for tracking active REQs
+- bb832f6: Add `RelayGroup` and `RelayPool` `status$` observables for relay statuses
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.1.0
+
 ## 5.0.0
 
 ### Major Changes

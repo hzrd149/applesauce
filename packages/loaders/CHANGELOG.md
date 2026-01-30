@@ -1,5 +1,16 @@
 # applesauce-loaders
 
+## 5.1.0
+
+### Minor Changes
+
+- 7f53801: Add `loadAsyncMap` method for parallel async loading
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.1.0
+
 ## 5.0.2
 
 ### Patch Changes
