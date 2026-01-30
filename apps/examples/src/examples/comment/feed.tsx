@@ -1,3 +1,14 @@
+/*---
+title: Comment Feed
+description: Display a feed of comments with threading and reply functionality
+tags:
+  - comment
+  - feed
+  - replies
+related:
+  - content/articles
+  - casting/thread
+---*/
 import { Comment } from "applesauce-common/casts";
 import { COMMENT_KIND, CommentPointer } from "applesauce-common/helpers";
 import { CommentsModel } from "applesauce-common/models";

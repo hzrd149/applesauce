@@ -1,3 +1,16 @@
+/*---
+title: Worker Relay Database
+description: Use Web Workers with worker-relay for database operations in the background
+tags:
+  - database
+  - worker
+  - relay
+dependencies:
+  - @snort/worker-relay
+  - applesauce-core
+related:
+  - cache/worker-relay
+---*/
 import { WorkerRelayInterface } from "@snort/worker-relay";
 import { AsyncEventStore, BehaviorSubject, IAsyncEventDatabase } from "applesauce-core";
 import {

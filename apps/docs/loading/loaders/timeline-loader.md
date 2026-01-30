@@ -1,3 +1,7 @@
+---
+description: Load timeline events from multiple relays with pagination, deduplication, and automatic relay selection
+---
+
 # Timeline Loader
 
 The Timeline Loader is designed for fetching paginated Nostr events in chronological order. It maintains state between calls, allowing you to efficiently load timeline events in blocks until you reach a specific timestamp or exhaust available events.

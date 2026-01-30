@@ -1,3 +1,7 @@
+---
+description: Native Bun SQLite database for high-performance event storage
+---
+
 # Bun SQLite Implementation
 
 The Bun SQLite implementation uses Bun's built-in `bun:sqlite` module, providing optimal performance for Bun runtime applications.

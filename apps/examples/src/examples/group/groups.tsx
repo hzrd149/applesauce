@@ -1,3 +1,13 @@
+/*---
+title: Groups
+description: Browse and manage Nostr groups with metadata and member information
+tags:
+  - group
+  - groups
+related:
+  - group/communikeys
+  - group/relay-chat
+---*/
 import { encodeGroupPointer, getGroupPointerFromMetadata } from "applesauce-common/helpers";
 import { mapEventsToTimeline } from "applesauce-core";
 import { getTagValue, NostrEvent } from "applesauce-core/helpers";

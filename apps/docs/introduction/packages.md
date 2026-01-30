@@ -1,3 +1,7 @@
+---
+description: Complete list of Applesauce packages with installation instructions for core, relay, signer, wallet, and React integrations
+---
+
 # Applesauce packages
 
 ## Core

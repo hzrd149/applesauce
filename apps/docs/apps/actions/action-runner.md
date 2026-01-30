@@ -1,3 +1,7 @@
+---
+description: Central orchestrator for running actions that combines EventStore, EventFactory, and publishing for unified action execution
+---
+
 # Action Hub
 
 The [ActionRunner](https://applesauce.build/typedoc/classes/applesauce-actions.ActionRunner.html) class is the central orchestrator for running actions in your Nostr application. It combines an event store, event factory, and optional publish method into a unified interface, making it simple to execute actions that read from your local event store and publish new events to the Nostr network.
@@ -211,46 +215,113 @@ await hub.exec(FollowUser, userPubkey).forEach(async (event) => {
 });
 ```
 
+## Integration
+
+### With RelayPool
+
+ActionRunner publishes events through the RelayPool. The typical pattern is to bind the pool's publish method:
+
+```ts
+import { RelayPool } from "applesauce-relay";
+import { ActionRunner } from "applesauce-actions";
+
+const pool = new RelayPool();
+const defaultRelays = ["wss://relay.damus.io", "wss://nos.lol"];
+
+const publish = async (event, relays) => {
+  await pool.publish(relays || defaultRelays, event);
+};
+
+const actions = new ActionRunner(eventStore, factory, publish);
+```
+
+Actions determine which relays to use based on NIP-65 (outbox/inbox model). The publish function receives the relay list from the action.
+
+### With EventStore
+
+ActionRunner integrates deeply with EventStore for both reading and writing:
+
+```ts
+import { EventStore } from "applesauce-core";
+
+const eventStore = new EventStore();
+const actions = new ActionRunner(eventStore, factory, publish);
+
+// Actions read from the event store
+await actions.run(FollowUser, pubkey);
+// The FollowUser action checks if the user is already followed
+
+// Events are automatically saved to the store (when saveToStore = true)
+// After publishing completes, the event is added to eventStore
+```
+
+### With AccountManager
+
+```ts
+const factory = new EventFactory({ signer: manager.signer });
+const actions = new ActionRunner(eventStore, factory, publish);
+
+manager.setActive(account1);
+await actions.run(CreateProfile, { name: "Alice" });
+```
+
+### With Event Loaders
+
+```ts
+createEventLoaderForStore(eventStore, pool, {
+  lookupRelays: ["wss://purplepag.es/"],
+});
+
+await actions.run(CreateComment, parentEvent, "Great post!");
+// CreateComment loads parent author's mailboxes automatically
+```
+
 ## Best Practices
 
 ### Single ActionRunner Instance
 
-Create one ActionRunner instance per application and reuse it:
-
 ```ts
 // app.ts
-export const actionHub = new ActionRunner(eventStore, eventFactory, publish);
-
-// other-file.ts
-import { actionHub } from "./app.js";
-await actionHub.run(FollowUser, pubkey);
+export const actions = new ActionRunner(eventStore, factory, publish);
 ```
 
-### Conditional Event Store Saving
+### Relay Selection Strategy
 
-For actions that generate many events, you might want to control when events are saved to the store:
+Let actions determine relay selection based on NIP-65:
 
 ```ts
-import { toArray, lastValueFrom } from "rxjs";
+await actions.run(SendLegacyMessage, recipientPubkey, "Hello"); // Uses recipient's inboxes
+await actions.run(UpdateProfile, { name: "Alice" }); // Uses your outboxes
+```
 
-const hub = new ActionRunner(eventStore, eventFactory, publish);
+### Error Handling
 
-// Disable automatic saving for bulk operations
-hub.saveToStore = false;
+```ts
+try {
+  await actions.run(FollowUser, pubkey);
+} catch (err) {
+  if (err.message.includes("already following")) {
+    console.log("Already following");
+  } else {
+    showErrorToUser(err.message);
+  }
+}
+```
 
-// Run bulk action
-const events = await lastValueFrom(hub.exec(BulkFollowUsers, userList).pipe(toArray()));
+### Bulk Operations
 
-// Manually save only successful events
+```ts
+actions.saveToStore = false; // Disable auto-save
+
+const events = await lastValueFrom(actions.exec(BulkFollow, users).pipe(toArray()));
 for (const event of events) {
   try {
-    await relayPool.publish(defaultRelays, event);
-    await eventStore.add(event); // Save only after successful publish
+    await pool.publish(relays, event);
+    eventStore.add(event);
   } catch (err) {
-    console.error("Skipping failed event:", err);
+    console.error("Failed:", err);
   }
 }
 
-// Re-enable automatic saving
-hub.saveToStore = true;
+actions.saveToStore = true; // Re-enable
 ```

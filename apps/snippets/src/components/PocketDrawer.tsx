@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { nip19 } from "nostr-tools";
 import { getSeenRelays } from "applesauce-core/helpers";
+import { CodeSnippet, castEvent } from "applesauce-common/casts";
+import { eventStore } from "../services/event-store";
 import { type PocketItem } from "../hooks/usePocket";
 import { AddressIcon, CheckIcon, ClearIcon, CloseIcon, CopyIcon, DownloadIcon, PocketIcon } from "./icons";
 
@@ -81,7 +83,7 @@ export default function PocketDrawer({
     <>
       {/* Pocket Drawer */}
       <div
-        className={`fixed bottom-0 left-0 right-0 bg-base-100 border-t border-base-300 shadow-2xl transition-transform duration-300 ease-in-out z-40 ${
+        className={`fixed bottom-0 left-0 right-0 bg-base-100 border-t border-base-300 transition-transform duration-300 ease-in-out z-40 ${
           isExpanded ? "translate-y-0" : "translate-y-full"
         }`}
       >
@@ -183,52 +185,102 @@ export default function PocketDrawer({
             ) : (
               <div className="grid gap-3">
                 {pocketItems.map((item) => {
-                  const language = item.event.tags.find((t) => t[0] === "l")?.[1] || "typescript";
+                  try {
+                    const snippet = castEvent(item.event, CodeSnippet, eventStore);
+                    const language = snippet.language;
 
-                  return (
-                    <div key={item.event.id} className="bg-base-200 rounded-lg p-3 hover:bg-base-300 transition-colors">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-medium truncate" title={item.name}>
-                              {item.name}
-                            </h4>
-                            <span className={`badge badge-xs ${getLanguageBadgeColor(language)}`}>{language}</span>
+                    return (
+                      <div key={snippet.id} className="bg-base-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-medium truncate" title={snippet.name}>
+                                {snippet.name}
+                              </h4>
+                              <span className={`badge badge-xs ${getLanguageBadgeColor(language)}`}>{language}</span>
+                            </div>
+
+                            {snippet.description && (
+                              <p className="text-sm opacity-70 truncate mb-1" title={snippet.description}>
+                                {snippet.description}
+                              </p>
+                            )}
+
+                            <div className="flex items-center gap-3 text-xs opacity-60">
+                              <span>{snippet.event.content.split("\n").length} lines</span>
+                              <span>{snippet.event.content.length} chars</span>
+                              <span>Added {formatAddedDate(item.addedAt)}</span>
+                            </div>
                           </div>
 
-                          {item.description && (
-                            <p className="text-sm opacity-70 truncate mb-1" title={item.description}>
-                              {item.description}
-                            </p>
-                          )}
+                          <div className="join">
+                            <button
+                              onClick={() => onViewItem(snippet.id)}
+                              className="btn btn-sm join-item"
+                              title="View snippet"
+                            >
+                              View code
+                            </button>
 
-                          <div className="flex items-center gap-3 text-xs opacity-60">
-                            <span>{item.event.content.split("\n").length} lines</span>
-                            <span>{item.event.content.length} chars</span>
-                            <span>Added {formatAddedDate(item.addedAt)}</span>
+                            <button
+                              onClick={() => onRemoveItem(snippet.id)}
+                              className="btn btn-sm btn-soft btn-error btn-square join-item"
+                              title="Remove from pocket"
+                            >
+                              <CloseIcon />
+                            </button>
                           </div>
-                        </div>
-
-                        <div className="join">
-                          <button
-                            onClick={() => onViewItem(item.event.id)}
-                            className="btn btn-sm join-item"
-                            title="View snippet"
-                          >
-                            View code
-                          </button>
-
-                          <button
-                            onClick={() => onRemoveItem(item.event.id)}
-                            className="btn btn-sm btn-soft btn-error btn-square join-item"
-                            title="Remove from pocket"
-                          >
-                            <CloseIcon />
-                          </button>
                         </div>
                       </div>
-                    </div>
-                  );
+                    );
+                  } catch (err) {
+                    // Fallback if casting fails
+                    const language = item.event.tags.find((t) => t[0] === "l")?.[1] || "typescript";
+                    return (
+                      <div key={item.event.id} className="bg-base-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-medium truncate" title={item.name}>
+                                {item.name}
+                              </h4>
+                              <span className={`badge badge-xs ${getLanguageBadgeColor(language)}`}>{language}</span>
+                            </div>
+
+                            {item.description && (
+                              <p className="text-sm opacity-70 truncate mb-1" title={item.description}>
+                                {item.description}
+                              </p>
+                            )}
+
+                            <div className="flex items-center gap-3 text-xs opacity-60">
+                              <span>{item.event.content.split("\n").length} lines</span>
+                              <span>{item.event.content.length} chars</span>
+                              <span>Added {formatAddedDate(item.addedAt)}</span>
+                            </div>
+                          </div>
+
+                          <div className="join">
+                            <button
+                              onClick={() => onViewItem(item.event.id)}
+                              className="btn btn-sm join-item"
+                              title="View snippet"
+                            >
+                              View code
+                            </button>
+
+                            <button
+                              onClick={() => onRemoveItem(item.event.id)}
+                              className="btn btn-sm btn-soft btn-error btn-square join-item"
+                              title="Remove from pocket"
+                            >
+                              <CloseIcon />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
                 })}
               </div>
             )}
@@ -240,7 +292,7 @@ export default function PocketDrawer({
       <div className="fixed bottom-4 right-4 z-50">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className={`btn btn-circle btn-lg shadow-lg transition-all duration-300  ${
+          className={`btn btn-circle btn-lg transition-all duration-300  ${
             pocketItems.length > 0 ? "btn-primary" : "btn-ghost"
           } ${isExpanded ? "btn-outline" : ""}`}
           title={`${isExpanded ? "Close" : "Open"} pocket (${pocketItems.length} items)`}

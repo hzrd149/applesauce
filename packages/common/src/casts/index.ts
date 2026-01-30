@@ -1,6 +1,7 @@
 export * from "./article.js";
 export * from "./bookmarks.js";
 export * from "./cast.js";
+export * from "./code-snippet.js";
 export * from "./comment.js";
 export * from "./groups.js";
 export * from "./mutes.js";
@@ -16,3 +17,4 @@ export * from "./stream.js";
 export * from "./torrent.js";
 export * from "./user.js";
 export * from "./zap.js";
+export * from "./zap-goal.js";

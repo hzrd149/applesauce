@@ -41,3 +41,7 @@ yarn-error.log*
 
 # typedoc
 /docs
+
+# Local RAG
+lancedb
+models

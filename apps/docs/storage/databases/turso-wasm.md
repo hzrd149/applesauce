@@ -1,3 +1,7 @@
+---
+description: Turso WASM database for event storage in browser environments
+---
+
 # Turso WASM Implementation
 
 The Turso WASM implementation uses the `@tursodatabase/database-wasm` library, providing SQLite functionality in web browsers and other WASM-compatible environments.

@@ -16,11 +16,18 @@ export default defineConfig({
       provider: "local",
     },
 
+    outline: {
+      level: [2, 3],
+    },
+
     nav: [
       { text: "Home", link: "/" },
       { text: "Examples", link: "https://applesauce.build/examples" },
       { text: "Snippets", link: "https://applesauce.build/snippets" },
-      { text: "Reference", link: "https://applesauce.build/typedoc/index.html" },
+      {
+        text: "Reference",
+        link: "https://applesauce.build/typedoc/index.html",
+      },
     ],
 
     sidebar: [
@@ -80,18 +87,33 @@ export default defineConfig({
             link: "/creating/signers",
             items: [
               { text: "Signers", link: "/creating/signers/signers" },
-              { text: "Nostr Connect", link: "/creating/signers/nostr-connect" },
-              { text: "Bunker Provider", link: "/creating/signers/bunker-provider" },
+              {
+                text: "Nostr Connect",
+                link: "/creating/signers/nostr-connect",
+              },
+              {
+                text: "Bunker Provider",
+                link: "/creating/signers/bunker-provider",
+              },
             ],
           },
           {
             text: "Factory",
             link: "/creating/factory",
             items: [
-              { text: "Event Factory", link: "/creating/factory/event-factory" },
+              {
+                text: "Event Factory",
+                link: "/creating/factory/event-factory",
+              },
               { text: "Blueprints", link: "/creating/factory/blueprints" },
-              { text: "Event Operations", link: "/creating/factory/event-operations" },
-              { text: "Tag Operations", link: "/creating/factory/tag-operations" },
+              {
+                text: "Event Operations",
+                link: "/creating/factory/event-operations",
+              },
+              {
+                text: "Tag Operations",
+                link: "/creating/factory/tag-operations",
+              },
             ],
           },
         ],
@@ -115,13 +137,25 @@ export default defineConfig({
               { text: "Actions", link: "/apps/actions/actions" },
             ],
           },
-          { text: "React", link: "/apps/react", items: [{ text: "use$", link: "/apps/react/use-observable" }] },
+          {
+            text: "React",
+            link: "/apps/react",
+            items: [{ text: "use$", link: "/apps/react/use-observable" }],
+          },
+          {
+            text: "Casting",
+            items: [
+              { text: "Events", link: "/apps/casting/events" },
+              { text: "Users", link: "/apps/casting/users" },
+            ],
+          },
           {
             text: "Content",
             link: "/apps/content",
             items: [
               { text: "Text", link: "/apps/content/text" },
               { text: "Markdown", link: "/apps/content/markdown" },
+              { text: "React", link: "/apps/content/react" },
             ],
           },
           {
@@ -146,6 +180,7 @@ export default defineConfig({
             link: "/money/wallet/package",
             items: [
               { text: "Actions", link: "/money/wallet/actions" },
+              { text: "Casts", link: "/money/wallet/casts" },
               { text: "Models", link: "/money/wallet/models" },
             ],
           },
@@ -160,14 +195,20 @@ export default defineConfig({
             link: "/storage/caching",
             items: [
               { text: "nostr-idb", link: "/storage/caching/nostr-idb" },
-              { text: "window.nostrdb.js", link: "/storage/caching/window.nostrdb.js" },
+              {
+                text: "window.nostrdb.js",
+                link: "/storage/caching/window.nostrdb",
+              },
             ],
           },
           {
             text: "Databases",
             link: "/storage/databases",
             items: [
-              { text: "Better SQLite3", link: "/storage/databases/better-sqlite3" },
+              {
+                text: "Better SQLite3",
+                link: "/storage/databases/better-sqlite3",
+              },
               { text: "Native SQLite", link: "/storage/databases/native" },
               { text: "Bun SQLite", link: "/storage/databases/bun" },
               { text: "LibSQL", link: "/storage/databases/libsql" },
@@ -187,6 +228,11 @@ export default defineConfig({
       },
     ],
 
-    socialLinks: [{ icon: "github", link: "https://github.com/hzrd149/applesauce" }],
+    socialLinks: [
+      {
+        icon: "github",
+        link: "https://github.com/hzrd149/applesauce",
+      },
+    ],
   },
 });

@@ -2,7 +2,20 @@ import type { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter, isFilterEqual } from "applesauce-core/helpers/filter";
 import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
 import { normalizeURL } from "applesauce-core/helpers/url";
-import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, Subject } from "rxjs";
+import {
+  BehaviorSubject,
+  distinctUntilChanged,
+  isObservable,
+  map,
+  merge,
+  Observable,
+  of,
+  scan,
+  shareReplay,
+  startWith,
+  Subject,
+  switchMap,
+} from "rxjs";
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
 import { Relay, SyncDirection, type RelayOptions } from "./relay.js";
@@ -15,6 +28,7 @@ import type {
   NegentropyReadStore,
   NegentropySyncStore,
   PublishResponse,
+  RelayStatus,
   SubscriptionResponse,
 } from "./types.js";
 
@@ -24,6 +38,9 @@ export class RelayPool implements IPool {
     return this.relays$.value;
   }
 
+  /** Observable of relay status for all relays in the pool */
+  status$: Observable<Record<string, RelayStatus>>;
+
   /** Whether to ignore relays that are ready=false */
   ignoreOffline = true;
 
@@ -32,7 +49,29 @@ export class RelayPool implements IPool {
   /** A signal when a relay is removed */
   remove$ = new Subject<IRelay>();
 
-  constructor(public options?: RelayOptions) {}
+  constructor(public options?: RelayOptions) {
+    // Initialize status$ observable
+    this.status$ = this.relays$.pipe(
+      // Convert Map to array of relays
+      map((relayMap) => Array.from(relayMap.values())),
+      // Use same pattern as RelayGroup
+      switchMap((relays) => {
+        if (relays.length === 0) return of({} as Record<string, RelayStatus>);
+
+        return merge(...relays.map((relay) => relay.status$)).pipe(
+          scan(
+            (acc, status) => ({
+              ...acc,
+              [status.url]: status,
+            }),
+            {} as Record<string, RelayStatus>,
+          ),
+          startWith({} as Record<string, RelayStatus>),
+        );
+      }),
+      shareReplay(1),
+    );
+  }
 
   /** Get or create a new relay connection */
   relay(url: string): Relay {

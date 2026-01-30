@@ -1,3 +1,15 @@
+/*---
+title: Gift Wrap Generator
+description: Generate gift-wrapped events (NIP-59) with encryption for private sharing
+tags:
+  - gift-wrap
+  - generator
+  - encryption
+  - nip-59
+related:
+  - gift-wrap/dashboard
+  - gift-wrap/timeline
+---*/
 import { randomBytes } from "@noble/hashes/utils";
 import { defined, EventStore } from "applesauce-core";
 import { normalizeToPubkey } from "applesauce-core/helpers";

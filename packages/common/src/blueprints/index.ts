@@ -21,6 +21,7 @@ export * from "./share.js";
 export * from "./stream.js";
 export * from "./torrent.js";
 export * from "./wrapped-message.js";
+export * from "./zap-goal.js";
 
 // Register the common blueprints with the event factory
 import "../register.js";

@@ -34,4 +34,5 @@ export * from "./torrent.js";
 export * from "./user-status.js";
 export * from "./wrapped-messages.js";
 export * from "./zap.js";
+export * from "./zap-goal.js";
 export * from "./relay-list.js";

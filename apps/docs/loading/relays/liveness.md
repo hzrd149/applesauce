@@ -1,3 +1,7 @@
+---
+description: Track relay connection health and liveness with automatic reconnection and status monitoring
+---
+
 # Relay Liveness Tracking
 
 The `RelayLiveness` class helps you track recent connection states of Nostr relays to enable blacklisting of offline or dead relays. It monitors recent connection failures, implements backoff strategies, and provides observables to filter out unhealthy relays from your applications.

@@ -1,3 +1,14 @@
+/*---
+title: Relay Selection
+description: Select optimal relays for publishing events based on mailbox discovery
+tags:
+  - outbox
+  - relay
+  - selection
+related:
+  - outbox/social-feed
+  - relay-discovery/contacts-relays
+---*/
 import { defined, EventStore, includeMailboxes } from "applesauce-core";
 import { getDisplayName, getProfilePicture, groupPubkeysByRelay, selectOptimalRelays } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -10,6 +21,7 @@ import { Fragment, useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, firstValueFrom, shareReplay, switchMap, throttleTime } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
+import { RelayStatusModal } from "../../components/relay-status-popover";
 
 // The pubkey of the user to view
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -656,6 +668,10 @@ export default function RelaySelectionExample() {
   const pubkey = useObservableEagerState(pubkey$);
   const [maxConnections, setMaxConnections] = useState(30);
   const [maxRelaysPerUser, setMaxRelaysPerUser] = useState(8);
+  const [showRelayStatus, setShowRelayStatus] = useState(false);
+
+  // Get pool status for the button
+  const poolStatuses = use$(pool.status$);
 
   // Create an observable for adding relays to the contacts
   const outboxes$ = useMemo(
@@ -692,6 +708,9 @@ export default function RelaySelectionExample() {
     <div className="min-h-screen p-4">
       {/* User Preview Modal */}
       <UserPreviewModal selection={selection} />
+
+      {/* Relay Status Modal */}
+      <RelayStatusModal pool={pool} isOpen={showRelayStatus} onClose={() => setShowRelayStatus(false)} />
 
       {/* Header */}
       <div className="mb-6">
@@ -753,8 +772,25 @@ export default function RelaySelectionExample() {
         <table className="table w-full">
           <thead>
             <tr>
-              <th colSpan={3} className="text-left text-lg">
-                Relays ({sortedRelays.length})
+              <th colSpan={3} className="text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-lg">Relays ({sortedRelays.length})</span>
+                  <button className="btn btn-sm btn-ghost gap-2" onClick={() => setShowRelayStatus(true)}>
+                    <span className="text-xs">Status:</span>
+                    <div className="badge badge-sm badge-primary">
+                      {Object.values(poolStatuses || {}).filter((s) => s.ready).length}/
+                      {Object.keys(poolStatuses || {}).length}
+                    </div>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </th>
             </tr>
           </thead>

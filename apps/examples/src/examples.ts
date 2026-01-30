@@ -1,3 +1,5 @@
+import { parseFrontmatter, type ExampleFrontmatter } from "./frontmatter";
+
 const modules = import.meta.glob("./examples/**/*.(tsx|ts)");
 const sources = import.meta.glob("./examples/**/*.(tsx|ts)", { query: "?raw" }) as Record<
   string,
@@ -10,17 +12,43 @@ export type Example = {
   path: string;
   load: () => Promise<unknown>;
   source: () => Promise<string>;
+  frontmatter?: ExampleFrontmatter;
 };
 
 const examples: Example[] = [];
 
 for (const [path, load] of Object.entries(modules)) {
-  const source = async () => (await sources[path]()).default as string;
-
   const id = path.replace(/^.*\/examples\/|\.(tsx|ts)$/g, "");
-  const name = id.replace(/\//g, " / ").replace(/[-_]/g, " ");
+  const generatedName = id.replace(/\//g, " / ").replace(/[-_]/g, " ");
 
-  examples.push({ id, name, path, load, source });
+  // Cache for frontmatter and cleaned source
+  let frontmatterCache: ExampleFrontmatter | undefined;
+  let cleanedSourceCache: string | undefined;
+
+  const source = async () => {
+    if (cleanedSourceCache !== undefined) {
+      return cleanedSourceCache;
+    }
+
+    const rawSource = (await sources[path]()).default as string;
+    const { frontmatter, code } = parseFrontmatter(rawSource);
+
+    frontmatterCache = frontmatter || undefined;
+    cleanedSourceCache = code;
+
+    return cleanedSourceCache;
+  };
+
+  examples.push({
+    id,
+    name: generatedName, // Always use the formatted path for navigation
+    path,
+    load: load as () => Promise<unknown>,
+    source,
+    get frontmatter() {
+      return frontmatterCache;
+    },
+  });
 }
 
 export default examples;

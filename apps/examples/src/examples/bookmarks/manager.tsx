@@ -1,3 +1,12 @@
+/*---
+title: Bookmarks Manager
+description: Create, manage, and organize bookmarks for notes and events
+tags:
+  - bookmarks
+  - manager
+related:
+  - feed/relay-timeline
+---*/
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { BookmarkEvent, UnbookmarkEvent } from "applesauce-actions/actions";

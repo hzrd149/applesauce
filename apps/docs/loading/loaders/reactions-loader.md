@@ -1,3 +1,7 @@
+---
+description: Load reaction events for a target event with automatic relay routing and filtering
+---
+
 # Reactions Loader
 
 The Reactions Loader is a specialized loader for fetching [NIP-25](https://github.com/nostr-protocol/nips/blob/master/25.md) reaction events for any given Nostr event. It is built on top of the [Tag Value Loader](./tag-value-loader.md) and automatically handles both regular events and addressable events.

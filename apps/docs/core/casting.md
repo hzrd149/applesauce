@@ -1,3 +1,7 @@
+---
+description: Transform raw Nostr events into typed classes with synchronous properties and reactive observable interfaces using the casting system
+---
+
 # Casting System
 
 The casting system transforms raw Nostr events into easy-to-use classes with both synchronous properties and reactive observable interfaces. This makes it simple to work with Nostr data in web UIs, where you need to read event data and subscribe to updates.

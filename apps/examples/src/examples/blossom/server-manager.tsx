@@ -1,3 +1,13 @@
+/*---
+title: Blossom Server Manager
+description: Manage Blossom servers for decentralized content hosting
+tags:
+  - blossom
+  - server
+  - management
+related:
+  - feed/relay-timeline
+---*/
 import { ActionRunner } from "applesauce-actions";
 import { AddBlossomServer, RemoveBlossomServer, SetDefaultBlossomServer } from "applesauce-actions/actions/blossom";
 import { EventStore } from "applesauce-core";

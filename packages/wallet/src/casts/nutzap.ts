@@ -14,6 +14,7 @@ import {
   NutzapEvent,
 } from "../helpers/nutzap.js";
 
+/** A cast for a NIP-61 nutzap event */
 export class Nutzap extends EventCast<NutzapEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidNutzap(event)) throw new Error("Invalid nutzap");

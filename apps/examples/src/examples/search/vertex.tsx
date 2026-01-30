@@ -1,3 +1,12 @@
+/*---
+title: Vertex Search
+description: Search for users and content using Vertex search API
+tags:
+  - search
+  - vertex
+related:
+  - search/primal
+---*/
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, ProfileContent } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";

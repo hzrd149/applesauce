@@ -1,3 +1,7 @@
+---
+description: Event loaders package for fetching Nostr data from relays with automatic caching and relay discovery
+---
+
 # Loaders
 
 The `applesauce-loaders` package provides a set of pre-built loaders for common methods of loading events from a relay pool.

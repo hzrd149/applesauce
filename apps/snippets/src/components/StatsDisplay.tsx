@@ -6,7 +6,7 @@ interface StatsDisplayProps {
 
 export default function StatsDisplay({ totalSnippets, uniqueLanguages, relayCount }: StatsDisplayProps) {
   return (
-    <div className="stats shadow mb-6 w-full">
+    <div className="stats mb-6 w-full">
       <div className="stat">
         <div className="stat-figure text-primary">
           <svg

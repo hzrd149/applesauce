@@ -39,14 +39,14 @@ export default function RelaySelector({ relays, onAddRelay, onRemoveRelay }: Rel
           <path d="m7,10l5,5l5,-5z" />
         </svg>
       </div>
-      <div tabIndex={0} className="dropdown-content z-[1] shadow bg-base-100 w-80">
+      <div tabIndex={0} className="dropdown-content z-[1] bg-base-100 w-80">
         <div>
           <h3 className="font-semibold text-sm mb-2 px-2 py-1">Manage Relays</h3>
 
           {/* Relay List */}
           <div className="max-h-48 overflow-y-auto overscroll-contain">
             {relays.map((relay) => (
-              <div key={relay} className="flex items-center justify-between px-2 py-2 hover:bg-base-200">
+              <div key={relay} className="flex items-center justify-between px-2 py-2">
                 <div className="avatar">
                   <div className="w-6 h-6 rounded-full mr-2">
                     <img
@@ -63,7 +63,7 @@ export default function RelaySelector({ relays, onAddRelay, onRemoveRelay }: Rel
                 </div>
                 {relays.length > 1 && (
                   <button
-                    className="btn btn-ghost btn-xs text-error hover:bg-error/10"
+                    className="btn btn-ghost btn-xs text-error"
                     onClick={(e) => {
                       e.stopPropagation();
                       onRemoveRelay(relay);

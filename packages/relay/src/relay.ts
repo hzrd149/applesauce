@@ -1,5 +1,5 @@
 import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { ensureHttpURL } from "applesauce-core/helpers/url";
 import { mapEventsToStore, simpleTimeout } from "applesauce-core/observable";
@@ -58,6 +58,7 @@ import {
   PublishOptions,
   PublishResponse,
   RelayInformation,
+  RelayStatus,
   RequestOptions,
   SubscriptionOptions,
   SubscriptionResponse,
@@ -105,6 +106,13 @@ export type RelayOptions = {
   pingFrequency?: number;
   /** How long to wait for EOSE response in milliseconds (default 20000) */
   pingTimeout?: number;
+  /** Policy for handling unresponsive connections (default: reconnect) */
+  onUnresponsive?: (info: {
+    url: string;
+    lastMessageAt: number;
+    now: number;
+    attempts: number;
+  }) => "reconnect" | "close" | "ignore";
   /** Default retry config for subscription() method */
   subscriptionRetry?: RetryConfig;
   /** Default retry config for request() method */
@@ -134,6 +142,10 @@ export class Relay implements IRelay {
   challenge$ = new BehaviorSubject<string | null>(null);
   /** Boolean authentication state (will be false if auth failed) */
   authenticated$: Observable<boolean>;
+  /** The pubkey of the authenticated user, or null if not authenticated */
+  authenticatedAs$: Observable<string | null>;
+  /** The authentication event sent to the relay */
+  authentication$ = new BehaviorSubject<KnownEvent<kinds.ClientAuth> | null>(null);
   /** The response to the last AUTH message sent to the relay */
   authenticationResponse$ = new BehaviorSubject<PublishResponse | null>(null);
   /** The notices from the relay */
@@ -154,6 +166,13 @@ export class Relay implements IRelay {
 
   /** Timestamp of the last message received from the relay */
   private lastMessageReceivedAt = 0;
+
+  /** Observable of the timestamp when last message was received */
+  private _lastMessageAt$ = new BehaviorSubject<number>(0);
+  lastMessageAt$ = this._lastMessageAt$.asObservable();
+
+  /** Observable of relay status (connection, authentication, and ready state) */
+  status$: Observable<RelayStatus>;
 
   /** An observable that emits the NIP-11 information document for the relay */
   information$: Observable<RelayInformation | null>;
@@ -177,6 +196,9 @@ export class Relay implements IRelay {
   /** An observable that emits when underlying websocket is closing due to unsubscription */
   closing$ = new Subject<void>();
 
+  /** Tracks active req() operations by subscription ID */
+  reqs$ = new BehaviorSubject<Record<string, Filter[]>>({});
+
   // sync state
   get ready() {
     return this._ready$.value;
@@ -193,11 +215,23 @@ export class Relay implements IRelay {
   get authenticated() {
     return this.authenticationResponse?.ok === true;
   }
+  get authentication() {
+    return this.authentication$.value;
+  }
+  get authenticatedAs() {
+    return this.authenticated ? (this.authentication?.pubkey ?? null) : null;
+  }
   get authenticationResponse() {
     return this.authenticationResponse$.value;
   }
   get information() {
     return this._nip11;
+  }
+  get lastMessageAt() {
+    return this._lastMessageAt$.value;
+  }
+  get reqs() {
+    return this.reqs$.value;
   }
 
   /** If an EOSE message is not seen in this time, emit one locally (default 10s)  */
@@ -224,6 +258,9 @@ export class Relay implements IRelay {
   /** Default retry config for publish() method */
   protected publishRetry: RetryConfig;
 
+  /** Policy hook for unresponsive connections */
+  protected onUnresponsive?: RelayOptions["onUnresponsive"];
+
   // Subjects that track if an "auth-required" message has been received for REQ or EVENT
   protected receivedAuthRequiredForReq = new BehaviorSubject(false);
   protected receivedAuthRequiredForEvent = new BehaviorSubject(false);
@@ -236,6 +273,7 @@ export class Relay implements IRelay {
     // NOTE: only update the values if they need to be changed, otherwise this will cause an infinite loop
     if (this.challenge$.value !== null) this.challenge$.next(null);
     if (this.authenticationResponse$.value) this.authenticationResponse$.next(null);
+    if (this.authentication$.value !== null) this.authentication$.next(null);
     if (this.notices$.value.length > 0) this.notices$.next([]);
 
     if (this.receivedAuthRequiredForReq.value) this.receivedAuthRequiredForReq.next(false);
@@ -259,6 +297,7 @@ export class Relay implements IRelay {
     if (opts?.enablePing !== undefined) this.enablePing = opts.enablePing;
     if (opts?.pingFrequency !== undefined) this.pingFrequency = opts.pingFrequency;
     if (opts?.pingTimeout !== undefined) this.pingTimeout = opts.pingTimeout;
+    if (opts?.onUnresponsive !== undefined) this.onUnresponsive = opts.onUnresponsive;
 
     // Set retry configs
     this.subscriptionReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.subscriptionRetry ?? {}) };
@@ -267,6 +306,11 @@ export class Relay implements IRelay {
 
     // Create an observable that tracks boolean authentication state
     this.authenticated$ = this.authenticationResponse$.pipe(map((response) => response?.ok === true));
+
+    // Create an observable that returns the pubkey when authenticated, or null otherwise
+    this.authenticatedAs$ = combineLatest([this.authenticated$, this.authentication$]).pipe(
+      map(([authenticated, authEvent]) => (authenticated && authEvent ? authEvent.pubkey : null)),
+    );
 
     /** Use the static method to create a new reconnect method for this relay */
     this.reconnectTimer = Relay.createReconnectTimer(url);
@@ -346,6 +390,17 @@ export class Relay implements IRelay {
       )
       .subscribe(() => this.log("Auth required for EVENT"));
 
+    // Create status$ observable by combining state observables
+    this.status$ = combineLatest({
+      url: of(this.url),
+      connected: this.connected$,
+      authenticated: this.authenticated$,
+      authenticatedAs: this.authenticatedAs$,
+      ready: this._ready$,
+      authRequiredForRead: this.authRequiredForRead$,
+      authRequiredForPublish: this.authRequiredForPublish$,
+    }).pipe(shareReplay(1));
+
     // Update the notices state
     const listenForNotice = this.socket.pipe(
       // listen for NOTICE messages
@@ -375,7 +430,9 @@ export class Relay implements IRelay {
     const listenForAllMessages = this.socket.pipe(
       tap((message) => {
         // Update the last message received at timestamp
-        this.lastMessageReceivedAt = Date.now();
+        const now = Date.now();
+        this.lastMessageReceivedAt = now;
+        this._lastMessageAt$.next(now);
 
         // Pass to the message subject
         allMessagesSubject.next(message);
@@ -405,21 +462,49 @@ export class Relay implements IRelay {
             // Skip ping if we have received a message in the last pingFrequency milliseconds
             if (Date.now() - this.lastMessageReceivedAt < this.pingFrequency) return NEVER;
 
-            // Send a ping request
-            this.send(["REQ", "ping:" + nanoid(), PING_FILTER]);
+            // Generate unique ping ID for correlation
+            const pingId = "ping:" + nanoid();
+            this.send(["REQ", pingId, PING_FILTER]);
 
-            // Wait for the EOSE response
+            // Wait for the EOSE or CLOSED response for this specific ping
             return this.message$.pipe(
-              // Complete after first message received
+              // Wait specifically for response to OUR ping
+              filter((m) => Array.isArray(m) && (m[0] === "EOSE" || m[0] === "CLOSED") && m[1] === pingId),
+              // Complete after first matching message received
               take(1),
               // Add timeout to detect unresponsive connections
               timeout({
                 first: this.pingTimeout,
                 with: () => {
-                  console.warn(`Relay connection has become unresponsive: ${this.url}`);
+                  // Determine action via policy hook (default: reconnect)
+                  const now = Date.now();
+                  const action =
+                    this.onUnresponsive?.({
+                      url: this.url,
+                      lastMessageAt: this.lastMessageReceivedAt,
+                      now,
+                      attempts: this.attempts$.value,
+                    }) ?? "reconnect";
+
+                  const err = new Error(`Relay ping timeout after ${this.pingTimeout}ms`);
+
+                  if (action === "reconnect") {
+                    this.log("Relay connection has become unresponsive, triggering reconnect");
+                    this.startReconnectTimer(err);
+                  } else if (action === "close") {
+                    this.log("Relay connection has become unresponsive, closing connection");
+                    this.error$.next(err);
+                    this.socket.complete();
+                  } else {
+                    // "ignore" - log but don't take action
+                    this.log("Relay connection has become unresponsive (ignoring per policy)");
+                  }
+
                   return NEVER;
                 },
               }),
+              // Close the ping subscription when done
+              finalize(() => this.send(["CLOSE", pingId])),
             );
           }),
         );
@@ -540,9 +625,18 @@ export class Relay implements IRelay {
     // Create an observable that controls sending the filters and closing the REQ
     const control = input.pipe(
       // Send the filters when they change
-      tap((filters) => this.socket.next(["REQ", id, ...filters])),
+      tap((filters) => {
+        this.socket.next(["REQ", id, ...filters]);
+        // Add to tracking when REQ is sent
+        this.reqs$.next({ ...this.reqs$.value, [id]: filters });
+      }),
       // Send the CLOSE message when unsubscribed or input completes
-      finalize(() => this.socket.next(["CLOSE", id])),
+      finalize(() => {
+        this.socket.next(["CLOSE", id]);
+        // Remove from tracking when REQ closes
+        const { [id]: _, ...rest } = this.reqs$.value;
+        this.reqs$.next(rest);
+      }),
       // Once filters have been sent, switch to listening for messages
       switchMap(() => messages),
     );
@@ -657,6 +751,9 @@ export class Relay implements IRelay {
 
   /** send and AUTH message */
   auth(event: NostrEvent): Promise<PublishResponse> {
+    // Save the authentication event
+    this.authentication$.next(event as KnownEvent<kinds.ClientAuth>);
+
     return lastValueFrom(
       this.event(event, "AUTH").pipe(
         // update authenticated

@@ -45,6 +45,8 @@ export interface ProviderAuthorization {
   onNip44Encrypt?: (pubkey: string, plaintext: string, client: string) => boolean | Promise<boolean>;
   /** A method used to accept or reject `nip44_decrypt` requests */
   onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
+  /** A method called when a client requests relay switching. Return new relay list or null if no change */
+  onSwitchRelays?: (client: string) => string[] | null | Promise<string[] | null>;
 }
 
 export type NostrConnectProviderOptions = ProviderAuthorization &
@@ -119,6 +121,8 @@ export class NostrConnectProvider implements ProviderAuthorization {
   public onNip44Encrypt?: (pubkey: string, plaintext: string, client: string) => boolean | Promise<boolean>;
   /** A method used to accept or reject `nip44_decrypt` requests */
   public onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
+  /** A method called when a client requests relay switching. Return new relay list or null if no change */
+  public onSwitchRelays?: (client: string) => string[] | null | Promise<string[] | null>;
 
   constructor(options: NostrConnectProviderOptions) {
     this.relays = options.relays;
@@ -144,6 +148,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     if (options.onNip04Decrypt) this.onNip04Decrypt = options.onNip04Decrypt;
     if (options.onNip44Encrypt) this.onNip44Encrypt = options.onNip44Encrypt;
     if (options.onNip44Decrypt) this.onNip44Decrypt = options.onNip44Decrypt;
+    if (options.onSwitchRelays) this.onSwitchRelays = options.onSwitchRelays;
   }
 
   /** The currently active REQ subscription */
@@ -291,6 +296,9 @@ export class NostrConnectProvider implements ProviderAuthorization {
           case NostrConnectMethod.SignEvent:
             result = await this.handleSignEvent(request.params as [string]);
             break;
+          case NostrConnectMethod.Ping:
+            result = "pong";
+            break;
           case NostrConnectMethod.Nip04Encrypt:
             result = await this.handleNip04Encrypt(request.params as [string, string]);
             break;
@@ -302,6 +310,9 @@ export class NostrConnectProvider implements ProviderAuthorization {
             break;
           case NostrConnectMethod.Nip44Decrypt:
             result = await this.handleNip44Decrypt(request.params as [string, string]);
+            break;
+          case NostrConnectMethod.SwitchRelays:
+            result = await this.handleSwitchRelays();
             break;
           default:
             throw new Error(`Unsupported method: ${request.method}`);
@@ -469,6 +480,17 @@ export class NostrConnectProvider implements ProviderAuthorization {
     }
 
     return await this.upstream.nip44.decrypt(pubkey, ciphertext);
+  }
+
+  /** Handle switch relays request */
+  protected async handleSwitchRelays(): Promise<ConnectResponseResults[NostrConnectMethod.SwitchRelays]> {
+    // If callback is provided, use it to get the new relay list
+    if (this.onSwitchRelays) {
+      return await this.onSwitchRelays(this.client!);
+    }
+
+    // Default: return current relays (no change)
+    return null;
   }
 
   /**

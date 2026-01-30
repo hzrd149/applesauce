@@ -1,3 +1,7 @@
+---
+description: Pre-built actions for common Nostr operations like following users, muting, bookmarking, and managing lists
+---
+
 # Actions
 
 The `applesauce-actions` package provides pre-built actions for common actions a nostr app might need.

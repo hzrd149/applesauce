@@ -54,7 +54,7 @@ export class PasswordAccount<Metadata extends unknown = unknown> extends BaseAcc
     });
   }
 
-  static fromJSON<Metadata extends unknown>(
+  static fromJSON<Metadata extends unknown = unknown>(
     json: SerializedAccount<PasswordAccountSignerData, Metadata>,
   ): PasswordAccount<Metadata> {
     const signer = new PasswordSigner();
@@ -64,7 +64,10 @@ export class PasswordAccount<Metadata extends unknown = unknown> extends BaseAcc
   }
 
   /** Creates a new PasswordAccount from a ncryptsec string */
-  static fromNcryptsec<Metadata extends unknown>(pubkey: string, ncryptsec: string): PasswordAccount<Metadata> {
+  static fromNcryptsec<Metadata extends unknown = unknown>(
+    pubkey: string,
+    ncryptsec: string,
+  ): PasswordAccount<Metadata> {
     const signer = new PasswordSigner();
     signer.ncryptsec = ncryptsec;
     return new PasswordAccount(pubkey, signer);

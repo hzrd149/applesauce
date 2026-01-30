@@ -13,6 +13,7 @@ import {
   WalletHistoryEvent,
 } from "../helpers/history.js";
 
+/** A cast for a NIP-60 wallet history event */
 export class WalletHistory extends EventCast<WalletHistoryEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidWalletHistory(event)) throw new Error("Invalid wallet history");

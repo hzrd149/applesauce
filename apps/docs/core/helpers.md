@@ -1,3 +1,7 @@
+---
+description: Helper methods for working with Nostr events, profiles, zaps, pointers, tags, and more
+---
+
 # Helpers
 
 `applesauce-core` and other packages export helper methods for working with events.

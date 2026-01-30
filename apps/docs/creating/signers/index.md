@@ -1,3 +1,7 @@
+---
+description: NIP-07 compatible signers for various platforms including browser extensions, hardware devices, and Nostr Connect
+---
+
 # Signers
 
 All signers in the `applesauce-signers` package are compatible with the [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md) API

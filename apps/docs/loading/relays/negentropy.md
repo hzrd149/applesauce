@@ -1,3 +1,7 @@
+---
+description: Efficient event synchronization using the Negentropy protocol for set reconciliation
+---
+
 # Negentropy Sync
 
 Negentropy sync is an efficient way to synchronize events between your local event store and Nostr relays using [NIP-77](https://github.com/nostr-protocol/nips/blob/master/77.md). Instead of downloading all events and checking for duplicates, negentropy compares event IDs and timestamps to identify which events need to be transferred, dramatically reducing bandwidth usage.

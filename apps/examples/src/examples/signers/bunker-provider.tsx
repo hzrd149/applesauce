@@ -1,3 +1,15 @@
+/*---
+title: Bunker Provider
+description: Create a Nostr Connect provider that allows remote signers to authenticate and sign events
+tags:
+  - signers
+  - bunker
+  - provider
+  - nostr-connect
+related:
+  - signers/bunker
+  - cli/bunker-login
+---*/
 import { bytesToHex } from "@noble/hashes/utils";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner, NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";

@@ -1,3 +1,4 @@
+export { default as AccountDisplay } from "./AccountDisplay";
 export { default as AddItemForm } from "./AddItemForm";
 export { default as AlertMessage } from "./AlertMessage";
 export { default as CodeEditorPanel } from "./CodeEditorPanel";
@@ -12,4 +13,7 @@ export { default as PublishView } from "../views/PublishView";
 export { default as RelaySection } from "./RelaySection";
 export { default as RelaySelector } from "./RelaySelector";
 export { default as SectionHeader } from "./SectionHeader";
+export { default as SignInView } from "../views/SignInView";
 export { default as TagBadgeList } from "./TagBadgeList";
+export { default as UserAvatar } from "./UserAvatar";
+export { default as UserName } from "./UserName";

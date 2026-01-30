@@ -1,3 +1,14 @@
+/*---
+title: Calendar Timeline
+description: Display a timeline of calendar events with filtering and details
+tags:
+  - calendar
+  - timeline
+  - events
+related:
+  - calendar/create-event
+  - calendar/map
+---*/
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import {

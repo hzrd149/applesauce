@@ -7,7 +7,7 @@ interface RelaySectionProps {
   loadingOutbox: boolean;
   relayFields: FieldArrayWithId<any, "relays", "id">[];
   control: Control<any>;
-  onLogin: () => void;
+  onLogin?: () => void;
   appendRelay: (relay: { value: string }) => void;
   removeRelay: (index: number) => void;
   handleSubmit: UseFormHandleSubmit<any>;
@@ -29,10 +29,12 @@ export default function RelaySection({
   if (!isLoggedIn) {
     return (
       <div className="bg-base-200 p-3 rounded-lg text-center">
-        <p className="text-base opacity-70 mb-2">Login to see your outbox relays</p>
-        <button onClick={onLogin} className="btn btn-primary btn-sm" disabled={loadingOutbox}>
-          {loadingOutbox ? "Connecting..." : "Login with Extension"}
-        </button>
+        <p className="text-base opacity-70 mb-2">Activate an account to see your outbox relays</p>
+        {onLogin && (
+          <button onClick={onLogin} className="btn btn-primary btn-sm" disabled={loadingOutbox}>
+            {loadingOutbox ? "Connecting..." : "Login with Extension"}
+          </button>
+        )}
       </div>
     );
   }

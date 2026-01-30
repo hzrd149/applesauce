@@ -1,3 +1,7 @@
+---
+description: Load events by tag values with support for NIP-65 relay routing
+---
+
 # Tag Value Loader
 
 The Tag Value Loader is a specialized loader for fetching Nostr events by their tag values. It provides an efficient way to batch and deduplicate requests, cache results, and handle relay hints.

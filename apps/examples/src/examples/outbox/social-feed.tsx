@@ -1,3 +1,14 @@
+/*---
+title: Social Feed
+description: Display a social feed using outbox relays for optimal event distribution
+tags:
+  - outbox
+  - feed
+  - social
+related:
+  - outbox/relay-selection
+  - feed/relay-timeline
+---*/
 import {
   defined,
   EventStore,

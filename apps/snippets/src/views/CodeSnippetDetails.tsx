@@ -1,32 +1,42 @@
-import type { IEventStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
+import { castEvent, CodeSnippet } from "applesauce-common/casts";
+import { blueprint, EventFactory } from "applesauce-core";
+import { normalizeToEventPointer } from "applesauce-core/helpers/pointers";
+import { relaySet } from "applesauce-core/helpers/relays";
+import { setContent } from "applesauce-core/operations/content";
+import { setDeleteEvents } from "applesauce-core/operations/delete";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents } from "applesauce-relay";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
-import "highlight.js/styles/github-dark.css";
-import { nip19, type NostrEvent } from "nostr-tools";
-import { useEffect, useRef, useState } from "react";
-import { map, NEVER } from "rxjs";
-
+import type { NostrEvent } from "nostr-tools";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { map } from "rxjs";
+import { AccountDisplay, UserAvatar, UserName } from "../components";
 import { usePocketContext } from "../contexts/PocketContext";
-import { COMMENT_KIND, eventStore, pool } from "../helpers/nostr";
+import { COMMENT_KIND } from "../helpers/nostr";
+import { accounts } from "../services/accounts";
+import { eventStore } from "../services/event-store";
+import { pool } from "../services/pool";
+
+import "highlight.js/styles/github-dark.css";
 
 // Register languages
 hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("javascript", javascript);
 
-// Helper function to get tag value
-function getTagValue(event: NostrEvent, tagName: string): string | null {
-  const tag = event.tags.find((t) => t[0] === tagName);
-  return tag ? tag[1] : null;
+// Factory will be created with active account's signer in the component
+
+// Blueprint for creating deletion events following NIP-09
+function DeleteBlueprint(events: (string | NostrEvent)[], reason?: string) {
+  return blueprint(5, reason ? setContent(reason) : undefined, setDeleteEvents(events));
 }
 
 interface CodeSnippetDetailsProps {
   eventId: string;
   relays: string[];
   onBack: () => void;
+  onNavigateToSignin: () => void;
 }
 
 interface Comment {
@@ -35,46 +45,54 @@ interface Comment {
   replies?: Comment[];
 }
 
-export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnippetDetailsProps) {
+export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigateToSignin }: CodeSnippetDetailsProps) {
   const codeRef = useRef<HTMLElement>(null);
+  const deleteModalRef = useRef<HTMLDialogElement>(null);
   const [event, setEvent] = useState<NostrEvent | null>(null);
+  const [snippet, setSnippet] = useState<CodeSnippet | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(true);
 
+  // Delete state
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+
   // Get pocket functionality from context
   const { addToPocket, isInPocket } = usePocketContext();
 
-  // Get profile for the author
-  const profile = use$(() => {
-    if (!event) return NEVER;
-    const relaysForProfile = Array.from(getSeenRelays(event) || []);
-    return eventStore.profile({ pubkey: event.pubkey, relays: relaysForProfile });
-  }, [event?.pubkey]);
+  // Get active account from accounts service
+  const activeAccount = use$(() => accounts.active$, []);
+
+  // Derive current user pubkey from active account
+  const currentUserPubkey = activeAccount?.pubkey || null;
+
+  // Create factory with active account's signer
+  const factory = useMemo(() => {
+    if (!activeAccount) return null;
+    return new EventFactory({ signer: activeAccount });
+  }, [activeAccount]);
 
   // Load the main event
   useEffect(() => {
     const loadEvent = async () => {
       setLoading(true);
       try {
-        let actualEventId = eventId;
-
-        // Check if it's an nevent
-        if (eventId.startsWith("nevent1")) {
-          try {
-            const decoded = nip19.decode(eventId);
-            if (decoded.type === "nevent") {
-              actualEventId = decoded.data.id;
-            }
-          } catch (err) {
-            console.error("Failed to decode nevent:", err);
-          }
+        // Normalize the eventId to an EventPointer
+        const pointer = normalizeToEventPointer(eventId);
+        if (!pointer) {
+          setLoading(false);
+          return;
         }
+
+        // Merge relays from the pointer with provided relays
+        const mergedRelays = relaySet(pointer.relays, relays);
 
         // Subscribe to get the event
         const subscription = pool
-          .subscription(relays, {
-            ids: [actualEventId],
+          .subscription(mergedRelays, {
+            ids: [pointer.id],
           })
           .pipe(
             onlyEvents(),
@@ -84,6 +102,14 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
         const sub = subscription.subscribe({
           next: (foundEvent) => {
             setEvent(foundEvent);
+            // Cast event to CodeSnippet - only set snippet if casting succeeds
+            try {
+              const casted = castEvent(foundEvent, CodeSnippet, eventStore);
+              setSnippet(casted);
+            } catch (err) {
+              console.error("Failed to cast event:", err);
+              // Don't set snippet if casting fails
+            }
             setLoading(false);
           },
         });
@@ -169,9 +195,9 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
   }, [event]);
 
   const copyCode = async () => {
-    if (!event) return;
+    if (!snippet) return;
     try {
-      await navigator.clipboard.writeText(event.content);
+      await navigator.clipboard.writeText(snippet.event.content);
       // TODO: Add toast notification
     } catch (err) {
       console.error("Failed to copy code:", err);
@@ -179,10 +205,51 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
   };
 
   const handleAddToPocket = () => {
-    if (event && !isInPocket(event.id)) {
-      addToPocket(event);
+    if (snippet && !isInPocket(snippet.id)) {
+      addToPocket(snippet.event);
     }
   };
+
+  const openDeleteModal = () => {
+    setDeleteError(null);
+    setDeleteReason("");
+    deleteModalRef.current?.showModal();
+  };
+
+  const handleDelete = async () => {
+    if (!snippet || !activeAccount || !factory) return;
+
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+
+      // Verify ownership
+      if (activeAccount.pubkey !== snippet.author.pubkey) {
+        throw new Error("You can only delete your own snippets");
+      }
+
+      // Create & sign deletion event
+      const draft = await factory.create(DeleteBlueprint, [snippet.event], deleteReason.trim() || undefined);
+      const signed = await factory.sign(draft);
+
+      // Publish to all relays
+      await pool.publish(relays, signed);
+
+      // Remove from local store
+      eventStore.remove(snippet.id);
+
+      // Close modal and navigate back
+      deleteModalRef.current?.close();
+      onBack();
+    } catch (error) {
+      console.error("Failed to delete:", error);
+      setDeleteError(error instanceof Error ? error.message : "Failed to delete snippet");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const isUserAuthor = currentUserPubkey && snippet && currentUserPubkey === snippet.author.pubkey;
 
   if (loading) {
     return (
@@ -195,7 +262,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
     );
   }
 
-  if (!event) {
+  if (!snippet) {
     return (
       <div className="min-h-screen bg-base-200 flex items-center justify-center">
         <div className="text-center">
@@ -209,22 +276,22 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
     );
   }
 
-  // Extract metadata from tags
-  const language = getTagValue(event, "l") || "typescript";
-  const name = getTagValue(event, "name") || "unknown.txt";
-  const description = getTagValue(event, "description") || "";
-  const runtime = getTagValue(event, "runtime") || "";
-  const license = getTagValue(event, "license") || "";
+  // Extract metadata from cast
+  const language = snippet.language;
+  const name = snippet.name;
+  const description = snippet.description || "";
+  const runtime = snippet.runtime || "";
+  const license = snippet.license || "";
 
   // Format creation date
-  const createdDate = new Date(event.created_at * 1000);
+  const createdDate = snippet.createdAt;
 
   return (
     <div className="min-h-screen bg-base-200">
       {/* Header */}
-      <div className="navbar bg-base-100 shadow-sm sticky top-0 z-50">
+      <div className="navbar bg-base-100 sticky top-0 z-50">
         <div className="navbar-start">
-          <button className="btn btn-ghost btn-sm" onClick={onBack}>
+          <button className="btn btn-ghost" onClick={onBack}>
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
@@ -243,12 +310,12 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
         <div className="navbar-end">
           <div className="flex gap-2">
             <button
-              className={`btn btn-sm ${isInPocket(event.id) ? "btn-success" : "btn-ghost"}`}
+              className={`btn ${isInPocket(snippet.id) ? "btn-success" : "btn-ghost"}`}
               onClick={handleAddToPocket}
-              disabled={isInPocket(event.id)}
-              title={isInPocket(event.id) ? "Already in pocket" : "Add to pocket"}
+              disabled={isInPocket(snippet.id)}
+              title={isInPocket(snippet.id) ? "Already in pocket" : "Add to pocket"}
             >
-              {isInPocket(event.id) ? (
+              {isInPocket(snippet.id) ? (
                 <>
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -269,7 +336,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
                 </>
               )}
             </button>
-            <button className="btn btn-primary btn-sm" onClick={copyCode}>
+            <button className="btn btn-primary" onClick={copyCode}>
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -280,6 +347,33 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
               </svg>
               Copy
             </button>
+
+            {/* Three-dot menu dropdown */}
+            <div className="dropdown dropdown-end">
+              <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
+                </svg>
+              </div>
+              <ul tabIndex={0} className="dropdown-content z-1 menu p-2 bg-base-100 rounded-box w-52">
+                {isUserAuthor && (
+                  <li>
+                    <a onClick={openDeleteModal} className="text-error">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                      Delete Snippet
+                    </a>
+                  </li>
+                )}
+              </ul>
+            </div>
+            <AccountDisplay onNavigateToSignin={onNavigateToSignin} />
           </div>
         </div>
       </div>
@@ -289,17 +383,11 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
         {/* Author and Description */}
         <div className="mb-6">
           <div className="flex items-center gap-4 mb-4">
-            <div className="avatar">
-              <div className="w-12 h-12 rounded-full">
-                <img
-                  src={getProfilePicture(profile, `https://robohash.org/${event.pubkey}`)}
-                  alt={getDisplayName(profile, "anon")}
-                  className="rounded-full"
-                />
-              </div>
-            </div>
+            <UserAvatar user={snippet.author} size="lg" />
             <div>
-              <h2 className="text-lg font-semibold">{getDisplayName(profile, "Anonymous")}</h2>
+              <h2 className="text-lg font-semibold">
+                <UserName user={snippet.author} fallback="Anonymous" />
+              </h2>
               <p className="text-sm opacity-70">
                 {createdDate.toLocaleDateString()} at {createdDate.toLocaleTimeString()}
               </p>
@@ -316,13 +404,13 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
           <div className="flex flex-wrap gap-2 mb-4">
             {runtime && <span className="badge badge-ghost">{runtime}</span>}
             {license && <span className="badge badge-ghost">{license}</span>}
-            <span className="badge badge-ghost">{event.content.length} characters</span>
-            <span className="badge badge-ghost">{event.content.split("\n").length} lines</span>
+            <span className="badge badge-ghost">{snippet.event.content.length} characters</span>
+            <span className="badge badge-ghost">{snippet.event.content.split("\n").length} lines</span>
           </div>
         </div>
 
         {/* Full Code Display */}
-        <div className="bg-base-100 rounded-lg shadow-lg overflow-hidden mb-8" style={{ minHeight: "60vh" }}>
+        <div className="bg-base-100 rounded-lg overflow-hidden mb-8" style={{ minHeight: "60vh" }}>
           <div className="bg-base-300 px-4 py-2 flex justify-between items-center">
             <span className="text-sm font-mono">{name}</span>
             <span className="text-sm opacity-70">{language}</span>
@@ -330,14 +418,14 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
           <div className="p-4 overflow-x-auto" style={{ minHeight: "50vh" }}>
             <pre className="text-xs leading-relaxed">
               <code ref={codeRef} className={`language-${language.toLowerCase()}`}>
-                {event.content}
+                {snippet.event.content}
               </code>
             </pre>
           </div>
         </div>
 
         {/* Comments Section */}
-        <div className="bg-base-100 rounded-lg shadow-lg p-6">
+        <div className="bg-base-100 rounded-lg p-6">
           <h3 className="text-xl font-bold mb-6">Comments ({comments.length})</h3>
 
           {commentsLoading ? (
@@ -352,7 +440,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
           ) : (
             <div className="space-y-4">
               {comments.map((comment) => (
-                <CommentItem key={comment.event.id} comment={comment} eventStore={eventStore} />
+                <CommentItem key={comment.event.id} comment={comment} />
               ))}
             </div>
           )}
@@ -366,34 +454,86 @@ export default function CodeSnippetDetails({ eventId, relays, onBack }: CodeSnip
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <dialog ref={deleteModalRef} className="modal">
+        <div className="modal-box">
+          <h3 className="font-bold text-lg mb-4">Delete Code Snippet</h3>
+
+          <div className="mb-4">
+            <p className="mb-2">Are you sure you want to delete this snippet?</p>
+            <div className="bg-base-200 p-3 rounded-lg">
+              <p className="font-semibold text-sm">{snippet.name}</p>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="label">
+              <span className="label-text">Reason for deletion (optional)</span>
+            </label>
+            <textarea
+              className="textarea textarea-bordered w-full"
+              placeholder="e.g., outdated, contains error, etc."
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              rows={3}
+              disabled={isDeleting}
+            />
+          </div>
+
+          {deleteError && (
+            <div className="alert alert-error mb-4">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>{deleteError}</span>
+            </div>
+          )}
+
+          <div className="modal-action">
+            <button className="btn btn-ghost" onClick={() => deleteModalRef.current?.close()} disabled={isDeleting}>
+              Cancel
+            </button>
+            <button
+              className={`btn btn-error ${isDeleting ? "loading" : ""}`}
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete Snippet"}
+            </button>
+          </div>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button>close</button>
+        </form>
+      </dialog>
     </div>
   );
 }
 
 // Comment Item Component
-function CommentItem({ comment, eventStore }: { comment: Comment; eventStore: IEventStore }) {
-  // Get profile for the comment author
-  const profile = use$(() => {
-    const relaysForProfile = Array.from(getSeenRelays(comment.event) || []);
-    return eventStore.profile({ pubkey: comment.event.pubkey, relays: relaysForProfile });
-  }, [comment.event.pubkey]);
+function CommentItem({ comment }: { comment: Comment }) {
+  // Extract relay hints from comment event tags
+  const relaysForProfile = comment.event.tags
+    .filter((t) => t[0] === "relay")
+    .map((t) => t[1])
+    .filter(Boolean);
 
   const createdDate = new Date(comment.event.created_at * 1000);
 
   return (
     <div className="flex gap-3 p-4 bg-base-50 rounded-lg">
-      <div className="avatar">
-        <div className="w-8 h-8 rounded-full">
-          <img
-            src={getProfilePicture(profile, `https://robohash.org/${comment.event.pubkey}`)}
-            alt={getDisplayName(profile, "anon")}
-            className="rounded-full"
-          />
-        </div>
-      </div>
+      <UserAvatar pubkey={comment.event.pubkey} relays={relaysForProfile} size="sm" />
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1">
-          <span className="font-semibold text-sm">{getDisplayName(profile, "Anonymous")}</span>
+          <span className="font-semibold text-sm">
+            <UserName pubkey={comment.event.pubkey} relays={relaysForProfile} fallback="Anonymous" />
+          </span>
           <span className="text-xs opacity-60">
             {createdDate.toLocaleDateString()} at {createdDate.toLocaleTimeString()}
           </span>

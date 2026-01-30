@@ -1,3 +1,13 @@
+/*---
+title: Poll Timeline
+description: Display polls with voting functionality and results
+tags:
+  - poll
+  - timeline
+  - voting
+related:
+  - feed/relay-timeline
+---*/
 import {
   getPollEndsAt,
   getPollOptions,

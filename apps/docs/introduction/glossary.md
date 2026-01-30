@@ -1,3 +1,7 @@
+---
+description: Definitions of key Applesauce terminology including events, signers, models, loaders, and observables
+---
+
 # Glossary
 
 ## Event

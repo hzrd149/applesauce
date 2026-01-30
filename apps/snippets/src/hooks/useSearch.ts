@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Index } from "flexsearch";
 import type { NostrEvent } from "nostr-tools";
-
-// Helper function to get tag value
-function getTagValue(event: NostrEvent, tagName: string): string | null {
-  const tag = event.tags.find((t) => t[0] === tagName);
-  return tag ? tag[1] : null;
-}
+import { CodeSnippet, castEvent } from "applesauce-common/casts";
+import { eventStore } from "../services/event-store";
 
 // Helper function to extract searchable text from event
 function getSearchableText(event: NostrEvent): string {
-  const title = getTagValue(event, "title") || "";
-  const description = getTagValue(event, "description") || "";
-  const content = event.content || "";
-  const language = getTagValue(event, "l") || "";
+  try {
+    const snippet = castEvent(event, CodeSnippet, eventStore);
+    const name = snippet.name || "";
+    const description = snippet.description || "";
+    const content = snippet.event.content || "";
+    const language = snippet.language || "";
 
-  return `${title} ${description} ${content} ${language}`.toLowerCase();
+    return `${name} ${description} ${content} ${language}`.toLowerCase();
+  } catch (err) {
+    // Fallback if casting fails
+    return event.content?.toLowerCase() || "";
+  }
 }
 
 export function useSearch(events: NostrEvent[] | null) {

@@ -400,6 +400,35 @@ export class NostrConnectSigner implements ISigner {
     return plaintext;
   }
 
+  /** Send a ping request to the remote signer */
+  async ping() {
+    await this.requireConnection();
+    return this.makeRequest(NostrConnectMethod.Ping, []);
+  }
+
+  /**
+   * Request relay list from the remote signer
+   * @returns An array of relay URLs if the signer wants to switch relays, or null if no change
+   */
+  async switchRelays(): Promise<string[] | null> {
+    await this.requireConnection();
+    const result = await this.makeRequest(NostrConnectMethod.SwitchRelays, []);
+
+    // Update local relays if the remote signer provided new ones
+    if (result !== null && Array.isArray(result) && result.length > 0) {
+      this.log("Switching relays from", this.relays, "to", result);
+      this.relays = result;
+
+      // Restart subscription with new relays
+      if (this.listening) {
+        await this.close();
+        await this.open();
+      }
+    }
+
+    return result;
+  }
+
   /** Returns the nostrconnect:// URI for this signer */
   getNostrConnectURI(metadata?: NostrConnectAppMetadata) {
     return createNostrConnectURI({

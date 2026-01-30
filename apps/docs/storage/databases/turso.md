@@ -1,3 +1,7 @@
+---
+description: Turso cloud database integration for distributed event storage
+---
+
 # Turso Implementation
 
 The Turso implementation uses the `@tursodatabase/database` library.

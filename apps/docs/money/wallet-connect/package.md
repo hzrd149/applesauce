@@ -1,3 +1,7 @@
+---
+description: NIP-47 Nostr Wallet Connect implementation for clients and services
+---
+
 # Wallet Connect
 
 The `applesauce-wallet-connect` package provides a complete implementation of [NIP-47](https://github.com/nostr-protocol/nips/blob/master/47.md) Nostr Wallet Connect for both clients and services.

@@ -9,6 +9,7 @@ import {
   MintRecommendationEvent,
 } from "../helpers/mint-recommendation.js";
 
+/** A cast for a NIP-87 mint recommendation event */
 export class MintRecommendation extends EventCast<MintRecommendationEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidMintRecommendation(event)) throw new Error("Invalid mint recommendation event");

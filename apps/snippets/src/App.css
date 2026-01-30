@@ -101,15 +101,6 @@ pre::-webkit-scrollbar-thumb {
   border-radius: 2px;
 }
 
-/* Card hover effects */
-.card {
-  transition: all 0.2s ease-in-out;
-}
-
-.card:hover {
-  transform: translateY(-2px);
-}
-
 /* Badge styling */
 .badge {
   font-size: 0.75rem;
@@ -213,16 +204,6 @@ pre::-webkit-scrollbar-thumb {
   right: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-}
-
-/* Better button styling */
-.btn-primary {
-  transition: all 0.2s ease-in-out;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Better focus states */

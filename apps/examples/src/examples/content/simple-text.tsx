@@ -1,3 +1,14 @@
+/*---
+title: Simple Text Content
+description: Render simple text notes with basic formatting and media detection
+tags:
+  - content
+  - text
+  - rendering
+related:
+  - content/articles
+  - feed/algorithmic-relay
+---*/
 import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";

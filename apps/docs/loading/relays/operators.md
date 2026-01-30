@@ -1,3 +1,7 @@
+---
+description: RxJS operators for transforming relay messages, filtering events, and managing subscriptions
+---
+
 # RxJS Operators
 
 The `applesauce-relay` package provides several RxJS operators to help process and transform streams of events from Nostr relays.

@@ -10,7 +10,7 @@ export type NostrConnectAccountSignerData = {
 };
 
 /** An account type for NIP-46 signers */
-export class NostrConnectAccount<Metadata extends unknown> extends BaseAccount<
+export class NostrConnectAccount<Metadata extends unknown = unknown> extends BaseAccount<
   NostrConnectSigner,
   NostrConnectAccountSignerData,
   Metadata
@@ -29,7 +29,7 @@ export class NostrConnectAccount<Metadata extends unknown> extends BaseAccount<
     });
   }
 
-  static fromJSON<Metadata extends unknown>(
+  static fromJSON<Metadata extends unknown = unknown>(
     json: SerializedAccount<NostrConnectAccountSignerData, Metadata>,
   ): NostrConnectAccount<Metadata> {
     const signer = new NostrConnectSigner({

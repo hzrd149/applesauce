@@ -1,3 +1,14 @@
+/*---
+title: Nostr IDB Cache
+description: Cache events using IndexedDB with nostr-idb for offline support and faster loading
+tags:
+  - cache
+  - indexeddb
+  - offline
+related:
+  - cache/window.nostrdb
+  - feed/relay-timeline
+---*/
 import { Note } from "applesauce-common/casts";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";

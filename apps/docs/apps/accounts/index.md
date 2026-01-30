@@ -1,3 +1,7 @@
+---
+description: Account management system with support for saving, loading, and managing multiple Nostr accounts with custom metadata
+---
+
 # Accounts
 
 The `applesauce-accounts` package provides a set of classes for managing accounts and their associated signers.

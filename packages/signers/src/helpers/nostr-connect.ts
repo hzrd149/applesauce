@@ -12,10 +12,12 @@ export function isErrorResponse(response: any): response is NostrConnectErrorRes
 export enum Permission {
   GetPublicKey = "get_pubic_key",
   SignEvent = "sign_event",
+  Ping = "ping",
   Nip04Encrypt = "nip04_encrypt",
   Nip04Decrypt = "nip04_decrypt",
   Nip44Encrypt = "nip44_encrypt",
   Nip44Decrypt = "nip44_decrypt",
+  SwitchRelays = "switch_relays",
 }
 
 export enum NostrConnectMethod {
@@ -23,10 +25,12 @@ export enum NostrConnectMethod {
   CreateAccount = "create_account",
   GetPublicKey = "get_public_key",
   SignEvent = "sign_event",
+  Ping = "ping",
   Nip04Encrypt = "nip04_encrypt",
   Nip04Decrypt = "nip04_decrypt",
   Nip44Encrypt = "nip44_encrypt",
   Nip44Decrypt = "nip44_decrypt",
+  SwitchRelays = "switch_relays",
 }
 
 export type ConnectRequestParams = {
@@ -34,10 +38,12 @@ export type ConnectRequestParams = {
   [NostrConnectMethod.CreateAccount]: [string, string] | [string, string, string] | [string, string, string, string];
   [NostrConnectMethod.GetPublicKey]: [];
   [NostrConnectMethod.SignEvent]: [string];
+  [NostrConnectMethod.Ping]: [];
   [NostrConnectMethod.Nip04Encrypt]: [string, string];
   [NostrConnectMethod.Nip04Decrypt]: [string, string];
   [NostrConnectMethod.Nip44Encrypt]: [string, string];
   [NostrConnectMethod.Nip44Decrypt]: [string, string];
+  [NostrConnectMethod.SwitchRelays]: [];
 };
 
 export type ConnectResponseResults = {
@@ -45,10 +51,12 @@ export type ConnectResponseResults = {
   [NostrConnectMethod.CreateAccount]: string;
   [NostrConnectMethod.GetPublicKey]: string;
   [NostrConnectMethod.SignEvent]: string;
+  [NostrConnectMethod.Ping]: "pong";
   [NostrConnectMethod.Nip04Encrypt]: string;
   [NostrConnectMethod.Nip04Decrypt]: string;
   [NostrConnectMethod.Nip44Encrypt]: string;
   [NostrConnectMethod.Nip44Decrypt]: string;
+  [NostrConnectMethod.SwitchRelays]: string[] | null;
 };
 
 export type NostrConnectRequest<N extends NostrConnectMethod> = {

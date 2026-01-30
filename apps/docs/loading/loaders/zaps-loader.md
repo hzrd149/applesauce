@@ -1,3 +1,7 @@
+---
+description: Load zap events for a target with validation and relay routing
+---
+
 # Zaps Loader
 
 The Zaps Loader is a specialized loader for fetching [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md) zap events for any given Nostr event. It is built on top of the [Tag Value Loader](./tag-value-loader.md) and automatically handles both regular events and addressable events.

@@ -1,3 +1,15 @@
+/*---
+title: Thread
+description: Display threaded conversations with replies and zaps
+tags:
+  - casting
+  - thread
+  - replies
+  - zaps
+related:
+  - casting/contacts
+  - zap/timeline
+---*/
 import { Note, Zap } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core/event-store";

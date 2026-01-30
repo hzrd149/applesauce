@@ -1,3 +1,13 @@
+/*---
+title: Hashtags Explore
+description: Explore and browse content by hashtags with filtering
+tags:
+  - hashtags
+  - explore
+  - filtering
+related:
+  - feed/relay-timeline
+---*/
 import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { Filter, isTTag } from "applesauce-core/helpers";

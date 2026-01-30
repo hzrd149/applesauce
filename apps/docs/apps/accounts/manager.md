@@ -1,3 +1,7 @@
+---
+description: Core AccountManager class for managing multiple accounts with active account tracking and JSON persistence
+---
+
 # Account Manager
 
 The [AccountManager](https://applesauce.build/typedoc/classes/applesauce-accounts.AccountManager.html) class is the core of the library, as its name suggests its used to manage multiple accounts
@@ -92,4 +96,127 @@ manager.active$.subscribe((account) => {
   if (account) localStorage.setItem("active", account.id);
   else localStorage.clearItem("active");
 });
+```
+
+## Integration
+
+### With EventFactory
+
+The AccountManager's `signer` property automatically points to the active account:
+
+```ts
+const factory = new EventFactory({ signer: manager.signer });
+
+manager.setActive(account1);
+await factory.sign(draft); // Uses account1
+
+manager.setActive(account2);
+await factory.sign(draft); // Uses account2
+```
+
+### With ActionRunner
+
+```ts
+const factory = new EventFactory({ signer: manager.signer });
+const actions = new ActionRunner(eventStore, factory, publishFn);
+
+await actions.run(FollowUser, pubkey); // Uses active account
+
+manager.setActive(differentAccount);
+await actions.run(FollowUser, pubkey); // Automatically uses new account
+```
+
+### With ProxySigner
+
+Create custom proxy signers for specific accounts:
+
+```ts
+const specificSigner = new ProxySigner(
+  manager.accounts$.pipe(map((accounts) => accounts.find((a) => a.id === specificId)?.signer)),
+);
+```
+
+### With React
+
+```tsx
+function AccountSwitcher() {
+  const accounts = use$(manager.accounts$);
+  const active = use$(manager.active$);
+
+  return (
+    <select value={active?.id} onChange={(e) => manager.setActive(e.target.value)}>
+      {accounts.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.metadata?.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+```
+
+## Best Practices
+
+### Single Instance
+
+```ts
+// accounts.ts
+export const manager = new AccountManager();
+registerCommonAccountTypes(manager);
+```
+
+### Auto-save Pattern
+
+```ts
+// Load from storage
+await manager.fromJSON(JSON.parse(localStorage.getItem("accounts") || "[]"));
+
+// Auto-save on changes
+manager.accounts$.subscribe(() => {
+  localStorage.setItem("accounts", JSON.stringify(manager.toJSON()));
+});
+
+// Save/restore active account
+manager.active$.subscribe((account) => {
+  if (account) localStorage.setItem("active", account.id);
+});
+
+const activeId = localStorage.getItem("active");
+if (activeId) manager.setActive(activeId);
+```
+
+### Register Types Early
+
+```ts
+// ✅ Good - register before loading
+registerCommonAccountTypes(manager);
+await manager.fromJSON(saved);
+
+// ❌ Bad - types not registered
+await manager.fromJSON(saved);
+registerCommonAccountTypes(manager);
+```
+
+### Type-Safe Metadata
+
+```ts
+interface AccountMeta {
+  name: string;
+  color: string;
+}
+
+const manager = new AccountManager<AccountMeta>();
+const account = PrivateKeyAccount.generateNew<AccountMeta>();
+account.metadata = { name: "Alice", color: "#ff0000" };
+```
+
+### Error Handling
+
+```ts
+const account = manager.getAccount(accountId);
+if (!account) {
+  console.error("Account not found");
+  return;
+}
+manager.setActive(account);
 ```

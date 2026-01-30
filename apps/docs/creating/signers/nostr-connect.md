@@ -1,3 +1,7 @@
+---
+description: Nostr Connect signer implementation for remote event signing via relay communication
+---
+
 # Nostr Connect
 
 The [`NostrConnectSigner`](https://applesauce.build/typedoc/classes/applesauce-signers.NostrConnectSigner.html) is a client side implementation of a [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) remote signer.

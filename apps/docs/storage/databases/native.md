@@ -1,3 +1,7 @@
+---
+description: Platform-specific native database implementations for optimal performance
+---
+
 # Native SQLite Implementation
 
 The Native SQLite implementation uses Node.js's built-in `node:sqlite` module, providing a pure JavaScript solution without external dependencies.

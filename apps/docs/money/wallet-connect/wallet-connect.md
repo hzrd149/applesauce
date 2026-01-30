@@ -1,3 +1,7 @@
+---
+description: Nostr Wallet Connect client for making lightning payment requests via NIP-47
+---
+
 # WalletConnect Class
 
 The `WalletConnect` class provides a client-side implementation for connecting to NIP-47 wallet services. It handles all communication with wallet services, including request encryption, response decryption, and notification handling.

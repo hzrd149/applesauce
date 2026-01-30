@@ -1,3 +1,16 @@
+/*---
+title: Zap Graph
+description: Visualize zap (Lightning payment) relationships as a graph
+tags:
+  - zap
+  - graph
+  - lightning
+  - visualization
+  - chart.js
+  - react-chartjs-2
+related:
+  - zap/timeline
+---*/
 import { getZapAmount, getZapRecipient, isValidZap } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import { createTimelineLoader } from "applesauce-loaders/loaders";

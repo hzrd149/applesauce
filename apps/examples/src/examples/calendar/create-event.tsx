@@ -1,3 +1,14 @@
+/*---
+title: Create Calendar Event
+description: Create date-based and time-based calendar events (NIP-52) with location and details
+tags:
+  - calendar
+  - events
+  - nip-52
+related:
+  - calendar/timeline
+  - calendar/map
+---*/
 import { DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND } from "applesauce-common/helpers";
 import * as CalendarEventOps from "applesauce-common/operations/calendar-event";
 import { EventFactory, blueprint } from "applesauce-core";

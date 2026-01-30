@@ -1,3 +1,13 @@
+/*---
+title: Loading Reactions
+description: Display reactions (likes, reposts) with loading states and user information
+tags:
+  - feed
+  - reactions
+  - loading
+related:
+  - feed/reactions-timeline
+---*/
 import { EventStore } from "applesauce-core";
 import {
   getDisplayName,

@@ -1,3 +1,15 @@
+/*---
+title: Gift Wrap Dashboard
+description: Dashboard for managing gift-wrapped events (NIP-59) with encryption
+tags:
+  - gift-wrap
+  - dashboard
+  - encryption
+  - nip-59
+related:
+  - gift-wrap/generator
+  - gift-wrap/timeline
+---*/
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import {
   getDisplayName,
