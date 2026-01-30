@@ -1,5 +1,18 @@
 # applesauce-common
 
+## 5.1.0
+
+### Minor Changes
+
+- 3065c27: Add `CodeSnippet` cast for NIP-C0 code snippets
+- d649153: Add support for NIP-75 zap goals
+
+### Patch Changes
+
+- 86a49ce: Fix `User` chainable observables not synchronously emitting values
+- Updated dependencies
+  - applesauce-core@5.1.0
+
 ## 5.0.0
 
 ### Major Changes

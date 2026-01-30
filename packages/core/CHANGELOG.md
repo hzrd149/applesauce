@@ -1,5 +1,12 @@
 # applesauce-core
 
+## 5.1.0
+
+### Minor Changes
+
+- 7f53801: Update `mapEventsToStore` to support strings (so onlyEvents does not always need to be used)
+- 7f53801: Update `mapEventsToTimeline` to ignore strings (so onlyEvents does not always need to be used)
+
 ## 5.0.3
 
 ### Patch Changes

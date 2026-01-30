@@ -1,5 +1,16 @@
 # applesauce-signer
 
+## 5.1.0
+
+### Minor Changes
+
+- 0cdd0ed: Add support for `switch_relays` and `ping` methods on nostr connect remote signer
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.1.0
+
 ## 5.0.0
 
 ### Minor Changes
