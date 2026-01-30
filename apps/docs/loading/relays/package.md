@@ -1,3 +1,7 @@
+---
+description: RelayPool for managing Nostr relay connections with RxJS observables and automatic reconnection
+---
+
 # Relays
 
 The `applesauce-relay` package contains a few classes to make connecting to relays easier.

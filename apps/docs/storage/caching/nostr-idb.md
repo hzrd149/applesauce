@@ -1,3 +1,7 @@
+---
+description: IndexedDB-based event cache using nostr-idb for browser storage
+---
+
 # nostr-idb Package
 
 The `nostr-idb` package provides a browser-based IndexedDB storage solution for Nostr events, allowing you to cache events locally in web applications built with Applesauce.

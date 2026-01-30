@@ -1,3 +1,7 @@
+---
+description: Pre-built methods for subscribing to computed state from the EventStore with automatic caching and reactive updates
+---
+
 # Models
 
 Models are pre-built methods for subscribing to computed state from the `EventStore`.

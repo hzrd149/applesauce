@@ -25,30 +25,20 @@ const sizeClasses = {
   lg: "w-12 h-12",
 };
 
-export default function UserAvatar({
-  user,
-  pubkey,
-  relays,
-  size = "md",
-  className = "",
-  fallback,
-}: UserAvatarProps) {
+export default function UserAvatar({ user, pubkey, relays, size = "md", className = "", fallback }: UserAvatarProps) {
   // Determine which pubkey to use
   const targetPubkey = user?.pubkey || pubkey;
 
   // Load profile - prefer user.profile$ if User provided, otherwise use eventStore.profile
-  const profile = use$(
-    () => {
-      if (user) {
-        return user.profile$;
-      }
-      if (targetPubkey) {
-        return eventStore.profile({ pubkey: targetPubkey, relays });
-      }
-      return undefined;
-    },
-    [user, targetPubkey, relays?.join("|")],
-  );
+  const profile = use$(() => {
+    if (user) {
+      return user.profile$;
+    }
+    if (targetPubkey) {
+      return eventStore.profile({ pubkey: targetPubkey, relays });
+    }
+    return undefined;
+  }, [user, targetPubkey, relays?.join("|")]);
 
   // Generate fallback URL if not provided
   const fallbackUrl = fallback || (targetPubkey ? `https://robohash.org/${targetPubkey}` : undefined);

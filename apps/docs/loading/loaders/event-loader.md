@@ -1,3 +1,7 @@
+---
+description: Load single Nostr events by ID with relay hints and automatic fallback relays
+---
+
 # Event Loader
 
 The Event Loader is a specialized loader for fetching Nostr events by their IDs. It provides an efficient way to batch and deduplicate requests, cache results, and handle relay hints.

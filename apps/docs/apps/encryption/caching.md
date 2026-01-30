@@ -1,3 +1,7 @@
+---
+description: Automatic persistence and restoration of encrypted content for Nostr events to avoid repeated decryption
+---
+
 # Caching Encrypted Content
 
 The `persistEncryptedContent` function from `applesauce-common/helpers` provides automatic persistence and restoration of encrypted content for Nostr events. This allows your application to cache decrypted content so users don't need to decrypt the same events repeatedly.

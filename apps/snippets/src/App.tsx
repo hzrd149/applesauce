@@ -125,14 +125,21 @@ function App() {
 
   // Render publish view
   if (currentView === "publish") {
-    return <PublishView onBack={navigateToHome} onPublishSuccess={navigateToDetails} onNavigateToSignin={navigateToSignin} />;
+    return (
+      <PublishView onBack={navigateToHome} onPublishSuccess={navigateToDetails} onNavigateToSignin={navigateToSignin} />
+    );
   }
 
   // Render details view if hash is present
   if (currentView === "details" && selectedEventId) {
     return (
       <>
-        <CodeSnippetDetails eventId={selectedEventId} relays={relays} onBack={navigateToHome} onNavigateToSignin={navigateToSignin} />
+        <CodeSnippetDetails
+          eventId={selectedEventId}
+          relays={relays}
+          onBack={navigateToHome}
+          onNavigateToSignin={navigateToSignin}
+        />
         <PocketDrawer
           pocketItems={pocketItems}
           onRemoveItem={removeFromPocket}

@@ -106,7 +106,6 @@ export default function CodeSnippetCard({ event, onViewFull }: CodeSnippetCardPr
           <UserAvatar user={snippet.author} size="sm" />
         </div>
 
-
         {/* Tags and Dependencies - mobile optimized */}
         <div className="space-y-1.5 sm:space-y-2">
           {tags.length > 0 && (

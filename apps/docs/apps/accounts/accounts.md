@@ -1,3 +1,7 @@
+---
+description: Wrapper classes around signers with toJSON/fromJSON methods for persisting account data and custom account type support
+---
+
 # Accounts
 
 The [account classes](https://applesauce.build/typedoc/modules/applesauce-accounts.Accounts.html) are simple wrappers around various [Signers](../../creating/signers/signers.md) and expose a `toJSON` and `fromJSON` method to let you save them to localStorage or indexeddb databases

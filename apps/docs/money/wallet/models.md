@@ -1,50 +1,91 @@
-# Models
+---
+description: Reactive models for querying and subscribing to NIP-60 wallet state
+---
 
-The `applesauce-wallet` package provides a few pre-built models for subscribing to the state of the wallet.
+# Wallet models
 
-## WalletModel
+The `applesauce-wallet` package provides [models](https://applesauce.build/typedoc/modules/applesauce-wallet.Models.html) that subscribe to event-store streams and return computed observables. Use them with `eventStore.model(Model, ...args)`. The wallet **casts** (see [casts](./casts.md)) use these models internally (e.g. `Wallet.balance$` uses `WalletBalanceModel`).
 
-The `WalletModel` subscribes to the state of a NIP-60 wallet, providing information about whether it's locked and its associated mints.
+Import from `applesauce-wallet/models`:
 
 ```typescript
-import { WalletModel } from "applesauce-wallet/models";
+import {
+  WalletBalanceModel,
+  WalletHistoryModel,
+  WalletRedeemedModel,
+  WalletTokensModel,
+  EventNutZapzModel,
+  ProfileNutZapzModel,
+  ReceivedNutzapsModel,
+} from "applesauce-wallet/models";
+```
 
-const wallet = eventStore.model(WalletModel, pubkey).subscribe((info) => {
-  if (!info) return console.log("No wallet found");
+## WalletBalanceModel
 
-  if (info.locked) {
-    console.log("Wallet is locked");
-  } else {
-    console.log("Wallet mints:", info.mints);
-    console.log("Has private key:", !!info.privateKey);
-  }
+Returns the visible balance per mint (sats). Subscribes to wallet token events (kind 375), filters to unlocked tokens, excludes deleted tokens, and sums proofs per mint (ignoring duplicate proofs).
+
+```typescript
+const balance$ = eventStore.model(WalletBalanceModel, pubkey);
+balance$.subscribe((balance) => {
+  // balance: Record<string, number>  e.g. { "https://mint.example.com": 1000 }
 });
 ```
 
-## WalletTokensQuery
+## WalletTokensModel
 
-The `WalletTokensQuery` subscribes to all token events for a wallet, with optional filtering by locked status.
+Returns a timeline of wallet token events (kind 375) for a pubkey. Optionally filter by unlocked status. Deleted tokens (per token content) are excluded.
 
 ```typescript
-import { WalletTokensModel } from "applesauce-wallet/models";
-
-// Get all tokens
-const allTokens = eventStore.model(WalletTokensModel, pubkey);
-
-// Get only unlocked tokens
-const unlockedTokens = eventStore.model(WalletTokensModel, pubkey, false);
+const allTokens$ = eventStore.model(WalletTokensModel, pubkey);
+const unlockedOnly$ = eventStore.model(WalletTokensModel, pubkey, true);
+const lockedOnly$ = eventStore.model(WalletTokensModel, pubkey, false);
 ```
 
-## WalletBalanceQuery
+## WalletHistoryModel
 
-The `WalletBalanceQuery` returns the visible balance of a wallet for each mint.
+Returns a timeline of wallet history events (kind 7376) for a pubkey. Optionally filter by unlocked status.
 
 ```typescript
-import { WalletBalanceModel } from "applesauce-wallet/models";
+const allHistory$ = eventStore.model(WalletHistoryModel, pubkey);
+const unlockedOnly$ = eventStore.model(WalletHistoryModel, pubkey, true);
+const lockedOnly$ = eventStore.model(WalletHistoryModel, pubkey, false);
+```
 
-eventStore.model(WalletBalanceModel, pubkey).subscribe((balances) => {
-  for (const [mint, amount] of Object.entries(balances)) {
-    console.log(`Balance for ${mint}: ${amount}`);
-  }
+## WalletRedeemedModel
+
+Returns the set of nutzap event IDs that have been marked as redeemed in wallet history events. Built by scanning history events for redeemed e-tags.
+
+```typescript
+const redeemedIds$ = eventStore.model(WalletRedeemedModel, pubkey);
+redeemedIds$.subscribe((ids) => {
+  // ids: string[]  nutzap event ids already received
 });
 ```
+
+## ReceivedNutzapsModel
+
+Returns the same as `WalletRedeemedModel`: nutzap event IDs that have been received (appear as redeemed in unlocked wallet history). Implemented by composing `WalletHistoryModel` and extracting redeemed IDs.
+
+```typescript
+const receivedIds$ = eventStore.model(ReceivedNutzapsModel, pubkey);
+```
+
+## EventNutZapzModel
+
+Returns nutzap events (kind 9734) that target a given event (e.g. a note). Uses common event-relation filters so nutzaps that reference the event are included. Only valid nutzap events are returned.
+
+```typescript
+const nutzaps$ = eventStore.model(EventNutZapzModel, someEvent);
+```
+
+## ProfileNutZapzModel
+
+Returns nutzap events (kind 9734) that target a user’s profile (p-tag only; nutzaps targeting specific events are excluded).
+
+```typescript
+const profileNutzaps$ = eventStore.model(ProfileNutZapzModel, pubkey);
+```
+
+:::tip
+For UI you typically use the **casts** (`Wallet`, `WalletToken`, `WalletHistory`, `Nutzap`) and `user.wallet$` from `applesauce-wallet/casts`, which consume these models. Use the models directly when you need raw event streams or custom pipelines.
+:::

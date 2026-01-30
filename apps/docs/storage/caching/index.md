@@ -1,3 +1,7 @@
+---
+description: Event caching strategies for persisting frequently accessed events with non-blocking operations
+---
+
 # Event Caching
 
 Event caching is designed to work alongside the synchronous [`EventStore`](https://applesauce.build/typedoc/classes/applesauce-core.EventStore.html). It's generally implemented using the [`persistEventsToCache`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.persistEventsToCache.html) helper method and a `cacheRequest` function that plugs into event loaders.

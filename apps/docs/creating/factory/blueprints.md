@@ -1,3 +1,7 @@
+---
+description: Pre-built event blueprints for creating common Nostr events with type-safe templates and validation
+---
+
 # Event Blueprints
 
 Blueprints are pre-configured templates for creating common Nostr events. They encapsulate the logic for setting the correct event kind, content, and tags for specific event types, making it easy to create well-formed Nostr events.

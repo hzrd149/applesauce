@@ -1,3 +1,7 @@
+---
+description: Operations for adding, removing, and modifying tags in Nostr event templates
+---
+
 # Tag Operations
 
 Tag operations are specialized functions designed to modify arrays of Nostr event tags. Unlike [event operations](./event-operations.md) which work on entire events, tag operations focus exclusively on transforming tag arrays. This makes them perfect for use with [`modifyPublicTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyPublicTags.html) and [`modifyHiddenTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyHiddenTags.html) event operations, allowing precise control over both public event tags and hidden encrypted tags on NIP-51 lists.

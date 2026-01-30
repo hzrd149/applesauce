@@ -1,3 +1,7 @@
+---
+description: Quick overview of Applesauce components including EventStore, RelayPool, EventFactory, and reactive data models
+---
+
 # Getting Started
 
 ## Quick Overview

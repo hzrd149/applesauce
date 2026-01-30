@@ -1,3 +1,7 @@
+---
+description: Specialized in-memory database ensuring single event instances with LRU caching, indexing, and efficient memory management
+---
+
 # Event Memory
 
 The `EventMemory` class is a specialized in-memory database that serves as a critical component within the `EventStore` architecture. Its primary role is to ensure there is only ever a single instance of each event in memory, preventing duplicates and enabling efficient caching mechanisms.

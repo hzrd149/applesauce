@@ -20,15 +20,7 @@ const QRCode = ({ data }: { data: string }) => (
 );
 
 // Account Item Component for Existing Accounts
-function AccountItem({
-  account,
-  onLogin,
-  onRemove,
-}: {
-  account: IAccount;
-  onLogin: () => void;
-  onRemove: () => void;
-}) {
+function AccountItem({ account, onLogin, onRemove }: { account: IAccount; onLogin: () => void; onRemove: () => void }) {
   const user = useMemo(() => castUser(account.pubkey, eventStore), [account.pubkey]);
 
   return (
@@ -57,13 +49,7 @@ function AccountItem({
 }
 
 // Existing Accounts Section Component
-function ExistingAccountsSection({
-  onLoginSuccess,
-  onBack,
-}: {
-  onLoginSuccess?: () => void;
-  onBack: () => void;
-}) {
+function ExistingAccountsSection({ onLoginSuccess, onBack }: { onLoginSuccess?: () => void; onBack: () => void }) {
   const allAccounts = use$(accounts.accounts$);
 
   const handleLogin = (accountId: string) => {

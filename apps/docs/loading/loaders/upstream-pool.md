@@ -1,3 +1,7 @@
+---
+description: Relay pool abstraction for event loaders with automatic relay management
+---
+
 # Upstream Pool
 
 The `UpstreamPool` interface provides a flexible way to use any relay library with Applesauce loaders. Both `createEventLoader` and `createAddressLoader` accept an `UpstreamPool`, which allows you to use `applesauce-relay`'s `RelayPool` by default, or adapt other relay libraries like `nostr-tools`' `SimplePool`, `@nostr-dev-kit/ndk`'s `NDK`, or `@nostrify/nostrify`'s `NPool`.

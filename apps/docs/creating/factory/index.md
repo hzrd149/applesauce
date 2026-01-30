@@ -1,3 +1,7 @@
+---
+description: EventFactory system for creating and signing Nostr events with blueprints and operations
+---
+
 # Factory
 
 The `EventFactory` class is now part of the `applesauce-core` package, providing a unified interface for creating and modifying Nostr events. Blueprints and additional operations are available in the `applesauce-common` package.

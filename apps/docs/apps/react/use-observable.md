@@ -1,3 +1,7 @@
+---
+description: Powerful React hook combining useObservableState and useMemo for seamless RxJS observable integration with automatic subscription management
+---
+
 # use$ Hook
 
 The `use$` hook is a powerful utility that combines `useObservableState` and `useMemo` to make working with RxJS observables in React components seamless. It automatically subscribes to observables and updates your component when values change, making it perfect for integrating with the EventStore, RelayPool, and other reactive data sources.
@@ -297,6 +301,94 @@ function ContactCard({ contact }: { contact: User }) {
       <div>{contacts?.length || 0} contacts</div>
     </div>
   );
+}
+```
+
+### 6. Avoid Creating Observables in Render
+
+Don't create new observables during render - use the factory pattern:
+
+```tsx
+// ❌ Bad - creates new observable every render
+function Profile({ pubkey }) {
+  const profile = use$(eventStore.profile(pubkey));
+  return <div>{profile?.name}</div>;
+}
+
+// ✅ Good - factory creates observable once, recreates on pubkey change
+function Profile({ pubkey }) {
+  const profile = use$(() => eventStore.profile(pubkey), [pubkey]);
+  return <div>{profile?.name}</div>;
+}
+```
+
+### 7. Clone Arrays for Timeline Updates
+
+EventStore returns the same array reference. Clone it to trigger React updates:
+
+```tsx
+import { map } from "rxjs";
+
+// ✅ Good - clone array
+const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(map((timeline) => [...timeline])), []);
+
+// ❌ Bad - React may not detect updates
+const notes = use$(() => eventStore.timeline({ kinds: [1] }), []);
+```
+
+### 8. Use Conditional Subscriptions
+
+Return `undefined` or `EMPTY` to skip subscriptions:
+
+```tsx
+import { EMPTY } from "rxjs";
+
+function Timeline({ relay, isLive }) {
+  const events = use$(() => (isLive ? pool.relay(relay).subscription({ kinds: [1] }) : EMPTY), [relay, isLive]);
+
+  return <div>{events?.length || 0} events</div>;
+}
+```
+
+### 9. Debounce High-Frequency Updates
+
+Use RxJS operators to control update frequency:
+
+```tsx
+import { debounceTime } from "rxjs";
+
+function LiveFeed({ relay }) {
+  const events = use$(
+    () =>
+      pool
+        .relay(relay)
+        .subscription({ kinds: [1] })
+        .pipe(
+          onlyEvents(),
+          debounceTime(500), // Update UI every 500ms max
+          mapEventsToTimeline(),
+        ),
+    [relay],
+  );
+
+  return <div>{events?.length || 0} events</div>;
+}
+```
+
+### 10. Memoize Loaders
+
+Always memoize timeline loaders to prevent recreation:
+
+```tsx
+function Timeline({ relays }) {
+  const loader = useMemo(() => createTimelineLoader(pool, relays, { kinds: [1] }, { limit: 50 }), [relays]);
+
+  useEffect(() => {
+    loader().subscribe();
+  }, [loader]);
+
+  const events = use$(() => eventStore.timeline({ kinds: [1] }), []);
+  return <div>{events?.map(renderEvent)}</div>;
 }
 ```
 

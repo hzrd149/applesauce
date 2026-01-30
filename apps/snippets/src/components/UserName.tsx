@@ -30,18 +30,15 @@ export default function UserName({
   const targetPubkey = user?.pubkey || pubkey;
 
   // Load profile - prefer user.profile$ if User provided, otherwise use eventStore.profile
-  const profile = use$(
-    () => {
-      if (user) {
-        return user.profile$;
-      }
-      if (targetPubkey) {
-        return eventStore.profile({ pubkey: targetPubkey, relays });
-      }
-      return undefined;
-    },
-    [user, targetPubkey, relays?.join("|")],
-  );
+  const profile = use$(() => {
+    if (user) {
+      return user.profile$;
+    }
+    if (targetPubkey) {
+      return eventStore.profile({ pubkey: targetPubkey, relays });
+    }
+    return undefined;
+  }, [user, targetPubkey, relays?.join("|")]);
 
   // Get display name with fallback
   const displayName = getDisplayName(profile || undefined, fallback);

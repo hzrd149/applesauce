@@ -1,3 +1,7 @@
+---
+description: Unified event loader that handles both event IDs and addressable events
+---
+
 # Unified Event Loader
 
 The Unified Event Loader is a single loader that can handle both `EventPointer` and `AddressPointer` types. It automatically routes to the appropriate loader (`createEventLoader` for events by ID, `createAddressLoader` for addressable/replaceable events) based on the pointer type.

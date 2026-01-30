@@ -1,3 +1,7 @@
+---
+description: Reactive event management system with automatic deduplication, replaceable event handling, and observable subscriptions
+---
+
 # Event Store
 
 The `EventStore` is a reactive event management system that provides high-level features for handling Nostr events, including delete event processing, replaceable event management, and automatic event deduplication.
@@ -724,4 +728,137 @@ Emits when an event is removed:
 eventStore.remove$.subscribe((event) => {
   console.log("Event removed:", event.id);
 });
+```
+
+## Integration
+
+### With Event Loaders
+
+```ts
+createEventLoaderForStore(eventStore, pool, {
+  lookupRelays: ["wss://purplepag.es/"],
+});
+
+const profile$ = eventStore.profile(pubkey); // Auto-loads if not in store
+```
+
+### With Cache/Persistent Storage
+
+```ts
+const cache = await openDB();
+
+persistEventsToCache(eventStore, (events) => addEvents(cache, events));
+
+const cached = await getEventsForFilters(cache, [{ kinds: [0, 3] }]);
+cached.forEach((event) => eventStore.add(event));
+```
+
+### With RelayPool
+
+```ts
+pool
+  .relay(relay)
+  .subscription({ kinds: [1] })
+  .pipe(onlyEvents(), mapEventsToStore(eventStore))
+  .subscribe();
+```
+
+### With ActionRunner
+
+```ts
+const actions = new ActionRunner(eventStore, factory, publish);
+
+await actions.run(FollowUser, pubkey);
+// Reads existing contacts from eventStore
+// Auto-saves new event to eventStore (when saveToStore = true)
+```
+
+### With React
+
+```tsx
+function Profile({ pubkey }) {
+  const profile = use$(() => eventStore.profile(pubkey), [pubkey]);
+  return <div>{profile?.name}</div>;
+}
+```
+
+## Best Practices
+
+### Single Instance
+
+```ts
+// app.ts
+export const eventStore = new EventStore();
+```
+
+### Initialize Event Loader Early
+
+```ts
+createEventLoaderForStore(eventStore, pool, {
+  lookupRelays: ["wss://purplepag.es/"],
+});
+
+startApp(); // Safe to start after loader is set up
+```
+
+### Use Persistent Database
+
+```ts
+const database = new BetterSqlite3EventDatabase("./events.db");
+const eventStore = new EventStore(database);
+```
+
+### Pre-load Common Events
+
+```ts
+const contacts = eventStore.getReplaceable(3, currentUserPubkey);
+const followed = contacts?.tags.filter((t) => t[0] === "p").map((t) => t[1]);
+followed?.forEach((pubkey) => eventStore.profile(pubkey).subscribe());
+```
+
+### Clean Up Subscriptions
+
+```ts
+const sub = eventStore.timeline({ kinds: [1] }).subscribe();
+sub.unsubscribe(); // Clean up when done
+```
+
+### Use Synchronous Methods
+
+```ts
+// ✅ Good - use synchronous methods for known events
+const event = eventStore.getEvent(id);
+
+// ❌ Avoid - unnecessary subscription
+eventStore.event(id).subscribe((event) => {});
+```
+
+### Memory Management
+
+```ts
+setInterval(() => {
+  eventStore.prune(1000); // Remove up to 1000 unclaimed events
+}, 3600000);
+```
+
+### Verify Events
+
+```ts
+import { verifyEvent } from "nostr-tools";
+
+eventStore.verifyEvent = (event) => {
+  if (!verifyEvent(event)) return false;
+  if (event.kind < 0 || event.kind > 40000) return false;
+  return true;
+};
+```
+
+### Handle Delete Events
+
+```ts
+const deleted = eventStore.getByFilters({ kinds: [5] });
+const deletedIds = new Set(deleted.flatMap((e) => e.tags.filter((t) => t[0] === "e").map((t) => t[1])));
+
+const validEvents = cachedEvents.filter((e) => !deletedIds.has(e.id));
+validEvents.forEach((e) => eventStore.add(e));
 ```

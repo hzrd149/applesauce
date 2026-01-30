@@ -1,3 +1,7 @@
+---
+description: Collection of NIP-07 signers including password, private key, extension, and hardware signers
+---
+
 ## Password Signer
 
 The [PasswordSigner](https://applesauce.build/typedoc/classes/applesauce-signers.PasswordSigner.html) is a [NIP-49](https://github.com/nostr-protocol/nips/blob/master/49.md) (Private Key Encryption) signer

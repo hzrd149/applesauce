@@ -1,3 +1,7 @@
+---
+description: RelayPool class for managing multiple relay connections with subscriptions and event publishing
+---
+
 # Relay Pool
 
 The `RelayPool` class in `applesauce-relay` provides a powerful way to manage multiple relay connections, allowing you to interact with multiple relays as if they were a single entity.

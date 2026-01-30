@@ -1,3 +1,7 @@
+---
+description: Relay class for individual relay connections with subscription management and message handling
+---
+
 # Relay Class
 
 The `Relay` class provides a reactive interface for connecting to and communicating with Nostr relays using RxJS observables.

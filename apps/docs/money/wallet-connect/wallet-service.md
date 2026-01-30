@@ -1,3 +1,7 @@
+---
+description: Nostr Wallet Connect service for handling remote wallet requests and permissions
+---
+
 # WalletService Class
 
 The `WalletService` class provides a service-side implementation for creating NIP-47 wallet services. It handles incoming wallet requests, processes them through configured handlers, and sends responses back to clients.

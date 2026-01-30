@@ -26,6 +26,30 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { filter, of, take } from "rxjs";
 
+// Memoize plugins and components at module level
+const remarkPlugins = [remarkGfm, remarkNostrMentions];
+const markdownComponents = {
+  h1: ({ ...props }: any) => <h1 className="text-3xl font-bold my-4" {...props} />,
+  h2: ({ ...props }: any) => <h2 className="text-2xl font-bold my-3" {...props} />,
+  p: ({ ...props }: any) => <p className="my-2" {...props} />,
+  a: ({ ...props }: any) => <a className="link link-primary" target="_blank" {...props} />,
+  ul: ({ ...props }: any) => <ul className="list-disc ml-4 my-2" {...props} />,
+  ol: ({ ...props }: any) => <ol className="list-decimal ml-4 my-2" {...props} />,
+  blockquote: ({ ...props }: any) => <blockquote className="border-l-4 border-primary pl-4 my-2" {...props} />,
+  code: ({ ...props }: any) => <code className="bg-base-300 rounded px-1" {...props} />,
+  pre: ({ ...props }: any) => <pre className="bg-base-300 rounded p-4 my-2 overflow-x-auto" {...props} />,
+  table: ({ ...props }: any) => (
+    <div className="overflow-x-auto my-4">
+      <table className="table table-zebra w-full" {...props} />
+    </div>
+  ),
+  thead: ({ ...props }: any) => <thead className="bg-base-200" {...props} />,
+  tbody: ({ ...props }: any) => <tbody {...props} />,
+  tr: ({ ...props }: any) => <tr {...props} />,
+  th: ({ ...props }: any) => <th {...props} />,
+  td: ({ ...props }: any) => <td {...props} />,
+};
+
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
@@ -348,32 +372,7 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
         )}
 
         <div ref={contentRef} className="prose prose-lg max-w-none select-text" onMouseUp={handleMouseUp}>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkNostrMentions]}
-            components={{
-              h1: ({ node, ...props }) => <h1 className="text-3xl font-bold my-4" {...props} />,
-              h2: ({ node, ...props }) => <h2 className="text-2xl font-bold my-3" {...props} />,
-              p: ({ node, ...props }) => <p className="my-2" {...props} />,
-              a: ({ node, ...props }) => <a className="link link-primary" target="_blank" {...props} />,
-              ul: ({ node, ...props }) => <ul className="list-disc ml-4 my-2" {...props} />,
-              ol: ({ node, ...props }) => <ol className="list-decimal ml-4 my-2" {...props} />,
-              blockquote: ({ node, ...props }) => (
-                <blockquote className="border-l-4 border-primary pl-4 my-2" {...props} />
-              ),
-              code: ({ node, ...props }) => <code className="bg-base-300 rounded px-1" {...props} />,
-              pre: ({ node, ...props }) => <pre className="bg-base-300 rounded p-4 my-2 overflow-x-auto" {...props} />,
-              table: ({ node, ...props }) => (
-                <div className="overflow-x-auto my-4">
-                  <table className="table table-zebra w-full" {...props} />
-                </div>
-              ),
-              thead: ({ node, ...props }) => <thead className="bg-base-200" {...props} />,
-              tbody: ({ node, ...props }) => <tbody {...props} />,
-              tr: ({ node, ...props }) => <tr {...props} />,
-              th: ({ node, ...props }) => <th {...props} />,
-              td: ({ node, ...props }) => <td {...props} />,
-            }}
-          >
+          <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
             {article.content}
           </ReactMarkdown>
         </div>

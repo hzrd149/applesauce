@@ -1,3 +1,7 @@
+---
+description: Transform event templates with operations for modifying content, tags, and event properties
+---
+
 # Event Operations
 
 Event operations are the core building blocks of the event factory system. They provide a composable, functional approach to creating and modifying Nostr events by focusing on single-responsibility transformations.

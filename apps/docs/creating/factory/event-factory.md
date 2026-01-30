@@ -1,3 +1,7 @@
+---
+description: Create, modify, and sign Nostr events with EventFactory using blueprints and operations
+---
+
 # EventFactory
 
 The `EventFactory` class is the main interface for creating, building, and modifying Nostr events. It provides a convenient wrapper around event operations and blueprints, making it easy to work with different types of Nostr events.

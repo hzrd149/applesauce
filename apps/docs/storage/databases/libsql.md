@@ -1,3 +1,7 @@
+---
+description: LibSQL database adapter for event storage with remote database support
+---
+
 # LibSQL Implementation
 
 The LibSQL implementation uses the `@libsql/client` library, providing support for both local SQLite files and remote LibSQL instances.

@@ -47,7 +47,7 @@ export function parseFrontmatter(source: string): {
     // Wrap the YAML content with proper delimiters for @std/front-matter
     const wrappedYaml = `---yaml\n${yamlContent}\n---`;
     const { attrs } = extractYaml(wrappedYaml);
-    
+
     // Type cast the attributes to our frontmatter type
     const frontmatter = attrs as ExampleFrontmatter;
     return { frontmatter, code };

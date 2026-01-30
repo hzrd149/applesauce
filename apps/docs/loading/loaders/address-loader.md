@@ -1,3 +1,7 @@
+---
+description: Load addressable Nostr events by kind, pubkey, and identifier with automatic relay discovery
+---
+
 # Address Loader
 
 The Address Loader is a specialized loader for fetching Nostr replaceable events by their address (kind, pubkey, and optional identifier). It provides an efficient way to batch and deduplicate requests, cache results, and handle relay hints.

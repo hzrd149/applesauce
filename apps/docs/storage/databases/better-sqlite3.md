@@ -1,3 +1,7 @@
+---
+description: SQLite event database using better-sqlite3 for Node.js with synchronous operations
+---
+
 # Better SQLite3 Implementation
 
 The Better SQLite3 implementation uses the `better-sqlite3` library.

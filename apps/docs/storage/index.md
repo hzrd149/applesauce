@@ -1,3 +1,7 @@
+---
+description: Compare event databases and caching approaches for persisting Nostr events with AsyncEventStore and EventStore
+---
+
 # Storing Events
 
 Applesauce provides two distinct approaches for persisting Nostr events: [Event Databases](./databases/index) and [Event Caching](./caching/index). Understanding the differences between these approaches is crucial for choosing the right solution for your application.
