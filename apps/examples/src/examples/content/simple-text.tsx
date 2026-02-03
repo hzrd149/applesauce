@@ -12,10 +12,10 @@ related:
 import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { RelayPool } from "applesauce-relay";
 import { decode, EventPointer } from "nostr-tools/nip19";
 import { useState } from "react";
 import { merge } from "rxjs";

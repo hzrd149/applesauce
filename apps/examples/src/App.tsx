@@ -35,7 +35,6 @@ function ExampleView({ example }: { example?: Example }) {
   const [source, setSource] = useState("");
   const [frontmatter, setFrontmatter] = useState(example?.frontmatter);
   const [Component, setComponent] = useState<(() => JSX.Element) | null>();
-  const [CliApp, setCliApp] = useState<(() => Promise<void>) | null>();
   const [mode, setMode] = useState<"code" | "preview">("preview");
   const [copied, setCopied] = useState(false);
 
@@ -63,15 +62,8 @@ function ExampleView({ example }: { example?: Example }) {
     example.load().then((module: any) => {
       if (typeof module.default !== "function") throw new Error("Example must be a function");
 
-      if (module.default.terminal) {
-        console.log("Loaded CLI App", module.default);
-        setCliApp(() => module.default);
-        setComponent(null);
-      } else {
-        console.log("Loaded React App", module.default);
-        setComponent(() => module.default);
-        setCliApp(null);
-      }
+      console.log("Loaded React App", module.default);
+      setComponent(() => module.default);
     });
 
     example.source().then((source: string) => {

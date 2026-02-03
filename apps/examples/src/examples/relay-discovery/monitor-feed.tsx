@@ -16,7 +16,7 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { useMemo, useState } from "react";
 import { map } from "rxjs";
 import RelayPicker from "../../components/relay-picker";

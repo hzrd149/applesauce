@@ -16,7 +16,7 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
 import { addEvents, openDB } from "nostr-idb";
 import { useMemo, useState } from "react";

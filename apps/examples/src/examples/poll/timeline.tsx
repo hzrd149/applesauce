@@ -8,6 +8,7 @@ tags:
 related:
   - feed/relay-timeline
 ---*/
+import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";
 import {
   getPollEndsAt,
   getPollOptions,
@@ -19,13 +20,11 @@ import {
   POLL_KIND,
   POLL_RESPONSE_KIND,
 } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore } from "applesauce-core";
+import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, mergeRelaySets, NostrEvent, ProfileContent } from "applesauce-core/helpers";
-import { EventFactory } from "applesauce-core";
-import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";
 import { createEventLoaderForStore, createTagValueLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode, ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useState } from "react";
