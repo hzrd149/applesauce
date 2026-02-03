@@ -13,8 +13,6 @@ related:
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { SendWrappedMessage } from "applesauce-actions/actions";
-import { defined, EventStore, mapEventsToStore } from "applesauce-core";
-import { persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import {
   getConversationIdentifierFromMessage,
   getConversationParticipants,
@@ -26,11 +24,12 @@ import {
   unlockGiftWrap,
 } from "applesauce-common/helpers";
 import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "applesauce-common/models";
-import { EventFactory } from "applesauce-core";
+import { defined, EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { kinds, NostrEvent } from "nostr-tools";
@@ -316,7 +315,7 @@ function HomeView({ pubkey }: { pubkey: string }) {
       pool
         .relay(relay)
         .subscription({ kinds: [kinds.GiftWrap], "#p": [pubkey] })
-        .pipe(onlyEvents(), mapEventsToStore(eventStore)),
+        .pipe(mapEventsToStore(eventStore)),
     [relay, pubkey],
   );
 

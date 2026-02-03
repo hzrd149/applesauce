@@ -573,7 +573,7 @@ export default function PollGridApp() {
               since: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60, // Last 30 days
               limit: 50,
             })
-            .pipe(onlyEvents(), mapEventsToStore(eventStore))
+            .pipe(mapEventsToStore(eventStore))
         : undefined,
     [selectedRelay],
   );

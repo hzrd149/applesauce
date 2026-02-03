@@ -187,7 +187,7 @@ export default function WorkerRelayCacheExample() {
         ? pool
             .relay(relay)
             .subscription({ kinds: [1], since: unixNow() })
-            .pipe(onlyEvents(), mapEventsToStore(eventStore))
+            .pipe(mapEventsToStore(eventStore))
         : undefined,
     [relay, live],
   );

@@ -17,14 +17,14 @@ import { CommentsModel } from "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import RelayPicker from "../../components/relay-picker";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 
 // Memoize plugins and components at module level
 const remarkPlugins = [remarkGfm, remarkNostrMentions];
@@ -228,7 +228,7 @@ export default function ArticleViewer() {
         kinds: [1111],
         "#a": [`30023:${selected.event.pubkey}:${selected.event.tags.find((t) => t[0] === "d")?.[1] || ""}`],
       })
-      .pipe(onlyEvents(), mapEventsToStore(eventStore));
+      .pipe(mapEventsToStore(eventStore));
   }, [selected?.id, relay]);
 
   // Create a timeline observable for articles
@@ -241,8 +241,6 @@ export default function ArticleViewer() {
           since: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60, // Last 30 days
         })
         .pipe(
-          // Only get events from relay (ignore EOSE)
-          onlyEvents(),
           // deduplicate events using the event store
           mapEventsToStore(eventStore),
           // collect all events into a timeline

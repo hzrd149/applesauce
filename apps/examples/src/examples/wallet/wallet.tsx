@@ -41,7 +41,7 @@ import {
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers/signers/extension-signer";
 import {
   AddNutzapInfoMint,
@@ -143,7 +143,6 @@ function MintDiscovery({ onMintsSelected }: { onMintsSelected: (mints: string[])
   const mintEvents = use$(
     () =>
       pool.subscription([relay], { kinds: [MINT_ANNOUNCEMENT_KIND] }, { eventStore }).pipe(
-        onlyEvents(),
         mapEventsToTimeline(),
         map((events) => [...events]),
       ),

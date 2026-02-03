@@ -19,7 +19,7 @@ import {
 import { EventStore, mapEventsToStore, mapEventsToTimeline, Models } from "applesauce-core";
 import { isAddressPointer, isEventPointer } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { Filter, kinds, nip19, NostrEvent } from "nostr-tools";
 import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useRef, useState } from "react";
@@ -198,8 +198,6 @@ export default function LinkHandlerExample() {
 
     // Create an observable that requests NIP-89 application handlers
     return pool.request([relay], filter).pipe(
-      // Only get events from relay (ignore EOSE)
-      onlyEvents(),
       // Collect all handlers into an array
       mapEventsToStore(eventStore),
       // Accumulate handlers

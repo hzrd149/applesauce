@@ -98,7 +98,7 @@ function RelayDiscoveryFeed({ monitor, fallbackRelay }: { monitor: RelayMonitor;
           },
           { eventStore },
         )
-        .pipe(onlyEvents(), mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayDiscovery));
+        .pipe(mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayDiscovery));
     }, [monitor.uid]) ?? [];
 
   return (
@@ -166,7 +166,7 @@ export default function MonitorFeed() {
       pool
         .relay(relay)
         .subscription({ kinds: [RELAY_MONITOR_ANNOUNCEMENT_KIND] })
-        .pipe(onlyEvents(), mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayMonitor)),
+        .pipe(mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayMonitor)),
     [relay],
   );
 

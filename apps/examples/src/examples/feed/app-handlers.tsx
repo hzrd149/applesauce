@@ -9,7 +9,6 @@ tags:
 related:
   - feed/relay-timeline
 ---*/
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   createHandlerLink,
   getHandlerDescription,
@@ -17,12 +16,13 @@ import {
   getHandlerPicture,
   getHandlerSupportedKinds,
 } from "applesauce-common/helpers";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
+import clsx from "clsx";
 import { kinds, NostrEvent } from "nostr-tools";
 import { useMemo, useRef, useState } from "react";
 import { map } from "rxjs";
-import clsx from "clsx";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -197,8 +197,6 @@ export default function AppHandlersExample() {
           kinds: [kinds.Handlerinformation],
         })
         .pipe(
-          // Ignore EOSE
-          onlyEvents(),
           // Deduplicate events with the store
           mapEventsToStore(eventStore),
           // Map events into a timeline

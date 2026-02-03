@@ -19,7 +19,7 @@ import { setShortTextContent } from "applesauce-core/operations/content";
 import { includeSingletonTag } from "applesauce-core/operations/tags";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useCallback, useRef, useState } from "react";
 import { map, startWith } from "rxjs";
@@ -164,7 +164,7 @@ function ThreadView({ event, pointer }: { event: NostrEvent; pointer: GroupPoint
       pool
         .relay(pointer.relay)
         .subscription({ kinds: [COMMENT_KIND], "#h": [pointer.id], "#E": [event.id] })
-        .pipe(onlyEvents(), mapEventsToStore(eventStore), mapEventsToTimeline()),
+        .pipe(mapEventsToStore(eventStore), mapEventsToTimeline()),
     [pointer.relay, pointer.id, event.id],
   );
 
@@ -265,7 +265,6 @@ function ThreadsList({ pointer, onSelect }: { pointer: GroupPointer; onSelect: (
         .relay(pointer.relay)
         .subscription({ kinds: [11], "#h": [pointer.id] })
         .pipe(
-          onlyEvents(),
           mapEventsToStore(eventStore),
           mapEventsToTimeline(),
           map((t) => [...t]),

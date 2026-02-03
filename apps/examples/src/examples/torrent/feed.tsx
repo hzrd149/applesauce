@@ -16,7 +16,7 @@ import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createReactionsLoader, createZapsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -449,8 +449,6 @@ export default function TorrentFeed() {
         .relay(relay)
         .subscription({ kinds: [TORRENT_KIND], limit: 200 })
         .pipe(
-          // Filter out EOSE messages
-          onlyEvents(),
           // Add all events to the store
           mapEventsToStore(eventStore),
         ),

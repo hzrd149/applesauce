@@ -4,13 +4,6 @@
     "nostr": {
       "type": "local",
       "command": ["npx", "-y", "@nostrbook/mcp@latest"]
-    },
-    "local-rag": {
-      "type": "local",
-      "command": ["npx", "-y", "mcp-local-rag"],
-      "environment": {
-        "BASE_DIR": "."
-      }
     }
   }
 }

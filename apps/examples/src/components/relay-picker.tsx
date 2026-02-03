@@ -18,7 +18,7 @@ import {
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "react-use";
@@ -96,7 +96,6 @@ function MonitorCard({
       .relay(discoveryRelay)
       .subscription(filter)
       .pipe(
-        onlyEvents(),
         mapEventsToStore(eventStore),
         mapEventsToTimeline(),
         map((events) => [...events]),
@@ -390,7 +389,6 @@ export default function RelayPicker({
       .relay(relayValue)
       .subscription(filter)
       .pipe(
-        onlyEvents(),
         mapEventsToTimeline(),
         map((events) => [...events]),
       );

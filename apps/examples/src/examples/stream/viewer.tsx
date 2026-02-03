@@ -15,7 +15,7 @@ import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
 import { buildCommonEventRelationFilters, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { kinds } from "nostr-tools";
 import { memo, useState } from "react";
@@ -297,8 +297,6 @@ export default function StreamCastExample() {
           since: unixNow() - 7 * 24 * 60 * 60, // Last 7 days
         })
         .pipe(
-          // Only get events from relay (ignore EOSE)
-          onlyEvents(),
           // deduplicate events using the event store
           mapEventsToStore(eventStore),
         ),

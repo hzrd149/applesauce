@@ -21,7 +21,7 @@ import * as AppData from "applesauce-common/operations/app-data";
 import { EventFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
 import { EncryptionMethod, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner } from "applesauce-signers";
 import { useCallback, useEffect, useState } from "react";
 import { map, NEVER } from "rxjs";
@@ -291,7 +291,7 @@ export default function AppDataExample() {
         // Subscribe to NIP-78 events
         const subscription = pool
           .subscription([relayUrl], { kinds: [APP_DATA_KIND], authors: [pubkey] })
-          .pipe(onlyEvents(), mapEventsToStore(eventStore))
+          .pipe(mapEventsToStore(eventStore))
           .subscribe({
             error: (err) => {
               console.error("Subscription error:", err);

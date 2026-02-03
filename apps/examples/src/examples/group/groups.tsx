@@ -11,8 +11,8 @@ related:
 import { encodeGroupPointer, getGroupPointerFromMetadata } from "applesauce-common/helpers";
 import { mapEventsToTimeline } from "applesauce-core";
 import { getTagValue, NostrEvent } from "applesauce-core/helpers";
-import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useCallback, useState } from "react";
 import { map } from "rxjs";
@@ -106,7 +106,6 @@ export default function GroupsExample() {
       .relay(selectedRelay)
       .subscription({ kinds: [GROUP_METADATA_KIND] })
       .pipe(
-        onlyEvents(),
         mapEventsToTimeline(),
         map((events) => [...events]),
       );

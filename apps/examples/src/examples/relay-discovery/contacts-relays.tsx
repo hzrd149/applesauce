@@ -9,14 +9,13 @@ related:
   - relay-discovery/attributes
   - relay-discovery/monitor-feed
 ---*/
-import { RelayMonitor } from "applesauce-common/casts";
+import { castUser, RelayMonitor, User } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
-import { castUser, User } from "applesauce-common/casts";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { useMemo, useState } from "react";
 import { combineLatest, map } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -162,12 +161,7 @@ export default function ContactsRelays() {
       pool
         .relay(relay)
         .subscription({ kinds: [RELAY_MONITOR_ANNOUNCEMENT_KIND] })
-        .pipe(
-          onlyEvents(),
-          mapEventsToStore(eventStore),
-          mapEventsToTimeline(),
-          castTimelineStream(RelayMonitor, eventStore),
-        ),
+        .pipe(mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayMonitor, eventStore)),
     [relay],
   );
 

@@ -23,8 +23,8 @@ import {
 } from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -235,7 +235,7 @@ function DirectMessageView({
       pool
         .relay(relay)
         .subscription({ kinds: [kinds.EncryptedDirectMessage], "#p": [pubkey] })
-        .pipe(onlyEvents(), mapEventsToStore(eventStore)),
+        .pipe(mapEventsToStore(eventStore)),
     [relay, pubkey],
   );
 

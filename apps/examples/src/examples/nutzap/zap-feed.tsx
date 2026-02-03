@@ -14,7 +14,7 @@ import { castTimelineStream } from "applesauce-common/observable";
 import { BehaviorSubject, EventStore, mapEventsToStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { Nutzap } from "applesauce-wallet/casts";
 import { NUTZAP_KIND } from "applesauce-wallet/helpers";
 import { useMemo } from "react";
@@ -163,7 +163,7 @@ export default function ZapFeed() {
       pool
         .relay(relay)
         .subscription({ kinds: [NUTZAP_KIND], limit: 50 })
-        .pipe(onlyEvents(), mapEventsToStore(eventStore)),
+        .pipe(mapEventsToStore(eventStore)),
     [relay],
   );
 

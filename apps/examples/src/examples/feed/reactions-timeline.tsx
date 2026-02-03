@@ -16,7 +16,7 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { encodePointer, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds } from "nostr-tools";
 import { useMemo, useState } from "react";
@@ -127,8 +127,6 @@ export default function ReactionsTimeline() {
         .relay(relay)
         .subscription({ kinds: [kinds.Reaction], limit: 20 })
         .pipe(
-          // Filter out EOSE messages
-          onlyEvents(),
           // Add all events to the store
           mapEventsToStore(eventStore),
           // Gather events into a timeline

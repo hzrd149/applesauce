@@ -23,7 +23,7 @@ import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
 import {
@@ -395,8 +395,6 @@ export default function ZapProfile() {
         kinds: [NUTZAP_INFO_KIND],
       })
       .pipe(
-        // Only get events from relays (ignore EOSE)
-        onlyEvents(),
         // deduplicate events using the event store
         mapEventsToStore(eventStore),
         // collect all events into a timeline

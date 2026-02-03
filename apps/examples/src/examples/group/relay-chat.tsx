@@ -17,7 +17,7 @@ import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "nostr-tools/nip19";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -72,8 +72,6 @@ function ChatLog({ pointer }: { pointer: GroupPointer }) {
         .relay(pointer.relay)
         .subscription({ kinds: [9], "#h": [pointer.id], limit: 100 })
         .pipe(
-          // ignore EOSE
-          onlyEvents(),
           // map to store
           mapEventsToStore(eventStore),
           // map to timeline

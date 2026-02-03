@@ -32,10 +32,9 @@ import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } fr
 import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import {
   ignoreUnhealthyRelaysOnPointers,
-  onlyEvents,
   RelayHealthState,
   RelayLiveness,
-  RelayPool,
+  RelayPool
 } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -130,8 +129,6 @@ const live$ = pool
     { kinds: [1], since: aMinuteAgo },
   )
   .pipe(
-    // Ignore EOSE messages
-    onlyEvents(),
     // Add events to the event store
     mapEventsToStore(eventStore),
   );

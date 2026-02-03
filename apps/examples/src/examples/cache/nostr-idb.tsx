@@ -15,7 +15,7 @@ import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, isFromCache, persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { NostrIDB } from "nostr-idb";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, combineLatest, debounceTime, interval, startWith, switchMap } from "rxjs";
@@ -153,7 +153,7 @@ export default function NostrIDBExample() {
         ? pool
             .relay(relay)
             .subscription({ kinds: [1], since: unixNow() })
-            .pipe(onlyEvents(), mapEventsToStore(eventStore))
+            .pipe(mapEventsToStore(eventStore))
         : undefined,
     [relay, live],
   );

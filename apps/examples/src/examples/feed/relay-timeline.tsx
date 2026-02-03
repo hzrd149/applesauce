@@ -16,7 +16,7 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { Filter, getDisplayName, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useState } from "react";
 import RelayPicker from "../../components/relay-picker";
@@ -95,8 +95,6 @@ export default function RelayTimeline() {
         .relay(relay)
         .subscription({ kinds: [1] })
         .pipe(
-          // Only get events from relay (ignore EOSE)
-          onlyEvents(),
           // deduplicate events using the event store
           mapEventsToStore(eventStore),
           // collect all events into a timeline

@@ -14,7 +14,7 @@ import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { MintInfo, MintRecommendation } from "applesauce-wallet/casts";
 import { CASHU_MINT_INFO_KIND, MINT_RECOMMENDATION_KIND } from "applesauce-wallet/helpers";
 import { useMemo, useState } from "react";
@@ -127,7 +127,7 @@ function MintDetailsView({ mintInfo, onBack }: { mintInfo: MintInfo; onBack: () 
 
     return pool
       .subscription(Array.from(relays), { kinds: [MINT_RECOMMENDATION_KIND], "#u": [mintInfo.url] })
-      .pipe(onlyEvents(), mapEventsToStore(eventStore));
+      .pipe(mapEventsToStore(eventStore));
   }, [mintInfo.id]);
 
   // Get recommendations for this mint
@@ -229,8 +229,6 @@ export default function MintDiscovery() {
         .relay(relay)
         .subscription({ kinds: [CASHU_MINT_INFO_KIND] })
         .pipe(
-          // Only get events from relay (ignore EOSE)
-          onlyEvents(),
           // deduplicate events using the event store
           mapEventsToStore(eventStore),
         ),

@@ -1,9 +1,8 @@
 import Prism from "prismjs";
 import "prismjs/themes/prism.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import SideNav from "./components/nav";
 import { ErrorBoundary } from "react-error-boundary";
-import "@xterm/xterm/css/xterm.css";
+import SideNav from "./components/nav";
 
 import "prismjs/components/prism-javascript";
 import "prismjs/components/prism-jsx";
@@ -12,10 +11,8 @@ import "prismjs/components/prism-typescript";
 
 Prism.manual = true;
 
+import { CheckIcon, CodeIcon, CopyIcon, ExternalLinkIcon } from "./components/icons";
 import examples, { Example } from "./examples";
-import { CodeIcon, ExternalLinkIcon, CopyIcon, CheckIcon } from "./components/icons";
-import { BrowserTerminalInterface, setTerminalInterface, TerminalInterface } from "./cli/terminal-interface";
-import { useMount, useUnmount } from "react-use";
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const ref = useRef<HTMLElement | null>(null);
@@ -31,39 +28,6 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
       </code>
     </pre>
   );
-}
-
-/** Browser terminal container */
-function CliExample({ app }: { app: () => Promise<void> }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const term = useRef<TerminalInterface | null>(null);
-
-  // Create the terminal when component mounts
-  useMount(() => {
-    if (!ref.current) throw new Error("Container element not found");
-
-    term.current = new BrowserTerminalInterface(ref.current);
-    setTerminalInterface(term.current);
-  });
-
-  // Start the app
-  useEffect(() => {
-    if (app) {
-      // Wait for the terminal to be initialized
-      setTimeout(() => {
-        console.log("Starting app", app);
-
-        app();
-      }, 100);
-    }
-  }, [app]);
-
-  // Dispose the terminal when component unmounts
-  useUnmount(() => {
-    if (term.current) term.current.dispose();
-  });
-
-  return <div className="w-full h-full" ref={ref}></div>;
 }
 
 function ExampleView({ example }: { example?: Example }) {
@@ -229,15 +193,7 @@ function ExampleView({ example }: { example?: Example }) {
 
         {/* Page content */}
         {mode === "preview" ? (
-          CliApp ? (
-            <ErrorBoundary
-              fallbackRender={({ error }) => (
-                <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>
-              )}
-            >
-              <CliExample app={CliApp} />
-            </ErrorBoundary>
-          ) : Component ? (
+          Component ? (
             <ErrorBoundary
               fallbackRender={({ error }) => (
                 <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>

@@ -18,7 +18,7 @@ import {
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, NostrEvent } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { CategoryScale, Chart as ChartJS, LinearScale, Title, Tooltip } from "chart.js";
 import { WordCloudController, WordElement } from "chartjs-chart-wordcloud";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -199,7 +199,7 @@ export default function RelayDiscoveryAttributes() {
 
   // Subscribe to events from relay
   use$(
-    () => (relay ? relay.subscription(relayFilter).pipe(onlyEvents(), mapEventsToStore(eventStore)) : undefined),
+    () => (relay ? relay.subscription(relayFilter).pipe(mapEventsToStore(eventStore)) : undefined),
     [relay, relayFilter],
   );
 

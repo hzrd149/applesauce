@@ -121,7 +121,7 @@ export default function ContentRenderingExample() {
               kinds: [1],
               limit: 20,
             })
-            .pipe(onlyEvents(), mapEventsToStore(eventStore))
+            .pipe(mapEventsToStore(eventStore))
         : undefined,
     [relay],
   );

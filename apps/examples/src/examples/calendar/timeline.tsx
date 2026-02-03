@@ -9,8 +9,6 @@ related:
   - calendar/create-event
   - calendar/map
 ---*/
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
   getCalendarEventEnd,
@@ -23,10 +21,11 @@ import {
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers";
 import { CalendarEventRSVPsModel } from "applesauce-common/models";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { getDisplayName, getProfilePicture, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
-import { NostrEvent } from "applesauce-core/helpers";
+import { RelayPool } from "applesauce-relay";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
 import { map } from "rxjs";
@@ -303,8 +302,6 @@ export default function CalendarTimeline() {
           kinds: [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND],
         })
         .pipe(
-          // Only get events from relay (ignore EOSE)
-          onlyEvents(),
           // deduplicate events using the event store
           mapEventsToStore(eventStore),
           // collect all events into a timeline

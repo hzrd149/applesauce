@@ -211,7 +211,7 @@ function ArticleViewer({ article }: { article: Article }) {
         kinds: [1111],
         "#a": [`30023:${article.pubkey}:${article.id}`],
       })
-      .pipe(onlyEvents(), mapEventsToStore(eventStore));
+      .pipe(mapEventsToStore(eventStore));
   }, [article?.id, relay]);
 
   // Then use the model to display comments

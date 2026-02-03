@@ -759,7 +759,7 @@ cached.forEach((event) => eventStore.add(event));
 pool
   .relay(relay)
   .subscription({ kinds: [1] })
-  .pipe(onlyEvents(), mapEventsToStore(eventStore))
+  .pipe(mapEventsToStore(eventStore))
   .subscribe();
 ```
 

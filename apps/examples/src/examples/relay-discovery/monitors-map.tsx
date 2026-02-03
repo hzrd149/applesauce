@@ -28,7 +28,7 @@ import {
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
@@ -202,7 +202,6 @@ export default function MonitorsMap() {
     () =>
       relay
         ? relay.subscription(relayFilter).pipe(
-            onlyEvents(),
             mapEventsToStore(eventStore),
             mapEventsToTimeline(),
             // Hack to make react update

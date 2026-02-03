@@ -22,7 +22,6 @@
     "@std/front-matter": "jsr:^1.0.9",
     "@tursodatabase/database-wasm": "^0.2.2",
     "@types/qrcode-terminal": "^0.12.2",
-    "@xterm/xterm": "^5.5.0",
     "applesauce-accounts": "^5.1.0",
     "applesauce-actions": "^5.0.0",
     "applesauce-common": "^5.1.0",

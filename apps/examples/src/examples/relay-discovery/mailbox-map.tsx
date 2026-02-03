@@ -201,7 +201,7 @@ export default function OutboxMap() {
       pool
         .relay(relay)
         .subscription({ kinds: [RELAY_MONITOR_ANNOUNCEMENT_KIND] })
-        .pipe(onlyEvents(), mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayMonitor)),
+        .pipe(mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayMonitor)),
     [relay],
   );
 

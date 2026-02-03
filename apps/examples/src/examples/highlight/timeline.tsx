@@ -7,6 +7,16 @@ tags:
 related:
   - highlight/article
 ---*/
+import {
+  getHighlightAttributions,
+  getHighlightComment,
+  getHighlightContext,
+  getHighlightSourceAddressPointer,
+  getHighlightSourceEventPointer,
+  getHighlightSourceUrl,
+  getHighlightText,
+  HighlightAttribution,
+} from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import {
   getDisplayName,
@@ -15,21 +25,11 @@ import {
   mergeRelaySets,
   ProfileContent,
 } from "applesauce-core/helpers";
-import {
-  getHighlightText,
-  getHighlightContext,
-  getHighlightComment,
-  getHighlightSourceEventPointer,
-  getHighlightSourceAddressPointer,
-  getHighlightSourceUrl,
-  getHighlightAttributions,
-  HighlightAttribution,
-} from "applesauce-common/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { kinds, NostrEvent } from "nostr-tools";
-import { ProfilePointer, nprofileEncode, neventEncode, naddrEncode } from "nostr-tools/nip19";
+import { naddrEncode, neventEncode, nprofileEncode, ProfilePointer } from "nostr-tools/nip19";
 import { useMemo, useState } from "react";
 import { map } from "rxjs";
 
@@ -196,8 +196,6 @@ export default function HighlightTimeline() {
         .relay(relay)
         .subscription({ kinds: [kinds.Highlights] })
         .pipe(
-          // Only get events from relay (ignore EOSE)
-          onlyEvents(),
           // deduplicate events using the event store
           mapEventsToStore(eventStore),
           // collect all events into a timeline

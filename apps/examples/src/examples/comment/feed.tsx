@@ -17,7 +17,7 @@ import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, NostrEvent, persistEventsToCache, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useEffect, useState } from "react";
@@ -328,7 +328,7 @@ function ThreadView({ rootPointer, onBack }: { rootPointer: CommentPointer; onBa
             { "#a": [`${rootPointer.kind}:${rootPointer.pubkey}:${rootPointer.identifier}`] }),
         limit: 500,
       })
-      .pipe(onlyEvents(), mapEventsToStore(eventStore));
+      .pipe(mapEventsToStore(eventStore));
   }, [pointerKey]);
 
   // Get all top-level comments (comments that reply directly to the root event)
@@ -437,8 +437,6 @@ export default function CommentFeed() {
   use$(
     () =>
       pool.subscription(relays, { kinds: [COMMENT_KIND], limit: 200 }).pipe(
-        // Filter out EOSE messages
-        onlyEvents(),
         // Add all events to the store
         mapEventsToStore(eventStore),
       ),

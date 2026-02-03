@@ -26,7 +26,7 @@ import {
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useEffect, useMemo, useState } from "react";
 import { map } from "rxjs";
@@ -162,7 +162,6 @@ export default function ZapsTimeline() {
         .relay(relay)
         .subscription({ kinds: [kinds.Zap], limit: 20 })
         .pipe(
-          onlyEvents(),
           mapEventsToStore(eventStore),
           mapEventsToTimeline(),
           map((events) => [...events]),

@@ -20,8 +20,8 @@ import {
   ProfilePointer,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
-import { onlyEvents, RelayPool } from "applesauce-relay";
+import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "nostr-tools/nip19";
 import { useCallback, useMemo, useState } from "react";
@@ -114,8 +114,6 @@ export default function GiftWrapDashboard() {
   use$(
     () =>
       pool.subscription([relay], { kinds: [kinds.GiftWrap] }).pipe(
-        // Ignore EOSE
-        onlyEvents(),
         // Deduplicate events with the store
         mapEventsToStore(eventStore),
         catchError((err) => {
