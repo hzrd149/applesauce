@@ -1,6 +1,9 @@
 @import "tailwindcss";
+@import "./themes/light.css";
+@import "./themes/dark.css";
+
 @plugin "daisyui" {
   themes:
-    wireframe --default,
-    black --prefersdark;
+    applesauce-light --default,
+    applesauce-dark --prefersdark;
 }
