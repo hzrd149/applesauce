@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import examples from "../examples";
+import examples, { Example } from "../examples";
+import { ExampleSearch } from "../components/example-search";
 
 export default function LandingPage() {
-  const [searchTerm, setSearchTerm] = useState("");
-
-  // Filter examples by search term (searches name and description)
-  const filteredExamples = examples.filter((example) => {
-    const searchLower = searchTerm.toLowerCase();
-    const nameMatch = example.name.toLowerCase().includes(searchLower);
-    const descMatch = example.frontmatter?.description?.toLowerCase().includes(searchLower) ?? false;
-    return nameMatch || descMatch;
-  });
+  const [filteredExamples, setFilteredExamples] = useState<Example[]>(examples);
 
   return (
     <div className="min-h-screen bg-base-100">
@@ -35,18 +28,7 @@ export default function LandingPage() {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
         {/* Search Section */}
-        <div className="mb-8 max-w-2xl mx-auto">
-          <input
-            type="text"
-            placeholder="Search examples by name or description..."
-            className="input input-bordered w-full input-lg"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <div className="text-sm text-base-content/70 mt-2">
-            Showing {filteredExamples.length} of {examples.length} examples
-          </div>
-        </div>
+        <ExampleSearch onResultsChange={setFilteredExamples} />
 
         {/* Examples Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -58,19 +40,16 @@ export default function LandingPage() {
             >
               <div className="card-body p-4">
                 <h2 className="card-title text-base font-mono">{example.name}</h2>
-                {example.frontmatter?.description && (
-                  <p className="text-sm text-base-content/70 line-clamp-3">{example.frontmatter.description}</p>
+                {example.metadata?.description && (
+                  <p className="text-sm text-base-content/70 line-clamp-3">{example.metadata.description}</p>
                 )}
-                {example.frontmatter?.tags && example.frontmatter.tags.length > 0 && (
+                {example.metadata?.tags && example.metadata.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {example.frontmatter.tags.slice(0, 3).map((tag) => (
+                    {example.metadata.tags.slice(0, 3).map((tag: string) => (
                       <span key={tag} className="badge badge-primary badge-sm">
                         {tag}
                       </span>
                     ))}
-                    {example.frontmatter.tags.length > 3 && (
-                      <span className="badge badge-ghost badge-sm">+{example.frontmatter.tags.length - 3}</span>
-                    )}
                   </div>
                 )}
               </div>
@@ -81,7 +60,7 @@ export default function LandingPage() {
         {/* No Results */}
         {filteredExamples.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-lg text-base-content/70">No examples found matching "{searchTerm}"</p>
+            <p className="text-lg text-base-content/70">No examples found</p>
           </div>
         )}
       </div>

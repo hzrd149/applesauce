@@ -34,7 +34,7 @@ export default function ExamplePage() {
   const exampleId = splat;
   const [path, setPath] = useState("");
   const [source, setSource] = useState("");
-  const [frontmatter, setFrontmatter] = useState<Example["frontmatter"]>();
+  const [metadata, setMetadata] = useState<Example["metadata"]>();
   const [Component, setComponent] = useState<(() => JSX.Element) | null>();
   const [mode, setMode] = useState<"code" | "preview">("preview");
   const [copied, setCopied] = useState(false);
@@ -71,8 +71,8 @@ export default function ExamplePage() {
 
     example.source().then((source: string) => {
       setSource(source);
-      // Update frontmatter after source is loaded (it's parsed during source())
-      setFrontmatter(example.frontmatter);
+      // Update metadata after source is loaded (it's parsed during source())
+      setMetadata(example.metadata);
     });
   }, [example]);
 
@@ -122,9 +122,7 @@ export default function ExamplePage() {
           <div className="mx-2 flex-1 px-2">
             <div className="flex flex-col">
               <span className="font-bold text-lg">{example.name}</span>
-              {frontmatter?.description && (
-                <span className="text-xs text-base-content/70">{frontmatter.description}</span>
-              )}
+              {metadata?.description && <span className="text-xs text-base-content/70">{metadata.description}</span>}
             </div>
           </div>
           <div className="flex-none">
@@ -165,23 +163,23 @@ export default function ExamplePage() {
           </div>
         </div>
 
-        {/* Frontmatter metadata */}
-        {frontmatter && (frontmatter.tags?.length || frontmatter.related?.length) && (
+        {/* Metadata */}
+        {metadata && (metadata.tags?.length || metadata.related?.length) && (
           <div className="bg-base-200 px-4 py-2 border-b border-base-300">
             <div className="flex flex-wrap gap-2 items-center">
-              {frontmatter.tags && frontmatter.tags.length > 0 && (
+              {metadata.tags && metadata.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {frontmatter.tags.map((tag) => (
+                  {metadata.tags.map((tag) => (
                     <span key={tag} className="badge badge-primary badge-sm">
                       {tag}
                     </span>
                   ))}
                 </div>
               )}
-              {frontmatter.related && frontmatter.related.length > 0 && (
+              {metadata.related && metadata.related.length > 0 && (
                 <div className="flex flex-wrap gap-2 items-center">
                   <span className="text-xs text-base-content/70">Related:</span>
-                  {frontmatter.related.map((rel) => {
+                  {metadata.related.map((rel) => {
                     const relatedExample = examples.find((e) => e.id === rel);
                     if (!relatedExample) return null;
                     return (

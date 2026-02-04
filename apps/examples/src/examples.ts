@@ -12,7 +12,7 @@ export type Example = {
   path: string;
   load: () => Promise<unknown>;
   source: () => Promise<string>;
-  frontmatter?: ExampleMetadata;
+  metadata?: ExampleMetadata;
 };
 
 const examples: Example[] = [];
@@ -45,7 +45,7 @@ for (const [path, load] of Object.entries(modules)) {
     path,
     load: load as () => Promise<unknown>,
     source,
-    get frontmatter() {
+    get metadata() {
       return frontmatterCache;
     },
   });
