@@ -5,13 +5,6 @@ tags:
   - nutzap
   - profile
   - lightning
-dependencies:
-  - @cashu/cashu-ts
-  - applesauce-actions
-  - applesauce-common
-  - applesauce-core
-  - applesauce-react
-  - applesauce-relay
 related:
   - nutzap/zap-feed
   - nutzap/contacts

@@ -11,8 +11,6 @@ export type ExampleFrontmatter = {
   description?: string;
   /** Tags/categories for the example */
   tags?: string[];
-  /** Required dependencies/packages */
-  dependencies?: string[];
   /** Related example paths */
   related?: string[];
 };

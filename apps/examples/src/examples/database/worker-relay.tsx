@@ -5,9 +5,6 @@ tags:
   - database
   - worker
   - relay
-dependencies:
-  - @snort/worker-relay
-  - applesauce-core
 related:
   - cache/worker-relay
 ---*/

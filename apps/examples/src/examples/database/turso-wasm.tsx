@@ -6,10 +6,6 @@ tags:
   - turso
   - sqlite
   - wasm
-dependencies:
-  - @tursodatabase/database-wasm
-  - applesauce-core
-  - applesauce-sqlite
 related:
   - database/worker-relay
 ---*/

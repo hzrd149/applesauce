@@ -5,12 +5,6 @@ tags:
   - loader
   - ndk
   - integration
-dependencies:
-  - @nostr-dev-kit/ndk
-  - applesauce-common
-  - applesauce-core
-  - applesauce-loaders
-  - applesauce-react
 related:
   - loader/using-nostrify
   - loader/using-nostr-tools

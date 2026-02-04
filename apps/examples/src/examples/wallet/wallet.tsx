@@ -6,18 +6,6 @@ tags:
   - cashu
   - tokens
   - nutzaps
-dependencies:
-  - @cashu/cashu-ts
-  - applesauce-accounts
-  - applesauce-actions
-  - applesauce-common
-  - applesauce-core
-  - applesauce-loaders
-  - applesauce-react
-  - applesauce-relay
-  - applesauce-signers
-  - applesauce-wallet
-  - nostr-idb
 related:
   - wallet/mint-discovery
   - nwc/simple-wallet

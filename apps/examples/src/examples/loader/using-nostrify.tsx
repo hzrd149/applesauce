@@ -5,12 +5,6 @@ tags:
   - loader
   - nostrify
   - integration
-dependencies:
-  - @nostrify/nostrify
-  - applesauce-common
-  - applesauce-core
-  - applesauce-loaders
-  - applesauce-react
 related:
   - loader/using-ndk
   - loader/using-nostr-tools

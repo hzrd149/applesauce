@@ -5,13 +5,6 @@ tags:
   - cache
   - worker
   - relay
-dependencies:
-  - @snort/worker-relay
-  - applesauce-common
-  - applesauce-core
-  - applesauce-loaders
-  - applesauce-react
-  - applesauce-relay
 related:
   - database/worker-relay
   - cache/nostr-idb
