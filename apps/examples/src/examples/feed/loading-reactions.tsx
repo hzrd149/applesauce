@@ -1,6 +1,6 @@
 /**
  * Display reactions (likes, reposts) with loading states and user information
- * @tags feed, reactions, loading
+ * @tags nip-25, feed, reactions, loading
  * @related feed/reactions-timeline
  */
 import { EventStore } from "applesauce-core";

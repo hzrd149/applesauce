@@ -1,6 +1,6 @@
 /**
  * Display wallet information including balance, capabilities, and connection status
- * @tags nwc, wallet, info
+ * @tags nip-47, nwc, wallet, info
  * @related nwc/simple-wallet, nwc/transactions
  */
 import { hexToBytes } from "@noble/hashes/utils";

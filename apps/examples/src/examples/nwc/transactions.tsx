@@ -1,6 +1,6 @@
 /**
  * View and manage wallet transaction history with filtering and details
- * @tags nwc, wallet, transactions
+ * @tags nip-47, nwc, wallet, transactions
  * @related nwc/simple-wallet, nwc/wallet-info
  */
 import { hexToBytes } from "@noble/hashes/utils";

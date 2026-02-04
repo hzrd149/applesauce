@@ -1,6 +1,6 @@
 /**
  * Create and manage signers with password-based encryption for private keys
- * @tags signers, password, encryption
+ * @tags nip-19, nip-49, signers, password, encryption
  * @related signers/accounts
  */
 import { PasswordSigner } from "applesauce-signers";

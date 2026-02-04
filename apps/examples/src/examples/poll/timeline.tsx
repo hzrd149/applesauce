@@ -1,6 +1,6 @@
 /**
  * Display polls with voting functionality and results
- * @tags poll, timeline, voting
+ * @tags nip-69, poll, timeline, voting
  * @related feed/relay-timeline
  */
 import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";

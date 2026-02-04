@@ -1,6 +1,6 @@
 /**
  * Display a timeline of highlighted articles and content
- * @tags highlight, timeline
+ * @tags nip-84, highlight, timeline
  * @related highlight/article
  */
 import {

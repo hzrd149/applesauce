@@ -1,6 +1,6 @@
 /**
  * Compare events across different relays to see differences in data availability
- * @tags negentrapy, relay, comparison
+ * @tags nip-77, negentrapy, relay, comparison
  * @related negentrapy/mentions
  */
 import { defined, EventStore } from "applesauce-core";

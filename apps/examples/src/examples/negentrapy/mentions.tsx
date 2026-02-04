@@ -1,6 +1,6 @@
 /**
  * Display notes with user mentions and highlight mentioned users
- * @tags negentrapy, mentions
+ * @tags nip-10, nip-77, negentrapy, mentions
  * @related negentrapy/note-reactions, negentrapy/relay-difference
  */
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";

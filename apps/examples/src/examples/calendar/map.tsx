@@ -1,6 +1,6 @@
 /**
  * Display calendar events on an interactive map with geolocation
- * @tags calendar, map, geolocation
+ * @tags nip-52, calendar, map, geolocation
  * @related calendar/timeline, calendar/create-event
  */
 import { EventStore } from "applesauce-core";

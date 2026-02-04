@@ -1,6 +1,6 @@
 /**
  * Select optimal relays for publishing events based on mailbox discovery
- * @tags outbox, relay, selection
+ * @tags nip-65, outbox, relay, selection
  * @related outbox/social-feed, relay-discovery/contacts-relays
  */
 import { defined, EventStore, includeMailboxes } from "applesauce-core";

@@ -1,6 +1,6 @@
 /**
  * Bookmarks Manager to create, manage, and organize bookmarks for notes and events
- * @tags bookmarks, manager
+ * @tags nip-51, bookmarks, manager
  * @related feed/relay-timeline
  */
 import { ProxySigner } from "applesauce-accounts";

@@ -1,6 +1,6 @@
 /**
  * Group chat functionality using relay-based messaging
- * @tags group, chat, messaging
+ * @tags nip-29, nip-42, group, chat, messaging
  * @related group/groups, group/threads
  */
 import { GroupMessageBlueprint } from "applesauce-common/blueprints";

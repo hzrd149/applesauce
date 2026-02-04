@@ -1,6 +1,6 @@
 /**
  * Parse and display NIP-19 encoded links (npub, nprofile, note, nevent, etc.)
- * @tags misc, nip-19, links, encoding
+ * @tags nip-19, nip-89, misc, links, encoding
  * @related misc/app-data
  */
 import {

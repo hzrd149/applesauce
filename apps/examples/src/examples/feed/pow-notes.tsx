@@ -1,6 +1,6 @@
 /**
  * Display notes with proof of work (mining difficulty) requirements
- * @tags feed, pow, mining
+ * @tags nip-13, feed, pow, mining
  * @related feed/relay-timeline
  */
 import { EventStore } from "applesauce-core";

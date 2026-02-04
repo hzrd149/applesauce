@@ -1,6 +1,6 @@
 /**
  * Display a timeline of gift-wrapped events with decryption support
- * @tags gift-wrap, timeline, encryption
+ * @tags nip-44, nip-59, gift-wrap, timeline, encryption
  * @related gift-wrap/dashboard, gift-wrap/generator
  */
 import { persistEncryptedContent } from "applesauce-common/helpers/encrypted-content-cache";

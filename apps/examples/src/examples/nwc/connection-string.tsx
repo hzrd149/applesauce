@@ -1,6 +1,6 @@
 /**
  * Parse and display wallet connection strings with support detection
- * @tags nwc, wallet, connection
+ * @tags nip-47, nwc, wallet, connection
  * @related nwc/auth-uri, nwc/simple-wallet
  */
 import { use$ } from "applesauce-react/hooks";

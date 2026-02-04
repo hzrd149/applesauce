@@ -1,6 +1,6 @@
 /**
  * Discover relays from user contact lists and recommendations
- * @tags relay-discovery, contacts, relays
+ * @tags nip-02, nip-65, nip-66, relay-discovery, contacts, relays
  * @related relay-discovery/attributes, relay-discovery/monitor-feed
  */
 import { castUser, RelayMonitor, User } from "applesauce-common/casts";

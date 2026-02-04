@@ -1,6 +1,6 @@
 /**
  * Explore and browse content by hashtags with filtering
- * @tags hashtags, explore, filtering
+ * @tags nip-91, hashtags, explore, filtering
  * @related feed/relay-timeline
  */
 import { Link } from "applesauce-content/nast";

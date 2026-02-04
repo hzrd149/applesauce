@@ -1,6 +1,6 @@
 /**
  * Authenticate and sign events using Nostr Connect (NIP-46) bunker protocol
- * @tags signers, bunker, nostr-connect
+ * @tags nip-46, signers, bunker, nostr-connect
  * @related cli/bunker-login, signers/bunker-provider
  */
 import { EventFactory } from "applesauce-core";

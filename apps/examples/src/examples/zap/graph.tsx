@@ -1,6 +1,6 @@
 /**
  * Visualize zap (Lightning payment) relationships as a graph
- * @tags zap, graph, lightning, visualization, chart.js, react-chartjs-2
+ * @tags nip-57, zap, graph, lightning, visualization, chart.js, react-chartjs-2
  * @related zap/timeline
  */
 import { getZapAmount, getZapRecipient, isValidZap } from "applesauce-common/helpers";

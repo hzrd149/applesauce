@@ -1,6 +1,6 @@
 /**
  * Visualize relay monitors on a map with status and location data
- * @tags relay-discovery, monitors, map
+ * @tags nip-66, relay-discovery, monitors, map
  * @related relay-discovery/monitor-feed, relay-discovery/mailbox-map
  */
 import {

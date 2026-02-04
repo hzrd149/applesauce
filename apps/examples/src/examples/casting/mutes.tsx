@@ -1,6 +1,6 @@
 /**
  * Manage your mute list to hide content from specific users
- * @tags casting, mutes, moderation
+ * @tags nip-51, casting, mutes, moderation
  * @related casting/contacts
  */
 import { ProxySigner } from "applesauce-accounts";

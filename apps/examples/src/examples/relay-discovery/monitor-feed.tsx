@@ -1,6 +1,6 @@
 /**
  * Display relay monitor announcements and status information
- * @tags relay-discovery, monitor, feed
+ * @tags nip-66, relay-discovery, monitor, feed
  * @related relay-discovery/monitors-map, relay-discovery/attributes
  */
 import { RelayDiscovery, RelayMonitor } from "applesauce-common/casts";

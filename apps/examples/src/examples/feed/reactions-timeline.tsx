@@ -1,6 +1,6 @@
 /**
  * Display a timeline of reactions (likes, reposts) with user profiles and caching
- * @tags feed, timeline, reactions, cache
+ * @tags nip-25, feed, timeline, reactions, cache
  * @related feed/loading-reactions, feed/relay-timeline
  */
 import { castUser, Reaction, User } from "applesauce-common/casts";

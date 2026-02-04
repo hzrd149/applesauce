@@ -1,6 +1,6 @@
 /**
  * Send nutzaps (Lightning payments via Cashu) to contacts with mint quotes
- * @tags nutzap, contacts, lightning, cashu
+ * @tags nip-02, nip-61, nutzap, contacts, lightning, cashu
  * @related nutzap/zap-feed, nutzap/zap-profile
  */
 import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";

@@ -1,6 +1,6 @@
 /**
  * Blossom Server Manager for managing Blossom servers for decentralized content hosting
- * @tags blossom, server, management
+ * @tags nip-96, blossom, server, management
  * @related feed/relay-timeline
  */
 import { ActionRunner } from "applesauce-actions";

@@ -1,6 +1,6 @@
 /**
  * Display a timeline of zaps (Lightning payments) with amounts and recipients
- * @tags zap, timeline, lightning
+ * @tags nip-57, zap, timeline, lightning
  * @related zap/graph, nutzap/zap-feed
  */
 import { getZapAmount, getZapEventPointer, getZapSender, isValidZap } from "applesauce-common/helpers";

@@ -1,6 +1,6 @@
 /**
  * Create and publish highlights on articles by selecting text, with markdown rendering and mention support
- * @tags highlight, article, markdown, nip-84
+ * @tags nip-23, nip-84, highlight, article, markdown
  * @related highlight/timeline, content/articles
  */
 import { remarkNostrMentions } from "applesauce-content/markdown";

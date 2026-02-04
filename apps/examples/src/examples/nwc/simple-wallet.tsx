@@ -1,6 +1,6 @@
 /**
  * Simple wallet interface for paying invoices and sending Lightning payments via Nostr Wallet Connect
- * @tags nwc, wallet, lightning, payments
+ * @tags nip-47, nwc, wallet, lightning, payments
  * @related nwc/transactions, nwc/wallet-info
  */
 import { parseBolt11, ParsedInvoice } from "applesauce-common/helpers";

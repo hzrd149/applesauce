@@ -1,6 +1,6 @@
 /**
  * Display torrent files shared on Nostr with metadata and download information
- * @tags torrent, feed, files
+ * @tags nip-35, torrent, feed, files
  * @related feed/relay-timeline
  */
 import { Reaction, Torrent, Zap } from "applesauce-common/casts";

@@ -1,6 +1,6 @@
 /**
  * Display reactions (likes, reposts) on notes with user information
- * @tags negentrapy, reactions, notes
+ * @tags nip-25, nip-77, negentrapy, reactions, notes
  * @related negentrapy/mentions, feed/reactions-timeline
  */
 import { EventStore, mapEventsToStore } from "applesauce-core";

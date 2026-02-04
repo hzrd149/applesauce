@@ -1,6 +1,6 @@
 /**
  * Create and display long-form articles with comments using NIP-23
- * @tags content, articles, nip-23, comments
+ * @tags nip-22, nip-23, content, articles, comments
  * @related content/simple-text, comment/feed
  */
 import { ActionRunner } from "applesauce-actions";

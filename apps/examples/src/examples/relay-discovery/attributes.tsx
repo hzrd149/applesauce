@@ -1,6 +1,6 @@
 /**
  * Discover and display relay attributes and metadata
- * @tags relay-discovery, attributes, metadata
+ * @tags nip-66, relay-discovery, attributes, metadata
  * @related relay-discovery/contacts-relays, relay-discovery/monitor-feed
  */
 import {

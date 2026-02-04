@@ -1,6 +1,6 @@
 /**
  * Display a timeline of calendar events with filtering and details
- * @tags calendar, timeline, events
+ * @tags nip-52, calendar, timeline, events
  * @related calendar/create-event, calendar/map
  */
 import {

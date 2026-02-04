@@ -1,6 +1,6 @@
 /**
  * Full-featured Cashu wallet with token management, nutzaps, and Lightning integration
- * @tags wallet, cashu, tokens, nutzaps
+ * @tags nip-60, nip-61, wallet, cashu, tokens, nutzaps
  * @related wallet/mint-discovery, nwc/simple-wallet
  */
 import { getDecodedToken, getEncodedToken } from "@cashu/cashu-ts";

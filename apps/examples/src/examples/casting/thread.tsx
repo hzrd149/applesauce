@@ -1,6 +1,6 @@
 /**
  * Display threaded conversations with replies and zaps
- * @tags casting, thread, replies, zaps
+ * @tags nip-10, nip-57, casting, thread, replies, zaps
  * @related casting/contacts, zap/timeline
  */
 import { Note, Zap } from "applesauce-common/casts";

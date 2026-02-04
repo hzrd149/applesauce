@@ -1,6 +1,6 @@
 /**
  * Send and receive encrypted gift-wrapped direct messages
- * @tags messages, gift-wrap, encryption, dm
+ * @tags nip-17, nip-44, nip-59, messages, gift-wrap, encryption, dm
  * @related messages/legacy, gift-wrap/timeline
  */
 import { ProxySigner } from "applesauce-accounts";

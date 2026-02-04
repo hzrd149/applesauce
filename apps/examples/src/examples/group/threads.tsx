@@ -1,6 +1,6 @@
 /**
  * Display threaded conversations within groups with replies
- * @tags group, threads, comments
+ * @tags nip-29, nip-72, group, threads, comments
  * @related group/groups, comment/feed
  */
 import { CommentBlueprint } from "applesauce-common/blueprints";

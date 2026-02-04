@@ -1,6 +1,6 @@
 /**
  * Display a feed of comments with threading and reply functionality
- * @tags comment, feed, replies
+ * @tags nip-10, nip-22, comment, feed, replies
  * @related content/articles, casting/thread
  */
 import { Comment } from "applesauce-common/casts";

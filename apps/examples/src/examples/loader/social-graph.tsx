@@ -1,6 +1,6 @@
 /**
  * Load and display social graph connections (follows, followers) between users
- * @tags loader, social-graph, follows
+ * @tags nip-02, loader, social-graph, follows
  * @related loader/parallel-async-loading
  */
 import { EventStore, Model } from "applesauce-core";

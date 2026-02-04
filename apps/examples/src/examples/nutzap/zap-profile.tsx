@@ -1,6 +1,6 @@
 /**
  * Display nutzap information on user profiles with mint details
- * @tags nutzap, profile, lightning
+ * @tags nip-61, nutzap, profile, lightning
  * @related nutzap/zap-feed, nutzap/contacts
  */
 import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";

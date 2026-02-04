@@ -1,6 +1,6 @@
 /**
  * Search for users and content using Vertex search API
- * @tags search, vertex
+ * @tags nip-50, search, vertex
  * @related search/primal
  */
 import { EventStore } from "applesauce-core";

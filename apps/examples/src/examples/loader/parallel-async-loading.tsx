@@ -1,6 +1,6 @@
 /**
  * Load multiple user profiles in parallel with async operations
- * @tags loader, async, parallel
+ * @tags nip-65, loader, async, parallel
  * @related loader/social-graph
  */
 import { castUser } from "applesauce-common/casts";

@@ -1,6 +1,6 @@
 /**
  * Delete notes and events from the Nostr network using deletion events
- * @tags deletion, events, timeline
+ * @tags nip-09, deletion, events, timeline
  * @related simple/profile-editor
  */
 import { ProxySigner } from "applesauce-accounts";

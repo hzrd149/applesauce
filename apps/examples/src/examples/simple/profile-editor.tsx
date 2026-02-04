@@ -1,6 +1,6 @@
 /**
  * Edit and update your Nostr profile with a live preview of changes
- * @tags profile, forms, actions
+ * @tags nip-05, nip-24, profile, forms, actions
  * @related simple/event-deletion
  */
 import { ProxySigner } from "applesauce-accounts";

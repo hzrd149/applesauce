@@ -1,6 +1,6 @@
 /**
  * Create a Nostr Connect provider that allows remote signers to authenticate and sign events
- * @tags signers, bunker, provider, nostr-connect
+ * @tags nip-46, signers, bunker, provider, nostr-connect
  * @related signers/bunker, cli/bunker-login
  */
 import { bytesToHex } from "@noble/hashes/utils";

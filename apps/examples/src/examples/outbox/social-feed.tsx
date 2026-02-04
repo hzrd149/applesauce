@@ -1,6 +1,6 @@
 /**
  * Display a social feed using outbox relays for optimal event distribution
- * @tags outbox, feed, social
+ * @tags nip-02, nip-65, outbox, feed, social
  * @related outbox/relay-selection, feed/relay-timeline
  */
 import {

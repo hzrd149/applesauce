@@ -1,6 +1,6 @@
 /**
  * Visualize mailbox relays on a map with geolocation data
- * @tags relay-discovery, mailbox, map
+ * @tags nip-65, nip-66, relay-discovery, mailbox, map
  * @related relay-discovery/monitors-map, relay-discovery/contacts-relays
  */
 import { RelayMonitor } from "applesauce-common/casts";

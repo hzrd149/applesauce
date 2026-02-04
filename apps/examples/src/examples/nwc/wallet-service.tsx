@@ -1,6 +1,6 @@
 /**
  * Implement a wallet service that handles Nostr Wallet Connect requests and payments
- * @tags nwc, wallet, service, server
+ * @tags nip-47, nwc, wallet, service, server
  * @related nwc/simple-wallet
  */
 import { parseBolt11 } from "applesauce-common/helpers";

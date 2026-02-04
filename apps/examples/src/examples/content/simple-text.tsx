@@ -1,6 +1,6 @@
 /**
  * Render simple text notes with basic formatting and media detection
- * @tags content, text, rendering
+ * @tags nip-27, content, text, rendering
  * @related content/articles, feed/algorithmic-relay
  */
 import { Link } from "applesauce-content/nast";

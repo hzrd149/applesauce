@@ -1,6 +1,6 @@
 /**
  * View live streams with chat functionality and stream metadata
- * @tags stream, viewer, chat
+ * @tags nip-53, stream, viewer, chat
  * @related feed/relay-timeline
  */
 import { StreamChatMessage as StreamChatMessageBlueprint } from "applesauce-common/blueprints";
