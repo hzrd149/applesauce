@@ -219,6 +219,9 @@ importers:
       react-player:
         specifier: ^3.4.0
         version: 3.4.0(@svta/cml-cta@1.0.1(@svta/cml-structured-field-values@1.0.1(@svta/cml-utils@1.0.1))(@svta/cml-utils@1.0.1))(@svta/cml-structured-field-values@1.0.1(@svta/cml-utils@1.0.1))(@svta/cml-utils@1.0.1)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-router:
+        specifier: ^7.13.0
+        version: 7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-use:
         specifier: ^17.6.0
         version: 17.6.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -445,7 +448,7 @@ importers:
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       '@nostrability/schemata':
         specifier: github:nostrability/schemata
-        version: https://codeload.github.com/nostrability/schemata/tar.gz/1f3cc114c617ed85fa1b979d5236849344b516b4(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)
+        version: https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)
       '@types/debug':
         specifier: ^4.1.12
         version: 4.1.12
@@ -1592,9 +1595,9 @@ packages:
     peerDependencies:
       nostr-tools: ^2.17.0
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/1f3cc114c617ed85fa1b979d5236849344b516b4':
-    resolution: {tarball: https://codeload.github.com/nostrability/schemata/tar.gz/1f3cc114c617ed85fa1b979d5236849344b516b4}
-    version: 0.1.9
+  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd':
+    resolution: {tarball: https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd}
+    version: 0.2.3
     peerDependencies:
       typescript: ^4.5.2
 
@@ -3044,6 +3047,10 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cookie@1.1.1:
+    resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
+    engines: {node: '>=18'}
 
   copy-anything@4.0.5:
     resolution: {integrity: sha512-7Vv6asjS4gMOuILabD3l739tsaxFQmC+a7pLZm02zyvs8p977bL3zEgq3yDk5rn9B0PbYgIv++jmHcuUab4RhA==}
@@ -4619,6 +4626,16 @@ packages:
       react: ^17.0.2 || ^18 || ^19
       react-dom: ^17.0.2 || ^18 || ^19
 
+  react-router@7.13.0:
+    resolution: {integrity: sha512-PZgus8ETambRT17BUm/LL8lX3Of+oiLaPuVTRH3l1eLvSPpKO3AvhAEb5N7ihAFZQrYDqkvvWfFh9p0z9VsjLw==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+
   react-universal-interface@0.6.2:
     resolution: {integrity: sha512-dg8yXdcQmvgR13RIlZbTRQOoUrDciFVoSBZILwjE2LFISxZZ8loVJKAkuzswl5js8BHda79bIb2b84ehU8IjXw==}
     peerDependencies:
@@ -4795,6 +4812,9 @@ packages:
   serve-static@2.2.1:
     resolution: {integrity: sha512-xRXBn0pPqQTVQiC8wyQrKs2MOlX24zQ0POGaj0kultvoOCstBQM5yvOhAVSUwOMjQtTvsPWoNCHfPGwaaQJhTw==}
     engines: {node: '>= 18'}
+
+  set-cookie-parser@2.7.2:
+    resolution: {integrity: sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw==}
 
   set-harmonic-interval@1.0.1:
     resolution: {integrity: sha512-AhICkFV84tBP1aWqPwLZqFvAwqEoVA9kxNMniGEUvzOlm4vLmOFLiTT3UZ6bziJTy4bOVpzWGTfSCbmaayGx8g==}
@@ -6539,7 +6559,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/1f3cc114c617ed85fa1b979d5236849344b516b4(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)':
+  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)':
     dependencies:
       '@apidevtools/json-schema-ref-parser': 11.9.3
       ajv: 8.17.1
@@ -8029,6 +8049,8 @@ snapshots:
   cookie-signature@1.2.2: {}
 
   cookie@0.7.2: {}
+
+  cookie@1.1.1: {}
 
   copy-anything@4.0.5:
     dependencies:
@@ -9950,6 +9972,14 @@ snapshots:
       - '@svta/cml-utils'
       - '@types/react-dom'
 
+  react-router@7.13.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      cookie: 1.1.1
+      react: 18.3.1
+      set-cookie-parser: 2.7.2
+    optionalDependencies:
+      react-dom: 18.3.1(react@18.3.1)
+
   react-universal-interface@0.6.2(react@18.3.1)(tslib@2.8.1):
     dependencies:
       react: 18.3.1
@@ -10237,6 +10267,8 @@ snapshots:
       send: 1.2.1
     transitivePeerDependencies:
       - supports-color
+
+  set-cookie-parser@2.7.2: {}
 
   set-harmonic-interval@1.0.1: {}
 
