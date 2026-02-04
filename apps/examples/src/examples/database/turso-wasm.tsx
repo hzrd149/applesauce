@@ -1,14 +1,8 @@
-/*---
-title: Turso WASM Database
-description: Store and query events using Turso WASM database with SQLite in the browser
-tags:
-  - database
-  - turso
-  - sqlite
-  - wasm
-related:
-  - database/worker-relay
----*/
+/**
+ * Store and query events using Turso WASM database with SQLite in the browser
+ * @tags database, turso, sqlite, wasm
+ * @related database/worker-relay
+ */
 import { AsyncEventStore } from "applesauce-core";
 import { Filter, NostrEvent, isEvent } from "applesauce-core/helpers";
 import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";

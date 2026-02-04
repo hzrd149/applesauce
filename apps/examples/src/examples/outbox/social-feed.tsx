@@ -1,14 +1,8 @@
-/*---
-title: Social Feed
-description: Display a social feed using outbox relays for optimal event distribution
-tags:
-  - outbox
-  - feed
-  - social
-related:
-  - outbox/relay-selection
-  - feed/relay-timeline
----*/
+/**
+ * Display a social feed using outbox relays for optimal event distribution
+ * @tags outbox, feed, social
+ * @related outbox/relay-selection, feed/relay-timeline
+ */
 import {
   defined,
   EventStore,
@@ -30,12 +24,7 @@ import {
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
 import { use$, useObservableEagerState } from "applesauce-react/hooks";
-import {
-  ignoreUnhealthyRelaysOnPointers,
-  RelayHealthState,
-  RelayLiveness,
-  RelayPool
-} from "applesauce-relay";
+import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { ProfilePointer } from "nostr-tools/nip19";

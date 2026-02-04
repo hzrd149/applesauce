@@ -1,4 +1,4 @@
-import { parseFrontmatter, type ExampleFrontmatter } from "./frontmatter";
+import { parseMetadata, type ExampleMetadata } from "./metadata";
 
 const modules = import.meta.glob("./examples/**/*.(tsx|ts)");
 const sources = import.meta.glob("./examples/**/*.(tsx|ts)", { query: "?raw" }) as Record<
@@ -12,7 +12,7 @@ export type Example = {
   path: string;
   load: () => Promise<unknown>;
   source: () => Promise<string>;
-  frontmatter?: ExampleFrontmatter;
+  frontmatter?: ExampleMetadata;
 };
 
 const examples: Example[] = [];
@@ -22,7 +22,7 @@ for (const [path, load] of Object.entries(modules)) {
   const generatedName = id.replace(/\//g, " / ").replace(/[-_]/g, " ");
 
   // Cache for frontmatter and cleaned source
-  let frontmatterCache: ExampleFrontmatter | undefined;
+  let frontmatterCache: ExampleMetadata | undefined;
   let cleanedSourceCache: string | undefined;
 
   const source = async () => {
@@ -31,7 +31,7 @@ for (const [path, load] of Object.entries(modules)) {
     }
 
     const rawSource = (await sources[path]()).default as string;
-    const { frontmatter, code } = parseFrontmatter(rawSource);
+    const { metadata: frontmatter, code } = parseMetadata(rawSource);
 
     frontmatterCache = frontmatter || undefined;
     cleanedSourceCache = code;

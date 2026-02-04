@@ -1,14 +1,8 @@
-/*---
-title: Relay Selection
-description: Select optimal relays for publishing events based on mailbox discovery
-tags:
-  - outbox
-  - relay
-  - selection
-related:
-  - outbox/social-feed
-  - relay-discovery/contacts-relays
----*/
+/**
+ * Select optimal relays for publishing events based on mailbox discovery
+ * @tags outbox, relay, selection
+ * @related outbox/social-feed, relay-discovery/contacts-relays
+ */
 import { defined, EventStore, includeMailboxes } from "applesauce-core";
 import { getDisplayName, getProfilePicture, groupPubkeysByRelay, selectOptimalRelays } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";

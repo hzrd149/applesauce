@@ -1,13 +1,8 @@
-/*---
-title: Communikeys
-description: Display and manage communikey groups with member lists
-tags:
-  - group
-  - communikeys
-related:
-  - group/groups
-  - group/threads
----*/
+/**
+ * Display and manage communikey groups with member lists
+ * @tags group, communikeys
+ * @related group/groups, group/threads
+ */
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getTagValue, isRTag, ProfileContent } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";

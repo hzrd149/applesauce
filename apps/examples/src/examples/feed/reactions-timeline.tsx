@@ -1,15 +1,8 @@
-/*---
-title: Reactions Timeline
-description: Display a timeline of reactions (likes, reposts) with user profiles and caching
-tags:
-  - feed
-  - timeline
-  - reactions
-  - cache
-related:
-  - feed/loading-reactions
-  - feed/relay-timeline
----*/
+/**
+ * Display a timeline of reactions (likes, reposts) with user profiles and caching
+ * @tags feed, timeline, reactions, cache
+ * @related feed/loading-reactions, feed/relay-timeline
+ */
 import { castUser, Reaction, User } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";

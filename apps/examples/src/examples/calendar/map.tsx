@@ -1,14 +1,8 @@
-/*---
-title: Calendar Map
-description: Display calendar events on an interactive map with geolocation
-tags:
-  - calendar
-  - map
-  - geolocation
-related:
-  - calendar/timeline
-  - calendar/create-event
----*/
+/**
+ * Display calendar events on an interactive map with geolocation
+ * @tags calendar, map, geolocation
+ * @related calendar/timeline, calendar/create-event
+ */
 import { EventStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers";
 import {

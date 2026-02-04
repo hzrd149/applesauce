@@ -1,13 +1,9 @@
-/*---
-title: Worker Relay Database
-description: Use Web Workers with worker-relay for database operations in the background
-tags:
-  - database
-  - worker
-  - relay
-related:
-  - cache/worker-relay
----*/
+/**
+ * An example of using Web Workers and SQLite WASM with the @snort/worker-relay package for persisting events to a SQLite database
+ * @tags database, worker, relay
+ * @related cache/worker-relay
+ */
+
 import { WorkerRelayInterface } from "@snort/worker-relay";
 import { AsyncEventStore, BehaviorSubject, IAsyncEventDatabase } from "applesauce-core";
 import {
@@ -17,19 +13,19 @@ import {
   getDisplayName,
   getProfileContent,
   getProfilePicture,
+  isEvent,
   isValidProfile,
   kinds,
-  isEvent,
 } from "applesauce-core/helpers";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { use$, useObservableEagerState } from "applesauce-react/hooks";
+import { RelayPool } from "applesauce-relay";
 import { nanoid } from "nanoid";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useDebounce } from "react-use";
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerState, use$ } from "applesauce-react/hooks";
-import { RelayPool } from "applesauce-relay";
-import { useDebounce } from "react-use";
 import ImportEventsButton from "../../components/import-events-button";
 
 // in dev mode import esm module, i have no idea why it has to work like this

@@ -1,14 +1,8 @@
-/*---
-title: Using Nostrify
-description: Integrate Nostrify library with Applesauce loaders for event loading
-tags:
-  - loader
-  - nostrify
-  - integration
-related:
-  - loader/using-ndk
-  - loader/using-nostr-tools
----*/
+/**
+ * Integrate Nostrify library with Applesauce loaders for event loading
+ * @tags loader, nostrify, integration
+ * @related loader/using-ndk, loader/using-nostr-tools
+ */
 import { NPool, NRelay1 } from "@nostrify/nostrify";
 import { castEvent, Note } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";

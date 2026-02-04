@@ -1,14 +1,8 @@
-/*---
-title: Relay Attributes
-description: Discover and display relay attributes and metadata
-tags:
-  - relay-discovery
-  - attributes
-  - metadata
-related:
-  - relay-discovery/contacts-relays
-  - relay-discovery/monitor-feed
----*/
+/**
+ * Discover and display relay attributes and metadata
+ * @tags relay-discovery, attributes, metadata
+ * @related relay-discovery/contacts-relays, relay-discovery/monitor-feed
+ */
 import {
   getRelayDiscoveryAttributes,
   getRelayDiscoveryURL,

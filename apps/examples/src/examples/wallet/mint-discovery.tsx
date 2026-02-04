@@ -1,14 +1,8 @@
-/*---
-title: Mint Discovery
-description: Discover and browse Cashu mint information and recommendations from the Nostr network
-tags:
-  - wallet
-  - mint
-  - cashu
-  - discovery
-related:
-  - wallet/wallet
----*/
+/**
+ * Discover and browse Cashu mint information and recommendations from the Nostr network
+ * @tags wallet, mint, cashu, discovery
+ * @related wallet/wallet
+ */
 import { castUser, User } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";

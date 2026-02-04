@@ -1,13 +1,8 @@
-/*---
-title: Poll Timeline
-description: Display polls with voting functionality and results
-tags:
-  - poll
-  - timeline
-  - voting
-related:
-  - feed/relay-timeline
----*/
+/**
+ * Display polls with voting functionality and results
+ * @tags poll, timeline, voting
+ * @related feed/relay-timeline
+ */
 import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";
 import {
   getPollEndsAt,

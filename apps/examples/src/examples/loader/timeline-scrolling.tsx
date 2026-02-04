@@ -1,15 +1,8 @@
-/*---
-title: Timeline Scrolling
-description: Visualize timeline events on a canvas with time-based scrolling and relay visualization
-tags:
-  - loader
-  - timeline
-  - scrolling
-  - visualization
-related:
-  - loader/paginated-timeline
-  - feed/relay-timeline
----*/
+/**
+ * Visualize timeline events on a canvas with time-based scrolling and relay visualization
+ * @tags loader, timeline, scrolling, visualization
+ * @related loader/paginated-timeline, feed/relay-timeline
+ */
 import { EventStore } from "applesauce-core";
 import { getSeenRelays, mergeRelaySets, unixNow } from "applesauce-core/helpers";
 import { createTimelineLoader } from "applesauce-loaders/loaders";

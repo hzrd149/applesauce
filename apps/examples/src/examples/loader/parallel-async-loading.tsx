@@ -1,13 +1,8 @@
-/*---
-title: Parallel Async Loading
-description: Load multiple user profiles in parallel with async operations
-tags:
-  - loader
-  - async
-  - parallel
-related:
-  - loader/social-graph
----*/
+/**
+ * Load multiple user profiles in parallel with async operations
+ * @tags loader, async, parallel
+ * @related loader/social-graph
+ */
 import { castUser } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { kinds, NostrEvent } from "applesauce-core/helpers";

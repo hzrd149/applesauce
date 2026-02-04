@@ -1,14 +1,8 @@
-/*---
-title: Paginated Timeline
-description: Load timeline events with pagination support for efficient data loading
-tags:
-  - loader
-  - timeline
-  - pagination
-related:
-  - loader/timeline-scrolling
-  - feed/relay-timeline
----*/
+/**
+ * Load timeline events with pagination support for efficient data loading
+ * @tags loader, timeline, pagination
+ * @related loader/timeline-scrolling, feed/relay-timeline
+ */
 import { EventStore } from "applesauce-core";
 import { getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { createTimelineLoader } from "applesauce-loaders/loaders";

@@ -1,14 +1,8 @@
-/*---
-title: Group Threads
-description: Display threaded conversations within groups with replies
-tags:
-  - group
-  - threads
-  - comments
-related:
-  - group/groups
-  - comment/feed
----*/
+/**
+ * Display threaded conversations within groups with replies
+ * @tags group, threads, comments
+ * @related group/groups, comment/feed
+ */
 import { CommentBlueprint } from "applesauce-common/blueprints";
 import { COMMENT_KIND, decodeGroupPointer, GroupPointer } from "applesauce-common/helpers";
 import { CommentsModel } from "applesauce-common/models";

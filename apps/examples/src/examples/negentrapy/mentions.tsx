@@ -1,13 +1,8 @@
-/*---
-title: Mentions
-description: Display notes with user mentions and highlight mentioned users
-tags:
-  - negentrapy
-  - mentions
-related:
-  - negentrapy/note-reactions
-  - negentrapy/relay-difference
----*/
+/**
+ * Display notes with user mentions and highlight mentioned users
+ * @tags negentrapy, mentions
+ * @related negentrapy/note-reactions, negentrapy/relay-difference
+ */
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";

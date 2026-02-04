@@ -1,15 +1,8 @@
-/*---
-title: Articles
-description: Create and display long-form articles with comments using NIP-23
-tags:
-  - content
-  - articles
-  - nip-23
-  - comments
-related:
-  - content/simple-text
-  - comment/feed
----*/
+/**
+ * Create and display long-form articles with comments using NIP-23
+ * @tags content, articles, nip-23, comments
+ * @related content/simple-text, comment/feed
+ */
 import { ActionRunner } from "applesauce-actions";
 import { CreateComment } from "applesauce-actions/actions";
 import { Article, Comment } from "applesauce-common/casts";

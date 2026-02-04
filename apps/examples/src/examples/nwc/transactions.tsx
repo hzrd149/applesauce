@@ -1,14 +1,8 @@
-/*---
-title: Wallet Transactions
-description: View and manage wallet transaction history with filtering and details
-tags:
-  - nwc
-  - wallet
-  - transactions
-related:
-  - nwc/simple-wallet
-  - nwc/wallet-info
----*/
+/**
+ * View and manage wallet transaction history with filtering and details
+ * @tags nwc, wallet, transactions
+ * @related nwc/simple-wallet, nwc/wallet-info
+ */
 import { hexToBytes } from "@noble/hashes/utils";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

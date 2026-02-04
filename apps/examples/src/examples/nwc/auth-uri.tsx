@@ -1,15 +1,8 @@
-/*---
-title: Wallet Auth URI
-description: Create and parse wallet authentication URIs for Nostr Wallet Connect (NIP-47)
-tags:
-  - nwc
-  - wallet
-  - nip-47
-  - authentication
-related:
-  - nwc/connection-string
-  - nwc/simple-wallet
----*/
+/**
+ * Create and parse wallet authentication URIs for Nostr Wallet Connect (NIP-47)
+ * @tags nwc, wallet, nip-47, authentication
+ * @related nwc/connection-string, nwc/simple-wallet
+ */
 import {
   CommonWalletMethods,
   createWalletAuthURI,

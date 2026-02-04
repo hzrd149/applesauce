@@ -1,14 +1,8 @@
-/*---
-title: Worker Relay Cache
-description: Use Web Workers with worker-relay for background event caching and processing
-tags:
-  - cache
-  - worker
-  - relay
-related:
-  - database/worker-relay
-  - cache/nostr-idb
----*/
+/**
+ * Worker Relay Cache using Web Workers with worker-relay for background event caching and processing
+ * @tags cache, worker, relay
+ * @related database/worker-relay, cache/nostr-idb
+ */
 import { WorkerRelayInterface } from "@snort/worker-relay";
 import { Note } from "applesauce-common/casts";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";

@@ -1,14 +1,8 @@
-/*---
-title: Custom Cast Classes
-description: Example of using a custom cast class for NIP-34 Git Repository announcements
-tags:
-  - casting
-  - nip-34
-  - git
-related:
-  - casting/contacts
-  - casting/thread
----*/
+/**
+ * Example of using a custom cast class for NIP-34 Git Repository announcements
+ * @tags casting, nip-34, git
+ * @related casting/contacts, casting/thread
+ */
 import { CastRefEventStore, EventCast } from "applesauce-common/casts/cast";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, withImmediateValueOrDefault } from "applesauce-core";

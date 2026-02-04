@@ -1,15 +1,8 @@
-/*---
-title: Nutzap Contacts
-description: Send nutzaps (Lightning payments via Cashu) to contacts with mint quotes
-tags:
-  - nutzap
-  - contacts
-  - lightning
-  - cashu
-related:
-  - nutzap/zap-feed
-  - nutzap/zap-profile
----*/
+/**
+ * Send nutzaps (Lightning payments via Cashu) to contacts with mint quotes
+ * @tags nutzap, contacts, lightning, cashu
+ * @related nutzap/zap-feed, nutzap/zap-profile
+ */
 import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";

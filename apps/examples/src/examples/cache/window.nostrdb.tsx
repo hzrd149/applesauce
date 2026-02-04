@@ -1,15 +1,8 @@
-/*---
-title: Window NostrDB Cache
-description: Cache events using window.nostrdb.js for fast local storage and retrieval
-tags:
-  - cache
-  - window.nostrdb
-  - storage
-  - window.nostrdb.js
-related:
-  - cache/nostr-idb
-  - feed/relay-timeline
----*/
+/**
+ * Window NostrDB Cache for caching events using window.nostrdb.js for fast local storage and retrieval
+ * @tags cache, window.nostrdb, storage, window.nostrdb.js
+ * @related cache/nostr-idb, feed/relay-timeline
+ */
 import { Note } from "applesauce-common/casts";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";

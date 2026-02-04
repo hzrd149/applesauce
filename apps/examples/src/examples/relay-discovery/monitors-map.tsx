@@ -1,14 +1,8 @@
-/*---
-title: Monitors Map
-description: Visualize relay monitors on a map with status and location data
-tags:
-  - relay-discovery
-  - monitors
-  - map
-related:
-  - relay-discovery/monitor-feed
-  - relay-discovery/mailbox-map
----*/
+/**
+ * Visualize relay monitors on a map with status and location data
+ * @tags relay-discovery, monitors, map
+ * @related relay-discovery/monitor-feed, relay-discovery/mailbox-map
+ */
 import {
   getMonitorChecks,
   getMonitorFrequency,

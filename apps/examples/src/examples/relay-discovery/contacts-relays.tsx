@@ -1,14 +1,8 @@
-/*---
-title: Contacts Relays
-description: Discover relays from user contact lists and recommendations
-tags:
-  - relay-discovery
-  - contacts
-  - relays
-related:
-  - relay-discovery/attributes
-  - relay-discovery/monitor-feed
----*/
+/**
+ * Discover relays from user contact lists and recommendations
+ * @tags relay-discovery, contacts, relays
+ * @related relay-discovery/attributes, relay-discovery/monitor-feed
+ */
 import { castUser, RelayMonitor, User } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";

@@ -1,14 +1,8 @@
-/*---
-title: Nutzap Feed
-description: Display a feed of nutzaps (Lightning payments) with user information
-tags:
-  - nutzap
-  - feed
-  - lightning
-related:
-  - nutzap/zap-profile
-  - zap/timeline
----*/
+/**
+ * Display a feed of nutzaps (Lightning payments) with user information
+ * @tags nutzap, feed, lightning
+ * @related nutzap/zap-profile, zap/timeline
+ */
 import { castUser, User } from "applesauce-common/casts/user";
 import { castTimelineStream } from "applesauce-common/observable";
 import { BehaviorSubject, EventStore, mapEventsToStore } from "applesauce-core";

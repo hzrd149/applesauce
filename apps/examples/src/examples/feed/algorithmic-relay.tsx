@@ -1,17 +1,8 @@
-/*---
-title: Authenticated Relay Feed
-description: Display a feed from relays that require authentication (NIP-42), with rich media content rendering and event order preservation
-tags:
-  - feed
-  - relay
-  - authentication
-  - nip-42
-  - media
-  - content
-related:
-  - feed/relay-timeline
-  - content/articles
----*/
+/**
+ * Display a feed from relays that require authentication (NIP-42), with rich media content rendering and event order preservation
+ * @tags feed, relay, authentication, nip-42, media, content
+ * @related feed/relay-timeline, content/articles
+ */
 import { Link } from "applesauce-content/nast";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";

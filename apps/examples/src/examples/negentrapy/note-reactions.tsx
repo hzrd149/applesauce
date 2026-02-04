@@ -1,14 +1,8 @@
-/*---
-title: Note Reactions
-description: Display reactions (likes, reposts) on notes with user information
-tags:
-  - negentrapy
-  - reactions
-  - notes
-related:
-  - negentrapy/mentions
-  - feed/reactions-timeline
----*/
+/**
+ * Display reactions (likes, reposts) on notes with user information
+ * @tags negentrapy, reactions, notes
+ * @related negentrapy/mentions, feed/reactions-timeline
+ */
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import { useObservableEagerState, use$ } from "applesauce-react/hooks";

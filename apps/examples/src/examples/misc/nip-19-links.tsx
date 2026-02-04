@@ -1,14 +1,8 @@
-/*---
-title: NIP-19 Links
-description: Parse and display NIP-19 encoded links (npub, nprofile, note, nevent, etc.)
-tags:
-  - misc
-  - nip-19
-  - links
-  - encoding
-related:
-  - misc/app-data
----*/
+/**
+ * Parse and display NIP-19 encoded links (npub, nprofile, note, nevent, etc.)
+ * @tags misc, nip-19, links, encoding
+ * @related misc/app-data
+ */
 import {
   createHandlerLink,
   getHandlerDescription,

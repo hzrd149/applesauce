@@ -95,7 +95,7 @@ function ExampleView({ example }: { example?: Example }) {
           </div>
           <div className="mx-2 flex-1 px-2">
             <div className="flex flex-col">
-              <span className="font-bold text-lg">{frontmatter?.title || example?.name || "Examples"}</span>
+              <span className="font-bold text-lg">{example?.name || "Examples"}</span>
               {frontmatter?.description && (
                 <span className="text-xs text-base-content/70">{frontmatter.description}</span>
               )}
@@ -140,48 +140,35 @@ function ExampleView({ example }: { example?: Example }) {
         </div>
 
         {/* Frontmatter metadata */}
-        {frontmatter &&
-          (frontmatter.tags?.length || frontmatter.dependencies?.length || frontmatter.related?.length) && (
-            <div className="bg-base-200 px-4 py-2 border-b border-base-300">
-              <div className="flex flex-wrap gap-2 items-center">
-                {frontmatter.tags && frontmatter.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {frontmatter.tags.map((tag) => (
-                      <span key={tag} className="badge badge-primary badge-sm">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {frontmatter.dependencies && frontmatter.dependencies.length > 0 && (
-                  <details className="dropdown dropdown-end">
-                    <summary className="btn btn-xs btn-ghost">Dependencies ({frontmatter.dependencies.length})</summary>
-                    <ul className="dropdown-content menu bg-base-100 rounded-box z-1 w-52 p-2 shadow">
-                      {frontmatter.dependencies.map((dep) => (
-                        <li key={dep}>
-                          <span className="text-xs">{dep}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-                {frontmatter.related && frontmatter.related.length > 0 && (
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-xs text-base-content/70">Related:</span>
-                    {frontmatter.related.map((rel) => {
-                      const relatedExample = examples.find((e) => e.id === rel);
-                      if (!relatedExample) return null;
-                      return (
-                        <a key={rel} href={`#${rel}`} className="link link-primary text-xs">
-                          {relatedExample.name}
-                        </a>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+        {frontmatter && (frontmatter.tags?.length || frontmatter.related?.length) && (
+          <div className="bg-base-200 px-4 py-2 border-b border-base-300">
+            <div className="flex flex-wrap gap-2 items-center">
+              {frontmatter.tags && frontmatter.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {frontmatter.tags.map((tag) => (
+                    <span key={tag} className="badge badge-primary badge-sm">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {frontmatter.related && frontmatter.related.length > 0 && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs text-base-content/70">Related:</span>
+                  {frontmatter.related.map((rel) => {
+                    const relatedExample = examples.find((e) => e.id === rel);
+                    if (!relatedExample) return null;
+                    return (
+                      <a key={rel} href={`#${rel}`} className="link link-primary text-xs">
+                        {relatedExample.name}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        )}
 
         {/* Page content */}
         {mode === "preview" ? (

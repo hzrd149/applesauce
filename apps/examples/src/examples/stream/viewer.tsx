@@ -1,13 +1,8 @@
-/*---
-title: Stream Viewer
-description: View live streams with chat functionality and stream metadata
-tags:
-  - stream
-  - viewer
-  - chat
-related:
-  - feed/relay-timeline
----*/
+/**
+ * View live streams with chat functionality and stream metadata
+ * @tags stream, viewer, chat
+ * @related feed/relay-timeline
+ */
 import { StreamChatMessage as StreamChatMessageBlueprint } from "applesauce-common/blueprints";
 import { Stream, StreamChatMessage } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";

@@ -1,14 +1,8 @@
-/*---
-title: Wallet Connection String
-description: Parse and display wallet connection strings with support detection
-tags:
-  - nwc
-  - wallet
-  - connection
-related:
-  - nwc/auth-uri
-  - nwc/simple-wallet
----*/
+/**
+ * Parse and display wallet connection strings with support detection
+ * @tags nwc, wallet, connection
+ * @related nwc/auth-uri, nwc/simple-wallet
+ */
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";

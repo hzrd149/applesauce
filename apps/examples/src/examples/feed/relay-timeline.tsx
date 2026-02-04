@@ -1,15 +1,8 @@
-/*---
-title: Relay Timeline
-description: Display a real-time timeline of notes from a selected relay with caching support
-tags:
-  - feed
-  - timeline
-  - relay
-  - cache
-related:
-  - feed/reactions-timeline
-  - feed/loading-reactions
----*/
+/**
+ * Display a real-time timeline of notes from a selected relay with caching support
+ * @tags feed, timeline, relay, cache
+ * @related feed/reactions-timeline, feed/loading-reactions
+ */
 import { castEvent, Note } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";

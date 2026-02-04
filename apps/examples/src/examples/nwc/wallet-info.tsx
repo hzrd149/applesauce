@@ -1,14 +1,8 @@
-/*---
-title: Wallet Info
-description: Display wallet information including balance, capabilities, and connection status
-tags:
-  - nwc
-  - wallet
-  - info
-related:
-  - nwc/simple-wallet
-  - nwc/transactions
----*/
+/**
+ * Display wallet information including balance, capabilities, and connection status
+ * @tags nwc, wallet, info
+ * @related nwc/simple-wallet, nwc/transactions
+ */
 import { hexToBytes } from "@noble/hashes/utils";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

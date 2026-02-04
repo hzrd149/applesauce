@@ -1,14 +1,8 @@
-/*---
-title: Bunker Signer
-description: Authenticate and sign events using Nostr Connect (NIP-46) bunker protocol
-tags:
-  - signers
-  - bunker
-  - nostr-connect
-related:
-  - cli/bunker-login
-  - signers/bunker-provider
----*/
+/**
+ * Authenticate and sign events using Nostr Connect (NIP-46) bunker protocol
+ * @tags signers, bunker, nostr-connect
+ * @related cli/bunker-login, signers/bunker-provider
+ */
 import { EventFactory } from "applesauce-core";
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";

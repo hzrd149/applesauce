@@ -1,14 +1,8 @@
-/*---
-title: Calendar Timeline
-description: Display a timeline of calendar events with filtering and details
-tags:
-  - calendar
-  - timeline
-  - events
-related:
-  - calendar/create-event
-  - calendar/map
----*/
+/**
+ * Display a timeline of calendar events with filtering and details
+ * @tags calendar, timeline, events
+ * @related calendar/create-event, calendar/map
+ */
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
   getCalendarEventEnd,

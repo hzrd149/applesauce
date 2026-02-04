@@ -1,14 +1,8 @@
-/*---
-title: Monitor Feed
-description: Display relay monitor announcements and status information
-tags:
-  - relay-discovery
-  - monitor
-  - feed
-related:
-  - relay-discovery/monitors-map
-  - relay-discovery/attributes
----*/
+/**
+ * Display relay monitor announcements and status information
+ * @tags relay-discovery, monitor, feed
+ * @related relay-discovery/monitors-map, relay-discovery/attributes
+ */
 import { RelayDiscovery, RelayMonitor } from "applesauce-common/casts";
 import { RELAY_DISCOVERY_KIND, RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";

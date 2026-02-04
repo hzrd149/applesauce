@@ -1,14 +1,8 @@
-/*---
-title: Contacts
-description: Manage your contact list (follows) with the ability to add and remove contacts
-tags:
-  - casting
-  - contacts
-  - follows
-related:
-  - casting/mutes
-  - casting/thread
----*/
+/**
+ * Manage your contact list (follows) with the ability to add and remove contacts
+ * @tags casting, contacts, follows
+ * @related casting/mutes, casting/thread
+ */
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { FollowUser, UnfollowUser } from "applesauce-actions/actions";

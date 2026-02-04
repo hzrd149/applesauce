@@ -1,14 +1,8 @@
-/*---
-title: Relay Chat
-description: Group chat functionality using relay-based messaging
-tags:
-  - group
-  - chat
-  - messaging
-related:
-  - group/groups
-  - group/threads
----*/
+/**
+ * Group chat functionality using relay-based messaging
+ * @tags group, chat, messaging
+ * @related group/groups, group/threads
+ */
 import { GroupMessageBlueprint } from "applesauce-common/blueprints";
 import { castUser } from "applesauce-common/casts";
 import { decodeGroupPointer, groupMessageEvents, GroupPointer } from "applesauce-common/helpers";

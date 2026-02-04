@@ -1,12 +1,8 @@
-/*---
-title: Highlight Timeline
-description: Display a timeline of highlighted articles and content
-tags:
-  - highlight
-  - timeline
-related:
-  - highlight/article
----*/
+/**
+ * Display a timeline of highlighted articles and content
+ * @tags highlight, timeline
+ * @related highlight/article
+ */
 import {
   getHighlightAttributions,
   getHighlightComment,
