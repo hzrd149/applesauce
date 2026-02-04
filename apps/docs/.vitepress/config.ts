@@ -33,6 +33,7 @@ export default defineConfig({
     sidebar: [
       {
         text: "Introduction",
+        collapsed: false,
         items: [
           { text: "Getting Started", link: "/introduction/getting-started" },
           { text: "Packages", link: "/introduction/packages" },
@@ -42,6 +43,7 @@ export default defineConfig({
       },
       {
         text: "Reading events",
+        collapsed: false,
         items: [
           { text: "Event Store", link: "/core/event-store" },
           { text: "Event Memory", link: "/core/event-memory" },
@@ -52,6 +54,7 @@ export default defineConfig({
       },
       {
         text: "Loading events",
+        collapsed: false,
         items: [
           {
             text: "Relays",
@@ -82,6 +85,7 @@ export default defineConfig({
       },
       {
         text: "Creating events",
+        collapsed: false,
         items: [
           {
             text: "Signers",
@@ -121,6 +125,7 @@ export default defineConfig({
       },
       {
         text: "Building apps",
+        collapsed: false,
         items: [
           {
             text: "Accounts",
@@ -167,6 +172,7 @@ export default defineConfig({
       },
       {
         text: "Connecting bitcoin",
+        collapsed: false,
         items: [
           {
             text: "Wallet Connect",
@@ -189,6 +195,7 @@ export default defineConfig({
       },
       {
         text: "Storing events",
+        collapsed: false,
         link: "/storage",
         items: [
           {
@@ -221,6 +228,7 @@ export default defineConfig({
       },
       {
         text: "Migrations",
+        collapsed: true,
         items: [
           { text: "v4 to v5", link: "/migration/v4-v5" },
           { text: "v2 to v3", link: "/migration/v2-v3" },
