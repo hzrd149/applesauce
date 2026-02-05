@@ -1,5 +1,11 @@
 # applesauce-actions
 
+## 5.1.1
+
+### Patch Changes
+
+- 839072b: Fix typo in `GiftWrapMessageToParticipants` failing to find the receiver's inbox relays
+
 ## 5.0.2
 
 ### Patch Changes

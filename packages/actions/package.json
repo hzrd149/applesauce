@@ -1,6 +1,6 @@
 {
   "name": "applesauce-actions",
-  "version": "5.0.2",
+  "version": "5.1.1",
   "description": "A package for performing common nostr actions",
   "type": "module",
   "main": "dist/index.js",
