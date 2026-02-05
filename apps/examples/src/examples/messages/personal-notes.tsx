@@ -297,20 +297,24 @@ function InlineRelayList({ relays }: { relays: string[] }) {
 function NotesView({ user }: { user: User }) {
   const [selectedNoteId, setSelectedNoteId] = useState<string>();
   const signer = use$(signer$);
-  const dmRelays = use$(user.directMessageRelays$);
   const [since, setSince] = useState<number>(() => unixNow() - EXPIRATIONS["2 weeks"]); // 1 week ago
   const expiration = use$(expiration$);
   const [synced, setSynced] = useState(0);
   const failed = use$(failed$);
 
-  // Negentrapy sync NIP-17 direct messages since timestamp
+  // Subscribe to the users nip-17 inboxes
+  const dmRelays = use$(user.directMessageRelays$);
+
+  // Negentropy sync NIP-17 direct messages since timestamp
   use$(
     () =>
+      // If no DM relays, return EMPTY
       !dmRelays
         ? EMPTY
         : pool
             .sync(dmRelays, eventStore, { kinds: [kinds.GiftWrap], "#p": [user.pubkey], since }, SyncDirection.RECEIVE)
             .pipe(tap(() => setSynced((v) => v + 1))),
+    // Resync when user, since, or DM relays change
     [user.pubkey, since, dmRelays?.join(",")],
   );
 
