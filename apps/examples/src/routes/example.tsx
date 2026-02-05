@@ -170,7 +170,7 @@ export default function ExamplePage() {
               {metadata.tags && metadata.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {metadata.tags.map((tag) => (
-                    <span key={tag} className="badge badge-primary badge-sm">
+                    <span key={tag} className="badge badge-secondary badge-sm">
                       {tag}
                     </span>
                   ))}

@@ -15,13 +15,13 @@ import { Action } from "../action-runner.js";
 export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOptions): Action {
   return async ({ factory, user, publish, events }) => {
     // Get the pubkeys to send this message to and ensure the sender is included
-    const pubkeys = new Set(getConversationParticipants(message));
-    pubkeys.add(user.pubkey);
+    const receivers = new Set(getConversationParticipants(message));
+    receivers.add(user.pubkey);
 
     // Get all the users inbox relays
     const inboxRelays = new Map<string, string[] | undefined>();
     await Promise.allSettled(
-      Array.from(pubkeys).map(async (pubkey) => {
+      Array.from(receivers).map(async (pubkey) => {
         const receiver = castUser(pubkey, events);
 
         // Use the dm relays or inboxes as the inbox relays for the participant
@@ -34,18 +34,15 @@ export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOpt
     );
 
     // Create the gift wraps to send
-    const giftWraps: NostrEvent[] = [];
-    for (const pubkey of pubkeys) {
-      giftWraps.push(await factory.create(GiftWrapBlueprint, pubkey, message, opts));
+    const giftWraps: { event: NostrEvent; relays?: string[] }[] = [];
+    for (const receiver of receivers) {
+      const event = await factory.create(GiftWrapBlueprint, receiver, message, opts);
+      const relays = inboxRelays.get(receiver);
+      giftWraps.push({ event, relays });
     }
 
     // Publish all gift wraps in parallel
-    await Promise.allSettled(
-      giftWraps.map(async (giftWrap) => {
-        const relays = inboxRelays.get(giftWrap.pubkey);
-        await publish(giftWrap, relays);
-      }),
-    );
+    await Promise.allSettled(giftWraps.map(({ event, relays }) => publish(event, relays)));
   };
 }
 
