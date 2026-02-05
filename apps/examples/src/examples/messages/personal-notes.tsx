@@ -25,7 +25,7 @@ import { ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
 import { kinds } from "nostr-tools";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, EMPTY, map, tap } from "rxjs";
+import { BehaviorSubject, catchError, EMPTY, map, tap } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -313,7 +313,11 @@ function NotesView({ user }: { user: User }) {
         ? EMPTY
         : pool
             .sync(dmRelays, eventStore, { kinds: [kinds.GiftWrap], "#p": [user.pubkey], since }, SyncDirection.RECEIVE)
-            .pipe(tap(() => setSynced((v) => v + 1))),
+            .pipe(
+              tap(() => setSynced((v) => v + 1)),
+              // Ignore errors
+              catchError(() => EMPTY),
+            ),
     // Resync when user, since, or DM relays change
     [user.pubkey, since, dmRelays?.join(",")],
   );
