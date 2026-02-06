@@ -41,7 +41,7 @@ import { normalizeURL } from "./url.js";
 // re-export legacy DecodeResult type
 export type DecodeResult = DecodedResult;
 
-/** Decodes a string and handles errors */
+/** Decodes a string and handles errors. Returns null if the string cannot be decoded. */
 function safeDecode(str: string): DecodedResult | null {
   try {
     return decode(str);
@@ -50,7 +50,7 @@ function safeDecode(str: string): DecodedResult | null {
   }
 }
 
-/** Decodes any nip-19 encoded entity to a ProfilePointer */
+/** Decodes any NIP-19 encoded string into a ProfilePointer. Returns null if the string cannot be decoded. */
 export function decodeProfilePointer(str: string): ProfilePointer | null {
   const result = safeDecode(str);
   if (!result) return null;
@@ -63,14 +63,14 @@ export function decodeProfilePointer(str: string): ProfilePointer | null {
   };
 }
 
-/** Decodes an naddr encoded string to an AddressPointer */
+/** Decodes an encoded NIP-19 naddr string to an AddressPointer. Returns null if the string cannot be decoded. */
 export function decodeAddressPointer(str: string): AddressPointer | null {
   const result = safeDecode(str);
   if (!result) return null;
   return result.type === "naddr" ? result.data : null;
 }
 
-/** Decodes a note1 or nevent encoded string to an EventPointer */
+/** Decodes an encoded NIP-19 note1 or nevent string to an EventPointer. Returns null if the string cannot be decoded. */
 export function decodeEventPointer(str: string): EventPointer | null {
   const result = safeDecode(str);
   if (!result) return null;
@@ -89,7 +89,7 @@ export type AddressPointerWithoutD = Omit<AddressPointer, "identifier"> & {
   identifier?: string;
 };
 
-/** Parse the value of an "a" tag into an AddressPointer */
+/** Parses the value of an "a" tag into an AddressPointer. Returns null if the address cannot be parsed. */
 export function parseReplaceableAddress(address: string, requireIdentifier = false): AddressPointer | null {
   const parts = address.split(":") as (string | undefined)[];
   const kind = parts[0] ? parseInt(parts[0]) : undefined;
@@ -115,7 +115,7 @@ export function parseReplaceableAddress(address: string, requireIdentifier = fal
   };
 }
 
-/** Extra a pubkey from the result of nip19.decode */
+/** Extracts a pubkey from the result of nip19.decode  Returns undefined if the decode result does not have a pubkey */
 export function getPubkeyFromDecodeResult(result?: DecodeResult): string | undefined {
   if (!result) return;
   switch (result.type) {
@@ -131,7 +131,7 @@ export function getPubkeyFromDecodeResult(result?: DecodeResult): string | undef
   }
 }
 
-/** Gets the relays from a decode result */
+/** Extracts the relays from a decode result */
 export function getRelaysFromDecodeResult(result?: DecodeResult): string[] | undefined {
   if (!result) return;
   switch (result.type) {
@@ -145,7 +145,7 @@ export function getRelaysFromDecodeResult(result?: DecodeResult): string[] | und
   return undefined;
 }
 
-/** Encodes the result of nip19.decode */
+/** Encodes the result of nip19.decode to a NIP-19 string. Returns an empty string if the result cannot be encoded. */
 export function encodeDecodeResult(result: DecodeResult) {
   switch (result.type) {
     case "naddr":
@@ -165,7 +165,7 @@ export function encodeDecodeResult(result: DecodeResult) {
   return "";
 }
 
-/** Encodes a pointer to a NIP-19 string */
+/** Encodes a pointer to a NIP-19 string. Returns an empty string if the pointer cannot be encoded. */
 export function encodePointer(pointer: AddressPointer | EventPointer | ProfilePointer): string {
   if (isAddressPointer(pointer)) return naddrEncode(pointer);
   else if (isEventPointer(pointer)) return neventEncode(pointer);
@@ -173,7 +173,7 @@ export function encodePointer(pointer: AddressPointer | EventPointer | ProfilePo
   else return "";
 }
 
-/** Gets an EventPointer form a common "e" tag */
+/** Parses a common "e" tag into an EventPointer. Returns null if the tag cannot be parsed. */
 export function getEventPointerFromETag(tag: string[]): EventPointer | null {
   const id = tag[1];
   if (!id || !isHexKey(id)) return null;
@@ -182,7 +182,7 @@ export function getEventPointerFromETag(tag: string[]): EventPointer | null {
   return pointer;
 }
 
-/** Gets an EventPointer form a common "q" tag */
+/** Parses a common "q" tag into an EventPointer. Returns null if the tag cannot be parsed. */
 export function getEventPointerFromQTag(tag: string[]): EventPointer | null {
   const id = tag[1];
   if (!id || !isHexKey(id)) return null;
@@ -192,7 +192,7 @@ export function getEventPointerFromQTag(tag: string[]): EventPointer | null {
   return pointer;
 }
 
-/** Get an AddressPointer from a common "a" tag */
+/** Parses a common "a" tag into an AddressPointer. Returns null if the tag cannot be parsed. */
 export function getAddressPointerFromATag(tag: string[]): AddressPointer | null {
   if (!tag[1]) return null;
   const pointer = parseReplaceableAddress(tag[1]);
@@ -201,7 +201,7 @@ export function getAddressPointerFromATag(tag: string[]): AddressPointer | null 
   return pointer;
 }
 
-/** Gets a ProfilePointer from a common "p" tag */
+/** Parses a common "p" tag into a ProfilePointer. Returns null if the tag cannot be parsed. */
 export function getProfilePointerFromPTag(tag: string[]): ProfilePointer | null {
   const pubkey = tag[1];
   if (!pubkey || !isHexKey(pubkey)) return null;
@@ -210,7 +210,7 @@ export function getProfilePointerFromPTag(tag: string[]): ProfilePointer | null 
   return pointer;
 }
 
-/** Checks if a pointer is an AddressPointer */
+/** Checks if a pointer object is an AddressPointer */
 export function isAddressPointer(pointer: any): pointer is AddressPointer {
   return (
     typeof pointer === "object" &&
@@ -224,7 +224,7 @@ export function isAddressPointer(pointer: any): pointer is AddressPointer {
   );
 }
 
-/** Checks if a pointer is a ProfilePointer */
+/** Checks if a pointer object is a ProfilePointer */
 export function isProfilePointer(pointer: any): pointer is ProfilePointer {
   return (
     typeof pointer === "object" &&
@@ -237,17 +237,17 @@ export function isProfilePointer(pointer: any): pointer is ProfilePointer {
   );
 }
 
-/** Checks if a pointer is an EventPointer */
+/** Checks if a pointer object is an EventPointer */
 export function isEventPointer(pointer: any): pointer is EventPointer {
   return typeof pointer === "object" && pointer !== null && "id" in pointer && typeof pointer.id === "string";
 }
 
-/** Returns the stringified address pointer */
+/** Returns the stringified NIP-19 encoded naddr address pointer for an AddressPointer. */
 export function getReplaceableAddressFromPointer(pointer: AddressPointer): string {
   return pointer.kind + ":" + pointer.pubkey + ":" + pointer.identifier;
 }
 
-/** Returns an AddressPointer for a replaceable event */
+/** Returns an AddressPointer for a replaceable event. Returns null if the event is not addressable or replaceable. */
 export function getAddressPointerForEvent(event: NostrEvent, relays?: string[]): AddressPointer | null {
   if (!isAddressableKind(event.kind) && !isReplaceableKind(event.kind)) return null;
   const d = getReplaceableIdentifier(event);
@@ -286,7 +286,7 @@ export function addRelayHintsToPointer<T extends { relays?: string[] }>(pointer:
   else return { ...pointer, relays: relaySet(relays, pointer.relays) };
 }
 
-/** Gets the hex pubkey from any nip-19 encoded string */
+/** Parses any nip-19 encoded string into a hex pubkey. Returns null if the string is not a valid pubkey. */
 export function normalizeToPubkey(str: NPub): string;
 export function normalizeToPubkey(str: string): string | null;
 export function normalizeToPubkey(str: string): string | null {
@@ -300,7 +300,7 @@ export function normalizeToPubkey(str: string): string | null {
   }
 }
 
-/** Gets a ProfilePointer from any nip-19 encoded string */
+/** Parses any nip-19 encoded string into a ProfilePointer. Returns null if the string cannot be parsed. */
 export function normalizeToProfilePointer(str: NProfile): ProfilePointer;
 export function normalizeToProfilePointer(str: NPub): ProfilePointer;
 export function normalizeToProfilePointer(str: string): ProfilePointer | null;
@@ -321,7 +321,7 @@ export function normalizeToProfilePointer(str: string): ProfilePointer | null {
   }
 }
 
-/** Gets an AddressPointer from any nip-19 encoded string */
+/** Parses any nip-19 encoded string into an AddressPointer. Returns null if the string cannot be parsed. */
 export function normalizeToAddressPointer(str: NAddr): AddressPointer;
 export function normalizeToAddressPointer(str: string): AddressPointer | null;
 export function normalizeToAddressPointer(str: string): AddressPointer | null {
@@ -334,7 +334,7 @@ export function normalizeToAddressPointer(str: string): AddressPointer | null {
   return result.type === "naddr" ? result.data : null;
 }
 
-/** Gets an EventPointer from any nip-19 encoded string */
+/** Parses any nip-19 encoded string into an EventPointer. Returns null if the string cannot be parsed. */
 export function normalizeToEventPointer(str: NEvent): EventPointer;
 export function normalizeToEventPointer(str: string): EventPointer | null;
 export function normalizeToEventPointer(str: string): EventPointer | null {
