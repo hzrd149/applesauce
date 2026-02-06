@@ -140,7 +140,7 @@ export default function ThreadExample() {
   }, [eventPointer?.id, eventPointer?.relays?.join("|")]);
 
   /** Resolve the authors inboxes for loading events */
-  const inboxes = use$(() => note?.author.inboxes$, [note]);
+  const inboxes = use$(note?.author.inboxes$);
 
   // Load all kind 1 and 9735 events that reference the event
   use$(() => {

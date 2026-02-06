@@ -405,6 +405,24 @@ export function mergeProfilePointers(a: ProfilePointer, b: ProfilePointer): Prof
   return { ...a, relays };
 }
 
+/** Checks if two address pointers refer to the same addressable event. Ignores relays. */
+export function isAddressPointerSame(a: AddressPointer, b: AddressPointer): boolean {
+  return a.kind === b.kind && a.pubkey === b.pubkey && a.identifier === b.identifier;
+}
+
+/** Checks if two event pointers refer to the same event. Ignores relays. */
+export function isEventPointerSame(a: EventPointer, b: EventPointer): boolean {
+  return (
+    // Check if id is the same
+    a.id === b.id &&
+    // Because event id's are unique, we can skip extra checks if either pointer is missing some fields
+    // If any kind is undefined, ignore it
+    (a.kind !== undefined || b.kind !== undefined ? a.kind === b.kind : true) &&
+    // If any author is undefined, ignore it
+    (a.author !== undefined || b.author !== undefined ? a.author === b.author : true)
+  );
+}
+
 /** Checks if an event matches a pointer */
 export function eventMatchesPointer(
   event: NostrEvent,
