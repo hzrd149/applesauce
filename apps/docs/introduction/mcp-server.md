@@ -83,6 +83,37 @@ For Claude Desktop, Cline, and other MCP-compatible tools:
 
 Refer to your IDE's documentation for the specific configuration file location.
 
+## Recommended: Install Nostrbook MCP
+
+For comprehensive Nostr protocol knowledge, we recommend also installing the [Nostrbook MCP server](https://nostrbook.dev/mcp). While Applesauce MCP provides documentation and examples for building with Applesauce, Nostrbook MCP gives agents direct access to NIPs, event kinds, tags, and protocol documentation.
+
+**Benefits of using both:**
+
+- **Protocol reference** - Query NIPs and protocol specifications directly
+- **Event kind details** - Get up-to-date information about any Nostr event kind
+- **Tag documentation** - Understand how to use specific tags
+- **Complementary coverage** - Applesauce shows _how to build_, Nostrbook explains _what to build_
+
+### Quick Install
+
+Add to your MCP configuration alongside Applesauce:
+
+```json
+{
+  "mcpServers": {
+    "applesauce": {
+      "url": "https://mcp.applesauce.build/mcp"
+    },
+    "nostr": {
+      "command": "npx",
+      "args": ["-y", "@nostrbook/mcp@latest"]
+    }
+  }
+}
+```
+
+See [nostrbook.dev/mcp](https://nostrbook.dev/mcp) for full installation instructions and available tools.
+
 ## Available Tools
 
 Once configured, AI agents can use these tools:
