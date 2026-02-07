@@ -2,4 +2,4 @@
 "applesauce-common": patch
 ---
 
-Add support for EventPointer and AddressPointer in `RepliesModel`
+Add support for `EventPointer` and `AddressPointer` in `RepliesModel`
