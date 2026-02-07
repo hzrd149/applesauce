@@ -19,6 +19,7 @@ import {
   switchMap,
   tap,
 } from "rxjs";
+import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
@@ -225,6 +226,20 @@ export class User {
           store
             .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
             .pipe(map((event) => event && getRelaysFromList(event))),
+        ),
+      ),
+    );
+  }
+
+  /** Get the users kind 10063 Blossom servers list */
+  get blossomServers$() {
+    return this.$$ref("blossomServers$", (store) =>
+      this.outboxes$.pipe(
+        // Fetch the blossom servers list event from the outboxes
+        switchMap((outboxes) =>
+          store
+            .replaceable({ kind: BLOSSOM_SERVER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+            .pipe(map((event) => event && getBlossomServersFromList(event))),
         ),
       ),
     );
