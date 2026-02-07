@@ -11,13 +11,28 @@ async function copyPage() {
 
   loading.value = true;
   try {
-    // Fetch the raw markdown file
-    const response = await fetch(`/${page.value.relativePath}`);
-    if (!response.ok) {
-      throw new Error("Failed to fetch page content");
+    let markdown: string | null = null;
+
+    // Try to fetch from local deployment first
+    try {
+      const localResponse = await fetch(`/${page.value.relativePath}`);
+      if (localResponse.ok) {
+        markdown = await localResponse.text();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch from local deployment:", err);
     }
 
-    const markdown = await response.text();
+    // Fallback to GitHub raw content if local fetch failed
+    if (!markdown) {
+      const githubUrl = `https://raw.githubusercontent.com/hzrd149/applesauce/master/apps/docs/${page.value.relativePath}`;
+      const githubResponse = await fetch(githubUrl);
+      if (!githubResponse.ok) {
+        throw new Error("Failed to fetch page content from both local and GitHub");
+      }
+      markdown = await githubResponse.text();
+    }
+
     await navigator.clipboard.writeText(markdown);
 
     copied.value = true;

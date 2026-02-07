@@ -62,6 +62,15 @@ jobs:
       - name: Build vitepress
         run: pnpm build --filter applesauce-docs
 
+      - name: Copy markdown source files to vitepress dist
+        run: |
+          cd apps/docs
+          find . -name "*.md" \
+            -not -path "*/node_modules/*" \
+            -not -path "*/.vitepress/dist/*" \
+            -not -path "*/.vitepress/cache/*" \
+            -exec sh -c 'mkdir -p .vitepress/dist/$(dirname "$1") && cp "$1" .vitepress/dist/"$1"' _ {} \;
+
       - name: Copy vitepress
         run: cp -r apps/docs/.vitepress/dist/* docs
 

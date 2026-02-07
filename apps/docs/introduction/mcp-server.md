@@ -31,11 +31,12 @@ npx @modelcontextprotocol/inspector --server-url https://mcp.applesauce.build/mc
 
 ## IDE Integration
 
-### OpenCode
+Configure the MCP server for your preferred IDE:
 
-Add to `~/.config/opencode/opencode.json`:
+:::code-group
 
-```json
+```json [OpenCode]
+// ~/.config/opencode/opencode.json
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
@@ -47,15 +48,8 @@ Add to `~/.config/opencode/opencode.json`:
 }
 ```
 
-[Learn more about MCP in OpenCode](https://opencode.ai/docs/mcp-servers/)
-
-### Cursor
-
-Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
-
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en-US/install-mcp?name=applesauce&config=eyJ1cmwiOiJodHRwczovL21jcC5hcHBsZXNhdWNlLmJ1aWxkL21jcCJ9)
-
-```json
+```json [Cursor]
+// .cursor/mcp.json (project) or ~/.cursor/mcp.json (global)
 {
   "mcpServers": {
     "applesauce": {
@@ -65,13 +59,10 @@ Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
 }
 ```
 
-[Learn more about MCP in Cursor](https://cursor.com/docs/context/mcp)
-
-### Claude Desktop & Other IDEs
-
-For Claude Desktop, Cline, and other MCP-compatible tools:
-
-```json
+```json [Claude Desktop]
+// ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)
+// %APPDATA%\Claude\claude_desktop_config.json (Windows)
+// ~/.config/Claude/claude_desktop_config.json (Linux)
 {
   "mcpServers": {
     "applesauce": {
@@ -81,7 +72,23 @@ For Claude Desktop, Cline, and other MCP-compatible tools:
 }
 ```
 
-Refer to your IDE's documentation for the specific configuration file location.
+```json [Cline / Other]
+// Configuration location varies by IDE
+{
+  "mcpServers": {
+    "applesauce": {
+      "url": "https://mcp.applesauce.build/mcp"
+    }
+  }
+}
+```
+
+:::
+
+**Resources:**
+
+- [MCP in OpenCode](https://opencode.ai/docs/mcp-servers/)
+- [MCP in Cursor](https://cursor.com/docs/context/mcp)
 
 ## Recommended: Install Nostrbook MCP
 
@@ -94,11 +101,30 @@ For comprehensive Nostr protocol knowledge, we recommend also installing the [No
 - **Tag documentation** - Understand how to use specific tags
 - **Complementary coverage** - Applesauce shows _how to build_, Nostrbook explains _what to build_
 
-### Quick Install
+Add Nostrbook MCP alongside Applesauce in your configuration:
 
-Add to your MCP configuration alongside Applesauce:
+:::code-group
 
-```json
+```json [OpenCode]
+// ~/.config/opencode/opencode.json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "applesauce": {
+      "type": "remote",
+      "url": "https://mcp.applesauce.build/mcp"
+    },
+    "nostr": {
+      "type": "command",
+      "command": "npx",
+      "args": ["-y", "@nostrbook/mcp@latest"]
+    }
+  }
+}
+```
+
+```json [Cursor]
+// .cursor/mcp.json (project) or ~/.cursor/mcp.json (global)
 {
   "mcpServers": {
     "applesauce": {
@@ -111,6 +137,40 @@ Add to your MCP configuration alongside Applesauce:
   }
 }
 ```
+
+```json [Claude Desktop]
+// ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)
+// %APPDATA%\Claude\claude_desktop_config.json (Windows)
+// ~/.config/Claude/claude_desktop_config.json (Linux)
+{
+  "mcpServers": {
+    "applesauce": {
+      "url": "https://mcp.applesauce.build/mcp"
+    },
+    "nostr": {
+      "command": "npx",
+      "args": ["-y", "@nostrbook/mcp@latest"]
+    }
+  }
+}
+```
+
+```json [Cline / Other]
+// Configuration location varies by IDE
+{
+  "mcpServers": {
+    "applesauce": {
+      "url": "https://mcp.applesauce.build/mcp"
+    },
+    "nostr": {
+      "command": "npx",
+      "args": ["-y", "@nostrbook/mcp@latest"]
+    }
+  }
+}
+```
+
+:::
 
 See [nostrbook.dev/mcp](https://nostrbook.dev/mcp) for full installation instructions and available tools.
 
@@ -134,9 +194,9 @@ Once configured, AI agents can use these tools:
 
 For advanced users who want to run the MCP server locally:
 
-### Using Deno and JSR
+:::code-group
 
-```json
+```json [Deno (JSR)]
 {
   "mcpServers": {
     "applesauce": {
@@ -147,14 +207,7 @@ For advanced users who want to run the MCP server locally:
 }
 ```
 
-**Prerequisites:**
-
-- [Deno](https://deno.land) installed
-- [Ollama](https://ollama.ai) running locally for embeddings
-
-### Using Docker
-
-```bash
+```bash [Docker]
 # Using Docker Compose
 docker-compose up -d
 
@@ -162,6 +215,13 @@ docker-compose up -d
 docker build -t applesauce-mcp .
 docker run -p 3000:3000 applesauce-mcp
 ```
+
+:::
+
+**Prerequisites for Deno:**
+
+- [Deno](https://deno.land) installed
+- [Ollama](https://ollama.ai) running locally for embeddings
 
 ### Custom Embedding Providers
 
