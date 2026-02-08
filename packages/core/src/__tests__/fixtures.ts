@@ -1,7 +1,7 @@
 import { EventSigner } from "../event-factory/types";
 import { EncryptedContentSigner } from "../helpers/encrypted-content.js";
 import { nip04, nip44 } from "../helpers/encryption.js";
-import { EventTemplate, NostrEvent, UnsignedEvent, kinds } from "../helpers/event";
+import { EventTemplate, KnownEvent, NostrEvent, UnsignedEvent, kinds } from "../helpers/event";
 import { finalizeEvent } from "../helpers/event.js";
 import { generateSecretKey, getPublicKey } from "../helpers/keys.js";
 import { unixNow } from "../helpers/time.js";
@@ -30,7 +30,7 @@ export class FakeUser implements EncryptedContentSigner, EventSigner {
     return finalizeEvent(draft, this.key);
   }
 
-  event(data?: Partial<NostrEvent>): NostrEvent {
+  event<K extends number = number>(data?: Partial<KnownEvent<K>>): KnownEvent<K> {
     return finalizeEvent(
       {
         kind: data?.kind ?? kinds.ShortTextNote,
@@ -39,20 +39,20 @@ export class FakeUser implements EncryptedContentSigner, EventSigner {
         tags: data?.tags || [],
       },
       this.key,
-    );
+    ) as KnownEvent<K>;
   }
 
-  note(content = "Hello World", extra?: Partial<NostrEvent>) {
+  note(content = "Hello World", extra?: Partial<KnownEvent<kinds.ShortTextNote>>) {
     return this.event({ kind: kinds.ShortTextNote, content, ...extra });
   }
 
-  profile(profile: any, extra?: Partial<NostrEvent>) {
+  profile(profile: any, extra?: Partial<KnownEvent<kinds.Metadata>>) {
     return this.event({ kind: kinds.Metadata, content: JSON.stringify({ ...profile }), ...extra });
   }
 
-  list(tags: string[][] = [], extra?: Partial<NostrEvent>) {
+  list<K extends number = number>(tags: string[][] = [], extra?: Partial<KnownEvent<K>>) {
     return this.event({
-      kind: kinds.Bookmarksets,
+      kind: extra?.kind ?? kinds.Bookmarksets,
       content: "",
       tags: [["d", String(Math.round(Math.random() * 10000))], ...tags],
       ...extra,

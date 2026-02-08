@@ -20,7 +20,7 @@ export function repairNostrLinks(): EventOperation {
   return (draft) => ({
     ...draft,
     content: draft.content.replaceAll(
-      /(?<=^|\s)(?:@)?((?:npub|note|nprofile|nevent|naddr)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58})/gi,
+      /(?<=^|\s)(?:@)?((?:npub|note|nprofile|nevent|naddr)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58,})/gi,
       "nostr:$1",
     ),
   });
