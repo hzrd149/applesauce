@@ -13,7 +13,7 @@ export function setZapSplitTags(splits: Omit<ZapSplit, "percent" | "relay">[]): 
 
     // add split tags
     for (const split of splits) {
-      const hint = await ctx.getPubkeyRelayHint?.(split.pubkey);
+      const hint = await ctx?.getPubkeyRelayHint?.(split.pubkey);
       tags.push(fillAndTrimTag(["zap", split.pubkey, hint, String(split.weight)]));
     }
 

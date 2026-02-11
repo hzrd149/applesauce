@@ -1,20 +1,31 @@
 import { isKind } from "nostr-tools/kinds";
-import { EventTemplate, KnownEvent, KnownEventTemplate, KnownUnsignedEvent, NostrEvent } from "../helpers/event.js";
+import { EventSigner } from "../event-factory/types.js";
+import { EncryptionMethod } from "../helpers/encrypted-content.js";
+import { EventTemplate, KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
 import { unixNow } from "../helpers/time.js";
+import { setEncryptedContent } from "../operations/encrypted-content.js";
+import { sign, stamp } from "../operations/event.js";
+import { modifyHiddenTags, modifyPublicTags, modifyTags } from "../operations/tags.js";
 
-/** A loose type for the input of an event factory */
-type EventTemplateInput<
-  K extends number = number,
-  T extends EventTemplate | KnownEventTemplate<K> = KnownEventTemplate<K>,
-> =
-  // Make created_at, tags, and content optional
-  Omit<T, "created_at" | "tags" | "content"> & Partial<Pick<T, "created_at" | "tags" | "content">>;
+/** Creates a blank event template with the given kind */
+export function blankEventTemplate<K extends number = number>(kind: K): KnownEventTemplate<K> {
+  return { kind, created_at: unixNow(), tags: [], content: "" };
+}
 
-/** The first argument of an event factory constructor */
-export type EventFactoryExecutor<K extends number = number, T extends KnownEventTemplate<K> = KnownEventTemplate<K>> =
-  | EventTemplateInput<K, T>
-  | Promise<EventTemplateInput<K, T>>
-  | ((resolve: (value: EventTemplateInput<K, T>) => void, reject: (reason: any) => void) => void);
+/** Converts a nostr event to an event template and updates the created_at timestamp */
+export function toEventTemplate<K extends number>(event: KnownEvent<K>): KnownEventTemplate<K> {
+  return {
+    kind: event.kind,
+    created_at: unixNow(),
+    tags: Array.from(event.tags),
+    content: event.content,
+  };
+}
+
+/** A single operation that modifies an event */
+export type EventOperation<T extends KnownEventTemplate<number> = EventTemplate> = (
+  draft: T,
+) => T | EventTemplate | PromiseLike<T | EventTemplate>;
 
 /** The base class for building or modifying events */
 export class EventFactory<
@@ -27,38 +38,33 @@ export class EventFactory<
   }
 
   /** Create a new event factory from a nostr event */
-  static fromEvent<T extends KnownEvent<number>>(event: T): EventFactory<T["kind"], T> {
-    return new EventFactory((res) => res(event));
+  static fromEvent<K extends number = number>(event: KnownEvent<K>): EventFactory<K, KnownEventTemplate<K>> {
+    return new EventFactory((res) => res(toEventTemplate(event)));
   }
 
-  /** Creates a new event factory from a nostr event and updates its created_at timestamp */
-  static modify<T extends NostrEvent>(event: T): EventFactory<T["kind"]> {
-    // NOTE: not passing the T type here because strip() will return a EventTemplate
-    return new EventFactory((res) => res(event)).strip().created();
-  }
+  // /** Creates a new event factory from a nostr event and updates its created_at timestamp */
+  // static modify<T extends NostrEvent>(event: T): EventFactory<T["kind"]> {
+  //   // NOTE: not passing the T type here because strip() will return a EventTemplate
+  //   return new EventFactory((res) => res(event)).strip().created();
+  // }
+
+  /** The signer used to sign the event */
+  protected signer?: EventSigner;
 
   /** Custom .then method that wraps the resulting promise in a new event factory */
-  chain<RT extends T = T>(
-    onfulfilled?: ((value: T) => RT | PromiseLike<RT>) | undefined | null,
-  ): EventFactory<RT["kind"], RT> {
-    console.log(this.constructor);
-    return new EventFactory((res) => res(this.then(onfulfilled)));
+  protected chain(operation: EventOperation<T>): this {
+    const Constructor = this.constructor as typeof EventFactory;
+    const next = new Constructor((res) => res(this.then(operation)));
+
+    // transfer the signer if set
+    if (this.signer) return next.as(this.signer) as this;
+    else return next as this;
   }
 
-  /** Sets the event kind and casts the result to a {@link KnownEventTemplate<Kind>} */
-  kind<Kind extends number>(kind: Kind): EventFactory<Kind, KnownEventTemplate<Kind>> {
-    return this.chain((res) => ({ ...res, kind }));
-  }
-
-  /** Sets the event content */
-  content(content: string) {
-    return this.chain<T>((res) => ({ ...res, content }));
-  }
-
-  /** Set the event created_at timestamp in seconds. if no value is provided, the current unix timestamp will be used */
-  created(created: number | Date = unixNow()) {
-    if (created instanceof Date) created = Math.floor(created.getTime() / 1000);
-    return this.chain((res) => ({ ...res, created_at: created }));
+  /** Sets the event signer to use when building this event */
+  as(signer: EventSigner): this {
+    this.signer = signer;
+    return this;
   }
 
   /** Strips the pubkey, sig, and id from the event */
@@ -76,21 +82,19 @@ export class EventFactory<
   }
 
   /** Stamps the pubkey onto the event template */
-  stamp(signer: { getPublicKey: () => Promise<string> | string }): EventFactory<K, KnownUnsignedEvent<K>> {
-    return new EventFactory((res) =>
-      res(
-        this.then(async (v) => {
-          const pubkey = await signer.getPublicKey();
-          return { ...v, pubkey };
-        }),
-      ),
-    );
+  stamp(signer = this.signer): EventFactory<K, KnownUnsignedEvent<K>> {
+    return new EventFactory((res, rej) => {
+      if (!signer) return rej(new Error("Signer required for stamping"));
+      else res(this.then((template) => stamp()(template, { signer })) as Promise<KnownUnsignedEvent<K>>);
+    });
   }
 
   /** Signs the event using a signer interface and returns a Promise */
-  async sign(signer: { signEvent: (event: T) => NostrEvent | Promise<NostrEvent> }): Promise<KnownEvent<K>> {
+  async sign(signer = this.signer): Promise<KnownEvent<K>> {
+    if (!signer) throw new Error("Missing signer");
+
     const template = await this;
-    const signed = await signer.signEvent(template);
+    const signed = await sign()(template, { signer });
 
     // Verify the pubkey has not changed
     if (Reflect.has(template, "pubkey") && Reflect.get(template, "pubkey") !== signed.pubkey)
@@ -99,5 +103,43 @@ export class EventFactory<
     // If its the same kind, return the signed event
     if (isKind(signed, template.kind)) return signed;
     else throw new Error("Signer modified event kind");
+  }
+
+  /** Sets the event kind and casts the result to a {@link KnownEventTemplate<Kind>} */
+  kind<Kind extends number>(kind: Kind): EventFactory<Kind, KnownEventTemplate<Kind>> {
+    return new EventFactory((e) => ({ ...e, kind }));
+  }
+
+  /** Sets the event content */
+  content(content: string) {
+    return this.chain((e) => ({ ...e, content }));
+  }
+
+  /** Set the event created_at timestamp in seconds. if no value is provided, the current unix timestamp will be used */
+  created(created: number | Date = unixNow()) {
+    if (created instanceof Date) created = Math.floor(created.getTime() / 1000);
+    return this.chain((e) => ({ ...e, created_at: created }));
+  }
+
+  /** Modifies the events public and optional hidden tags */
+  modifyTags(...args: Parameters<typeof modifyTags>) {
+    return this.chain((e) => modifyTags(...args)(e, {}));
+  }
+
+  /** Modifies the events public tags array */
+  modifyPublicTags(...args: Parameters<typeof modifyPublicTags>) {
+    return this.chain((e) => modifyPublicTags(...args)(e, {}));
+  }
+
+  /** Modifies the events hidden tags array */
+  modifyHiddenTags(...args: Parameters<typeof modifyHiddenTags>) {
+    return this.chain((e) => modifyHiddenTags(...args)(e, {}));
+  }
+
+  /** Sets the encrypted content of the event */
+  encryptedContent(target: string, content: string, override?: EncryptionMethod, signer = this.signer) {
+    if (!signer) throw new Error("Signer required for encrypted content");
+
+    return this.chain((draft) => setEncryptedContent(target, content, override)(draft, { signer }));
   }
 }

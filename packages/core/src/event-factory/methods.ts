@@ -29,7 +29,7 @@ function wrapCommon(...operations: (EventOperation | undefined)[]): EventOperati
     // Apply operations
     ...operations,
     // Include client tag if its set in the context
-    (draft, ctx) => (ctx.client ? setClient(ctx.client.name, ctx.client.address)(draft, ctx) : draft),
+    (draft, ctx) => (ctx?.client ? setClient(ctx.client.name, ctx.client.address)(draft, ctx) : draft),
   );
 }
 

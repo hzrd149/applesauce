@@ -37,7 +37,7 @@ export function toRumor(): EventOperation<EventTemplate | UnsignedEvent | NostrE
 
     // Ensure rumor has pubkey
     if (!Reflect.has(rumor, "pubkey")) {
-      if (!ctx.signer) throw new Error("A signer is required to create a rumor");
+      if (!ctx?.signer) throw new Error("A signer is required to create a rumor");
       rumor.pubkey = await ctx.signer.getPublicKey();
     }
 
@@ -54,7 +54,7 @@ export function toRumor(): EventOperation<EventTemplate | UnsignedEvent | NostrE
 /** Seals a rumor in a NIP-59 seal. The second operation in the gift wrap pipeline */
 export function sealRumor(pubkey: string): EventOperation<Rumor, NostrEvent> {
   return async (rumor, ctx) => {
-    if (!ctx.signer) throw new Error("A signer is required to create a seal");
+    if (!ctx?.signer) throw new Error("A signer is required to create a seal");
 
     const plaintext = JSON.stringify(rumor);
     const unsigned = await buildEvent(

@@ -96,7 +96,7 @@ export function includeContentHashtags(): EventOperation {
 /** Adds "emoji" tags for NIP-30 emojis used in the content */
 export function includeEmojis(emojis?: Emoji[]): EventOperation {
   return (draft, ctx) => {
-    const all = [...(ctx.emojis ?? []), ...(emojis ?? [])];
+    const all = [...(ctx?.emojis ?? []), ...(emojis ?? [])];
     const tags = Array.from(draft.tags);
 
     // create tags for all occurrences of #hashtag

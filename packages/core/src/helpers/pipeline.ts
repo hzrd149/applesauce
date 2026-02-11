@@ -35,7 +35,7 @@ export function skip<T>(): (value: T) => T {
 export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?: Set<symbol>): Operation<T, R> {
   if (fns.length === 0) return identity as Operation<any, any>;
 
-  return async function piped(input: T, context: EventFactoryContext): Promise<R> {
+  return async function piped(input: T, context?: EventFactoryContext): Promise<R> {
     return fns.reduce(async (prev: any, fn: Operation<T, R>) => {
       const result = await fn(await prev, context);
 

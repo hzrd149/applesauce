@@ -157,6 +157,7 @@ describe("exports", () => {
         "isHiddenContentUnlocked",
         "isHiddenTagsUnlocked",
         "isImageURL",
+        "isKind",
         "isNameValueTag",
         "isPTag",
         "isProfilePointer",

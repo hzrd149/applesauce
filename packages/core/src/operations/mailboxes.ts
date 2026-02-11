@@ -74,3 +74,81 @@ export function addMailboxRelay(url: string | URL): EventOperation {
 export function removeMailboxRelay(url: string | URL): EventOperation {
   return modifyPublicTags(removeRelayTag(url, "r"));
 }
+
+/** Sets all inbox relays, replacing existing ones while preserving outbox dimension */
+export function setInboxRelays(urls: (string | URL)[]): EventOperation {
+  const normalizedUrls = urls.map((url) => normalizeURL(url).toString());
+
+  return modifyPublicTags((tags) => {
+    // Step 1: Remove all "read" markers from existing relays
+    const withoutInboxes = tags
+      .map((tag) => {
+        if (!isRTag(tag)) return tag;
+        // Remove inbox-only relays (read marker)
+        if (tag[2] === "read") return null;
+        // Convert both (no marker) to outbox-only (write marker)
+        if (tag[2] === undefined) return ["r", tag[1], "write"];
+        // Keep outbox-only relays (write marker) as is
+        return tag;
+      })
+      .filter((t): t is string[] => t !== null);
+
+    // Step 2: Add "read" markers to the specified URLs
+    const result = [...withoutInboxes];
+    for (const url of normalizedUrls) {
+      const existingIndex = result.findIndex((t) => isRTag(t) && isSameURL(t[1], url));
+
+      if (existingIndex >= 0) {
+        const existing = result[existingIndex];
+        // Convert outbox-only (write) to both (no marker)
+        if (existing[2] === "write") {
+          result[existingIndex] = ["r", url];
+        }
+      } else {
+        // Add as inbox-only (read marker)
+        result.push(["r", url, "read"]);
+      }
+    }
+
+    return result;
+  });
+}
+
+/** Sets all outbox relays, replacing existing ones while preserving inbox dimension */
+export function setOutboxRelays(urls: (string | URL)[]): EventOperation {
+  const normalizedUrls = urls.map((url) => normalizeURL(url).toString());
+
+  return modifyPublicTags((tags) => {
+    // Step 1: Remove all "write" markers from existing relays
+    const withoutOutboxes = tags
+      .map((tag) => {
+        if (!isRTag(tag)) return tag;
+        // Remove outbox-only relays (write marker)
+        if (tag[2] === "write") return null;
+        // Convert both (no marker) to inbox-only (read marker)
+        if (tag[2] === undefined) return ["r", tag[1], "read"];
+        // Keep inbox-only relays (read marker) as is
+        return tag;
+      })
+      .filter((t): t is string[] => t !== null);
+
+    // Step 2: Add "write" markers to the specified URLs
+    const result = [...withoutOutboxes];
+    for (const url of normalizedUrls) {
+      const existingIndex = result.findIndex((t) => isRTag(t) && isSameURL(t[1], url));
+
+      if (existingIndex >= 0) {
+        const existing = result[existingIndex];
+        // Convert inbox-only (read) to both (no marker)
+        if (existing[2] === "read") {
+          result[existingIndex] = ["r", url];
+        }
+      } else {
+        // Add as outbox-only (write marker)
+        result.push(["r", url, "write"]);
+      }
+    }
+
+    return result;
+  });
+}

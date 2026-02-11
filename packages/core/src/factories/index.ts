@@ -1,2 +1,4 @@
 export * from "./event.js";
-export * from "./note.js";
+export * from "./delete.js";
+export * from "./mailboxes.js";
+export * from "./profile.js";

@@ -16,7 +16,7 @@ export function setThreadParent(parent: NostrEvent): EventOperation {
     let tags = Array.from(draft.tags);
 
     const pointer: EventPointer = { id: parent.id, author: parent.pubkey, kind: parent.kind };
-    if (ctx.getEventRelayHint) {
+    if (ctx?.getEventRelayHint) {
       const hint = await ctx.getEventRelayHint(parent.id);
       if (hint) pointer.relays = [hint];
     }
@@ -44,7 +44,7 @@ export function includePubkeyNotificationTags(parent: NostrEvent): EventOperatio
     }
 
     // add new "p" tag
-    const hint = await ctx.getPubkeyRelayHint?.(parent.pubkey);
+    const hint = await ctx?.getPubkeyRelayHint?.(parent.pubkey);
     tags = ensureProfilePointerTag(tags, { pubkey: parent.pubkey, relays: hint ? [hint] : undefined });
 
     return { ...draft, tags };

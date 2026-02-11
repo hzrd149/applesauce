@@ -12,7 +12,7 @@ export function setBackupContent(wallet: NostrEvent): EventOperation {
     if (wallet.kind !== WALLET_KIND) throw new Error(`Cant create a wallet backup from kind ${wallet.kind}`);
     if (!wallet.content) throw new Error("Wallet missing content");
 
-    const pubkey = await ctx.signer?.getPublicKey();
+    const pubkey = await ctx?.signer?.getPublicKey();
     if (wallet.pubkey !== pubkey) throw new Error("Wallet pubkey dose not match signer pubkey");
 
     return { ...draft, content: wallet.content };

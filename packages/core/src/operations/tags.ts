@@ -42,7 +42,7 @@ export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | Nostr
   if (operations.length === 0) return skip();
 
   return async (draft, ctx) => {
-    if (!ctx.signer) throw new Error("Missing signer for hidden tags");
+    if (!ctx?.signer) throw new Error("Missing signer for hidden tags");
     if (!canHaveHiddenTags(draft.kind)) throw new Error("Event kind does not support hidden tags");
 
     // Create var to store pubkey

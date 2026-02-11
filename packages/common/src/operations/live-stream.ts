@@ -10,7 +10,7 @@ export function includeLiveStreamTag(stream: NostrEvent): EventOperation {
     if (!pointer) throw new Error("Stream is not addressable");
 
     // add relay hint if there isn't one
-    if (pointer.relays?.[0] === undefined && ctx.getEventRelayHint) {
+    if (pointer.relays?.[0] === undefined && ctx?.getEventRelayHint) {
       const hint = await ctx.getEventRelayHint(stream.id);
       if (hint) pointer.relays = [hint];
     }

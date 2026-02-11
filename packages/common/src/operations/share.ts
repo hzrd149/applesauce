@@ -16,7 +16,7 @@ export function setShareTags(event: NostrEvent): EventOperation {
   return async (draft, ctx) => {
     let tags = Array.from(draft.tags);
 
-    const hint = await ctx.getEventRelayHint?.(event.id);
+    const hint = await ctx?.getEventRelayHint?.(event.id);
 
     // add "e" tag
     tags = ensureEventPointerTag(tags, getEventPointerForEvent(event, hint ? [hint] : undefined));
@@ -28,7 +28,7 @@ export function setShareTags(event: NostrEvent): EventOperation {
     }
 
     // add "p" tag for notify
-    const pubkeyHint = await ctx.getPubkeyRelayHint?.(event.pubkey);
+    const pubkeyHint = await ctx?.getPubkeyRelayHint?.(event.pubkey);
     tags = ensureProfilePointerTag(tags, { pubkey: event.pubkey, relays: pubkeyHint ? [pubkeyHint] : undefined });
 
     // add "k" tag

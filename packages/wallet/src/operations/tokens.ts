@@ -8,7 +8,7 @@ import { TokenContent } from "../helpers/tokens.js";
 /** Sets the content of a 7375 token event */
 export function setToken(token: Token, del: string[] = []): EventOperation {
   return async (draft, ctx) => {
-    if (!ctx.signer) throw new Error(`Missing signer`);
+    if (!ctx?.signer) throw new Error(`Missing signer`);
     const pubkey = await ctx.signer.getPublicKey();
     const method = EventContentEncryptionMethod[draft.kind];
     if (!method) throw new Error("Failed to find encryption method");

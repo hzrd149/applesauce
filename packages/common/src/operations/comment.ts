@@ -26,7 +26,7 @@ export function setParent(parent: NostrEvent | CommentPointer): EventOperation {
       tags.push(...createCommentTagsFromCommentPointer(parent, false));
     } else {
       // If parent is a NostrEvent, use existing logic
-      const relayHint = await ctx.getEventRelayHint?.(parent.id);
+      const relayHint = await ctx?.getEventRelayHint?.(parent.id);
       tags.push(...createCommentTagsForEvent(parent, relayHint));
     }
 

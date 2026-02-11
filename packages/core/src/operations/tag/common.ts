@@ -19,12 +19,12 @@ import { getReplaceableAddress, isEvent, skip } from "../../helpers/index.js";
 
 /** Adds a single "p" tag for a ProfilePointer */
 export function addProfilePointerTag(pubkey: string | ProfilePointer, replace = true): TagOperation {
-  return async (tags, { getPubkeyRelayHint }) => {
+  return async (tags, ctx) => {
     const pointer = typeof pubkey === "string" ? { pubkey: pubkey } : { ...pubkey };
 
     // add relay hint
-    if (getPubkeyRelayHint && pointer.relays?.[0] === undefined) {
-      const hint = await getPubkeyRelayHint(pointer.pubkey);
+    if (ctx?.getPubkeyRelayHint && pointer.relays?.[0] === undefined) {
+      const hint = await ctx.getPubkeyRelayHint(pointer.pubkey);
       if (hint) pointer.relays = [hint];
     }
 
@@ -44,12 +44,12 @@ export function removeProfilePointerTag(pubkey: string | ProfilePointer): TagOpe
 
 /** Adds a single "e" tag for an EventPointer */
 export function addEventPointerTag(id: string | EventPointer | NostrEvent, replace = true): TagOperation {
-  return async (tags, { getEventRelayHint }) => {
+  return async (tags, ctx) => {
     const pointer = typeof id === "string" ? { id } : isEvent(id) ? getEventPointerForEvent(id) : id;
 
     // add relay hint
-    if (getEventRelayHint && pointer.relays?.[0] === undefined) {
-      const hint = await getEventRelayHint(pointer.id);
+    if (ctx?.getEventRelayHint && pointer.relays?.[0] === undefined) {
+      const hint = await ctx.getEventRelayHint(pointer.id);
       if (hint) pointer.relays = [hint];
     }
 
@@ -78,12 +78,12 @@ export function addAddressPointerTag(address: string | AddressPointer | NostrEve
         : address;
   if (!pointer) throw new Error("Unable to resolve address pointer");
 
-  return async (tags, { getPubkeyRelayHint }) => {
+  return async (tags, ctx) => {
     const replaceableAddress = typeof address === "string" ? address : getReplaceableAddressFromPointer(pointer);
 
     // add relay hint if there isn't one
-    if (getPubkeyRelayHint && pointer.relays?.[0] === undefined) {
-      const hint = await getPubkeyRelayHint(pointer.pubkey);
+    if (ctx?.getPubkeyRelayHint && pointer.relays?.[0] === undefined) {
+      const hint = await ctx.getPubkeyRelayHint(pointer.pubkey);
       if (hint) pointer.relays = [hint];
     }
 

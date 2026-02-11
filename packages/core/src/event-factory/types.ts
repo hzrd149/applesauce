@@ -58,7 +58,7 @@ export interface EventFactoryContext extends ClientPointerContext, EventSignerCo
 /** A single operation that modifies an events public or hidden tags array */
 export type Operation<I extends unknown = unknown, R extends unknown = unknown> = (
   value: I,
-  context: EventFactoryContext,
+  context?: EventFactoryContext,
 ) => R | Promise<R>;
 
 /** A single operation that modifies an events public or hidden tags array */
