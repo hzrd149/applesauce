@@ -12,7 +12,7 @@ Models do not fetch any events from relays, they only subscribe to the events th
 
 ## Using models
 
-The [`eventStore.model`](https://applesauce.build/typedoc/classes/applesauce-core.EventStore.html#model) method can be used to create a model and returns a rxjs observable that can be subscribed to.
+The [`eventStore.model`](https://applesauce.hzrd149.com/typedoc/classes/applesauce-core.EventStore.html#model) method can be used to create a model and returns a rxjs observable that can be subscribed to.
 
 ```ts
 import { TimelineModel } from "applesauce-core/models";
@@ -50,15 +50,15 @@ console.log(first === second); // true
 
 There are some common prebuilt models that come with `applesauce-core`
 
-- [`ProfileModel`](https://applesauce.build/typedoc/classes/applesauce-core.Models.ProfileModel.html) subscribes to a single pubkey's profile (kind 0)
-- [`TimelineModel`](https://applesauce.build/typedoc/classes/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of events that match filters
-- [`RepliesQuery`](https://applesauce.build/typedoc/classes/applesauce-core.Models.RepliesModel.html) subscribes to all NIP-10 and NIP-22 replies to an event
+- [`ProfileModel`](https://applesauce.hzrd149.com/typedoc/classes/applesauce-core.Models.ProfileModel.html) subscribes to a single pubkey's profile (kind 0)
+- [`TimelineModel`](https://applesauce.hzrd149.com/typedoc/classes/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of events that match filters
+- [`RepliesQuery`](https://applesauce.hzrd149.com/typedoc/classes/applesauce-core.Models.RepliesModel.html) subscribes to all NIP-10 and NIP-22 replies to an event
 
-And there are a lot more in [the docs](https://applesauce.build/typedoc/modules/applesauce-core.Models.html)
+And there are a lot more in [the docs](https://applesauce.hzrd149.com/typedoc/modules/applesauce-core.Models.html)
 
 ## Custom Models
 
-A custom model is simply a function that returns a [`Model`](https://applesauce.build/typedoc/types/applesauce-core.Model.html) function.
+A custom model is simply a function that returns a [`Model`](https://applesauce.hzrd149.com/typedoc/types/applesauce-core.Model.html) function.
 
 ```ts
 import { Model } from "applesauce-core";

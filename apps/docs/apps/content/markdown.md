@@ -42,7 +42,7 @@ function Article({ content }) {
 
 ## Nostr Mentions Transformer
 
-The [`remarkNostrMentions`](https://applesauce.build/typedoc/functions/applesauce-content.Markdown.remarkNostrMentions.html) plugin automatically linkifies [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md) `nostr:` URIs and [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) identifiers in markdown content.
+The [`remarkNostrMentions`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Markdown.remarkNostrMentions.html) plugin automatically linkifies [NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md) `nostr:` URIs and [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) identifiers in markdown content.
 
 ### Supported Identifiers
 

@@ -4,11 +4,11 @@ description: Core AccountManager class for managing multiple accounts with activ
 
 # Account Manager
 
-The [AccountManager](https://applesauce.build/typedoc/classes/applesauce-accounts.AccountManager.html) class is the core of the library, as its name suggests its used to manage multiple accounts
+The [AccountManager](https://applesauce.hzrd149.com/typedoc/classes/applesauce-accounts.AccountManager.html) class is the core of the library, as its name suggests its used to manage multiple accounts
 
 ## Account types
 
-By default the account manager comes with no account types. you have to manually add them when you create the instance. luckily there is a handy method to add the most common types [registerCommonAccountTypes](https://applesauce.build/typedoc/classes/applesauce-accounts.registerCommonAccountTypes.html)
+By default the account manager comes with no account types. you have to manually add them when you create the instance. luckily there is a handy method to add the most common types [registerCommonAccountTypes](https://applesauce.hzrd149.com/typedoc/classes/applesauce-accounts.registerCommonAccountTypes.html)
 
 ```ts
 import { AccountManager, registerCommonAccountTypes, AmberClipboardAccount } from "applesauce-accounts";

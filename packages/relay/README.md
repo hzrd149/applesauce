@@ -22,7 +22,7 @@ npm install applesauce-relay
 
 ## Examples
 
-Read the [documentation](https://applesauce.build/overview/relays.html) for more detailed explanation of all methods
+Read the [documentation](https://applesauce.hzrd149.com/overview/relays.html) for more detailed explanation of all methods
 
 ### Single Relay
 

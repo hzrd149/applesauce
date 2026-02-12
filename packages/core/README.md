@@ -16,8 +16,8 @@ Applesauce is a collection of utilities for building reactive nostr applications
 
 For detailed documentation and guides, visit:
 
-- [Getting Started](https://applesauce.build/introduction/getting-started)
-- [API Reference](https://applesauce.build/typedoc/)
+- [Getting Started](https://applesauce.hzrd149.com/introduction/getting-started)
+- [API Reference](https://applesauce.hzrd149.com/typedoc/)
 
 ## Example
 

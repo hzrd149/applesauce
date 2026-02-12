@@ -12,10 +12,10 @@ hero:
       link: /introduction/getting-started
     - theme: alt
       text: Reference
-      link: https://applesauce.build/typedoc/index.html
+      link: https://applesauce.hzrd149.com/typedoc/index.html
     - theme: alt
       text: Examples
-      link: https://applesauce.build/examples/
+      link: https://applesauce.hzrd149.com/examples/
     - theme: alt
       text: MCP Server
       link: /introduction/mcp-server

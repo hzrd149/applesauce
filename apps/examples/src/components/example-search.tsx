@@ -96,7 +96,7 @@ export function ExampleSearch({ onResultsChange }: ExampleSearchProps) {
           />
           <span className="text-sm text-base-content/70">
             Use{" "}
-            <a className="link link-info" href="https://applesauce.build/introduction/mcp-server">
+            <a className="link link-info" href="https://applesauce.hzrd149.com/introduction/mcp-server">
               Applesauce MCP
             </a>
           </span>

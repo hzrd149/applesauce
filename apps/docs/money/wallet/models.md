@@ -4,7 +4,7 @@ description: Reactive models for querying and subscribing to NIP-60 wallet state
 
 # Wallet models
 
-The `applesauce-wallet` package provides [models](https://applesauce.build/typedoc/modules/applesauce-wallet.Models.html) that subscribe to event-store streams and return computed observables. Use them with `eventStore.model(Model, ...args)`. The wallet **casts** (see [casts](./casts.md)) use these models internally (e.g. `Wallet.balance$` uses `WalletBalanceModel`).
+The `applesauce-wallet` package provides [models](https://applesauce.hzrd149.com/typedoc/modules/applesauce-wallet.Models.html) that subscribe to event-store streams and return computed observables. Use them with `eventStore.model(Model, ...args)`. The wallet **casts** (see [casts](./casts.md)) use these models internally (e.g. `Wallet.balance$` uses `WalletBalanceModel`).
 
 Import from `applesauce-wallet/models`:
 

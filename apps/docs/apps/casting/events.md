@@ -53,7 +53,7 @@ const note$ = eventStore.event(eventPointer).pipe(castEventStream(Note, eventSto
 const notes$ = eventStore.timeline({ kinds: [1] }).pipe(castTimelineStream(Note, eventStore));
 ```
 
-**Example:** [Thread Viewer](https://applesauce.build/examples#thread)
+**Example:** [Thread Viewer](https://applesauce.hzrd149.com/examples#thread)
 
 ## Base EventCast
 
@@ -73,7 +73,7 @@ cast.store; // Event store reference
 
 Cast for a short text note (kind 1). Provides NIP-10 thread references and access to replies, comments, zaps, reactions, and shares.
 
-[**Note** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Note.html)
+[**Note** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Note.html)
 
 ```typescript
 const note = use$(() => eventStore.event(eventPointer).pipe(castEventStream(Note, eventStore)), [eventPointer.id]);
@@ -96,13 +96,13 @@ const reactions = use$(note.reactions$);
 const shares = use$(note.shares$);
 ```
 
-**Example:** [Event Deletion](https://applesauce.build/examples#event-deletion)
+**Example:** [Event Deletion](https://applesauce.hzrd149.com/examples#event-deletion)
 
 ## Article
 
 Cast for long-form content (kind 30023). Provides article metadata, addressable pointer, and reactions.
 
-[**Article** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Article.html)
+[**Article** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Article.html)
 
 ```typescript
 const article = use$(
@@ -126,13 +126,13 @@ const addressWithHints = use$(article.address$); // Observable with relay hints
 const reactions = use$(article.reactions$);
 ```
 
-**Example:** [Articles](https://applesauce.build/examples#articles)
+**Example:** [Articles](https://applesauce.hzrd149.com/examples#articles)
 
 ## Profile
 
 Cast for user metadata (kind 0). Provides access to all profile fields.
 
-[**Profile** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Profile.html)
+[**Profile** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Profile.html)
 
 ```typescript
 const profile = use$(user.profile$);
@@ -154,13 +154,13 @@ if (profile) {
 }
 ```
 
-**Example:** [Profile Editor](https://applesauce.build/examples#profile-editor)
+**Example:** [Profile Editor](https://applesauce.hzrd149.com/examples#profile-editor)
 
 ## Zap
 
 Cast for a zap event (kind 9735). Provides sender, recipient, amount, and the zapped event.
 
-[**Zap** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Zap.html)
+[**Zap** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Zap.html)
 
 ```typescript
 const zaps = use$(note.zaps$);
@@ -180,13 +180,13 @@ zaps.forEach((zap) => {
 const zappedEvent = use$(zap.event$);
 ```
 
-**Example:** [Zap Timeline](https://applesauce.build/examples#zap-timeline)
+**Example:** [Zap Timeline](https://applesauce.hzrd149.com/examples#zap-timeline)
 
 ## Reaction
 
 Cast for a reaction (kind 7). Provides emoji content and the reacted event.
 
-[**Reaction** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Reaction.html)
+[**Reaction** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Reaction.html)
 
 ```typescript
 const reactions = use$(note.reactions$);
@@ -203,13 +203,13 @@ reactions.forEach((reaction) => {
 const reactedEvent = use$(reaction.reactedTo$);
 ```
 
-**Example:** [Reactions Timeline](https://applesauce.build/examples#reactions-timeline)
+**Example:** [Reactions Timeline](https://applesauce.hzrd149.com/examples#reactions-timeline)
 
 ## Comment
 
 Cast for a NIP-22 comment (kind 1111). Provides root/reply pointers and nested comment threads.
 
-[**Comment** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Comment.html)
+[**Comment** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Comment.html)
 
 ```typescript
 const comments = use$(article.comments$);
@@ -229,13 +229,13 @@ const zaps = use$(comment.zaps$);
 const reactions = use$(comment.reactions$);
 ```
 
-**Example:** [Comment Feed](https://applesauce.build/examples#comment-feed)
+**Example:** [Comment Feed](https://applesauce.hzrd149.com/examples#comment-feed)
 
 ## Mutes
 
 Cast for a mute list (kind 10000). Provides public and hidden mutes for hashtags, words, users, and threads.
 
-[**Mutes** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Mutes.html)
+[**Mutes** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Mutes.html)
 
 ```typescript
 const mutes = use$(user.mutes$);
@@ -267,13 +267,13 @@ if (mutes) {
 }
 ```
 
-**Example:** [Mutes Manager](https://applesauce.build/examples#mutes)
+**Example:** [Mutes Manager](https://applesauce.hzrd149.com/examples#mutes)
 
 ## BookmarksList
 
 Cast for a bookmarks list (kind 10003). Provides public and hidden bookmarks for notes and articles.
 
-[**BookmarksList** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.BookmarksList.html)
+[**BookmarksList** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.BookmarksList.html)
 
 ```typescript
 const bookmarks = use$(user.bookmarks$);
@@ -302,13 +302,13 @@ if (bookmarks) {
 }
 ```
 
-**Example:** [Bookmarks Manager](https://applesauce.build/examples#bookmarks)
+**Example:** [Bookmarks Manager](https://applesauce.hzrd149.com/examples#bookmarks)
 
 ## BookmarksSet
 
 Cast for a bookmarks set (kind 30003). Same API as BookmarksList but for categorized bookmarks.
 
-[**BookmarksSet** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.BookmarksSet.html)
+[**BookmarksSet** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.BookmarksSet.html)
 
 ```typescript
 // Get a specific bookmark set by identifier
@@ -327,7 +327,7 @@ const articles = use$(bookmarkSet?.articles$);
 
 Casts for favorite relays (kind 10012), search relays (kind 10007), and blocked relays (kind 10006).
 
-[**FavoriteRelays** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.FavoriteRelays.html) | [**SearchRelays** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.SearchRelays.html) | [**BlockedRelays** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.BlockedRelays.html)
+[**FavoriteRelays** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.FavoriteRelays.html) | [**SearchRelays** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.SearchRelays.html) | [**BlockedRelays** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.BlockedRelays.html)
 
 ```typescript
 const favoriteRelays = use$(user.favoriteRelays$);
@@ -355,7 +355,7 @@ if (favoriteRelays) {
 
 Cast for a live stream (kind 30311, NIP-53). Provides stream metadata, status, participants, and chat.
 
-[**Stream** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Stream.html)
+[**Stream** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Stream.html)
 
 ```typescript
 const stream = use$(user.live$);
@@ -396,13 +396,13 @@ if (stream) {
 }
 ```
 
-**Example:** [Stream Viewer](https://applesauce.build/examples#stream-viewer)
+**Example:** [Stream Viewer](https://applesauce.hzrd149.com/examples#stream-viewer)
 
 ## StreamChatMessage
 
 Cast for a stream chat message (kind 1311). Links back to the stream.
 
-[**StreamChatMessage** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.StreamChatMessage.html)
+[**StreamChatMessage** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.StreamChatMessage.html)
 
 ```typescript
 const chatMessages = use$(stream.chat$);
@@ -419,7 +419,7 @@ chatMessages.forEach((message) => {
 
 Cast for a torrent event (kind 2003). Provides BitTorrent metadata, files, trackers, and magnet link.
 
-[**Torrent** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Torrent.html)
+[**Torrent** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Torrent.html)
 
 ```typescript
 const torrents = use$(() => eventStore.timeline({ kinds: [2003] }).pipe(castTimelineStream(Torrent, eventStore)), []);
@@ -445,13 +445,13 @@ const zaps = use$(torrent.zaps$);
 const reactions = use$(torrent.reactions$);
 ```
 
-**Example:** [Torrent Feed](https://applesauce.build/examples#torrent-feed)
+**Example:** [Torrent Feed](https://applesauce.hzrd149.com/examples#torrent-feed)
 
 ## RelayMonitor
 
 Cast for a relay monitor announcement (kind 10166). Provides monitor metadata and relay status lookups.
 
-[**RelayMonitor** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.RelayMonitor.html)
+[**RelayMonitor** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.RelayMonitor.html)
 
 ```typescript
 const monitors = use$(
@@ -471,13 +471,13 @@ monitors.forEach((monitor) => {
 });
 ```
 
-**Example:** [Monitor Feed](https://applesauce.build/examples#monitor-feed)
+**Example:** [Monitor Feed](https://applesauce.hzrd149.com/examples#monitor-feed)
 
 ## RelayDiscovery
 
 Cast for relay discovery events (kind 30166). Provides relay status information from monitors.
 
-[**RelayDiscovery** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.RelayDiscovery.html)
+[**RelayDiscovery** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.RelayDiscovery.html)
 
 ```typescript
 const relayStatus = use$(
@@ -507,13 +507,13 @@ if (relayStatus) {
 }
 ```
 
-**Example:** [Relay Discovery](https://applesauce.build/examples#relay-discovery)
+**Example:** [Relay Discovery](https://applesauce.hzrd149.com/examples#relay-discovery)
 
 ## Share
 
 Cast for a share event (kind 6 or kind 16). References the shared event and may embed it.
 
-[**Share** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Share.html)
+[**Share** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Share.html)
 
 ```typescript
 const shares = use$(note.shares$);
@@ -540,7 +540,7 @@ const reactions = use$(share.reactions$);
 
 Cast for a report event (kind 1984). Provides report type and reported content.
 
-[**Report** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Report.html)
+[**Report** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.Report.html)
 
 ```typescript
 const reports = use$(
@@ -575,7 +575,7 @@ const reportedEvent = use$(report.reportedEvent$);
 
 Cast for a zap goal event (kind 9041). Tracks fundraising goals with progress.
 
-[**ZapGoal** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.ZapGoal.html)
+[**ZapGoal** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.ZapGoal.html)
 
 ```typescript
 const goal = use$(() => eventStore.event(goalPointer).pipe(castEventStream(ZapGoal, eventStore)), [goalPointer.id]);
@@ -605,7 +605,7 @@ if (goal) {
 
 Cast for a user's NIP-29 group list (kind 10009). Provides public and hidden groups.
 
-[**GroupsList** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.GroupsList.html)
+[**GroupsList** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.GroupsList.html)
 
 ```typescript
 // Get user's group list
@@ -628,13 +628,13 @@ if (groupsList) {
 }
 ```
 
-**Example:** [Groups](https://applesauce.build/examples#groups)
+**Example:** [Groups](https://applesauce.hzrd149.com/examples#groups)
 
 ## CodeSnippet
 
 Cast for code snippet events (kind 30818 or kind 1). Provides language and snippet metadata.
 
-[**CodeSnippet** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.CodeSnippet.html)
+[**CodeSnippet** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.CodeSnippet.html)
 
 ```typescript
 const snippet = use$(

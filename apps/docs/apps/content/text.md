@@ -24,7 +24,7 @@ Event Content → Parser → NAST Tree → Transformers → React Components →
 
 ## Parsing content
 
-The [`getParsedContent`](https://applesauce.build/typedoc/functions/applesauce-content.Text.getParsedContent.html) method parses event content into a NAST tree:
+The [`getParsedContent`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.getParsedContent.html) method parses event content into a NAST tree:
 
 ```ts
 import { getParsedContent } from "applesauce-content/text";
@@ -55,7 +55,7 @@ const root = getParsedContent(event, undefined, [links, nostrMentions, hashtags]
 
 ## Caching
 
-Because parsing and transforming content is an expensive operation `getParsedContent` method will cache the results on the event under a [Symbol](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol), by default this is the [`TextNoteContentSymbol`](https://applesauce.build/typedoc/variables/applesauce-content.Text.TextNoteContentSymbol.html)
+Because parsing and transforming content is an expensive operation `getParsedContent` method will cache the results on the event under a [Symbol](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol), by default this is the [`TextNoteContentSymbol`](https://applesauce.hzrd149.com/typedoc/variables/applesauce-content.Text.TextNoteContentSymbol.html)
 
 If your parsing or transforming different event kinds than kind 1, its recommended to create a new `Symbol` to and pass to `getParsedContent` to avoid cache collisions with the default kind 1 processor
 
@@ -79,7 +79,7 @@ const content = getParsedContent(event, undefined, undefined, null);
 
 ### Links
 
-The [`links`](https://applesauce.build/typedoc/functions/applesauce-content.Text.links.html) transformer detects URLs and creates [`Link`](https://applesauce.build/typedoc/interfaces/applesauce-content.Nast.Link.html) nodes.
+The [`links`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.links.html) transformer detects URLs and creates [`Link`](https://applesauce.hzrd149.com/typedoc/interfaces/applesauce-content.Nast.Link.html) nodes.
 
 **Detected patterns:** `https://example.com`, `http://example.com`, `example.com`
 
@@ -95,7 +95,7 @@ interface Link {
 
 ### Mentions
 
-The [`nostrMentions`](https://applesauce.build/typedoc/functions/applesauce-content.Text.nostrMentions.html) transformer detects NIP-19 and NIP-21 mentions and creates [`Mention`](https://applesauce.build/typedoc/interfaces/applesauce-content.Nast.Mention.html) nodes.
+The [`nostrMentions`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.nostrMentions.html) transformer detects NIP-19 and NIP-21 mentions and creates [`Mention`](https://applesauce.hzrd149.com/typedoc/interfaces/applesauce-content.Nast.Mention.html) nodes.
 
 **Detected patterns:** `nostr:npub1...`, `npub1...`, `nevent1...`, `naddr1...` (all NIP-19 types)
 
@@ -111,7 +111,7 @@ interface Mention {
 
 ### Hashtags
 
-The [`hashtags`](https://applesauce.build/typedoc/functions/applesauce-content.Text.hashtags.html) transformer identifies hashtags and creates [`Hashtag`](https://applesauce.build/typedoc/interfaces/applesauce-content.Nast.Hashtag.html) nodes.
+The [`hashtags`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.hashtags.html) transformer identifies hashtags and creates [`Hashtag`](https://applesauce.hzrd149.com/typedoc/interfaces/applesauce-content.Nast.Hashtag.html) nodes.
 
 **Important:** Only hashtags with corresponding `t` tags in the event are parsed.
 
@@ -139,7 +139,7 @@ interface Hashtag {
 
 ### Emojis
 
-The [`emojis`](https://applesauce.build/typedoc/functions/applesauce-content.Text.emojis.html) transformer replaces `:emoji_code:` patterns with custom emoji from the event's emoji tags ([NIP-30](https://github.com/nostr-protocol/nips/blob/master/30.md)).
+The [`emojis`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.emojis.html) transformer replaces `:emoji_code:` patterns with custom emoji from the event's emoji tags ([NIP-30](https://github.com/nostr-protocol/nips/blob/master/30.md)).
 
 ```ts
 const event = {
@@ -163,7 +163,7 @@ interface Emoji {
 
 ### Galleries
 
-The [`galleries`](https://applesauce.build/typedoc/functions/applesauce-content.Text.galleries.html) transformer groups consecutive image URLs into [`Gallery`](https://applesauce.build/typedoc/interfaces/applesauce-content.Nast.Gallery.html) nodes.
+The [`galleries`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.galleries.html) transformer groups consecutive image URLs into [`Gallery`](https://applesauce.hzrd149.com/typedoc/interfaces/applesauce-content.Nast.Gallery.html) nodes.
 
 **Grouping rules:**
 
@@ -218,7 +218,7 @@ const content = useRenderedContent(event, components, {
 
 ### Lightning invoices
 
-The [`lightningInvoices`](https://applesauce.build/typedoc/functions/applesauce-content.Text.lightningInvoices.html) transformer detects LNBC payment requests.
+The [`lightningInvoices`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.lightningInvoices.html) transformer detects LNBC payment requests.
 
 ```typescript
 interface LightningInvoice {
@@ -229,7 +229,7 @@ interface LightningInvoice {
 
 ### Cashu tokens
 
-The [`cashuTokens`](https://applesauce.build/typedoc/functions/applesauce-content.Text.cashuTokens.html) transformer detects Cashu ecash tokens.
+The [`cashuTokens`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-content.Text.cashuTokens.html) transformer detects Cashu ecash tokens.
 
 ```typescript
 interface CashuToken {

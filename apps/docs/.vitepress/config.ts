@@ -2,6 +2,7 @@ import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: process.env.VITE_BASE || "/",
   title: "Applesauce",
   description: "Functional Nostr SDK for building reactive web apps",
   themeConfig: {
@@ -22,11 +23,11 @@ export default defineConfig({
 
     nav: [
       { text: "Home", link: "/" },
-      { text: "Examples", link: "https://applesauce.build/examples" },
-      { text: "Snippets", link: "https://applesauce.build/snippets" },
+      { text: "Examples", link: "https://applesauce.hzrd149.com/examples" },
+      { text: "Snippets", link: "https://applesauce.hzrd149.com/snippets" },
       {
         text: "Reference",
-        link: "https://applesauce.build/typedoc/index.html",
+        link: "https://applesauce.hzrd149.com/typedoc/index.html",
       },
     ],
 

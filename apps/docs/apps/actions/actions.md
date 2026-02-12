@@ -1,6 +1,6 @@
 # Actions
 
-Actions are the core building blocks for creating and modifying Nostr events in a structured way. An [Action](https://applesauce.build/typedoc/types/applesauce-actions.Action.html) is an async function that receives an `ActionContext` and publishes events directly.
+Actions are the core building blocks for creating and modifying Nostr events in a structured way. An [Action](https://applesauce.hzrd149.com/typedoc/types/applesauce-actions.Action.html) is an async function that receives an `ActionContext` and publishes events directly.
 
 ## What is an Action?
 
@@ -52,7 +52,7 @@ When using `ActionRunner.run()`, the publish method provided during ActionRunner
 
 ## Pre-built Actions
 
-The `applesauce-actions` package comes with many pre-built actions for common social client operations. You can find the complete list in the [reference](https://applesauce.build/typedoc/modules/applesauce-actions.Actions.html).
+The `applesauce-actions` package comes with many pre-built actions for common social client operations. You can find the complete list in the [reference](https://applesauce.hzrd149.com/typedoc/modules/applesauce-actions.Actions.html).
 
 Some examples include:
 

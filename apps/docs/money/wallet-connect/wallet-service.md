@@ -276,7 +276,7 @@ const payInvoiceHandler: PayInvoiceHandler = async (params) => {
 - `NotImplementedError`: When a method is not supported
 - `InternalError`: For unexpected internal errors
 
-For a complete list of error types, see the [typedocs](https://applesauce.build/typedoc/modules/applesauce-wallet-connect.html).
+For a complete list of error types, see the [typedocs](https://applesauce.hzrd149.com/typedoc/modules/applesauce-wallet-connect.html).
 
 ## Sending Notifications
 

@@ -2,7 +2,7 @@
 
 A collection of pre-built actions nostr clients can use. Built on top of `applesauce-core` and `applesauce-factory`.
 
-[Documentation](https://applesauce.build/typedoc/modules/applesauce-actions.html)
+[Documentation](https://applesauce.hzrd149.com/typedoc/modules/applesauce-actions.html)
 
 ## Installation
 
@@ -39,4 +39,4 @@ await hub
   .forEach((event) => publishEvent(event));
 ```
 
-For more detailed documentation and examples, visit the [full documentation](https://applesauce.build/overview/actions.html).
+For more detailed documentation and examples, visit the [full documentation](https://applesauce.hzrd149.com/overview/actions.html).

@@ -4,7 +4,7 @@ This guide covers rendering Nostr content in React using `useRenderedContent` fo
 
 ## useRenderedContent Hook
 
-The [`useRenderedContent`](https://applesauce.build/typedoc/functions/applesauce-react.useRenderedContent.html) hook renders NAST content in React components.
+The [`useRenderedContent`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-react.useRenderedContent.html) hook renders NAST content in React components.
 
 ### Basic Usage
 

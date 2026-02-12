@@ -18,7 +18,7 @@ The Applesauce MCP (Model Context Protocol) server helps AI agents build Nostr a
 The easiest way to use the MCP server is through the public HTTP endpoint:
 
 ```
-https://mcp.applesauce.build/mcp
+https://mcp.applesauce.hzrd149.com/mcp
 ```
 
 No installation required! Just configure your IDE to connect to this endpoint.
@@ -26,7 +26,7 @@ No installation required! Just configure your IDE to connect to this endpoint.
 If you want to test out the tool manually you can run this command:
 
 ```bash
-npx @modelcontextprotocol/inspector --server-url https://mcp.applesauce.build/mcp
+npx @modelcontextprotocol/inspector --server-url https://mcp.applesauce.hzrd149.com/mcp
 ```
 
 ## IDE Integration
@@ -42,7 +42,7 @@ Configure the MCP server for your preferred IDE:
   "mcp": {
     "applesauce": {
       "type": "remote",
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     }
   }
 }
@@ -53,7 +53,7 @@ Configure the MCP server for your preferred IDE:
 {
   "mcpServers": {
     "applesauce": {
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     }
   }
 }
@@ -66,7 +66,7 @@ Configure the MCP server for your preferred IDE:
 {
   "mcpServers": {
     "applesauce": {
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     }
   }
 }
@@ -77,7 +77,7 @@ Configure the MCP server for your preferred IDE:
 {
   "mcpServers": {
     "applesauce": {
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     }
   }
 }
@@ -112,7 +112,7 @@ Add Nostrbook MCP alongside Applesauce in your configuration:
   "mcp": {
     "applesauce": {
       "type": "remote",
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     },
     "nostr": {
       "type": "command",
@@ -128,7 +128,7 @@ Add Nostrbook MCP alongside Applesauce in your configuration:
 {
   "mcpServers": {
     "applesauce": {
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     },
     "nostr": {
       "command": "npx",
@@ -145,7 +145,7 @@ Add Nostrbook MCP alongside Applesauce in your configuration:
 {
   "mcpServers": {
     "applesauce": {
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     },
     "nostr": {
       "command": "npx",
@@ -160,7 +160,7 @@ Add Nostrbook MCP alongside Applesauce in your configuration:
 {
   "mcpServers": {
     "applesauce": {
-      "url": "https://mcp.applesauce.build/mcp"
+      "url": "https://mcp.applesauce.hzrd149.com/mcp"
     },
     "nostr": {
       "command": "npx",

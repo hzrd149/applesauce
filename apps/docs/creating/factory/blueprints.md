@@ -85,7 +85,7 @@ const comment = await createEvent({ signer: mySigner }, CommentBlueprint(parentE
 - `DeleteBlueprint(events)`
 - `LiveStreamBlueprint(title, options?)`
 
-And a lot more in the [reference](https://applesauce.build/typedoc/modules/applesauce-common.Blueprints.html).
+And a lot more in the [reference](https://applesauce.hzrd149.com/typedoc/modules/applesauce-common.Blueprints.html).
 
 ## Custom Blueprints
 
