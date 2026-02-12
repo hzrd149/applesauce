@@ -16,7 +16,10 @@ function includeHistoryCreatedTags(created: (string | EventPointer)[]): TagOpera
 }
 
 /** Sets the encrypted tags of a wallet history event */
-export function setHistoryContent(content: HistoryContent): EventOperation {
+export function setHistoryContent(
+  content: HistoryContent,
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
   const operations: TagOperation[] = [
     setSingletonTag(["direction", content.direction], true),
     setSingletonTag(["amount", String(content.amount)], true),
@@ -27,7 +30,7 @@ export function setHistoryContent(content: HistoryContent): EventOperation {
     operations.push(setSingletonTag(["fee", String(content.fee)], true));
   if (content.mint !== undefined) operations.push(setSingletonTag(["mint", content.mint], true));
 
-  return modifyHiddenTags(...operations);
+  return modifyHiddenTags(signer, ...operations);
 }
 
 /** Sets the "e" "redeemed" tags on a wallet history event */

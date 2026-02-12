@@ -114,17 +114,20 @@ export function setMetaTags(options?: MetaTagOptions): EventOperation {
 
 /**
  * An operation that adds the signers pubkey to the event
+ * @param signer - Optional EventSigner (throws if not provided)
  * @throws {Error} if no signer is provided
  */
-export function stamp<K extends number = number>(): EventOperation<KnownEventTemplate<K>, KnownUnsignedEvent<K>> {
-  return async (draft, ctx) => {
-    if (!ctx?.signer) throw new Error("Missing signer");
+export function stamp<K extends number = number>(
+  signer?: import("../event-factory/types.js").EventSigner,
+): EventOperation<KnownEventTemplate<K>, KnownUnsignedEvent<K>> {
+  return async (draft) => {
+    if (!signer) throw new Error("Missing signer");
 
     // Remove old fields from signed nostr event
     Reflect.deleteProperty(draft, "id");
     Reflect.deleteProperty(draft, "sig");
 
-    const pubkey = await ctx.signer.getPublicKey();
+    const pubkey = await signer.getPublicKey();
     const newDraft = { ...draft, pubkey };
 
     // copy the plaintext hidden content if its on the draft
@@ -137,17 +140,17 @@ export function stamp<K extends number = number>(): EventOperation<KnownEventTem
 
 /**
  * An operation that signs the event
+ * @param signer - Optional EventSigner (throws if not provided)
  * @throws {Error} if no signer is provided
  */
-export function sign<
-  K extends number = number,
-  T extends KnownEventTemplate<K> = KnownEventTemplate<K>,
->(): EventOperation<T, KnownEvent<K>> {
-  return async (draft, ctx) => {
-    if (!ctx?.signer) throw new Error("Missing signer");
+export function sign<K extends number = number, T extends KnownEventTemplate<K> = KnownEventTemplate<K>>(
+  signer?: import("../event-factory/types.js").EventSigner,
+): EventOperation<T, KnownEvent<K>> {
+  return async (draft) => {
+    if (!signer) throw new Error("Missing signer");
 
-    const unsigned = await stamp<K>()(draft, ctx);
-    const signed = await ctx.signer.signEvent(unsigned);
+    const unsigned = await stamp<K>(signer)(draft);
+    const signed = await signer.signEvent(unsigned);
 
     // Verify the pubkey has not changed
     if (Reflect.has(draft, "pubkey") && Reflect.get(draft, "pubkey") !== signed.pubkey)

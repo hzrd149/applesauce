@@ -7,17 +7,22 @@ import { getNip10References } from "../helpers/threading.js";
 
 /**
  * Includes NIP-10 reply tags
+ * @param parent - Parent event to reply to
+ * @param getRelayHint - Optional function to get relay hint for event ID
  * @throws {Error} if the parent is not a short text note
  */
-export function setThreadParent(parent: NostrEvent): EventOperation {
+export function setThreadParent(
+  parent: NostrEvent,
+  getRelayHint?: (eventId: string) => Promise<string | undefined>,
+): EventOperation {
   if (parent.kind !== kinds.ShortTextNote) throw new Error("Parent must be a short text note");
 
-  return async (draft, ctx) => {
+  return async (draft) => {
     let tags = Array.from(draft.tags);
 
     const pointer: EventPointer = { id: parent.id, author: parent.pubkey, kind: parent.kind };
-    if (ctx?.getEventRelayHint) {
-      const hint = await ctx.getEventRelayHint(parent.id);
+    if (getRelayHint) {
+      const hint = await getRelayHint(parent.id);
       if (hint) pointer.relays = [hint];
     }
 
@@ -33,9 +38,16 @@ export function setThreadParent(parent: NostrEvent): EventOperation {
   };
 }
 
-/** Copies "p" tags from parent event and adds new pubkeys */
-export function includePubkeyNotificationTags(parent: NostrEvent): EventOperation {
-  return async (draft, ctx) => {
+/**
+ * Copies "p" tags from parent event and adds new pubkeys
+ * @param parent - Parent event to copy p tags from
+ * @param getRelayHint - Optional function to get relay hint for pubkey
+ */
+export function includePubkeyNotificationTags(
+  parent: NostrEvent,
+  getRelayHint?: (pubkey: string) => Promise<string | undefined>,
+): EventOperation {
+  return async (draft) => {
     let tags = Array.from(draft.tags);
 
     // copy "p" tags from parent event that are not mentions
@@ -44,7 +56,7 @@ export function includePubkeyNotificationTags(parent: NostrEvent): EventOperatio
     }
 
     // add new "p" tag
-    const hint = await ctx?.getPubkeyRelayHint?.(parent.pubkey);
+    const hint = getRelayHint ? await getRelayHint(parent.pubkey) : undefined;
     tags = ensureProfilePointerTag(tags, { pubkey: parent.pubkey, relays: hint ? [hint] : undefined });
 
     return { ...draft, tags };

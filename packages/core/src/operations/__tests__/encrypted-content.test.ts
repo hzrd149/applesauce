@@ -15,7 +15,7 @@ describe("setEncryptedContent", () => {
     const draft = await buildEvent(
       { kind: 4 },
       { signer: user },
-      setEncryptedContent(user.pubkey, "Hello, world!", "nip04"),
+      setEncryptedContent(user.pubkey, "Hello, world!", user, "nip04"),
     );
 
     expect(draft).toEqual(
@@ -34,7 +34,7 @@ describe("setEncryptedContent", () => {
     const nip04Draft = await buildEvent(
       { kind: 50004 },
       { signer: user },
-      setEncryptedContent(user.pubkey, "Hello, world!"),
+      setEncryptedContent(user.pubkey, "Hello, world!", user),
     );
 
     expect(nip04Draft).toEqual(
@@ -48,7 +48,7 @@ describe("setEncryptedContent", () => {
     const nip44Draft = await buildEvent(
       { kind: 50044 },
       { signer: user },
-      setEncryptedContent(user.pubkey, "Hello, world!"),
+      setEncryptedContent(user.pubkey, "Hello, world!", user),
     );
 
     expect(nip44Draft).toEqual(
@@ -61,33 +61,33 @@ describe("setEncryptedContent", () => {
   });
 
   it("should set EncryptedContentSymbol with plaintext content for nip04", async () => {
-    const operation = setEncryptedContent(user.pubkey, "secret message", "nip04");
-    const draft = await operation({ kind: 1, content: "", tags: [], created_at: 0 }, { signer: user });
+    const operation = setEncryptedContent(user.pubkey, "secret message", user, "nip04");
+    const draft = await operation({ kind: 1, content: "", tags: [], created_at: 0 });
 
     expect(Reflect.get(draft, EncryptedContentSymbol)).toBe("secret message");
   });
 
   it("should set EncryptedContentSymbol with plaintext content for nip44", async () => {
-    const operation = setEncryptedContent(user.pubkey, "secret message", "nip44");
-    const draft = await operation({ kind: 1, content: "", tags: [], created_at: 0 }, { signer: user });
+    const operation = setEncryptedContent(user.pubkey, "secret message", user, "nip44");
+    const draft = await operation({ kind: 1, content: "", tags: [], created_at: 0 });
 
     expect(Reflect.get(draft, EncryptedContentSymbol)).toBe("secret message");
   });
 
   it("should throw error if no signer provided", async () => {
-    const operation = setEncryptedContent(user.pubkey, "secret message", "nip04");
-    await expect(operation({ kind: 1, content: "", tags: [], created_at: 0 }, { signer: undefined })).rejects.toThrow(
+    const operation = setEncryptedContent(user.pubkey, "secret message", undefined, "nip04");
+    await expect(operation({ kind: 1, content: "", tags: [], created_at: 0 })).rejects.toThrow(
       "Signer required for encrypted content",
     );
   });
 
   it("should throw error if signer does not support encryption method", async () => {
-    const operation = setEncryptedContent(user.pubkey, "secret message", "nip44");
+    const operation = setEncryptedContent(user.pubkey, "secret message", user, "nip44");
 
     // @ts-expect-error
     delete user.nip44;
 
-    await expect(operation({ kind: 1, content: "", tags: [], created_at: 0 }, { signer: user })).rejects.toThrow(
+    await expect(operation({ kind: 1, content: "", tags: [], created_at: 0 })).rejects.toThrow(
       "Signer does not support nip44 encryption",
     );
   });

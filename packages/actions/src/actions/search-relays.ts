@@ -11,7 +11,7 @@ function ModifySearchRelaysEvent(operations: TagOperation[], hidden = false): Ac
       user.outboxes$.$first(1000, undefined),
     ]);
 
-    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
+    const operation = hidden ? modifyHiddenTags(factory.services.signer, ...operations) : modifyPublicTags(...operations);
 
     // Modify or build new event
     const signed = event
@@ -57,7 +57,7 @@ export function NewSearchRelays(relays?: string[] | { public?: string[]; hidden?
     const draft = await factory.build(
       { kind: kinds.SearchRelaysList },
       publicOperations.length ? modifyPublicTags(...publicOperations) : undefined,
-      hiddenOperations.length ? modifyHiddenTags(...hiddenOperations) : undefined,
+      hiddenOperations.length ? modifyHiddenTags(factory.services.signer, ...hiddenOperations) : undefined,
     );
     const signed = await factory.sign(draft);
     await publish(signed, await user.outboxes$.$first(1000, undefined));

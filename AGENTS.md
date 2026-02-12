@@ -145,6 +145,51 @@ Before completing documentation work:
 3. Ensure navigation is updated in VitePress config
 4. Confirm no duplicate or orphaned files remain
 
+# Creating Changesets
+
+**Always create a changeset when making code changes.** Changesets document changes for the changelog when a release is made.
+
+Create a new markdown file in `.changeset/` with a random name (e.g., `cool-pandas-jump.md`):
+
+```markdown
+---
+"package-name": patch
+---
+
+Brief description of what changed and why
+```
+
+**Version bump types:**
+
+- `major` - Breaking changes
+- `minor` - New features (backwards compatible)
+- `patch` - Bug fixes and small improvements
+
+**Examples:**
+
+```markdown
+---
+"applesauce-core": minor
+---
+
+Add EventFactory.signMultiple() for batch signing events
+```
+
+```markdown
+---
+"applesauce-react": patch
+"applesauce-core": patch
+---
+
+Fix memory leak in useEventLoader hook
+```
+
+**Skip changesets only for:**
+
+- Documentation-only changes
+- Internal tooling updates that don't affect published packages
+- Example application updates
+
 # Building examples
 
 Never add drop shadows and avoid using cards, the UI looks better when its simple, clean and uses borders.

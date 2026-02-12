@@ -2,7 +2,7 @@ import { EventTemplate, NostrEvent, UnsignedEvent } from "../helpers/event.js";
 import { sign, stamp } from "../operations/event.js";
 import { modifyTags, ModifyTagsOptions } from "../operations/tags.js";
 import { buildEvent, EventFactoryTemplate, modifyEvent } from "./methods.js";
-import { EventBlueprint, EventFactoryContext, EventOperation, IEventFactory } from "./types.js";
+import { EventBlueprint, EventFactoryServices, EventOperation, IEventFactory } from "./types.js";
 
 /**
  * Base class that provides event creation functionality.
@@ -33,11 +33,11 @@ import { EventBlueprint, EventFactoryContext, EventOperation, IEventFactory } fr
  * ```
  */
 export class EventFactory implements IEventFactory {
-  constructor(public context: EventFactoryContext = {}) {}
+  constructor(public services: EventFactoryServices = {}) {}
 
   /** Build an event template with operations */
   async build(template: EventFactoryTemplate, ...operations: (EventOperation | undefined)[]): Promise<EventTemplate> {
-    return await buildEvent(template, this.context, ...operations);
+    return await buildEvent(template, this.services, ...operations);
   }
 
   /** Create an event from a blueprint */
@@ -50,14 +50,14 @@ export class EventFactory implements IEventFactory {
     blueprint: EventBlueprint<T> | ((...args: Args) => EventBlueprint<T>),
     ...args: Args
   ): Promise<T> {
-    // Context, blueprint(context)
+    // services, blueprint(services)
     if (arguments.length === 1) {
-      return (await blueprint(this.context)) as T;
+      return (await blueprint(this.services)) as T;
     }
-    // Context, blueprintConstructor(...args)(context), ...args
+    // services, blueprintConstructor(...args)(services), ...args
     else {
       const constructor = blueprint as (...args: Args) => EventBlueprint<T>;
-      return await constructor(...args)(this.context);
+      return await constructor(...args)(this.services);
     }
   }
 
@@ -66,7 +66,7 @@ export class EventFactory implements IEventFactory {
     draft: EventTemplate | UnsignedEvent | NostrEvent,
     ...operations: (EventOperation | undefined)[]
   ): Promise<EventTemplate> {
-    return await modifyEvent(draft, this.context, ...operations);
+    return await modifyEvent(draft, this.services, ...operations);
   }
 
   /** Modify a lists public and hidden tags and updated the created_at */
@@ -83,38 +83,63 @@ export class EventFactory implements IEventFactory {
     else if (Array.isArray(eventOperations)) eventOperationsArr = eventOperations.filter((e) => !!e);
 
     // modify event
-    return await this.modify(event, modifyTags(tagOperations), ...eventOperationsArr);
+    return await this.modify(event, modifyTags(tagOperations, this.services.signer), ...eventOperationsArr);
   }
 
   /** Attaches the signers pubkey to an event template */
   async stamp(draft: EventTemplate | UnsignedEvent): Promise<UnsignedEvent> {
-    return await stamp()(draft, this.context);
+    return await stamp(this.services.signer)(draft);
   }
 
   /** Signs a event template with the signer */
   async sign(draft: EventTemplate | UnsignedEvent): Promise<NostrEvent> {
-    return await sign()(draft, this.context);
+    return await sign(this.services.signer)(draft);
   }
 
   // Helpers
 
-  /** Sets the signer in the context */
-  setSigner(signer: EventFactoryContext["signer"]) {
-    this.context.signer = signer;
+  /** Sets the signer in the services */
+  setSigner(signer: EventFactoryServices["signer"]) {
+    this.services.signer = signer;
   }
 
-  /** clears the signer in the context */
+  /** clears the signer in the services */
   clearSigner() {
-    this.context.signer = undefined;
+    this.services.signer = undefined;
   }
 
-  /** sets the client in the context */
-  setClient(client: EventFactoryContext["client"]) {
-    this.context.client = client;
+  /** sets the client in the services */
+  setClient(client: EventFactoryServices["client"]) {
+    this.services.client = client;
   }
 
-  /** clears the client in the context */
+  /** clears the client in the services */
   clearClient() {
-    this.context.client = undefined;
+    this.services.client = undefined;
+  }
+
+  /** sets relay hint functions in the services */
+  setRelayHints(
+    getEventRelayHint?: EventFactoryServices["getEventRelayHint"],
+    getPubkeyRelayHint?: EventFactoryServices["getPubkeyRelayHint"],
+  ) {
+    this.services.getEventRelayHint = getEventRelayHint;
+    this.services.getPubkeyRelayHint = getPubkeyRelayHint;
+  }
+
+  /** clears relay hint functions from the services */
+  clearRelayHints() {
+    this.services.getEventRelayHint = undefined;
+    this.services.getPubkeyRelayHint = undefined;
+  }
+
+  /** sets emojis in the services */
+  setEmojis(emojis?: EventFactoryServices["emojis"]) {
+    this.services.emojis = emojis;
+  }
+
+  /** clears emojis from the services */
+  clearEmojis() {
+    this.services.emojis = undefined;
   }
 }

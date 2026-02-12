@@ -93,16 +93,18 @@ export function includeContentHashtags(): EventOperation {
   };
 }
 
-/** Adds "emoji" tags for NIP-30 emojis used in the content */
-export function includeEmojis(emojis?: Emoji[]): EventOperation {
-  return (draft, ctx) => {
-    const all = [...(ctx?.emojis ?? []), ...(emojis ?? [])];
+/**
+ * Adds "emoji" tags for NIP-30 emojis used in the content
+ * @param emojis - Array of custom emojis to check for in content
+ */
+export function includeEmojis(emojis: Emoji[] = []): EventOperation {
+  return (draft) => {
     const tags = Array.from(draft.tags);
 
-    // create tags for all occurrences of #hashtag
+    // create tags for all occurrences of :emoji:
     const matches = draft.content.matchAll(Expressions.emoji);
     for (const [_, name] of matches) {
-      const emoji = all.find((e) => e.shortcode === name);
+      const emoji = emojis.find((e) => e.shortcode === name);
 
       if (emoji?.url) {
         tags.push(["emoji", emoji.shortcode, emoji.url]);

@@ -3,9 +3,16 @@ import { skip } from "applesauce-core/helpers/pipeline";
 import { fillAndTrimTag } from "applesauce-core/helpers/tags";
 import { ZapSplit } from "../helpers/zap.js";
 
-/** Override the zap splits on an event */
-export function setZapSplitTags(splits: Omit<ZapSplit, "percent" | "relay">[]): EventOperation {
-  return async (draft, ctx) => {
+/**
+ * Override the zap splits on an event
+ * @param splits - Array of zap splits
+ * @param getRelayHint - Optional function to get relay hint for pubkey
+ */
+export function setZapSplitTags(
+  splits: Omit<ZapSplit, "percent" | "relay">[],
+  getRelayHint?: (pubkey: string) => Promise<string | undefined>,
+): EventOperation {
+  return async (draft) => {
     let tags = Array.from(draft.tags);
 
     // remove any existing zap split tags
@@ -13,7 +20,7 @@ export function setZapSplitTags(splits: Omit<ZapSplit, "percent" | "relay">[]): 
 
     // add split tags
     for (const split of splits) {
-      const hint = await ctx?.getPubkeyRelayHint?.(split.pubkey);
+      const hint = getRelayHint ? await getRelayHint(split.pubkey) : undefined;
       tags.push(fillAndTrimTag(["zap", split.pubkey, hint, String(split.weight)]));
     }
 
@@ -27,6 +34,9 @@ export type ZapOptions = {
 };
 
 /** Creates the necessary operations for zap options */
-export function setZapSplit(options?: ZapOptions): EventOperation {
-  return options?.splits ? setZapSplitTags(options.splits) : skip();
+export function setZapSplit(
+  options?: ZapOptions,
+  getRelayHint?: (pubkey: string) => Promise<string | undefined>,
+): EventOperation {
+  return options?.splits ? setZapSplitTags(options.splits, getRelayHint) : skip();
 }

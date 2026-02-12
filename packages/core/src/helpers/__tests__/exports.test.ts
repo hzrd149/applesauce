@@ -201,6 +201,7 @@ describe("exports", () => {
         "nsecEncode",
         "parseReplaceableAddress",
         "persistEventsToCache",
+        "pipe",
         "pipeFromAsyncArray",
         "presistEventsToCache",
         "processTags",

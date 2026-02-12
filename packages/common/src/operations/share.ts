@@ -11,12 +11,21 @@ import { setContent } from "applesauce-core/operations/content";
 
 // TODO: some of these operations should be refactored to use "modifyPublicTags"
 
-/** Includes NIP-18 repost tags */
-export function setShareTags(event: NostrEvent): EventOperation {
-  return async (draft, ctx) => {
+/**
+ * Includes NIP-18 repost tags
+ * @param event - Event being shared/reposted
+ * @param getEventRelayHint - Optional function to get relay hint for event ID
+ * @param getPubkeyRelayHint - Optional function to get relay hint for pubkey
+ */
+export function setShareTags(
+  event: NostrEvent,
+  getEventRelayHint?: (eventId: string) => Promise<string | undefined>,
+  getPubkeyRelayHint?: (pubkey: string) => Promise<string | undefined>,
+): EventOperation {
+  return async (draft) => {
     let tags = Array.from(draft.tags);
 
-    const hint = await ctx?.getEventRelayHint?.(event.id);
+    const hint = getEventRelayHint ? await getEventRelayHint(event.id) : undefined;
 
     // add "e" tag
     tags = ensureEventPointerTag(tags, getEventPointerForEvent(event, hint ? [hint] : undefined));
@@ -28,7 +37,7 @@ export function setShareTags(event: NostrEvent): EventOperation {
     }
 
     // add "p" tag for notify
-    const pubkeyHint = await ctx?.getPubkeyRelayHint?.(event.pubkey);
+    const pubkeyHint = getPubkeyRelayHint ? await getPubkeyRelayHint(event.pubkey) : undefined;
     tags = ensureProfilePointerTag(tags, { pubkey: event.pubkey, relays: pubkeyHint ? [pubkeyHint] : undefined });
 
     // add "k" tag

@@ -13,7 +13,7 @@ export function setClient(
   pointer?: Omit<AddressPointer, "kind" | "relays">,
   replace = true,
 ): EventOperation {
-  return (draft, ctx) => {
+  return (draft) => {
     if (NEVER_ATTACH_CLIENT_TAG.includes(draft.kind)) return draft;
     else {
       const coordinate = pointer
@@ -24,10 +24,7 @@ export function setClient(
           })
         : undefined;
 
-      return includeSingletonTag(fillAndTrimTag(["client", name, coordinate]) as [string, ...string[]], replace)(
-        draft,
-        ctx,
-      );
+      return includeSingletonTag(fillAndTrimTag(["client", name, coordinate]) as [string, ...string[]], replace)(draft);
     }
   };
 }

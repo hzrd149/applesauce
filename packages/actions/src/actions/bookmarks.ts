@@ -15,7 +15,9 @@ function ModifyBookmarkSetEvent(operations: TagOperation[], set: NostrEvent | st
       user.outboxes$.$first(1000, undefined),
     ]);
 
-    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
+    const operation = hidden
+      ? modifyHiddenTags(factory.services.signer, ...operations)
+      : modifyPublicTags(...operations);
 
     // Modify or build new event
     const signed = event
@@ -34,7 +36,7 @@ function ModifyBookmarkListEvent(operations: TagOperation[], hidden = false): Ac
       user.outboxes$.$first(1000, undefined),
     ]);
 
-    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
+    const operation = hidden ? modifyHiddenTags(factory.services.signer, ...operations) : modifyPublicTags(...operations);
 
     // Modify or build new event
     const signed = event
@@ -121,7 +123,7 @@ export function CreateBookmarkSet(
         List.setDescription(description),
         additional.image ? List.setImage(additional.image) : undefined,
         additional.public ? modifyPublicTags(...additional.public.map(addEventBookmarkTag)) : undefined,
-        additional.hidden ? modifyHiddenTags(...additional.hidden.map(addEventBookmarkTag)) : undefined,
+        additional.hidden ? modifyHiddenTags(factory.services.signer, ...additional.hidden.map(addEventBookmarkTag)) : undefined,
       )
       .then(sign);
 

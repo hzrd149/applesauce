@@ -1,4 +1,4 @@
-import { blueprint, Emoji } from "applesauce-core/event-factory";
+import { buildEvent, Emoji, EventFactoryServices } from "applesauce-core/event-factory";
 import { EventBlueprint } from "applesauce-core/event-factory";
 import { Rumor } from "../helpers/gift-wrap.js";
 import { kinds } from "applesauce-core/helpers/event";
@@ -24,12 +24,13 @@ export function WrappedMessageBlueprint(
   message: string,
   opts?: WrappedMessageBlueprintOptions,
 ): EventBlueprint<Rumor> {
-  return async (context) => {
-    if (!context.signer) throw new Error("Missing signer");
-    const self = await context.signer.getPublicKey();
+  return async (services: EventFactoryServices) => {
+    if (!services.signer) throw new Error("Missing signer");
+    const self = await services.signer.getPublicKey();
 
-    return blueprint(
-      kinds.PrivateDirectMessage,
+    return buildEvent(
+      { kind: kinds.PrivateDirectMessage },
+      services,
       // set text content
       setContent(message),
       // fix @ mentions
@@ -37,12 +38,12 @@ export function WrappedMessageBlueprint(
       // Include the "p" tags for the conversation
       setConversation(participants, self),
       // include "emoji" tags
-      opts?.emojis ? includeEmojis(opts.emojis) : undefined,
+      opts?.emojis ? includeEmojis(opts?.emojis ?? services.emojis ?? []) : undefined,
       // Include the subject if provided
       opts?.subject ? setSubject(opts.subject) : undefined,
       // Convert the event to a rumor
-      toRumor(),
-    )(context) as Promise<Rumor>;
+      toRumor(services.signer),
+    ) as Promise<Rumor>;
   };
 }
 
@@ -56,18 +57,19 @@ export function WrappedMessageReplyBlueprint(
   message: string,
   opts?: WrappedMessageBlueprintOptions,
 ): EventBlueprint<Rumor> {
-  return async (context) => {
+  return async (services: EventFactoryServices) => {
     if (typeof parent !== "string" && parent.kind !== kinds.PrivateDirectMessage)
       throw new Error("Parent must be a wrapped message event (kind 14)");
 
-    if (!context.signer) throw new Error("Missing signer");
-    const self = await context.signer.getPublicKey();
+    if (!services.signer) throw new Error("Missing signer");
+    const self = await services.signer.getPublicKey();
 
     // Get the identifier for the conversation
     const participants = getConversationParticipants(parent);
 
-    return blueprint(
-      kinds.PrivateDirectMessage,
+    return buildEvent(
+      { kind: kinds.PrivateDirectMessage },
+      services,
       // set text content
       setContent(message),
       // fix @ mentions
@@ -77,11 +79,11 @@ export function WrappedMessageReplyBlueprint(
       // Include the parent message id
       setParent(parent),
       // include "emoji" tags
-      opts?.emojis ? includeEmojis(opts.emojis) : undefined,
+      opts?.emojis ? includeEmojis(opts?.emojis ?? services.emojis ?? []) : undefined,
       // Include the subject if provided
       opts?.subject ? setSubject(opts.subject) : undefined,
       // Convert the event to a rumor
-      toRumor(),
-    )(context) as Promise<Rumor>;
+      toRumor(services.signer),
+    ) as Promise<Rumor>;
   };
 }

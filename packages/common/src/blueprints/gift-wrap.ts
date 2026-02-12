@@ -9,10 +9,10 @@ export function GiftWrapBlueprint(
   blueprint: EventBlueprint | EventTemplate | UnsignedEvent | NostrEvent,
   opts?: MetaTagOptions,
 ): EventBlueprint<NostrEvent> {
-  return async (ctx) =>
+  return async (services) =>
     (await buildEvent(
-      typeof blueprint === "function" ? await blueprint(ctx) : blueprint,
-      ctx,
-      giftWrap(pubkey, opts),
+      typeof blueprint === "function" ? await blueprint(services) : blueprint,
+      services,
+      giftWrap(pubkey, services.signer, opts),
     )) as NostrEvent;
 }

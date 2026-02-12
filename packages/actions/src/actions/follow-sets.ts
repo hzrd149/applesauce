@@ -16,7 +16,7 @@ function ModifyFollowSetEvent(operations: TagOperation[], set: NostrEvent | stri
       user.outboxes$.$first(1000, undefined),
     ]);
 
-    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
+    const operation = hidden ? modifyHiddenTags(factory.services.signer, ...operations) : modifyPublicTags(...operations);
 
     // Modify or build new event
     const signed = event
@@ -52,7 +52,7 @@ export function CreateFollowSet(
 
       // add pubkey tags
       options?.public ? modifyPublicTags(...options.public.map((p) => addProfilePointerTag(p))) : undefined,
-      options?.hidden ? modifyHiddenTags(...options.hidden.map((p) => addProfilePointerTag(p))) : undefined,
+      options?.hidden ? modifyHiddenTags(factory.services.signer, ...options.hidden.map((p) => addProfilePointerTag(p))) : undefined,
     );
 
     const signed = await factory.sign(draft);

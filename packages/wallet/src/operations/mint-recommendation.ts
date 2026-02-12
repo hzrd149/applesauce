@@ -24,7 +24,7 @@ export function setURL(url: string): EventOperation {
 
 /** Sets the optional address pointer to the kind:38172 event (the `a` tag) */
 export function setAddressPointer(pointer: AddressPointer | NostrEvent | string): EventOperation {
-  return modifyPublicTags(addAddressPointerTag(pointer, true));
+  return modifyPublicTags(addAddressPointerTag(pointer, undefined, true));
 }
 
 /** Sets the optional review/comment content */

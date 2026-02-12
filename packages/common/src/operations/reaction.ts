@@ -15,13 +15,22 @@ export function setReaction(emoji: string | Emoji = "+"): EventOperation {
   return (draft) => ({ ...draft, content: typeof emoji === "string" ? emoji : `:${emoji.shortcode}:` });
 }
 
-/** Includes NIP-25 "e", "p", "k", and "a" tags for a reaction event to point to a parent event */
-export function setReactionParent(event: NostrEvent): EventOperation {
-  return async (draft, ctx) => {
+/**
+ * Includes NIP-25 "e", "p", "k", and "a" tags for a reaction event to point to a parent event
+ * @param event - Event being reacted to
+ * @param getEventRelayHint - Optional function to get relay hint for event ID
+ * @param getPubkeyRelayHint - Optional function to get relay hint for pubkey
+ */
+export function setReactionParent(
+  event: NostrEvent,
+  getEventRelayHint?: (eventId: string) => Promise<string | undefined>,
+  getPubkeyRelayHint?: (pubkey: string) => Promise<string | undefined>,
+): EventOperation {
+  return async (draft) => {
     let tags = Array.from(draft.tags);
 
-    const eventHint = await ctx?.getEventRelayHint?.(event.id);
-    const pubkeyHint = await ctx?.getPubkeyRelayHint?.(event.pubkey);
+    const eventHint = getEventRelayHint ? await getEventRelayHint(event.id) : undefined;
+    const pubkeyHint = getPubkeyRelayHint ? await getPubkeyRelayHint(event.pubkey) : undefined;
 
     // include "e" tag
     tags = ensureEventPointerTag(tags, {

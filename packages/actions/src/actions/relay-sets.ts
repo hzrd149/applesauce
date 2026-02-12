@@ -14,7 +14,7 @@ function ModifyRelaySetEvent(operations: TagOperation[], set: NostrEvent | strin
       user.outboxes$.$first(1000, undefined),
     ]);
 
-    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
+    const operation = hidden ? modifyHiddenTags(factory.services.signer, ...operations) : modifyPublicTags(...operations);
 
     // Modify or build new event
     const signed = event
@@ -72,7 +72,7 @@ export function CreateRelaySet(
         options?.image ? List.setImage(options.image) : undefined,
 
         options?.public ? modifyPublicTags(...options.public.map((r) => addRelayTag(r))) : undefined,
-        options?.hidden ? modifyHiddenTags(...options.hidden.map((r) => addRelayTag(r))) : undefined,
+        options?.hidden ? modifyHiddenTags(factory.services.signer, ...options.hidden.map((r) => addRelayTag(r))) : undefined,
       )
       .then(sign);
 

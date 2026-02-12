@@ -25,24 +25,27 @@ export function includeNameValueTag(tag: [string, string, ...string[]], replace 
 export function modifyPublicTags<E extends EventTemplate | UnsignedEvent | NostrEvent>(
   ...operations: (TagOperation | undefined)[]
 ): EventOperation<E, E> {
-  return async (draft, ctx) => {
-    return { ...draft, tags: await tagPipe(...operations)(Array.from(draft.tags), ctx) };
+  return async (draft) => {
+    return { ...draft, tags: await tagPipe(...operations)(Array.from(draft.tags)) };
   };
 }
 
 /**
  * Creates an event operation that modifies the hidden tags on an event with {@link TagOperation}s
+ * @param signer - EventSigner for encrypting/decrypting hidden tags
+ * @param operations - Tag operations to apply to hidden tags
  * @throws {Error} if no signer is provided
  * @throws {Error} if the event kind does not support hidden tags
  */
 export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | NostrEvent>(
+  signer: import("../event-factory/types.js").EventSigner | undefined,
   ...operations: (TagOperation | undefined)[]
 ): EventOperation<E, E> {
   operations = operations.filter((o) => !!o);
   if (operations.length === 0) return skip();
 
-  return async (draft, ctx) => {
-    if (!ctx?.signer) throw new Error("Missing signer for hidden tags");
+  return async (draft) => {
+    if (!signer) throw new Error("Missing signer for hidden tags");
     if (!canHaveHiddenTags(draft.kind)) throw new Error("Event kind does not support hidden tags");
 
     // Create var to store pubkey
@@ -58,8 +61,8 @@ export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | Nostr
       if (hidden === undefined) {
         if (hasHiddenTags(draft)) {
           // draft is an existing event, attempt to unlock tags
-          pubkey = await ctx.signer.getPublicKey();
-          hidden = await unlockHiddenTags({ ...draft, pubkey }, ctx.signer);
+          pubkey = await signer.getPublicKey();
+          hidden = await unlockHiddenTags({ ...draft, pubkey }, signer);
         }
         // create a new array of hidden tags
         else hidden = [];
@@ -72,11 +75,11 @@ export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | Nostr
     if (hidden === undefined) throw new Error("Failed to find hidden tags");
 
     // Create the new hidden tags
-    const tags = await tagPipe(...operations)(hidden, ctx);
+    const tags = await tagPipe(...operations)(hidden);
 
     // Encrypt new hidden tags
-    const methods = getHiddenTagsEncryptionMethods(draft.kind, ctx.signer);
-    if (!pubkey) pubkey = await ctx.signer.getPublicKey();
+    const methods = getHiddenTagsEncryptionMethods(draft.kind, signer);
+    if (!pubkey) pubkey = await signer.getPublicKey();
     const plaintext = JSON.stringify(tags);
     const content = await methods.encrypt(pubkey, plaintext);
 
@@ -90,8 +93,15 @@ export type ModifyTagsOptions =
   | TagOperation[]
   | { public?: TagOperation | TagOperation[]; hidden?: TagOperation | TagOperation[] };
 
-/** A flexible method for creating an event operation that modifies the tags */
-export function modifyTags(tagOperations?: ModifyTagsOptions): EventOperation {
+/**
+ * A flexible method for creating an event operation that modifies the tags
+ * @param tagOperations - Tag operations for public and/or hidden tags
+ * @param signer - Optional signer (required if modifying hidden tags)
+ */
+export function modifyTags(
+  tagOperations?: ModifyTagsOptions,
+  signer?: import("../event-factory/types.js").EventSigner,
+): EventOperation {
   let publicOperations: TagOperation[] = [];
   let hiddenOperations: TagOperation[] = [];
 
@@ -110,6 +120,6 @@ export function modifyTags(tagOperations?: ModifyTagsOptions): EventOperation {
   // return a new event operation that modifies the tags
   return eventPipe(
     publicOperations.length > 0 ? modifyPublicTags(...publicOperations) : undefined,
-    hiddenOperations.length > 0 ? modifyHiddenTags(...hiddenOperations) : undefined,
+    hiddenOperations.length > 0 ? modifyHiddenTags(signer, ...hiddenOperations) : undefined,
   );
 }

@@ -85,7 +85,7 @@ export class EventFactory<
   stamp(signer = this.signer): EventFactory<K, KnownUnsignedEvent<K>> {
     return new EventFactory((res, rej) => {
       if (!signer) return rej(new Error("Signer required for stamping"));
-      else res(this.then((template) => stamp()(template, { signer })) as Promise<KnownUnsignedEvent<K>>);
+      else res(this.then((template) => stamp(signer)(template)) as Promise<KnownUnsignedEvent<K>>);
     });
   }
 
@@ -94,7 +94,7 @@ export class EventFactory<
     if (!signer) throw new Error("Missing signer");
 
     const template = await this;
-    const signed = await sign()(template, { signer });
+    const signed = await sign(signer)(template);
 
     // Verify the pubkey has not changed
     if (Reflect.has(template, "pubkey") && Reflect.get(template, "pubkey") !== signed.pubkey)
@@ -123,23 +123,23 @@ export class EventFactory<
 
   /** Modifies the events public and optional hidden tags */
   modifyTags(...args: Parameters<typeof modifyTags>) {
-    return this.chain((e) => modifyTags(...args)(e, {}));
+    return this.chain((e) => modifyTags(args[0], this.signer)(e));
   }
 
   /** Modifies the events public tags array */
   modifyPublicTags(...args: Parameters<typeof modifyPublicTags>) {
-    return this.chain((e) => modifyPublicTags(...args)(e, {}));
+    return this.chain((e) => modifyPublicTags(...args)(e));
   }
 
   /** Modifies the events hidden tags array */
-  modifyHiddenTags(...args: Parameters<typeof modifyHiddenTags>) {
-    return this.chain((e) => modifyHiddenTags(...args)(e, {}));
+  modifyHiddenTags(...args: Exclude<Parameters<typeof modifyHiddenTags>[1], undefined>[]) {
+    return this.chain((e) => modifyHiddenTags(this.signer, ...args)(e));
   }
 
   /** Sets the encrypted content of the event */
   encryptedContent(target: string, content: string, override?: EncryptionMethod, signer = this.signer) {
     if (!signer) throw new Error("Signer required for encrypted content");
 
-    return this.chain((draft) => setEncryptedContent(target, content, override)(draft, { signer }));
+    return this.chain((draft) => setEncryptedContent(target, content, signer, override)(draft));
   }
 }

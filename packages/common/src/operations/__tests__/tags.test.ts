@@ -20,18 +20,15 @@ describe("modifyHiddenTags", () => {
       created_at: unixNow(),
     };
 
-    const operation = modifyHiddenTags();
-    const result = await operation(draft, { signer: user });
+    const operation = modifyHiddenTags(user);
+    const result = await operation(draft);
 
     expect(result).toEqual(draft);
   });
 
   it("should set EncryptedContentSymbol with plaintext hidden tags", async () => {
-    const operation = modifyHiddenTags((tags) => [...tags, ["e", "test-id"]]);
-    const draft = await operation(
-      { kind: kinds.BookmarkList, content: "", tags: [], created_at: unixNow() },
-      { signer: user },
-    );
+    const operation = modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]);
+    const draft = await operation({ kind: kinds.BookmarkList, content: "", tags: [], created_at: unixNow() });
 
     expect(Reflect.get(draft, EncryptedContentSymbol)).toBe(JSON.stringify([["e", "test-id"]]));
   });
@@ -47,8 +44,8 @@ describe("modifyHiddenTags", () => {
     };
 
     // Modify the hidden tags
-    const operation = modifyHiddenTags((tags) => [...tags, ["e", "new-id"]]);
-    const result = await operation(draft, { signer: user });
+    const operation = modifyHiddenTags(user, (tags) => [...tags, ["e", "new-id"]]);
+    const result = await operation(draft);
 
     expect(Reflect.get(result, EncryptedContentSymbol)).toBe(JSON.stringify([["e", "new-id"]]));
     expect(Reflect.get(result, EncryptedContentSymbol)).not.toBe(Reflect.get(draft, EncryptedContentSymbol));
@@ -58,7 +55,7 @@ describe("modifyHiddenTags", () => {
     const draft = await buildEvent(
       { kind: 30000 },
       { signer: user },
-      modifyHiddenTags((tags) => [...tags, ["e", "test-id"]]),
+      modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]),
     );
 
     expect(getHiddenTags(draft)).toEqual([["e", "test-id"]]);
@@ -68,8 +65,8 @@ describe("modifyHiddenTags", () => {
     const draft = await buildEvent(
       { kind: 30000 },
       { signer: user },
-      modifyHiddenTags((tags) => [...tags, ["e", "test-id"]]),
-      modifyHiddenTags((tags) => [...tags, ["e", "second-id"]]),
+      modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]),
+      modifyHiddenTags(user, (tags) => [...tags, ["e", "second-id"]]),
     );
 
     expect(getHiddenTags(draft)).toEqual([

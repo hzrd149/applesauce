@@ -17,14 +17,23 @@ import {
 import { ensureNamedValueTag, ensureSingletonTag } from "../../helpers/tags.js";
 import { getReplaceableAddress, isEvent, skip } from "../../helpers/index.js";
 
-/** Adds a single "p" tag for a ProfilePointer */
-export function addProfilePointerTag(pubkey: string | ProfilePointer, replace = true): TagOperation {
-  return async (tags, ctx) => {
+/**
+ * Adds a single "p" tag for a ProfilePointer
+ * @param pubkey - Pubkey string or ProfilePointer object
+ * @param relayHint - Optional relay hint (string) or function to get relay hint
+ * @param replace - If true, removes existing "p" tags for this pubkey
+ */
+export function addProfilePointerTag(
+  pubkey: string | ProfilePointer,
+  relayHint?: string | ((pubkey: string) => Promise<string | undefined>),
+  replace = true,
+): TagOperation {
+  return async (tags) => {
     const pointer = typeof pubkey === "string" ? { pubkey: pubkey } : { ...pubkey };
 
-    // add relay hint
-    if (ctx?.getPubkeyRelayHint && pointer.relays?.[0] === undefined) {
-      const hint = await ctx.getPubkeyRelayHint(pointer.pubkey);
+    // add relay hint (hybrid: string or function)
+    if (!pointer.relays?.[0] && relayHint) {
+      const hint = typeof relayHint === "string" ? relayHint : await relayHint(pointer.pubkey);
       if (hint) pointer.relays = [hint];
     }
 
@@ -42,14 +51,23 @@ export function removeProfilePointerTag(pubkey: string | ProfilePointer): TagOpe
   return (tags) => tags.filter((t) => !(t[0] === "p" && t[1] === pubkey));
 }
 
-/** Adds a single "e" tag for an EventPointer */
-export function addEventPointerTag(id: string | EventPointer | NostrEvent, replace = true): TagOperation {
-  return async (tags, ctx) => {
+/**
+ * Adds a single "e" tag for an EventPointer
+ * @param id - Event ID string, EventPointer object, or NostrEvent
+ * @param relayHint - Optional relay hint (string) or function to get relay hint
+ * @param replace - If true, removes existing "e" tags for this event ID
+ */
+export function addEventPointerTag(
+  id: string | EventPointer | NostrEvent,
+  relayHint?: string | ((eventId: string) => Promise<string | undefined>),
+  replace = true,
+): TagOperation {
+  return async (tags) => {
     const pointer = typeof id === "string" ? { id } : isEvent(id) ? getEventPointerForEvent(id) : id;
 
-    // add relay hint
-    if (ctx?.getEventRelayHint && pointer.relays?.[0] === undefined) {
-      const hint = await ctx.getEventRelayHint(pointer.id);
+    // add relay hint (hybrid: string or function)
+    if (!pointer.relays?.[0] && relayHint) {
+      const hint = typeof relayHint === "string" ? relayHint : await relayHint(pointer.id);
       if (hint) pointer.relays = [hint];
     }
 
@@ -67,8 +85,17 @@ export function removeEventPointerTag(id: string | EventPointer): TagOperation {
   return (tags) => tags.filter((t) => !(t[0] === "e" && t[1] === id));
 }
 
-/** Adds a single "a" tag based on an AddressPointer */
-export function addAddressPointerTag(address: string | AddressPointer | NostrEvent, replace = true): TagOperation {
+/**
+ * Adds a single "a" tag based on an AddressPointer
+ * @param address - Address string, AddressPointer object, or NostrEvent
+ * @param relayHint - Optional relay hint (string) or function to get relay hint
+ * @param replace - If true, removes existing "a" tags for this address
+ */
+export function addAddressPointerTag(
+  address: string | AddressPointer | NostrEvent,
+  relayHint?: string | ((pubkey: string) => Promise<string | undefined>),
+  replace = true,
+): TagOperation {
   // convert the string into an address pointer object
   const pointer =
     typeof address === "string"
@@ -78,12 +105,12 @@ export function addAddressPointerTag(address: string | AddressPointer | NostrEve
         : address;
   if (!pointer) throw new Error("Unable to resolve address pointer");
 
-  return async (tags, ctx) => {
+  return async (tags) => {
     const replaceableAddress = typeof address === "string" ? address : getReplaceableAddressFromPointer(pointer);
 
-    // add relay hint if there isn't one
-    if (ctx?.getPubkeyRelayHint && pointer.relays?.[0] === undefined) {
-      const hint = await ctx.getPubkeyRelayHint(pointer.pubkey);
+    // add relay hint if there isn't one (hybrid: string or function)
+    if (!pointer.relays?.[0] && relayHint) {
+      const hint = typeof relayHint === "string" ? relayHint : await relayHint(pointer.pubkey);
       if (hint) pointer.relays = [hint];
     }
 

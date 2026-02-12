@@ -24,21 +24,24 @@ export function setSource(source: NostrEvent | EventPointer | AddressPointer | s
       const address = getAddressPointerForEvent(source);
       if (address) {
         // Include both the event pointer and address pointer
-        return modifyPublicTags(addEventPointerTag(source, true), addAddressPointerTag(address, true));
+        return modifyPublicTags(
+          addEventPointerTag(source, undefined, true),
+          addAddressPointerTag(address, undefined, true),
+        );
       } else {
         // Just include the event pointer
-        return modifyPublicTags(addEventPointerTag(source, true));
+        return modifyPublicTags(addEventPointerTag(source, undefined, true));
       }
     } else {
       // Include the event pointer for normal events
-      return modifyPublicTags(addEventPointerTag(source, true));
+      return modifyPublicTags(addEventPointerTag(source, undefined, true));
     }
   } else if (isAddressPointer(source)) {
     // Include "a" tag for address pointers
-    return modifyPublicTags(addAddressPointerTag(source, true));
+    return modifyPublicTags(addAddressPointerTag(source, undefined, true));
   } else if (isEventPointer(source)) {
     // Include "e" tag for event pointers
-    return modifyPublicTags(addEventPointerTag(source, true));
+    return modifyPublicTags(addEventPointerTag(source, undefined, true));
   } else if (typeof source === "string") {
     // Include "r" tags for URLs
     return includeSingletonTag(["r", source]);

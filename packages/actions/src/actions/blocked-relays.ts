@@ -29,11 +29,13 @@ function ModifyBlockedRelaysEvent(operations: EventOperation[]): Action {
 
 /** An action that adds a relay to the 10006 blocked relays event */
 export function AddBlockedRelay(relay: string | string[], hidden = false): Action {
-  return async ({ run }) => {
+  return async ({ run, factory }) => {
     const tagOperations: TagOperation[] = Array.isArray(relay)
       ? relay.map((r) => addRelayTag(r))
       : [addRelayTag(relay)];
-    const operation = hidden ? modifyHiddenTags(...tagOperations) : modifyPublicTags(...tagOperations);
+    const operation = hidden
+      ? modifyHiddenTags(factory.services.signer, ...tagOperations)
+      : modifyPublicTags(...tagOperations);
 
     await run(ModifyBlockedRelaysEvent, [operation]);
   };
@@ -41,11 +43,13 @@ export function AddBlockedRelay(relay: string | string[], hidden = false): Actio
 
 /** An action that removes a relay from the 10006 blocked relays event */
 export function RemoveBlockedRelay(relay: string | string[], hidden = false): Action {
-  return async ({ run }) => {
+  return async ({ run, factory }) => {
     const tagOperations: TagOperation[] = Array.isArray(relay)
       ? relay.map((r) => removeRelayTag(r))
       : [removeRelayTag(relay)];
-    const operation = hidden ? modifyHiddenTags(...tagOperations) : modifyPublicTags(...tagOperations);
+    const operation = hidden
+      ? modifyHiddenTags(factory.services.signer, ...tagOperations)
+      : modifyPublicTags(...tagOperations);
 
     await run(ModifyBlockedRelaysEvent, [operation]);
   };

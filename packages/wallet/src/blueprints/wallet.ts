@@ -1,4 +1,4 @@
-import { blueprint } from "applesauce-core";
+import { buildEvent, EventFactoryServices } from "applesauce-core";
 
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { modifyHiddenTags } from "applesauce-core/operations";
@@ -15,18 +15,24 @@ export function WalletBlueprint({
   privateKey?: Uint8Array;
   relays?: string[];
 }) {
-  return blueprint(
-    WALLET_KIND,
-    // Use top level modifyHiddenTags to avoid multiple encryption operations
-    modifyHiddenTags(
-      setMintTags(mints),
-      privateKey ? setPrivateKeyTag(privateKey) : undefined,
-      relays ? setRelayTags(relays) : undefined,
-    ),
-  );
+  return async (services: EventFactoryServices) => {
+    return buildEvent(
+      { kind: WALLET_KIND },
+      services,
+      // Use top level modifyHiddenTags to avoid multiple encryption operations
+      modifyHiddenTags(
+        services.signer,
+        setMintTags(mints),
+        privateKey ? setPrivateKeyTag(privateKey) : undefined,
+        relays ? setRelayTags(relays) : undefined,
+      ),
+    );
+  };
 }
 
 /** A blueprint that creates a new 375 wallet backup event */
 export function WalletBackupBlueprint(wallet: NostrEvent) {
-  return blueprint(WALLET_BACKUP_KIND, setBackupContent(wallet));
+  return async (services: EventFactoryServices) => {
+    return buildEvent({ kind: WALLET_BACKUP_KIND }, services, setBackupContent(wallet, services.signer));
+  };
 }

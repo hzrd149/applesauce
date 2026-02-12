@@ -16,7 +16,7 @@ describe("isTokenContentUnlocked", () => {
     const draft = await buildEvent(
       { kind: WALLET_TOKEN_KIND },
       { signer: user },
-      setToken({ mint: "https://money.com", proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }] }),
+      setToken({ mint: "https://money.com", proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }] }, [], user),
     );
     const token = await factory.sign(draft);
 

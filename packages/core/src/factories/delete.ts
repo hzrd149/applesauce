@@ -24,6 +24,6 @@ export class DeleteFactory extends EventFactory<kinds.EventDeletion, DeleteTempl
 
   /** Sets the events to delete */
   events(events: (string | NostrEvent)[]) {
-    return this.chain((draft) => setDeleteEvents(events)(draft, {}));
+    return this.chain(setDeleteEvents(events));
   }
 }

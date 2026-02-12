@@ -1,4 +1,4 @@
-import { blueprint, Emoji } from "applesauce-core/event-factory";
+import { buildEvent, Emoji, EventFactoryServices } from "applesauce-core/event-factory";
 import { EventTemplate, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { includeEmojis } from "applesauce-core/operations/content";
 import { setReaction, setReactionParent } from "../operations/reaction.js";
@@ -8,12 +8,15 @@ import { EventFactory } from "applesauce-core/event-factory";
 
 /** blueprint for kind 7 reaction event */
 export function ReactionBlueprint(event: NostrEvent, emoji: string | Emoji = "+") {
-  return blueprint(
-    kinds.Reaction,
-    setReaction(emoji),
-    setReactionParent(event),
-    typeof emoji !== "string" ? includeEmojis([emoji]) : undefined,
-  );
+  return async (services: EventFactoryServices) => {
+    return buildEvent(
+      { kind: kinds.Reaction },
+      services,
+      setReaction(emoji),
+      setReactionParent(event, services.getEventRelayHint, services.getPubkeyRelayHint),
+      typeof emoji !== "string" ? includeEmojis([emoji]) : undefined,
+    );
+  };
 }
 
 // Register this blueprint with EventFactory

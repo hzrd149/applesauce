@@ -6,13 +6,20 @@ import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/rela
 import { modifyHiddenTags } from "applesauce-core/operations/tags";
 import { WALLET_KIND } from "../helpers/wallet.js";
 
-/** Sets the content of a kind 375 wallet backup event */
-export function setBackupContent(wallet: NostrEvent): EventOperation {
-  return async (draft, ctx) => {
+/**
+ * Sets the content of a kind 375 wallet backup event
+ * @param wallet - Wallet event to backup
+ * @param signer - EventSigner to verify pubkey match
+ */
+export function setBackupContent(
+  wallet: NostrEvent,
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
+  return async (draft) => {
     if (wallet.kind !== WALLET_KIND) throw new Error(`Cant create a wallet backup from kind ${wallet.kind}`);
     if (!wallet.content) throw new Error("Wallet missing content");
 
-    const pubkey = await ctx?.signer?.getPublicKey();
+    const pubkey = signer ? await signer.getPublicKey() : undefined;
     if (wallet.pubkey !== pubkey) throw new Error("Wallet pubkey dose not match signer pubkey");
 
     return { ...draft, content: wallet.content };
@@ -28,30 +35,42 @@ export function setMintTags(mints: string[]): TagOperation {
     ...mints.map((mint) => ["mint", mint]),
   ];
 }
-export function setMints(mints: string[]): EventOperation {
-  return modifyHiddenTags(setMintTags(mints));
+export function setMints(
+  mints: string[],
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
+  return modifyHiddenTags(signer, setMintTags(mints));
 }
 
 /** Sets the "privkey" tag on a wallet event */
 export function setPrivateKeyTag(privateKey: Uint8Array): TagOperation {
   return setSingletonTag(["privkey", bytesToHex(privateKey)]);
 }
-export function setPrivateKey(privateKey: Uint8Array): EventOperation {
-  return modifyHiddenTags(setSingletonTag(["privkey", bytesToHex(privateKey)], true));
+export function setPrivateKey(
+  privateKey: Uint8Array,
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
+  return modifyHiddenTags(signer, setSingletonTag(["privkey", bytesToHex(privateKey)], true));
 }
 
 /** Adds a relay tag to a wallet event */
-export function addWalletRelay(url: string | URL): EventOperation {
+export function addWalletRelay(
+  url: string | URL,
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
   url = normalizeURL(url).toString();
 
-  return modifyHiddenTags(addRelayTag(url, "relay", true));
+  return modifyHiddenTags(signer, addRelayTag(url, "relay", true));
 }
 
 /** Removes a relay tag from a wallet event */
-export function removeWalletRelay(url: string | URL): EventOperation {
+export function removeWalletRelay(
+  url: string | URL,
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
   url = normalizeURL(url).toString();
 
-  return modifyHiddenTags(removeRelayTag(url, "relay"));
+  return modifyHiddenTags(signer, removeRelayTag(url, "relay"));
 }
 
 /** Sets the relay tags on a wallet event, replacing all existing relay tags */
@@ -63,6 +82,9 @@ export function setRelayTags(relays: (string | URL)[]): TagOperation {
     ...relays.map((relay) => ["relay", normalizeURL(relay).toString()]),
   ];
 }
-export function setRelays(relays: (string | URL)[]): EventOperation {
-  return modifyHiddenTags(setRelayTags(relays));
+export function setRelays(
+  relays: (string | URL)[],
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
+  return modifyHiddenTags(signer, setRelayTags(relays));
 }

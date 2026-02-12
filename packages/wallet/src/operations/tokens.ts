@@ -6,10 +6,14 @@ import { setEncryptedContent } from "applesauce-core/operations/encrypted-conten
 import { TokenContent } from "../helpers/tokens.js";
 
 /** Sets the content of a 7375 token event */
-export function setToken(token: Token, del: string[] = []): EventOperation {
-  return async (draft, ctx) => {
-    if (!ctx?.signer) throw new Error(`Missing signer`);
-    const pubkey = await ctx.signer.getPublicKey();
+export function setToken(
+  token: Token,
+  del: string[] = [],
+  signer?: import("applesauce-core/event-factory").EventSigner,
+): EventOperation {
+  return async (draft) => {
+    if (!signer) throw new Error(`Missing signer`);
+    const pubkey = await signer.getPublicKey();
     const method = EventContentEncryptionMethod[draft.kind];
     if (!method) throw new Error("Failed to find encryption method");
 
@@ -23,6 +27,6 @@ export function setToken(token: Token, del: string[] = []): EventOperation {
       del,
     };
 
-    return await setEncryptedContent(pubkey, JSON.stringify(content), method)(draft, ctx);
+    return await setEncryptedContent(pubkey, JSON.stringify(content), signer, method)(draft);
   };
 }

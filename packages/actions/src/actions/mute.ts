@@ -20,7 +20,7 @@ function ModifyMuteEvent(operations: TagOperation[], hidden = false): Action {
     ]);
 
     // Create the event operation
-    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
+    const operation = hidden ? modifyHiddenTags(factory.services.signer, ...operations) : modifyPublicTags(...operations);
 
     // Modify or build new event
     const signed = event

@@ -1,4 +1,4 @@
-import { blueprint } from "applesauce-core/event-factory";
+import { buildEvent, EventFactoryServices } from "applesauce-core/event-factory";
 import { EventTemplate, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { MetaTagOptions, setMetaTags, setShortTextContent, TextContentOptions } from "applesauce-core/operations";
 import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
@@ -11,12 +11,15 @@ export type NoteBlueprintOptions = TextContentOptions & MetaTagOptions & ZapOpti
 
 /** Short text note (kind 1) blueprint */
 export function NoteBlueprint(content: string, options?: NoteBlueprintOptions) {
-  return blueprint(
-    kinds.ShortTextNote,
-    setShortTextContent(content, options),
-    setZapSplit(options),
-    setMetaTags(options),
-  );
+  return async (services: EventFactoryServices) => {
+    return buildEvent(
+      { kind: kinds.ShortTextNote },
+      services,
+      setShortTextContent(content, options),
+      setZapSplit(options, services.getPubkeyRelayHint),
+      setMetaTags(options),
+    );
+  };
 }
 
 /** Short text note reply (kind 1) blueprint */
@@ -24,15 +27,18 @@ export function NoteReplyBlueprint(parent: NostrEvent, content: string, options?
   if (parent.kind !== kinds.ShortTextNote)
     throw new Error("Kind 1 replies should only be used to reply to kind 1 notes");
 
-  return blueprint(
-    kinds.ShortTextNote,
-    // add NIP-10 tags
-    setThreadParent(parent),
-    // copy "p" tags from parent
-    includePubkeyNotificationTags(parent),
-    // set default text content
-    setShortTextContent(content, options),
-  );
+  return async (services: EventFactoryServices) => {
+    return buildEvent(
+      { kind: kinds.ShortTextNote },
+      services,
+      // add NIP-10 tags
+      setThreadParent(parent, services.getEventRelayHint),
+      // copy "p" tags from parent
+      includePubkeyNotificationTags(parent, services.getPubkeyRelayHint),
+      // set default text content
+      setShortTextContent(content, options),
+    );
+  };
 }
 
 // Register these blueprints with EventFactory

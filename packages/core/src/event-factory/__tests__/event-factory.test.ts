@@ -17,7 +17,7 @@ beforeEach(() => {
   user = new FakeUser();
 
   // create signer for factory
-  factory.context.signer = {
+  factory.services.signer = {
     getPublicKey: () => user.pubkey,
     signEvent: (draft) => finalizeEvent(draft, user.key),
     nip04: {
@@ -95,16 +95,16 @@ describe("modifyTags", () => {
     const draft = await factory.modifyTags(user.list(), { hidden: addEventPointerTag("event-id") });
 
     // convert draft to full event
-    const signed = await factory.context.signer!.signEvent(draft);
+    const signed = await factory.services.signer!.signEvent(draft);
 
     // unlock hidden tags
-    await unlockHiddenTags(signed, factory.context.signer!);
+    await unlockHiddenTags(signed, factory.services.signer!);
 
     expect(getHiddenTags(draft)).toEqual(expect.arrayContaining([["e", "event-id"]]));
   });
 
   it("should unlock hidden tags before modifying", async () => {
-    const signer = factory.context.signer!;
+    const signer = factory.services.signer!;
     const encryptedList = user.list([], {
       content: await signer.nip04!.encrypt(await signer.getPublicKey(), JSON.stringify([["e", "event-id"]])),
     });
@@ -113,9 +113,9 @@ describe("modifyTags", () => {
     const draft = await factory.modifyTags(encryptedList, { hidden: addEventPointerTag("second-event-id") });
 
     // convert draft to full event
-    const signed = await factory.context.signer!.signEvent(draft);
+    const signed = await factory.services.signer!.signEvent(draft);
 
-    await unlockHiddenTags(signed, factory.context.signer!);
+    await unlockHiddenTags(signed, factory.services.signer!);
     expect(getHiddenTags(draft)).toEqual(
       expect.arrayContaining([
         ["e", "event-id"],
@@ -125,7 +125,7 @@ describe("modifyTags", () => {
   });
 
   it("should not unlock hidden tags if already unlocked before modifying", async () => {
-    const signer = factory.context.signer!;
+    const signer = factory.services.signer!;
     const encryptedList = user.list([], {
       content: await signer.nip04!.encrypt(await signer.getPublicKey(), JSON.stringify([["e", "event-id"]])),
     });
@@ -150,7 +150,7 @@ describe("sign", () => {
   it("should preserve plaintext hidden content", async () => {
     const user = new FakeUser();
     const factory = new EventFactory({ signer: user });
-    const draft = await factory.build({ kind: 4 }, setEncryptedContent(user.pubkey, "testing", "nip04"));
+    const draft = await factory.build({ kind: 4 }, setEncryptedContent(user.pubkey, "testing", user, "nip04"));
     const signed = await factory.sign(draft);
 
     expect(Reflect.get(signed, EncryptedContentSymbol)).toBe("testing");

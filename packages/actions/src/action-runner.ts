@@ -52,14 +52,14 @@ export class ActionRunner {
   ) {}
 
   protected async getContext() {
-    if (!this.factory.context.signer) throw new Error("Missing signer");
-    const self = await this.factory.context.signer.getPublicKey();
+    if (!this.factory.services.signer) throw new Error("Missing signer");
+    const self = await this.factory.services.signer.getPublicKey();
     const user = castUser(self, this.events);
     return {
       self,
       user,
       events: this.events,
-      signer: this.factory.context.signer,
+      signer: this.factory.services.signer,
       factory: this.factory,
       publish: this.publish.bind(this),
       run: this.run.bind(this),

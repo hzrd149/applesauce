@@ -81,7 +81,7 @@ export function WalletAddPrivateKey(privateKey: Uint8Array, override = false): A
 /** Unlocks the wallet event and optionally the tokens and history events */
 export function UnlockWallet(unlock?: { history?: boolean; tokens?: boolean }): Action {
   return async ({ events, self, factory }) => {
-    const signer = factory.context.signer;
+    const signer = factory.services.signer;
     if (!signer) throw new Error("Missing signer");
 
     const wallet = events.getReplaceable(WALLET_KIND, self);
@@ -108,7 +108,7 @@ export function UnlockWallet(unlock?: { history?: boolean; tokens?: boolean }): 
 export function SetWalletMints(mints: string[]): Action {
   return async ({ user, signer, factory, sign, publish }) => {
     const wallet = await getUnlockedWallet(user, signer);
-    const signed = await factory.modify(wallet.event, setMints(mints)).then(sign);
+    const signed = await factory.modify(wallet.event, setMints(mints, signer)).then(sign);
     await publish(signed, wallet.relays);
   };
 }
@@ -120,7 +120,7 @@ export function SetWalletMints(mints: string[]): Action {
 export function SetWalletRelays(relays: (string | URL)[]): Action {
   return async ({ user, signer, factory, sign, publish }) => {
     const wallet = await getUnlockedWallet(user, signer);
-    const signed = await factory.modify(wallet.event, setRelays(relays)).then(sign);
+    const signed = await factory.modify(wallet.event, setRelays(relays, signer)).then(sign);
     await publish(signed, relays.map(String));
   };
 }

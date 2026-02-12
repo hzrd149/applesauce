@@ -15,10 +15,10 @@ describe("setBackupContent", () => {
     const note = user.note();
 
     await expect(
-      setBackupContent(note)(
-        { kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" },
-        factory.context,
-      ),
+      setBackupContent(
+        note,
+        factory.services.signer,
+      )({ kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" }),
     ).rejects.toThrow();
   });
 
@@ -29,10 +29,7 @@ describe("setBackupContent", () => {
     const user2 = new FakeUser();
 
     await expect(
-      setBackupContent(wallet)(
-        { kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" },
-        { signer: user2 },
-      ),
+      setBackupContent(wallet, user2)({ kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" }),
     ).rejects.toThrow();
   });
 
@@ -42,10 +39,10 @@ describe("setBackupContent", () => {
     );
 
     expect(
-      await setBackupContent(wallet)(
-        { kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" },
-        factory.context,
-      ),
+      await setBackupContent(
+        wallet,
+        factory.services.signer,
+      )({ kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" }),
     ).toEqual(expect.objectContaining({ content: wallet.content }));
   });
 });

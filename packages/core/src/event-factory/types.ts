@@ -55,11 +55,25 @@ export interface EmojiContext {
 /** All options that can be passed when building an event */
 export interface EventFactoryContext extends ClientPointerContext, EventSignerContext, RelayHintContext, EmojiContext {}
 
-/** A single operation that modifies an events public or hidden tags array */
-export type Operation<I extends unknown = unknown, R extends unknown = unknown> = (
-  value: I,
-  context?: EventFactoryContext,
-) => R | Promise<R>;
+/**
+ * Services that can be provided to EventFactory for automatic injection into operations
+ * This replaces EventFactoryContext for the new context-free API
+ */
+export interface EventFactoryServices {
+  /** Event signer for signing and stamping events */
+  signer?: EventSigner;
+  /** Function to get relay hint for an event ID */
+  getEventRelayHint?: (eventId: string) => Promise<string | undefined>;
+  /** Function to get relay hint for a pubkey */
+  getPubkeyRelayHint?: (pubkey: string) => Promise<string | undefined>;
+  /** Custom emojis for NIP-30 emoji tags */
+  emojis?: Emoji[];
+  /** NIP-89 client pointer */
+  client?: EventFactoryClient;
+}
+
+/** A single operation that transforms a value (context-free) */
+export type Operation<I extends unknown = unknown, R extends unknown = unknown> = (value: I) => R | Promise<R>;
 
 /** A single operation that modifies an events public or hidden tags array */
 export type TagOperation = Operation<string[][], string[][]>;
@@ -72,7 +86,7 @@ export type EventOperation<
 
 /** A method that creates a new event based on a set of operations */
 export type EventBlueprint<T extends EventTemplate | UnsignedEvent | NostrEvent = EventTemplate> = (
-  context: EventFactoryContext,
+  services: EventFactoryServices,
 ) => Promise<T>;
 
 /**

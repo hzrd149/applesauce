@@ -1,4 +1,4 @@
-import { EventFactoryContext, EventOperation, Operation, TagOperation } from "../event-factory/types.js";
+import { EventOperation, Operation, TagOperation } from "../event-factory/types.js";
 import { EncryptedContentSymbol } from "./encrypted-content.js";
 
 /** An array of Symbols to preserve when building events with {@link eventPipe} */
@@ -28,6 +28,22 @@ export function skip<T>(): (value: T) => T {
 }
 
 /**
+ * Pipe a value through a series of async operations
+ * @example
+ * ```ts
+ * const result = await pipe(
+ *   draft,
+ *   setContent("hello"),
+ *   addTag("p", pubkey),
+ *   sign(signer)
+ * );
+ * ```
+ */
+export async function pipe<T>(value: T, ...operations: Array<(v: any) => any | Promise<any>>): Promise<any> {
+  return operations.reduce(async (prev, op) => op(await prev), Promise.resolve(value));
+}
+
+/**
  * @param fns - An array of operations to pipe together
  * @param preserve - If set an array of symbols to keep, all other symbols will be removed
  * @internal
@@ -35,9 +51,9 @@ export function skip<T>(): (value: T) => T {
 export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?: Set<symbol>): Operation<T, R> {
   if (fns.length === 0) return identity as Operation<any, any>;
 
-  return async function piped(input: T, context?: EventFactoryContext): Promise<R> {
+  return async function piped(input: T): Promise<R> {
     return fns.reduce(async (prev: any, fn: Operation<T, R>) => {
-      const result = await fn(await prev, context);
+      const result = await fn(await prev);
 
       // Copy the symbols and fields if result is an object
       if (preserve && typeof result === "object" && result !== null && typeof prev === "object" && prev !== null) {

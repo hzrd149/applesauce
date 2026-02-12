@@ -7,9 +7,16 @@ import {
   createCommentTagsFromCommentPointer,
 } from "../helpers/comment.js";
 
-/** Sets the necessary tags for a NIP-22 comment event to point to a parent event or pointer */
-export function setParent(parent: NostrEvent | CommentPointer): EventOperation {
-  return async (draft, ctx) => {
+/**
+ * Sets the necessary tags for a NIP-22 comment event to point to a parent event or pointer
+ * @param parent - Parent event or comment pointer
+ * @param getRelayHint - Optional function to get relay hint for event ID
+ */
+export function setParent(
+  parent: NostrEvent | CommentPointer,
+  getRelayHint?: (eventId: string) => Promise<string | undefined>,
+): EventOperation {
+  return async (draft) => {
     let tags = Array.from(draft.tags);
 
     // If parent is a CommentPointer (not a NostrEvent), handle it directly
@@ -26,7 +33,7 @@ export function setParent(parent: NostrEvent | CommentPointer): EventOperation {
       tags.push(...createCommentTagsFromCommentPointer(parent, false));
     } else {
       // If parent is a NostrEvent, use existing logic
-      const relayHint = await ctx?.getEventRelayHint?.(parent.id);
+      const relayHint = getRelayHint ? await getRelayHint(parent.id) : undefined;
       tags.push(...createCommentTagsForEvent(parent, relayHint));
     }
 
