@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { createImetaTagForAttachment } from "../helpers/file-metadata.js";
 import { FileMetadata } from "../helpers/file-metadata.js";
 

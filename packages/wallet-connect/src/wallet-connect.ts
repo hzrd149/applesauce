@@ -33,7 +33,7 @@ import {
   toArray,
 } from "rxjs";
 
-import { WalletRequestBlueprint } from "./blueprints/index.js";
+import { WalletRequestBlueprint } from "./factories/index.js";
 import { createWalletError } from "./helpers/error.js";
 import {
   createWalletAuthURI,

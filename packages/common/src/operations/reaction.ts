@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { getTagValue, isAddressableKind, NostrEvent } from "applesauce-core/helpers/event";
 import {
   ensureAddressPointerTag,

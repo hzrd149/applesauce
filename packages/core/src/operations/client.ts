@@ -1,4 +1,4 @@
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import { kinds } from "../helpers/event.js";
 import { AddressPointer, getReplaceableAddressFromPointer } from "../helpers/pointers.js";
 import { fillAndTrimTag } from "../helpers/tags.js";

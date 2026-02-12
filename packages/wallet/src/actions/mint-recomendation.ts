@@ -1,7 +1,7 @@
 import { MintInfo, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { MintRecommendationBlueprint } from "../blueprints/mint-recommendation.js";
+import { MintRecommendationBlueprint } from "../factories/mint-recommendation.js";
 import { getCashuMintPubkey, getCashuMintURL, isValidCashuMintInfo } from "../helpers/mint-info.js";
 import {
   MINT_RECOMMENDATION_KIND,
@@ -69,7 +69,7 @@ export function RecommendMint(input: string | Wallet | NostrEvent, options?: Rev
     const recommendation = await factory
       .create(MintRecommendationBlueprint, {
         mintPubkey,
-        url,
+        url: url || "",
         addressPointer,
         comment: options?.comment,
       })

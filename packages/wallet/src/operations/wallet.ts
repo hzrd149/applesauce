@@ -1,4 +1,4 @@
-import { EventOperation, TagOperation } from "applesauce-core/event-factory";
+import { EventOperation, TagOperation } from "applesauce-core/factories";
 import { bytesToHex, NostrEvent } from "applesauce-core/helpers/event";
 import { normalizeURL } from "applesauce-core/helpers/url";
 import { setSingletonTag } from "applesauce-core/operations/tag/common";
@@ -13,7 +13,7 @@ import { WALLET_KIND } from "../helpers/wallet.js";
  */
 export function setBackupContent(
   wallet: NostrEvent,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   return async (draft) => {
     if (wallet.kind !== WALLET_KIND) throw new Error(`Cant create a wallet backup from kind ${wallet.kind}`);
@@ -37,7 +37,7 @@ export function setMintTags(mints: string[]): TagOperation {
 }
 export function setMints(
   mints: string[],
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   return modifyHiddenTags(signer, setMintTags(mints));
 }
@@ -48,7 +48,7 @@ export function setPrivateKeyTag(privateKey: Uint8Array): TagOperation {
 }
 export function setPrivateKey(
   privateKey: Uint8Array,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   return modifyHiddenTags(signer, setSingletonTag(["privkey", bytesToHex(privateKey)], true));
 }
@@ -56,7 +56,7 @@ export function setPrivateKey(
 /** Adds a relay tag to a wallet event */
 export function addWalletRelay(
   url: string | URL,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   url = normalizeURL(url).toString();
 
@@ -66,7 +66,7 @@ export function addWalletRelay(
 /** Removes a relay tag from a wallet event */
 export function removeWalletRelay(
   url: string | URL,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   url = normalizeURL(url).toString();
 
@@ -84,7 +84,7 @@ export function setRelayTags(relays: (string | URL)[]): TagOperation {
 }
 export function setRelays(
   relays: (string | URL)[],
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   return modifyHiddenTags(signer, setRelayTags(relays));
 }

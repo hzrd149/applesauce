@@ -1,5 +1,5 @@
 import { castUser, User } from "applesauce-common/casts/user";
-import { EventFactory, EventSigner } from "applesauce-core/event-factory";
+import { LegacyEventFactory, EventSigner } from "applesauce-core";
 import {
   EventModels,
   IEventStoreActions,
@@ -25,7 +25,7 @@ export type ActionContext = {
   /** The event signer used to sign events */
   signer?: EventSigner;
   /** The event factory used to build and modify events */
-  factory: EventFactory;
+  factory: LegacyEventFactory;
   /** Sign an event using the event factory */
   sign: (draft: EventTemplate | UnsignedEvent) => Promise<NostrEvent>;
   /** The method to publish events to an optional list of relays */
@@ -47,11 +47,11 @@ export class ActionRunner {
 
   constructor(
     public events: IEventStoreRead & IEventStoreStreams & IEventSubscriptions & IEventStoreActions & EventModels,
-    public factory: EventFactory,
+    public factory: LegacyEventFactory,
     private publishMethod?: UpstreamPool,
   ) {}
 
-  protected async getContext() {
+  protected async getContext(): Promise<ActionContext> {
     if (!this.factory.services.signer) throw new Error("Missing signer");
     const self = await this.factory.services.signer.getPublicKey();
     const user = castUser(self, this.events);

@@ -1,4 +1,4 @@
-import { Emoji, EventOperation } from "../event-factory/types.js";
+import type { EventOperation, Emoji } from "../factories/types.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import { ensureProfilePointerTag, ensureQuoteEventPointerTag } from "../helpers/factory.js";
 import { eventPipe, skip } from "../helpers/pipeline.js";

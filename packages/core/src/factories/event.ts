@@ -1,11 +1,21 @@
 import { isKind } from "nostr-tools/kinds";
-import { EventSigner } from "../event-factory/types.js";
+import { EventSigner } from "./types.js";
+import type { EventOperation } from "./types.js";
 import { EncryptionMethod } from "../helpers/encrypted-content.js";
-import { EventTemplate, KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
+import { KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
 import { unixNow } from "../helpers/time.js";
 import { setEncryptedContent } from "../operations/encrypted-content.js";
-import { sign, stamp } from "../operations/event.js";
+import {
+  includeAltTag,
+  MetaTagOptions,
+  setExpirationTimestamp,
+  setMetaTags,
+  setProtected,
+  sign,
+  stamp,
+} from "../operations/event.js";
 import { modifyHiddenTags, modifyPublicTags, modifyTags } from "../operations/tags.js";
+import { setContentWarning } from "../operations/content.js";
 
 /** Creates a blank event template with the given kind */
 export function blankEventTemplate<K extends number = number>(kind: K): KnownEventTemplate<K> {
@@ -21,11 +31,6 @@ export function toEventTemplate<K extends number>(event: KnownEvent<K>): KnownEv
     content: event.content,
   };
 }
-
-/** A single operation that modifies an event */
-export type EventOperation<T extends KnownEventTemplate<number> = EventTemplate> = (
-  draft: T,
-) => T | EventTemplate | PromiseLike<T | EventTemplate>;
 
 /** The base class for building or modifying events */
 export class EventFactory<
@@ -119,6 +124,31 @@ export class EventFactory<
   created(created: number | Date = unixNow()) {
     if (created instanceof Date) created = Math.floor(created.getTime() / 1000);
     return this.chain((e) => ({ ...e, created_at: created }));
+  }
+
+  /** Sets the meta tags for the event */
+  meta(options: MetaTagOptions) {
+    return this.chain(setMetaTags(options));
+  }
+
+  /** Sets the NIP-31 alt tag for the event */
+  alt(alt: string) {
+    return this.chain(includeAltTag(alt));
+  }
+
+  /** Sets the NIP-40 expiration timestamp for the event */
+  expiration(timestamp: number) {
+    return this.chain(setExpirationTimestamp(timestamp));
+  }
+
+  /** Sets the NIP-36 content-warning tag for the event */
+  contentWarning(warning: string | boolean) {
+    return this.chain(setContentWarning(warning));
+  }
+
+  /** Sets the NIP-70 "-" tag for the event */
+  protected(isProtected: boolean) {
+    return this.chain(setProtected(isProtected));
   }
 
   /** Modifies the events public and optional hidden tags */

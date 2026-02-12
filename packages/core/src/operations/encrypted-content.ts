@@ -1,4 +1,4 @@
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import {
   EncryptedContentSymbol,
   EncryptionMethod,
@@ -15,7 +15,7 @@ import {
 export function setEncryptedContent(
   pubkey: string,
   content: string,
-  signer?: import("../event-factory/types.js").EventSigner,
+  signer?: import("../factories/types.js").EventSigner,
   override?: EncryptionMethod,
 ): EventOperation {
   return async (draft) => {

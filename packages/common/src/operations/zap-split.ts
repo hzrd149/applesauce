@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { skip } from "applesauce-core/helpers/pipeline";
 import { fillAndTrimTag } from "applesauce-core/helpers/tags";
 import { ZapSplit } from "../helpers/zap.js";

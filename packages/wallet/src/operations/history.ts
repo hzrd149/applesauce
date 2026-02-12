@@ -1,4 +1,4 @@
-import { EventOperation, TagOperation } from "applesauce-core/event-factory";
+import { EventOperation, TagOperation } from "applesauce-core/factories";
 import { ensureMarkedEventPointerTag, EventPointer, Nip10TagMarker } from "applesauce-core/helpers";
 import { setSingletonTag } from "applesauce-core/operations/tag/common";
 import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations/tags";
@@ -18,7 +18,7 @@ function includeHistoryCreatedTags(created: (string | EventPointer)[]): TagOpera
 /** Sets the encrypted tags of a wallet history event */
 export function setHistoryContent(
   content: HistoryContent,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   const operations: TagOperation[] = [
     setSingletonTag(["direction", content.direction], true),

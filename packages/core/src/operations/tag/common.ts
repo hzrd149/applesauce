@@ -1,5 +1,5 @@
 import { NostrEvent } from "nostr-tools";
-import { TagOperation } from "../../event-factory/types.js";
+import type { TagOperation } from "../../factories/types.js";
 import {
   createATagFromAddressPointer,
   createETagFromEventPointer,

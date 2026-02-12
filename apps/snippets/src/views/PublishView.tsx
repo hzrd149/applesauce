@@ -1,4 +1,4 @@
-import { EventFactory, blueprint, defined } from "applesauce-core";
+import { LegacyEventFactory, blueprint, defined } from "applesauce-core";
 import { setContent } from "applesauce-core/operations/content";
 import { includeNameValueTag, includeSingletonTag } from "applesauce-core/operations/tags";
 import { use$ } from "applesauce-react/hooks";
@@ -89,7 +89,7 @@ export default function PublishView({ onBack, onPublishSuccess, onNavigateToSign
   // Create factory with active account's signer
   const factory = useMemo(() => {
     if (!activeAccount) return null;
-    return new EventFactory({ signer: activeAccount });
+    return new LegacyEventFactory({ signer: activeAccount });
   }, [activeAccount]);
 
   const {
@@ -228,7 +228,7 @@ export default function PublishView({ onBack, onPublishSuccess, onNavigateToSign
       }
 
       // Create and sign the event
-      const event = await factory.create(CodeSnippetBlueprint, data);
+      const event = await factory.build(CodeSnippetBlueprint, data);
       const signed = await factory.sign(event);
 
       // Publish to relays

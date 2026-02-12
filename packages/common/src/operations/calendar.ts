@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
 import { addAddressPointerTag, removeAddressPointerTag } from "applesauce-core/operations/tag/common";

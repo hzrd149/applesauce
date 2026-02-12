@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
 import { setContent as setPlaintextContent } from "applesauce-core/operations/content";
 import { setHiddenContent } from "applesauce-core/operations/hidden-content";
@@ -18,7 +18,7 @@ export function setIdentifier(identifier: string): EventOperation {
 export function setContent<T>(
   data: T,
   encryption?: boolean | EncryptionMethod,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   const json = JSON.stringify(data);
 

@@ -1,4 +1,4 @@
-import { buildEvent } from "applesauce-core/event-factory";
+import { buildEvent } from "applesauce-core";
 import { EncryptedContentSymbol, getHiddenTags, unixNow } from "applesauce-core/helpers";
 import { kinds } from "applesauce-core/helpers/event";
 import { modifyHiddenTags } from "applesauce-core/operations/tags";

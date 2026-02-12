@@ -1,4 +1,4 @@
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import { isRTag } from "../helpers/tags.js";
 import { isSameURL, normalizeURL } from "../helpers/url.js";
 import { addRelayTag, removeRelayTag } from "./tag/relay.js";

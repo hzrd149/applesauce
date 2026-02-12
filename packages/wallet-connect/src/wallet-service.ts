@@ -1,13 +1,13 @@
 import { logger } from "applesauce-core";
-import { createEvent, EventSigner } from "applesauce-core/event-factory";
+import { createEvent, EventSigner } from "applesauce-core";
 import { verifyEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription, tap } from "rxjs";
 
 import { bytesToHex } from "@noble/hashes/utils";
-import { WalletLegacyNotificationBlueprint, WalletNotificationBlueprint } from "./blueprints/notification.js";
-import { WalletResponseBlueprint } from "./blueprints/response.js";
-import { WalletSupportBlueprint } from "./blueprints/support.js";
+import { WalletLegacyNotificationBlueprint, WalletNotificationBlueprint } from "./factories/notification.js";
+import { WalletResponseBlueprint } from "./factories/response.js";
+import { WalletSupportBlueprint } from "./factories/support.js";
 import { parseWalletAuthURI, WalletAuthURI } from "./helpers/auth-uri.js";
 import { WalletConnectEncryptionMethod } from "./helpers/encryption.js";
 import { NotImplementedError, WalletBaseError, WalletErrorCode } from "./helpers/error.js";

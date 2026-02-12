@@ -3,7 +3,7 @@ import {
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers/calendar-event";
 import * as Calendar from "applesauce-common/operations/calendar";
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core";
 import { AddressPointer } from "applesauce-core/helpers";
 import { isEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { firstValueFrom, of, timeout } from "rxjs";

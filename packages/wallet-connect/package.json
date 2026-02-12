@@ -53,15 +53,15 @@
       "require": "./dist/helpers/*.js",
       "types": "./dist/helpers/*.d.ts"
     },
-    "./blueprints": {
-      "import": "./dist/blueprints/index.js",
-      "require": "./dist/blueprints/index.js",
-      "types": "./dist/blueprints/index.d.ts"
+    "./factories": {
+      "import": "./dist/factories/index.js",
+      "require": "./dist/factories/index.js",
+      "types": "./dist/factories/index.d.ts"
     },
-    "./blueprints/*": {
-      "import": "./dist/blueprints/*.js",
-      "require": "./dist/blueprints/*.js",
-      "types": "./dist/blueprints/*.d.ts"
+    "./factories/*": {
+      "import": "./dist/factories/*.js",
+      "require": "./dist/factories/*.js",
+      "types": "./dist/factories/*.d.ts"
     }
   },
   "dependencies": {

@@ -1,4 +1,4 @@
-import { EventOperation, Operation, TagOperation } from "../event-factory/types.js";
+import type { EventOperation, Operation, TagOperation } from "../factories/types.js";
 import { EncryptedContentSymbol } from "./encrypted-content.js";
 
 /** An array of Symbols to preserve when building events with {@link eventPipe} */

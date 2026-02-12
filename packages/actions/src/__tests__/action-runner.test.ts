@@ -1,4 +1,4 @@
-import { EventFactory, EventStore } from "applesauce-core";
+import { LegacyEventFactory, EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { from } from "rxjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,11 +8,11 @@ import { FakeUser } from "./fake-user.js";
 
 const user = new FakeUser();
 let events = new EventStore();
-let factory = new EventFactory({ signer: user });
+let factory = new LegacyEventFactory({ signer: user });
 
 beforeEach(() => {
   events = new EventStore();
-  factory = new EventFactory({ signer: user });
+  factory = new LegacyEventFactory({ signer: user });
 });
 
 describe("ActionRunner", () => {

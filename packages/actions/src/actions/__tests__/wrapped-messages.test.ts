@@ -1,7 +1,7 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { WrappedMessageBlueprint } from "applesauce-common/blueprints";
+import { WrappedMessageBlueprint } from "applesauce-common/factories";
 import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-common/helpers/gift-wrap";
-import { EventFactory, EventStore } from "applesauce-core";
+import { LegacyEventFactory, EventStore } from "applesauce-core";
 import { getTagValue, kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
@@ -11,7 +11,7 @@ import { GiftWrapMessageToParticipants, SendWrappedMessage } from "../wrapped-me
 const bob = new FakeUser();
 const alice = new FakeUser();
 const carol = new FakeUser();
-let factory: EventFactory;
+let factory: LegacyEventFactory;
 let hub: ActionRunner;
 let events: EventStore;
 
@@ -22,7 +22,7 @@ const bobRelays = ["wss://bob-relay1.com/"];
 
 beforeEach(() => {
   events = new EventStore();
-  factory = new EventFactory({ signer: bob });
+  factory = new LegacyEventFactory({ signer: bob });
   hub = new ActionRunner(events, factory);
 
   // Setup profiles
@@ -78,7 +78,7 @@ describe("SendWrappedMessage", () => {
   });
 
   it("should throw error when no signer is provided", async () => {
-    const factory = new EventFactory();
+    const factory = new LegacyEventFactory();
     const hub = new ActionRunner(events, factory);
 
     const spy = subscribeSpyTo(hub.exec(SendWrappedMessage, alice.pubkey, "hello world"), { expectErrors: true });

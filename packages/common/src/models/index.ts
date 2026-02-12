@@ -21,4 +21,4 @@ export * from "./zap-goals.js";
 export * from "applesauce-core/models";
 
 // Register the common models with the event store
-import "../register.js";
+import "./__register__.js";

@@ -9,7 +9,7 @@ import { TokenContent } from "../helpers/tokens.js";
 export function setToken(
   token: Token,
   del: string[] = [],
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation {
   return async (draft) => {
     if (!signer) throw new Error(`Missing signer`);

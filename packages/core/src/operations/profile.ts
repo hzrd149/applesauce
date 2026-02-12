@@ -1,4 +1,4 @@
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import { ProfileContent, safeParse } from "../helpers/index.js";
 import { setContent } from "./content.js";
 

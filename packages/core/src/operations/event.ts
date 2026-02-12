@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import {
   EventTemplate,
@@ -118,7 +118,7 @@ export function setMetaTags(options?: MetaTagOptions): EventOperation {
  * @throws {Error} if no signer is provided
  */
 export function stamp<K extends number = number>(
-  signer?: import("../event-factory/types.js").EventSigner,
+  signer?: import("../factories/types.js").EventSigner,
 ): EventOperation<KnownEventTemplate<K>, KnownUnsignedEvent<K>> {
   return async (draft) => {
     if (!signer) throw new Error("Missing signer");
@@ -144,7 +144,7 @@ export function stamp<K extends number = number>(
  * @throws {Error} if no signer is provided
  */
 export function sign<K extends number = number, T extends KnownEventTemplate<K> = KnownEventTemplate<K>>(
-  signer?: import("../event-factory/types.js").EventSigner,
+  signer?: import("../factories/types.js").EventSigner,
 ): EventOperation<T, KnownEvent<K>> {
   return async (draft) => {
     if (!signer) throw new Error("Missing signer");

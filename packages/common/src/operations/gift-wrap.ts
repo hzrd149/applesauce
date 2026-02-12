@@ -1,7 +1,8 @@
 // Read https://github.com/nostr-protocol/nips/blob/master/59.md#overview for details on rumors and seals
 // Gift wrap (signed random key) -> seal (signed sender key) -> rumor (unsigned)
 
-import { buildEvent, EventOperation } from "applesauce-core/event-factory";
+import type { EventOperation } from "applesauce-core/factories";
+import { buildEvent } from "applesauce-core";
 import { EncryptedContentSymbol } from "applesauce-core/helpers/encrypted-content";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import {
@@ -34,7 +35,7 @@ function randomNow() {
  * @param signer - EventSigner for getting pubkey
  */
 export function toRumor(
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation<EventTemplate | UnsignedEvent | NostrEvent, Rumor> {
   return async (draft) => {
     // @ts-expect-error
@@ -63,7 +64,7 @@ export function toRumor(
  */
 export function sealRumor(
   pubkey: string,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
 ): EventOperation<Rumor, NostrEvent> {
   return async (rumor) => {
     if (!signer) throw new Error("A signer is required to create a seal");
@@ -136,7 +137,7 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
  */
 export function giftWrap(
   pubkey: string,
-  signer?: import("applesauce-core/event-factory").EventSigner,
+  signer?: import("applesauce-core/factories").EventSigner,
   opts?: GiftWrapOptions,
 ): EventOperation<EventTemplate | UnsignedEvent | NostrEvent, NostrEvent> {
   return eventPipe(

@@ -2,7 +2,7 @@ import {
   LegacyMessageBlueprint,
   LegacyMessageBlueprintOptions,
   LegacyMessageReplyBlueprint,
-} from "applesauce-common/blueprints";
+} from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 

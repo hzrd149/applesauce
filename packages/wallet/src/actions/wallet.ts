@@ -1,5 +1,5 @@
 import { Action } from "applesauce-actions";
-import { WalletBackupBlueprint, WalletBlueprint } from "../blueprints/wallet.js";
+import { WalletBackupBlueprint, WalletBlueprint } from "../factories/wallet.js";
 import { unlockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
 import { NUTZAP_INFO_KIND } from "../helpers/nutzap-info.js";
 import { unlockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";

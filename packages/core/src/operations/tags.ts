@@ -1,4 +1,4 @@
-import { EventOperation, TagOperation } from "../event-factory/types.js";
+import type { EventOperation, TagOperation } from "../factories/types.js";
 import { eventPipe, skip, tagPipe } from "../helpers/pipeline.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import { EventTemplate, NostrEvent, UnsignedEvent } from "../helpers/event.js";
@@ -38,7 +38,7 @@ export function modifyPublicTags<E extends EventTemplate | UnsignedEvent | Nostr
  * @throws {Error} if the event kind does not support hidden tags
  */
 export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | NostrEvent>(
-  signer: import("../event-factory/types.js").EventSigner | undefined,
+  signer: import("../factories/types.js").EventSigner | undefined,
   ...operations: (TagOperation | undefined)[]
 ): EventOperation<E, E> {
   operations = operations.filter((o) => !!o);
@@ -100,7 +100,7 @@ export type ModifyTagsOptions =
  */
 export function modifyTags(
   tagOperations?: ModifyTagsOptions,
-  signer?: import("../event-factory/types.js").EventSigner,
+  signer?: import("../factories/types.js").EventSigner,
 ): EventOperation {
   let publicOperations: TagOperation[] = [];
   let hiddenOperations: TagOperation[] = [];

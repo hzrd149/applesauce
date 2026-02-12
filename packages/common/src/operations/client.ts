@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { kinds } from "applesauce-core/helpers/event";
 import { AddressPointer, getReplaceableAddressFromPointer } from "applesauce-core/helpers/pointers";
 import { fillAndTrimTag } from "applesauce-core/helpers/tags";

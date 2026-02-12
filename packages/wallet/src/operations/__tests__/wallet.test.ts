@@ -3,7 +3,7 @@ import { unixNow } from "applesauce-core/helpers";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user";
-import { WalletBlueprint } from "../../blueprints/wallet";
+import { WalletBlueprint } from "../../factories/wallet";
 import { WALLET_BACKUP_KIND } from "../../helpers/wallet";
 import { setBackupContent } from "../wallet";
 

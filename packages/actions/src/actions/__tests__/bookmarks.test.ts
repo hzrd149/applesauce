@@ -1,4 +1,4 @@
-import { EventFactory, EventStore } from "applesauce-core";
+import { LegacyEventFactory, EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
@@ -9,12 +9,12 @@ import { AddOutboxRelay } from "../mailboxes.js";
 const user = new FakeUser();
 
 let events: EventStore;
-let factory: EventFactory;
+let factory: LegacyEventFactory;
 let publish: () => Promise<void>;
 let hub: ActionRunner;
 beforeEach(async () => {
   events = new EventStore();
-  factory = new EventFactory({ signer: user });
+  factory = new LegacyEventFactory({ signer: user });
   publish = vitest.fn().mockResolvedValue(undefined);
   hub = new ActionRunner(events, factory, publish);
 

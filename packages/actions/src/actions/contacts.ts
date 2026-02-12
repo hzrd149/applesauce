@@ -1,4 +1,4 @@
-import { TagOperation } from "applesauce-core/event-factory";
+import { TagOperation } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { modifyPublicTags } from "applesauce-core/operations";

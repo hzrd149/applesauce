@@ -3,7 +3,7 @@ import {
   WrappedMessageBlueprint,
   WrappedMessageBlueprintOptions,
   WrappedMessageReplyBlueprint,
-} from "applesauce-common/blueprints";
+} from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { Rumor } from "applesauce-common/helpers/gift-wrap";
 import { getConversationParticipants } from "applesauce-common/helpers/messages";

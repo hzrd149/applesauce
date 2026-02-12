@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { ensureMarkedEventPointerTag, ensureProfilePointerTag } from "applesauce-core/helpers/factory";
 import { EventPointer } from "applesauce-core/helpers/pointers";

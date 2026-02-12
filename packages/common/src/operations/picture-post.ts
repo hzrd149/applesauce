@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { ensureNamedValueTag } from "applesauce-core/helpers/tags";
 import { MediaAttachment } from "../helpers/file-metadata.js";
 

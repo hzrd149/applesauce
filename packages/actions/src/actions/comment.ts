@@ -1,4 +1,4 @@
-import { CommentBlueprint, CommentBlueprintOptions } from "applesauce-common/blueprints";
+import { CommentBlueprint, CommentBlueprintOptions } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { CommentPointer, isCommentAddressPointer, isCommentEventPointer } from "applesauce-common/helpers/comment";
 import { relaySet } from "applesauce-core/helpers";

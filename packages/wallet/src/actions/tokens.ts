@@ -1,9 +1,9 @@
 import { CheckStateEnum, Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
-import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
+import { DeleteBlueprint } from "applesauce-core/factories";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { WalletHistoryBlueprint } from "../blueprints/history.js";
-import { WalletTokenBlueprint } from "../blueprints/tokens.js";
+import { WalletHistoryBlueprint } from "../factories/history.js";
+import { WalletTokenBlueprint } from "../factories/tokens.js";
 import { getProofUID, ignoreDuplicateProofs } from "../helpers/cashu.js";
 import { Couch } from "../helpers/couch.js";
 import {

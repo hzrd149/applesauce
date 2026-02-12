@@ -1,5 +1,6 @@
 import { castEvent, CodeSnippet } from "applesauce-common/casts";
-import { blueprint, EventFactory } from "applesauce-core";
+import { LegacyEventFactory, blueprint } from "applesauce-core";
+
 import { normalizeToEventPointer } from "applesauce-core/helpers/pointers";
 import { relaySet } from "applesauce-core/helpers/relays";
 import { setContent } from "applesauce-core/operations/content";
@@ -71,7 +72,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
   // Create factory with active account's signer
   const factory = useMemo(() => {
     if (!activeAccount) return null;
-    return new EventFactory({ signer: activeAccount });
+    return new LegacyEventFactory({ signer: activeAccount });
   }, [activeAccount]);
 
   // Load the main event
@@ -229,7 +230,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
       }
 
       // Create & sign deletion event
-      const draft = await factory.create(DeleteBlueprint, [snippet.event], deleteReason.trim() || undefined);
+      const draft = await factory.build(DeleteBlueprint, [snippet.event], deleteReason.trim() || undefined);
       const signed = await factory.sign(draft);
 
       // Publish to all relays

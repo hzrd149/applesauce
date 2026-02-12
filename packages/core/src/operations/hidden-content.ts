@@ -1,4 +1,4 @@
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import { EncryptionMethod } from "../helpers/encrypted-content.js";
 import { setEncryptedContent } from "./encrypted-content.js";
 
@@ -10,7 +10,7 @@ import { setEncryptedContent } from "./encrypted-content.js";
  */
 export function setHiddenContent(
   content: string,
-  signer?: import("../event-factory/types.js").EventSigner,
+  signer?: import("../factories/types.js").EventSigner,
   override?: EncryptionMethod,
 ): EventOperation {
   return async (draft) => {

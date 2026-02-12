@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { ensureMarkedProfilePointerTag } from "applesauce-core/helpers/factory";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { addNameValueTag, removeNameValueTag } from "applesauce-core/operations/tag/common";

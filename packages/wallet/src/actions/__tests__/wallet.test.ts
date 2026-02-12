@@ -1,12 +1,12 @@
 import { ActionRunner } from "applesauce-actions";
 import { User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core/event-factory";
+import { EventFactory } from "applesauce-core/factories";
 import { bytesToHex, unlockHiddenTags } from "applesauce-core/helpers";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { beforeEach, describe, expect, it, Mock, vi, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { WalletBlueprint } from "../../blueprints/wallet.js";
+import { WalletBlueprint } from "../../factories/wallet.js";
 import { WALLET_HISTORY_KIND } from "../../helpers/history.js";
 import { NUTZAP_INFO_KIND } from "../../helpers/nutzap-info.js";
 import { unlockTokenContent, WALLET_TOKEN_KIND } from "../../helpers/tokens.js";
@@ -197,7 +197,7 @@ describe("UnlockWallet", () => {
     await events.add(walletEvent);
 
     // Create a token event
-    const { WalletTokenBlueprint } = await import("../../blueprints/tokens.js");
+    const { WalletTokenBlueprint } = await import("../../factories/tokens.js");
     const tokenEvent = await factory.sign(
       await factory.create(WalletTokenBlueprint, {
         mint: "https://mint.money.com",
@@ -223,7 +223,7 @@ describe("UnlockWallet", () => {
     await events.add(walletEvent);
 
     // Create a history event
-    const { WalletHistoryBlueprint } = await import("../../blueprints/history.js");
+    const { WalletHistoryBlueprint } = await import("../../factories/history.js");
     const historyEvent = await factory.sign(
       await factory.create(WalletHistoryBlueprint, {
         direction: "in",

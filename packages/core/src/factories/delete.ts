@@ -27,3 +27,12 @@ export class DeleteFactory extends EventFactory<kinds.EventDeletion, DeleteTempl
     return this.chain(setDeleteEvents(events));
   }
 }
+
+// Legacy blueprint function for backwards compatibility
+import type { EventTemplate } from "../helpers/event.js";
+
+export function DeleteBlueprint(events: (string | NostrEvent)[], reason?: string) {
+  return async (_services: any): Promise<EventTemplate> => {
+    return DeleteFactory.fromEvents(events, reason);
+  };
+}
