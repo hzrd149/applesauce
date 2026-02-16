@@ -92,8 +92,6 @@ const PING_FILTER: Filter = {
 export type RelayOptions = {
   /** Custom WebSocket implementation */
   WebSocket?: WebSocketSubjectConfig<any>["WebSocketCtor"];
-  /** How long to wait for an EOSE message (default 10s) */
-  eoseTimeout?: number;
   /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout?: number;
   /** How long to wait for a publish to complete (default 30s) */
@@ -234,8 +232,6 @@ export class Relay implements IRelay {
     return this.reqs$.value;
   }
 
-  /** If an EOSE message is not seen in this time, emit one locally (default 10s)  */
-  eoseTimeout = 10_000;
   /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout = 10_000;
   /** How long to wait for a publish to complete (default 30s) */
@@ -290,7 +286,6 @@ export class Relay implements IRelay {
     this.log = this.log.extend(url);
 
     // Set common options
-    if (opts?.eoseTimeout !== undefined) this.eoseTimeout = opts.eoseTimeout;
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
     if (opts?.publishTimeout !== undefined) this.publishTimeout = opts.publishTimeout;
     if (opts?.keepAlive !== undefined) this.keepAlive = opts.keepAlive;
@@ -657,12 +652,6 @@ export class Relay implements IRelay {
       this.handleAuthRequiredForReq("REQ"),
       // mark events as from relays
       markFromRelay(this.url),
-      // if no events are seen in 10s, emit EOSE
-      // TODO: this timeout should only emit EOSE after the last event is seen and no EOSE has been sent in (timeout ms)
-      timeout({
-        first: this.eoseTimeout,
-        with: () => merge(of<SubscriptionResponse>("EOSE"), NEVER),
-      }),
       // Only create one upstream subscription
       share(),
     );
@@ -694,11 +683,6 @@ export class Relay implements IRelay {
       this.handleAuthRequiredForReq("COUNT"),
       // Complete on first value (COUNT responses are single-shot)
       take(1),
-      // Add timeout
-      timeout({
-        first: this.eoseTimeout,
-        with: () => throwError(() => new Error("COUNT timeout")),
-      }),
     );
 
     // Start the watch tower and wait for auth if required
@@ -736,7 +720,7 @@ export class Relay implements IRelay {
           this.receivedAuthRequiredForEvent.next(true);
         }
       }),
-      // if no message is seen in 10s, emit EOSE
+      // if no message is seen in 10s, emit failed publish response
       timeout({
         first: this.eventTimeout,
         with: () => of<PublishResponse>({ ok: false, from: this.url, message: "Timeout" }),
