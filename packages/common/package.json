@@ -101,7 +101,7 @@
     "@types/debug": "^4.1.12",
     "@types/hash-sum": "^1.0.2",
     "@types/node": "^22.19.1",
-    "ajv": "^8.17.1",
+    "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "nostr-tools": "^2.19",
     "rimraf": "^6.0.1",
