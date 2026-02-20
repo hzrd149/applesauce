@@ -418,7 +418,7 @@ function HomeView({ user }: { user: User }) {
       !dmRelays ? EMPTY : pool.subscription(dmRelays, {
         kinds: [kinds.GiftWrap],
         "#p": [user.pubkey],
-        since: unixNow() - 60,
+        since: unixNow() - 60 * 60 * 24 * 7, // 1 week ago
       }).pipe(
         mapEventsToStore(eventStore),
         // Ignore errors
