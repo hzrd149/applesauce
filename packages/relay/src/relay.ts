@@ -399,6 +399,7 @@ export class Relay implements IRelay {
       ready: this._ready$,
       authRequiredForRead: this.authRequiredForRead$,
       authRequiredForPublish: this.authRequiredForPublish$,
+      challenge: this.challenge$.asObservable(),
     }).pipe(shareReplay(1));
 
     // Update the notices state
