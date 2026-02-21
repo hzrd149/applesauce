@@ -1,6 +1,6 @@
 {
   "name": "applesauce-relay",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "description": "nostr relay communication framework built on rxjs",
   "type": "module",
   "main": "dist/index.js",
@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^1.7.1",
-    "applesauce-core": "^5.1.0",
+    "applesauce-core": "^5.2.0",
     "nanoid": "^5.0.9",
     "nostr-tools": "~2.19",
     "rxjs": "^7.8.1"

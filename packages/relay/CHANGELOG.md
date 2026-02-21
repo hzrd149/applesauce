@@ -1,5 +1,16 @@
 # applesauce-relay
 
+## 5.2.0
+
+### Minor Changes
+
+- 9a133b3: Add `challenge` to relay status and pool status
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.2.0
+
 ## 5.1.0
 
 ### Minor Changes

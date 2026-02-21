@@ -115,13 +115,13 @@ importers:
         specifier: ^5.0.0
         version: link:../../packages/actions
       applesauce-common:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../../packages/common
       applesauce-content:
         specifier: ^5.0.0
         version: link:../../packages/content
       applesauce-core:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../../packages/core
       applesauce-extra:
         specifier: ^5.0.0
@@ -133,7 +133,7 @@ importers:
         specifier: ^5.1.0
         version: link:../../packages/react
       applesauce-relay:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../../packages/relay
       applesauce-signers:
         specifier: ^5.1.0
@@ -293,13 +293,13 @@ importers:
         specifier: ^5
         version: link:../../packages/actions
       applesauce-common:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../../packages/common
       applesauce-content:
         specifier: ^5
         version: link:../../packages/content
       applesauce-core:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../../packages/core
       applesauce-loaders:
         specifier: ^5.1.0
@@ -308,7 +308,7 @@ importers:
         specifier: ^5.1.0
         version: link:../../packages/react
       applesauce-relay:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../../packages/relay
       applesauce-signers:
         specifier: ^5.1.0
@@ -434,7 +434,7 @@ importers:
         specifier: ^1.2.4
         version: 1.2.6
       applesauce-core:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../core
       hash-sum:
         specifier: ^2.0.0
@@ -682,7 +682,7 @@ importers:
         specifier: ^1.7.1
         version: 1.8.0
       applesauce-core:
-        specifier: ^5.1.0
+        specifier: ^5.2.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
