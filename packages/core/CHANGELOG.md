@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 5.2.0
+
+### Patch Changes
+
+- be2c857: Add `isEventPointerSame` and `isAddressPointerSame` methods
+
 ## 5.1.0
 
 ### Minor Changes
