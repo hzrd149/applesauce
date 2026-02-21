@@ -48,7 +48,10 @@ export function ExampleSearch({ onResultsChange }: ExampleSearchProps) {
         arguments: { query: search },
       });
 
-      const results = JSON.parse((response.content as any)[0].text) as { name: string; description: string }[];
+      const results = JSON.parse((response.content as any)[0].text) as {
+        name: string;
+        description: string;
+      }[];
       console.log("MCP results:", results);
 
       const filtered = results
@@ -57,7 +60,10 @@ export function ExampleSearch({ onResultsChange }: ExampleSearchProps) {
           if (!example) return example;
 
           // Add the description to the example metadata
-          return { ...example, metadata: { ...example.metadata, description: r.description } };
+          return {
+            ...example,
+            metadata: { ...example.metadata, description: r.description },
+          };
         })
         .filter((e) => e !== undefined);
 
@@ -96,7 +102,7 @@ export function ExampleSearch({ onResultsChange }: ExampleSearchProps) {
           />
           <span className="text-sm text-base-content/70">
             Use{" "}
-            <a className="link link-info" href="https://applesauce.hzrd149.com/introduction/mcp-server">
+            <a className="link link-info" href="https://applesauce.build/introduction/mcp-server">
               Applesauce MCP
             </a>
           </span>

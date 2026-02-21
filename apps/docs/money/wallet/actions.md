@@ -4,7 +4,7 @@ description: Actions for managing NIP-60 Cashu wallets including creating, minti
 
 # Wallet Actions
 
-The `applesauce-wallet` package provides a set of [Actions](https://applesauce.hzrd149.com/typedoc/modules/applesauce-wallet.Actions.html) for common wallet operations. Actions are run via `ActionRunner`; the examples below use `actions.run()` where `actions` is an `ActionRunner` instance.
+The `applesauce-wallet` package provides a set of [Actions](https://applesauce.build/typedoc/modules/applesauce-wallet.Actions.html) for common wallet operations. Actions are run via `ActionRunner`; the examples below use `actions.run()` where `actions` is an `ActionRunner` instance.
 
 ## CreateWallet
 

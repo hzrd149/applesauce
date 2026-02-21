@@ -26,7 +26,7 @@ const user3 = castUser(event, eventStore); // Uses event.pubkey
 
 The `User` class provides reactive access to all user-related data through observables.
 
-[**User** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-common.Casts.User.html)
+[**User** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.User.html)
 
 ### Basic properties
 
@@ -73,7 +73,7 @@ contacts?.forEach((contact) => {
 });
 ```
 
-**Example:** [Contact Manager](https://applesauce.hzrd149.com/examples#contacts)
+**Example:** [Contact Manager](https://applesauce.build/examples#contacts)
 
 ### Mutes
 
@@ -105,7 +105,7 @@ if (mutes) {
 
 See [Mutes cast](./events#mutes) for more details.
 
-**Example:** [Mutes Manager](https://applesauce.hzrd149.com/examples#mutes)
+**Example:** [Mutes Manager](https://applesauce.build/examples#mutes)
 
 ### Mailboxes (NIP-65)
 
@@ -152,7 +152,7 @@ if (bookmarks) {
 
 See [BookmarksList cast](./events#bookmarkslist) for more details.
 
-**Example:** [Bookmarks Manager](https://applesauce.hzrd149.com/examples#bookmarks)
+**Example:** [Bookmarks Manager](https://applesauce.build/examples#bookmarks)
 
 ### Relay Lists
 

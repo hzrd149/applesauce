@@ -4,7 +4,7 @@ description: Operations for adding, removing, and modifying tags in Nostr event 
 
 # Tag Operations
 
-Tag operations are specialized functions designed to modify arrays of Nostr event tags. Unlike [event operations](./event-operations.md) which work on entire events, tag operations focus exclusively on transforming tag arrays. This makes them perfect for use with [`modifyPublicTags`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-core.Operations.modifyPublicTags.html) and [`modifyHiddenTags`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-core.Operations.modifyHiddenTags.html) event operations, allowing precise control over both public event tags and hidden encrypted tags on NIP-51 lists.
+Tag operations are specialized functions designed to modify arrays of Nostr event tags. Unlike [event operations](./event-operations.md) which work on entire events, tag operations focus exclusively on transforming tag arrays. This makes them perfect for use with [`modifyPublicTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyPublicTags.html) and [`modifyHiddenTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyHiddenTags.html) event operations, allowing precise control over both public event tags and hidden encrypted tags on NIP-51 lists.
 
 ## Overview
 
@@ -16,7 +16,7 @@ A tag operation is a function that takes an array of tags and returns a modified
 - **Async-aware**: Operations can be synchronous or asynchronous
 - **Context-aware**: Operations can use relay hints and other context information
 
-See all available tag operations in the [reference](https://applesauce.hzrd149.com/typedoc/modules/applesauce-core.Operations.TagOperations.html).
+See all available tag operations in the [reference](https://applesauce.build/typedoc/modules/applesauce-core.Operations.TagOperations.html).
 
 ## Type Definition
 
@@ -86,7 +86,7 @@ export function removePubkeyTag(pubkey: string): TagOperation {
 
 ### 2. Singleton Tag Operations
 
-These operations ensure only one instance of a tag type exists using the [`ensureSingletonTag`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-core.Helpers.ensureSingletonTag.html) helper function:
+These operations ensure only one instance of a tag type exists using the [`ensureSingletonTag`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.ensureSingletonTag.html) helper function:
 
 ```typescript
 // Set a singleton tag (only one allowed)
@@ -324,7 +324,7 @@ const eventOp = factory.build(
 
 ## Integration with Hidden Tags
 
-Tag operations work seamlessly with both public and hidden tags using the [`modifyPublicTags`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-core.Operations.modifyPublicTags.html) and [`modifyHiddenTags`](https://applesauce.hzrd149.com/typedoc/functions/applesauce-core.Operations.modifyHiddenTags.html) event operations:
+Tag operations work seamlessly with both public and hidden tags using the [`modifyPublicTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyPublicTags.html) and [`modifyHiddenTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyHiddenTags.html) event operations:
 
 ```typescript
 // Create operations for both public and hidden tags

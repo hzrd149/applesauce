@@ -81,5 +81,5 @@ const signed = await factory.sign(note);
 
 ## Next Steps
 
-- **Browse the [examples](https://applesauce.hzrd149.com/examples)** to see whats possible
-- **Check the [API documentation](https://applesauce.hzrd149.com/typedoc/)** for detailed reference
+- **Browse the [examples](https://applesauce.build/examples)** to see whats possible
+- **Check the [API documentation](https://applesauce.build/typedoc/)** for detailed reference

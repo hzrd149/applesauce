@@ -72,15 +72,15 @@ pnpm build
 
 ## React
 
-The `applesauce-react` package contains various hooks and providers for using applesauce in react components, [Docs](https://applesauce.hzrd149.com/react/getting-started.html)
+The `applesauce-react` package contains various hooks and providers for using applesauce in react components, [Docs](https://applesauce.build/react/getting-started.html)
 
 ## AI Agents (MCP Server)
 
 The `applesauce-mcp` tool provides semantic search over Applesauce documentation and code examples for AI agents through the Model Context Protocol. This helps AI assistants build Nostr applications with accurate API usage and real-world patterns.
 
-**Quick Start:** Connect to the public server at `https://mcp.applesauce.hzrd149.com/mcp` in your AI-powered IDE (OpenCode, Cursor, Claude Desktop, etc.)
+**Quick Start:** Connect to the public server at `https://mcp.applesauce.build/mcp` in your AI-powered IDE (OpenCode, Cursor, Claude Desktop, etc.)
 
-[Full Documentation](https://applesauce.hzrd149.com/introduction/mcp-server.html) | [Source Code](https://github.com/hzrd149/applesauce-mcp)
+[Full Documentation](https://applesauce.build/introduction/mcp-server.html) | [Source Code](https://github.com/hzrd149/applesauce-mcp)
 
 ## Contributing
 
