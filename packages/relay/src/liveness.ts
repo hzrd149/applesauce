@@ -1,7 +1,7 @@
 import { logger } from "applesauce-core";
 import { BehaviorSubject, map, Observable } from "rxjs";
-import { RelayPool } from "./pool.js";
-import { IPool, IRelay } from "./types.js";
+import type { RelayPool } from "./pool.js";
+import type { Relay } from "./relay.js";
 
 /** Relay health states for liveness tracking */
 export type RelayHealthState = "online" | "offline" | "dead";
@@ -350,12 +350,12 @@ export class RelayLiveness {
   }
 
   // The connected pools and cleanup methods
-  private connections = new Map<IPool, () => void>();
+  private connections = new Map<RelayPool, () => void>();
 
   /** Connect to a {@link RelayPool} instance and track relay connections */
-  connectToPool(pool: IPool): void {
+  connectToPool(pool: RelayPool): void {
     // Relay cleanup methods
-    const relays = new Map<IRelay, () => void>();
+    const relays = new Map<Relay, () => void>();
 
     // Listen for relays being added
     const add = pool.add$.subscribe((relay) => {
@@ -391,7 +391,7 @@ export class RelayLiveness {
   }
 
   /** Disconnect from a {@link RelayPool} instance */
-  disconnectFromPool(pool: IPool): void {
+  disconnectFromPool(pool: RelayPool): void {
     const cleanup = this.connections.get(pool);
     if (cleanup) cleanup();
     this.connections.delete(pool);

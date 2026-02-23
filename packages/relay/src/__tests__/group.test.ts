@@ -106,6 +106,8 @@ describe("req", () => {
     mockRelay2.send(["EVENT", "test-sub", mockEvent]);
     mockRelay2.send(["EOSE", "test-sub"]);
 
+    // When one relay is offline, events still flow from online relays
+    // Note: group EOSE won't emit until all relays send EOSE (or error)
     expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
   });
 });
