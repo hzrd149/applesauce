@@ -23,11 +23,11 @@ export default defineConfig({
 
     nav: [
       { text: "Home", link: "/" },
-      { text: "Examples", link: "https://applesauce.hzrd149.com/examples" },
-      { text: "Snippets", link: "https://applesauce.hzrd149.com/snippets" },
+      { text: "Examples", link: "https://applesauce.build/examples" },
+      { text: "Snippets", link: "https://applesauce.build/snippets" },
       {
         text: "Reference",
-        link: "https://applesauce.hzrd149.com/typedoc/index.html",
+        link: "https://applesauce.build/typedoc/index.html",
       },
     ],
 

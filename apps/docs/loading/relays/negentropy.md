@@ -156,7 +156,7 @@ pool
 
 ## API Reference
 
-For full API reference, see the [API Reference](https://applesauce.hzrd149.com/typedoc/modules/applesauce-relay.html).
+For full API reference, see the [API Reference](https://applesauce.build/typedoc/modules/applesauce-relay.html).
 
 ## Performance Tips
 

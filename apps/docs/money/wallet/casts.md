@@ -16,7 +16,7 @@ import "applesauce-wallet/casts"; // registers user.wallet$, user.nutzap$
 
 ## User extensions
 
-Once the wallet casts are loaded, `User` has `user.wallet$` (replaceable wallet event) and `user.nutzap$` (nutzap info, kind 10019). For full API details see the [Casts module](https://applesauce.hzrd149.com/typedoc/modules/applesauce-wallet.Casts.html).
+Once the wallet casts are loaded, `User` has `user.wallet$` (replaceable wallet event) and `user.nutzap$` (nutzap info, kind 10019). For full API details see the [Casts module](https://applesauce.build/typedoc/modules/applesauce-wallet.Casts.html).
 
 Example: get the wallet and subscribe to balance/tokens/history from it.
 
@@ -32,7 +32,7 @@ const history = use$(user.wallet$.history$);
 
 Cast for a NIP-60 wallet event (kind 17375). Sync getters return values from the current event; when content is locked, some return `undefined`.
 
-[**Wallet** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-wallet.Casts.Wallet.html)
+[**Wallet** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-wallet.Casts.Wallet.html)
 
 ```typescript
 const wallet = use$(user.wallet$);
@@ -46,7 +46,7 @@ const total = balance ? Object.values(balance).reduce((s, n) => s + n, 0) : 0;
 
 Cast for a wallet token event (kind 375). Content (proofs, mint) is hidden until unlocked.
 
-[**WalletToken** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-wallet.Casts.WalletToken.html)
+[**WalletToken** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-wallet.Casts.WalletToken.html)
 
 ```typescript
 function TokenEntry({ token }: { token: WalletToken }) {
@@ -61,7 +61,7 @@ function TokenEntry({ token }: { token: WalletToken }) {
 
 Cast for a wallet history event (kind 7376). Content is hidden until unlocked.
 
-[**WalletHistory** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-wallet.Casts.WalletHistory.html)
+[**WalletHistory** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-wallet.Casts.WalletHistory.html)
 
 ```typescript
 function HistoryEntry({ entry }: { entry: WalletHistory }) {
@@ -79,7 +79,7 @@ function HistoryEntry({ entry }: { entry: WalletHistory }) {
 
 Cast for a NIP-61 nutzap event. Public fields are readable without unlocking.
 
-[**Nutzap** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-wallet.Casts.Nutzap.html)
+[**Nutzap** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-wallet.Casts.Nutzap.html)
 
 ```typescript
 const nutzaps = use$(
@@ -95,7 +95,7 @@ const zappedEvent = use$(nutzap.zapped$);
 
 Cast for nutzap info (kind 10019). Available as `user.nutzap$`. Describes where to receive nutzaps (relays, mints, P2PK pubkey).
 
-[**NutzapInfo** — TypeDoc](https://applesauce.hzrd149.com/typedoc/classes/applesauce-wallet.Casts.NutzapInfo.html)
+[**NutzapInfo** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-wallet.Casts.NutzapInfo.html)
 
 ```typescript
 const nutzapInfo = use$(user.nutzap$);

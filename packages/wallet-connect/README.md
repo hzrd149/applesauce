@@ -109,4 +109,4 @@ Both WalletConnect and WalletService support all NIP-47 methods:
 
 ## Documentation
 
-For more detailed documentation, visit [the docs](https://applesauce.hzrd149.com/).
+For more detailed documentation, visit [the docs](https://applesauce.build/).

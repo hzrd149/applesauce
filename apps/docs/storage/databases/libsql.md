@@ -14,7 +14,7 @@ npm install applesauce-sqlite @libsql/client
 
 ## Basic Usage
 
-**NOTE**: The `LibsqlEventDatabase` implements the [`IAsyncEventDatabase`](https://applesauce.hzrd149.com/typedoc/interfaces/applesauce-core.IAsyncEventDatabase.html) interface which means you MUST use the [`AsyncEventStore`](https://applesauce.hzrd149.com/typedoc/classes/applesauce-core.AsyncEventStore.html) instead of the normal [`EventStore`](https://applesauce.hzrd149.com/typedoc/classes/applesauce-core.EventStore.html).
+**NOTE**: The `LibsqlEventDatabase` implements the [`IAsyncEventDatabase`](https://applesauce.build/typedoc/interfaces/applesauce-core.IAsyncEventDatabase.html) interface which means you MUST use the [`AsyncEventStore`](https://applesauce.build/typedoc/classes/applesauce-core.AsyncEventStore.html) instead of the normal [`EventStore`](https://applesauce.build/typedoc/classes/applesauce-core.EventStore.html).
 
 ### Local Database
 

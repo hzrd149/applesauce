@@ -6,9 +6,9 @@ A collection of signer classes for applesauce that are compatible with the [NIP-
 
 For detailed documentation and API reference, see:
 
-- [Signers Documentation](https://applesauce.hzrd149.com/signers/signers.html)
-- [Nostr Connect Documentation](https://applesauce.hzrd149.com/signers/nostr-connect.html)
-- [API Reference](https://applesauce.hzrd149.com/typedoc/modules/applesauce-signers.html)
+- [Signers Documentation](https://applesauce.build/signers/signers.html)
+- [Nostr Connect Documentation](https://applesauce.build/signers/nostr-connect.html)
+- [API Reference](https://applesauce.build/typedoc/modules/applesauce-signers.html)
 
 ## Available Signers
 
