@@ -7,7 +7,7 @@ import type {
 import type { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import type { Filter } from "applesauce-core/helpers/filter";
 import type { RelayInformation as CoreRelayInformation } from "nostr-tools/nip11";
-import type { MonoTypeOperatorFunction, Observable, repeat, retry } from "rxjs";
+import type { Observable, OperatorFunction, repeat, retry } from "rxjs";
 import type { WebSocketSubject } from "rxjs/webSocket";
 import type { NegentropySyncOptions } from "./negentropy.js";
 import type { Relay } from "./relay.js";
@@ -67,22 +67,32 @@ export type RelayReqOptions = {
 };
 
 /** Internal type emitted when REQ is sent to the relay */
-export type RelayReqOpenMessage = { type: "OPEN"; id: string; filters: Filter[] };
+export type RelayReqOpenMessage = { type: "OPEN"; from: string; id: string; filters: Filter[] };
 /** Internal type emitted when an event is received from the relay */
-export type RelayReqEventMessage = { type: "EVENT"; id: string; event: NostrEvent };
+export type RelayReqEventMessage = { type: "EVENT"; from: string; id: string; event: NostrEvent };
 /** Internal type emitted when the relay sends an EOSE message */
-export type RelayReqEoseMessage = { type: "EOSE"; id: string };
+export type RelayReqEoseMessage = { type: "EOSE"; from: string; id: string };
 /** Internal type emitted when the relay sends a CLOSED message */
-export type RelayReqClosedMessage = { type: "CLOSED"; id: string };
+export type RelayReqClosedMessage = { type: "CLOSED"; from: string; id: string };
 
 /** Internal type emitted from a REQ subscription to a relay */
 export type RelayReqMessage = RelayReqOpenMessage | RelayReqEventMessage | RelayReqEoseMessage | RelayReqClosedMessage;
 
 /** Options for the request method on the pool and relay */
-export type RelayRequestOptions = RelayReqOptions;
+export type RelayRequestOptions = RelayReqOptions & {
+  /**
+   * Total timeout for the request before request emits a TimeoutError in milliseconds (default 30 seconds)
+   * Passed to rjxs timeout() operator */
+  timeout?: number;
+  /** An operator that determines when the request should complete. */
+  complete?: RelayRequestCompleteOperator;
+};
 
 /** The response type when making a request to a relay */
 export type RelayRequestResponse = NostrEvent;
+
+/** An operator that determines when a relay request should complete. truthy values are considered complete */
+export type RelayRequestCompleteOperator = OperatorFunction<RelayReqMessage, any>;
 
 /** Options for the subscription method on the pool and relay */
 export type RelaySubscriptionOptions = RelayReqOptions;
@@ -127,9 +137,6 @@ export type NegentropySyncStore = NegentropyReadStore | NegentropyWriteStore;
 /** The input arguments for a relay group */
 export type GroupRelayInput = Relay[] | Observable<Relay[]>;
 
-/** A operator that determines when a group request should complete. */
-export type CompleteOperator = MonoTypeOperatorFunction<GroupReqMessage>;
-
 /** Options for negentropy sync on a group of relays */
 export type GroupNegentropySyncOptions = NegentropySyncOptions & {
   /** Whether to sync in parallel (default true) */
@@ -143,32 +150,26 @@ export type GroupSubscriptionOptions = RelaySubscriptionOptions & {
 };
 
 /** Options for relay group REQ method */
-export type GroupReqOptions = RelayReqOptions & {
-  /** A custom operator that determines when the request should complete.*/
-  complete?: CompleteOperator;
-};
+export type GroupReqOptions = RelayReqOptions;
 
 /** Options for a request on a group of relays */
 export type GroupRequestOptions = RelayRequestOptions & {
   /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
   eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
   /** A custom operator that determines when the request should complete.*/
-  complete?: CompleteOperator;
+  complete?: GroupRequestCompleteOperator;
 };
 
-/** The message that is emitted when the group sends the filters to a relay */
-export type GroupReqOpenMessage = RelayReqOpenMessage & { relay: string };
-/** The message that is emitted when the group receives an event from a relay */
-export type GroupReqEventMessage = RelayReqEventMessage & { relay: string };
-/** The message that is emitted when the group receives an EOSE message from a relay */
-export type GroupReqEoseMessage = RelayReqEoseMessage & { relay: string };
-/** The message that is emitted when the group receives a CLOSED message from a relay */
-export type GroupReqClosedMessage = RelayReqClosedMessage & { relay: string };
+/** Internal req status message for the relays a group is sending REQ to */
+export type GroupReqRelaysMessage = { type: "RELAYS"; relays: string[] };
 /** The message that is emitted when the group receives an error message from the relay observable */
 export type GroupReqErrorMessage = { type: "ERROR"; relay: string; error: unknown };
 
 /** The response messages from a relay group subscription */
-export type GroupReqMessage = GroupReqOpenMessage | GroupReqEventMessage | GroupReqEoseMessage | GroupReqErrorMessage;
+export type GroupReqMessage = RelayReqMessage | GroupReqRelaysMessage | GroupReqErrorMessage;
+
+/** A operator that determines when a group request should complete. truthy values are considered complete */
+export type GroupRequestCompleteOperator = OperatorFunction<GroupReqMessage, any>;
 
 /** The input type of relays for pool methods */
 export type PoolRelayInput = string[] | Observable<string[]>;

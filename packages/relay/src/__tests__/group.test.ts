@@ -48,14 +48,14 @@ afterEach(async () => {
 
 describe("req", () => {
   it("should make requests to multiple relays", async () => {
-    group.req([{ kinds: [1] }], "test-sub").subscribe();
+    group.req([{ kinds: [1] }], { id: "test-sub" }).subscribe();
 
     await expect(mockRelay1).toReceiveMessage(["REQ", "test-sub", { kinds: [1] }]);
     await expect(mockRelay2).toReceiveMessage(["REQ", "test-sub", { kinds: [1] }]);
   });
 
   it("should emit events from all relays", async () => {
-    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], "test-sub"));
+    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], { id: "test-sub" }));
 
     await expect(mockRelay1).toReceiveMessage(["REQ", "test-sub", { kinds: [1] }]);
     await expect(mockRelay2).toReceiveMessage(["REQ", "test-sub", { kinds: [1] }]);
@@ -63,36 +63,47 @@ describe("req", () => {
     mockRelay1.send(["EVENT", "test-sub", { ...mockEvent, id: "1" }]);
     mockRelay2.send(["EVENT", "test-sub", { ...mockEvent, id: "2" }]);
 
-    expect(spy.getValues()).toEqual([expect.objectContaining({ id: "1" }), expect.objectContaining({ id: "2" })]);
+    const values = spy.getValues();
+    // Should have OPEN messages + 2 EVENT messages
+    expect(values.filter((m) => m.type === "EVENT")).toEqual([
+      expect.objectContaining({ type: "EVENT", event: expect.objectContaining({ id: "1" }) }),
+      expect.objectContaining({ type: "EVENT", event: expect.objectContaining({ id: "2" }) }),
+    ]);
   });
 
-  it("should only emit EOSE once all relays have emitted EOSE", async () => {
-    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], "test-sub"));
+  it("should emit EOSE from each relay", async () => {
+    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], { id: "test-sub" }));
 
     mockRelay1.send(["EOSE", "test-sub"]);
-    expect(spy.getValues()).not.toContain("EOSE");
+    expect(spy.getValues().filter((m) => m.type === "EOSE")).toHaveLength(1);
 
     mockRelay2.send(["EOSE", "test-sub"]);
-    expect(spy.getValues()).toContain("EOSE");
+    expect(spy.getValues().filter((m) => m.type === "EOSE")).toHaveLength(2);
   });
 
   it("should ignore relays that have an error", async () => {
-    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], "test-sub"));
+    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], { id: "test-sub" }));
 
     mockRelay1.error();
     mockRelay2.send(["EVENT", "test-sub", mockEvent]);
     mockRelay2.send(["EOSE", "test-sub"]);
 
-    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent), "EOSE"]);
+    const values = spy.getValues();
+    expect(values.filter((m) => m.type === "EVENT")).toEqual([
+      expect.objectContaining({ type: "EVENT", event: expect.objectContaining(mockEvent) }),
+    ]);
+    expect(values.filter((m) => m.type === "ERROR")).toHaveLength(1);
+    expect(values.filter((m) => m.type === "EOSE")).toHaveLength(1);
   });
 
-  it("should emit EOSE if all relays error", async () => {
-    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], "test-sub"));
+  it("should emit ERROR if all relays error", async () => {
+    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], { id: "test-sub" }));
 
     mockRelay1.error();
     mockRelay2.error();
 
-    expect(spy.getValues()).toEqual(["EOSE"]);
+    const values = spy.getValues();
+    expect(values.filter((m) => m.type === "ERROR")).toHaveLength(2);
   });
 
   it("should still pass events to subscription when one relay is offline", async () => {
@@ -100,15 +111,17 @@ describe("req", () => {
     mockRelay1.close();
 
     // Make the request
-    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], "test-sub", { eventStore: null }));
+    const spy = subscribeSpyTo(group.req([{ kinds: [1] }], { id: "test-sub" }));
 
     // Send event from the remaining online relay
     mockRelay2.send(["EVENT", "test-sub", mockEvent]);
     mockRelay2.send(["EOSE", "test-sub"]);
 
     // When one relay is offline, events still flow from online relays
-    // Note: group EOSE won't emit until all relays send EOSE (or error)
-    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+    const values = spy.getValues();
+    expect(values.filter((m) => m.type === "EVENT")).toEqual([
+      expect.objectContaining({ type: "EVENT", event: expect.objectContaining(mockEvent) }),
+    ]);
   });
 });
 

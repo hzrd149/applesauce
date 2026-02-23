@@ -23,20 +23,21 @@ import {
   startWith,
   switchMap,
   take,
+  timeout,
   toArray,
 } from "rxjs";
-import { RequestComplete } from "./helpers/complete-conditions.js";
 import { type ReconcileFunction } from "./negentropy.js";
+import { completeWhen } from "./operators/complete-when.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
 import { Relay, SyncDirection } from "./relay.js";
 import {
-  CompleteOperator,
   FilterInput,
   GroupNegentropySyncOptions,
   GroupRelayInput,
   GroupReqErrorMessage,
-  GroupReqOptions,
   GroupReqMessage,
+  GroupReqOptions,
+  GroupReqRelaysMessage,
   GroupRequestOptions,
   GroupSubscriptionOptions,
   NegentropyReadStore,
@@ -120,15 +121,12 @@ export class RelayGroup {
   }
 
   /** Internal logic for handling requests to multiple relays */
-  protected internalSubscription(
-    project: (relay: Relay) => Observable<RelayReqMessage>,
-    completeOperator: CompleteOperator = identity,
-  ): Observable<GroupReqMessage> {
+  protected internalSubscription(project: (relay: Relay) => Observable<RelayReqMessage>): Observable<GroupReqMessage> {
     // Keep a cache of upstream observables for each relay
     const upstream = new WeakMap<Relay, Observable<GroupReqMessage>>();
 
     // Subscribe to the group relays
-    return this.relays$.pipe(
+    const messages = this.relays$.pipe(
       // Every time they change switch to a new observable
       // Using reverseSwitchMap to subscribe to the new relays before unsubscribing from the old ones
       // This avoids sending duplicate REQ messages to the relays
@@ -141,22 +139,24 @@ export class RelayGroup {
             continue;
           }
 
-          const observable = project(relay).pipe(
-            // Convert the relay req message by prepending the relay url
-            map((m) => ({ ...m, relay: relay.url }) as GroupReqMessage),
+          const observable: Observable<GroupReqMessage> = project(relay).pipe(
             // Catch connection errors and return ERROR
             catchError((err) => of({ type: "ERROR", relay: relay.url, error: err } as GroupReqErrorMessage)),
           );
           observables.push(observable);
           upstream.set(relay, observable);
         }
-        return merge(...observables);
+
+        return merge(...observables).pipe(
+          startWith({ type: "RELAYS", relays: this.relays.map((relay) => relay.url) } as GroupReqRelaysMessage),
+        );
       }),
-      // Add complete operator
-      completeOperator,
-      // Only create one upstream subscription
+      // Ensure a single upstream subscription
+      // NOTE: this is required because the complete operator will subscribe many times to this
       share(),
     );
+
+    return messages;
   }
 
   /** Internal logic for handling publishes to multiple relays */
@@ -189,20 +189,19 @@ export class RelayGroup {
 
         return merge(...observables);
       }),
+      // Ensure a single upstream publish
+      share(),
     );
   }
 
   /** Send a REQ to all relays and returns all responses */
   req(filters: FilterInput, opts?: GroupReqOptions): Observable<GroupReqMessage> {
-    return this.internalSubscription((relay) => relay.req(filters, opts), opts?.complete);
+    return this.internalSubscription((relay) => relay.req(filters, opts));
   }
 
   /** Send an event to all relays */
   event(event: NostrEvent): Observable<PublishResponse> {
-    return this.internalPublish((relay) => relay.event(event)).pipe(
-      // Ensure a single upstream subscription
-      share(),
-    );
+    return this.internalPublish((relay) => relay.event(event));
   }
 
   /** Negentropy sync events with the relays and an event store */
@@ -243,9 +242,11 @@ export class RelayGroup {
           // Manually default to relays reconnect config
           { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect },
         ),
-      // Use provided complete condition or default to waiting for all relays to send EOSE
-      opts?.complete ?? RequestComplete.onAllEose(),
     ).pipe(
+      // Add the completion condition if provided
+      opts?.complete ? completeWhen(opts.complete) : identity,
+      // Add request timeout
+      timeout({ first: opts?.timeout ?? 30_000 }),
       // Filter only for event messages
       filter((message) => message.type === "EVENT"),
       // Extract event messages

@@ -9,7 +9,6 @@ describe("exports", () => {
         "ignoreUnhealthyMailboxes",
         "ignoreUnhealthyRelays",
         "ignoreUnhealthyRelaysOnPointers",
-        "markFromRelay",
         "onlyEvents",
         "reverseSwitchMap",
         "storeEvents",

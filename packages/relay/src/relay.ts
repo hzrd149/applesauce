@@ -49,6 +49,7 @@ import {
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
+import { completeWhen } from "./operators/complete-when.js";
 import {
   AuthSigner,
   FilterInput,
@@ -58,12 +59,10 @@ import {
   PublishResponse,
   RelayCountResponse,
   RelayInformation,
-  RelayReqOptions,
-  RelayReqClosedMessage,
-  RelayReqEoseMessage,
-  RelayReqEventMessage,
   RelayReqMessage,
   RelayReqOpenMessage,
+  RelayReqOptions,
+  RelayRequestCompleteOperator,
   RelayRequestOptions,
   RelayRequestResponse,
   RelayStatus,
@@ -625,9 +624,9 @@ export class Relay {
       filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
       // Map NIP-01 messages to the RelayReqResponse
       map<any, RelayReqMessage>((m) => {
-        if (m[0] === "EVENT") return { type: "EVENT", id: m[1], event: m[2] };
-        else if (m[0] === "CLOSED") return { type: "CLOSED", id: m[1] };
-        else if (m[0] === "EOSE") return { type: "EOSE", id: m[1] };
+        if (m[0] === "EVENT") return { type: "EVENT", from: this.url, id: m[1], event: m[2] };
+        else if (m[0] === "CLOSED") return { type: "CLOSED", from: this.url, id: m[1] };
+        else if (m[0] === "EOSE") return { type: "EOSE", from: this.url, id: m[1] };
         else throw new Error("Invalid message");
       }),
       // Singleton (prevents the .pipe() operator later from sending two REQ messages )
@@ -882,7 +881,13 @@ export class Relay {
 
   /** Makes a single request that retires on errors and completes on EOSE */
   request(filters: FilterInput, opts?: RelayRequestOptions): Observable<RelayRequestResponse> {
-    return this.req(filters, { ...opts, reconnect: opts?.reconnect ?? this.requestReconnect }).pipe(
+    const req = this.req(filters, { ...opts, reconnect: opts?.reconnect ?? this.requestReconnect });
+
+    return req.pipe(
+      // Add completion condition
+      opts?.complete ? completeWhen(opts?.complete) : identity,
+      // Apply request timeout
+      timeout({ first: opts?.timeout ?? 30_000 }),
       // Complete when EOSE is received
       takeWhile((message) => message.type !== "EOSE"),
       // Filter only for event messages
@@ -1031,5 +1036,38 @@ export class Relay {
       // Return a timer that will emit after the calculated delay
       return timer(delay);
     };
+  }
+
+  static afterOpen(condition: RelayRequestCompleteOperator): RelayRequestCompleteOperator {
+    return (source) =>
+      source.pipe(
+        // Wait for subscription open
+        filter((m) => m.type === "OPEN"),
+        // Switch to timer for complete
+        switchMap(() => source.pipe(condition)),
+      );
+  }
+
+  static completeOr(...conditions: RelayRequestCompleteOperator[]): RelayRequestCompleteOperator {
+    return (source) =>
+      combineLatest(conditions.map((condition) => source.pipe(condition, startWith(false)))).pipe(
+        // Return true if any condition is truthy
+        map((all) => all.some((v) => !!v)),
+      );
+  }
+
+  static completeAnd(...conditions: RelayRequestCompleteOperator[]): RelayRequestCompleteOperator {
+    return (source) =>
+      combineLatest(conditions.map((condition) => source.pipe(condition, startWith(false)))).pipe(
+        // Return true if all conditions are truthy
+        map((all) => all.every((v) => !!v)),
+      );
+  }
+
+  static defaultComplete(timeout: number, afterOpen = 10_000): RelayRequestCompleteOperator {
+    return this.completeOr(
+      () => timer(timeout),
+      this.afterOpen(() => timer(afterOpen)),
+    );
   }
 }
