@@ -53,7 +53,7 @@ const mockEvent: NostrEvent = {
 
 describe("req", () => {
   it("should trigger connection to relay", async () => {
-    subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
 
     // Wait for connection
     await firstValueFrom(relay.connected$.pipe(filter(Boolean)));
@@ -62,14 +62,14 @@ describe("req", () => {
   });
 
   it("should send expected messages to relay", async () => {
-    subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
   });
 
   it("should not close the REQ when EOSE is received", async () => {
     // Create subscription that completes after first EOSE
-    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
 
     // Verify REQ was sent
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
@@ -86,7 +86,7 @@ describe("req", () => {
 
   it("should send CLOSE when unsubscribed", async () => {
     // Create subscription that completes after first EOSE
-    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
 
     // Verify REQ was sent
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
@@ -99,7 +99,7 @@ describe("req", () => {
   });
 
   it("should close connection when unsubscribed", async () => {
-    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
     await server.connected;
     sub.unsubscribe();
     await server.closed;
@@ -107,7 +107,7 @@ describe("req", () => {
   });
 
   it("should emit nostr event and EOSE", async () => {
-    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
     await server.connected;
 
     server.send(["EVENT", "sub1", mockEvent]);
@@ -117,7 +117,7 @@ describe("req", () => {
   });
 
   it("should ignore EVENT and EOSE messages that do not match subscription id", async () => {
-    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
     await server.connected;
 
     // Send EVENT message with wrong subscription id
@@ -136,7 +136,7 @@ describe("req", () => {
   });
 
   it("should mark events with their source relay", async () => {
-    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
     await server.connected;
 
     // Send EVENT message
@@ -150,7 +150,7 @@ describe("req", () => {
   });
 
   it("should error subscription when CLOSED message is received", async () => {
-    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }), { expectErrors: true });
     await server.connected;
 
     // Send CLOSED message for the subscription
@@ -161,7 +161,7 @@ describe("req", () => {
   });
 
   it("should not send multiple REQ messages for multiple subscriptions", async () => {
-    const sub = relay.req([{ kinds: [1] }], "sub1");
+    const sub = relay.req([{ kinds: [1] }], { id: "sub1" });
     sub.subscribe();
     sub.subscribe();
     sub.subscribe();
@@ -181,7 +181,7 @@ describe("req", () => {
 
   it("should wait for authentication if relay responds with auth-required", async () => {
     // First subscription to trigger auth-required
-    const firstSub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
+    const firstSub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }), { expectErrors: true });
     await server.nextMessage;
 
     // Send CLOSED message with auth-required reason
@@ -192,7 +192,7 @@ describe("req", () => {
     await server.nextMessage;
 
     // Create a second subscription that should wait for auth
-    const secondSub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub2"), { expectErrors: true });
+    const secondSub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub2" }), { expectErrors: true });
 
     // Verify no REQ message was sent yet (waiting for auth)
     expect(server).not.toHaveReceivedMessages(["REQ", "sub2", { kinds: [1] }]);
@@ -212,7 +212,7 @@ describe("req", () => {
   });
 
   it("should throw error if relay closes connection with error", async () => {
-    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }), { expectErrors: true });
     await server.connected;
 
     // Send CLOSE message with error
@@ -232,7 +232,7 @@ describe("req", () => {
     // @ts-expect-error
     relay._ready$.next(false);
 
-    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }), { expectErrors: true });
 
     // Fast-forward time by 20 seconds
     await vi.advanceTimersByTimeAsync(20000);
@@ -246,7 +246,7 @@ describe("req", () => {
     // @ts-expect-error
     relay._ready$.next(false);
 
-    subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
 
     // Wait 10ms to ensure the relay didn't receive anything
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -261,7 +261,7 @@ describe("req", () => {
 
   it("should wait for filters if filters are provided as an observable", async () => {
     const filters = new Subject<Filter | Filter[]>();
-    subscribeSpyTo(relay.req(filters, "sub1"));
+    subscribeSpyTo(relay.req(filters, { id: "sub1" }));
 
     // Wait 10sm and ensure no messages were sent yet
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -276,7 +276,7 @@ describe("req", () => {
 
   it("should update filters if filters are provided as an observable", async () => {
     const filters = new Subject<Filter | Filter[]>();
-    subscribeSpyTo(relay.req(filters, "sub1"));
+    subscribeSpyTo(relay.req(filters, { id: "sub1" }));
 
     // Send REQ message with filters
     filters.next([{ kinds: [1] }]);
@@ -295,7 +295,7 @@ describe("req", () => {
 
   it("should complete if filters are provided as an observable that completes", async () => {
     const filters = new Subject<Filter | Filter[]>();
-    const sub = subscribeSpyTo(relay.req(filters, "sub1"));
+    const sub = subscribeSpyTo(relay.req(filters, { id: "sub1" }));
 
     // Send REQ message with filters
     filters.next([{ kinds: [1] }]);
@@ -309,7 +309,7 @@ describe("req", () => {
   });
 
   it("should complete observable when relay closes connection", async () => {
-    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"));
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
     await server.connected;
 
     // Send CLOSE message
@@ -319,7 +319,7 @@ describe("req", () => {
   });
 
   it("should error observable when relay closes connection with error", async () => {
-    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1"), { expectErrors: true });
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }), { expectErrors: true });
     await server.connected;
 
     // Send an error
@@ -333,7 +333,7 @@ describe("req", () => {
   });
 
   it("should reconnect when repeat operator is used", async () => {
-    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], "sub1").pipe(repeat()));
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }).pipe(repeat()));
 
     // First connection
     await server.connected;
