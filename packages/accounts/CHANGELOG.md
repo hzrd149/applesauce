@@ -1,5 +1,17 @@
 # applesauce-accounts
 
+## 5.2.0
+
+### Minor Changes
+
+- 5f152fc: Add `AndroidNativeAccount` that depends on `nostr-signer-capacitor-plugin`
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-signers@5.2.0
+  - applesauce-core@5.2.0
+
 ## 5.1.0
 
 ### Patch Changes
