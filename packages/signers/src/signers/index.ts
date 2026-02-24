@@ -7,3 +7,6 @@ export * from "./readonly-signer.js";
 export * from "./serial-port-signer.js";
 export * from "./private-key-signer.js";
 export * from "./simple-signer.js";
+
+// IMPORTANT: do not export android-native-signer since it relies on a optional dependency
+// export * from './android-native-signer.js'

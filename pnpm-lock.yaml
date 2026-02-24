@@ -393,6 +393,10 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.0.16(@types/node@22.19.3)(@vitest/browser-playwright@4.0.16)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
+    optionalDependencies:
+      nostr-signer-capacitor-plugin:
+        specifier: ^0.0.5
+        version: 0.0.5(@capacitor/core@7.5.0)
 
   packages/actions:
     dependencies:
@@ -749,6 +753,10 @@ importers:
       vitest-websocket-mock:
         specifier: ^0.5.0
         version: 0.5.0(vitest@4.0.16)
+    optionalDependencies:
+      nostr-signer-capacitor-plugin:
+        specifier: ^0.0.5
+        version: 0.0.5(@capacitor/core@7.5.0)
 
   packages/sqlite:
     dependencies:
@@ -1004,6 +1012,9 @@ packages:
   '@bcoe/v8-coverage@1.0.2':
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
+
+  '@capacitor/core@7.5.0':
+    resolution: {integrity: sha512-4Y4trISe2Bp3lwsoGFoQIvgX4hiZO8S1Slmbz6oFaMxAuEc4noipQGCQx974PF4glwVVe/8+H3P9iEmCXtrUgA==}
 
   '@cashu/cashu-ts@3.1.1':
     resolution: {integrity: sha512-FEkG42XL/GJBRy92T/+5TursXQL5eSNdyWZ2ZHdFpZ3O9aDr8jwIbIjaORqnU36R0X2h+7KyUzMUyLY+NMZJ2A==}
@@ -4258,6 +4269,11 @@ packages:
   nostr-idb@4.0.1:
     resolution: {integrity: sha512-muvrjGri55Z/d8yyp4WCgztlW00wdL//+nzhPEjbL/eg4gFgWxMdKAxTCnPDJjRoBPQJiNH1Ii7aNDznLeVIVA==}
 
+  nostr-signer-capacitor-plugin@0.0.5:
+    resolution: {integrity: sha512-/EvqWz71HZ5cWmzvfXWTm48AWZtbeZDbOg3vLwXyXPjnIp1DR7Wurww/Mo41ORNu1DNPlqH20l7kIXKO6vR5og==}
+    peerDependencies:
+      '@capacitor/core': ^7.0.0
+
   nostr-social-graph@1.0.33:
     resolution: {integrity: sha512-wZyQYy3QaBrYWyO2tWzMt2f+sGvM811SVJ/IE7+8/KyuYZzlgOa9XYBqu6eKX+r8fcNVzHqbGe7In1ME2to6Dw==}
 
@@ -5845,6 +5861,11 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@bcoe/v8-coverage@1.0.2': {}
+
+  '@capacitor/core@7.5.0':
+    dependencies:
+      tslib: 2.8.1
+    optional: true
 
   '@cashu/cashu-ts@3.1.1':
     dependencies:
@@ -9508,6 +9529,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
       - typescript
+
+  nostr-signer-capacitor-plugin@0.0.5(@capacitor/core@7.5.0):
+    dependencies:
+      '@capacitor/core': 7.5.0
+    optional: true
 
   nostr-social-graph@1.0.33:
     dependencies:
