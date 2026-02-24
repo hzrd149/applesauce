@@ -195,9 +195,6 @@ importers:
       pastellify:
         specifier: ^0.1.4
         version: 0.1.4
-      prismjs:
-        specifier: ^1.30.0
-        version: 1.30.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -262,9 +259,6 @@ importers:
       '@types/parse-torrent':
         specifier: ^5.8.8
         version: 5.8.8
-      '@types/prismjs':
-        specifier: ^1.26.5
-        version: 1.26.5
       '@types/react':
         specifier: ^18.3.27
         version: 18.3.27
@@ -2376,9 +2370,6 @@ packages:
 
   '@types/parse-torrent@5.8.8':
     resolution: {integrity: sha512-CInK3z3BxMXUeO/UiUeSfpQ0CkjOAWZUCUigVn3ZkppeLZTm32/TepolcxzgYuk6q3z91gdWsmOW2S6fYx326w==}
-
-  '@types/prismjs@1.26.5':
-    resolution: {integrity: sha512-AUZTa7hQ2KY5L7AmtSiqxlhWxb4ina0yd8hNbl4TWuqnv/pFP0nDMb3YrfSBf4hJVGLh2YEIBfKaBW/9UEl6IQ==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -4520,10 +4511,6 @@ packages:
     resolution: {integrity: sha512-yEPsovQfpxYfgWNhCfECjG5AQaO+K3dp6XERmOepyPDVqcJm+bjyCVO3pmU+nAPe0N5dDvekfGezt/EIiRe1TA==}
     engines: {node: '>=14'}
     hasBin: true
-
-  prismjs@1.30.0:
-    resolution: {integrity: sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw==}
-    engines: {node: '>=6'}
 
   process-warning@5.0.0:
     resolution: {integrity: sha512-a39t9ApHNx2L4+HBnQKqxxHNs1r7KF+Intd8Q/g1bUh6q0WIp9voPXJ/x0j+ZL45KF1pJd9+q2jLIRMfvEshkA==}
@@ -7241,8 +7228,6 @@ snapshots:
       '@types/node': 22.19.3
       '@types/parse-torrent-file': 4.0.6
 
-  '@types/prismjs@1.26.5': {}
-
   '@types/prop-types@15.7.15': {}
 
   '@types/qrcode-terminal@0.12.2': {}
@@ -9842,8 +9827,6 @@ snapshots:
   prettier@2.8.8: {}
 
   prettier@3.8.0: {}
-
-  prismjs@1.30.0: {}
 
   process-warning@5.0.0: {}
 

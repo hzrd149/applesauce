@@ -160,13 +160,11 @@ export type GroupRequestOptions = RelayRequestOptions & {
   complete?: GroupRequestCompleteOperator;
 };
 
-/** Internal req status message for the relays a group is sending REQ to */
-export type GroupReqRelaysMessage = { type: "RELAYS"; relays: string[] };
 /** The message that is emitted when the group receives an error message from the relay observable */
-export type GroupReqErrorMessage = { type: "ERROR"; relay: string; error: unknown };
+export type GroupReqErrorMessage = { type: "ERROR"; from: string; error: unknown };
 
 /** The response messages from a relay group subscription */
-export type GroupReqMessage = RelayReqMessage | GroupReqRelaysMessage | GroupReqErrorMessage;
+export type GroupReqMessage = RelayReqMessage | GroupReqErrorMessage;
 
 /** A operator that determines when a group request should complete. truthy values are considered complete */
 export type GroupRequestCompleteOperator = OperatorFunction<GroupReqMessage, any>;

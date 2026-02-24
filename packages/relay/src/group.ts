@@ -24,6 +24,7 @@ import {
   switchMap,
   take,
   timeout,
+  timer,
   toArray,
 } from "rxjs";
 import { type ReconcileFunction } from "./negentropy.js";
@@ -37,7 +38,7 @@ import {
   GroupReqErrorMessage,
   GroupReqMessage,
   GroupReqOptions,
-  GroupReqRelaysMessage,
+  GroupRequestCompleteOperator,
   GroupRequestOptions,
   GroupSubscriptionOptions,
   NegentropyReadStore,
@@ -141,15 +142,13 @@ export class RelayGroup {
 
           const observable: Observable<GroupReqMessage> = project(relay).pipe(
             // Catch connection errors and return ERROR
-            catchError((err) => of({ type: "ERROR", relay: relay.url, error: err } as GroupReqErrorMessage)),
+            catchError((err) => of({ type: "ERROR", from: relay.url, error: err } satisfies GroupReqErrorMessage)),
           );
           observables.push(observable);
           upstream.set(relay, observable);
         }
 
-        return merge(...observables).pipe(
-          startWith({ type: "RELAYS", relays: this.relays.map((relay) => relay.url) } as GroupReqRelaysMessage),
-        );
+        return merge(...observables);
       }),
       // Ensure a single upstream subscription
       // NOTE: this is required because the complete operator will subscribe many times to this
@@ -234,6 +233,9 @@ export class RelayGroup {
 
   /** Request events from all relays and complete based on condition */
   request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent> {
+    // TODO: need to find a friendly way to make this default customizable
+    const complete = opts?.complete ?? RelayGroup.completeAfterFirstRelay(5_000);
+
     return this.internalSubscription(
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
@@ -244,7 +246,7 @@ export class RelayGroup {
         ),
     ).pipe(
       // Add the completion condition if provided
-      opts?.complete ? completeWhen(opts.complete) : identity,
+      complete ? completeWhen(complete) : identity,
       // Add request timeout
       timeout({ first: opts?.timeout ?? 30_000 }),
       // Filter only for event messages
@@ -302,5 +304,36 @@ export class RelayGroup {
       // Only create one upstream subscription
       share(),
     );
+  }
+
+  /**
+   * Creates a complete condition that waits for the first EOSE message from a relay and then starts a timeout for the remaining relays
+   * @param timeout - The timeout in milliseconds for the remaining relays
+   */
+  static completeAfterFirstRelay(timeout = 5_000): GroupRequestCompleteOperator {
+    return (source) =>
+      // Listen for first EOSE message from a relay
+      source.pipe(filter((m) => m.type === "EOSE")).pipe(
+        // Ignore all other EOSE messages
+        take(1),
+        // Start a timeout for the remaining relays
+        switchMap(() => timer(timeout)),
+        // Emit true when the timeout completes
+        map(() => true),
+      );
+  }
+
+  /**
+   * Creates a {@link GroupRequestCompleteOperator} that waits for all relays to send an EOSE message or timeout
+   */
+  static completeOnAllEose(): GroupRequestCompleteOperator {
+    return (source) =>
+      source.pipe(
+        filter((message) => message.type === "OPEN" || message.type === "EOSE" || message.type === "ERROR"),
+        // Accumulate the relay status messages
+        scan((acc, message) => acc.set(message.from, message.type), new Map<string, "EOSE" | "ERROR" | "OPEN">()),
+        // Emit true when all relays are no longer OPEN
+        map((all) => Array.from(all.values()).every((t) => t !== "OPEN")),
+      );
   }
 }

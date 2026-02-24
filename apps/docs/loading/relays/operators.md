@@ -126,59 +126,6 @@ relay
   });
 ```
 
-## toEventStore
-
-The `toEventStore` operator adds all events to an `EventStore`, removes duplicates, and returns a sorted array of events when the EOSE message is received. This is perfect for fetching and processing a complete set of events.
-
-:::warning
-This operator is deprecated. It's recommended to use the `mapEventsToStore` and `mapEventsToTimeline` operators from `applesauce-core/observable` instead.
-:::
-
-```typescript
-import { toEventStore } from "applesauce-relay/operators";
-import { EventStore } from "applesauce-core";
-import { lastValueFrom } from "rxjs";
-
-// Create an event store
-const eventStore = new EventStore();
-
-// Fetch events, deduplicate, and sort them
-const timeline = await lastValueFrom(
-  relay
-    .req({
-      kinds: [1],
-      limit: 10,
-    })
-    .pipe(toEventStore(eventStore)),
-);
-
-console.log(`Received ${timeline.length} unique events`);
-```
-
-### Recommended alternative
-
-```typescript
-import { mapEventsToStore, mapEventsToTimeline } from "applesauce-core/observable";
-import { completeOnEose } from "applesauce-relay/operators";
-import { EventStore } from "applesauce-core";
-import { lastValueFrom } from "rxjs";
-
-// Create an event store
-const eventStore = new EventStore();
-
-// Fetch events, deduplicate, and sort them
-const timeline = await lastValueFrom(
-  relay
-    .req({
-      kinds: [1],
-      limit: 10,
-    })
-    .pipe(completeOnEose(), mapEventsToStore(eventStore, true), mapEventsToTimeline()),
-);
-
-console.log(`Received ${timeline.length} unique events`);
-```
-
 ## Combining Operators
 
 These operators can be combined to create powerful data processing pipelines:

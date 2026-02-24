@@ -641,7 +641,7 @@ export class Relay {
         // Add to tracking when REQ is sent
         this.reqs$.next({ ...this.reqs$.value, [id]: filters });
 
-        return { type: "OPEN", id, filters } as RelayReqOpenMessage;
+        return { type: "OPEN", id, filters, from: this.url } satisfies RelayReqOpenMessage;
       }),
       // Send the CLOSE message when unsubscribed or input completes
       finalize(() => {
