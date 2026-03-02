@@ -105,7 +105,9 @@ export function includeEmojis(emojis?: Emoji[]): EventOperation {
       const emoji = all.find((e) => e.shortcode === name);
 
       if (emoji?.url) {
-        tags.push(["emoji", emoji.shortcode, emoji.url]);
+        tags.push(emoji.address
+          ? ["emoji", emoji.shortcode, emoji.url, emoji.address]
+          : ["emoji", emoji.shortcode, emoji.url]);
       }
     }
 

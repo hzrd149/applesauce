@@ -114,6 +114,33 @@ describe("NoteBlueprint", () => {
     );
   });
 
+  it("should include emoji address in emoji tags when provided", async () => {
+    expect(
+      await factory.create(NoteBlueprint, "building :nostrudel:", {
+        emojis: [
+          {
+            shortcode: "nostrudel",
+            url: "https://cdn.hzrd149.com/303f018e613f29e3e43264529903b7c8c84debbd475f89368cb293ec23938981.png",
+            address: "30030:266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5:nostrudel-emojis",
+          },
+        ],
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        kind: 1,
+        content: "building :nostrudel:",
+        tags: [
+          [
+            "emoji",
+            "nostrudel",
+            "https://cdn.hzrd149.com/303f018e613f29e3e43264529903b7c8c84debbd475f89368cb293ec23938981.png",
+            "30030:266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5:nostrudel-emojis",
+          ],
+        ],
+      }),
+    );
+  });
+
   it("should include client tag", async () => {
     const factory = new EventFactory({
       client: {

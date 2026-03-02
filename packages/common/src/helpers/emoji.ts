@@ -6,6 +6,8 @@ export type Emoji = {
   shortcode: string;
   /** The URL to the emoji image */
   url: string;
+  /** The NIP-01 "a" tag address of the emoji pack this emoji belongs to */
+  address?: string;
 };
 
 /** Gets an "emoji" tag that matches an emoji code */
@@ -25,10 +27,9 @@ export function getEmojiFromTags(event: { tags: string[][] } | string[][], code:
   const tag = getEmojiTag(event, code);
   if (!tag) return undefined;
 
-  return {
-    shortcode: tag[1],
-    url: tag[2],
-  };
+  return tag[3]
+    ? { shortcode: tag[1], url: tag[2], address: tag[3] }
+    : { shortcode: tag[1], url: tag[2] };
 }
 
 /** Returns the name of a NIP-30 emoji pack */
@@ -40,7 +41,10 @@ export function getPackName(pack: NostrEvent): string | undefined {
 export function getEmojis(pack: NostrEvent): Emoji[] {
   return pack.tags
     .filter((t) => t[0] === "emoji" && t[1] && t[2])
-    .map((t) => ({ shortcode: t[1] as string, url: t[2] as string }));
+    .map((t) => t[3]
+      ? { shortcode: t[1] as string, url: t[2] as string, address: t[3] }
+      : { shortcode: t[1] as string, url: t[2] as string },
+    );
 }
 
 /** Returns the custom emoji for a reaction event */

@@ -45,6 +45,8 @@ export type Emoji = {
   shortcode: string;
   /** The URL to the emoji image */
   url: string;
+  /** The NIP-01 "a" tag address of the emoji pack this emoji belongs to */
+  address?: string;
 };
 
 export interface EmojiContext {

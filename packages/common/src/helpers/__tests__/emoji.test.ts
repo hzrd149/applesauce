@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getEmojiTag, getReactionEmoji } from "../emoji.js";
+import { getEmojiFromTags, getEmojiTag, getEmojis, getReactionEmoji } from "../emoji.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
 
 const user = new FakeUser();
@@ -30,6 +30,57 @@ describe("getEmojiTag", () => {
         "CustoM",
       ),
     ).toEqual(["emoji", "custom", "https://cdn.example.com/reaction1.png"]);
+  });
+});
+
+describe("getEmojiFromTags", () => {
+  it("returns emoji without address when tag has no address", () => {
+    const tags = [["emoji", "custom", "https://cdn.example.com/custom.png"]];
+    expect(getEmojiFromTags(tags, "custom")).toEqual({
+      shortcode: "custom",
+      url: "https://cdn.example.com/custom.png",
+    });
+  });
+
+  it("returns emoji with address when tag includes address", () => {
+    const tags = [["emoji", "custom", "https://cdn.example.com/custom.png", "30030:pubkey:pack-id"]];
+    expect(getEmojiFromTags(tags, "custom")).toEqual({
+      shortcode: "custom",
+      url: "https://cdn.example.com/custom.png",
+      address: "30030:pubkey:pack-id",
+    });
+  });
+});
+
+describe("getEmojis", () => {
+  it("returns emojis without address when tags have no address", () => {
+    const pack = user.event({
+      kind: 30030,
+      tags: [
+        ["emoji", "heart", "https://cdn.example.com/heart.png"],
+        ["emoji", "star", "https://cdn.example.com/star.png"],
+      ],
+      content: "",
+    });
+    expect(getEmojis(pack)).toEqual([
+      { shortcode: "heart", url: "https://cdn.example.com/heart.png" },
+      { shortcode: "star", url: "https://cdn.example.com/star.png" },
+    ]);
+  });
+
+  it("returns emojis with address when tags include address", () => {
+    const pack = user.event({
+      kind: 30030,
+      tags: [
+        ["emoji", "heart", "https://cdn.example.com/heart.png", "30030:pubkey:my-pack"],
+        ["emoji", "star", "https://cdn.example.com/star.png"],
+      ],
+      content: "",
+    });
+    expect(getEmojis(pack)).toEqual([
+      { shortcode: "heart", url: "https://cdn.example.com/heart.png", address: "30030:pubkey:my-pack" },
+      { shortcode: "star", url: "https://cdn.example.com/star.png" },
+    ]);
   });
 });
 
