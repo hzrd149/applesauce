@@ -43,11 +43,11 @@ describe("getEmojiFromTags", () => {
   });
 
   it("returns emoji with address when tag includes address", () => {
-    const tags = [["emoji", "custom", "https://cdn.example.com/custom.png", "30030:pubkey:pack-id"]];
+    const tags = [["emoji", "custom", "https://cdn.example.com/custom.png", `30030:${user.pubkey}:pack-id`]];
     expect(getEmojiFromTags(tags, "custom")).toEqual({
       shortcode: "custom",
       url: "https://cdn.example.com/custom.png",
-      address: "30030:pubkey:pack-id",
+      address: { kind: 30030, pubkey: user.pubkey, identifier: "pack-id" },
     });
   });
 });
@@ -72,13 +72,13 @@ describe("getEmojis", () => {
     const pack = user.event({
       kind: 30030,
       tags: [
-        ["emoji", "heart", "https://cdn.example.com/heart.png", "30030:pubkey:my-pack"],
+        ["emoji", "heart", "https://cdn.example.com/heart.png", `30030:${user.pubkey}:my-pack`],
         ["emoji", "star", "https://cdn.example.com/star.png"],
       ],
       content: "",
     });
     expect(getEmojis(pack)).toEqual([
-      { shortcode: "heart", url: "https://cdn.example.com/heart.png", address: "30030:pubkey:my-pack" },
+      { shortcode: "heart", url: "https://cdn.example.com/heart.png", address: { kind: 30030, pubkey: user.pubkey, identifier: "my-pack" } },
       { shortcode: "star", url: "https://cdn.example.com/star.png" },
     ]);
   });
