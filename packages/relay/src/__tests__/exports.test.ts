@@ -20,7 +20,6 @@ describe("exports", () => {
         "onlyEvents",
         "reverseSwitchMap",
         "storeEvents",
-        "toEventStore",
       ]
     `);
   });
