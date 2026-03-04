@@ -1,5 +1,16 @@
 # applesauce-signer
 
+## 5.2.0
+
+### Minor Changes
+
+- 5f152fc: Add `AndroidNativeSigner` that depends on `nostr-signer-capacitor-plugin`
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@5.2.0
+
 ## 5.1.0
 
 ### Minor Changes
