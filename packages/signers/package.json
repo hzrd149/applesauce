@@ -65,6 +65,9 @@
     "vitest": "^4.0.15",
     "vitest-websocket-mock": "^0.5.0"
   },
+  "optionalDependencies": {
+    "nostr-signer-capacitor-plugin": "^0.0.5"
+  },
   "funding": {
     "type": "lightning",
     "url": "lightning:nostrudel@geyser.fund"
