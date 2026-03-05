@@ -17,6 +17,7 @@ describe("exports", () => {
         "firstValueFrom",
         "getObservableValue",
         "ignoreBlacklistedRelays",
+        "ignoreDeadRelays",
         "includeFallbackRelays",
         "includeMailboxes",
         "lastValueFrom",
