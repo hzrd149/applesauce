@@ -73,7 +73,7 @@ export type RelayReqEventMessage = { type: "EVENT"; from: string; id: string; ev
 /** Internal type emitted when the relay sends an EOSE message */
 export type RelayReqEoseMessage = { type: "EOSE"; from: string; id: string };
 /** Internal type emitted when the relay sends a CLOSED message */
-export type RelayReqClosedMessage = { type: "CLOSED"; from: string; id: string };
+export type RelayReqClosedMessage = { type: "CLOSED"; from: string; id: string; reason: string };
 
 /** Internal type emitted from a REQ subscription to a relay */
 export type RelayReqMessage = RelayReqOpenMessage | RelayReqEventMessage | RelayReqEoseMessage | RelayReqClosedMessage;
