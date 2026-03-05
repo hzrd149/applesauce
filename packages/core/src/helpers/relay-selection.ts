@@ -72,8 +72,8 @@ export function selectOptimalRelays(
         if (!user.relays || !user.relays.includes(relay)) return true;
 
         // Increment user relay count
-        let count = selectionCount.get(user.pubkey) || 0;
-        selectionCount.set(user.pubkey, count++);
+        const count = (selectionCount.get(user.pubkey) || 0) + 1;
+        selectionCount.set(user.pubkey, count);
 
         // Remove the user if their relay has been selected more than maxRelaysPerUser times
         if (count >= maxRelaysPerUser) return false;
