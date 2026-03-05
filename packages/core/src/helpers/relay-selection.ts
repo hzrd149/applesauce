@@ -131,6 +131,56 @@ export function groupPubkeysByRelay(pointers: ProfilePointer[]): OutboxMap {
   return outbox;
 }
 
+export type SelectRelaysPerAuthorOptions = {
+  /** Maximum number of relays to select per user */
+  maxRelaysPerUser: number;
+  /** Custom priority function for calculating relay scores */
+  score?: (relay: string, coverage: number, popularity: number) => number;
+};
+
+/**
+ * Selects relays independently per author: for each user, score their relays
+ * and take the top N. Unlike {@link selectOptimalRelays} (greedy set-cover),
+ * this function doesn't optimize for global relay count — it's suited for
+ * stochastic scoring strategies like Thompson sampling where each call draws
+ * a fresh random sample.
+ */
+export function selectRelaysPerAuthor(
+  users: ProfilePointer[],
+  { maxRelaysPerUser, score }: SelectRelaysPerAuthorOptions,
+): ProfilePointer[] {
+  // Build popularity map (number of users per relay)
+  const popular = new Map<string, number>();
+  for (const user of users) {
+    if (!user.relays) continue;
+    for (const relay of user.relays) popular.set(relay, (popular.get(relay) || 0) + 1);
+  }
+
+  const totalUsersWithRelays = users.filter((u) => u.relays && u.relays.length > 0).length;
+
+  return users.map((user) => {
+    if (!user.relays || user.relays.length === 0) return user;
+
+    // Score each relay
+    const scored = user.relays.map((relay) => {
+      const coverage = totalUsersWithRelays > 0 ? (popular.get(relay) ?? 0) / totalUsersWithRelays : 0;
+      const popularity = popular.get(relay) ?? 0;
+      const relayScore = score ? score(relay, coverage, popularity) : coverage;
+      return { relay, score: relayScore };
+    });
+
+    // Sort by score descending, tie-break by URL ascending for determinism
+    scored.sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      return a.relay < b.relay ? -1 : a.relay > b.relay ? 1 : 0;
+    });
+
+    // Take top N
+    const selected = scored.slice(0, maxRelaysPerUser).map((s) => s.relay);
+    return { ...user, relays: selected };
+  });
+}
+
 /** Alias for {@link groupPubkeysByRelay} */
 export const createOutboxMap = groupPubkeysByRelay;
 
