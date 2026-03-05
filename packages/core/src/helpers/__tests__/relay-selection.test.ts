@@ -18,17 +18,30 @@ describe("selectOptimalRelays", () => {
         maxRelaysPerUser: 2,
       });
 
-      // Alice should have at most 2 relays in the final result
-      // (the bug caused selectionCount to never increment, so maxRelaysPerUser was never enforced)
+      // Alice should have at most 2 relays in the returned result
       const alice = result.find((u) => u.pubkey === "alice");
       expect(alice).toBeDefined();
-      // The selected relays for alice should be <=2 (the limit)
-      // Note: selectOptimalRelays filters the original user's relays by the
-      // global selection set, so alice may end up with more relays in the output
-      // if more than 2 of her relays were globally selected. The enforcement
-      // is that alice is removed from the _pool_ after 2 selections, meaning
-      // her remaining relays don't contribute to coverage scoring.
+      expect(alice!.relays!.length).toBeLessThanOrEqual(2);
       expect(alice!.relays!.length).toBeGreaterThan(0);
+    });
+
+    it("should cap returned relays per user even when more are globally selected", () => {
+      // All 3 of alice's relays will be globally selected (each covers a unique user).
+      // With maxRelaysPerUser=2, the output must still cap alice at 2.
+      const users = [
+        { pubkey: "alice", relays: ["wss://r1/", "wss://r2/", "wss://r3/"] },
+        { pubkey: "bob", relays: ["wss://r1/"] },
+        { pubkey: "carol", relays: ["wss://r2/"] },
+        { pubkey: "dave", relays: ["wss://r3/"] },
+      ];
+
+      const result = selectOptimalRelays(users, {
+        maxConnections: 10,
+        maxRelaysPerUser: 2,
+      });
+
+      const alice = result.find((u) => u.pubkey === "alice");
+      expect(alice!.relays!.length).toBeLessThanOrEqual(2);
     });
 
     it("should keep users in pool when under the limit", () => {

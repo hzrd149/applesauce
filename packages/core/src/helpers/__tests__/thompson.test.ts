@@ -179,13 +179,15 @@ describe("createFixedThompsonScore", () => {
     expect(popular).toBeGreaterThan(unpopular);
   });
 
-  it("should fall back to rng() for unknown relays", () => {
+  it("should lazily sample and cache unknown relays for determinism", () => {
     const relays = ["wss://known/"];
     const score = createFixedThompsonScore(relays, { rng: mulberry32(42) });
 
-    // Unknown relay should still return a valid score
-    const val = score("wss://unknown/", 0.5, 0);
-    expect(val).toBeGreaterThanOrEqual(0);
-    expect(val).toBeLessThanOrEqual(1);
+    // Unknown relay: first call samples and caches, second call returns same value
+    const first = score("wss://unknown/", 0.5, 0);
+    const second = score("wss://unknown/", 0.5, 0);
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(first).toBeLessThanOrEqual(1);
+    expect(first).toBe(second);
   });
 });

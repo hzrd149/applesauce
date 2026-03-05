@@ -25,5 +25,5 @@ export function OutboxModel(user: string | ProfilePointer, opts: OutboxModelOpti
 
 OutboxModel.getKey = (user: string | ProfilePointer, opts: OutboxModelOptions) => {
   const p = typeof user === "string" ? user : user.pubkey;
-  return hash_sum([p, opts.type, opts.maxConnections, opts.maxRelaysPerUser]);
+  return hash_sum([p, opts.type, opts.maxConnections, opts.maxRelaysPerUser, opts.score]);
 };

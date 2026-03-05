@@ -89,7 +89,16 @@ export function createFixedThompsonScore(
   }
 
   return (relay: string, _coverage: number, popularity: number): number => {
-    const base = sampledScores.get(relay) ?? rng();
+    let base = sampledScores.get(relay);
+    if (base === undefined) {
+      // Unknown relay: sample once and cache for determinism within this run
+      const prior = priors?.get(relay);
+      const sample = prior ? sampleBeta(prior.alpha, prior.beta, rng) : sampleBeta(1, 1, rng);
+      const latMs = latencies?.get(relay);
+      const discount = latMs !== undefined ? 1 / (1 + latMs / 1000) : 1.0;
+      base = sample * discount;
+      sampledScores.set(relay, base);
+    }
     const popWeight = usePopularity && popularity > 0 ? 1 + Math.log(popularity) : 1.0;
     return popWeight * base;
   };
