@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createThompsonScore } from "../thompson.js";
+import { createThompsonScore, createFixedThompsonScore } from "../thompson.js";
 
 // Seeded PRNG (mulberry32)
 function mulberry32(seed: number): () => number {
@@ -112,6 +112,79 @@ describe("createThompsonScore", () => {
 
     // Unknown relay should still produce a valid score (uniform prior)
     const val = score("wss://unknown/", 0.5, 5);
+    expect(val).toBeGreaterThanOrEqual(0);
+    expect(val).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("createFixedThompsonScore", () => {
+  it("should return deterministic scores for the same relay across calls", () => {
+    const rng = mulberry32(42);
+    const relays = ["wss://r1/", "wss://r2/", "wss://r3/"];
+    const score = createFixedThompsonScore(relays, { rng });
+
+    const first = score("wss://r1/", 0.5, 10);
+    const second = score("wss://r1/", 0.5, 10);
+    expect(first).toBe(second);
+  });
+
+  it("should produce different scores across different relays", () => {
+    const rng = mulberry32(42);
+    const relays = ["wss://r1/", "wss://r2/"];
+    const score = createFixedThompsonScore(relays, { rng });
+
+    const s1 = score("wss://r1/", 0.5, 10);
+    const s2 = score("wss://r2/", 0.5, 10);
+    // Very unlikely to be equal with different random draws
+    expect(s1).not.toBe(s2);
+  });
+
+  it("should produce different configurations across separate instantiations", () => {
+    const relays = ["wss://r1/", "wss://r2/", "wss://r3/"];
+
+    const score1 = createFixedThompsonScore(relays, { rng: mulberry32(1) });
+    const score2 = createFixedThompsonScore(relays, { rng: mulberry32(2) });
+
+    // Different seeds → different pre-sampled scores → different relay orderings
+    const s1 = score1("wss://r1/", 0.5, 10);
+    const s2 = score2("wss://r1/", 0.5, 10);
+    expect(s1).not.toBe(s2);
+  });
+
+  it("should apply latency discount in pre-sampling", () => {
+    const relays = ["wss://fast/", "wss://slow/"];
+    const latencies = new Map([
+      ["wss://fast/", 100],
+      ["wss://slow/", 5000],
+    ]);
+
+    // Use a fixed rng so Beta samples are identical → difference is purely latency
+    const score = createFixedThompsonScore(relays, {
+      rng: () => 0.5,
+      latencies,
+    });
+
+    expect(score("wss://fast/", 0, 0)).toBeGreaterThan(score("wss://slow/", 0, 0));
+  });
+
+  it("should apply popularity weight when usePopularity=true", () => {
+    const relays = ["wss://r1/"];
+    const score = createFixedThompsonScore(relays, {
+      rng: mulberry32(42),
+      usePopularity: true,
+    });
+
+    const popular = score("wss://r1/", 0, 100);
+    const unpopular = score("wss://r1/", 0, 1);
+    expect(popular).toBeGreaterThan(unpopular);
+  });
+
+  it("should fall back to rng() for unknown relays", () => {
+    const relays = ["wss://known/"];
+    const score = createFixedThompsonScore(relays, { rng: mulberry32(42) });
+
+    // Unknown relay should still return a valid score
+    const val = score("wss://unknown/", 0.5, 0);
     expect(val).toBeGreaterThanOrEqual(0);
     expect(val).toBeLessThanOrEqual(1);
   });

@@ -51,6 +51,7 @@ describe("exports", () => {
         "createETagFromEventPointer",
         "createETagWithMarkerFromEventPointer",
         "createFilterMap",
+        "createFixedThompsonScore",
         "createOutboxMap",
         "createPTagFromProfilePointer",
         "createQTagFromEventPointer",
