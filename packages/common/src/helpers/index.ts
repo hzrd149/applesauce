@@ -36,3 +36,4 @@ export * from "./wrapped-messages.js";
 export * from "./zap.js";
 export * from "./zap-goal.js";
 export * from "./relay-list.js";
+export * from "./trusted-assertions.js";

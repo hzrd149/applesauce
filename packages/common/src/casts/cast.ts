@@ -1,6 +1,7 @@
 import { EventModels, IEventStoreStreams, IEventSubscriptions } from "applesauce-core/event-store";
 import { getSeenRelays } from "applesauce-core/helpers";
 import { getEventUID, getParentEventStore, NostrEvent } from "applesauce-core/helpers/event";
+import { isHexKey } from "applesauce-core/helpers/string";
 import { Observable } from "rxjs";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { castUser } from "./user.js";
@@ -83,6 +84,64 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
     if (this.#refs[key]) return this.#refs[key] as ChainableObservable<Return>;
 
     // Build a new observable and cache it
+    const observable = chainable(builder(this.store));
+    this.#refs[key] = observable;
+    return observable;
+  }
+}
+
+/** A constructor type for {@link PubkeyCast} subclasses */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type PubkeyCastConstructor<C extends PubkeyCast> = (new (
+  pubkey: string,
+  store: CastRefEventStore,
+  ...args: any[]
+) => C) & {
+  cache: Map<string, C>;
+};
+
+/**
+ * Cast a pubkey to a specific class instance.
+ * Works like {@link castUser} — returns a cached singleton per pubkey+args combination.
+ */
+export function castPubkey<C extends PubkeyCast>(
+  pubkey: string,
+  cls: PubkeyCastConstructor<C>,
+  store: CastRefEventStore,
+  ...args: unknown[]
+): C {
+  if (!isHexKey(pubkey)) throw new Error("Invalid pubkey");
+
+  const cacheKey = args.length > 0 ? `${pubkey}:${JSON.stringify(args)}` : pubkey;
+
+  if (!cls.cache) cls.cache = new Map();
+  const existing = cls.cache.get(cacheKey);
+  if (existing) return existing;
+
+  const instance = new cls(pubkey, store, ...args);
+  cls.cache.set(cacheKey, instance);
+  return instance;
+}
+
+/** Base class for pubkey-based casts (analogous to {@link EventCast} for events) */
+export class PubkeyCast {
+  /** A global cache of cacheKey -> instance, populated by {@link castPubkey} */
+  static cache: Map<string, PubkeyCast> = new Map();
+
+  constructor(
+    public readonly pubkey: string,
+    public readonly store: CastRefEventStore,
+  ) {}
+
+  /** A cache of observable references */
+  #refs: Record<string, ChainableObservable<unknown>> = {};
+
+  /** Internal method for creating a cached observable reference */
+  protected $$ref<Return extends unknown>(
+    key: string,
+    builder: (store: CastRefEventStore) => Observable<Return>,
+  ): ChainableObservable<Return> {
+    if (this.#refs[key]) return this.#refs[key] as ChainableObservable<Return>;
     const observable = chainable(builder(this.store));
     this.#refs[key] = observable;
     return observable;

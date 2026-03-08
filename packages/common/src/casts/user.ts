@@ -23,6 +23,7 @@ import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
+import { TRUSTED_PROVIDER_LIST_KIND } from "../helpers/trusted-assertions.js";
 import { castEventStream } from "../observable/cast-stream.js";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { type CastRefEventStore } from "./cast.js";
@@ -62,6 +63,7 @@ const Circular = {
   Bookmarks: defer(() => from(import("./bookmarks.js"))).pipe(memoize()),
   RelayLists: defer(() => from(import("./relay-lists.js"))).pipe(memoize()),
   Groups: defer(() => from(import("./groups.js"))).pipe(memoize()),
+  TrustedAssertions: defer(() => from(import("./trusted-assertions.js"))).pipe(memoize()),
 };
 
 /** A class for a user */
@@ -272,6 +274,19 @@ export class User {
               map((events) => events[0] as NostrEvent | undefined),
               castEventStream(Stream, store),
             ),
+        ),
+      ),
+    );
+  }
+
+  /** Get this user's NIP-85 trusted assertion provider list (kind 10040) */
+  get trustedProviders$() {
+    return this.$$ref("trustedProviders$", (store) =>
+      combineLatest([Circular.TrustedAssertions, this.outboxes$]).pipe(
+        switchMap(([{ TrustedProviderList }, outboxes]) =>
+          store
+            .replaceable({ kind: TRUSTED_PROVIDER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+            .pipe(castEventStream(TrustedProviderList, store)),
         ),
       ),
     );
