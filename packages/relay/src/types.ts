@@ -28,6 +28,8 @@ export interface RelayStatus {
   authRequiredForRead: boolean;
   /** Whether authentication is required for publish operations (EVENT) */
   authRequiredForPublish: boolean;
+  /** The authentication challenge string from the relay, or null if not yet received */
+  challenge: string | null;
 }
 
 export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">;

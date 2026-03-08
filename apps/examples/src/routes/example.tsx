@@ -63,7 +63,9 @@ export default function ExamplePage() {
 
     setPath(example.path.replace(/^\.\//, ""));
     example.load().then((module: any) => {
-      if (typeof module.default !== "function") throw new Error("Example must be a function");
+      if (typeof module.default !== "function") {
+        throw new Error("Example must be a function");
+      }
 
       console.log("Loaded React App", module.default);
       setComponent(() => module.default);

@@ -2,6 +2,7 @@ import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: process.env.VITE_BASE || "/",
   title: "Applesauce",
   description: "Functional Nostr SDK for building reactive web apps",
   themeConfig: {
