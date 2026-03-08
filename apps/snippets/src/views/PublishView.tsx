@@ -1,7 +1,7 @@
 import { CodeSnippetFactory } from "applesauce-common/factories";
-import { LegacyEventFactory, defined } from "applesauce-core";
+import { defined } from "applesauce-core";
 import { use$ } from "applesauce-react/hooks";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { firstValueFrom } from "rxjs";
 import { AccountDisplay, CodeEditorPanel, MetadataPanel, type FieldArrayOperations } from "../components";
@@ -60,12 +60,6 @@ export default function PublishView({ onBack, onPublishSuccess, onNavigateToSign
 
   // Derive state from active account
   const isLoggedIn = !!activeAccount;
-
-  // Create factory with active account's signer
-  const factory = useMemo(() => {
-    if (!activeAccount) return null;
-    return new LegacyEventFactory({ signer: activeAccount });
-  }, [activeAccount]);
 
   const {
     control,
@@ -182,7 +176,7 @@ export default function PublishView({ onBack, onPublishSuccess, onNavigateToSign
         return;
       }
 
-      if (!isLoggedIn || !activeAccount || !factory) {
+      if (!isLoggedIn || !activeAccount) {
         setError("Please login first");
         return;
       }

@@ -1,5 +1,5 @@
 import { castEvent, CodeSnippet } from "applesauce-common/casts";
-import { DeleteFactory, LegacyEventFactory } from "applesauce-core";
+import { DeleteFactory } from "applesauce-core";
 import { normalizeToEventPointer } from "applesauce-core/helpers/pointers";
 import { relaySet } from "applesauce-core/helpers/relays";
 import { use$ } from "applesauce-react/hooks";
@@ -8,7 +8,7 @@ import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
 import type { NostrEvent } from "nostr-tools";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { map } from "rxjs";
 
 import { AccountDisplay, UserAvatar, UserName } from "../components";
@@ -61,12 +61,6 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
 
   // Derive current user pubkey from active account
   const currentUserPubkey = activeAccount?.pubkey || null;
-
-  // Create factory with active account's signer
-  const factory = useMemo(() => {
-    if (!activeAccount) return null;
-    return new LegacyEventFactory({ signer: activeAccount });
-  }, [activeAccount]);
 
   // Load the main event
   useEffect(() => {
@@ -211,7 +205,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
   };
 
   const handleDelete = async () => {
-    if (!snippet || !activeAccount || !factory) return;
+    if (!snippet || !activeAccount) return;
 
     try {
       setIsDeleting(true);
