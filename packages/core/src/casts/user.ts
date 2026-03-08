@@ -5,34 +5,34 @@ import { Observable } from "rxjs";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
 import type { CastRefEventStore } from "./cast.js";
 
-/** Cast a Nostr event or pointer into a {@link BaseUser} */
-export function castUser(event: NostrEvent, store: CastRefEventStore): BaseUser;
-export function castUser(user: string | ProfilePointer, store: CastRefEventStore): BaseUser;
-export function castUser(user: string | ProfilePointer | NostrEvent, store: CastRefEventStore): BaseUser {
+/** Cast a Nostr event or pointer into a {@link User} */
+export function castUser(event: NostrEvent, store: CastRefEventStore): User;
+export function castUser(user: string | ProfilePointer, store: CastRefEventStore): User;
+export function castUser(user: string | ProfilePointer | NostrEvent, store: CastRefEventStore): User {
   if (isEvent(user)) {
     return castUser(user.pubkey, store);
   } else {
     const pubkey = typeof user === "string" ? user : user.pubkey;
 
     // Skip creating a new instance if this pubkey has already been cast
-    const existing = BaseUser.cache.get(pubkey);
+    const existing = User.cache.get(pubkey);
     if (existing) return existing;
 
     // Create a new instance and cache it
-    const newUser = new BaseUser(pubkey, store);
-    BaseUser.cache.set(pubkey, newUser);
+    const newUser = new User(pubkey, store);
+    User.cache.set(pubkey, newUser);
     return newUser;
   }
 }
 
-/** Minimal base class for a Nostr user — pubkey, pointer helpers, and store access */
-export class BaseUser {
+/** A class representing a Nostr user */
+export class User {
   public pubkey: string;
 
   #store: CastRefEventStore;
 
-  /** A global cache of pubkey -> {@link BaseUser} */
-  static cache = new Map<string, BaseUser>();
+  /** A global cache of pubkey -> {@link User} */
+  static cache = new Map<string, User>();
 
   constructor(user: string | ProfilePointer, store: CastRefEventStore) {
     if (typeof user === "string" && !isHexKey(user)) throw new Error("Invalid pubkey for user");
@@ -46,7 +46,7 @@ export class BaseUser {
   #refs: Record<string, ChainableObservable<unknown>> = {};
 
   /** Internal method for creating a cached observable reference */
-  protected $$ref<Return extends unknown>(
+  $$ref<Return extends unknown>(
     key: string,
     builder: (store: CastRefEventStore) => Observable<Return>,
   ): ChainableObservable<Return> {

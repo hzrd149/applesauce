@@ -10,6 +10,7 @@ describe("exports", () => {
         "ReplaySubject",
         "Subject",
         "TimeoutError",
+        "chainable",
         "combineLatest",
         "defined",
         "filterDuplicateEvents",

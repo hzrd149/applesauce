@@ -4,8 +4,7 @@ import { getEventUID, getParentEventStore, NostrEvent } from "../helpers/event.j
 import { isHexKey } from "../helpers/string.js";
 import { Observable } from "rxjs";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
-import type { BaseUser } from "./user.js";
-import { castUser } from "./user.js";
+import { castUser, User } from "./user.js";
 
 /** The type of event store that is passed to cast references */
 export type CastRefEventStore = IEventSubscriptions & EventModels & IEventStoreStreams;
@@ -57,8 +56,8 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
     return new Date(this.event.created_at * 1000);
   }
 
-  /** Get the {@link BaseUser} that authored this event */
-  get author(): BaseUser {
+  /** Get the {@link User} that authored this event */
+  get author(): User {
     return castUser(this.event, this.store);
   }
 

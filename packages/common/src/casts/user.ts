@@ -1,52 +1,18 @@
-import {
-  isEvent,
-  isHexKey,
-  kinds,
-  NostrEvent,
-  nprofileEncode,
-  npubEncode,
-  ProfilePointer,
-} from "applesauce-core/helpers";
-import {
-  combineLatest,
-  defer,
-  from,
-  map,
-  MonoTypeOperatorFunction,
-  Observable,
-  ReplaySubject,
-  share,
-  switchMap,
-  tap,
-} from "rxjs";
+import { kinds, NostrEvent, nprofileEncode } from "applesauce-core/helpers";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { User, castUser as coreCastUser } from "applesauce-core/casts";
+import { combineLatest, defer, from, map, MonoTypeOperatorFunction, ReplaySubject, share, switchMap, tap } from "rxjs";
 import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
 import { TRUSTED_PROVIDER_LIST_KIND } from "../helpers/trusted-assertions.js";
 import { castEventStream } from "../observable/cast-stream.js";
-import { chainable, ChainableObservable } from "../observable/chainable.js";
-import { type CastRefEventStore } from "./cast.js";
+import { ChainableObservable } from "../observable/chainable.js";
 
-/** Cast a nostr event or pointer into a {@link User} */
-export function castUser(event: NostrEvent, store: CastRefEventStore): User;
-export function castUser(user: string | ProfilePointer, store: CastRefEventStore): User;
-export function castUser(user: string | ProfilePointer | NostrEvent, store: CastRefEventStore): User {
-  if (isEvent(user)) {
-    return castUser(user.pubkey, store);
-  } else {
-    const pubkey = typeof user === "string" ? user : user.pubkey;
-
-    // Skip creating a new instance if this pubkey has already been cast
-    const existing = User.cache.get(pubkey);
-    if (existing) return existing;
-
-    // Create a new instance and cache it
-    const newUser = new User(pubkey, store);
-    User.cache.set(pubkey, newUser);
-    return newUser;
-  }
-}
+// Re-export castUser and User from core so consumers don't need to change imports
+export { castUser } from "applesauce-core/casts";
+export { User } from "applesauce-core/casts";
 
 function memoize<T>(): MonoTypeOperatorFunction<T> {
   return share({
@@ -56,7 +22,7 @@ function memoize<T>(): MonoTypeOperatorFunction<T> {
   });
 }
 
-// IMPORTANT: this class MUST use async import() to import the other classes so that we do not get circular dependency errors
+// IMPORTANT: this module MUST use async import() to import the other classes so that we do not get circular dependency errors
 const Circular = {
   Profile: defer(() => from(import("./profile.js"))).pipe(memoize()),
   Mutes: defer(() => from(import("./mutes.js"))).pipe(memoize()),
@@ -66,229 +32,248 @@ const Circular = {
   TrustedAssertions: defer(() => from(import("./trusted-assertions.js"))).pipe(memoize()),
 };
 
-/** A class for a user */
-export class User {
-  public pubkey: string;
+// ---------------------------------------------------------------------------
+// Outbox cache — WeakMap so it's GC-safe and doesn't pollute User instances
+// ---------------------------------------------------------------------------
+const outboxCache = new WeakMap<User, string[] | undefined>();
 
-  #store: CastRefEventStore;
+// ---------------------------------------------------------------------------
+// Prototype augmentation — attach Nostr-specific observable getters to User
+// ---------------------------------------------------------------------------
 
-  /** A cache of the users outboxes for creating a profile pointer relay hints */
-  #outboxes: string[] | undefined;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function defineGetter(name: string, fn: (this: User) => any) {
+  Object.defineProperty(User.prototype, name, {
+    get: fn,
+    configurable: true,
+    enumerable: false,
+  });
+}
 
-  /** A global cache of pubkey -> {@link User} */
-  static cache = new Map<string, User>();
+// Override pointer to include relay hints from outboxes
+Object.defineProperty(User.prototype, "pointer", {
+  get(this: User): ProfilePointer {
+    return { pubkey: this.pubkey, relays: outboxCache.get(this)?.slice(0, 3) ?? [] };
+  },
+  configurable: true,
+  enumerable: false,
+});
 
-  constructor(user: string | ProfilePointer, store: CastRefEventStore) {
-    if (typeof user === "string" && !isHexKey(user)) throw new Error("Invalid pubkey for user");
-    const pubkey = typeof user === "string" ? user : user.pubkey;
+// Override nprofile to use the enriched pointer
+Object.defineProperty(User.prototype, "nprofile", {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get(this: User): string {
+    return nprofileEncode((this as any).pointer);
+  },
+  configurable: true,
+  enumerable: false,
+});
 
-    this.#store = store;
-    this.pubkey = pubkey;
-  }
-
-  /** A cache of observable references */
-  #refs: Record<string, ChainableObservable<unknown>> = {};
-
-  /** Internal method for creating a reference */
-  protected $$ref<Return extends unknown>(
-    key: string,
-    builder: (store: CastRefEventStore) => Observable<Return>,
-  ): ChainableObservable<Return> {
-    // Return cached observable
-    if (this.#refs[key]) return this.#refs[key] as ChainableObservable<Return>;
-
-    // Build a new observable and cache it
-    const observable = chainable(builder(this.#store));
-    this.#refs[key] = observable;
-    return observable;
-  }
-
-  // Public getters
-
-  get npub() {
-    return npubEncode(this.pubkey);
-  }
-  get pointer(): ProfilePointer {
-    return {
-      pubkey: this.pubkey,
-      relays: this.#outboxes?.slice(0, 3) ?? [],
-    };
-  }
-  get nprofile() {
-    return nprofileEncode(this.pointer);
-  }
-
-  // Request methods
-  replaceable(kind: number, identifier?: string, relays?: string[]): ChainableObservable<NostrEvent | undefined> {
-    return chainable(this.#store.replaceable({ kind, pubkey: this.pubkey, identifier, relays }));
-  }
-  addressable(kind: number, identifier: string, relays?: string[]): ChainableObservable<NostrEvent | undefined> {
-    return chainable(this.#store.addressable({ kind, pubkey: this.pubkey, identifier, relays }));
-  }
-
-  // Observable interfaces
-  get profile$() {
-    return this.$$ref("profile$", (store) =>
-      Circular.Profile.pipe(
-        switchMap(({ Profile }) =>
-          store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile, store)),
-        ),
+defineGetter("profile$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("profile$", (store: any) =>
+    Circular.Profile.pipe(
+      switchMap(({ Profile }) =>
+        store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile, store)),
       ),
-    );
-  }
-  get contacts$() {
-    return this.$$ref("contacts$", (store) =>
-      this.outboxes$.pipe(
-        // Fetch the contacts from the outboxes
-        switchMap((outboxes) => store.contacts({ pubkey: this.pubkey, relays: outboxes })),
-        // Cast to users
-        map((arr) => arr.map((p) => castUser(p, this.#store))),
-      ),
-    );
-  }
-  get mutes$() {
-    return this.$$ref("mutes$", (store) =>
-      combineLatest([Circular.Mutes, this.outboxes$]).pipe(
-        // Create the mute list event with the outboxes
-        switchMap(([{ Mutes }, outboxes]) =>
-          store
-            .event({ kind: kinds.Mutelist, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(Mutes, store)),
-        ),
-      ),
-    );
-  }
-  get mailboxes$() {
-    return this.$$ref("mailboxes$", (store) =>
-      store.mailboxes({ pubkey: this.pubkey }).pipe(
-        // Cache the outboxes for creating a profile pointer relay hints
-        tap((mailboxes) => (this.#outboxes = mailboxes?.outboxes)),
-      ),
-    );
-  }
-  get outboxes$(): ChainableObservable<string[] | undefined> {
-    return this.mailboxes$.outboxes;
-  }
-  get inboxes$(): ChainableObservable<string[] | undefined> {
-    return this.mailboxes$.inboxes;
-  }
-  get bookmarks$() {
-    return this.$$ref("bookmarks$", (store) =>
-      combineLatest([Circular.Bookmarks, this.outboxes$]).pipe(
-        switchMap(([{ BookmarksList }, outboxes]) =>
-          // Fetch the bookmarks list event from the outboxes
-          store
-            .replaceable({ kind: kinds.BookmarkList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(BookmarksList, store)),
-        ),
-      ),
-    );
-  }
-  get favoriteRelays$() {
-    return this.$$ref("favoriteRelays$", (store) =>
-      combineLatest([Circular.RelayLists, this.outboxes$]).pipe(
-        // Fetch the favorite relays list event from the outboxes
-        switchMap(([{ FavoriteRelays }, outboxes]) =>
-          store
-            .replaceable({ kind: FAVORITE_RELAYS_KIND, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(FavoriteRelays, store)),
-        ),
-      ),
-    );
-  }
-  get searchRelays$() {
-    return this.$$ref("searchRelays$", (store) =>
-      combineLatest([Circular.RelayLists, this.outboxes$]).pipe(
-        // Fetch the search relays list event from the outboxes
-        switchMap(([{ SearchRelays }, outboxes]) =>
-          store
-            .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(SearchRelays, store)),
-        ),
-      ),
-    );
-  }
-  get blockedRelays$() {
-    return this.$$ref("blockedRelays$", (store) =>
-      combineLatest([Circular.RelayLists, this.outboxes$]).pipe(
-        // Fetch the blocked relays list event from the outboxes
-        switchMap(([{ BlockedRelays }, outboxes]) =>
-          store
-            .replaceable({ kind: kinds.BlockedRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(BlockedRelays, store)),
-        ),
-      ),
-    );
-  }
-  get directMessageRelays$() {
-    return this.$$ref("dmRelays$", (store) =>
-      this.outboxes$.pipe(
-        // Fetch the DM relays list event from the outboxes
-        switchMap((outboxes) =>
-          store
-            .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
-            .pipe(map((event) => event && getRelaysFromList(event))),
-        ),
-      ),
-    );
-  }
+    ),
+  );
+});
 
-  /** Get the users kind 10063 Blossom servers list */
-  get blossomServers$() {
-    return this.$$ref("blossomServers$", (store) =>
-      this.outboxes$.pipe(
-        // Fetch the blossom servers list event from the outboxes
-        switchMap((outboxes) =>
-          store
-            .replaceable({ kind: BLOSSOM_SERVER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
-            .pipe(map((event) => event && getBlossomServersFromList(event))),
-        ),
-      ),
-    );
-  }
+defineGetter("contacts$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("contacts$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as any).outboxes$.pipe(
+      switchMap((outboxes: string[] | undefined) => store.contacts({ pubkey: this.pubkey, relays: outboxes })),
+      map((arr: ProfilePointer[]) => arr.map((p) => coreCastUser(p, store))),
+    ),
+  );
+});
 
-  /** Gets the users list of NIP-29 groups */
-  get groups$() {
-    return this.$$ref("groups$", (store) =>
-      combineLatest([Circular.Groups, this.outboxes$]).pipe(
-        switchMap(([{ GroupsList }, outboxes]) =>
-          store
-            .replaceable({ kind: GROUPS_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(GroupsList, store)),
-        ),
+defineGetter("mutes$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("mutes$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    combineLatest([Circular.Mutes, (this as any).outboxes$]).pipe(
+      switchMap(([{ Mutes }, outboxes]: any[]) =>
+        store
+          .event({ kind: kinds.Mutelist, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(Mutes, store)),
       ),
-    );
-  }
+    ),
+  );
+});
 
-  /** Get the latest live stream for the user */
-  get live$() {
-    return this.$$ref("live$", (store) =>
-      defer(() => import("./stream.js").then((m) => m.Stream)).pipe(
-        switchMap((Stream) =>
-          store
-            .timeline([
-              { kinds: [kinds.LiveEvent], "#p": [this.pubkey] },
-              { kinds: [kinds.LiveEvent], authors: [this.pubkey] },
-            ])
-            .pipe(
-              map((events) => events[0] as NostrEvent | undefined),
-              castEventStream(Stream, store),
-            ),
-        ),
-      ),
-    );
-  }
+defineGetter("mailboxes$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("mailboxes$", (store: any) =>
+    store
+      .mailboxes({ pubkey: this.pubkey })
+      .pipe(tap((mailboxes: { outboxes: string[] } | undefined) => outboxCache.set(this, mailboxes?.outboxes))),
+  );
+});
 
-  /** Get this user's NIP-85 trusted assertion provider list (kind 10040) */
-  get trustedProviders$() {
-    return this.$$ref("trustedProviders$", (store) =>
-      combineLatest([Circular.TrustedAssertions, this.outboxes$]).pipe(
-        switchMap(([{ TrustedProviderList }, outboxes]) =>
-          store
-            .replaceable({ kind: TRUSTED_PROVIDER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
-            .pipe(castEventStream(TrustedProviderList, store)),
-        ),
+defineGetter("outboxes$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).mailboxes$.outboxes;
+});
+
+defineGetter("inboxes$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).mailboxes$.inboxes;
+});
+
+defineGetter("bookmarks$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("bookmarks$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    combineLatest([Circular.Bookmarks, (this as any).outboxes$]).pipe(
+      switchMap(([{ BookmarksList }, outboxes]: any[]) =>
+        store
+          .replaceable({ kind: kinds.BookmarkList, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(BookmarksList, store)),
       ),
-    );
+    ),
+  );
+});
+
+defineGetter("favoriteRelays$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("favoriteRelays$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    combineLatest([Circular.RelayLists, (this as any).outboxes$]).pipe(
+      switchMap(([{ FavoriteRelays }, outboxes]: any[]) =>
+        store
+          .replaceable({ kind: FAVORITE_RELAYS_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(FavoriteRelays, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("searchRelays$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("searchRelays$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    combineLatest([Circular.RelayLists, (this as any).outboxes$]).pipe(
+      switchMap(([{ SearchRelays }, outboxes]: any[]) =>
+        store
+          .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(SearchRelays, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("blockedRelays$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("blockedRelays$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    combineLatest([Circular.RelayLists, (this as any).outboxes$]).pipe(
+      switchMap(([{ BlockedRelays }, outboxes]: any[]) =>
+        store
+          .replaceable({ kind: kinds.BlockedRelaysList, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(BlockedRelays, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("directMessageRelays$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("dmRelays$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as any).outboxes$.pipe(
+      switchMap((outboxes: string[] | undefined) =>
+        store
+          .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
+          .pipe(map((event: NostrEvent | undefined) => event && getRelaysFromList(event))),
+      ),
+    ),
+  );
+});
+
+defineGetter("blossomServers$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("blossomServers$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as any).outboxes$.pipe(
+      switchMap((outboxes: string[] | undefined) =>
+        store
+          .replaceable({ kind: BLOSSOM_SERVER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(map((event: NostrEvent | undefined) => event && getBlossomServersFromList(event))),
+      ),
+    ),
+  );
+});
+
+defineGetter("groups$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("groups$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    combineLatest([Circular.Groups, (this as any).outboxes$]).pipe(
+      switchMap(([{ GroupsList }, outboxes]: any[]) =>
+        store
+          .replaceable({ kind: GROUPS_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(GroupsList, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("live$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("live$", (store: any) =>
+    defer(() => import("./stream.js").then((m) => m.Stream)).pipe(
+      switchMap((Stream) =>
+        store
+          .timeline([
+            { kinds: [kinds.LiveEvent], "#p": [this.pubkey] },
+            { kinds: [kinds.LiveEvent], authors: [this.pubkey] },
+          ])
+          .pipe(
+            map((events: NostrEvent[]) => events[0] as NostrEvent | undefined),
+            castEventStream(Stream, store),
+          ),
+      ),
+    ),
+  );
+});
+
+defineGetter("trustedProviders$", function (this: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (this as any).$$ref("trustedProviders$", (store: any) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    combineLatest([Circular.TrustedAssertions, (this as any).outboxes$]).pipe(
+      switchMap(([{ TrustedProviderList }, outboxes]: any[]) =>
+        store
+          .replaceable({ kind: TRUSTED_PROVIDER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(TrustedProviderList, store)),
+      ),
+    ),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// TypeScript interface merging — declare the added properties on User
+// ---------------------------------------------------------------------------
+declare module "applesauce-core/casts" {
+  interface User {
+    get profile$(): ChainableObservable<import("./profile.js").Profile | undefined>;
+    get contacts$(): ChainableObservable<User[]>;
+    get mutes$(): ChainableObservable<import("./mutes.js").Mutes | undefined>;
+    get mailboxes$(): ChainableObservable<{ inboxes: string[]; outboxes: string[] } | undefined>;
+    get outboxes$(): ChainableObservable<string[] | undefined>;
+    get inboxes$(): ChainableObservable<string[] | undefined>;
+    get bookmarks$(): ChainableObservable<import("./bookmarks.js").BookmarksList | undefined>;
+    get favoriteRelays$(): ChainableObservable<import("./relay-lists.js").FavoriteRelays | undefined>;
+    get searchRelays$(): ChainableObservable<import("./relay-lists.js").SearchRelays | undefined>;
+    get blockedRelays$(): ChainableObservable<import("./relay-lists.js").BlockedRelays | undefined>;
+    get directMessageRelays$(): ChainableObservable<string[] | undefined>;
+    get blossomServers$(): ChainableObservable<string[] | undefined>;
+    get groups$(): ChainableObservable<import("./groups.js").GroupsList | undefined>;
+    get live$(): ChainableObservable<import("./stream.js").Stream | undefined>;
+    get trustedProviders$(): ChainableObservable<import("./trusted-assertions.js").TrustedProviderList | undefined>;
   }
 }
