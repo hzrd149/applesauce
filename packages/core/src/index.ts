@@ -1,6 +1,8 @@
 // Export from factories
 export * from "./factories/index.js";
 
+export * from "./casts/index.js";
+
 export * from "./event-store/index.js";
 export * from "./logger.js";
 export * from "./observable/index.js";

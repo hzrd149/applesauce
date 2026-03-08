@@ -10,3 +10,4 @@ export * from "./simple-timeout.js";
 export * from "./watch-event-updates.js";
 export * from "./with-immediate-value.js";
 export * from "./relay-selection.js";
+export * from "./chainable.js";
