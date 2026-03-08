@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { includeContentHashtags, repairNostrLinks, setContent } from "../content.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { buildEvent } from "../../event-factory/methods";
 import { EncryptedContentSymbol } from "../../helpers";
 
 let user: FakeUser;
@@ -13,11 +12,12 @@ beforeEach(() => {
 describe("repairNostrLinks", () => {
   it("should repair @npub mentions", async () => {
     expect(
-      await buildEvent(
-        { kind: 1, content: "GM @npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6" },
-        {},
-        repairNostrLinks(),
-      ),
+      await repairNostrLinks()({
+        kind: 1,
+        content: "GM @npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6",
+        tags: [],
+        created_at: 0,
+      }),
     ).toEqual(
       expect.objectContaining({
         content: "GM nostr:npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6",
@@ -74,9 +74,9 @@ describe("setContent", () => {
 
 describe("includeContentHashtags", () => {
   it("should include all content hashtags", async () => {
-    expect(
-      await buildEvent({ kind: 1 }, {}, setContent("hello world #growNostr #nostr"), includeContentHashtags()),
-    ).toEqual(
+    const template = { kind: 1, content: "", tags: [] as string[][], created_at: 0 };
+    const step1 = await setContent("hello world #growNostr #nostr")(template);
+    expect(await includeContentHashtags()(step1)).toEqual(
       expect.objectContaining({
         tags: [
           ["t", "grownostr"],

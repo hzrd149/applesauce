@@ -1,4 +1,3 @@
-import { LegacyEventFactory } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { describe, expect, it } from "vitest";
@@ -8,17 +7,13 @@ import { WALLET_BACKUP_KIND } from "../../helpers/wallet";
 import { setBackupContent } from "../wallet";
 
 const user = new FakeUser();
-const factory = new LegacyEventFactory({ signer: user });
 
 describe("setBackupContent", () => {
   it("should throw if kind is not wallet kind", async () => {
     const note = user.note();
 
     await expect(
-      setBackupContent(
-        note,
-        factory.services.signer,
-      )({ kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" }),
+      setBackupContent(note, user)({ kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" }),
     ).rejects.toThrow();
   });
 
@@ -35,10 +30,7 @@ describe("setBackupContent", () => {
     const wallet = await WalletFactory.create([], generateSecretKey()).as(user).sign();
 
     expect(
-      await setBackupContent(
-        wallet,
-        factory.services.signer,
-      )({ kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" }),
+      await setBackupContent(wallet, user)({ kind: WALLET_BACKUP_KIND, tags: [], created_at: unixNow(), content: "" }),
     ).toEqual(expect.objectContaining({ content: wallet.content }));
   });
 });

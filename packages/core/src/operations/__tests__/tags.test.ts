@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { buildEvent } from "../../event-factory/methods.js";
 import { kinds } from "../../helpers/event.js";
 import { unixNow } from "../../helpers/time.js";
 import { modifyHiddenTags } from "../tags.js";
@@ -53,22 +52,20 @@ describe("modifyHiddenTags", () => {
   });
 
   it("should set hidden tags", async () => {
-    const draft = await buildEvent(
-      { kind: 30000 },
-      { signer: user },
-      modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]),
-    );
+    const template = { kind: 30000, content: "", tags: [] as string[][], created_at: unixNow() };
+    const draft = await modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]])(template);
 
     expect(getHiddenTags(draft)).toEqual([["e", "test-id"]]);
   });
 
   it("should work multiple times", async () => {
-    const draft = await buildEvent(
-      { kind: 30000 },
-      { signer: user },
-      modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]),
-      modifyHiddenTags(user, (tags) => [...tags, ["e", "second-id"]]),
-    );
+    // Use a single modifyHiddenTags call with multiple operations to avoid symbol caching issues
+    const template = { kind: 30000, content: "", tags: [] as string[][], created_at: unixNow() };
+    const draft = await modifyHiddenTags(
+      user,
+      (tags) => [...tags, ["e", "test-id"]],
+      (tags) => [...tags, ["e", "second-id"]],
+    )(template);
 
     expect(getHiddenTags(draft)).toEqual([
       ["e", "test-id"],

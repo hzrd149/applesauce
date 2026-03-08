@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { setEncryptedContent } from "../encrypted-content.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { buildEvent } from "../../event-factory/methods";
 import { EncryptedContentSymbol, setEncryptedContentEncryptionMethod } from "../../helpers";
 
 let user: FakeUser;
@@ -12,11 +11,17 @@ beforeEach(() => {
 
 describe("setEncryptedContent", () => {
   it("should set the encrypted content", async () => {
-    const draft = await buildEvent(
-      { kind: 4 },
-      { signer: user },
-      setEncryptedContent(user.pubkey, "Hello, world!", user, "nip04"),
-    );
+    const draft = await setEncryptedContent(
+      user.pubkey,
+      "Hello, world!",
+      user,
+      "nip04",
+    )({
+      kind: 4,
+      content: "",
+      tags: [],
+      created_at: 0,
+    });
 
     expect(draft).toEqual(
       expect.objectContaining({
@@ -31,11 +36,16 @@ describe("setEncryptedContent", () => {
     setEncryptedContentEncryptionMethod(50004, "nip04");
     setEncryptedContentEncryptionMethod(50044, "nip44");
 
-    const nip04Draft = await buildEvent(
-      { kind: 50004 },
-      { signer: user },
-      setEncryptedContent(user.pubkey, "Hello, world!", user),
-    );
+    const nip04Draft = await setEncryptedContent(
+      user.pubkey,
+      "Hello, world!",
+      user,
+    )({
+      kind: 50004,
+      content: "",
+      tags: [],
+      created_at: 0,
+    });
 
     expect(nip04Draft).toEqual(
       expect.objectContaining({
@@ -45,11 +55,16 @@ describe("setEncryptedContent", () => {
     );
     expect(await user.nip04.decrypt(user.pubkey, nip04Draft.content)).toBe("Hello, world!");
 
-    const nip44Draft = await buildEvent(
-      { kind: 50044 },
-      { signer: user },
-      setEncryptedContent(user.pubkey, "Hello, world!", user),
-    );
+    const nip44Draft = await setEncryptedContent(
+      user.pubkey,
+      "Hello, world!",
+      user,
+    )({
+      kind: 50044,
+      content: "",
+      tags: [],
+      created_at: 0,
+    });
 
     expect(nip44Draft).toEqual(
       expect.objectContaining({

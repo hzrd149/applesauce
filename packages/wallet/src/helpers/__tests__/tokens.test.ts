@@ -1,24 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { buildEvent, LegacyEventFactory } from "applesauce-core";
 import { EncryptedContentSymbol, isEncryptedContentUnlocked, unixNow } from "applesauce-core/helpers";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { WalletTokenFactory } from "../../factories/tokens.js";
 import { decodeTokenFromEmojiString, encodeTokenToEmoji } from "../cashu.js";
 import { dumbTokenSelection, isTokenContentUnlocked, unlockTokenContent, WALLET_TOKEN_KIND } from "../tokens.js";
-import { setToken } from "../../operations/tokens";
 
 const user = new FakeUser();
-const factory = new LegacyEventFactory({ signer: user });
 
 describe("isTokenContentUnlocked", () => {
   it("should return true if only EncryptedContentSymbol is set", async () => {
-    const draft = await buildEvent(
-      { kind: WALLET_TOKEN_KIND },
-      { signer: user },
-      setToken({ mint: "https://money.com", proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }] }, [], user),
-    );
-    const token = await factory.sign(draft);
+    const token = await WalletTokenFactory.create(
+      { mint: "https://money.com", proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }] },
+      [],
+    )
+      .as(user)
+      .sign();
 
     expect(isEncryptedContentUnlocked(token)).toBe(true);
     expect(isTokenContentUnlocked(token)).toBe(true);

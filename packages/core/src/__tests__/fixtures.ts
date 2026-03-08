@@ -1,4 +1,4 @@
-import { EventSigner } from "../event-factory/types";
+import { EventSigner } from "../factories/types.js";
 import { EncryptedContentSigner } from "../helpers/encrypted-content.js";
 import { nip04, nip44 } from "../helpers/encryption.js";
 import { EventTemplate, KnownEvent, NostrEvent, UnsignedEvent, kinds } from "../helpers/event";
