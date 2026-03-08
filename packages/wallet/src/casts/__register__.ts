@@ -1,5 +1,5 @@
 import { Note, Stream } from "applesauce-common/casts";
-import { User } from "applesauce-common/casts/user";
+import { User } from "applesauce-core/casts";
 import { castEventStream, castTimelineStream, ChainableObservable } from "applesauce-common/observable";
 import { buildCommonEventRelationFilters } from "applesauce-core/helpers";
 import { switchMap } from "rxjs";
@@ -13,7 +13,8 @@ import { MintRecommendation } from "./mint-recommendation.js";
 import { MINT_RECOMMENDATION_KIND } from "../helpers/mint-recommendation.js";
 
 // Extend the User class with wallet$ observable
-declare module "applesauce-common/casts/user" {
+// User now lives in applesauce-core/casts, so augment that module
+declare module "applesauce-core/casts" {
   interface User {
     readonly wallet$: ChainableObservable<Wallet | undefined>;
     readonly nutzap$: ChainableObservable<NutzapInfo | undefined>;
