@@ -2,7 +2,9 @@ import { BlossomServerListFactory } from "applesauce-common/factories";
 import { BLOSSOM_SERVER_LIST_KIND } from "applesauce-common/helpers/blossom";
 import type { Action, ActionContext } from "../action-runner.js";
 
-async function modifyBlossomServers({ user }: ActionContext): Promise<[BlossomServerListFactory, string[] | undefined]> {
+async function modifyBlossomServers({
+  user,
+}: ActionContext): Promise<[BlossomServerListFactory, string[] | undefined]> {
   const [event, outboxes] = await Promise.all([
     user.replaceable(BLOSSOM_SERVER_LIST_KIND).$first(1000, undefined),
     user.outboxes$.$first(1000, undefined),

@@ -78,7 +78,11 @@ describe("getEmojis", () => {
       content: "",
     });
     expect(getEmojis(pack)).toEqual([
-      { shortcode: "heart", url: "https://cdn.example.com/heart.png", address: { kind: 30030, pubkey: user.pubkey, identifier: "my-pack" } },
+      {
+        shortcode: "heart",
+        url: "https://cdn.example.com/heart.png",
+        address: { kind: 30030, pubkey: user.pubkey, identifier: "my-pack" },
+      },
       { shortcode: "star", url: "https://cdn.example.com/star.png" },
     ]);
   });

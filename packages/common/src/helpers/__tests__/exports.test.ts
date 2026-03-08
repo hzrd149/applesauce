@@ -32,6 +32,7 @@ describe("exports", () => {
         "GROUP_MESSAGE_KIND",
         "GROUP_METADATA_KIND",
         "GROUP_ROLES_KIND",
+        "GROUP_THREAD_KIND",
         "GiftWrapSymbol",
         "GroupsHiddenSymbol",
         "GroupsPublicSymbol",

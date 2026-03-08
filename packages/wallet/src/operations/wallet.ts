@@ -35,10 +35,7 @@ export function setMintTags(mints: string[]): TagOperation {
     ...mints.map((mint) => ["mint", mint]),
   ];
 }
-export function setMints(
-  mints: string[],
-  signer?: import("applesauce-core/factories").EventSigner,
-): EventOperation {
+export function setMints(mints: string[], signer?: import("applesauce-core/factories").EventSigner): EventOperation {
   return modifyHiddenTags(signer, setMintTags(mints));
 }
 
