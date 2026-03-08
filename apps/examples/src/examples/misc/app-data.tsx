@@ -3,7 +3,6 @@
  * @tags misc, app-data, nip-78, storage
  * @related misc/nip-19-links
  */
-import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
 import {
   APP_DATA_KIND,
   getAppDataContent,
@@ -12,7 +11,7 @@ import {
   unlockAppData,
 } from "applesauce-common/helpers/app-data";
 import * as AppData from "applesauce-common/operations/app-data";
-import { EventFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
+import { DeleteFactory, EventFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
 import { EncryptionMethod, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -352,8 +351,7 @@ export default function AppDataExample() {
 
       try {
         // Create deletion event manually
-        const draft = await factory.create(DeleteBlueprint, [event]);
-        const signed = await factory.sign(draft);
+        const signed = await DeleteFactory.fromEvents([event]).sign(signer);
 
         // Sign and publish deletion
         await pool.publish([relayUrl], signed);

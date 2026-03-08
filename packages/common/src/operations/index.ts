@@ -1,4 +1,5 @@
 export * as AppData from "./app-data.js";
+export * as CodeSnippet from "./code-snippet.js";
 export * as Calendar from "./calendar.js";
 export * as CalendarEvent from "./calendar-event.js";
 export * as CalendarRsvp from "./calendar-rsvp.js";

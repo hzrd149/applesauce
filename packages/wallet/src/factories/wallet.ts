@@ -1,6 +1,5 @@
-import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
+import { EventFactory, blankEventTemplate, toEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
-import { modifyHiddenTags } from "applesauce-core/operations";
 import { WALLET_BACKUP_KIND, WALLET_KIND } from "../helpers/wallet.js";
 import { setBackupContent, setMintTags, setPrivateKeyTag, setRelayTags } from "../operations/wallet.js";
 
@@ -14,18 +13,24 @@ export class WalletFactory extends EventFactory<typeof WALLET_KIND, WalletTempla
       .relays(relays);
   }
 
+  /** Creates a new wallet factory from an existing wallet event */
+  static modify(event: NostrEvent): WalletFactory {
+    if (event.kind !== WALLET_KIND) throw new Error("Event is not a wallet event");
+    return new WalletFactory((res) => res(toEventTemplate(event) as WalletTemplate));
+  }
+
   mints(mints: string[]) {
-    return this.chain((draft) => modifyHiddenTags(this.signer, setMintTags(mints))(draft));
+    return this.modifyHiddenTags(setMintTags(mints));
   }
 
   privateKey(key?: Uint8Array) {
     if (!key) return this;
-    return this.chain((draft) => modifyHiddenTags(this.signer, setPrivateKeyTag(key))(draft));
+    return this.modifyHiddenTags(setPrivateKeyTag(key));
   }
 
   relays(urls?: string[]) {
     if (!urls) return this;
-    return this.chain((draft) => modifyHiddenTags(this.signer, setRelayTags(urls))(draft));
+    return this.modifyHiddenTags(setRelayTags(urls));
   }
 }
 
@@ -33,30 +38,12 @@ export type WalletBackupTemplate = KnownEventTemplate<typeof WALLET_BACKUP_KIND>
 
 export class WalletBackupFactory extends EventFactory<typeof WALLET_BACKUP_KIND, WalletBackupTemplate> {
   static create(wallet: NostrEvent): WalletBackupFactory {
-    return new WalletBackupFactory((res) => res(blankEventTemplate(WALLET_BACKUP_KIND)))
-      .wallet(wallet);
+    return new WalletBackupFactory((res) => res(blankEventTemplate(WALLET_BACKUP_KIND))).wallet(wallet);
   }
 
   wallet(event: NostrEvent) {
-    return this.chain((draft) => setBackupContent(event, this.signer)(draft));
+    let result: this;
+    result = this.chain((draft) => setBackupContent(event, result.signer)(draft));
+    return result;
   }
-}
-
-// Legacy blueprint functions for backwards compatibility
-import type { EventTemplate } from "applesauce-core/helpers";
-
-export function WalletBlueprint(options: {
-  mints: string[];
-  privateKey?: Uint8Array;
-  relays?: string[];
-}) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return WalletFactory.create(options.mints, options.privateKey, options.relays);
-  };
-}
-
-export function WalletBackupBlueprint(wallet: NostrEvent) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return WalletBackupFactory.create(wallet);
-  };
 }

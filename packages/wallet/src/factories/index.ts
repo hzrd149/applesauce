@@ -3,3 +3,4 @@ export * from "./tokens.js";
 export * from "./history.js";
 export * from "./nutzap.js";
 export * from "./mint-recommendation.js";
+export * from "./nutzap-info.js";

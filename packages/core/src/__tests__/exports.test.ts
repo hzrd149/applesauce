@@ -8,7 +8,6 @@ describe("exports", () => {
         "AsyncDeleteManager",
         "AsyncEventStore",
         "BehaviorSubject",
-        "DeleteBlueprint",
         "DeleteFactory",
         "DeleteManager",
         "EventFactory",

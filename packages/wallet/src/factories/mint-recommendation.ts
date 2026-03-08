@@ -1,4 +1,4 @@
-import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
+import { EventFactory, blankEventTemplate, toEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
 import { MINT_RECOMMENDATION_KIND } from "../helpers/mint-recommendation.js";
@@ -6,12 +6,21 @@ import { setMintPubkey, setURL, setAddressPointer, setComment } from "../operati
 
 export type MintRecommendationTemplate = KnownEventTemplate<typeof MINT_RECOMMENDATION_KIND>;
 
-export class MintRecommendationFactory extends EventFactory<typeof MINT_RECOMMENDATION_KIND, MintRecommendationTemplate> {
+export class MintRecommendationFactory extends EventFactory<
+  typeof MINT_RECOMMENDATION_KIND,
+  MintRecommendationTemplate
+> {
   static create(url: string, mintPubkey: string, mintInfo?: AddressPointer): MintRecommendationFactory {
     const factory = new MintRecommendationFactory((res) => res(blankEventTemplate(MINT_RECOMMENDATION_KIND)))
       .url(url)
       .mintPubkey(mintPubkey);
     return mintInfo ? factory.mintInfo(mintInfo) : factory;
+  }
+
+  /** Creates a new factory from an existing mint recommendation event */
+  static modify(event: NostrEvent): MintRecommendationFactory {
+    if (event.kind !== MINT_RECOMMENDATION_KIND) throw new Error("Event is not a mint recommendation event");
+    return new MintRecommendationFactory((res) => res(toEventTemplate(event) as MintRecommendationTemplate));
   }
 
   url(url: string) {
@@ -29,17 +38,4 @@ export class MintRecommendationFactory extends EventFactory<typeof MINT_RECOMMEN
   comment(text: string) {
     return this.chain((draft) => setComment(text)(draft));
   }
-}
-
-// Legacy blueprint function for backwards compatibility
-import type { EventTemplate } from "applesauce-core/helpers";
-
-export function MintRecommendationBlueprint(options: {
-  url: string;
-  mintPubkey: string;
-  mintInfo?: AddressPointer;
-}) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return MintRecommendationFactory.create(options.url, options.mintPubkey, options.mintInfo);
-  };
 }

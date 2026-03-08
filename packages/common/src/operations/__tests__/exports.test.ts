@@ -11,6 +11,7 @@ describe("exports", () => {
         "CalendarRsvp",
         "Channel",
         "Client",
+        "CodeSnippet",
         "Comment",
         "FileMetadata",
         "Geohash",

@@ -1,13 +1,13 @@
 import { logger } from "applesauce-core";
-import { createEvent, EventSigner } from "applesauce-core";
+import { EventSigner } from "applesauce-core";
 import { verifyEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription, tap } from "rxjs";
 
 import { bytesToHex } from "@noble/hashes/utils";
-import { WalletLegacyNotificationBlueprint, WalletNotificationBlueprint } from "./factories/notification.js";
-import { WalletResponseBlueprint } from "./factories/response.js";
-import { WalletSupportBlueprint } from "./factories/support.js";
+import { WalletLegacyNotificationFactory, WalletNotificationFactory } from "./factories/notification.js";
+import { WalletResponseFactory } from "./factories/response.js";
+import { WalletInfoFactory } from "./factories/support.js";
 import { parseWalletAuthURI, WalletAuthURI } from "./helpers/auth-uri.js";
 import { WalletConnectEncryptionMethod } from "./helpers/encryption.js";
 import { NotImplementedError, WalletBaseError, WalletErrorCode } from "./helpers/error.js";
@@ -249,17 +249,13 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
     notification: T["notification"],
     legacy = false,
   ): Promise<void> {
-    const draft = await createEvent(
-      { signer: this.signer },
-      legacy ? WalletLegacyNotificationBlueprint : WalletNotificationBlueprint,
-      this.client,
-      {
-        notification_type: type,
-        notification,
-      },
-    );
-
-    const event = await this.signer.signEvent(draft);
+    const NotificationFactory = legacy ? WalletLegacyNotificationFactory : WalletNotificationFactory;
+    const event = await NotificationFactory.create(this.client, {
+      notification_type: type,
+      notification,
+    })
+      .as(this.signer)
+      .sign();
     await this.publishMethod(this.relays, event);
   }
 
@@ -268,14 +264,9 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
     try {
       // Tell the client which relay to use if there is only one (for nostr+walletauth URI connections)
       const overrideRelay = this.relays.length === 1 ? this.relays[0] : undefined;
-      const draft = await createEvent(
-        { signer: this.signer },
-        WalletSupportBlueprint<Methods>,
-        this.support,
-        this.client,
-        overrideRelay,
-      );
-      const event = await this.signer.signEvent(draft);
+      const event = await WalletInfoFactory.create<Methods>(this.support, this.client, overrideRelay)
+        .as(this.signer)
+        .sign();
       await this.publishMethod(this.relays, event);
     } catch (error) {
       this.log("Failed to publish wallet support event:", error);
@@ -391,8 +382,7 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
     response: Method["response"] | Method["error"],
   ): Promise<void> {
     try {
-      const draft = await createEvent({ signer: this.signer }, WalletResponseBlueprint<Method>(requestEvent, response));
-      const event = await this.signer.signEvent(draft);
+      const event = await WalletResponseFactory.create<Method>(requestEvent, response).as(this.signer).sign();
       await this.publishMethod(this.relays, event);
     } catch (error) {
       this.log("Failed to send response:", error);

@@ -11,10 +11,9 @@ export class WalletInfoFactory extends EventFactory<typeof WALLET_INFO_KIND, Wal
   static create<Methods extends TWalletMethod>(
     info: WalletSupport<Methods>,
     client?: string,
-    overrideRelay?: string
+    overrideRelay?: string,
   ): WalletInfoFactory {
-    const factory = new WalletInfoFactory((res) => res(blankEventTemplate(WALLET_INFO_KIND)))
-      .methods(info.methods);
+    const factory = new WalletInfoFactory((res) => res(blankEventTemplate(WALLET_INFO_KIND))).methods(info.methods);
     if (info.encryption) factory.encryption(info.encryption);
     if (info.notifications) factory.notifications(info.notifications);
     if (client) factory.client(client, overrideRelay);
@@ -36,17 +35,4 @@ export class WalletInfoFactory extends EventFactory<typeof WALLET_INFO_KIND, Wal
   client(pubkey: string, relay?: string) {
     return this.chain((draft) => includeSingletonTag(relay ? ["p", pubkey, relay] : ["p", pubkey])(draft));
   }
-}
-
-// Legacy blueprint function for backwards compatibility
-import type { EventTemplate } from "applesauce-core/helpers";
-
-export function WalletSupportBlueprint<Methods extends TWalletMethod>(
-  info: WalletSupport<Methods>,
-  client?: string,
-  overrideRelay?: string
-) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return WalletInfoFactory.create(info, client, overrideRelay);
-  };
 }

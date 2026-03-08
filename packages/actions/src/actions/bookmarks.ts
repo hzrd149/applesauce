@@ -1,51 +1,27 @@
-import * as List from "applesauce-common/operations/list";
-import { addEventBookmarkTag, removeEventBookmarkTag } from "applesauce-common/operations/tag/bookmarks";
-import { TagOperation } from "applesauce-core";
+import { BookmarkListFactory, BookmarkSetFactory } from "applesauce-common/factories";
 import { AddressPointer, EventPointer } from "applesauce-core/helpers";
 import { getReplaceableIdentifier, kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
-import { Action } from "../action-runner.js";
+import { Action, ActionContext } from "../action-runner.js";
 
-function ModifyBookmarkSetEvent(operations: TagOperation[], set: NostrEvent | string, hidden = false): Action {
-  const identifier = typeof set === "string" ? set : getReplaceableIdentifier(set);
+async function modifyBookmarkList({ user }: ActionContext): Promise<[BookmarkListFactory, string[] | undefined]> {
+  const [event, outboxes] = await Promise.all([
+    user.replaceable(kinds.BookmarkList).$first(1000, undefined),
+    user.outboxes$.$first(1000, undefined),
+  ]);
 
-  return async ({ factory, user, publish, sign }) => {
-    const [event, outboxes] = await Promise.all([
-      user.replaceable(kinds.Bookmarksets, identifier).$first(1000, undefined),
-      user.outboxes$.$first(1000, undefined),
-    ]);
-
-    const operation = hidden
-      ? modifyHiddenTags(factory.services.signer, ...operations)
-      : modifyPublicTags(...operations);
-
-    // Modify or build new event
-    const signed = event
-      ? await factory.modify(event, operation).then(sign)
-      : await factory.build({ kind: kinds.Bookmarksets }, operation).then(sign);
-
-    // Publish the event to the user's outboxes
-    await publish(signed, outboxes);
-  };
+  return [event ? BookmarkListFactory.modify(event) : BookmarkListFactory.create(), outboxes];
 }
 
-function ModifyBookmarkListEvent(operations: TagOperation[], hidden = false): Action {
-  return async ({ factory, user, publish, sign }) => {
-    const [event, outboxes] = await Promise.all([
-      user.replaceable(kinds.BookmarkList).$first(1000, undefined),
-      user.outboxes$.$first(1000, undefined),
-    ]);
+async function modifyBookmarkSet(
+  identifier: string,
+  { user }: ActionContext,
+): Promise<[BookmarkSetFactory, string[] | undefined]> {
+  const [event, outboxes] = await Promise.all([
+    user.replaceable(kinds.Bookmarksets, identifier).$first(1000, undefined),
+    user.outboxes$.$first(1000, undefined),
+  ]);
 
-    const operation = hidden ? modifyHiddenTags(factory.services.signer, ...operations) : modifyPublicTags(...operations);
-
-    // Modify or build new event
-    const signed = event
-      ? await factory.modify(event, operation).then(sign)
-      : await factory.build({ kind: kinds.BookmarkList }, operation).then(sign);
-
-    // Publish the event to the user's outboxes
-    await publish(signed, outboxes);
-  };
+  return [event ? BookmarkSetFactory.modify(event) : BookmarkSetFactory.create(), outboxes];
 }
 
 /**
@@ -59,12 +35,19 @@ export function BookmarkEvent(
   identifier?: string | NostrEvent,
   hidden?: boolean,
 ): Action {
-  const operation = addEventBookmarkTag(event);
-
   if (typeof identifier === "string" || identifier?.kind === kinds.Bookmarksets) {
-    return ModifyBookmarkSetEvent([operation], identifier, hidden);
+    const id = typeof identifier === "string" ? identifier : getReplaceableIdentifier(identifier!);
+    return async (context) => {
+      const [factory, outboxes] = await modifyBookmarkSet(id, context);
+      const signed = await factory.bookmarkEvent(event, hidden).sign(context.signer);
+      await context.publish(signed, outboxes);
+    };
   } else if (identifier === undefined || identifier?.kind === kinds.BookmarkList) {
-    return ModifyBookmarkListEvent([operation], hidden);
+    return async (context) => {
+      const [factory, outboxes] = await modifyBookmarkList(context);
+      const signed = await factory.bookmarkEvent(event, hidden).sign(context.signer);
+      await context.publish(signed, outboxes);
+    };
   } else {
     throw new Error(`Event kind ${identifier.kind} is not a bookmark list or bookmark set`);
   }
@@ -81,12 +64,19 @@ export function UnbookmarkEvent(
   identifier?: string | NostrEvent,
   hidden?: boolean,
 ): Action {
-  const operation = removeEventBookmarkTag(event);
-
   if (typeof identifier === "string" || identifier?.kind === kinds.Bookmarksets) {
-    return ModifyBookmarkSetEvent([operation], identifier, hidden);
+    const id = typeof identifier === "string" ? identifier : getReplaceableIdentifier(identifier!);
+    return async (context) => {
+      const [factory, outboxes] = await modifyBookmarkSet(id, context);
+      const signed = await factory.unbookmarkEvent(event, hidden).sign(context.signer);
+      await context.publish(signed, outboxes);
+    };
   } else if (identifier === undefined || identifier?.kind === kinds.BookmarkList) {
-    return ModifyBookmarkListEvent([operation], hidden);
+    return async (context) => {
+      const [factory, outboxes] = await modifyBookmarkList(context);
+      const signed = await factory.unbookmarkEvent(event, hidden).sign(context.signer);
+      await context.publish(signed, outboxes);
+    };
   } else {
     throw new Error(`Event kind ${identifier.kind} is not a bookmark list or bookmark set`);
   }
@@ -94,16 +84,13 @@ export function UnbookmarkEvent(
 
 /** An action that creates a new bookmark list for a user */
 export function CreateBookmarkList(bookmarks?: NostrEvent[]): Action {
-  return async ({ events, factory, self, user, publish, sign }) => {
-    const existing = events.getReplaceable(kinds.BookmarkList, self);
+  return async ({ user, signer, publish }) => {
+    const existing = await user.replaceable(kinds.BookmarkList).$first(1000, undefined);
     if (existing) throw new Error("Bookmark list already exists");
 
-    const signed = await factory
-      .build(
-        { kind: kinds.BookmarkList },
-        bookmarks ? modifyPublicTags(...bookmarks.map(addEventBookmarkTag)) : undefined,
-      )
-      .then(sign);
+    let factory = BookmarkListFactory.create();
+    if (bookmarks) factory = bookmarks.reduce((f, b) => f.bookmarkEvent(b), factory);
+    const signed = await factory.sign(signer);
 
     await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
@@ -115,17 +102,12 @@ export function CreateBookmarkSet(
   description: string,
   additional: { image?: string; hidden?: NostrEvent[]; public?: NostrEvent[] },
 ): Action {
-  return async ({ factory, user, publish, sign }) => {
-    const signed = await factory
-      .build(
-        { kind: kinds.BookmarkList },
-        List.setTitle(title),
-        List.setDescription(description),
-        additional.image ? List.setImage(additional.image) : undefined,
-        additional.public ? modifyPublicTags(...additional.public.map(addEventBookmarkTag)) : undefined,
-        additional.hidden ? modifyHiddenTags(factory.services.signer, ...additional.hidden.map(addEventBookmarkTag)) : undefined,
-      )
-      .then(sign);
+  return async ({ signer, user, publish }) => {
+    let factory = BookmarkSetFactory.create().title(title).description(description);
+    if (additional.image) factory = factory.image(additional.image);
+    if (additional.public) factory = additional.public.reduce((f, b) => f.bookmarkEvent(b), factory);
+    if (additional.hidden) factory = additional.hidden.reduce((f, b) => f.bookmarkEvent(b, true), factory);
+    const signed = await factory.sign(signer);
 
     await publish(signed, await user.outboxes$.$first(1000, undefined));
   };

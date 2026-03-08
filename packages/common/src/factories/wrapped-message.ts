@@ -1,54 +1,41 @@
-import { blankEventTemplate, EventFactory, type EventFactoryServices } from "applesauce-core/factories";
-import { kinds, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
+import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
+import { kinds, KnownEventTemplate, NostrEvent, UnsignedEvent } from "applesauce-core/helpers";
+import { includeNameValueTag } from "applesauce-core/operations/tags";
 import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
-import { Rumor } from "../helpers/gift-wrap.js";
 
 export type WrappedMessageTemplate = KnownEventTemplate<kinds.PrivateDirectMessage>;
 export type WrappedMessageBlueprintOptions = TextContentOptions;
 
 export class WrappedMessageFactory extends EventFactory<kinds.PrivateDirectMessage, WrappedMessageTemplate> {
-  static create(recipient: string, message: string): WrappedMessageFactory {
-    return new WrappedMessageFactory((res) => res(blankEventTemplate(kinds.PrivateDirectMessage))).encryptedContent(
-      recipient,
-      message,
-    );
+  /**
+   * Creates a new wrapped message.
+   * @param recipients - A single recipient pubkey or an array of recipient pubkeys
+   * @param message - The plaintext message content
+   */
+  static create(recipients: string | string[], message: string): WrappedMessageFactory {
+    const recipientList = typeof recipients === "string" ? [recipients] : recipients;
+    let factory: WrappedMessageFactory = new WrappedMessageFactory((res) =>
+      res(blankEventTemplate(kinds.PrivateDirectMessage)),
+    ).chain(setShortTextContent(message));
+    for (const recipient of recipientList) {
+      factory = factory.chain(includeNameValueTag(["p", recipient])) as WrappedMessageFactory;
+    }
+    return factory;
   }
 
-  static reply(_parent: NostrEvent | string, recipient: string, message: string): WrappedMessageFactory {
-    return new WrappedMessageFactory((res) => res(blankEventTemplate(kinds.PrivateDirectMessage))).encryptedContent(
-      recipient,
-      message,
-    );
+  /** Creates a reply to a wrapped message */
+  static reply(
+    _parent: NostrEvent | UnsignedEvent | string,
+    recipient: string,
+    message: string,
+  ): WrappedMessageFactory {
+    return new WrappedMessageFactory((res) => res(blankEventTemplate(kinds.PrivateDirectMessage)))
+      .chain(setShortTextContent(message))
+      .chain(includeNameValueTag(["p", recipient])) as WrappedMessageFactory;
   }
 
+  /** Sets the text content of the message */
   text(content: string, options?: TextContentOptions) {
-    return this.chain((draft) => setShortTextContent(content, options)(draft));
+    return this.chain(setShortTextContent(content, options));
   }
-}
-
-// Legacy blueprint functions for backwards compatibility
-export function WrappedMessageBlueprint(
-  participants: string | string[],
-  message: string,
-  _options?: WrappedMessageBlueprintOptions,
-) {
-  return async (services: EventFactoryServices): Promise<Rumor> => {
-    const recipient = typeof participants === "string" ? participants : participants[0];
-    const factory = WrappedMessageFactory.create(recipient, message);
-    if (services.signer) factory.as(services.signer);
-    return factory.stamp() as any;
-  };
-}
-
-export function WrappedMessageReplyBlueprint(
-  parent: Rumor | string,
-  recipient: string,
-  message: string,
-  _options?: WrappedMessageBlueprintOptions,
-) {
-  return async (services: EventFactoryServices): Promise<Rumor> => {
-    const factory = WrappedMessageFactory.reply(parent as any, recipient, message);
-    if (services.signer) factory.as(services.signer);
-    return factory.stamp() as any;
-  };
 }

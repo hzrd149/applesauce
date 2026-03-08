@@ -1,10 +1,7 @@
 import { castEvent, CodeSnippet } from "applesauce-common/casts";
-import { LegacyEventFactory, blueprint } from "applesauce-core";
-
+import { DeleteFactory, LegacyEventFactory } from "applesauce-core";
 import { normalizeToEventPointer } from "applesauce-core/helpers/pointers";
 import { relaySet } from "applesauce-core/helpers/relays";
-import { setContent } from "applesauce-core/operations/content";
-import { setDeleteEvents } from "applesauce-core/operations/delete";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents } from "applesauce-relay";
 import hljs from "highlight.js/lib/core";
@@ -13,6 +10,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import type { NostrEvent } from "nostr-tools";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { map } from "rxjs";
+
 import { AccountDisplay, UserAvatar, UserName } from "../components";
 import { usePocketContext } from "../contexts/PocketContext";
 import { COMMENT_KIND } from "../helpers/nostr";
@@ -27,11 +25,6 @@ hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("javascript", javascript);
 
 // Factory will be created with active account's signer in the component
-
-// Blueprint for creating deletion events following NIP-09
-function DeleteBlueprint(events: (string | NostrEvent)[], reason?: string) {
-  return blueprint(5, reason ? setContent(reason) : undefined, setDeleteEvents(events));
-}
 
 interface CodeSnippetDetailsProps {
   eventId: string;
@@ -230,8 +223,9 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
       }
 
       // Create & sign deletion event
-      const draft = await factory.build(DeleteBlueprint, [snippet.event], deleteReason.trim() || undefined);
-      const signed = await factory.sign(draft);
+      const signed = await DeleteFactory.fromEvents([snippet.event], deleteReason.trim() || undefined).sign(
+        activeAccount,
+      );
 
       // Publish to all relays
       await pool.publish(relays, signed);

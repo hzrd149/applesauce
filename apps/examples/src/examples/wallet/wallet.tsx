@@ -71,7 +71,6 @@ const couch = new IndexedDBCouch();
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
 const actions = new ActionRunner(eventStore, factory, async (event) => {
   const mailboxes = await firstValueFrom(
     eventStore.mailboxes(event.pubkey).pipe(defined(), timeout({ first: 5_000, with: () => of(undefined) })),

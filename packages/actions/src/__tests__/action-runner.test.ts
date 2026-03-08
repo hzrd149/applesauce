@@ -1,4 +1,4 @@
-import { LegacyEventFactory, EventStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { from } from "rxjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,47 +8,45 @@ import { FakeUser } from "./fake-user.js";
 
 const user = new FakeUser();
 let events = new EventStore();
-let factory = new LegacyEventFactory({ signer: user });
 
 beforeEach(() => {
   events = new EventStore();
-  factory = new LegacyEventFactory({ signer: user });
 });
 
 describe("ActionRunner", () => {
   describe("constructor", () => {
-    it("should create an ActionRunner with events and factory", () => {
-      const hub = new ActionRunner(events, factory);
+    it("should create an ActionRunner with events and signer", () => {
+      const hub = new ActionRunner(events, user);
       expect(hub.events).toBe(events);
-      expect(hub.factory).toBe(factory);
+      expect(hub.signer).toBe(user);
       expect(hub.saveToStore).toBe(true);
     });
 
     it("should create an ActionRunner with publish method", () => {
       const publish = vi.fn();
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       expect(hub.events).toBe(events);
-      expect(hub.factory).toBe(factory);
+      expect(hub.signer).toBe(user);
     });
 
     it("should create an ActionRunner with publish object", () => {
       const publish = vi.fn();
-      const hub = new ActionRunner(events, factory, { publish });
+      const hub = new ActionRunner(events, user, { publish });
       expect(hub.events).toBe(events);
-      expect(hub.factory).toBe(factory);
+      expect(hub.signer).toBe(user);
     });
   });
 
   describe("run", () => {
     it("should throw if publish method is not set", async () => {
-      const hub = new ActionRunner(events, factory);
+      const hub = new ActionRunner(events, user);
       await expect(hub.run(CreateProfile, { name: "fiatjaf" })).rejects.toThrow("Missing publish method");
     });
 
     it("should run action and publish events using function publish method", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
 
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -65,7 +63,7 @@ describe("ActionRunner", () => {
     it("should run action and publish events using object publish method", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
 
-      const hub = new ActionRunner(events, factory, { publish });
+      const hub = new ActionRunner(events, user, { publish });
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -83,7 +81,7 @@ describe("ActionRunner", () => {
       const publish = vi.fn().mockResolvedValue(undefined);
       const addSpy = vi.spyOn(events, "add");
 
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(addSpy).toHaveBeenCalled();
@@ -98,7 +96,7 @@ describe("ActionRunner", () => {
       const publish = vi.fn().mockResolvedValue(undefined);
       const addSpy = vi.spyOn(events, "add");
 
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       hub.saveToStore = false;
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
@@ -108,7 +106,7 @@ describe("ActionRunner", () => {
     it("should handle publish method returning Observable", async () => {
       const publish = vi.fn().mockReturnValue(from([undefined]));
 
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -117,7 +115,7 @@ describe("ActionRunner", () => {
     it("should handle publish method returning Promise", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
 
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       await hub.run(CreateProfile, { name: "fiatjaf" });
 
       expect(publish).toHaveBeenCalled();
@@ -127,20 +125,16 @@ describe("ActionRunner", () => {
   describe("context", () => {
     it("should create context with correct properties", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       const actionBuilder = () => {
-        const action: Action = async function* (ctx) {
+        const action: Action = async (ctx) => {
           expect(ctx.events).toBe(events);
-          expect(ctx.factory).toBe(factory);
+          expect(ctx.signer).toBe(user);
           expect(ctx.self).toBe(await user.getPublicKey());
           expect(ctx.user).toBeDefined();
-          expect(ctx.signer).toBe(user);
           expect(typeof ctx.sign).toBe("function");
           expect(typeof ctx.publish).toBe("function");
-          expect(typeof ctx.exec).toBe("function");
           expect(typeof ctx.run).toBe("function");
-          // Yield something to complete the stream
-          yield user.note("test");
         };
         return action;
       };
@@ -150,22 +144,20 @@ describe("ActionRunner", () => {
 
     it("should reuse context across multiple calls", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
-      const hub = new ActionRunner(events, factory, publish);
+      const hub = new ActionRunner(events, user, publish);
       let firstContext: any;
       let secondContext: any;
 
       const actionBuilder1 = () => {
-        const action: Action = async function* (ctx) {
+        const action: Action = async (ctx) => {
           firstContext = ctx;
-          yield user.note("test1");
         };
         return action;
       };
 
       const actionBuilder2 = () => {
-        const action: Action = async function* (ctx) {
+        const action: Action = async (ctx) => {
           secondContext = ctx;
-          yield user.note("test2");
         };
         return action;
       };

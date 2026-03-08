@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-
+import { isKind } from "nostr-tools/kinds";
 import type { EventOperation } from "../factories/types.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import {
@@ -17,7 +17,6 @@ import { ensureSingletonTag } from "../helpers/tags.js";
 import { unixNow } from "../helpers/time.js";
 import { removeSingletonTag, setSingletonTag } from "./tag/common.js";
 import { includeSingletonTag, modifyPublicTags } from "./tags.js";
-import { isKind } from "nostr-tools/kinds";
 
 /** An operation that removes the signature from the event template */
 export function stripSignature<Input extends NostrEvent | UnsignedEvent | EventTemplate>(): EventOperation<

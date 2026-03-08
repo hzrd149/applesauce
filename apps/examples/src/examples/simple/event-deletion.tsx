@@ -3,10 +3,9 @@
  * @tags nip-09, deletion, events, timeline
  * @related simple/profile-editor
  */
-import { ProxySigner } from "applesauce-accounts";
 import { castUser, Note, User } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
-import { defined, EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { DeleteFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { getDisplayName, kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -17,9 +16,6 @@ import { useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 
-// Import the delete blueprint so factory.delete is available
-import "applesauce-common/blueprints/delete";
-
 // Setup application state
 const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -28,7 +24,6 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
@@ -152,9 +147,7 @@ function NotesList({ user }: { user: User }) {
     setSuccess(false);
 
     try {
-      // Create delete event using EventFactory with DeleteBlueprint
-      const deleteEvent = await factory.delete(eventsToDelete);
-      const signed = await factory.sign(deleteEvent);
+      const signed = await DeleteFactory.fromEvents(eventsToDelete).sign(signer);
 
       // Publish to user's outboxes
       await pool.publish(outboxes, signed);

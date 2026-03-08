@@ -158,6 +158,7 @@ describe("exports", () => {
         "isHiddenTagsUnlocked",
         "isImageURL",
         "isKind",
+        "isMailboxesEvent",
         "isNameValueTag",
         "isPTag",
         "isProfilePointer",

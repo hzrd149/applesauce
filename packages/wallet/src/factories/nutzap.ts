@@ -1,6 +1,6 @@
 import { type Proof, type Token } from "@cashu/cashu-ts";
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
-import { KnownEventTemplate, NostrEvent, EventTemplate } from "applesauce-core/helpers";
+import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { AddressPointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { NUTZAP_KIND } from "../helpers/nutzap.js";
 import { setProofs, setMint, setRecipient, setEvent, setComment } from "../operations/nutzap.js";
@@ -44,17 +44,4 @@ export class NutzapFactory extends EventFactory<typeof NUTZAP_KIND, NutzapTempla
   comment(text: string) {
     return this.chain((draft) => setComment(text)(draft));
   }
-}
-
-// Legacy blueprint functions for backwards compatibility
-export function NutzapBlueprint(event: NostrEvent, token: Token, comment?: string) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return NutzapFactory.forEvent(event, token, comment);
-  };
-}
-
-export function ProfileNutzapBlueprint(profile: string | ProfilePointer, token: Token, comment?: string) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return NutzapFactory.forProfile(profile, token, comment);
-  };
 }

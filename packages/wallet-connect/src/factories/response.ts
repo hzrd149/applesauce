@@ -11,7 +11,7 @@ export type WalletResponseTemplate = KnownEventTemplate<typeof WALLET_RESPONSE_K
 export class WalletResponseFactory extends EventFactory<typeof WALLET_RESPONSE_KIND, WalletResponseTemplate> {
   static create<Method extends TWalletMethod>(
     request: NostrEvent,
-    response: Method["response"] | Method["error"]
+    response: Method["response"] | Method["error"],
   ): WalletResponseFactory {
     const encryption = getWalletRequestEncryption(request);
     return new WalletResponseFactory((res) => res(blankEventTemplate(WALLET_RESPONSE_KIND)))
@@ -28,21 +28,11 @@ export class WalletResponseFactory extends EventFactory<typeof WALLET_RESPONSE_K
     return this.chain((draft) => includeSingletonTag(["p", pubkey])(draft));
   }
 
-  response<T>(response: T, recipient: string, encryption: "nip44" | "nip04" = "nip44") {
-    return this.chain(async (draft) => {
-      return setEncryptedContent(recipient, JSON.stringify(response), this.signer, encryption)(draft);
+  response<T>(response: T, recipient: string, encryption: "nip44" | "nip04" = "nip44"): this {
+    let result: this;
+    result = this.chain(async (draft) => {
+      return setEncryptedContent(recipient, JSON.stringify(response), result.signer, encryption)(draft);
     });
+    return result;
   }
-}
-
-// Legacy blueprint function for backwards compatibility
-import type { EventTemplate } from "applesauce-core/helpers";
-
-export function WalletResponseBlueprint<Method extends TWalletMethod>(
-  request: NostrEvent,
-  response: Method["response"] | Method["error"]
-) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return WalletResponseFactory.create(request, response);
-  };
 }

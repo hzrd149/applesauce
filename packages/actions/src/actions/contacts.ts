@@ -1,56 +1,45 @@
-import { TagOperation } from "applesauce-core";
-import { kinds } from "applesauce-core/helpers/event";
+import { ContactsFactory } from "applesauce-common/factories";
+import { kinds } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { modifyPublicTags } from "applesauce-core/operations";
-import { addProfilePointerTag, removeProfilePointerTag } from "applesauce-core/operations/tag/common";
-import { firstValueFrom, of, timeout } from "rxjs";
-import { Action } from "../action-runner.js";
+import { Action, ActionContext } from "../action-runner.js";
 
-function ModifyContactsEvent(operations: TagOperation[]): Action {
-  return async ({ events, factory, user, publish, sign }) => {
-    const [event, outboxes] = await Promise.all([
-      firstValueFrom(
-        events.replaceable(kinds.Contacts, user.pubkey).pipe(timeout({ first: 1000, with: () => of(undefined) })),
-      ),
-      user.outboxes$.$first(1000, undefined),
-    ]);
+async function modifyContacts({ user }: ActionContext): Promise<[ContactsFactory, string[] | undefined]> {
+  const [event, outboxes] = await Promise.all([
+    user.replaceable(kinds.Contacts).$first(1000, undefined),
+    user.outboxes$.$first(1000, undefined),
+  ]);
 
-    const operation = modifyPublicTags(...operations);
-
-    // Modify or build new event
-    const signed = event
-      ? await factory.modify(event, operation).then(sign)
-      : await factory.build({ kind: kinds.Contacts }, operation).then(sign);
-
-    // Publish the event to the user's outboxes
-    await publish(signed, outboxes);
-  };
+  return [event ? ContactsFactory.modify(event) : ContactsFactory.create(), outboxes];
 }
 
 /** An action that adds a pubkey to a users contacts event */
-export function FollowUser(user: string | ProfilePointer): Action {
-  return ModifyContactsEvent([addProfilePointerTag(user)]);
+export function FollowUser(pointer: string | ProfilePointer): Action {
+  return async (context) => {
+    const [factory, outboxes] = await modifyContacts(context);
+    const signed = await factory.addContact(pointer).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
 /** An action that removes a pubkey from a users contacts event */
-export function UnfollowUser(user: string | ProfilePointer): Action {
-  return ModifyContactsEvent([removeProfilePointerTag(user)]);
+export function UnfollowUser(pointer: string | ProfilePointer): Action {
+  return async (context) => {
+    const [factory, outboxes] = await modifyContacts(context);
+    const signed = await factory.removeContact(pointer).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
-/** An action that creates a new kind 3 contacts lists, throws if a contact list already exists */
+/** An action that creates a new kind 3 contacts list, throws if a contact list already exists */
 export function NewContacts(pubkeys?: (string | ProfilePointer)[]): Action {
-  return async ({ events, factory, self, user, publish, sign }) => {
-    const contacts = events.getReplaceable(kinds.Contacts, self);
-    if (contacts) throw new Error("Contact list already exists");
+  return async ({ user, signer, publish }) => {
+    const existing = await user.replaceable(kinds.Contacts).$first(1000, undefined);
+    if (existing) throw new Error("Contact list already exists");
 
-    const signed = await factory
-      .build(
-        { kind: kinds.Contacts },
-        pubkeys ? modifyPublicTags(...pubkeys.map((p) => addProfilePointerTag(p))) : undefined,
-      )
-      .then(sign);
+    let factory = ContactsFactory.create();
+    if (pubkeys?.length) factory = pubkeys.reduce((f, p) => f.addContact(p), factory);
+    const signed = await factory.sign(signer);
 
-    // Publish the event to the user's outboxes
     await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
 }

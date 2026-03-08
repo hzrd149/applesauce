@@ -12,7 +12,7 @@ export class WalletRequestFactory extends EventFactory<typeof WALLET_REQUEST_KIN
   static create<Method extends TWalletMethod>(
     service: string,
     request: Method["request"],
-    encryption: WalletConnectEncryptionMethod = "nip44_v2"
+    encryption: WalletConnectEncryptionMethod = "nip44_v2",
   ): WalletRequestFactory {
     return new WalletRequestFactory((res) => res(blankEventTemplate(WALLET_REQUEST_KIND)))
       .service(service)
@@ -23,28 +23,17 @@ export class WalletRequestFactory extends EventFactory<typeof WALLET_REQUEST_KIN
     return this.chain((draft) => includeSingletonTag(["p", pubkey])(draft));
   }
 
-  request<T>(request: T, encryption: WalletConnectEncryptionMethod = "nip44_v2") {
-    return this.chain(async (draft) => {
+  request<T>(request: T, encryption: WalletConnectEncryptionMethod = "nip44_v2"): this {
+    let result: this;
+    result = this.chain(async (draft) => {
       const encrypted = await setEncryptedContent(
-        draft.tags.find(t => t[0] === "p")?.[1] || "",
+        draft.tags.find((t) => t[0] === "p")?.[1] || "",
         JSON.stringify(request),
-        this.signer,
-        encryption === "nip44_v2" ? "nip44" : "nip04"
+        result.signer,
+        encryption === "nip44_v2" ? "nip44" : "nip04",
       )(draft);
       return includeSingletonTag(["encryption", encryption])(encrypted);
     });
+    return result;
   }
-}
-
-// Legacy blueprint function for backwards compatibility
-import type { EventTemplate } from "applesauce-core/helpers";
-
-export function WalletRequestBlueprint<Method extends TWalletMethod>(
-  service: string,
-  request: Method["request"],
-  encryption: WalletConnectEncryptionMethod = "nip44_v2"
-) {
-  return async (_services: any): Promise<EventTemplate> => {
-    return WalletRequestFactory.create(service, request, encryption);
-  };
 }

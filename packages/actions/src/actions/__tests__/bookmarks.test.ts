@@ -1,4 +1,4 @@
-import { LegacyEventFactory, EventStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
@@ -9,14 +9,12 @@ import { AddOutboxRelay } from "../mailboxes.js";
 const user = new FakeUser();
 
 let events: EventStore;
-let factory: LegacyEventFactory;
 let publish: () => Promise<void>;
 let hub: ActionRunner;
 beforeEach(async () => {
   events = new EventStore();
-  factory = new LegacyEventFactory({ signer: user });
   publish = vitest.fn().mockResolvedValue(undefined);
-  hub = new ActionRunner(events, factory, publish);
+  hub = new ActionRunner(events, user, publish);
 
   // Setup outboxes for the user
   events.add(user.event({ kind: kinds.RelayList, tags: [["r", "wss://relay.example.com/"]] }));
@@ -52,12 +50,12 @@ describe("CreateBookmarkList", () => {
 });
 
 describe("CreateBookmarkSet", () => {
-  it("should publish a kind 10003 bookmark set with title and description", async () => {
+  it("should publish a kind 30003 bookmark set with title and description", async () => {
     await hub.run(CreateBookmarkSet, "My Favorites", "A list of my favorite articles", {});
 
     expect(publish).toBeCalledWith(
       expect.objectContaining({
-        kind: kinds.BookmarkList,
+        kind: kinds.Bookmarksets,
         tags: expect.arrayContaining([
           ["title", "My Favorites"],
           ["description", "A list of my favorite articles"],
@@ -72,7 +70,7 @@ describe("CreateBookmarkSet", () => {
 
     expect(publish).toBeCalledWith(
       expect.objectContaining({
-        kind: kinds.BookmarkList,
+        kind: kinds.Bookmarksets,
         tags: expect.arrayContaining([
           ["title", "My Favorites"],
           ["description", "Description"],
@@ -89,7 +87,7 @@ describe("CreateBookmarkSet", () => {
 
     expect(publish).toBeCalledWith(
       expect.objectContaining({
-        kind: kinds.BookmarkList,
+        kind: kinds.Bookmarksets,
         tags: expect.arrayContaining([
           ["title", "My Favorites"],
           ["description", "Description"],
@@ -106,7 +104,7 @@ describe("CreateBookmarkSet", () => {
 
     expect(publish).toBeCalledWith(
       expect.objectContaining({
-        kind: kinds.BookmarkList,
+        kind: kinds.Bookmarksets,
         tags: expect.arrayContaining([
           ["title", "My Favorites"],
           ["description", "Description"],

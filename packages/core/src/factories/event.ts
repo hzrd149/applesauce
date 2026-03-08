@@ -32,6 +32,9 @@ export function toEventTemplate<K extends number>(event: KnownEvent<K>): KnownEv
   };
 }
 
+/** Shared mutable signer container passed through the factory chain */
+type SignerRef = { signer?: EventSigner };
+
 /** The base class for building or modifying events */
 export class EventFactory<
   K extends number = number,
@@ -47,28 +50,32 @@ export class EventFactory<
     return new EventFactory((res) => res(toEventTemplate(event)));
   }
 
-  // /** Creates a new event factory from a nostr event and updates its created_at timestamp */
-  // static modify<T extends NostrEvent>(event: T): EventFactory<T["kind"]> {
-  //   // NOTE: not passing the T type here because strip() will return a EventTemplate
-  //   return new EventFactory((res) => res(event)).strip().created();
-  // }
+  /** Shared mutable reference to the signer, propagated through all chain links */
+  protected _signerRef: SignerRef = {};
 
-  /** The signer used to sign the event */
-  protected signer?: EventSigner;
+  /** The signer used to sign the event (reads from shared ref) */
+  protected get signer(): EventSigner | undefined {
+    return this._signerRef.signer;
+  }
+
+  protected set signer(value: EventSigner | undefined) {
+    this._signerRef.signer = value;
+  }
 
   /** Custom .then method that wraps the resulting promise in a new event factory */
   protected chain(operation: EventOperation<T>): this {
     const Constructor = this.constructor as typeof EventFactory;
     const next = new Constructor((res) => res(this.then(operation)));
 
-    // transfer the signer if set
-    if (this.signer) return next.as(this.signer) as this;
-    else return next as this;
+    // Share the same signer reference so setting .as() on any link propagates to all
+    (next as EventFactory<K, T>)._signerRef = this._signerRef;
+
+    return next as this;
   }
 
   /** Sets the event signer to use when building this event */
   as(signer: EventSigner): this {
-    this.signer = signer;
+    this._signerRef.signer = signer;
     return this;
   }
 
@@ -97,6 +104,9 @@ export class EventFactory<
   /** Signs the event using a signer interface and returns a Promise */
   async sign(signer = this.signer): Promise<KnownEvent<K>> {
     if (!signer) throw new Error("Missing signer");
+
+    // Ensure the signer is available to chain operations during resolution
+    if (!this.signer) this.signer = signer;
 
     const template = await this;
     const signed = await sign(signer)(template);
@@ -152,24 +162,32 @@ export class EventFactory<
   }
 
   /** Modifies the events public and optional hidden tags */
-  modifyTags(...args: Parameters<typeof modifyTags>) {
-    return this.chain((e) => modifyTags(args[0], this.signer)(e));
+  modifyTags(...args: Parameters<typeof modifyTags>): this {
+    let result: this;
+    result = this.chain((e) => modifyTags(args[0], result.signer)(e));
+    return result;
   }
 
   /** Modifies the events public tags array */
-  modifyPublicTags(...args: Parameters<typeof modifyPublicTags>) {
-    return this.chain((e) => modifyPublicTags(...args)(e));
+  modifyPublicTags(...args: Parameters<typeof modifyPublicTags>): this {
+    return this.chain(modifyPublicTags(...args));
   }
 
   /** Modifies the events hidden tags array */
-  modifyHiddenTags(...args: Exclude<Parameters<typeof modifyHiddenTags>[1], undefined>[]) {
-    return this.chain((e) => modifyHiddenTags(this.signer, ...args)(e));
+  modifyHiddenTags(...args: Exclude<Parameters<typeof modifyHiddenTags>[1], undefined>[]): this {
+    let result: this;
+    result = this.chain((e) => modifyHiddenTags(result.signer, ...args)(e));
+    return result;
   }
 
   /** Sets the encrypted content of the event */
-  encryptedContent(target: string, content: string, override?: EncryptionMethod, signer = this.signer) {
-    if (!signer) throw new Error("Signer required for encrypted content");
-
-    return this.chain((draft) => setEncryptedContent(target, content, signer, override)(draft));
+  encryptedContent(target: string, content: string, override?: EncryptionMethod): this {
+    let result: this;
+    result = this.chain((draft) => {
+      const signer = result.signer;
+      if (!signer) throw new Error("Signer required for encrypted content");
+      return setEncryptedContent(target, content, signer, override)(draft);
+    });
+    return result;
   }
 }

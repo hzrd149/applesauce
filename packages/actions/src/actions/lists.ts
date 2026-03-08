@@ -1,4 +1,4 @@
-import * as List from "applesauce-common/operations/list";
+import { ListFactory } from "applesauce-common/factories";
 import { IEventStoreRead } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, isAddressPointer } from "applesauce-core/helpers/pointers";
@@ -12,7 +12,7 @@ function getList(events: IEventStoreRead, address: NostrEvent | AddressPointer) 
   return list;
 }
 
-/** An action that sets or removes a NIP-15 list information */
+/** An action that sets or removes a NIP-51 list information */
 export function SetListMetadata(
   list: NostrEvent | AddressPointer,
   info: {
@@ -21,17 +21,14 @@ export function SetListMetadata(
     image?: string;
   },
 ): Action {
-  return async ({ events, factory, sign, publish }) => {
+  return async ({ events, signer, publish }) => {
     list = getList(events, list);
 
-    const signed = await factory
-      .modify(
-        list,
-        List.setTitle(info.title ?? null),
-        List.setDescription(info.description ?? null),
-        List.setImage(info.image ?? null),
-      )
-      .then(sign);
+    const signed = await ListFactory.modify(list)
+      .title(info.title ?? null)
+      .description(info.description ?? null)
+      .image(info.image ?? null)
+      .sign(signer);
 
     await publish(signed);
   };

@@ -1,37 +1,22 @@
-import * as List from "applesauce-common/operations/list";
-import { TagOperation } from "applesauce-core";
+import { FollowSetFactory } from "applesauce-common/factories";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { getReplaceableIdentifier } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
-import { addProfilePointerTag, removeProfilePointerTag } from "applesauce-core/operations/tag/common";
-import { Action } from "../action-runner.js";
+import { Action, ActionContext } from "../action-runner.js";
 
-function ModifyFollowSetEvent(operations: TagOperation[], set: NostrEvent | string, hidden = false): Action {
-  const identifier = typeof set === "string" ? set : getReplaceableIdentifier(set);
+async function modifyFollowSet(
+  identifier: string,
+  { user }: ActionContext,
+): Promise<[FollowSetFactory, string[] | undefined]> {
+  const [event, outboxes] = await Promise.all([
+    user.replaceable(kinds.Followsets, identifier).$first(1000, undefined),
+    user.outboxes$.$first(1000, undefined),
+  ]);
 
-  return async ({ factory, user, publish, sign }) => {
-    const [event, outboxes] = await Promise.all([
-      user.replaceable(kinds.Followsets, identifier).$first(1000, undefined),
-      user.outboxes$.$first(1000, undefined),
-    ]);
-
-    const operation = hidden ? modifyHiddenTags(factory.services.signer, ...operations) : modifyPublicTags(...operations);
-
-    // Modify or build new event
-    const signed = event
-      ? await factory.modify(event, operation).then(sign)
-      : await factory.build({ kind: kinds.Followsets }, operation).then(sign);
-
-    // Publish the event to the user's outboxes
-    await publish(signed, outboxes);
-  };
+  return [event ? FollowSetFactory.modify(event) : FollowSetFactory.create(), outboxes];
 }
 
-/**
- * An action that creates a new follow set
- * @throws if a follow set already exists
- */
+/** An action that creates a new follow set */
 export function CreateFollowSet(
   title: string,
   options?: {
@@ -41,21 +26,14 @@ export function CreateFollowSet(
     hidden?: (string | ProfilePointer)[];
   },
 ): Action {
-  return async ({ factory, user, publish }) => {
-    const draft = await factory.build(
-      { kind: kinds.Followsets },
+  return async ({ signer, user, publish }) => {
+    let factory = FollowSetFactory.create().title(title);
+    if (options?.description) factory = factory.description(options.description);
+    if (options?.image) factory = factory.image(options.image);
+    if (options?.public) factory = factory.addUser(options.public);
+    if (options?.hidden) factory = factory.addUser(options.hidden, true);
+    const signed = await factory.sign(signer);
 
-      // set list information
-      List.setTitle(title),
-      options?.description ? List.setDescription(options.description) : undefined,
-      options?.image ? List.setImage(options.image) : undefined,
-
-      // add pubkey tags
-      options?.public ? modifyPublicTags(...options.public.map((p) => addProfilePointerTag(p))) : undefined,
-      options?.hidden ? modifyHiddenTags(factory.services.signer, ...options.hidden.map((p) => addProfilePointerTag(p))) : undefined,
-    );
-
-    const signed = await factory.sign(draft);
     await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
 }
@@ -71,11 +49,13 @@ export function AddUserToFollowSet(
   identifier: NostrEvent | string,
   hidden = false,
 ): Action {
-  return ModifyFollowSetEvent(
-    Array.isArray(pubkey) ? pubkey.map((p) => addProfilePointerTag(p)) : [addProfilePointerTag(pubkey)],
-    identifier,
-    hidden,
-  );
+  const id = typeof identifier === "string" ? identifier : getReplaceableIdentifier(identifier);
+  const pubkeys = Array.isArray(pubkey) ? pubkey : [pubkey];
+  return async (context) => {
+    const [factory, outboxes] = await modifyFollowSet(id, context);
+    const signed = await factory.addUser(pubkeys, hidden).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
 /**
@@ -89,11 +69,13 @@ export function RemoveUserFromFollowSet(
   identifier: NostrEvent | string,
   hidden = false,
 ): Action {
-  return ModifyFollowSetEvent(
-    Array.isArray(pubkey) ? pubkey.map((p) => removeProfilePointerTag(p)) : [removeProfilePointerTag(pubkey)],
-    identifier,
-    hidden,
-  );
+  const id = typeof identifier === "string" ? identifier : getReplaceableIdentifier(identifier);
+  const pubkeys = Array.isArray(pubkey) ? pubkey : [pubkey];
+  return async (context) => {
+    const [factory, outboxes] = await modifyFollowSet(id, context);
+    const signed = await factory.removeUser(pubkeys, hidden).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
 /**
@@ -104,13 +86,9 @@ export function RemoveUserFromFollowSet(
  */
 export function UpdateFollowSetInformation(
   identifier: string,
-  info: {
-    title?: string;
-    description?: string;
-    image?: string;
-  },
+  info: { title?: string; description?: string; image?: string },
 ): Action {
-  return async ({ factory, sign, user, publish }) => {
+  return async ({ user, signer, publish }) => {
     const [event, outboxes] = await Promise.all([
       user.replaceable(kinds.Followsets, identifier).$first(1000, undefined),
       user.outboxes$.$first(1000, undefined),
@@ -118,15 +96,11 @@ export function UpdateFollowSetInformation(
 
     if (!event) throw new Error("Follow set not found");
 
-    const signed = await factory
-      .modify(
-        event,
-
-        info?.title ? List.setTitle(info.title) : undefined,
-        info?.description ? List.setDescription(info.description) : undefined,
-        info?.image ? List.setImage(info.image) : undefined,
-      )
-      .then(sign);
+    let factory = FollowSetFactory.modify(event);
+    if (info.title) factory = factory.title(info.title);
+    if (info.description) factory = factory.description(info.description);
+    if (info.image) factory = factory.image(info.image);
+    const signed = await factory.sign(signer);
 
     await publish(signed, outboxes);
   };

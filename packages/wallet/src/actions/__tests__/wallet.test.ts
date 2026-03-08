@@ -1,12 +1,13 @@
 import { ActionRunner } from "applesauce-actions";
 import { User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core/factories";
 import { bytesToHex, unlockHiddenTags } from "applesauce-core/helpers";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { beforeEach, describe, expect, it, Mock, vi, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { WalletBlueprint } from "../../factories/wallet.js";
+import { WalletFactory } from "../../factories/wallet.js";
+import { WalletHistoryFactory } from "../../factories/history.js";
+import { WalletTokenFactory } from "../../factories/tokens.js";
 import { WALLET_HISTORY_KIND } from "../../helpers/history.js";
 import { NUTZAP_INFO_KIND } from "../../helpers/nutzap-info.js";
 import { unlockTokenContent, WALLET_TOKEN_KIND } from "../../helpers/tokens.js";
@@ -25,14 +26,12 @@ import { CreateWallet, SetWalletMints, SetWalletRelays, UnlockWallet, WalletAddP
 const signer = new FakeUser();
 
 let events: EventStore;
-let factory: EventFactory;
 let publish: Mock<(...args: any[]) => Promise<void>>;
 let hub: ActionRunner;
 beforeEach(() => {
   events = new EventStore();
-  factory = new EventFactory({ signer });
   publish = vitest.fn().mockResolvedValue(undefined);
-  hub = new ActionRunner(events, factory, publish);
+  hub = new ActionRunner(events, signer, publish);
   // Clear User cache to ensure clean state between tests
   User.cache.clear();
 });
@@ -90,7 +89,7 @@ describe("CreateWallet", () => {
 
   it("should throw error if wallet already exists", async () => {
     const mints = ["https://mint.money.com"];
-    const walletEvent = await factory.sign(await factory.create(WalletBlueprint, { mints }));
+    const walletEvent = await WalletFactory.create(mints).as(signer).sign();
     await events.add(walletEvent);
 
     await expect(hub.run(CreateWallet, { mints })).rejects.toThrow("Wallet already exists");
@@ -99,9 +98,7 @@ describe("CreateWallet", () => {
 
 describe("WalletAddPrivateKey", () => {
   it("should add a private key to an existing wallet event without a private key", async () => {
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"] }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"]).as(signer).sign();
     await events.add(walletEvent);
 
     const privateKey = generateSecretKey();
@@ -120,9 +117,7 @@ describe("WalletAddPrivateKey", () => {
   });
 
   it("should create backup and nutzap info events when adding private key", async () => {
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"] }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"]).as(signer).sign();
     await events.add(walletEvent);
 
     const privateKey = generateSecretKey();
@@ -140,9 +135,7 @@ describe("WalletAddPrivateKey", () => {
 
   it("should throw an error if a wallet event already has a private key", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     await expect(hub.run(WalletAddPrivateKey, generateSecretKey())).rejects.toThrow("Wallet already has a private key");
@@ -150,9 +143,7 @@ describe("WalletAddPrivateKey", () => {
 
   it("should allow override if wallet already has a private key", async () => {
     const oldPrivateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"], privateKey: oldPrivateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"], oldPrivateKey).as(signer).sign();
     await events.add(walletEvent);
 
     const newPrivateKey = generateSecretKey();
@@ -174,9 +165,7 @@ describe("WalletAddPrivateKey", () => {
 describe("UnlockWallet", () => {
   it("should unlock wallet event", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     await hub.run(UnlockWallet);
@@ -191,19 +180,16 @@ describe("UnlockWallet", () => {
 
   it("should unlock wallet and tokens", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     // Create a token event
-    const { WalletTokenBlueprint } = await import("../../factories/tokens.js");
-    const tokenEvent = await factory.sign(
-      await factory.create(WalletTokenBlueprint, {
-        mint: "https://mint.money.com",
-        proofs: [{ amount: 10, secret: "secret", C: "C", id: "id" }],
-      }),
-    );
+    const tokenEvent = await WalletTokenFactory.create({
+      mint: "https://mint.money.com",
+      proofs: [{ amount: 10, secret: "secret", C: "C", id: "id" }],
+    })
+      .as(signer)
+      .sign();
     await events.add(tokenEvent);
 
     await hub.run(UnlockWallet, { tokens: true });
@@ -217,21 +203,18 @@ describe("UnlockWallet", () => {
 
   it("should unlock wallet and history", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     // Create a history event
-    const { WalletHistoryBlueprint } = await import("../../factories/history.js");
-    const historyEvent = await factory.sign(
-      await factory.create(WalletHistoryBlueprint, {
-        direction: "in",
-        amount: 100,
-        created: [],
-        mint: "https://mint.money.com",
-      }),
-    );
+    const historyEvent = await WalletHistoryFactory.create({
+      direction: "in",
+      amount: 100,
+      created: [],
+      mint: "https://mint.money.com",
+    })
+      .as(signer)
+      .sign();
     await events.add(historyEvent);
 
     await hub.run(UnlockWallet, { history: true });
@@ -243,9 +226,7 @@ describe("UnlockWallet", () => {
 
   it("should unlock wallet, tokens, and history together", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.money.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     await hub.run(UnlockWallet, { tokens: true, history: true });
@@ -257,26 +238,12 @@ describe("UnlockWallet", () => {
   it("should throw error if wallet does not exist", async () => {
     await expect(hub.run(UnlockWallet)).rejects.toThrow("Wallet does not exist");
   });
-
-  it("should throw error if signer is missing", async () => {
-    const factoryWithoutSigner = new EventFactory({});
-    const hubWithoutSigner = new ActionRunner(events, factoryWithoutSigner, publish);
-
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.money.com"] }),
-    );
-    await events.add(walletEvent);
-
-    await expect(hubWithoutSigner.run(UnlockWallet)).rejects.toThrow("Missing signer");
-  });
 });
 
 describe("SetWalletMints", () => {
   it("should update wallet mints", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint1.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint1.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     const newMints = ["https://mint2.com", "https://mint3.com"];
@@ -294,9 +261,7 @@ describe("SetWalletMints", () => {
 
   it("should publish updated wallet event", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint1.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint1.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     const newMints = ["https://mint2.com"];
@@ -312,13 +277,9 @@ describe("SetWalletMints", () => {
 describe("SetWalletRelays", () => {
   it("should update wallet relays", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, {
-        mints: ["https://mint.com"],
-        privateKey,
-        relays: ["wss://old-relay.com"],
-      }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.com"], privateKey, ["wss://old-relay.com"])
+      .as(signer)
+      .sign();
     await events.add(walletEvent);
 
     const newRelays = ["wss://new-relay1.com", "wss://new-relay2.com"];
@@ -337,9 +298,7 @@ describe("SetWalletRelays", () => {
 
   it("should publish to new relays", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     const newRelays = ["wss://new-relay1.com", "wss://new-relay2.com"];
@@ -355,9 +314,7 @@ describe("SetWalletRelays", () => {
 
   it("should handle URL objects as relays", async () => {
     const privateKey = generateSecretKey();
-    const walletEvent = await factory.sign(
-      await factory.create(WalletBlueprint, { mints: ["https://mint.com"], privateKey }),
-    );
+    const walletEvent = await WalletFactory.create(["https://mint.com"], privateKey).as(signer).sign();
     await events.add(walletEvent);
 
     const newRelays = [new URL("wss://new-relay.com")];

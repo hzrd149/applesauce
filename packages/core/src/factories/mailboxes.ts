@@ -1,5 +1,5 @@
-import { isKind } from "nostr-tools/kinds";
 import { kinds, KnownEvent, KnownEventTemplate } from "../helpers/event.js";
+import { isMailboxesEvent } from "../helpers/mailboxes.js";
 import {
   addInboxRelay,
   addMailboxRelay,
@@ -14,23 +14,27 @@ import { blankEventTemplate, EventFactory, toEventTemplate } from "./event.js";
 
 export type MailboxesTemplate = KnownEventTemplate<kinds.RelayList>;
 
+export type MailboxesOptions = {
+  inboxes?: string[];
+  outboxes?: string[];
+};
+
 /** A factory class for building NIP-65 relay list (mailboxes) events */
 export class MailboxesFactory extends EventFactory<kinds.RelayList, MailboxesTemplate> {
   /**
    * Creates a new mailboxes factory
    * @returns A new mailboxes factory
    */
-  static create(): MailboxesFactory {
-    return new MailboxesFactory((res) => res(blankEventTemplate(kinds.RelayList)));
+  static create(opts?: MailboxesOptions): MailboxesFactory {
+    let factory = new MailboxesFactory((res) => res(blankEventTemplate(kinds.RelayList)));
+    if (opts?.inboxes) factory = factory.inboxes(opts.inboxes);
+    if (opts?.outboxes) factory = factory.outboxes(opts.outboxes);
+    return factory;
   }
 
-  /**
-   * Creates a new mailboxes factory from an existing relay list event with validation
-   * @param event - The existing relay list event
-   * @returns A new mailboxes factory
-   */
+  /** Creates a new mailboxes factory from an existing relay list event with validation */
   static modify(event: KnownEvent<kinds.RelayList>): MailboxesFactory {
-    if (!isKind(event, kinds.RelayList)) throw new Error("Event is not a relay list");
+    if (!isMailboxesEvent(event)) throw new Error("Event is not a relay list");
     return new MailboxesFactory((res) => res(toEventTemplate(event)));
   }
 
