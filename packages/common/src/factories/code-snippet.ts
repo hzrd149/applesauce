@@ -17,6 +17,7 @@ import {
   setCodeSnippetRepo,
   setCodeSnippetRuntime,
 } from "../operations/code-snippet.js";
+import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 
 export type CodeSnippetTemplate = KnownEventTemplate<typeof CODE_SNIPPET_KIND>;
 
@@ -126,6 +127,16 @@ export class CodeSnippetFactory extends EventFactory<typeof CODE_SNIPPET_KIND, C
   /** Sets all the dependency tags on a code snippet event   */
   dependencies(dependencies: string[]) {
     return this.chain(setCodeSnippetDependencies(dependencies));
+  }
+
+  /** Adds a hashtag "t" tag to the code snippet */
+  addHashtag(hashtag: string) {
+    return this.chain(addHashtag(hashtag));
+  }
+
+  /** Adds multiple hashtags as "t" tags */
+  hashtags(tags: string[]) {
+    return this.chain(includeHashtags(tags));
   }
 
   /** Sets meta tags */

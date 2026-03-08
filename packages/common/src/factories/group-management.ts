@@ -1,5 +1,6 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
+import { EventPointer } from "applesauce-core/helpers/pointers";
 import { setContent } from "applesauce-core/operations/content";
 import {
   CREATE_GROUP_KIND,
@@ -49,6 +50,11 @@ export class GroupJoinRequestFactory extends EventFactory<
   joinRequest(group: GroupPointer, inviteCode?: string) {
     return this.chain((draft) => setJoinRequestTags(group, inviteCode)(draft));
   }
+
+  /** Sets the reason for the join request */
+  reason(text: string) {
+    return this.chain((draft) => setContent(text)(draft));
+  }
 }
 
 // Leave Request Factory
@@ -69,6 +75,11 @@ export class GroupLeaveRequestFactory extends EventFactory<
 
   leaveRequest(group: GroupPointer) {
     return this.chain((draft) => setLeaveRequestTags(group)(draft));
+  }
+
+  /** Sets the reason for the leave request */
+  reason(text: string) {
+    return this.chain((draft) => setContent(text)(draft));
   }
 }
 
@@ -150,7 +161,7 @@ export class DeleteGroupEventFactory extends EventFactory<
   typeof DELETE_EVENT_KIND,
   KnownEventTemplate<typeof DELETE_EVENT_KIND>
 > {
-  static create(group: GroupPointer, eventId: string): DeleteGroupEventFactory {
+  static create(group: GroupPointer, eventId: string | NostrEvent | EventPointer): DeleteGroupEventFactory {
     return new DeleteGroupEventFactory((res) => res(blankEventTemplate(DELETE_EVENT_KIND))).group(group).event(eventId);
   }
 
@@ -158,8 +169,10 @@ export class DeleteGroupEventFactory extends EventFactory<
     return this.chain((draft) => setGroupPointer(pointer)(draft));
   }
 
-  event(eventId: string) {
-    return this.chain((draft) => setDeleteEventTags(eventId)(draft));
+  /** Sets the event to delete — accepts an event ID string, a NostrEvent, or an EventPointer */
+  event(eventId: string | NostrEvent | EventPointer) {
+    const id = typeof eventId === "string" ? eventId : eventId.id;
+    return this.chain((draft) => setDeleteEventTags(id)(draft));
   }
 
   previous(events: NostrEvent[]) {

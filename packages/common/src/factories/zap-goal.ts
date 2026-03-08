@@ -47,6 +47,16 @@ export class ZapGoalFactory extends EventFactory<typeof ZAP_GOAL_KIND, ZapGoalTe
     return this.chain(ZapGoal.setSummary(text));
   }
 
+  /** Sets the beneficiaries for the zap goal using zap split tags */
+  beneficiaries(beneficiaries: Array<{ pubkey: string; weight: number }>) {
+    return this.chain(ZapGoal.setBeneficiaries(beneficiaries));
+  }
+
+  /** Sets a goal tag linking this goal to a specific event */
+  goal(goalId: string, relay?: string) {
+    return this.chain(ZapGoal.setGoalTag(goalId, relay));
+  }
+
   /** Sets the zap split for the zap goal */
   zapSplit(options: ZapOptions) {
     return this.chain(setZapSplit(options, undefined));

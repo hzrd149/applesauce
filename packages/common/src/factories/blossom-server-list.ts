@@ -34,4 +34,13 @@ export class BlossomServerListFactory extends EventFactory<typeof BLOSSOM_SERVER
   setDefaultServer(url: string | URL) {
     return this.removeServer(url).modifyPublicTags((tags) => [["server", String(url)], ...tags]);
   }
+
+  /** Replaces all servers with the given list */
+  servers(urls: (string | URL)[]) {
+    return this.modifyPublicTags((tags) => {
+      const filtered = tags.filter((t) => t[0] !== "server");
+      const serverTags = urls.map((url) => ["server", String(url)] as [string, string]);
+      return [...filtered, ...serverTags];
+    });
+  }
 }

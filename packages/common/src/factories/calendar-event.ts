@@ -1,11 +1,16 @@
-import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
-import { KnownEventTemplate } from "applesauce-core/helpers";
+import { EventFactory, blankEventTemplate, toEventTemplate } from "applesauce-core/factories";
+import { isKind, KnownEvent, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
+import { nanoid } from "nanoid";
 import { setContent } from "applesauce-core/operations/content";
 import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
 import { includeReplaceableIdentifier } from "applesauce-core/operations/index";
-import { DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND } from "../helpers/calendar-event.js";
+import {
+  DATE_BASED_CALENDAR_EVENT_KIND,
+  TIME_BASED_CALENDAR_EVENT_KIND,
+  CalendarEventParticipant,
+} from "../helpers/calendar-event.js";
 import * as CalendarEventOps from "../operations/calendar-event.js";
-import { CalendarEventParticipant } from "../helpers/calendar-event.js";
+import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 
 export type DateBasedCalendarEventTemplate = KnownEventTemplate<typeof DATE_BASED_CALENDAR_EVENT_KIND>;
 export type TimeBasedCalendarEventTemplate = KnownEventTemplate<typeof TIME_BASED_CALENDAR_EVENT_KIND>;
@@ -18,8 +23,14 @@ export class DateBasedCalendarEventFactory extends EventFactory<
   /** Creates a new date-based calendar event factory */
   static create(title: string): DateBasedCalendarEventFactory {
     return new DateBasedCalendarEventFactory((res) => res(blankEventTemplate(DATE_BASED_CALENDAR_EVENT_KIND)))
-      .identifier(crypto.randomUUID().replace(/-/g, ""))
+      .identifier(nanoid())
       .title(title);
+  }
+
+  /** Creates a factory from an existing date-based calendar event for editing */
+  static modify(event: NostrEvent | KnownEvent<typeof DATE_BASED_CALENDAR_EVENT_KIND>): DateBasedCalendarEventFactory {
+    if (!isKind(event, DATE_BASED_CALENDAR_EVENT_KIND)) throw new Error("Event is not a date-based calendar event");
+    return new DateBasedCalendarEventFactory((res) => res(toEventTemplate(event)));
   }
 
   /** Sets the "d" identifier tag */
@@ -67,14 +78,39 @@ export class DateBasedCalendarEventFactory extends EventFactory<
     return this.chain(CalendarEventOps.addLocation(location));
   }
 
+  /** Removes a location from the calendar event */
+  removeLocation(location: string) {
+    return this.chain(CalendarEventOps.removeLocation(location));
+  }
+
   /** Adds a reference link to the calendar event */
   referenceLink(link: string | URL) {
     return this.chain(CalendarEventOps.addReferenceLink(link));
   }
 
+  /** Removes a reference link from the calendar event */
+  removeReferenceLink(link: string | URL) {
+    return this.chain(CalendarEventOps.removeReferenceLink(link));
+  }
+
   /** Adds a participant to the calendar event */
   participant(participant: CalendarEventParticipant) {
     return this.chain(CalendarEventOps.addParticipant(participant));
+  }
+
+  /** Removes a participant from the calendar event */
+  removeParticipant(pubkey: string | CalendarEventParticipant) {
+    return this.chain(CalendarEventOps.removeParticipant(pubkey));
+  }
+
+  /** Adds a hashtag to the calendar event */
+  addHashtag(hashtag: string) {
+    return this.chain(addHashtag(hashtag));
+  }
+
+  /** Adds multiple hashtags to the calendar event */
+  hashtags(hashtags: string[]) {
+    return this.chain(includeHashtags(hashtags));
   }
 
   /** Sets meta tags */
@@ -91,8 +127,14 @@ export class TimeBasedCalendarEventFactory extends EventFactory<
   /** Creates a new time-based calendar event factory */
   static create(title: string): TimeBasedCalendarEventFactory {
     return new TimeBasedCalendarEventFactory((res) => res(blankEventTemplate(TIME_BASED_CALENDAR_EVENT_KIND)))
-      .identifier(crypto.randomUUID().replace(/-/g, ""))
+      .identifier(nanoid())
       .title(title);
+  }
+
+  /** Creates a factory from an existing time-based calendar event for editing */
+  static modify(event: NostrEvent | KnownEvent<typeof TIME_BASED_CALENDAR_EVENT_KIND>): TimeBasedCalendarEventFactory {
+    if (!isKind(event, TIME_BASED_CALENDAR_EVENT_KIND)) throw new Error("Event is not a time-based calendar event");
+    return new TimeBasedCalendarEventFactory((res) => res(toEventTemplate(event)));
   }
 
   /** Sets the "d" identifier tag */
@@ -140,14 +182,39 @@ export class TimeBasedCalendarEventFactory extends EventFactory<
     return this.chain(CalendarEventOps.addLocation(location));
   }
 
+  /** Removes a location from the calendar event */
+  removeLocation(location: string) {
+    return this.chain(CalendarEventOps.removeLocation(location));
+  }
+
   /** Adds a reference link to the calendar event */
   referenceLink(link: string | URL) {
     return this.chain(CalendarEventOps.addReferenceLink(link));
   }
 
+  /** Removes a reference link from the calendar event */
+  removeReferenceLink(link: string | URL) {
+    return this.chain(CalendarEventOps.removeReferenceLink(link));
+  }
+
   /** Adds a participant to the calendar event */
   participant(participant: CalendarEventParticipant) {
     return this.chain(CalendarEventOps.addParticipant(participant));
+  }
+
+  /** Removes a participant from the calendar event */
+  removeParticipant(pubkey: string | CalendarEventParticipant) {
+    return this.chain(CalendarEventOps.removeParticipant(pubkey));
+  }
+
+  /** Adds a hashtag to the calendar event */
+  addHashtag(hashtag: string) {
+    return this.chain(addHashtag(hashtag));
+  }
+
+  /** Adds multiple hashtags to the calendar event */
+  hashtags(hashtags: string[]) {
+    return this.chain(includeHashtags(hashtags));
   }
 
   /** Sets meta tags */

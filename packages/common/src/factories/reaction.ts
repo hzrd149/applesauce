@@ -18,6 +18,16 @@ export class ReactionFactory extends EventFactory<kinds.Reaction, ReactionTempla
     return new ReactionFactory((res) => res(blankEventTemplate(kinds.Reaction))).reactTo(event).reaction(emoji);
   }
 
+  /** Creates a "+" like reaction for an event */
+  static like(event: NostrEvent): ReactionFactory {
+    return ReactionFactory.create(event, "+");
+  }
+
+  /** Creates a "-" dislike reaction for an event */
+  static dislike(event: NostrEvent): ReactionFactory {
+    return ReactionFactory.create(event, "-");
+  }
+
   /** Sets the parent event being reacted to */
   reactTo(event: NostrEvent) {
     return this.chain(setReactionParent(event, undefined, undefined));

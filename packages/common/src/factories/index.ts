@@ -30,3 +30,6 @@ export * from "./relay-set.js";
 export * from "./list.js";
 export * from "./stream-chat-message.js";
 export * from "./calendar-event.js";
+export * from "./live-stream.js";
+export * from "./calendar-rsvp.js";
+export * from "./picture-post.js";

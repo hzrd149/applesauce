@@ -1,6 +1,6 @@
 import { blankEventTemplate, toEventTemplate } from "applesauce-core/factories";
 import { isKind, kinds, KnownEvent, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
-import { EventPointer } from "applesauce-core/helpers/pointers";
+import { EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
 import {
   addEventPointerTag,
   addNameValueTag,
@@ -60,5 +60,15 @@ export class MuteListFactory extends NIP51UserListFactory<kinds.Mutelist, MuteLi
   unmuteHashtag(hashtag: string, hidden = false) {
     const op = removeNameValueTag(["t", hashtag.toLocaleLowerCase()]);
     return hidden ? this.modifyHiddenTags(op) : this.modifyPublicTags(op);
+  }
+
+  /** Mutes a pubkey — semantic alias for addUser() */
+  mutePubkey(pubkey: string | ProfilePointer, hidden = false) {
+    return this.addUser(pubkey, hidden);
+  }
+
+  /** Unmutes a pubkey — semantic alias for removeUser() */
+  unmutePubkey(pubkey: string | ProfilePointer, hidden = false) {
+    return this.removeUser(pubkey, hidden);
   }
 }

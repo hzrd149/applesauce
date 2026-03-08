@@ -2,9 +2,10 @@ import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
 import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
-import { includeSingletonTag } from "applesauce-core/operations/tags";
+import { includeNameValueTag, includeSingletonTag } from "applesauce-core/operations/tags";
 import { GROUP_MESSAGE_KIND, GROUP_THREAD_KIND, GroupPointer } from "../helpers/groups.js";
 import { addPreviousRefs, setGroupPointer } from "../operations/group.js";
+import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 
 export type GroupMessageTemplate = KnownEventTemplate<typeof GROUP_MESSAGE_KIND>;
 export type GroupThreadTemplate = KnownEventTemplate<typeof GROUP_THREAD_KIND>;
@@ -26,8 +27,21 @@ export class GroupMessageFactory extends EventFactory<typeof GROUP_MESSAGE_KIND,
     return this.chain((draft) => addPreviousRefs(events)(draft));
   }
 
+  /** Sets the "e" reply tag pointing to a parent group message */
+  replyTo(parent: NostrEvent) {
+    return this.chain(includeNameValueTag(["e", parent.id]));
+  }
+
   meta(options: MetaTagOptions) {
     return this.chain((draft) => setMetaTags(options)(draft));
+  }
+
+  /** Creates a reply to a group message */
+  static reply(group: GroupPointer, parent: NostrEvent, content: string): GroupMessageFactory {
+    return new GroupMessageFactory((res) => res(blankEventTemplate(GROUP_MESSAGE_KIND)))
+      .group(group)
+      .replyTo(parent)
+      .text(content);
   }
 }
 
@@ -54,6 +68,16 @@ export class GroupThreadFactory extends EventFactory<typeof GROUP_THREAD_KIND, G
   /** Sets the text content */
   text(content: string, options?: TextContentOptions) {
     return this.chain(setShortTextContent(content, options));
+  }
+
+  /** Adds a hashtag "t" tag to the thread */
+  addHashtag(hashtag: string) {
+    return this.chain(addHashtag(hashtag));
+  }
+
+  /** Adds multiple hashtags as "t" tags */
+  hashtags(hashtags: string[]) {
+    return this.chain(includeHashtags(hashtags));
   }
 
   /** Sets meta tags */

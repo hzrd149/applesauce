@@ -43,9 +43,19 @@ export class PollFactory extends EventFactory<typeof POLL_KIND, PollTemplate> {
     return this.chain((draft) => Poll.setEndsAt(timestamp)(draft));
   }
 
+  /** Adds a single option to the poll */
+  addOption(id: string, label: string) {
+    return this.chain((draft) => Poll.addOption(id, label)(draft));
+  }
+
   /** Sets relay URLs where responses should be published */
   relays(urls: string[]) {
     return this.chain((draft) => Poll.setRelays(urls)(draft));
+  }
+
+  /** Adds a single relay URL where responses should be published */
+  addRelay(url: string) {
+    return this.chain((draft) => Poll.addRelay(url)(draft));
   }
 
   /** Sets zap split configuration */

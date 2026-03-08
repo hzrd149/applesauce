@@ -2,6 +2,7 @@ import { blankEventTemplate, EventFactory, toEventTemplate } from "applesauce-co
 import { isKind, kinds, KnownEvent, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
 import { addEvent, removeEvent, setTitle } from "../operations/calendar.js";
+import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 
 export type CalendarTemplate = KnownEventTemplate<kinds.Calendar>;
 
@@ -30,5 +31,15 @@ export class CalendarFactory extends EventFactory<kinds.Calendar, CalendarTempla
   /** Removes a calendar event from the calendar */
   removeEvent(event: NostrEvent | AddressPointer) {
     return this.chain(removeEvent(event));
+  }
+
+  /** Adds a hashtag "t" tag to the calendar */
+  addHashtag(hashtag: string) {
+    return this.chain(addHashtag(hashtag));
+  }
+
+  /** Adds multiple hashtags as "t" tags */
+  hashtags(hashtags: string[]) {
+    return this.chain(includeHashtags(hashtags));
   }
 }

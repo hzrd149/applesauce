@@ -4,9 +4,11 @@ import { AddressPointer, EventPointer, ProfilePointer } from "applesauce-core/he
 import {
   addAddressPointerTag,
   addEventPointerTag,
+  addNameValueTag,
   addProfilePointerTag,
   removeAddressPointerTag,
   removeEventPointerTag,
+  removeNameValueTag,
   removeProfilePointerTag,
   removeSingletonTag,
   setSingletonTag,
@@ -125,5 +127,35 @@ export class NIP51ItemListFactory<
     return hidden
       ? this.modifyHiddenTags(removeAddressPointerTag(address))
       : this.modifyPublicTags(removeAddressPointerTag(address));
+  }
+
+  /** Adds a URL "r" tag item to the list */
+  addUrlItem(url: string, hidden = false) {
+    return hidden
+      ? this.modifyHiddenTags(addNameValueTag(["r", url], true))
+      : this.modifyPublicTags(addNameValueTag(["r", url], true));
+  }
+
+  /** Removes a URL "r" tag item from the list */
+  removeUrlItem(url: string, hidden = false) {
+    return hidden
+      ? this.modifyHiddenTags(removeNameValueTag(["r", url]))
+      : this.modifyPublicTags(removeNameValueTag(["r", url]));
+  }
+
+  /** Adds a hashtag "t" tag item to the list */
+  addHashtagItem(hashtag: string, hidden = false) {
+    const cleanTag = (hashtag.startsWith("#") ? hashtag.slice(1) : hashtag).toLocaleLowerCase();
+    return hidden
+      ? this.modifyHiddenTags(addNameValueTag(["t", cleanTag], true))
+      : this.modifyPublicTags(addNameValueTag(["t", cleanTag], true));
+  }
+
+  /** Removes a hashtag "t" tag item from the list */
+  removeHashtagItem(hashtag: string, hidden = false) {
+    const cleanTag = (hashtag.startsWith("#") ? hashtag.slice(1) : hashtag).toLocaleLowerCase();
+    return hidden
+      ? this.modifyHiddenTags(removeNameValueTag(["t", cleanTag]))
+      : this.modifyPublicTags(removeNameValueTag(["t", cleanTag]));
   }
 }

@@ -22,6 +22,17 @@ export class ShareFactory extends EventFactory<number, EventTemplate> {
     return ShareFactory.create(event);
   }
 
+  /**
+   * Creates a quote-repost: sets the event reference tags and uses a custom comment as content
+   * @param event - The event being quoted
+   * @param comment - The quote comment text
+   */
+  static quote(event: NostrEvent, comment: string): ShareFactory {
+    return new ShareFactory((res) => res(blankEventTemplate(kinds.Repost)))
+      .setEvent(event)
+      .chain((draft) => ({ ...draft, content: comment }));
+  }
+
   /** Sets the event being shared */
   setEvent(event: NostrEvent) {
     return this.chain(

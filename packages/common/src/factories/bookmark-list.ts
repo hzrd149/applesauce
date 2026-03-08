@@ -32,4 +32,24 @@ export class BookmarkListFactory extends NIP51ItemListFactory<kinds.BookmarkList
       ? this.modifyHiddenTags(removeEventBookmarkTag(event))
       : this.modifyPublicTags(removeEventBookmarkTag(event));
   }
+
+  /** Bookmarks a URL by adding an "r" tag */
+  bookmarkUrl(url: string, hidden = false) {
+    return this.addUrlItem(url, hidden);
+  }
+
+  /** Removes a bookmarked URL */
+  unbookmarkUrl(url: string, hidden = false) {
+    return this.removeUrlItem(url, hidden);
+  }
+
+  /** Bookmarks a hashtag by adding a "t" tag */
+  bookmarkHashtag(hashtag: string, hidden = false) {
+    return this.addHashtagItem(hashtag, hidden);
+  }
+
+  /** Removes a bookmarked hashtag */
+  unbookmarkHashtag(hashtag: string, hidden = false) {
+    return this.removeHashtagItem(hashtag, hidden);
+  }
 }

@@ -4,7 +4,14 @@ import { kinds, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
 import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
 import { HighlightAttribution } from "../helpers/index.js";
-import { setAttributions, setComment, setContext, setHighlightContent, setSource } from "../operations/highlight.js";
+import {
+  addAttribution,
+  setAttributions,
+  setComment,
+  setContext,
+  setHighlightContent,
+  setSource,
+} from "../operations/highlight.js";
 import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
 
 export type HighlightTemplate = KnownEventTemplate<kinds.Highlights>;
@@ -41,7 +48,12 @@ export class HighlightFactory extends EventFactory<kinds.Highlights, HighlightTe
     return this.chain(setSource(source));
   }
 
-  /** Sets the attributions for the highlight */
+  /** Adds a single attribution for the highlight */
+  addAttribution(attribution: HighlightAttribution) {
+    return this.chain(addAttribution(attribution));
+  }
+
+  /** Sets multiple attributions at once for the highlight */
   attributions(attrs: HighlightAttribution[]) {
     return this.chain(setAttributions(attrs));
   }

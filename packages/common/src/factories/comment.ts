@@ -6,6 +6,7 @@ import { COMMENT_KIND, CommentPointer } from "../helpers/comment.js";
 import { setParent } from "../operations/comment.js";
 import { GroupPointer } from "../helpers/groups.js";
 import { setGroupPointer } from "../operations/group.js";
+import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 
 export type CommentTemplate = KnownEventTemplate<typeof COMMENT_KIND>;
 export type CommentBlueprintOptions = TextContentOptions & MetaTagOptions;
@@ -49,6 +50,16 @@ export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTem
   /** Sets the NIP-29 group pointer "h" tag for this comment */
   group(pointer: GroupPointer) {
     return this.chain(setGroupPointer(pointer));
+  }
+
+  /** Adds a hashtag "t" tag to the comment */
+  addHashtag(hashtag: string) {
+    return this.chain(addHashtag(hashtag));
+  }
+
+  /** Adds multiple hashtags as "t" tags */
+  hashtags(tags: string[]) {
+    return this.chain(includeHashtags(tags));
   }
 
   /** Sets the meta tags for the comment */
