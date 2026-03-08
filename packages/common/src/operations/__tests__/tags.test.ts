@@ -1,6 +1,7 @@
-import { buildEvent } from "applesauce-core";
+import { blankEventTemplate } from "applesauce-core/factories";
 import { EncryptedContentSymbol, getHiddenTags, unixNow } from "applesauce-core/helpers";
 import { kinds } from "applesauce-core/helpers/event";
+import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { modifyHiddenTags } from "applesauce-core/operations/tags";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
@@ -52,22 +53,18 @@ describe("modifyHiddenTags", () => {
   });
 
   it("should set hidden tags", async () => {
-    const draft = await buildEvent(
-      { kind: 30000 },
-      { signer: user },
-      modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]),
+    const draft = await eventPipe(modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]))(
+      blankEventTemplate(30000),
     );
 
     expect(getHiddenTags(draft)).toEqual([["e", "test-id"]]);
   });
 
   it("should work multiple times", async () => {
-    const draft = await buildEvent(
-      { kind: 30000 },
-      { signer: user },
+    const draft = await eventPipe(
       modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]),
       modifyHiddenTags(user, (tags) => [...tags, ["e", "second-id"]]),
-    );
+    )(blankEventTemplate(30000));
 
     expect(getHiddenTags(draft)).toEqual([
       ["e", "test-id"],

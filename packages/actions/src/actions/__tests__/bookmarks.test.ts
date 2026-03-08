@@ -1,4 +1,5 @@
 import { EventStore } from "applesauce-core";
+import { User } from "applesauce-common/casts";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
@@ -15,6 +16,8 @@ beforeEach(async () => {
   events = new EventStore();
   publish = vitest.fn().mockResolvedValue(undefined);
   hub = new ActionRunner(events, user, publish);
+  // Clear User cache so each test gets a fresh User bound to the new EventStore
+  User.cache.clear();
 
   // Setup outboxes for the user
   events.add(user.event({ kind: kinds.RelayList, tags: [["r", "wss://relay.example.com/"]] }));

@@ -3,6 +3,7 @@ import { EventSigner } from "./types.js";
 import type { EventOperation } from "./types.js";
 import { EncryptionMethod } from "../helpers/encrypted-content.js";
 import { KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
+import { PRESERVE_EVENT_SYMBOLS } from "../helpers/pipeline.js";
 import { unixNow } from "../helpers/time.js";
 import { setEncryptedContent } from "../operations/encrypted-content.js";
 import {
@@ -65,7 +66,25 @@ export class EventFactory<
   /** Custom .then method that wraps the resulting promise in a new event factory */
   protected chain(operation: EventOperation<T>): this {
     const Constructor = this.constructor as typeof EventFactory;
-    const next = new Constructor((res) => res(this.then(operation)));
+    const next = new Constructor((res) =>
+      res(
+        this.then(async (draft) => {
+          const result = await operation(draft);
+
+          // Strip any symbols that are not in the preserve list, matching the
+          // behaviour of eventPipe / pipeFromAsyncArray so stale caches (e.g.
+          // HiddenTagsSymbol set by a previous modifyHiddenTags step) never
+          // leak into subsequent chain operations.
+          for (const key of Reflect.ownKeys(result)) {
+            if (typeof key === "symbol" && !PRESERVE_EVENT_SYMBOLS.has(key)) {
+              Reflect.deleteProperty(result, key);
+            }
+          }
+
+          return result;
+        }),
+      ),
+    );
 
     // Share the same signer reference so setting .as() on any link propagates to all
     (next as EventFactory<K, T>)._signerRef = this._signerRef;

@@ -2,7 +2,7 @@
 // Gift wrap (signed random key) -> seal (signed sender key) -> rumor (unsigned)
 
 import type { EventOperation } from "applesauce-core/factories";
-import { buildEvent } from "applesauce-core";
+import { blankEventTemplate } from "applesauce-core/factories";
 import { EncryptedContentSymbol } from "applesauce-core/helpers/encrypted-content";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import {
@@ -70,14 +70,12 @@ export function sealRumor(
     if (!signer) throw new Error("A signer is required to create a seal");
 
     const plaintext = JSON.stringify(rumor);
-    const unsigned = await buildEvent(
-      { kind: kinds.Seal, created_at: randomNow() },
-      { signer },
+    const unsigned = await eventPipe(
       // Set the encrypted content
       setEncryptedContent(pubkey, plaintext, signer),
-      // Stamp the seal with the signers's pubkey
+      // Stamp the seal with the signer's pubkey
       stamp(signer),
-    );
+    )({ ...blankEventTemplate(kinds.Seal), created_at: randomNow() });
 
     const seal = await signer.signEvent(unsigned);
 
@@ -101,18 +99,15 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
     const key = generateSecretKey();
     const plaintext = JSON.stringify(seal);
 
-    const draft = await buildEvent(
-      {
-        kind: kinds.GiftWrap,
-        created_at: randomNow(),
-        content: nip44.encrypt(plaintext, nip44.getConversationKey(key, pubkey)),
-        tags: [["p", pubkey]],
-      },
-      // Pass an empty context here so here there is no chance to use the users pubkey
-      {},
+    const draft = await eventPipe(
       // Set meta tags on the gift wrap
       setMetaTags(opts),
-    );
+    )({
+      ...blankEventTemplate(kinds.GiftWrap),
+      created_at: randomNow(),
+      content: nip44.encrypt(plaintext, nip44.getConversationKey(key, pubkey)),
+      tags: [["p", pubkey]],
+    });
 
     const gift = finalizeEvent(draft, key);
 
