@@ -3,12 +3,11 @@
  * @tags nip-46, signers, bunker, nostr-connect
  * @related cli/bunker-login, signers/bunker-provider
  */
-import { EventFactory } from "applesauce-core";
+import { NoteFactory } from "applesauce-common/factories";
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
 import { useState } from "react";
 import JsonBlock from "../../components/json-block";
-import { NoteBlueprint } from "applesauce-common/blueprints";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -201,12 +200,8 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
       setIsSigningNote(true);
       setError(null);
 
-      // Create event factory with the signer
-      const factory = new EventFactory({ signer });
-
       // Create and sign a simple text note
-      const noteTemplate = await factory.create(NoteBlueprint, noteText);
-      const signedNote = await factory.sign(noteTemplate);
+      const signedNote = await NoteFactory.create(noteText).sign(signer);
 
       // Set the signed event to display
       setSignedEvent(signedNote);

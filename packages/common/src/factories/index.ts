@@ -28,3 +28,5 @@ export * from "./blossom-server-list.js";
 export * from "./follow-set.js";
 export * from "./relay-set.js";
 export * from "./list.js";
+export * from "./stream-chat-message.js";
+export * from "./calendar-event.js";

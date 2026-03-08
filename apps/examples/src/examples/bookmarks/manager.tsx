@@ -8,7 +8,7 @@ import { ActionRunner } from "applesauce-actions";
 import { BookmarkEvent, UnbookmarkEvent } from "applesauce-actions/actions";
 import { Article, castUser, Note, User } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
-import { defined, EventFactory, EventStore } from "applesauce-core";
+import { defined, EventStore } from "applesauce-core";
 import {
   AddressPointer,
   decodePointer,
@@ -34,8 +34,7 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionRunner(eventStore, factory);
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())));
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {

@@ -3,10 +3,10 @@
  * @tags nip-29, nip-42, group, chat, messaging
  * @related group/groups, group/threads
  */
-import { GroupMessageBlueprint } from "applesauce-common/blueprints";
+import { GroupMessageFactory } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { decodeGroupPointer, groupMessageEvents, GroupPointer } from "applesauce-common/helpers";
-import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -19,7 +19,6 @@ import GroupPicker from "../../components/group-picker";
 
 const eventStore = new EventStore();
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
 const pool = new RelayPool();
 
 // Create unified event loader for the store
@@ -101,10 +100,8 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
 
     setSending(true);
     try {
-      // Create a draft for a group message
-      const draft = await factory.create(GroupMessageBlueprint, pointer, message);
-      // Sign the draft
-      const signed = await factory.sign(draft);
+      // Create and sign a group message
+      const signed = await GroupMessageFactory.create(pointer, message).sign(signer);
       // Publish the message to the relay
       const response = await pool.relay(pointer.relay).publish(signed);
       // Throw an error if the message was rejected

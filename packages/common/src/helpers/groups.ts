@@ -1,12 +1,13 @@
 import { getOrComputeCachedValue, notifyEventUpdate } from "applesauce-core/helpers";
-import { getReplaceableIdentifier, getTagValue, NostrEvent } from "applesauce-core/helpers/event";
+import { getReplaceableIdentifier, getTagValue, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { processTags } from "applesauce-core/helpers/tags";
 import { normalizeURL } from "applesauce-core/helpers/url";
 
 export const GROUPS_LIST_KIND = 10009;
-export const GROUP_MESSAGE_KIND = 9;
+export const GROUP_MESSAGE_KIND = kinds.ChatMessage;
+export const GROUP_THREAD_KIND = kinds.ForumThread;
 
 // NIP-29 Group event kinds
 export const GROUP_METADATA_KIND = 39000;

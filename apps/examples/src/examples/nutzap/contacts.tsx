@@ -7,7 +7,7 @@ import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts/user";
-import { defined, EventFactory, EventStore } from "applesauce-core";
+import { defined, EventStore } from "applesauce-core";
 import { Filter, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -29,8 +29,9 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 // Global state
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionRunner(eventStore, factory, (event, relays) => pool.publish(relays ?? [], event));
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), (event, relays) =>
+  pool.publish(relays ?? [], event),
+);
 const couch = new IndexedDBCouch();
 
 const cache = await openDB();

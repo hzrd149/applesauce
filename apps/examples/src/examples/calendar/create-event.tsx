@@ -3,11 +3,7 @@
  * @tags calendar, events, nip-52
  * @related calendar/timeline, calendar/map
  */
-import { DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND } from "applesauce-common/helpers";
-import * as CalendarEventOps from "applesauce-common/operations/calendar-event";
-import { EventFactory, blueprint } from "applesauce-core";
-import { includeReplaceableIdentifier } from "applesauce-core/operations";
-import { setContent } from "applesauce-core/operations/content";
+import { DateBasedCalendarEventFactory, TimeBasedCalendarEventFactory } from "applesauce-common/factories";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useState } from "react";
@@ -16,7 +12,6 @@ import { Control, Controller, FieldErrors, FieldPath, useFieldArray, useForm } f
 // Global state management
 const signer = new ExtensionSigner();
 const pool = new RelayPool();
-const factory = new EventFactory({ signer });
 
 // Form Field Components
 interface FormFieldProps<T extends Record<string, any>> {
@@ -158,41 +153,30 @@ type CalendarEventFormData = {
   geohash?: string;
 };
 
-// Calendar Event Blueprints using proper EventFactory operations
-function DateBasedCalendarEventBlueprint(data: CalendarEventFormData) {
-  return blueprint(
-    DATE_BASED_CALENDAR_EVENT_KIND,
-    setContent(data.description),
-    includeReplaceableIdentifier(crypto.randomUUID().replace(/-/g, "")),
-    CalendarEventOps.setTitle(data.title),
-    data.summary ? CalendarEventOps.setSummary(data.summary) : undefined,
-    data.image ? CalendarEventOps.setImage(data.image) : undefined,
-    data.startDate ? CalendarEventOps.setStartDate(data.startDate) : undefined,
-    data.endDate ? CalendarEventOps.setEndDate(data.endDate) : undefined,
-    data.geohash ? CalendarEventOps.setGeohash(data.geohash) : undefined,
-    ...data.locations.filter((loc) => loc.value.trim()).map((loc) => CalendarEventOps.addLocation(loc.value.trim())),
-    ...data.referenceLinks
-      .filter((link) => link.value.trim())
-      .map((link) => CalendarEventOps.addReferenceLink(link.value.trim())),
-  );
+function buildDateBasedCalendarEvent(data: CalendarEventFormData): DateBasedCalendarEventFactory {
+  let factory = DateBasedCalendarEventFactory.create(data.title).description(data.description);
+  if (data.summary) factory = factory.summary(data.summary);
+  if (data.image) factory = factory.image(data.image);
+  if (data.startDate) factory = factory.startDate(data.startDate);
+  if (data.endDate) factory = factory.endDate(data.endDate);
+  if (data.geohash) factory = factory.geohash(data.geohash);
+  for (const loc of data.locations.filter((l) => l.value.trim())) factory = factory.location(loc.value.trim());
+  for (const link of data.referenceLinks.filter((l) => l.value.trim()))
+    factory = factory.referenceLink(link.value.trim());
+  return factory;
 }
 
-function TimeBasedCalendarEventBlueprint(data: CalendarEventFormData) {
-  return blueprint(
-    TIME_BASED_CALENDAR_EVENT_KIND,
-    setContent(data.description),
-    includeReplaceableIdentifier(crypto.randomUUID().replace(/-/g, "")),
-    CalendarEventOps.setTitle(data.title),
-    data.summary ? CalendarEventOps.setSummary(data.summary) : undefined,
-    data.image ? CalendarEventOps.setImage(data.image) : undefined,
-    data.startDateTime ? CalendarEventOps.setStartTime(new Date(data.startDateTime), data.timezone) : undefined,
-    data.endDateTime ? CalendarEventOps.setEndTime(new Date(data.endDateTime), data.timezone) : undefined,
-    data.geohash ? CalendarEventOps.setGeohash(data.geohash) : undefined,
-    ...data.locations.filter((loc) => loc.value.trim()).map((loc) => CalendarEventOps.addLocation(loc.value.trim())),
-    ...data.referenceLinks
-      .filter((link) => link.value.trim())
-      .map((link) => CalendarEventOps.addReferenceLink(link.value.trim())),
-  );
+function buildTimeBasedCalendarEvent(data: CalendarEventFormData): TimeBasedCalendarEventFactory {
+  let factory = TimeBasedCalendarEventFactory.create(data.title).description(data.description);
+  if (data.summary) factory = factory.summary(data.summary);
+  if (data.image) factory = factory.image(data.image);
+  if (data.startDateTime) factory = factory.startTime(new Date(data.startDateTime), data.timezone);
+  if (data.endDateTime) factory = factory.endTime(new Date(data.endDateTime), data.timezone);
+  if (data.geohash) factory = factory.geohash(data.geohash);
+  for (const loc of data.locations.filter((l) => l.value.trim())) factory = factory.location(loc.value.trim());
+  for (const link of data.referenceLinks.filter((l) => l.value.trim()))
+    factory = factory.referenceLink(link.value.trim());
+  return factory;
 }
 
 // Form component for creating calendar events
@@ -289,12 +273,9 @@ function CalendarEventForm() {
         return;
       }
 
-      // Use EventFactory to create and sign the event
-      const event = await factory.create(
-        data.eventType === "date" ? DateBasedCalendarEventBlueprint : TimeBasedCalendarEventBlueprint,
-        data,
-      );
-      const signed = await factory.sign(event);
+      // Build and sign the event using the appropriate factory
+      const builder = data.eventType === "date" ? buildDateBasedCalendarEvent(data) : buildTimeBasedCalendarEvent(data);
+      const signed = await builder.sign(signer);
 
       // Publish to all specified relays
       const relayUrls = validRelays.map((relay) => relay.value.trim());

@@ -9,7 +9,7 @@ import { Article, Comment } from "applesauce-common/casts";
 import { CommentsModel } from "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
 import { remarkNostrMentions } from "applesauce-content/markdown";
-import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -46,8 +46,7 @@ const markdownComponents = {
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
-const actions = new ActionRunner(eventStore, factory, async (event, relays) => {
+const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
   if (relays && relays.length > 0) {
     await pool.publish(relays, event);
   } else {

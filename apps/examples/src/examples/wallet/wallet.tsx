@@ -9,7 +9,7 @@ import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts";
 import { persistEncryptedContent } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
-import { defined, EventFactory, EventStore, mapEventsToTimeline } from "applesauce-core";
+import { defined, EventStore, mapEventsToTimeline } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
@@ -71,7 +71,7 @@ const couch = new IndexedDBCouch();
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const actions = new ActionRunner(eventStore, factory, async (event) => {
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event) => {
   const mailboxes = await firstValueFrom(
     eventStore.mailboxes(event.pubkey).pipe(defined(), timeout({ first: 5_000, with: () => of(undefined) })),
   );

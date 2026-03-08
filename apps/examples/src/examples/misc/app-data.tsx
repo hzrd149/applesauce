@@ -3,6 +3,7 @@
  * @tags misc, app-data, nip-78, storage
  * @related misc/nip-19-links
  */
+import { AppDataFactory } from "applesauce-common/factories";
 import {
   APP_DATA_KIND,
   getAppDataContent,
@@ -10,8 +11,7 @@ import {
   isAppDataUnlocked,
   unlockAppData,
 } from "applesauce-common/helpers/app-data";
-import * as AppData from "applesauce-common/operations/app-data";
-import { DeleteFactory, EventFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
+import { DeleteFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
 import { EncryptionMethod, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -24,7 +24,6 @@ import RelayPicker from "../../components/relay-picker";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
 
 // Component for displaying event details
 const EventDetails = ({
@@ -194,9 +193,8 @@ const EventEditor = ({
         throw new Error("Invalid JSON content");
       }
 
-      // Create new event using factory
-      const draft = await factory.modify(event, AppData.setContent(parsedContent, encryption));
-      const signed = await factory.sign(draft);
+      // Modify the existing app data event with new content
+      const signed = await AppDataFactory.modify(event).as(signer).data(parsedContent, encryption).sign();
 
       onSave(signed);
     } catch (err) {
