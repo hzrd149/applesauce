@@ -20,19 +20,18 @@ import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
 import { Relay, SyncDirection, type RelayOptions } from "./relay.js";
 import type {
-  CountResponse,
+  RelayCountResponse,
   FilterInput,
-  IPool,
-  IPoolRelayInput,
-  IRelay,
+  GroupReqOptions,
+  GroupReqMessage,
+  PoolRelayInput,
   NegentropyReadStore,
   NegentropySyncStore,
   PublishResponse,
   RelayStatus,
-  SubscriptionResponse,
 } from "./types.js";
 
-export class RelayPool implements IPool {
+export class RelayPool {
   relays$ = new BehaviorSubject<Map<string, Relay>>(new Map());
   get relays() {
     return this.relays$.value;
@@ -45,9 +44,9 @@ export class RelayPool implements IPool {
   ignoreOffline = true;
 
   /** A signal when a relay is added */
-  add$ = new Subject<IRelay>();
+  add$ = new Subject<Relay>();
   /** A signal when a relay is removed */
-  remove$ = new Subject<IRelay>();
+  remove$ = new Subject<Relay>();
 
   constructor(public options?: RelayOptions) {
     // Initialize status$ observable
@@ -90,7 +89,7 @@ export class RelayPool implements IPool {
   }
 
   /** Create a group of relays */
-  group(relays: IPoolRelayInput, ignoreOffline = this.ignoreOffline): RelayGroup {
+  group(relays: PoolRelayInput, ignoreOffline = this.ignoreOffline): RelayGroup {
     let input = Array.isArray(relays)
       ? relays.map((url) => this.relay(url))
       : relays.pipe(map((urls) => urls.map((url) => this.relay(url))));
@@ -105,8 +104,8 @@ export class RelayPool implements IPool {
   }
 
   /** Removes a relay from the pool and defaults to closing the connection */
-  remove(relay: string | IRelay, close = true): void {
-    let instance: IRelay | undefined;
+  remove(relay: string | Relay, close = true): void {
+    let instance: Relay | undefined;
     if (typeof relay === "string") {
       instance = this.relays.get(relay);
       if (!instance) return;
@@ -121,20 +120,20 @@ export class RelayPool implements IPool {
   }
 
   /** Make a REQ to multiple relays that does not deduplicate events */
-  req(relays: IPoolRelayInput, filters: FilterInput, id?: string): Observable<SubscriptionResponse> {
+  req(relays: PoolRelayInput, filters: FilterInput, opts?: GroupReqOptions): Observable<GroupReqMessage> {
     // Never filter out offline relays in manual methods
-    return this.group(relays, false).req(filters, id);
+    return this.group(relays, false).req(filters, opts);
   }
 
   /** Send an EVENT message to multiple relays */
-  event(relays: IPoolRelayInput, event: NostrEvent): Observable<PublishResponse> {
+  event(relays: PoolRelayInput, event: NostrEvent): Observable<PublishResponse> {
     // Never filter out offline relays in manual methods
     return this.group(relays, false).event(event);
   }
 
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
-    relays: IPoolRelayInput,
+    relays: PoolRelayInput,
     store: NegentropyReadStore,
     filter: Filter,
     reconcile: ReconcileFunction,
@@ -145,7 +144,7 @@ export class RelayPool implements IPool {
 
   /** Publish an event to multiple relays */
   publish(
-    relays: IPoolRelayInput,
+    relays: PoolRelayInput,
     event: Parameters<RelayGroup["publish"]>[0],
     opts?: Parameters<RelayGroup["publish"]>[1],
   ): Promise<PublishResponse[]> {
@@ -154,8 +153,8 @@ export class RelayPool implements IPool {
 
   /** Request events from multiple relays */
   request(
-    relays: IPoolRelayInput,
-    filters: FilterInput,
+    relays: PoolRelayInput,
+    filters: Parameters<RelayGroup["request"]>[0],
     opts?: Parameters<RelayGroup["request"]>[1],
   ): Observable<NostrEvent> {
     return this.group(relays).request(filters, opts);
@@ -163,10 +162,10 @@ export class RelayPool implements IPool {
 
   /** Open a subscription to multiple relays */
   subscription(
-    relays: IPoolRelayInput,
-    filters: FilterInput,
+    relays: PoolRelayInput,
+    filters: Parameters<RelayGroup["subscription"]>[0],
     options?: Parameters<RelayGroup["subscription"]>[1],
-  ): Observable<SubscriptionResponse> {
+  ): Observable<NostrEvent> {
     return this.group(relays).subscription(filters, options);
   }
 
@@ -174,7 +173,7 @@ export class RelayPool implements IPool {
   subscriptionMap(
     relays: FilterMap | Observable<FilterMap>,
     options?: Parameters<RelayGroup["subscription"]>[1],
-  ): Observable<SubscriptionResponse> {
+  ): Observable<NostrEvent> {
     // Convert input to observable
     const relays$ = isObservable(relays) ? relays : of(relays);
 
@@ -197,7 +196,7 @@ export class RelayPool implements IPool {
     outboxes: OutboxMap | Observable<OutboxMap>,
     filter: Omit<Filter, "authors">,
     options?: Parameters<RelayGroup["subscription"]>[1],
-  ): Observable<SubscriptionResponse> {
+  ): Observable<NostrEvent> {
     const filterMap = isObservable(outboxes)
       ? outboxes.pipe(
           // Project outbox map to filter map
@@ -209,13 +208,17 @@ export class RelayPool implements IPool {
   }
 
   /** Count events on multiple relays */
-  count(relays: IPoolRelayInput, filters: Filter | Filter[], id?: string): Observable<Record<string, CountResponse>> {
+  count(
+    relays: PoolRelayInput,
+    filters: Filter | Filter[],
+    id?: string,
+  ): Observable<Record<string, RelayCountResponse>> {
     return this.group(relays).count(filters, id);
   }
 
   /** Negentropy sync events with the relays and an event store */
   sync(
-    relays: IPoolRelayInput,
+    relays: PoolRelayInput,
     store: NegentropySyncStore | NostrEvent[],
     filter: Filter,
     direction?: SyncDirection,

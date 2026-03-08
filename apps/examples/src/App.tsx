@@ -1,18 +1,9 @@
-import Prism from "prismjs";
-import "prismjs/themes/prism.css";
-import { Routes, Route, useNavigate, useLocation } from "react-router";
 import { useEffect } from "react";
+import { Route, Routes, useLocation, useNavigate } from "react-router";
 
-import "prismjs/components/prism-javascript";
-import "prismjs/components/prism-jsx";
-import "prismjs/components/prism-tsx";
-import "prismjs/components/prism-typescript";
-
-Prism.manual = true;
-
-import LandingPage from "./routes/landing";
-import ExamplePage from "./routes/example";
 import examples from "./examples";
+import ExamplePage from "./routes/example";
+import LandingPage from "./routes/landing";
 
 function OldHashRedirect() {
   const navigate = useNavigate();

@@ -89,7 +89,9 @@ describe("req", () => {
     mockServer1.send(JSON.stringify(["EOSE", JSON.parse(req1 as string)[1]]));
     mockServer2.send(JSON.stringify(["EOSE", JSON.parse(req2 as string)[1]]));
 
-    expect(spy.getValues()).toContainEqual(expect.objectContaining(mockEvent));
+    expect(spy.getValues()).toContainEqual(
+      expect.objectContaining({ type: "EVENT", event: expect.objectContaining(mockEvent) }),
+    );
   });
 });
 

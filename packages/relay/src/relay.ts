@@ -1,4 +1,5 @@
 import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-core";
+import { addSeenRelay } from "applesauce-core/helpers";
 import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { ensureHttpURL } from "applesauce-core/helpers/url";
@@ -10,6 +11,7 @@ import {
   catchError,
   combineLatest,
   defer,
+  EMPTY,
   endWith,
   filter,
   finalize,
@@ -34,10 +36,12 @@ import {
   scan,
   share,
   shareReplay,
+  startWith,
   Subject,
   switchMap,
   take,
   takeUntil,
+  takeWhile,
   tap,
   throwError,
   timeout,
@@ -46,22 +50,28 @@ import {
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
-import { completeOnEose } from "./operators/complete-on-eose.js";
-import { markFromRelay } from "./operators/mark-from-relay.js";
+import { completeWhen } from "./operators/complete-when.js";
 import {
   AuthSigner,
-  CountResponse,
   FilterInput,
-  IRelay,
   NegentropyReadStore,
   NegentropySyncStore,
   PublishOptions,
   PublishResponse,
+  RelayCountResponse,
   RelayInformation,
+  RelayReqClosedMessage,
+  RelayReqEoseMessage,
+  RelayReqEventMessage,
+  RelayReqMessage,
+  RelayReqOpenMessage,
+  RelayReqOptions,
+  RelayRequestCompleteOperator,
+  RelayRequestOptions,
+  RelayRequestResponse,
   RelayStatus,
-  RequestOptions,
-  SubscriptionOptions,
-  SubscriptionResponse,
+  RelaySubscriptionOptions,
+  RelaySubscriptionResponse,
 } from "./types.js";
 
 const AUTH_REQUIRED_PREFIX = "auth-required:";
@@ -80,8 +90,46 @@ export enum SyncDirection {
   BOTH = SEND | RECEIVE,
 }
 
-/** An error that is thrown when a REQ is closed from the relay side */
-export class ReqCloseError extends Error {}
+/** Base error thrown when a relay closes a REQ or COUNT with a CLOSED message */
+export class RelayClosedError extends Error {
+  constructor(public readonly reason: string) {
+    super(reason);
+    this.name = "RelayClosedError";
+  }
+}
+
+/** Thrown when the relay closes a subscription with an auth-required: prefix */
+export class AuthRequiredError extends RelayClosedError {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "AuthRequiredError";
+  }
+}
+
+/** NIP-01 machine-readable prefixes that indicate an error condition on CLOSED/OK messages */
+const CLOSED_ERROR_PREFIXES = {
+  "auth-required": RelayClosedError,
+  unsupported: AuthRequiredError,
+  error: RelayClosedError,
+  blocked: RelayClosedError,
+  restricted: RelayClosedError,
+  "rate-limited": RelayClosedError,
+  pow: RelayClosedError,
+  invalid: RelayClosedError,
+  duplicate: RelayClosedError,
+  mute: RelayClosedError,
+} as const;
+
+/**
+ * Parse a NIP-01 machine-readable CLOSED reason string into a typed error.
+ * Returns null if the reason has no recognized prefix — the relay closed gracefully
+ * and the observable should complete rather than error.
+ */
+function parseClosedError(reason: string): RelayClosedError | null {
+  const ErrorClass = CLOSED_ERROR_PREFIXES[reason.split(":")[0] as keyof typeof CLOSED_ERROR_PREFIXES];
+  if (ErrorClass) return new ErrorClass(reason);
+  return null;
+}
 
 /** A dummy filter that will return empty results */
 const PING_FILTER: Filter = {
@@ -92,8 +140,6 @@ const PING_FILTER: Filter = {
 export type RelayOptions = {
   /** Custom WebSocket implementation */
   WebSocket?: WebSocketSubjectConfig<any>["WebSocketCtor"];
-  /** How long to wait for an EOSE message (default 10s) */
-  eoseTimeout?: number;
   /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout?: number;
   /** How long to wait for a publish to complete (default 30s) */
@@ -113,15 +159,15 @@ export type RelayOptions = {
     now: number;
     attempts: number;
   }) => "reconnect" | "close" | "ignore";
-  /** Default retry config for subscription() method */
-  subscriptionRetry?: RetryConfig;
-  /** Default retry config for request() method */
-  requestRetry?: RetryConfig;
+  /** Default reconnect config for subscription() method */
+  subscriptionReconnect?: RetryConfig;
+  /** Default reconnect config for request() method */
+  requestReconnect?: RetryConfig;
   /** Default retry config for publish() method */
   publishRetry?: RetryConfig;
 };
 
-export class Relay implements IRelay {
+export class Relay {
   protected log: typeof logger = logger.extend("Relay");
   protected socket: WebSocketSubject<any>;
 
@@ -234,8 +280,6 @@ export class Relay implements IRelay {
     return this.reqs$.value;
   }
 
-  /** If an EOSE message is not seen in this time, emit one locally (default 10s)  */
-  eoseTimeout = 10_000;
   /** How long to wait for an OK message from the relay (default 10s) */
   eventTimeout = 10_000;
   /** How long to wait for a publish to complete (default 30s) */
@@ -251,12 +295,12 @@ export class Relay implements IRelay {
   /** How long to wait for EOSE response in milliseconds (default 20000) */
   pingTimeout = 20_000;
 
-  /** Default retry config for subscription() method */
-  protected subscriptionReconnect: RetryConfig;
-  /** Default retry config for request() method */
-  protected requestReconnect: RetryConfig;
+  /** Default reconnect config for subscription() method */
+  subscriptionReconnect: RetryConfig;
+  /** Default reconnect config for request() method */
+  requestReconnect: RetryConfig;
   /** Default retry config for publish() method */
-  protected publishRetry: RetryConfig;
+  publishRetry: RetryConfig;
 
   /** Policy hook for unresponsive connections */
   protected onUnresponsive?: RelayOptions["onUnresponsive"];
@@ -290,7 +334,6 @@ export class Relay implements IRelay {
     this.log = this.log.extend(url);
 
     // Set common options
-    if (opts?.eoseTimeout !== undefined) this.eoseTimeout = opts.eoseTimeout;
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
     if (opts?.publishTimeout !== undefined) this.publishTimeout = opts.publishTimeout;
     if (opts?.keepAlive !== undefined) this.keepAlive = opts.keepAlive;
@@ -300,8 +343,8 @@ export class Relay implements IRelay {
     if (opts?.onUnresponsive !== undefined) this.onUnresponsive = opts.onUnresponsive;
 
     // Set retry configs
-    this.subscriptionReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.subscriptionRetry ?? {}) };
-    this.requestReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.requestRetry ?? {}) };
+    this.subscriptionReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.subscriptionReconnect ?? {}) };
+    this.requestReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.requestReconnect ?? {}) };
     this.publishRetry = { ...DEFAULT_RETRY_CONFIG, ...(opts?.publishRetry ?? {}) };
 
     // Create an observable that tracks boolean authentication state
@@ -599,7 +642,9 @@ export class Relay implements IRelay {
   }
 
   /** Create a REQ observable that emits events or "EOSE" or errors */
-  req(filters: FilterInput, id = nanoid()): Observable<SubscriptionResponse> {
+  req(filters: FilterInput, opts?: RelayReqOptions): Observable<RelayReqMessage> {
+    const id = opts?.id ?? nanoid();
+
     // Convert filters input into an observable, if its a normal value merge it with NEVER so it never completes
     let input: Observable<Filter[]>;
 
@@ -614,96 +659,156 @@ export class Relay implements IRelay {
     }
 
     // Create an observable that completes when the upstream observable completes
-    const filtersComplete = input.pipe(ignoreElements(), endWith(null));
+    const filtersComplete = input.pipe(ignoreElements(), endWith(true));
+
+    // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE
+    let relayClosedSub = false;
 
     // Create an observable that filters responses from the relay to just the ones for this REQ
-    const messages: Observable<any[]> = this.socket.pipe(
+    const messages = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
-      // Singleton (prevents the .pipe() operator later from sending two REQ messages )
+      // Map NIP-01 messages to RelayReqMessage
+      map<any, RelayReqMessage>((m) => {
+        if (m[0] === "EVENT" && typeof m[2] === "object")
+          return { type: "EVENT", from: this.url, id: m[1], event: m[2] } satisfies RelayReqEventMessage;
+        if (m[0] === "CLOSED")
+          return { type: "CLOSED", from: this.url, id: m[1], reason: m[2] ?? "" } satisfies RelayReqClosedMessage;
+        // EOSE
+        return { type: "EOSE", from: this.url, id: m[1] } satisfies RelayReqEoseMessage;
+      }),
+      // Throw typed errors for prefixed CLOSED; mark relay-closed before takeWhile sees it
+      tap((m) => {
+        if (m.type === "CLOSED") {
+          relayClosedSub = true;
+          const error = parseClosedError(m.reason);
+          if (error) throw error;
+        }
+      }),
+      // Complete the stream on unprefixed CLOSED, emitting the CLOSED message last (inclusive)
+      takeWhile((m) => m.type !== "CLOSED", true),
+      // Singleton (prevents the .pipe() operator later from sending two REQ messages)
       share(),
     );
 
     // Create an observable that controls sending the filters and closing the REQ
     const control = input.pipe(
       // Send the filters when they change
-      tap((filters) => {
+      map((filters) => {
+        // Reset closed flag on each new REQ (resubscribe cycles)
+        relayClosedSub = false;
         this.socket.next(["REQ", id, ...filters]);
         // Add to tracking when REQ is sent
         this.reqs$.next({ ...this.reqs$.value, [id]: filters });
+
+        return { type: "OPEN", id, filters, from: this.url } satisfies RelayReqOpenMessage;
       }),
-      // Send the CLOSE message when unsubscribed or input completes
+      // Send CLOSE when unsubscribed or input completes, but not if relay already sent CLOSED
       finalize(() => {
-        this.socket.next(["CLOSE", id]);
+        if (!relayClosedSub) this.socket.next(["CLOSE", id]);
         // Remove from tracking when REQ closes
         const { [id]: _, ...rest } = this.reqs$.value;
         this.reqs$.next(rest);
       }),
       // Once filters have been sent, switch to listening for messages
-      switchMap(() => messages),
+      switchMap((openMessage) =>
+        messages.pipe(
+          // Pass along the OPEN message for listeners
+          startWith(openMessage),
+        ),
+      ),
     );
 
     // Start the watch tower with the observables
     const observable = merge(this.watchTower, control).pipe(
-      // Complete the subscription when the control observable completes
-      // This is to work around the fact that merge() waits for both observables to complete
+      // Complete when messages completes (e.g. unprefixed CLOSED = graceful relay close)
       takeUntil(messages.pipe(ignoreElements(), endWith(true))),
       // Complete the subscription when the input is completed
       takeUntil(filtersComplete),
-      // Map the messages to events, EOSE, or throw an error
-      map<any[], SubscriptionResponse>((message) => {
-        if (message[0] === "EOSE") return "EOSE";
-        else if (message[0] === "CLOSED") throw new ReqCloseError(message[2]);
-        else return message[2] as NostrEvent;
-      }),
-      this.handleAuthRequiredForReq("REQ"),
       // mark events as from relays
-      markFromRelay(this.url),
-      // if no events are seen in 10s, emit EOSE
-      // TODO: this timeout should only emit EOSE after the last event is seen and no EOSE has been sent in (timeout ms)
-      timeout({
-        first: this.eoseTimeout,
-        with: () => merge(of<SubscriptionResponse>("EOSE"), NEVER),
+      tap((message) => {
+        if (message.type === "EVENT") addSeenRelay(message.event, this.url);
+      }),
+      // Set auth required flag when relay closes with auth-required
+      catchError((error) => {
+        if (error instanceof AuthRequiredError) {
+          this.log(`Auth required for REQ`);
+          this.receivedAuthRequiredForReq.next(true);
+
+          // Return EMPTY so resubscribe operator retries for wait for auth
+          return EMPTY;
+        } else {
+          return throwError(() => error);
+        }
       }),
       // Only create one upstream subscription
       share(),
     );
 
     // Wait for auth if required and make sure to start the watch tower
-    return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable));
+    return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable)).pipe(
+      // Create resubscribe logic (repeat operator)
+      this.customRepeatOperator(opts?.resubscribe),
+      // Only create one upstream subscription
+      share(),
+    );
   }
 
   /** Create a COUNT observable that emits a single count response */
-  count(filters: Filter | Filter[], id = nanoid()): Observable<CountResponse> {
+  count(filters: Filter | Filter[], id = nanoid()): Observable<RelayCountResponse> {
+    // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE
+    let relayClosedSub = false;
+
     // Create an observable that filters responses from the relay to just the ones for this COUNT
-    const messages: Observable<any[]> = this.socket.pipe(
+    const messages = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
+      // Map to typed response
+      map<any, RelayCountResponse | null>((m) => {
+        if (m[0] === "COUNT") return m[2] as RelayCountResponse;
+        else if (m[0] === "CLOSED") {
+          relayClosedSub = true;
+          const error = parseClosedError(m[2] ?? "");
+          if (error) throw error;
+        }
+        return null;
+      }),
+      filter((m) => m !== null),
+      // Singleton
+      share(),
     );
 
     // Send the COUNT message and listen for response
-    const observable = defer(() => {
+    const control = defer(() => {
+      // Reset closed flag on each new COUNT
+      relayClosedSub = false;
       // Send the COUNT message when subscription starts
       this.socket.next(Array.isArray(filters) ? ["COUNT", id, ...filters] : ["COUNT", id, filters]);
 
-      // Merge with watch tower to keep connection alive
-      return merge(this.watchTower, messages);
+      return messages;
     }).pipe(
-      // Map the messages to count responses or throw an error
-      map<any[], CountResponse>((message) => {
-        if (message[0] === "COUNT") return message[2] as CountResponse;
-        else throw new ReqCloseError(message[2]);
-      }),
-      this.handleAuthRequiredForReq("COUNT"),
-      // Complete on first value (COUNT responses are single-shot)
-      take(1),
-      // Add timeout
-      timeout({
-        first: this.eoseTimeout,
-        with: () => throwError(() => new Error("COUNT timeout")),
+      // Send CLOSE when unsubscribed, but not if relay already sent CLOSED
+      finalize(() => {
+        if (!relayClosedSub) this.socket.next(["CLOSE", id]);
       }),
     );
 
+    const observable = merge(this.watchTower, control).pipe(
+      // Complete when messages completes (unprefixed CLOSED = graceful relay close)
+      takeUntil(messages.pipe(ignoreElements(), endWith(true))),
+      // Complete on first value (COUNT responses are single-shot)
+      take(1),
+      // Set auth required flag when relay closes with auth-required
+      catchError((error) => {
+        if (error instanceof AuthRequiredError && !this.receivedAuthRequiredForReq.value) {
+          this.log(`Auth required for COUNT`);
+          this.receivedAuthRequiredForReq.next(true);
+        }
+        return throwError(() => error);
+      }),
+      // Throw an error if no COUNT response received within 10 seconds
+      timeout({ first: 10_000, with: () => throwError(() => new Error("COUNT timeout")) }),
+    );
+
     // Start the watch tower and wait for auth if required
-    // Use share() to prevent multiple subscriptions from creating duplicate COUNT messages
     return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable)).pipe(share());
   }
 
@@ -737,7 +842,7 @@ export class Relay implements IRelay {
           this.receivedAuthRequiredForEvent.next(true);
         }
       }),
-      // if no message is seen in 10s, emit EOSE
+      // if no message is seen in 10s, emit failed publish response
       timeout({
         first: this.eventTimeout,
         with: () => of<PublishResponse>({ ok: false, from: this.url, message: "Timeout" }),
@@ -790,18 +895,18 @@ export class Relay implements IRelay {
     return lastValueFrom(start.pipe(switchMap((event) => this.auth(event))));
   }
 
-  /** Internal operator for creating the retry() operator */
+  /** Internal operator for creating the retry() operator for reconnecting to the websocket */
   protected customRetryOperator<T extends unknown = unknown>(
     times: undefined | boolean | number | RetryConfig,
     base?: RetryConfig,
   ): MonoTypeOperatorFunction<T> {
-    if (times === false) return identity;
+    if (times === false || times === undefined) return identity;
     else if (typeof times === "number") return retry({ ...base, count: times });
     else if (times === true) return base ? retry(base) : retry();
     else return retry({ ...base, ...times });
   }
 
-  /** Internal operator for creating the repeat() operator */
+  /** Internal operator for creating the repeat() operator for resubscribing */
   protected customRepeatOperator<T extends unknown = unknown>(
     times: undefined | boolean | number | RepeatConfig | undefined,
   ): MonoTypeOperatorFunction<T> {
@@ -824,45 +929,39 @@ export class Relay implements IRelay {
     else return simpleTimeout(timeout ?? defaultTimeout);
   }
 
-  /** Internal operator for handling auth-required errors from REQ/COUNT operations */
-  protected handleAuthRequiredForReq(operation: "REQ" | "COUNT"): MonoTypeOperatorFunction<any> {
-    return catchError((error) => {
-      // Set auth required if the operation is closed with auth-required
-      if (
-        error instanceof ReqCloseError &&
-        error.message.startsWith(AUTH_REQUIRED_PREFIX) &&
-        !this.receivedAuthRequiredForReq.value
-      ) {
-        this.log(`Auth required for ${operation}`);
-        this.receivedAuthRequiredForReq.next(true);
-      }
-
-      // Pass the error through
-      return throwError(() => error);
-    });
-  }
-
   /** Creates a REQ that retries when relay errors ( default 3 retries ) */
-  subscription(filters: FilterInput, opts?: SubscriptionOptions): Observable<SubscriptionResponse> {
-    return this.req(filters, opts?.id).pipe(
-      // Retry on connection errors
-      this.customRetryOperator(opts?.reconnect ?? true, this.subscriptionReconnect),
-      // Create resubscribe logic (repeat operator)
-      this.customRepeatOperator(opts?.resubscribe),
+  subscription(filters: FilterInput, opts?: RelaySubscriptionOptions): Observable<RelaySubscriptionResponse> {
+    return this.req(filters, {
+      ...opts,
+      reconnect: opts?.reconnect ?? this.subscriptionReconnect,
+    }).pipe(
+      // Filter for EOSE messages
+      filter((message) => message.type === "EOSE" || message.type === "EVENT"),
+      // Extract EOSE messages
+      map((message) => (message.type === "EOSE" ? "EOSE" : message.event)),
       // Single subscription
       share(),
     );
   }
 
   /** Makes a single request that retires on errors and completes on EOSE */
-  request(filters: FilterInput, opts?: RequestOptions): Observable<NostrEvent> {
-    return this.req(filters, opts?.id).pipe(
-      // Retry on connection errors
-      this.customRetryOperator(opts?.reconnect ?? true, this.requestReconnect),
-      // Create resubscribe logic (repeat operator)
-      this.customRepeatOperator(opts?.resubscribe),
+  request(filters: FilterInput, opts?: RelayRequestOptions): Observable<RelayRequestResponse> {
+    const req = this.req(filters, {
+      ...opts,
+      reconnect: opts?.reconnect ?? this.requestReconnect,
+    });
+
+    return req.pipe(
+      // Add completion condition
+      opts?.complete ? completeWhen(opts?.complete) : identity,
+      // Apply request timeout
+      timeout({ first: opts?.timeout ?? 30_000 }),
       // Complete when EOSE is received
-      completeOnEose(),
+      takeWhile((message) => message.type !== "EOSE"),
+      // Filter only for event messages
+      filter((message) => message.type === "EVENT"),
+      // Extract event messages
+      map((message) => message.event),
       // Single subscription
       share(),
     );
@@ -875,7 +974,7 @@ export class Relay implements IRelay {
         mergeMap((result) => {
           // If the relay responds with auth-required, throw an error for the retry operator to handle
           if (result.ok === false && result.message?.startsWith(AUTH_REQUIRED_PREFIX))
-            return throwError(() => new Error(result.message));
+            return throwError(() => new AuthRequiredError(result.message ?? ""));
 
           return of(result);
         }),
@@ -890,7 +989,7 @@ export class Relay implements IRelay {
   /** Negentropy sync events with the relay and an event store */
   sync(
     store: NegentropySyncStore,
-    filter: Filter,
+    filters: Filter,
     direction: SyncDirection = SyncDirection.RECEIVE,
   ): Observable<NostrEvent> {
     const getEvents = async (ids: string[]) => {
@@ -912,7 +1011,7 @@ export class Relay implements IRelay {
 
       this.negentropy(
         store,
-        filter,
+        filters,
         async (have, need) => {
           // NOTE: it may be more efficient to sync all the events later in a single batch
 
@@ -929,7 +1028,11 @@ export class Relay implements IRelay {
             await lastValueFrom(
               this.req({ ids: need }).pipe(
                 // Complete when EOSE is received
-                completeOnEose(),
+                takeWhile((message) => message.type !== "EOSE"),
+                // Filter only for event messages
+                filter((message) => message.type === "EVENT"),
+                // Extract event messages
+                map((message) => message.event),
                 // Add events to the store if its writable
                 Reflect.has(store, "add")
                   ? mapEventsToStore(store as unknown as IEventStoreActions | IAsyncEventStoreActions)
@@ -1001,5 +1104,38 @@ export class Relay implements IRelay {
       // Return a timer that will emit after the calculated delay
       return timer(delay);
     };
+  }
+
+  static afterOpen(condition: RelayRequestCompleteOperator): RelayRequestCompleteOperator {
+    return (source) =>
+      source.pipe(
+        // Wait for subscription open
+        filter((m) => m.type === "OPEN"),
+        // Switch to timer for complete
+        switchMap(() => source.pipe(condition)),
+      );
+  }
+
+  static completeOr(...conditions: RelayRequestCompleteOperator[]): RelayRequestCompleteOperator {
+    return (source) =>
+      combineLatest(conditions.map((condition) => source.pipe(condition, startWith(false)))).pipe(
+        // Return true if any condition is truthy
+        map((all) => all.some((v) => !!v)),
+      );
+  }
+
+  static completeAnd(...conditions: RelayRequestCompleteOperator[]): RelayRequestCompleteOperator {
+    return (source) =>
+      combineLatest(conditions.map((condition) => source.pipe(condition, startWith(false)))).pipe(
+        // Return true if all conditions are truthy
+        map((all) => all.every((v) => !!v)),
+      );
+  }
+
+  static defaultComplete(timeout: number, afterOpen = 10_000): RelayRequestCompleteOperator {
+    return this.completeOr(
+      () => timer(timeout),
+      this.afterOpen(() => timer(afterOpen)),
+    );
   }
 }

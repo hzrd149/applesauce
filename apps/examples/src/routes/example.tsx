@@ -1,33 +1,10 @@
-import Prism from "prismjs";
-import "prismjs/themes/prism.css";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { Link, useParams } from "react-router";
 import SideNav from "../components/nav";
 
-import "prismjs/components/prism-javascript";
-import "prismjs/components/prism-jsx";
-import "prismjs/components/prism-tsx";
-import "prismjs/components/prism-typescript";
-
-import { CheckIcon, CodeIcon, ExternalLinkIcon } from "../components/icons";
+import { CheckIcon, ExternalLinkIcon } from "../components/icons";
 import examples, { Example } from "../examples";
-
-function CodeBlock({ code, language }: { code: string; language: string }) {
-  const ref = useRef<HTMLElement | null>(null);
-
-  useLayoutEffect(() => {
-    if (ref.current) Prism.highlightElement(ref.current);
-  }, []);
-
-  return (
-    <pre className="p-4 my-0">
-      <code ref={ref} className={`language-${language}`}>
-        {code}
-      </code>
-    </pre>
-  );
-}
 
 export default function ExamplePage() {
   const { "*": splat } = useParams();
@@ -36,13 +13,9 @@ export default function ExamplePage() {
   const [source, setSource] = useState("");
   const [metadata, setMetadata] = useState<Example["metadata"]>();
   const [Component, setComponent] = useState<(() => JSX.Element) | null>();
-  const [mode, setMode] = useState<"code" | "preview">("preview");
   const [copied, setCopied] = useState(false);
 
   const example = examples.find((e) => e.id === exampleId);
-
-  // Set mode to preview when example changes
-  useEffect(() => setMode("preview"), [example]);
 
   // Handle copy to clipboard
   const handleCopy = async () => {
@@ -83,7 +56,9 @@ export default function ExamplePage() {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4">Example not found</h2>
-          <p className="text-base-content/70">The example "{exampleId}" does not exist.</p>
+          <p className="text-base-content/70">
+            The example "{exampleId}" does not exist.
+          </p>
         </div>
       </div>
     );
@@ -106,25 +81,43 @@ export default function ExamplePage() {
               stroke="currentColor"
               className="w-5 h-5"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+              />
             </svg>
           </Link>
           <div className="flex-none lg:hidden">
-            <label htmlFor="drawer" aria-label="open sidebar" className="btn btn-square btn-ghost">
+            <label
+              htmlFor="drawer"
+              aria-label="open sidebar"
+              className="btn btn-square btn-ghost"
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
                 className="inline-block h-6 w-6 stroke-current"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 6h16M4 12h16M4 18h16"
+                >
+                </path>
               </svg>
             </label>
           </div>
           <div className="mx-2 flex-1 px-2">
             <div className="flex flex-col">
               <span className="font-bold text-lg">{example.name}</span>
-              {metadata?.description && <span className="text-xs text-base-content/70">{metadata.description}</span>}
+              {metadata?.description && (
+                <span className="text-xs text-base-content/70">
+                  {metadata.description}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex-none">
@@ -137,14 +130,6 @@ export default function ExamplePage() {
               {copied ? <CheckIcon /> : null}
               {copied ? "Copied!" : "Copy code"}
             </button>
-
-            <button
-              className={`btn btn-sm ${mode === "code" ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => setMode(mode === "code" ? "preview" : "code")}
-            >
-              <CodeIcon /> Source
-            </button>
-
             <a
               target="_blank"
               className="btn btn-sm btn-ghost btn-square"
@@ -185,7 +170,11 @@ export default function ExamplePage() {
                     const relatedExample = examples.find((e) => e.id === rel);
                     if (!relatedExample) return null;
                     return (
-                      <Link key={rel} to={`/example/${rel}`} className="link link-primary text-xs">
+                      <Link
+                        key={rel}
+                        to={`/example/${rel}`}
+                        className="link link-primary text-xs"
+                      >
                         {relatedExample.name}
                       </Link>
                     );
@@ -197,23 +186,23 @@ export default function ExamplePage() {
         )}
 
         {/* Page content */}
-        {mode === "preview" ? (
-          Component ? (
+        {Component
+          ? (
             <ErrorBoundary
               fallbackRender={({ error }) => (
-                <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>
+                <div className="text-red-500">
+                  {error instanceof Error ? error.message : String(error)}
+                </div>
               )}
             >
               <Component />
             </ErrorBoundary>
-          ) : (
+          )
+          : (
             <div className="flex justify-center items-center h-full">
               <span className="loading loading-dots loading-xl"></span>
             </div>
-          )
-        ) : (
-          <CodeBlock code={source} language="tsx" />
-        )}
+          )}
       </div>
 
       {/* Sidebar */}

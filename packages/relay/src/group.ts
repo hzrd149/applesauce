@@ -1,4 +1,4 @@
-import { EventMemory, IAsyncEventStoreActions, IEventStoreActions } from "applesauce-core/event-store";
+import { EventMemory } from "applesauce-core/event-store";
 import type { Filter, NostrEvent } from "applesauce-core/helpers";
 import { filterDuplicateEvents } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
@@ -8,11 +8,9 @@ import {
   combineLatest,
   defaultIfEmpty,
   defer,
-  endWith,
   filter,
   from,
   identity,
-  ignoreElements,
   lastValueFrom,
   map,
   merge,
@@ -25,67 +23,52 @@ import {
   startWith,
   switchMap,
   take,
-  takeWhile,
+  timeout,
+  timer,
   toArray,
 } from "rxjs";
-import { NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
-import { completeOnEose } from "./operators/complete-on-eose.js";
-import { onlyEvents } from "./operators/only-events.js";
+import { type ReconcileFunction } from "./negentropy.js";
+import { completeWhen } from "./operators/complete-when.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
-import { SyncDirection } from "./relay.js";
+import { Relay, SyncDirection } from "./relay.js";
 import {
-  CountResponse,
   FilterInput,
-  IGroup,
-  IGroupRelayInput,
-  IRelay,
+  GroupNegentropySyncOptions,
+  GroupRelayInput,
+  GroupReqErrorMessage,
+  GroupReqMessage,
+  GroupReqOptions,
+  GroupRequestCompleteOperator,
+  GroupRequestOptions,
+  GroupSubscriptionOptions,
   NegentropyReadStore,
   NegentropySyncStore,
   PublishOptions,
   PublishResponse,
+  RelayCountResponse,
+  RelayReqMessage,
   RelayStatus,
-  RequestOptions,
-  SubscriptionOptions,
-  SubscriptionResponse,
 } from "./types.js";
 
-/** Options for negentropy sync on a group of relays */
-export type GroupNegentropySyncOptions = NegentropySyncOptions & {
-  /** Whether to sync in parallel (default true) */
-  parallel?: boolean;
-};
-
-/** Options for a subscription on a group of relays */
-export type GroupSubscriptionOptions = SubscriptionOptions & {
-  /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
-  eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
-};
-
-/** Options for a request on a group of relays */
-export type GroupRequestOptions = RequestOptions & {
-  /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
-  eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
-};
-
 /** Convert an error to a PublishResponse */
-function errorToPublishResponse(relay: IRelay): MonoTypeOperatorFunction<PublishResponse> {
+function errorToPublishResponse(relay: Relay): MonoTypeOperatorFunction<PublishResponse> {
   return catchError((err) =>
     of({ ok: false, from: relay.url, message: err?.message || "Unknown error" } satisfies PublishResponse),
   );
 }
 
-export class RelayGroup implements IGroup {
-  protected relays$: BehaviorSubject<IRelay[]> | Observable<IRelay[]> = new BehaviorSubject<IRelay[]>([]);
+export class RelayGroup {
+  protected relays$: BehaviorSubject<Relay[]> | Observable<Relay[]> = new BehaviorSubject<Relay[]>([]);
 
   /** Observable of relay status for all relays in the group */
   status$: Observable<Record<string, RelayStatus>>;
 
-  get relays(): IRelay[] {
+  get relays(): Relay[] {
     if (this.relays$ instanceof BehaviorSubject) return this.relays$.value;
     throw new Error("This group was created with an observable, relays are not available");
   }
 
-  constructor(relays: IGroupRelayInput) {
+  constructor(relays: GroupRelayInput) {
     this.relays$ = Array.isArray(relays) ? new BehaviorSubject(relays) : relays;
 
     // Initialize status$ observable
@@ -119,7 +102,7 @@ export class RelayGroup implements IGroup {
   }
 
   /** Check if a relay is in the group */
-  public has(relay: IRelay | string): boolean {
+  public has(relay: Relay | string): boolean {
     if (this.controlled) throw new Error("This group was created with an observable, relays are not available");
 
     if (typeof relay === "string") return this.relays.some((r) => r.url === relay);
@@ -127,32 +110,29 @@ export class RelayGroup implements IGroup {
   }
 
   /** Add a relay to the group */
-  public add(relay: IRelay): void {
+  public add(relay: Relay): void {
     if (this.has(relay)) return;
-    (this.relays$ as BehaviorSubject<IRelay[]>).next([...this.relays, relay]);
+    (this.relays$ as BehaviorSubject<Relay[]>).next([...this.relays, relay]);
   }
 
   /** Remove a relay from the group */
-  public remove(relay: IRelay): void {
+  public remove(relay: Relay): void {
     if (!this.has(relay)) return;
-    (this.relays$ as BehaviorSubject<IRelay[]>).next(this.relays.filter((r) => r !== relay));
+    (this.relays$ as BehaviorSubject<Relay[]>).next(this.relays.filter((r) => r !== relay));
   }
 
   /** Internal logic for handling requests to multiple relays */
-  protected internalSubscription(
-    project: (relay: IRelay) => Observable<SubscriptionResponse>,
-    eventOperator: MonoTypeOperatorFunction<NostrEvent> = identity,
-  ): Observable<SubscriptionResponse> {
+  protected internalSubscription(project: (relay: Relay) => Observable<RelayReqMessage>): Observable<GroupReqMessage> {
     // Keep a cache of upstream observables for each relay
-    const upstream = new WeakMap<IRelay, Observable<readonly [IRelay, SubscriptionResponse]>>();
+    const upstream = new WeakMap<Relay, Observable<GroupReqMessage>>();
 
     // Subscribe to the group relays
-    const main = this.relays$.pipe(
+    const messages = this.relays$.pipe(
       // Every time they change switch to a new observable
       // Using reverseSwitchMap to subscribe to the new relays before unsubscribing from the old ones
       // This avoids sending duplicate REQ messages to the relays
       reverseSwitchMap((relays) => {
-        const observables: Observable<readonly [IRelay, SubscriptionResponse]>[] = [];
+        const observables: Observable<GroupReqMessage>[] = [];
         for (const relay of relays) {
           // If an upstream observable exists for this relay, use it
           if (upstream.has(relay)) {
@@ -160,61 +140,28 @@ export class RelayGroup implements IGroup {
             continue;
           }
 
-          const observable = project(relay).pipe(
-            // Catch connection errors and return EOSE
-            catchError(() => of("EOSE" as const)),
-            // Map values into tuple of relay and value
-            map((value) => [relay, value] as const),
+          const observable: Observable<GroupReqMessage> = project(relay).pipe(
+            // Catch connection errors and return ERROR
+            catchError((err) => of({ type: "ERROR", from: relay.url, error: err } satisfies GroupReqErrorMessage)),
           );
           observables.push(observable);
           upstream.set(relay, observable);
         }
+
         return merge(...observables);
       }),
-      // Only create one upstream subscription
+      // Ensure a single upstream subscription
+      // NOTE: this is required because the complete operator will subscribe many times to this
       share(),
     );
 
-    // Create an observable that only emits the events from the relays
-    const events = main.pipe(
-      // Pick the value from the tuple
-      map(([_, value]) => value),
-      // Only return events
-      onlyEvents(),
-      // Add event operations
-      eventOperator,
-    );
-
-    // Create an observable that emits EOSE when all relays have sent EOSE
-    const eose = this.relays$.pipe(
-      // When the relays change, switch to a new observable
-      switchMap((relays) =>
-        // Subscribe to the events, and wait for EOSE from all relays
-        main.pipe(
-          // Only select EOSE messages
-          filter(([_, value]) => value === "EOSE"),
-          // Track the relays that have sent EOSE
-          scan((received, [relay]) => [...received, relay], [] as IRelay[]),
-          // Keep the observable open while there are relays that have not sent EOSE
-          takeWhile((received) => relays.some((r) => !received.includes(r))),
-          // Ignore all values
-          ignoreElements(),
-          // When all relays have sent EOSE, emit EOSE
-          endWith("EOSE" as const),
-        ),
-      ),
-    );
-
-    return merge(events, eose).pipe(
-      // Ensure a single upstream
-      share(),
-    );
+    return messages;
   }
 
   /** Internal logic for handling publishes to multiple relays */
-  protected internalPublish(project: (relay: IRelay) => Observable<PublishResponse>): Observable<PublishResponse> {
+  protected internalPublish(project: (relay: Relay) => Observable<PublishResponse>): Observable<PublishResponse> {
     // Keep a cache of upstream observables for each relay
-    const upstream = new WeakMap<IRelay, Observable<PublishResponse>>();
+    const upstream = new WeakMap<Relay, Observable<PublishResponse>>();
 
     // Subscribe to the group relays
     return this.relays$.pipe(
@@ -241,33 +188,19 @@ export class RelayGroup implements IGroup {
 
         return merge(...observables);
       }),
+      // Ensure a single upstream publish
+      share(),
     );
   }
 
-  /**
-   * Make a request to all relays
-   * @note This does not deduplicate events
-   */
-  req(
-    filters: FilterInput,
-    id = nanoid(),
-    opts?: {
-      /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
-      eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
-    },
-  ): Observable<SubscriptionResponse> {
-    return this.internalSubscription(
-      (relay) => relay.req(filters, id),
-      opts?.eventStore ? filterDuplicateEvents(opts?.eventStore) : identity,
-    );
+  /** Send a REQ to all relays and returns all responses */
+  req(filters: FilterInput, opts?: GroupReqOptions): Observable<GroupReqMessage> {
+    return this.internalSubscription((relay) => relay.req(filters, opts));
   }
 
   /** Send an event to all relays */
   event(event: NostrEvent): Observable<PublishResponse> {
-    return this.internalPublish((relay) => relay.event(event)).pipe(
-      // Ensure a single upstream subscription
-      share(),
-    );
+    return this.internalPublish((relay) => relay.event(event));
   }
 
   /** Negentropy sync events with the relays and an event store */
@@ -298,33 +231,54 @@ export class RelayGroup implements IGroup {
     );
   }
 
-  /** Request events from all relays and complete on EOSE */
+  /** Request events from all relays and complete based on condition */
   request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent> {
+    // TODO: need to find a friendly way to make this default customizable
+    const complete = opts?.complete ?? RelayGroup.completeAfterFirstRelay(5_000);
+
     return this.internalSubscription(
+      // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
-        relay.request(filters, opts).pipe(
-          // Simulate EOSE on completion
-          endWith("EOSE" as SubscriptionResponse),
+        relay.req(
+          filters,
+          // Manually default to relays reconnect config
+          { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect },
         ),
-      // If an event store is provided, filter duplicate events
-      opts?.eventStore == null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory()),
     ).pipe(
-      // Complete when all relays have sent EOSE
-      completeOnEose(),
+      // Add the completion condition if provided
+      complete ? completeWhen(complete) : identity,
+      // Add request timeout
+      timeout({ first: opts?.timeout ?? 30_000 }),
+      // Filter only for event messages
+      filter((message) => message.type === "EVENT"),
+      // Extract event messages
+      map((message) => message.event),
+      // If an event store is provided, filter duplicate events
+      opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory()),
+      // Only create one upstream subscription
+      share(),
     );
   }
 
   /** Open a subscription to all relays with retries ( default 3 retries ) */
-  subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<SubscriptionResponse> {
+  subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<NostrEvent> {
     return this.internalSubscription(
-      (relay) => relay.subscription(filters, opts),
+      // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
+      (relay) => relay.req(filters, { ...opts, reconnect: opts?.reconnect ?? relay.subscriptionReconnect }),
+    ).pipe(
+      // Filter only for event messages
+      filter((message) => message.type === "EVENT"),
+      // Extract event messages
+      map((message) => message.event),
       // If an event store is provided, filter duplicate events
-      opts?.eventStore == null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory()),
+      opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory()),
+      // Only create one upstream subscription
+      share(),
     );
   }
 
   /** Count events on all relays in the group */
-  count(filters: Filter | Filter[], id = nanoid()): Observable<Record<string, CountResponse>> {
+  count(filters: Filter | Filter[], id = nanoid()): Observable<Record<string, RelayCountResponse>> {
     return this.relays$.pipe(
       switchMap((relays) =>
         combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(filters, id)]))),
@@ -350,5 +304,36 @@ export class RelayGroup implements IGroup {
       // Only create one upstream subscription
       share(),
     );
+  }
+
+  /**
+   * Creates a complete condition that waits for the first EOSE message from a relay and then starts a timeout for the remaining relays
+   * @param timeout - The timeout in milliseconds for the remaining relays
+   */
+  static completeAfterFirstRelay(timeout = 5_000): GroupRequestCompleteOperator {
+    return (source) =>
+      // Listen for first EOSE message from a relay
+      source.pipe(filter((m) => m.type === "EOSE")).pipe(
+        // Ignore all other EOSE messages
+        take(1),
+        // Start a timeout for the remaining relays
+        switchMap(() => timer(timeout)),
+        // Emit true when the timeout completes
+        map(() => true),
+      );
+  }
+
+  /**
+   * Creates a {@link GroupRequestCompleteOperator} that waits for all relays to send an EOSE message or timeout
+   */
+  static completeOnAllEose(): GroupRequestCompleteOperator {
+    return (source) =>
+      source.pipe(
+        filter((message) => message.type === "OPEN" || message.type === "EOSE" || message.type === "ERROR"),
+        // Accumulate the relay status messages
+        scan((acc, message) => acc.set(message.from, message.type), new Map<string, "EOSE" | "ERROR" | "OPEN">()),
+        // Emit true when all relays are no longer OPEN
+        map((all) => Array.from(all.values()).every((t) => t !== "OPEN")),
+      );
   }
 }
