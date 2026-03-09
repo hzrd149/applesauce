@@ -30,9 +30,7 @@ export function getEmojiFromTags(event: { tags: string[][] } | string[][], code:
   if (!tag) return undefined;
 
   const address = tag[3] ? parseReplaceableAddress(tag[3]) : undefined;
-  return address
-    ? { shortcode: tag[1], url: tag[2], address }
-    : { shortcode: tag[1], url: tag[2] };
+  return address ? { shortcode: tag[1], url: tag[2], address } : { shortcode: tag[1], url: tag[2] };
 }
 
 /** Returns the name of a NIP-30 emoji pack */

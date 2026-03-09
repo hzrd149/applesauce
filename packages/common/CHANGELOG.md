@@ -1,5 +1,18 @@
 # applesauce-common
 
+## 5.2.0
+
+### Minor Changes
+
+- fc83574: Add `user.blossomServesr$` to user cast
+- b75703f: Add support for address field in `emoji` tag
+
+### Patch Changes
+
+- be2c857: Add support for `EventPointer` and `AddressPointer` in `RepliesModel`
+- Updated dependencies
+  - applesauce-core@5.2.0
+
 ## 5.1.0
 
 ### Minor Changes
