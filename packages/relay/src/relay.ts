@@ -1106,6 +1106,7 @@ export class Relay {
     };
   }
 
+  /** A complete condition that waits for the subscription to open */
   static afterOpen(condition: RelayRequestCompleteOperator): RelayRequestCompleteOperator {
     return (source) =>
       source.pipe(
@@ -1116,6 +1117,7 @@ export class Relay {
       );
   }
 
+  /** An OR complete condition, that completes when either condition is truthy */
   static completeOr(...conditions: RelayRequestCompleteOperator[]): RelayRequestCompleteOperator {
     return (source) =>
       combineLatest(conditions.map((condition) => source.pipe(condition, startWith(false)))).pipe(
@@ -1124,6 +1126,7 @@ export class Relay {
       );
   }
 
+  /** An AND complete condition, that completes when all conditions are truthy */
   static completeAnd(...conditions: RelayRequestCompleteOperator[]): RelayRequestCompleteOperator {
     return (source) =>
       combineLatest(conditions.map((condition) => source.pipe(condition, startWith(false)))).pipe(
@@ -1132,6 +1135,7 @@ export class Relay {
       );
   }
 
+  /** A default complete condition that waits for the subscription to open and then completes after a timeout */
   static defaultComplete(timeout: number, afterOpen = 10_000): RelayRequestCompleteOperator {
     return this.completeOr(
       () => timer(timeout),

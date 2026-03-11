@@ -3,13 +3,26 @@
  * @tags relay, pool, request, completion, eose, performance
  * @related feed/relay-timeline, outbox/relay-selection
  */
-import { NostrEvent, relaySet } from "applesauce-core/helpers";
+import { mapEventsToTimeline } from "applesauce-core";
+import { getTagValue, NostrEvent, relaySet } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayGroup, RelayPool } from "applesauce-relay";
 import { completeWhen } from "applesauce-relay/operators/complete-when";
 import { GroupReqMessage } from "applesauce-relay/types";
 import { useCallback, useRef, useState } from "react";
-import { filter as rxFilter, finalize, map, merge, scan, shareReplay, Subscription, take, tap, timer } from "rxjs";
+import {
+  finalize,
+  last,
+  map,
+  merge,
+  filter as rxFilter,
+  scan,
+  shareReplay,
+  Subscription,
+  take,
+  tap,
+  timer,
+} from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 // Create a relay pool instance
@@ -51,6 +64,7 @@ export default function CompletionConditions() {
     ]),
   );
   const [currentRelay, setCurrentRelay] = useState("");
+  const [isLoadingRandom, setIsLoadingRandom] = useState(false);
   const [filterJson, setFilterJson] = useState('{"kinds":[1],"limit":20}');
   const [filterError, setFilterError] = useState<string | null>(null);
 
@@ -96,6 +110,21 @@ export default function CompletionConditions() {
     },
     [relays],
   );
+
+  // Fetch random relays by requesting kind 30166 relay status events from relay.nostr.watch
+  const handleRandomRelays = useCallback(() => {
+    setIsLoadingRandom(true);
+
+    const monitorRelay = pool.relay("wss://relay.nostr.watch");
+    monitorRelay
+      .request({ kinds: [30166], limit: 200 }, { timeout: 10_000 })
+      .pipe(mapEventsToTimeline(), last())
+      .subscribe((events) => {
+        const relays = relaySet(events.map((event) => getTagValue(event, "d")).filter((v) => v !== undefined));
+        setRelays(relays.sort(() => Math.random() - 0.5).slice(0, 10));
+        setIsLoadingRandom(false);
+      });
+  }, []);
 
   // Clear results
   const handleClear = useCallback(() => {
@@ -305,6 +334,9 @@ export default function CompletionConditions() {
                 disabled={!currentRelay || relays.includes(currentRelay)}
               >
                 Add Relay
+              </button>
+              <button className="btn btn-secondary" onClick={handleRandomRelays} disabled={isLoadingRandom}>
+                {isLoadingRandom ? "Loading..." : "Random"}
               </button>
             </div>
             {relays.length > 0 && (

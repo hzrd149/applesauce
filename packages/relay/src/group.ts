@@ -6,6 +6,7 @@ import {
   BehaviorSubject,
   catchError,
   combineLatest,
+  connect,
   defaultIfEmpty,
   defer,
   filter,
@@ -233,8 +234,10 @@ export class RelayGroup {
 
   /** Request events from all relays and complete based on condition */
   request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent> {
-    // TODO: need to find a friendly way to make this default customizable
-    const complete = opts?.complete ?? RelayGroup.completeAfterFirstRelay(5_000);
+    const complete =
+      opts?.complete ??
+      // Default complete condition is to wait for the first relay to send an EOSE message and then timeout or all relays to EOSE
+      RelayGroup.completeOnAny(RelayGroup.completeAfterFirstRelay(5_000), RelayGroup.completeOnAllEose());
 
     return this.internalSubscription(
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
@@ -323,17 +326,35 @@ export class RelayGroup {
       );
   }
 
-  /**
-   * Creates a {@link GroupRequestCompleteOperator} that waits for all relays to send an EOSE message or timeout
-   */
+  /** Creates a group request complete operator that waits for all relays to send an EOSE message or timeout */
   static completeOnAllEose(): GroupRequestCompleteOperator {
     return (source) =>
       source.pipe(
+        // Filter for relay status messages
         filter((message) => message.type === "OPEN" || message.type === "EOSE" || message.type === "ERROR"),
         // Accumulate the relay status messages
         scan((acc, message) => acc.set(message.from, message.type), new Map<string, "EOSE" | "ERROR" | "OPEN">()),
         // Emit true when all relays are no longer OPEN
         map((all) => Array.from(all.values()).every((t) => t !== "OPEN")),
       );
+  }
+
+  /** A group request complete condition that completes when any of the provided conditions are truthy (OR) */
+  static completeOnAny(...conditions: GroupRequestCompleteOperator[]): GroupRequestCompleteOperator {
+    return connect((shared$) =>
+      // Merge all the conditions
+      merge(...conditions.map((condition) => shared$.pipe(condition))),
+    );
+  }
+
+  /** A group request complete condition that completes when any of the provided conditions are truthy (AND) */
+  static completeOnAll(...conditions: GroupRequestCompleteOperator[]): GroupRequestCompleteOperator {
+    return connect((shared$) =>
+      // Get last state from all conditions
+      combineLatest(conditions.map((condition) => shared$.pipe(condition))).pipe(
+        // Check all values are truthy
+        map((all) => all.every((v) => !!v)),
+      ),
+    );
   }
 }
