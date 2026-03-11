@@ -1,6 +1,7 @@
 import { NostrEvent } from "applesauce-core/helpers";
 import { hasHiddenContent } from "applesauce-core/helpers/hidden-content";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
+import { mergeRelaySets } from "applesauce-core/helpers/relays";
 import { watchEventUpdates } from "applesauce-core/observable";
 import { combineLatest, map, of, switchMap } from "rxjs";
 import {
@@ -45,19 +46,16 @@ export class AssertionProvider extends PubkeyCast {
   /** @internal Per-class singleton cache used by castPubkey */
   static cache: Map<string, AssertionProvider> = new Map();
 
-  constructor(
-    pubkey: string,
-    store: CastRefEventStore,
-    /** Relay hint from the provider declaration. If empty, falls back to the provider's outbox relays. */
-    public readonly relays: string[] = [],
-  ) {
-    super(pubkey, store);
+  /** Relay hints declared for this provider in the trusted provider list */
+  get providerRelays(): string[] {
+    return this.pointer.relays ?? [];
   }
 
   /** Returns the relays to use when querying this provider's assertion events */
   get relays$() {
-    if (this.relays.length > 0) return of(this.relays);
-    return castUser(this.pubkey, this.store).outboxes$.pipe(map((outboxes) => outboxes ?? []));
+    return castUser(this.pubkey, this.store).outboxes$.pipe(
+      map((outboxes) => mergeRelaySets(this.providerRelays, outboxes)),
+    );
   }
 
   /**
@@ -135,7 +133,13 @@ export class AssertionProvider extends PubkeyCast {
 // ─── Helper to map TrustedProvider entries to AssertionProvider instances ───
 
 function toAssertionProviders(providers: TrustedProvider[], store: CastRefEventStore): AssertionProvider[] {
-  return providers.map((p) => castPubkey(p.servicePubkey, AssertionProvider, store, p.relay ? [p.relay] : []));
+  return providers.map((p) =>
+    castPubkey(
+      { pubkey: p.servicePubkey, relays: p.relay ? [p.relay] : undefined },
+      AssertionProvider,
+      store,
+    ),
+  );
 }
 
 // ─── TrustedProviderList ─────────────────────────────────────────────────────
