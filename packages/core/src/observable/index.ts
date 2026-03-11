@@ -14,6 +14,7 @@ export * from "./chainable.js";
 export * from "./combine-latest-by.js";
 export * from "./combine-latest-by-index.js";
 export * from "./combine-latest-by-key.js";
+export * from "./combine-latest-by-value.js";
 export * from "./defined.js";
 export * from "./get-observable-value.js";
 export * from "./map-events-to-store.js";
