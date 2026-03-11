@@ -12,7 +12,12 @@ describe("combineLatestByValue", () => {
     });
 
     source.next([1, 2]);
-    expect(results).toEqual([new Map([[1, 10], [2, 20]])]);
+    expect(results).toEqual([
+      new Map([
+        [1, 10],
+        [2, 20],
+      ]),
+    ]);
   });
 
   it("deduplicates duplicate values in the same array", () => {
@@ -35,14 +40,15 @@ describe("combineLatestByValue", () => {
 
     source
       .pipe(
-        combineLatestByValue((value) =>
-          new Observable<number>((subscriber) => {
-            branchCreates.set(value, (branchCreates.get(value) ?? 0) + 1);
-            subscriber.next(value);
-            return () => {
-              branchTeardowns.set(value, (branchTeardowns.get(value) ?? 0) + 1);
-            };
-          }),
+        combineLatestByValue(
+          (value) =>
+            new Observable<number>((subscriber) => {
+              branchCreates.set(value, (branchCreates.get(value) ?? 0) + 1);
+              subscriber.next(value);
+              return () => {
+                branchTeardowns.set(value, (branchTeardowns.get(value) ?? 0) + 1);
+              };
+            }),
         ),
       )
       .subscribe((value) => results.push(value));
@@ -54,12 +60,22 @@ describe("combineLatestByValue", () => {
         [2, 1],
       ]),
     );
-    expect(results.at(-1)).toEqual(new Map([[1, 1], [2, 2]]));
+    expect(results.at(-1)).toEqual(
+      new Map([
+        [1, 1],
+        [2, 2],
+      ]),
+    );
 
     source.next([1, 2]);
     expect(branchCreates.get(1)).toBe(1);
     expect(branchCreates.get(2)).toBe(1);
-    expect(results.at(-1)).toEqual(new Map([[1, 1], [2, 2]]));
+    expect(results.at(-1)).toEqual(
+      new Map([
+        [1, 1],
+        [2, 2],
+      ]),
+    );
 
     source.next([1]);
     expect(branchTeardowns.get(2)).toBe(1);
@@ -67,7 +83,12 @@ describe("combineLatestByValue", () => {
 
     source.next([1, 2]);
     expect(branchCreates.get(2)).toBe(2);
-    expect(results.at(-1)).toEqual(new Map([[1, 1], [2, 2]]));
+    expect(results.at(-1)).toEqual(
+      new Map([
+        [1, 1],
+        [2, 2],
+      ]),
+    );
   });
 
   it("passes value into branch mapper", () => {
@@ -90,20 +111,14 @@ describe("combineLatestByValue", () => {
     const results: Array<Map<number, number>> = [];
 
     source
-      .pipe(
-        combineLatestByValue((value) => (value === 2 ? NEVER : of(value))),
-      )
+      .pipe(combineLatestByValue((value) => (value === 2 ? NEVER : of(value))))
       .subscribe((value) => results.push(value));
 
     source.next([1, 2]);
     expect(results).toEqual([]);
 
     source.next([1]);
-    expect(results.at(-1)).toEqual(
-      new Map([
-        [1, 1],
-      ]),
-    );
+    expect(results.at(-1)).toEqual(new Map([[1, 1]]));
   });
 
   it("propagates value branch errors", () => {
@@ -112,7 +127,9 @@ describe("combineLatestByValue", () => {
 
     source
       .pipe(
-        combineLatestByValue((value) => new Observable<number>((subscriber) => subscriber.error(new Error(`${value} failed`)))),
+        combineLatestByValue(
+          (value) => new Observable<number>((subscriber) => subscriber.error(new Error(`${value} failed`))),
+        ),
       )
       .subscribe({
         error(err: Error) {
@@ -132,13 +149,14 @@ describe("combineLatestByValue", () => {
 
     const sub = source
       .pipe(
-        combineLatestByValue((_value) =>
-          new Observable<number>((subscriber) => {
-            subscriber.next(1);
-            return () => {
-              branchTeardowns += 1;
-            };
-          }),
+        combineLatestByValue(
+          (_value) =>
+            new Observable<number>((subscriber) => {
+              subscriber.next(1);
+              return () => {
+                branchTeardowns += 1;
+              };
+            }),
         ),
       )
       .subscribe();
@@ -159,8 +177,16 @@ describe("combineLatestByValue", () => {
     source.next([1, 2, 3]);
 
     expect(results).toEqual([
-      new Map([[1, 10], [2, 20], [3, 30]]),
-      new Map([[1, 10], [2, 20], [3, 30]]),
+      new Map([
+        [1, 10],
+        [2, 20],
+        [3, 30],
+      ]),
+      new Map([
+        [1, 10],
+        [2, 20],
+        [3, 30],
+      ]),
     ]);
   });
 });

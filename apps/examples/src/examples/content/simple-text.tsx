@@ -67,7 +67,7 @@ const components: ComponentMap = {
 
 // Create unified event loader for the store
 const eventLoader = createEventLoaderForStore(eventStore, pool, {
-  extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band"],
+  extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
 });
 
 const examples: EventPointer[] = [

@@ -43,14 +43,9 @@ export function timeoutWithIgnore<T, O extends ObservableInput<unknown> = Observ
     const watched$ = shared$.pipe(filter((value) => !isIgnored(value)));
     const ignored$ = shared$.pipe(filter(isIgnored));
 
-    const timed$ = watched$.pipe(
-      timeout(timeoutConfig),
-      share(),
-    );
+    const timed$ = watched$.pipe(timeout(timeoutConfig), share());
 
     // Stop forwarding ignored values as soon as the timed branch completes/errors.
-    return merge(timed$, ignored$).pipe(
-      takeUntil(timed$.pipe(ignoreElements(), endWith(true))),
-    );
+    return merge(timed$, ignored$).pipe(takeUntil(timed$.pipe(ignoreElements(), endWith(true))));
   };
 }

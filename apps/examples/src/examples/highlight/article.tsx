@@ -148,13 +148,7 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
   const [selectedRelays, setSelectedRelays] = useState<string[]>(["wss://relay.damus.io/"]);
   const [customRelay, setCustomRelay] = useState("");
 
-  const defaultRelays = [
-    "wss://relay.damus.io/",
-    "wss://nos.lol/",
-    "wss://relay.primal.net/",
-    "wss://nostr.wine/",
-    "wss://relay.nostr.band/",
-  ];
+  const defaultRelays = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/", "wss://nostr.wine/"];
 
   const handleAddCustomRelay = () => {
     if (customRelay && !selectedRelays.includes(customRelay)) {

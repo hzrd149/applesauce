@@ -2,22 +2,22 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import {
   getDisplayName,
   getProfilePicture,
-  mergeRelaySets,
   normalizeToPubkey,
   ProfileContent,
+  mergeRelaySets as relaySet,
 } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { PrimalCache, Vertex } from "applesauce-extra";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { PrimalCache, Vertex } from "applesauce-extra";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { lastValueFrom } from "rxjs";
 import RelayPicker from "./relay-picker";
 
 // Common relay URLs that support NIP-50 search
-const SEARCH_RELAYS = mergeRelaySets(["wss://relay.nostr.band", "wss://search.nos.today"]);
+const SEARCH_RELAYS = relaySet(["wss://search.nos.today", "wss://antiprimal.net"]);
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -85,16 +85,6 @@ function ProfileSearchModal({
     }
     return null;
   }, [extensionAvailable]);
-
-  // Cleanup PrimalCache and Vertex connections on unmount
-  useEffect(() => {
-    return () => {
-      primal.close();
-      if (vertex) {
-        vertex.close();
-      }
-    };
-  }, [primal, vertex]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;

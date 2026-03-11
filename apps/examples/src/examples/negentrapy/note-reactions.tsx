@@ -31,7 +31,6 @@ createEventLoaderForStore(eventStore, pool, {
 const relays$ = new BehaviorSubject<string[]>([
   "wss://relay.damus.io",
   "wss://nos.lol",
-  "wss://relay.nostr.band",
   "wss://purplepag.es",
   "wss://relay.primal.net",
 ]);

@@ -1483,7 +1483,6 @@ function WalletView({ user }: { user: User }) {
       "wss://relay.damus.io",
       "wss://nos.lol",
       "wss://relay.snort.social",
-      "wss://relay.nostr.band",
       "wss://relay.primal.net",
     ];
     await actions.run(CreateWallet, { mints, privateKey, relays: defaultRelays });

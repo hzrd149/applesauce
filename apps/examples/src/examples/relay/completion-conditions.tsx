@@ -45,7 +45,6 @@ export default function CompletionConditions() {
       "wss://relay.damus.io",
       "wss://relay.snort.social",
       "wss://nos.lol",
-      "wss://relay.nostr.band",
       "wss://relay.primal.net",
       "wss://nostr.wine",
       "wss://nostr-pub.wellorder.net",
