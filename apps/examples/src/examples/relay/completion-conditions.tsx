@@ -9,18 +9,7 @@ import { RelayGroup, RelayPool } from "applesauce-relay";
 import { completeWhen } from "applesauce-relay/operators/complete-when";
 import { GroupReqMessage } from "applesauce-relay/types";
 import { useCallback, useRef, useState } from "react";
-import {
-  filter as rxFilter,
-  finalize,
-  map,
-  merge,
-  scan,
-  shareReplay,
-  Subscription,
-  take,
-  tap,
-  timer,
-} from "rxjs";
+import { filter as rxFilter, finalize, map, merge, scan, shareReplay, Subscription, take, tap, timer } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 // Create a relay pool instance
@@ -33,13 +22,7 @@ type TimelineMessage = GroupReqMessage & {
 };
 
 interface CompletionMarker {
-  type:
-    | "firstEose"
-    | "firstEosePlusTimeout"
-    | "allComplete"
-    | "firstNRelays"
-    | "eventCount"
-    | "timeLimit";
+  type: "firstEose" | "firstEosePlusTimeout" | "allComplete" | "firstNRelays" | "eventCount" | "timeLimit";
   time: number; // when it triggered
   eventCount: number; // events received at that point
   label: string; // display name
@@ -79,12 +62,8 @@ export default function CompletionConditions() {
   const [timeLimitMs, setTimeLimitMs] = useState(10000);
 
   // Query state
-  const [timelineMessages, setTimelineMessages] = useState<TimelineMessage[]>(
-    [],
-  );
-  const [completionMarkers, setCompletionMarkers] = useState<
-    CompletionMarker[]
-  >([]);
+  const [timelineMessages, setTimelineMessages] = useState<TimelineMessage[]>([]);
+  const [completionMarkers, setCompletionMarkers] = useState<CompletionMarker[]>([]);
   const [events, setEvents] = useState<NostrEvent[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
 
@@ -176,7 +155,7 @@ export default function CompletionConditions() {
           rxFilter((m) => m.type === "EOSE"),
           take(1),
           map(() => true),
-        )
+        ),
       ),
     );
 
@@ -189,7 +168,7 @@ export default function CompletionConditions() {
           rxFilter((count) => count >= eventCountThreshold),
           take(1),
           map(() => true),
-        )
+        ),
       ),
     );
 
@@ -205,24 +184,18 @@ export default function CompletionConditions() {
           rxFilter((relaySet) => relaySet.size >= firstNRelaysCount),
           take(1),
           map(() => true),
-        )
+        ),
       ),
     );
 
     // Fork observable for First EOSE + Timeout completion
-    const firstEosePlusTimeout$ = messages$.pipe(
-      completeWhen(RelayGroup.completeAfterFirstRelay(firstEoseTimeout)),
-    );
+    const firstEosePlusTimeout$ = messages$.pipe(completeWhen(RelayGroup.completeAfterFirstRelay(firstEoseTimeout)));
 
     // Fork observable for All EOSE completion
-    const allComplete$ = messages$.pipe(
-      completeWhen(RelayGroup.completeOnAllEose()),
-    );
+    const allComplete$ = messages$.pipe(completeWhen(RelayGroup.completeOnAllEose()));
 
     // Fork observable for Time Limit completion
-    const timeLimit$ = messages$.pipe(
-      completeWhen(() => timer(timeLimitMs).pipe(map(() => true))),
-    );
+    const timeLimit$ = messages$.pipe(completeWhen(() => timer(timeLimitMs).pipe(map(() => true))));
 
     // Helper to get explanation for each completion type
     const getExplanation = (type: string): string => {
@@ -245,12 +218,7 @@ export default function CompletionConditions() {
     };
 
     // Helper to create completion observable with finalize
-    const createCompletionObservable = (
-      type: string,
-      label: string,
-      color: string,
-      observable: typeof firstEose$,
-    ) => {
+    const createCompletionObservable = (type: string, label: string, color: string, observable: typeof firstEose$) => {
       const seen = new Set<string>();
 
       return observable.pipe(
@@ -279,42 +247,17 @@ export default function CompletionConditions() {
 
     // Merge all completion observables and subscribe to them all at once
     const completions$ = merge(
-      createCompletionObservable(
-        "firstEose",
-        "First EOSE",
-        "bg-yellow-500",
-        firstEose$,
-      ),
-      createCompletionObservable(
-        "eventCount",
-        "Event Count",
-        "bg-blue-500",
-        eventCount$,
-      ),
-      createCompletionObservable(
-        "firstNRelays",
-        "First N Relays",
-        "bg-green-500",
-        firstNRelays$,
-      ),
+      createCompletionObservable("firstEose", "First EOSE", "bg-yellow-500", firstEose$),
+      createCompletionObservable("eventCount", "Event Count", "bg-blue-500", eventCount$),
+      createCompletionObservable("firstNRelays", "First N Relays", "bg-green-500", firstNRelays$),
       createCompletionObservable(
         "firstEosePlusTimeout",
         "First EOSE + Timeout",
         "bg-orange-500",
         firstEosePlusTimeout$,
       ),
-      createCompletionObservable(
-        "allComplete",
-        "All Complete",
-        "bg-purple-500",
-        allComplete$,
-      ),
-      createCompletionObservable(
-        "timeLimit",
-        "Time Limit",
-        "bg-red-500",
-        timeLimit$,
-      ),
+      createCompletionObservable("allComplete", "All Complete", "bg-purple-500", allComplete$),
+      createCompletionObservable("timeLimit", "Time Limit", "bg-red-500", timeLimit$),
     );
 
     // Subscribe to all observables
@@ -353,16 +296,10 @@ export default function CompletionConditions() {
           {/* Relay Management */}
           <div>
             <label className="label">
-              <span className="label-text font-semibold">
-                Relays ({relays.length})
-              </span>
+              <span className="label-text font-semibold">Relays ({relays.length})</span>
             </label>
             <div className="flex gap-2 mb-2">
-              <RelayPicker
-                value={currentRelay}
-                onChange={setCurrentRelay}
-                className="flex-1"
-              />
+              <RelayPicker value={currentRelay} onChange={setCurrentRelay} className="flex-1" />
               <button
                 className="btn btn-primary"
                 onClick={handleAddRelay}
@@ -376,11 +313,7 @@ export default function CompletionConditions() {
                 {relays.map((relay) => (
                   <div key={relay} className="badge badge-lg gap-2">
                     <span className="font-mono">{relay}</span>
-                    <button
-                      className="btn btn-ghost btn-xs btn-circle"
-                      onClick={() =>
-                        handleRemoveRelay(relay)}
-                    >
+                    <button className="btn btn-ghost btn-xs btn-circle" onClick={() => handleRemoveRelay(relay)}>
                       ✕
                     </button>
                   </div>
@@ -393,14 +326,10 @@ export default function CompletionConditions() {
           <div>
             <label className="label">
               <span className="label-text font-semibold">Filter (JSON)</span>
-              {filterError && (
-                <span className="label-text-alt text-error">{filterError}</span>
-              )}
+              {filterError && <span className="label-text-alt text-error">{filterError}</span>}
             </label>
             <textarea
-              className={`textarea textarea-bordered w-full font-mono text-sm ${
-                filterError ? "textarea-error" : ""
-              }`}
+              className={`textarea textarea-bordered w-full font-mono text-sm ${filterError ? "textarea-error" : ""}`}
               rows={3}
               value={filterJson}
               onChange={(e) => {
@@ -414,9 +343,7 @@ export default function CompletionConditions() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <label className="label">
-                <span className="label-text">
-                  Event Count Threshold: {eventCountThreshold}
-                </span>
+                <span className="label-text">Event Count Threshold: {eventCountThreshold}</span>
               </label>
               <input
                 type="range"
@@ -430,9 +357,7 @@ export default function CompletionConditions() {
 
             <div className="flex flex-col gap-2">
               <label className="label">
-                <span className="label-text">
-                  First EOSE Timeout: {formatTime(firstEoseTimeout)}
-                </span>
+                <span className="label-text">First EOSE Timeout: {formatTime(firstEoseTimeout)}</span>
               </label>
               <input
                 type="range"
@@ -447,9 +372,7 @@ export default function CompletionConditions() {
 
             <div className="flex flex-col gap-2">
               <label className="label">
-                <span className="label-text">
-                  First N Relays: {firstNRelaysCount}
-                </span>
+                <span className="label-text">First N Relays: {firstNRelaysCount}</span>
               </label>
               <input
                 type="range"
@@ -464,9 +387,7 @@ export default function CompletionConditions() {
 
             <div className="flex flex-col gap-2">
               <label className="label">
-                <span className="label-text">
-                  Time Limit: {formatTime(timeLimitMs)}
-                </span>
+                <span className="label-text">Time Limit: {formatTime(timeLimitMs)}</span>
               </label>
               <input
                 type="range"
@@ -489,18 +410,12 @@ export default function CompletionConditions() {
             >
               {isQuerying ? "Querying..." : "Start Query"}
             </button>
-            <button
-              className="btn"
-              onClick={handleClear}
-              disabled={timelineMessages.length === 0}
-            >
+            <button className="btn" onClick={handleClear} disabled={timelineMessages.length === 0}>
               Clear Results
             </button>
             {poolStatuses && Object.keys(poolStatuses).length > 0 && (
               <div className="badge badge-lg ml-auto">
-                Connected: {Object.values(poolStatuses).filter((s) =>
-                  s.ready
-                ).length}/
+                Connected: {Object.values(poolStatuses).filter((s) => s.ready).length}/
                 {Object.keys(poolStatuses).length}
               </div>
             )}
@@ -530,35 +445,19 @@ export default function CompletionConditions() {
                     .sort((a, b) => a.time - b.time)
                     .map((marker, idx) => {
                       const totalEvents = events.length;
-                      const coverage = totalEvents > 0
-                        ? ((marker.eventCount / totalEvents) * 100).toFixed(0)
-                        : "0";
-                      const speeds = [
-                        "Fastest",
-                        "Fast",
-                        "Medium",
-                        "Slow",
-                        "Slower",
-                        "Slowest",
-                      ];
+                      const coverage = totalEvents > 0 ? ((marker.eventCount / totalEvents) * 100).toFixed(0) : "0";
+                      const speeds = ["Fastest", "Fast", "Medium", "Slow", "Slower", "Slowest"];
                       const speed = speeds[Math.min(idx, speeds.length - 1)];
 
                       return (
                         <tr key={marker.type}>
                           <td>
                             <div className="flex items-center gap-2">
-                              <div
-                                className={`w-3 h-3 rounded-full ${marker.color}`}
-                              >
-                              </div>
-                              <span className="font-semibold">
-                                {marker.label}
-                              </span>
+                              <div className={`w-3 h-3 rounded-full ${marker.color}`}></div>
+                              <span className="font-semibold">{marker.label}</span>
                             </div>
                           </td>
-                          <td className="font-mono">
-                            {formatTime(marker.time)}
-                          </td>
+                          <td className="font-mono">{formatTime(marker.time)}</td>
                           <td>{marker.eventCount}</td>
                           <td>
                             <div className="flex items-center gap-2">
@@ -566,8 +465,7 @@ export default function CompletionConditions() {
                                 className="progress progress-primary w-20"
                                 value={coverage}
                                 max="100"
-                              >
-                              </progress>
+                              ></progress>
                               <span className="text-sm">{coverage}%</span>
                             </div>
                           </td>
@@ -614,41 +512,22 @@ export default function CompletionConditions() {
 
                     // Find if any completion marker should appear before this message
                     const markersBefore = completionMarkers.filter(
-                      (m) =>
-                        idx > 0 &&
-                        m.time >= timelineMessages[idx - 1].timestamp &&
-                        m.time < msg.timestamp,
+                      (m) => idx > 0 && m.time >= timelineMessages[idx - 1].timestamp && m.time < msg.timestamp,
                     );
 
                     return (
                       <>
                         {/* Completion markers */}
                         {markersBefore.map((marker) => {
-                          const borderColor = marker.color.replace(
-                            "bg-",
-                            "border-",
-                          );
+                          const borderColor = marker.color.replace("bg-", "border-");
                           return (
-                            <tr
-                              key={`completion-${marker.type}-${marker.time}`}
-                            >
-                              <td
-                                colSpan={5}
-                                className={`border-l-4 ${borderColor} p-3 bg-base-200`}
-                              >
+                            <tr key={`completion-${marker.type}-${marker.time}`}>
+                              <td colSpan={5} className={`border-l-4 ${borderColor} p-3 bg-base-200`}>
                                 <div className="flex items-center gap-4">
-                                  <div className="badge badge-sm">
-                                    {formatTime(marker.time)}
-                                  </div>
-                                  <div className="font-semibold">
-                                    {marker.label} would complete here
-                                  </div>
-                                  <div className="text-sm opacity-70">
-                                    {marker.explanation}
-                                  </div>
-                                  <div className="badge badge-sm ml-auto">
-                                    {marker.eventCount} events
-                                  </div>
+                                  <div className="badge badge-sm">{formatTime(marker.time)}</div>
+                                  <div className="font-semibold">{marker.label} would complete here</div>
+                                  <div className="text-sm opacity-70">{marker.explanation}</div>
+                                  <div className="badge badge-sm ml-auto">{marker.eventCount} events</div>
                                 </div>
                               </td>
                             </tr>
@@ -657,26 +536,15 @@ export default function CompletionConditions() {
 
                         {/* Message row */}
                         <tr key={idx}>
-                          <td className="font-mono text-xs">
-                            {formatTime(msg.timestamp)}
-                          </td>
-                          <td className="font-mono text-xs truncate max-w-[200px]">
-                            {msg.from}
-                          </td>
+                          <td className="font-mono text-xs">{formatTime(msg.timestamp)}</td>
+                          <td className="font-mono text-xs truncate max-w-[200px]">{msg.from}</td>
                           <td>
-                            <div
-                              className={`badge badge-sm ${
-                                MESSAGE_STYLES[msgType] ||
-                                "border border-gray-300"
-                              }`}
-                            >
+                            <div className={`badge badge-sm ${MESSAGE_STYLES[msgType] || "border border-gray-300"}`}>
                               {msg.type}
                             </div>
                           </td>
                           <td className="font-mono text-xs">{details}</td>
-                          <td className="font-mono text-xs">
-                            {formatTime(msg.deltaTime)}
-                          </td>
+                          <td className="font-mono text-xs">{formatTime(msg.deltaTime)}</td>
                         </tr>
                       </>
                     );
@@ -687,34 +555,18 @@ export default function CompletionConditions() {
                     .filter(
                       (m) =>
                         timelineMessages.length === 0 ||
-                        m.time >=
-                          timelineMessages[timelineMessages.length - 1]
-                            .timestamp,
+                        m.time >= timelineMessages[timelineMessages.length - 1].timestamp,
                     )
                     .map((marker) => {
-                      const borderColor = marker.color.replace(
-                        "bg-",
-                        "border-",
-                      );
+                      const borderColor = marker.color.replace("bg-", "border-");
                       return (
                         <tr key={`completion-${marker.type}-${marker.time}`}>
-                          <td
-                            colSpan={5}
-                            className={`border-l-4 ${borderColor} p-3 bg-base-200`}
-                          >
+                          <td colSpan={5} className={`border-l-4 ${borderColor} p-3 bg-base-200`}>
                             <div className="flex items-center gap-4">
-                              <div className="badge badge-sm">
-                                {formatTime(marker.time)}
-                              </div>
-                              <div className="font-semibold">
-                                {marker.label} would complete here
-                              </div>
-                              <div className="text-sm opacity-70">
-                                {marker.explanation}
-                              </div>
-                              <div className="badge badge-sm ml-auto">
-                                {marker.eventCount} events
-                              </div>
+                              <div className="badge badge-sm">{formatTime(marker.time)}</div>
+                              <div className="font-semibold">{marker.label} would complete here</div>
+                              <div className="text-sm opacity-70">{marker.explanation}</div>
+                              <div className="badge badge-sm ml-auto">{marker.eventCount} events</div>
                             </div>
                           </td>
                         </tr>

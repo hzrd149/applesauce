@@ -56,9 +56,7 @@ export default function ExamplePage() {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4">Example not found</h2>
-          <p className="text-base-content/70">
-            The example "{exampleId}" does not exist.
-          </p>
+          <p className="text-base-content/70">The example "{exampleId}" does not exist.</p>
         </div>
       </div>
     );
@@ -81,43 +79,25 @@ export default function ExamplePage() {
               stroke="currentColor"
               className="w-5 h-5"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
             </svg>
           </Link>
           <div className="flex-none lg:hidden">
-            <label
-              htmlFor="drawer"
-              aria-label="open sidebar"
-              className="btn btn-square btn-ghost"
-            >
+            <label htmlFor="drawer" aria-label="open sidebar" className="btn btn-square btn-ghost">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
                 className="inline-block h-6 w-6 stroke-current"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M4 6h16M4 12h16M4 18h16"
-                >
-                </path>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
               </svg>
             </label>
           </div>
           <div className="mx-2 flex-1 px-2">
             <div className="flex flex-col">
               <span className="font-bold text-lg">{example.name}</span>
-              {metadata?.description && (
-                <span className="text-xs text-base-content/70">
-                  {metadata.description}
-                </span>
-              )}
+              {metadata?.description && <span className="text-xs text-base-content/70">{metadata.description}</span>}
             </div>
           </div>
           <div className="flex-none">
@@ -170,11 +150,7 @@ export default function ExamplePage() {
                     const relatedExample = examples.find((e) => e.id === rel);
                     if (!relatedExample) return null;
                     return (
-                      <Link
-                        key={rel}
-                        to={`/example/${rel}`}
-                        className="link link-primary text-xs"
-                      >
+                      <Link key={rel} to={`/example/${rel}`} className="link link-primary text-xs">
                         {relatedExample.name}
                       </Link>
                     );
@@ -186,23 +162,19 @@ export default function ExamplePage() {
         )}
 
         {/* Page content */}
-        {Component
-          ? (
-            <ErrorBoundary
-              fallbackRender={({ error }) => (
-                <div className="text-red-500">
-                  {error instanceof Error ? error.message : String(error)}
-                </div>
-              )}
-            >
-              <Component />
-            </ErrorBoundary>
-          )
-          : (
-            <div className="flex justify-center items-center h-full">
-              <span className="loading loading-dots loading-xl"></span>
-            </div>
-          )}
+        {Component ? (
+          <ErrorBoundary
+            fallbackRender={({ error }) => (
+              <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>
+            )}
+          >
+            <Component />
+          </ErrorBoundary>
+        ) : (
+          <div className="flex justify-center items-center h-full">
+            <span className="loading loading-dots loading-xl"></span>
+          </div>
+        )}
       </div>
 
       {/* Sidebar */}
