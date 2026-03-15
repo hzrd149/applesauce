@@ -55,6 +55,10 @@ export type RelayReqOptions = {
   /** Custom REQ id for the subscription */
   id?: string;
   /**
+   * Whether to wait for authentication and retry if auth-required is received. default is true
+   */
+  waitForAuth?: boolean;
+  /**
    * Whether to resubscribe if the subscription is closed by the relay. default is false
    * @see https://rxjs.dev/api/index/function/repeat
    */

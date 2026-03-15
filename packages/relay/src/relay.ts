@@ -11,7 +11,6 @@ import {
   catchError,
   combineLatest,
   defer,
-  EMPTY,
   endWith,
   filter,
   finalize,
@@ -76,10 +75,10 @@ import {
 
 const AUTH_REQUIRED_PREFIX = "auth-required:";
 
-/** Default retry config for all methods */
+/** Default retry subscription, request, and publish. linear backoff */
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
   count: 3,
-  delay: 1000,
+  delay: (_err, count) => timer(count * 1000),
   resetOnSuccess: true,
 };
 
@@ -108,8 +107,8 @@ export class AuthRequiredError extends RelayClosedError {
 
 /** NIP-01 machine-readable prefixes that indicate an error condition on CLOSED/OK messages */
 const CLOSED_ERROR_PREFIXES = {
-  "auth-required": RelayClosedError,
-  unsupported: AuthRequiredError,
+  "auth-required": AuthRequiredError,
+  unsupported: RelayClosedError,
   error: RelayClosedError,
   blocked: RelayClosedError,
   restricted: RelayClosedError,
@@ -239,7 +238,7 @@ export class Relay {
   /** An observable that emits when underlying websocket is closed */
   close$ = new Subject<CloseEvent>();
 
-  /** An observable that emits when underlying websocket is closing due to unsubscription */
+  /** An observable that emits when underlying websocket is closing due to unsubscribe or complete */
   closing$ = new Subject<void>();
 
   /** Tracks active req() operations by subscription ID */
@@ -372,7 +371,7 @@ export class Relay {
       if (this.connected$.value) this.log("Disconnected");
       else this.log("Failed to connect");
 
-      // Chnaged the connected state to false
+      // Changed the connected state to false
       if (this.connected$.value) this.connected$.next(false);
 
       // Increment the attempts counter
@@ -563,13 +562,7 @@ export class Relay {
         if (!ready) return NEVER;
 
         // Only start the watch tower if the relay is ready
-        return merge(
-          listenForAllMessages,
-          listenForNotice,
-          ListenForChallenge,
-          this.information$,
-          pingHealthCheck,
-        ).pipe(
+        return merge(listenForAllMessages, listenForNotice, ListenForChallenge, pingHealthCheck).pipe(
           // Never emit any values
           ignoreElements(),
           // Start the reconnect timer if the connection has an error
@@ -644,6 +637,7 @@ export class Relay {
   /** Create a REQ observable that emits events or "EOSE" or errors */
   req(filters: FilterInput, opts?: RelayReqOptions): Observable<RelayReqMessage> {
     const id = opts?.id ?? nanoid();
+    const waitForAuth = opts?.waitForAuth ?? true;
 
     // Convert filters input into an observable, if its a normal value merge it with NEVER so it never completes
     let input: Observable<Filter[]>;
@@ -728,24 +722,34 @@ export class Relay {
       tap((message) => {
         if (message.type === "EVENT") addSeenRelay(message.event, this.url);
       }),
-      // Set auth required flag when relay closes with auth-required
-      catchError((error) => {
-        if (error instanceof AuthRequiredError) {
-          this.log(`Auth required for REQ`);
-          this.receivedAuthRequiredForReq.next(true);
-
-          // Return EMPTY so resubscribe operator retries for wait for auth
-          return EMPTY;
-        } else {
-          return throwError(() => error);
-        }
-      }),
       // Only create one upstream subscription
       share(),
     );
 
-    // Wait for auth if required and make sure to start the watch tower
-    return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable)).pipe(
+    // Wait for auth only when enabled and make sure to start the watch tower
+    const reqWithAuthStrategy = waitForAuth ? this.waitForAuth(this.authRequiredForRead$, observable) : observable;
+
+    return this.waitForReady(reqWithAuthStrategy).pipe(
+      // Retry only auth-required errors, optionally waiting for authentication first
+      retry({
+        delay: (error) => {
+          // Re-throw non-auth-required errors
+          if (!(error instanceof AuthRequiredError)) return throwError(() => error);
+
+          // Flip the flag to indicate that auth is required
+          this.log(`Auth required for REQ`);
+          this.receivedAuthRequiredForReq.next(true);
+
+          // If not waiting for auth  , re-throw the error
+          if (!waitForAuth) return throwError(() => error);
+
+          // Wait for authentication before retrying
+          return this.authenticated$.pipe(
+            filter((authenticated) => authenticated),
+            take(1),
+          );
+        },
+      }),
       // Create resubscribe logic (repeat operator)
       this.customRepeatOperator(opts?.resubscribe),
       // Only create one upstream subscription
@@ -761,7 +765,7 @@ export class Relay {
     // Create an observable that filters responses from the relay to just the ones for this COUNT
     const messages = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
-      // Map to typed response
+      // Map to typed response, throwing on error-prefixed CLOSED
       map<any, RelayCountResponse | null>((m) => {
         if (m[0] === "COUNT") return m[2] as RelayCountResponse;
         else if (m[0] === "CLOSED") {
@@ -771,6 +775,8 @@ export class Relay {
         }
         return null;
       }),
+      // Complete the stream on any CLOSED (including graceful close), emitting COUNT last
+      takeWhile((m) => m !== null, true),
       filter((m) => m !== null),
       // Singleton
       share(),

@@ -134,11 +134,7 @@ export class AssertionProvider extends PubkeyCast {
 
 function toAssertionProviders(providers: TrustedProvider[], store: CastRefEventStore): AssertionProvider[] {
   return providers.map((p) =>
-    castPubkey(
-      { pubkey: p.servicePubkey, relays: p.relay ? [p.relay] : undefined },
-      AssertionProvider,
-      store,
-    ),
+    castPubkey({ pubkey: p.servicePubkey, relays: p.relay ? [p.relay] : undefined }, AssertionProvider, store),
   );
 }
 
