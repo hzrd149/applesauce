@@ -3,7 +3,6 @@ export * from "./use-accounts.js";
 export * from "./use-action-runner.js";
 export * from "./use-action.js";
 export * from "./use-active-account.js";
-export * from "./use-event-factory.js";
 export * from "./use-event-model.js";
 export * from "./use-event-store.js";
 export * from "./use-observable-memo.js";

@@ -12,7 +12,6 @@ describe("exports", () => {
         "useAction",
         "useActionRunner",
         "useActiveAccount",
-        "useEventFactory",
         "useEventModel",
         "useEventStore",
         "useForceUpdate",
