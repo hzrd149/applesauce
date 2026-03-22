@@ -22,7 +22,7 @@ import {
   HAS_EVENT_STATEMENT,
   HAS_REPLACEABLE_STATEMENT,
   INSERT_EVENT_STATEMENT_WITH_IGNORE,
-  INSERT_EVENT_TAG_STATEMENT,
+  INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE,
 } from "../helpers/statements.js";
 
 const log = logger.extend("sqlite:tables");
@@ -104,7 +104,7 @@ export function insertEvent(db: DatabaseSync, event: NostrEvent, contentFormatte
     // Get only the indexable tags using applesauce-core helper
     const indexableTags = getIndexableTags(event);
     if (indexableTags && indexableTags.size > 0) {
-      const insertStmt = db.prepare(INSERT_EVENT_TAG_STATEMENT.sql);
+      const insertStmt = db.prepare(INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql);
 
       for (const tagString of indexableTags) {
         // Parse the "tagName:tagValue" format

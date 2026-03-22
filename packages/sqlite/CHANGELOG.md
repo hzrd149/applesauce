@@ -1,5 +1,13 @@
 # applesauce-sqlite
 
+## 5.2.0
+
+### Patch Changes
+
+- 11ad823: Fix UNIQUE constraint on event_tags
+- Updated dependencies
+  - applesauce-core@5.2.0
+
 ## 5.0.0
 
 ### Patch Changes

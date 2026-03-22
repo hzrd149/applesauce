@@ -21,6 +21,7 @@ describe("exports", () => {
         "INSERT_EVENT_STATEMENT",
         "INSERT_EVENT_STATEMENT_WITH_IGNORE",
         "INSERT_EVENT_TAG_STATEMENT",
+        "INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE",
         "INSERT_SEARCH_CONTENT_STATEMENT",
         "buildDeleteFiltersQuery",
         "buildFilterConditions",

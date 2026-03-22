@@ -22,7 +22,7 @@ import {
   HAS_EVENT_STATEMENT,
   HAS_REPLACEABLE_STATEMENT,
   INSERT_EVENT_STATEMENT_WITH_IGNORE,
-  INSERT_EVENT_TAG_STATEMENT,
+  INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE,
 } from "../helpers/statements.js";
 
 /** Create and migrate the `events`, `event_tags`, and search tables */
@@ -85,7 +85,7 @@ export function insertEvent(db: Database, event: NostrEvent, contentFormatter?: 
     // Event was inserted, continue with tags and search content
     const indexableTags = getIndexableTags(event);
     if (indexableTags && indexableTags.size > 0) {
-      const insertStmt = db.query(INSERT_EVENT_TAG_STATEMENT.sql);
+      const insertStmt = db.query(INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql);
 
       for (const tagString of indexableTags) {
         // Parse the "tagName:tagValue" format
