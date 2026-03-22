@@ -20,7 +20,7 @@ import {
   HAS_EVENT_STATEMENT,
   HAS_REPLACEABLE_STATEMENT,
   INSERT_EVENT_STATEMENT,
-  INSERT_EVENT_TAG_STATEMENT,
+  INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE,
 } from "../helpers/statements.js";
 
 /** Create and migrate the `events`, `event_tags`, and search tables */
@@ -108,8 +108,8 @@ export async function insertEvent(
         // Parse the "tagName:tagValue" format
         const [name, value] = tagString.split(":");
         if (name && value) {
-          await db.execute({
-            sql: INSERT_EVENT_TAG_STATEMENT.sql,
+          await transaction.execute({
+            sql: INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql,
             args: [event.id, name, value],
           });
         }

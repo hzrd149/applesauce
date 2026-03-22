@@ -2,7 +2,11 @@ import { Emoji, EventOperation } from "../event-factory/types.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import { ensureProfilePointerTag, ensureQuoteEventPointerTag } from "../helpers/factory.js";
 import { eventPipe, skip } from "../helpers/pipeline.js";
-import { getContentPointers, getPubkeyFromDecodeResult, getReplaceableAddressFromPointer } from "../helpers/pointers.js";
+import {
+  getContentPointers,
+  getPubkeyFromDecodeResult,
+  getReplaceableAddressFromPointer,
+} from "../helpers/pointers.js";
 import { Expressions } from "../helpers/regexp.js";
 import { ensureNamedValueTag } from "../helpers/tags.js";
 
@@ -105,9 +109,11 @@ export function includeEmojis(emojis?: Emoji[]): EventOperation {
       const emoji = all.find((e) => e.shortcode === name);
 
       if (emoji?.url) {
-        tags.push(emoji.address
-          ? ["emoji", emoji.shortcode, emoji.url, getReplaceableAddressFromPointer(emoji.address)]
-          : ["emoji", emoji.shortcode, emoji.url]);
+        tags.push(
+          emoji.address
+            ? ["emoji", emoji.shortcode, emoji.url, getReplaceableAddressFromPointer(emoji.address)]
+            : ["emoji", emoji.shortcode, emoji.url],
+        );
       }
     }
 

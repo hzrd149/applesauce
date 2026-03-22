@@ -35,7 +35,11 @@ export async function insertEvent(db: Database, event: NostrEvent): Promise<bool
   const identifier = getReplaceableIdentifier(event);
 
   return await db.transaction(async () => {
-    // Try to insert the main event with OR IGNORE
+    // Turso embedded does not support INSERT OR IGNORE, so check for duplicates first
+    const existing = await db.prepare(HAS_EVENT_STATEMENT.sql).get(event.id);
+    if (existing && (existing as any).count > 0) return false;
+
+    // Insert the main event
     const result = await db
       .prepare(INSERT_EVENT_STATEMENT.sql)
       .run(

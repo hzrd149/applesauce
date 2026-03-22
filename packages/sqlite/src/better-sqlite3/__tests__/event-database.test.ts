@@ -37,6 +37,20 @@ describe("add", () => {
     expect(first.id).toBe(second.id);
   });
 
+  it("should ignore duplicate tag values within a single event", () => {
+    const event = user.note("Hello World", {
+      tags: [
+        ["t", "meme"],
+        ["t", "meme"],
+      ],
+    });
+
+    const result = database.add(event);
+
+    expect(result.id).toBe(event.id);
+    expect(database.hasEvent(event.id)).toBe(true);
+  });
+
   it("should handle multiple different events", () => {
     const event1 = profile();
     const event2 = note();
