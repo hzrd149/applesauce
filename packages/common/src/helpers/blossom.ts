@@ -46,3 +46,6 @@ export function mergeBlossomServers<T extends URL | string | (string | URL)>(
 
   return merged;
 }
+
+/** Alias for {@link mergeBlossomServers} */
+export const blossomServers = mergeBlossomServers;

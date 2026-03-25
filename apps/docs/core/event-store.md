@@ -766,7 +766,7 @@ pool
 ### With ActionRunner
 
 ```ts
-const actions = new ActionRunner(eventStore, factory, publish);
+const actions = new ActionRunner(eventStore, signer, publish);
 
 await actions.run(FollowUser, pubkey);
 // Reads existing contacts from eventStore

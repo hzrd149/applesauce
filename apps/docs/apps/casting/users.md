@@ -260,7 +260,7 @@ Combine users with the action system to modify user data:
 import { ActionRunner } from "applesauce-actions";
 import { FollowUser, UnfollowUser, MuteUser } from "applesauce-actions/actions";
 
-const actions = new ActionRunner(eventStore, factory);
+const actions = new ActionRunner(eventStore, signer);
 
 // Follow a user
 await actions.exec(FollowUser, contactPubkey).forEach(async (signed) => {

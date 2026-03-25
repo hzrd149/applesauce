@@ -68,7 +68,7 @@ Here's a complete example showing how it's used in practice:
 ```typescript
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
-import { defined, EventFactory, EventStore } from "applesauce-core";
+import { defined, EventStore } from "applesauce-core";
 import { persistEncryptedContent } from "applesauce-common/helpers";
 import { persistEventsToCache } from "applesauce-core/helpers";
 import { BehaviorSubject } from "rxjs";
@@ -82,10 +82,8 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 
 // Setup event store
 const eventStore = new EventStore();
-const factory = new EventFactory({
-  signer: new ProxySigner(signer$.pipe(defined())),
-});
-const actions = new ActionRunner(eventStore, factory);
+const signer = new ProxySigner(signer$.pipe(defined()));
+const actions = new ActionRunner(eventStore, signer);
 
 // Persist encrypted content - this is the key line!
 persistEncryptedContent(eventStore, storage$.pipe(defined()));

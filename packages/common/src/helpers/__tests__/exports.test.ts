@@ -80,6 +80,7 @@ describe("exports", () => {
         "ZapRequestSymbol",
         "ZapSenderSymbol",
         "areBlossomServersEqual",
+        "blossomServers",
         "buildTorrentMagnetLink",
         "checkGroupMembership",
         "createCalendarEventParticipantTag",

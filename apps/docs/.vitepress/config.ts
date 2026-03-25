@@ -111,7 +111,8 @@ export default defineConfig({
                 text: "Event Factory",
                 link: "/creating/factory/event-factory",
               },
-              { text: "Blueprints", link: "/creating/factory/blueprints" },
+              { text: "Common Factories", link: "/creating/factory/common-factories" },
+              { text: "Extending Factories", link: "/creating/factory/extending-factories" },
               {
                 text: "Event Operations",
                 link: "/creating/factory/event-operations",

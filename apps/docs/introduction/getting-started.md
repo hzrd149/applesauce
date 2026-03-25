@@ -67,16 +67,12 @@ pool
 
 ### EventFactory
 
-Creates and signs Nostr events using pre-built blueprints.
+Creates and signs Nostr events with the low-level builder in `applesauce-core` or typed factories in `applesauce-common`.
 
 ```ts
-import { EventFactory } from "applesauce-core";
-import { NoteBlueprint } from "applesauce-common/blueprints";
+import { NoteFactory } from "applesauce-common/factories";
 
-const factory = new EventFactory({ signer });
-
-const note = await factory.create(NoteBlueprint, "Hello Nostr!");
-const signed = await factory.sign(note);
+const signed = await NoteFactory.create("Hello Nostr!").sign(signer);
 ```
 
 ## Next Steps

@@ -1,23 +1,23 @@
 ---
-description: Central orchestrator for running actions that combines EventStore, EventFactory, and publishing for unified action execution
+description: Central orchestrator for running actions with an EventStore, signer, and optional publish method
 ---
 
-# Action Hub
+# Action Runner
 
-The [ActionRunner](https://applesauce.build/typedoc/classes/applesauce-actions.ActionRunner.html) class is the central orchestrator for running actions in your Nostr application. It combines an event store, event factory, and optional publish method into a unified interface, making it simple to execute actions that read from your local event store and publish new events to the Nostr network.
+The [ActionRunner](https://applesauce.build/typedoc/classes/applesauce-actions.ActionRunner.html) class runs actions against your event store with a signer and an optional publish method. Actions read from the store, create events with typed factories, and publish the results.
 
-## Creating an Action Hub
+## Creating An ActionRunner
 
 ### Basic Setup
 
-To create an ActionRunner, you need an event store and event factory. Optionally, you can provide a publish method to automatically handle event publishing.
+To create an ActionRunner, you need an event store and a signer. Optionally, you can provide a publish method to handle network publishing.
 
 ```ts
 import { ActionRunner } from "applesauce-actions";
 import { NostrEvent } from "applesauce-core/helpers/event";
 
 // Create a basic ActionRunner without automatic publishing
-const hub = new ActionRunner(eventStore, eventFactory);
+const hub = new ActionRunner(eventStore, signer);
 
 // Or create one with automatic publishing
 const publish = async (event: NostrEvent, relays?: string[]) => {
@@ -25,7 +25,7 @@ const publish = async (event: NostrEvent, relays?: string[]) => {
   await relayPool.publish(relays || defaultRelays, event);
 };
 
-const hub = new ActionRunner(eventStore, eventFactory, publish);
+const hub = new ActionRunner(eventStore, signer, publish);
 ```
 
 ### With Custom Publishing Logic
@@ -47,7 +47,7 @@ const publish = async (event: NostrEvent, relays?: string[]) => {
   eventBus.emit("eventPublished", event);
 };
 
-const hub = new ActionRunner(eventStore, eventFactory, publish);
+const hub = new ActionRunner(eventStore, signer, publish);
 ```
 
 :::info
@@ -61,7 +61,7 @@ For performance reasons, it's recommended to create only one `ActionRunner` inst
 By default, the ActionRunner will automatically save all events created by actions to your event store. You can disable this behavior:
 
 ```ts
-const hub = new ActionRunner(eventStore, eventFactory, publish);
+const hub = new ActionRunner(eventStore, signer, publish);
 hub.saveToStore = false; // Disable automatic saving to event store
 ```
 
@@ -232,7 +232,7 @@ const publish = async (event, relays) => {
   await pool.publish(relays || defaultRelays, event);
 };
 
-const actions = new ActionRunner(eventStore, factory, publish);
+const actions = new ActionRunner(eventStore, signer, publish);
 ```
 
 Actions determine which relays to use based on NIP-65 (outbox/inbox model). The publish function receives the relay list from the action.
@@ -245,7 +245,7 @@ ActionRunner integrates deeply with EventStore for both reading and writing:
 import { EventStore } from "applesauce-core";
 
 const eventStore = new EventStore();
-const actions = new ActionRunner(eventStore, factory, publish);
+const actions = new ActionRunner(eventStore, signer, publish);
 
 // Actions read from the event store
 await actions.run(FollowUser, pubkey);
@@ -258,8 +258,7 @@ await actions.run(FollowUser, pubkey);
 ### With AccountManager
 
 ```ts
-const factory = new EventFactory({ signer: manager.signer });
-const actions = new ActionRunner(eventStore, factory, publish);
+const actions = new ActionRunner(eventStore, manager.signer, publish);
 
 manager.setActive(account1);
 await actions.run(CreateProfile, { name: "Alice" });
@@ -282,7 +281,7 @@ await actions.run(CreateComment, parentEvent, "Great post!");
 
 ```ts
 // app.ts
-export const actions = new ActionRunner(eventStore, factory, publish);
+export const actions = new ActionRunner(eventStore, signer, publish);
 ```
 
 ### Relay Selection Strategy
