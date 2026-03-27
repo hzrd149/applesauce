@@ -10,7 +10,7 @@ export const BLOSSOM_SERVER_LIST_KIND = 10063;
 
 /** Check if two servers are the same */
 export function areBlossomServersEqual(a: string | URL, b: string | URL): boolean {
-  return normalizeBlossomServer(a) === normalizeBlossomServer(b);
+  return normalizeBlossomServer(a).href === normalizeBlossomServer(b).href;
 }
 
 /** Checks if a string is a sha256 hash */
