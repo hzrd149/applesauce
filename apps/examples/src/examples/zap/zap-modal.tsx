@@ -291,7 +291,7 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
   const nwcWallet = useMemo(() => new WalletConnect({ pool, relays: [relay], secret: generateSecretKey() }), [relay]);
 
   const authUri = useMemo(() => {
-    const expiresAt = Math.floor(Date.now() / 1000) + 600;
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 2; // Expires after 2 hours
     return nwcWallet.getAuthURI({
       methods: ["pay_invoice"],
       name: "Zap",
