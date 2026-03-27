@@ -7,9 +7,7 @@ export type ZapTemplate = KnownEventTemplate<typeof kinds.Zap>;
 export class ZapFactory extends EventFactory<typeof kinds.Zap, ZapTemplate> {
   /** Creates a new zap event from a validated zap request */
   static create(zapRequest: NostrEvent, bolt11: string): ZapFactory {
-    return new ZapFactory((res) => res(blankEventTemplate(kinds.Zap)))
-      .request(zapRequest)
-      .bolt11(bolt11);
+    return new ZapFactory((res) => res(blankEventTemplate(kinds.Zap))).request(zapRequest).bolt11(bolt11);
   }
 
   /** Sets the zap request. Validates, then sets description, P (sender), and copies p, e, a, k, amount tags */

@@ -13,6 +13,7 @@ import {
 import { generateSecretKey, getPublicKey } from "nostr-tools";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import QRCode from "../../components/qr-code";
 
 // Method descriptions for better UX
 const METHOD_DESCRIPTIONS: Record<string, string> = {
@@ -594,9 +595,11 @@ export default function AuthUriExample() {
               <div className="mb-4">
                 <h3 className="text-lg font-semibold mb-2">Generated URI:</h3>
                 <div className="card card-border bg-base-200">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(generatedUri)}`}
+                  <QRCode
+                    value={generatedUri}
+                    size={300}
                     className="rounded mx-auto"
+                    alt="Generated wallet auth QR code"
                   />
                   <div className="card-body">
                     <code className="text-sm font-mono break-all select-all">{generatedUri}</code>

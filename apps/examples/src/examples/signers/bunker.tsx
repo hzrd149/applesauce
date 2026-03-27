@@ -8,6 +8,7 @@ import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
 import { useState } from "react";
 import JsonBlock from "../../components/json-block";
+import QRCode from "../../components/qr-code";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -16,14 +17,9 @@ const pool = new RelayPool();
 NostrConnectSigner.subscriptionMethod = pool.subscription.bind(pool);
 NostrConnectSigner.publishMethod = pool.publish.bind(pool);
 
-// Simple QR code component - in a real app you might want to use qrcode.react or similar
-const QRCode = ({ data }: { data: string }) => (
+const SignerQRCode = ({ data }: { data: string }) => (
   <div className="flex items-center justify-center p-4 bg-white rounded-lg">
-    <img
-      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}`}
-      alt="QR Code"
-      className="w-48 h-48"
-    />
+    <QRCode value={data} size={192} className="h-48 w-48" alt="Nostr Connect QR code" />
   </div>
 );
 
@@ -135,7 +131,7 @@ const QRCodeLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrConne
         <div className="card-body items-center text-center">
           <p className="mb-4">Scan this QR code with your Nostr mobile signer</p>
           <a target="_parent" href={nostrConnectUri}>
-            <QRCode data={nostrConnectUri} />
+            <SignerQRCode data={nostrConnectUri} />
           </a>
           <button className="btn btn-outline mt-4" onClick={() => setNostrConnectUri(null)}>
             Cancel

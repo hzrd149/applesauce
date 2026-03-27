@@ -23,6 +23,7 @@ import {
 import { npubEncode } from "nostr-tools/nip19";
 import { useEffect, useState } from "react";
 import { map } from "rxjs";
+import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
 // Global state
@@ -163,15 +164,11 @@ function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
 }
 
 // QR Code component for lightning invoice
-function QRCode({ value }: { value: string }) {
+function InvoiceQRCode({ value }: { value: string }) {
   return (
     <div className="flex flex-col items-center space-y-4">
       <div className="bg-white p-4 rounded-lg">
-        <img
-          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(value)}`}
-          alt="QR Code"
-          className="w-48 h-48"
-        />
+        <QRCode value={value} size={192} className="h-48 w-48" alt="Lightning invoice QR code" />
       </div>
       <div className="text-center">
         <p className="text-sm font-mono break-all bg-base-200 p-2 rounded">{value}</p>
@@ -340,7 +337,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
               <p className="text-sm opacity-70 mb-4">Scan the QR code or copy the invoice to pay {amount} sats</p>
             </div>
 
-            <QRCode value={quote.request} />
+            <InvoiceQRCode value={quote.request} />
 
             <div className="modal-action">
               <form method="dialog">

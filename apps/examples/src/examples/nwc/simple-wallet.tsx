@@ -18,6 +18,7 @@ import {
 import { generateSecretKey } from "nostr-tools";
 import { useEffect, useMemo, useState } from "react";
 import { of } from "rxjs";
+import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
 // Create a relay pool to make relay connections
@@ -228,11 +229,7 @@ function CreateInvoiceModal({
                 {/* QR Code */}
                 {invoice.invoice && (
                   <div className="flex justify-center mb-4">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(invoice.invoice)}`}
-                      alt="Invoice QR Code"
-                      className="rounded"
-                    />
+                    <QRCode value={invoice.invoice} size={200} className="rounded" alt="Invoice QR code" />
                   </div>
                 )}
 
@@ -571,11 +568,7 @@ function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => v
   return (
     <div className="gap-2 flex flex-col items-center">
       <a href={uri} className="bg-white p-4 rounded-lg">
-        <img
-          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(uri)}`}
-          alt="QR Code"
-          className="w-48 h-48"
-        />
+        <QRCode value={uri} size={192} className="h-48 w-48" alt="Wallet auth QR code" />
       </a>
       <RelayPicker value={relay} onChange={setRelay} common={["wss://relay.getalby.com/v1"]} className="w-full" />
       <a href={uri} className="btn btn-primary btn-block">

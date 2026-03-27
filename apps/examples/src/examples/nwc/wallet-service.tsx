@@ -13,6 +13,7 @@ import { CommonWalletMethods, WalletInfo, Transaction as WalletTransaction } fro
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
 import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
+import QRCode from "../../components/qr-code";
 
 // Available wallet methods that can be supported
 const AVAILABLE_METHODS = [
@@ -45,10 +46,7 @@ type Transaction = WalletTransaction & { id: string };
 function ConnectionInfo({ connectionString }: { connectionString: string }) {
   return (
     <div className="bg-base-100 rounded-lg shadow p-4 flex gap-2">
-      <img
-        src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(connectionString)}`}
-        className="rounded"
-      />
+      <QRCode value={connectionString} size={128} className="rounded" alt="Wallet connection QR code" />
       <div className="flex flex-col gap-2 items-start">
         <div>
           <h3 className="font-bold">Connection String</h3>

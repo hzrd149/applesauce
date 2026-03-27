@@ -4,7 +4,6 @@
  * @tags nip-57, zap, lightning, modal, qrcode, invoice
  * @related zap/timeline, zap/graph, nwc/simple-wallet
  */
-import { qrcode } from "@libs/qrcode";
 import { Note, Zap } from "applesauce-common/casts";
 import { ZapRequestFactory } from "applesauce-common/factories";
 import { parseBolt11, parseLNURLOrAddress } from "applesauce-common/helpers";
@@ -32,6 +31,7 @@ import { ZapIcon } from "lucide-react";
 import { generateSecretKey } from "nostr-tools";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map, startWith, Subscription } from "rxjs";
+import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
 // --- Setup ---
@@ -266,21 +266,6 @@ async function fetchZapInvoice(callback: string, zapRequest: NostrEvent, amount:
   return data.pr as string;
 }
 
-/** SVG QR code component */
-function QRCode({ data, href, size = 256 }: { data: string; href?: string; size?: number }) {
-  const svg = useMemo(() => qrcode(data, { output: "svg", border: 2 }), [data]);
-
-  return (
-    <a
-      href={href ?? `lightning:${data}`}
-      className="inline-block bg-white p-4 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
-      title="Click to open in Lightning wallet"
-    >
-      <div style={{ width: size, height: size }} dangerouslySetInnerHTML={{ __html: svg }} />
-    </a>
-  );
-}
-
 // --- Connect Wallet Step ---
 
 function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletConnect) => void; onBack: () => void }) {
@@ -342,7 +327,15 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
       </p>
 
       <div className="flex flex-col items-center gap-3">
-        <QRCode data={authUri} href={authUri} size={200} />
+        <QRCode
+          value={authUri}
+          href={authUri}
+          size={200}
+          className="h-50 w-50"
+          alt="Wallet auth QR code"
+          title="Open in wallet app"
+          wrapperClassName="inline-block bg-white p-4 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+        />
         <a href={authUri} className="btn btn-primary btn-sm">
           Open in Wallet App
         </a>
@@ -653,7 +646,15 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
             Scan or click to pay <span className="text-warning font-bold">{effectiveAmount.toLocaleString()}</span> sats
           </p>
 
-          <QRCode data={invoice} />
+          <QRCode
+            value={invoice}
+            href={`lightning:${invoice}`}
+            size={256}
+            className="h-64 w-64"
+            alt="Lightning invoice QR code"
+            title="Click to open in Lightning wallet"
+            wrapperClassName="inline-block bg-white p-4 rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+          />
 
           <div className="w-full">
             <div className="collapse collapse-arrow bg-base-200 rounded-lg">

@@ -43,13 +43,25 @@ describe("blossomServers", () => {
   });
 
   it("merges scalar values and arrays into one flat list", () => {
-    const result = blossomServers<string | URL>("https://cdn1.example.com", ["https://cdn2.example.com"], new URL("https://cdn3.example.com"));
-    expect(result).toEqual(["https://cdn1.example.com/", "https://cdn2.example.com/", new URL("https://cdn3.example.com/")]);
+    const result = blossomServers<string | URL>(
+      "https://cdn1.example.com",
+      ["https://cdn2.example.com"],
+      new URL("https://cdn3.example.com"),
+    );
+    expect(result).toEqual([
+      "https://cdn1.example.com/",
+      "https://cdn2.example.com/",
+      new URL("https://cdn3.example.com/"),
+    ]);
   });
 
   it("de-duplicates servers by origin", () => {
     expect(
-      blossomServers<string | URL>("https://cdn.example.com/path", new URL("https://cdn.example.com/other"), "https://cdn.example.com"),
+      blossomServers<string | URL>(
+        "https://cdn.example.com/path",
+        new URL("https://cdn.example.com/other"),
+        "https://cdn.example.com",
+      ),
     ).toEqual(["https://cdn.example.com/"]);
   });
 

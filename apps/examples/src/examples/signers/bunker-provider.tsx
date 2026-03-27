@@ -8,6 +8,7 @@ import { RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner, NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef, useState } from "react";
+import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
 // Create a relay pool to make relay connections
@@ -17,14 +18,9 @@ const pool = new RelayPool();
 NostrConnectProvider.subscriptionMethod = pool.subscription.bind(pool);
 NostrConnectProvider.publishMethod = pool.publish.bind(pool);
 
-// Simple QR code component using external API
-const QRCode = ({ data }: { data: string }) => (
+const ProviderQRCode = ({ data }: { data: string }) => (
   <div className="flex items-center justify-center p-4 bg-white rounded-lg">
-    <img
-      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}`}
-      alt="QR Code"
-      className="w-48 h-48"
-    />
+    <QRCode value={data} size={192} className="h-48 w-48" alt="Nostr Connect QR code" />
   </div>
 );
 
@@ -217,7 +213,7 @@ const BunkerURISection = ({
             <div className="bg-base-100 p-3 rounded-lg mb-3">
               <code className="text-sm break-all select-all">{bunkerUri}</code>
             </div>
-            <QRCode data={bunkerUri} />
+            <ProviderQRCode data={bunkerUri} />
           </div>
         )}
       </div>
