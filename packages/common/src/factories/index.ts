@@ -14,6 +14,8 @@ export * from "./legacy-message.js";
 export * from "./wrapped-message.js";
 export * from "./app-data.js";
 export * from "./zap-goal.js";
+export * from "./zap-request.js";
+export * from "./zap.js";
 export * from "./code-snippet.js";
 export * from "./contacts.js";
 export * from "./mute-list.js";

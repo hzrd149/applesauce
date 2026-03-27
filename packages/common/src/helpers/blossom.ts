@@ -3,7 +3,7 @@ import { ensureProtocol } from "applesauce-core/helpers/url";
 
 /** Parses a server string or URL to a root URL */
 export function normalizeBlossomServer(s: string | URL): URL {
-  return new URL("/", typeof s === "string" ? ensureProtocol(s) : s);
+  return new URL("/", typeof s === "string" ? ensureProtocol(s, "https:") : s);
 }
 
 export const BLOSSOM_SERVER_LIST_KIND = 10063;

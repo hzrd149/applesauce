@@ -37,6 +37,7 @@ import { WalletRequestFactory } from "./factories/index.js";
 import { createWalletError } from "./helpers/error.js";
 import {
   createWalletAuthURI,
+  createWalletConnectURI,
   getPreferredEncryption,
   getWalletRequestEncryption,
   getWalletResponseRequestId,
@@ -128,6 +129,12 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
   public service$ = new BehaviorSubject<string | undefined>(undefined);
   public get service(): string | undefined {
     return this.service$.value;
+  }
+
+  /** The wallet connect URI for this connection, or undefined if the service pubkey is not yet known */
+  public get connectURI(): string | undefined {
+    if (!this.service) return undefined;
+    return createWalletConnectURI({ service: this.service, relays: this.relays, secret: bytesToHex(this.secret) });
   }
 
   /** Default timeout for requests */

@@ -35,6 +35,8 @@ describe("exports", () => {
         "WrappedMessage",
         "Zap",
         "ZapGoal",
+        "ZapRequest",
+        "ZapSplit",
       ]
     `);
   });

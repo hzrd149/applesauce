@@ -189,6 +189,7 @@ describe("exports", () => {
         "mergeRelaySets",
         "naddrEncode",
         "neventEncode",
+        "normalizeRelayUrl",
         "normalizeToAddressPointer",
         "normalizeToEventPointer",
         "normalizeToProfilePointer",

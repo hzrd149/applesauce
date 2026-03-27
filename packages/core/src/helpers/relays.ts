@@ -1,7 +1,12 @@
 import { NostrEvent } from "./event.js";
-import { normalizeURL } from "./url.js";
+import { ensureWebSocketURL, normalizeURL } from "./url.js";
 
 export const SeenRelaysSymbol = Symbol.for("seen-relays");
+
+/** Normalizes a relay URL by using {@link normalizeURL} and {@link ensureWebSocketURL} */
+export function normalizeRelayUrl(input: string): string {
+  return normalizeURL(ensureWebSocketURL(input));
+}
 
 /** Marks an event as being seen on a relay */
 export function addSeenRelay(event: NostrEvent, relay: string): Set<string> {
@@ -30,32 +35,28 @@ const WEBSOCKET_URL_CHECK =
   /^wss?:\/\/([-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}|localhost)\b([-a-zA-Z0-9()@:%_\+.~#?&\/\/=]*)$/;
 
 /** A fast check to make sure relay hints are safe to connect to */
-export function isSafeRelayURL(relay: string) {
+export function isSafeRelayURL(relay: string): boolean {
   // anything smaller than 8 is not a URL
   return relay.length >= 8 && WEBSOCKET_URL_CHECK.test(relay);
 }
 
 /** Merge multiple sets of relays and remove duplicates (ignores invalid URLs) */
-export function mergeRelaySets(...sources: (Iterable<string> | string | undefined)[]) {
+export function mergeRelaySets(...sources: (Iterable<string> | string | undefined | null)[]): string[] {
   const set = new Set<string>();
 
   for (const src of sources) {
     if (!src) continue;
 
     if (typeof src === "string") {
-      // Source is a string
       try {
-        const safe = normalizeURL(src).toString();
-        if (safe) set.add(safe);
+        set.add(normalizeRelayUrl(src));
       } catch (error) {
         // failed to parse URL, ignore
       }
-    } else {
-      // Source is iterable
+    } else if (Reflect.has(src, Symbol.iterator)) {
       for (const url of src) {
         try {
-          const safe = normalizeURL(url).toString();
-          if (safe) set.add(safe);
+          set.add(normalizeRelayUrl(url));
         } catch (error) {
           // failed to parse URL, ignore
         }

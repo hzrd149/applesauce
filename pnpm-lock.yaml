@@ -84,6 +84,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^3.9.1
         version: 3.10.0(react-hook-form@7.69.0(react@18.3.1))
+      '@libs/qrcode':
+        specifier: jsr:^3.0.1
+        version: '@jsr/libs__qrcode@3.0.1'
       '@modelcontextprotocol/sdk':
         specifier: ^1.26.0
         version: 1.26.0(zod@4.3.5)
@@ -452,7 +455,7 @@ importers:
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       '@nostrability/schemata':
         specifier: github:nostrability/schemata
-        version: https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)
+        version: https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)
       '@types/debug':
         specifier: ^4.1.12
         version: 4.1.12
@@ -1418,6 +1421,9 @@ packages:
   '@jsdevtools/ono@7.1.3':
     resolution: {integrity: sha512-4JQNk+3mVzK3xh2rqd6RB4J46qUR19azEHBneZyTZM+c456qOrbbM/5xcR8huNCCcbVt7+UmizG6GuUvPvKUYg==}
 
+  '@jsr/libs__qrcode@3.0.1':
+    resolution: {integrity: sha512-kmB/aAUr55cB4h5+UHmig9Cx8UWEckpEBYdgmKIP1qaEZU3EpLQZHs4GL/78c+WVAdC9H6Gx+JwjX3g6GvsB2Q==, tarball: https://npm.jsr.io/~/11/@jsr/libs__qrcode/3.0.1.tgz}
+
   '@jsr/nostrify__nostrify@0.46.5':
     resolution: {integrity: sha512-l81N0o1A4WKAnOhq600ASDLxZbwzFZzUjhAkARPNFbWkXmEssVvXEQXyyoy1s7lboK45iZCijW0Bia7NHXmSug==, tarball: https://npm.jsr.io/~/11/@jsr/nostrify__nostrify/0.46.5.tgz}
 
@@ -1606,9 +1612,9 @@ packages:
     peerDependencies:
       nostr-tools: ^2.17.0
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd':
-    resolution: {tarball: https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd}
-    version: 0.2.3
+  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec':
+    resolution: {tarball: https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec}
+    version: 0.2.8
     peerDependencies:
       typescript: ^4.5.2
 
@@ -4486,18 +4492,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  playwright-core@1.58.2:
-    resolution: {integrity: sha512-yZkEtftgwS8CsfYo7nm0KE8jsvm6i/PTgVtB8DL726wNf6H2IMsDuxCpJj59KDaxCtSnrWan2AeDqM7JBaultg==}
-    engines: {node: '>=18'}
-    hasBin: true
-
   playwright@1.57.0:
     resolution: {integrity: sha512-ilYQj1s8sr2ppEJ2YVadYBN0Mb3mdo9J0wQ+UuDhzYqURwSoW4n1Xs5vs7ORwgDGmyEh33tRMeS8KhdkMoLXQw==}
-    engines: {node: '>=18'}
-    hasBin: true
-
-  playwright@1.58.2:
-    resolution: {integrity: sha512-vA30H8Nvkq/cPBnNw4Q8TWz1EJyqgpuinBcHET0YVJVFldr8JDNiU9LaWAE1KqSkRYazuaBhTpB5ZzShOezQ6A==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -4519,6 +4515,7 @@ packages:
   prebuild-install@7.1.3:
     resolution: {integrity: sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==}
     engines: {node: '>=10'}
+    deprecated: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
     hasBin: true
 
   prettier@2.8.8:
@@ -6347,6 +6344,8 @@ snapshots:
 
   '@jsdevtools/ono@7.1.3': {}
 
+  '@jsr/libs__qrcode@3.0.1': {}
+
   '@jsr/nostrify__nostrify@0.46.5(typescript@5.6.3)':
     dependencies:
       '@jsr/nostrify__types': 0.36.0
@@ -6592,7 +6591,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/24510be42583746e5c96a6aa182d6f335a3099cd(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)':
+  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)':
     dependencies:
       '@apidevtools/json-schema-ref-parser': 11.9.3
       ajv: 8.17.1
@@ -7315,20 +7314,6 @@ snapshots:
       - msw
       - utf-8-validate
       - vite
-
-  '@vitest/browser-playwright@4.0.16(playwright@1.58.2)(vite@7.3.1(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16)':
-    dependencies:
-      '@vitest/browser': 4.0.16(vite@7.3.1(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16)
-      '@vitest/mocker': 4.0.16(vite@7.3.1(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))
-      playwright: 1.58.2
-      tinyrainbow: 3.0.3
-      vitest: 4.0.16(@types/node@22.19.3)(@vitest/browser-playwright@4.0.16)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
-    transitivePeerDependencies:
-      - bufferutil
-      - msw
-      - utf-8-validate
-      - vite
-    optional: true
 
   '@vitest/browser@4.0.16(vite@7.3.1(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16)':
     dependencies:
@@ -9805,21 +9790,11 @@ snapshots:
 
   playwright-core@1.57.0: {}
 
-  playwright-core@1.58.2:
-    optional: true
-
   playwright@1.57.0:
     dependencies:
       playwright-core: 1.57.0
     optionalDependencies:
       fsevents: 2.3.2
-
-  playwright@1.58.2:
-    dependencies:
-      playwright-core: 1.58.2
-    optionalDependencies:
-      fsevents: 2.3.2
-    optional: true
 
   pluralize@8.0.0: {}
 
@@ -10976,7 +10951,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.3
-      '@vitest/browser-playwright': 4.0.16(playwright@1.58.2)(vite@7.3.1(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16)
+      '@vitest/browser-playwright': 4.0.16(playwright@1.57.0)(vite@7.3.1(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.16)
     transitivePeerDependencies:
       - jiti
       - less

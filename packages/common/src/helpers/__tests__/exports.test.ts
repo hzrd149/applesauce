@@ -340,6 +340,7 @@ describe("exports", () => {
         "isValidUserAssertion",
         "isValidZap",
         "isValidZapGoal",
+        "isValidZapRequest",
         "lockGiftWrap",
         "lockLegacyMessage",
         "markEncryptedContentFromCache",
