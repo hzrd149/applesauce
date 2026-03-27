@@ -1,12 +1,16 @@
 import { isNameValueTag, processTags } from "applesauce-core/helpers/tags";
+import { ensureProtocol } from "applesauce-core/helpers/url";
+
+/** Parses a server string or URL to a root URL */
+export function normalizeBlossomServer(s: string | URL): URL {
+  return new URL("/", typeof s === "string" ? ensureProtocol(s) : s);
+}
 
 export const BLOSSOM_SERVER_LIST_KIND = 10063;
 
 /** Check if two servers are the same */
 export function areBlossomServersEqual(a: string | URL, b: string | URL): boolean {
-  const hostnameA = new URL("/", a).toString();
-  const hostnameB = new URL("/", b).toString();
-  return hostnameA === hostnameB;
+  return normalizeBlossomServer(a) === normalizeBlossomServer(b);
 }
 
 /** Checks if a string is a sha256 hash */
@@ -26,7 +30,7 @@ export function getBlossomServersFromList(event: { tags: string[][] } | string[]
 
 /** A method that merges multiple arrays of blossom servers into a single array of unique servers */
 export function mergeBlossomServers<T extends URL | string | (string | URL)>(
-  ...servers: (T | null | undefined | T[])[]
+  ...servers: (T | null | undefined | (T | null | undefined)[])[]
 ): T[] {
   let merged: T[] = [];
   const seen = new Set<string>();
@@ -36,11 +40,12 @@ export function mergeBlossomServers<T extends URL | string | (string | URL)>(
     for (const s of arr) {
       if (s === null || s === undefined) continue;
 
-      const key = new URL("/", s).toString();
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const root = normalizeBlossomServer(s);
+      const href = root.href;
+      if (seen.has(href)) continue;
+      seen.add(href);
 
-      merged.push(s);
+      merged.push((typeof s === "string" ? href : root) as T);
     }
   }
 

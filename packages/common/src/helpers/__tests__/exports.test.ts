@@ -347,6 +347,7 @@ describe("exports", () => {
         "mergeBlossomServers",
         "mergeBookmarks",
         "mergeMutes",
+        "normalizeBlossomServer",
         "parseBolt11",
         "parseBookmarkTags",
         "parseFileMetadataTags",

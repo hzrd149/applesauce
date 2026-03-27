@@ -1,6 +1,6 @@
+import { castUser as coreCastUser, User } from "applesauce-core/casts";
 import { kinds, NostrEvent, nprofileEncode } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { User, castUser as coreCastUser } from "applesauce-core/casts";
 import { combineLatest, defer, from, map, MonoTypeOperatorFunction, ReplaySubject, share, switchMap, tap } from "rxjs";
 import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
@@ -11,8 +11,7 @@ import { castEventStream } from "../observable/cast-stream.js";
 import { ChainableObservable } from "../observable/chainable.js";
 
 // Re-export castUser and User from core so consumers don't need to change imports
-export { castUser } from "applesauce-core/casts";
-export { User } from "applesauce-core/casts";
+export { castUser, User } from "applesauce-core/casts";
 
 function memoize<T>(): MonoTypeOperatorFunction<T> {
   return share({
@@ -23,14 +22,7 @@ function memoize<T>(): MonoTypeOperatorFunction<T> {
 }
 
 // IMPORTANT: this module MUST use async import() to import the other classes so that we do not get circular dependency errors
-const Circular = {
-  Profile: defer(() => from(import("./profile.js"))).pipe(memoize()),
-  Mutes: defer(() => from(import("./mutes.js"))).pipe(memoize()),
-  Bookmarks: defer(() => from(import("./bookmarks.js"))).pipe(memoize()),
-  RelayLists: defer(() => from(import("./relay-lists.js"))).pipe(memoize()),
-  Groups: defer(() => from(import("./groups.js"))).pipe(memoize()),
-  TrustedAssertions: defer(() => from(import("./trusted-assertions.js"))).pipe(memoize()),
-};
+const Circular = defer(() => from(import("./_circular-import.js"))).pipe(memoize());
 
 // ---------------------------------------------------------------------------
 // Outbox cache — WeakMap so it's GC-safe and doesn't pollute User instances
@@ -41,7 +33,6 @@ const outboxCache = new WeakMap<User, string[] | undefined>();
 // Prototype augmentation — attach Nostr-specific observable getters to User
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function defineGetter(name: string, fn: (this: User) => any) {
   Object.defineProperty(User.prototype, name, {
     get: fn,
@@ -61,18 +52,16 @@ Object.defineProperty(User.prototype, "pointer", {
 
 // Override nprofile to use the enriched pointer
 Object.defineProperty(User.prototype, "nprofile", {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get(this: User): string {
-    return nprofileEncode((this as any).pointer);
+    return nprofileEncode(this.pointer);
   },
   configurable: true,
   enumerable: false,
 });
 
 defineGetter("profile$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("profile$", (store: any) =>
-    Circular.Profile.pipe(
+  return this.$$ref("profile$", (store) =>
+    Circular.pipe(
       switchMap(({ Profile }) =>
         store.replaceable({ kind: kinds.Metadata, pubkey: this.pubkey }).pipe(castEventStream(Profile, store)),
       ),
@@ -81,10 +70,8 @@ defineGetter("profile$", function (this: User) {
 });
 
 defineGetter("contacts$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("contacts$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this as any).outboxes$.pipe(
+  return this.$$ref("contacts$", (store) =>
+    this.outboxes$.pipe(
       switchMap((outboxes: string[] | undefined) => store.contacts({ pubkey: this.pubkey, relays: outboxes })),
       map((arr: ProfilePointer[]) => arr.map((p) => coreCastUser(p, store))),
     ),
@@ -92,11 +79,9 @@ defineGetter("contacts$", function (this: User) {
 });
 
 defineGetter("mutes$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("mutes$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    combineLatest([Circular.Mutes, (this as any).outboxes$]).pipe(
-      switchMap(([{ Mutes }, outboxes]: any[]) =>
+  return this.$$ref("mutes$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ Mutes }, outboxes]) =>
         store
           .event({ kind: kinds.Mutelist, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(Mutes, store)),
@@ -106,8 +91,7 @@ defineGetter("mutes$", function (this: User) {
 });
 
 defineGetter("mailboxes$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("mailboxes$", (store: any) =>
+  return this.$$ref("mailboxes$", (store) =>
     store
       .mailboxes({ pubkey: this.pubkey })
       .pipe(tap((mailboxes: { outboxes: string[] } | undefined) => outboxCache.set(this, mailboxes?.outboxes))),
@@ -115,21 +99,17 @@ defineGetter("mailboxes$", function (this: User) {
 });
 
 defineGetter("outboxes$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).mailboxes$.outboxes;
+  return this.mailboxes$.outboxes;
 });
 
 defineGetter("inboxes$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).mailboxes$.inboxes;
+  return this.mailboxes$.inboxes;
 });
 
 defineGetter("bookmarks$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("bookmarks$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    combineLatest([Circular.Bookmarks, (this as any).outboxes$]).pipe(
-      switchMap(([{ BookmarksList }, outboxes]: any[]) =>
+  return this.$$ref("bookmarks$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ BookmarksList }, outboxes]) =>
         store
           .replaceable({ kind: kinds.BookmarkList, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(BookmarksList, store)),
@@ -139,11 +119,9 @@ defineGetter("bookmarks$", function (this: User) {
 });
 
 defineGetter("favoriteRelays$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("favoriteRelays$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    combineLatest([Circular.RelayLists, (this as any).outboxes$]).pipe(
-      switchMap(([{ FavoriteRelays }, outboxes]: any[]) =>
+  return this.$$ref("favoriteRelays$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ FavoriteRelays }, outboxes]) =>
         store
           .replaceable({ kind: FAVORITE_RELAYS_KIND, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(FavoriteRelays, store)),
@@ -153,11 +131,9 @@ defineGetter("favoriteRelays$", function (this: User) {
 });
 
 defineGetter("searchRelays$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("searchRelays$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    combineLatest([Circular.RelayLists, (this as any).outboxes$]).pipe(
-      switchMap(([{ SearchRelays }, outboxes]: any[]) =>
+  return this.$$ref("searchRelays$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ SearchRelays }, outboxes]) =>
         store
           .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(SearchRelays, store)),
@@ -167,11 +143,9 @@ defineGetter("searchRelays$", function (this: User) {
 });
 
 defineGetter("blockedRelays$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("blockedRelays$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    combineLatest([Circular.RelayLists, (this as any).outboxes$]).pipe(
-      switchMap(([{ BlockedRelays }, outboxes]: any[]) =>
+  return this.$$ref("blockedRelays$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ BlockedRelays }, outboxes]) =>
         store
           .replaceable({ kind: kinds.BlockedRelaysList, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(BlockedRelays, store)),
@@ -181,10 +155,8 @@ defineGetter("blockedRelays$", function (this: User) {
 });
 
 defineGetter("directMessageRelays$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("dmRelays$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this as any).outboxes$.pipe(
+  return this.$$ref("dmRelays$", (store) =>
+    this.outboxes$.pipe(
       switchMap((outboxes: string[] | undefined) =>
         store
           .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
@@ -195,10 +167,8 @@ defineGetter("directMessageRelays$", function (this: User) {
 });
 
 defineGetter("blossomServers$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("blossomServers$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this as any).outboxes$.pipe(
+  return this.$$ref("blossomServers$", (store) =>
+    this.outboxes$.pipe(
       switchMap((outboxes: string[] | undefined) =>
         store
           .replaceable({ kind: BLOSSOM_SERVER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
@@ -209,11 +179,9 @@ defineGetter("blossomServers$", function (this: User) {
 });
 
 defineGetter("groups$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("groups$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    combineLatest([Circular.Groups, (this as any).outboxes$]).pipe(
-      switchMap(([{ GroupsList }, outboxes]: any[]) =>
+  return this.$$ref("groups$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ GroupsList }, outboxes]) =>
         store
           .replaceable({ kind: GROUPS_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(GroupsList, store)),
@@ -223,8 +191,7 @@ defineGetter("groups$", function (this: User) {
 });
 
 defineGetter("live$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("live$", (store: any) =>
+  return this.$$ref("live$", (store) =>
     defer(() => import("./stream.js").then((m) => m.Stream)).pipe(
       switchMap((Stream) =>
         store
@@ -242,11 +209,9 @@ defineGetter("live$", function (this: User) {
 });
 
 defineGetter("trustedProviders$", function (this: User) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (this as any).$$ref("trustedProviders$", (store: any) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    combineLatest([Circular.TrustedAssertions, (this as any).outboxes$]).pipe(
-      switchMap(([{ TrustedProviderList }, outboxes]: any[]) =>
+  return this.$$ref("trustedProviders$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ TrustedProviderList }, outboxes]) =>
         store
           .replaceable({ kind: TRUSTED_PROVIDER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(TrustedProviderList, store)),
