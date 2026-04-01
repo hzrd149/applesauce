@@ -1,7 +1,7 @@
 import { kinds } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { describe, expect, it } from "vitest";
-import { getBadgeAwardPointer, getBadgeAwardRecipients } from "../badge-award";
+import { getBadgeAwardPointer, getBadgeAwardRecipients } from "../badge-award.js";
 import {
   getBadgeDescription,
   getBadgeHeroImage,
@@ -9,7 +9,7 @@ import {
   getBadgeImage,
   getBadgeName,
   getBadgeThumbnails,
-} from "../badges.js";
+} from "../badge.js";
 import {
   compareProfileBadgeEvents,
   getProfileBadgeSlots,

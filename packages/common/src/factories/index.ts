@@ -35,3 +35,6 @@ export * from "./calendar-event.js";
 export * from "./live-stream.js";
 export * from "./calendar-rsvp.js";
 export * from "./picture-post.js";
+export * from "./badge.js";
+export * from "./badge-award.js";
+export * from "./profile-badges.js";

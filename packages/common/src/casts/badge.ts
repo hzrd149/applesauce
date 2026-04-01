@@ -8,7 +8,7 @@ import {
   getBadgeImage,
   getBadgeName,
   getBadgeThumbnails,
-} from "../helpers/badges.js";
+} from "../helpers/badge.js";
 import { castTimelineStream } from "../observable/cast-stream.js";
 import { BadgeAward } from "./badge-award.js";
 import { CastRefEventStore, EventCast } from "./cast.js";

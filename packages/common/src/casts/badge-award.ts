@@ -6,7 +6,7 @@ import {
   BadgeAwardEvent,
   getBadgeAwardPointer,
   getBadgeAwardRecipients,
-  isBadgeAwardEvent,
+  isValidBadgeAward,
 } from "../helpers/badge-award.js";
 import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
 import { Badge } from "./badge.js";
@@ -15,7 +15,7 @@ import { CastRefEventStore, EventCast } from "./cast.js";
 /** Cast for badge award events (kind 8) */
 export class BadgeAward extends EventCast<BadgeAwardEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
-    if (!isBadgeAwardEvent(event)) throw new Error("Invalid badge award event");
+    if (!isValidBadgeAward(event)) throw new Error("Invalid badge award event");
     super(event, store);
   }
 

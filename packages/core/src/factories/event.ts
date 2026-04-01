@@ -1,4 +1,4 @@
-import { isKind } from "nostr-tools/kinds";
+import { isAddressableKind, isKind } from "nostr-tools/kinds";
 import { EventSigner } from "./types.js";
 import type { EventOperation } from "./types.js";
 import { EncryptionMethod } from "../helpers/encrypted-content.js";
@@ -17,10 +17,12 @@ import {
 } from "../operations/event.js";
 import { modifyHiddenTags, modifyPublicTags, modifyTags } from "../operations/tags.js";
 import { setContentWarning } from "../operations/content.js";
+import { nanoid } from "nanoid";
 
-/** Creates a blank event template with the given kind */
+/** Creates a blank event template with the given kind and random "d" tag if addressable */
 export function blankEventTemplate<K extends number = number>(kind: K): KnownEventTemplate<K> {
-  return { kind, created_at: unixNow(), tags: [], content: "" };
+  const tags = isAddressableKind(kind) ? [["d", nanoid()]] : [];
+  return { kind, created_at: unixNow(), tags, content: "" };
 }
 
 /** Converts a nostr event to an event template and updates the created_at timestamp */

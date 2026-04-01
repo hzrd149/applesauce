@@ -18,7 +18,7 @@ const BadgeAwardRecipientsSymbol = Symbol.for("badge-award-recipients");
  * Returns true if the event is a valid badge award (kind 8).
  * Validates kind, required `a` tag (definition pointer), and at least one `p` tag (recipient).
  */
-export function isBadgeAwardEvent(event?: NostrEvent): event is BadgeAwardEvent {
+export function isValidBadgeAward(event?: NostrEvent): event is BadgeAwardEvent {
   if (!event || event.kind !== kinds.BadgeAward) return false;
   if (!event.tags.find(isATag)) return false;
   if (!event.tags.find(isPTag)) return false;
@@ -29,7 +29,7 @@ export function isBadgeAwardEvent(event?: NostrEvent): event is BadgeAwardEvent 
 export function getBadgeAwardPointer(event: BadgeAwardEvent): AddressPointer;
 export function getBadgeAwardPointer(event?: NostrEvent): AddressPointer | undefined;
 export function getBadgeAwardPointer(event?: NostrEvent): AddressPointer | undefined {
-  if (!isBadgeAwardEvent(event)) return undefined;
+  if (!isValidBadgeAward(event)) return undefined;
 
   return getOrComputeCachedValue(event, BadgeAwardDefinitionSymbol, () => {
     const aTag = event.tags.find(isATag);
@@ -41,7 +41,7 @@ export function getBadgeAwardPointer(event?: NostrEvent): AddressPointer | undef
 export function getBadgeAwardRecipients(event: BadgeAwardEvent): ProfilePointer[];
 export function getBadgeAwardRecipients(event?: NostrEvent): ProfilePointer[];
 export function getBadgeAwardRecipients(event?: NostrEvent): ProfilePointer[] {
-  if (!isBadgeAwardEvent(event)) return [];
+  if (!isValidBadgeAward(event)) return [];
 
   return getOrComputeCachedValue(event, BadgeAwardRecipientsSymbol, () =>
     processTags(event.tags, (t) => (isPTag(t) ? (getProfilePointerFromPTag(t) ?? undefined) : undefined)),
