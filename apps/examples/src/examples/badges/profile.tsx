@@ -4,7 +4,11 @@
  * @related casting/thread, simple/profile-editor
  */
 import { Badge, BadgeAward, User, castUser } from "applesauce-common/casts";
-import { LEGACY_PROFILE_BADGES_IDENTIFIER, PROFILE_BADGES_KIND } from "applesauce-common/helpers";
+import {
+  LEGACY_PROFILE_BADGES_IDENTIFIER,
+  LEGACY_PROFILE_BADGES_KIND,
+  PROFILE_BADGES_KIND,
+} from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core/event-store";
 import {
@@ -326,7 +330,7 @@ export default function ProfileBadgesExample() {
       user?.mailboxes$.pipe(map((all) => relaySet(RELAYS, all?.inboxes, all?.outboxes))),
       [
         { kinds: [kinds.Metadata, PROFILE_BADGES_KIND], authors: [user.pubkey] },
-        { kinds: [kinds.ProfileBadges], authors: [user.pubkey], "#d": [LEGACY_PROFILE_BADGES_IDENTIFIER] },
+        { kinds: [LEGACY_PROFILE_BADGES_KIND], authors: [user.pubkey], "#d": [LEGACY_PROFILE_BADGES_IDENTIFIER] },
         { kinds: [kinds.BadgeAward], "#p": [user.pubkey] },
       ],
       { eventStore },

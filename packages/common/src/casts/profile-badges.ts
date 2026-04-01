@@ -1,12 +1,13 @@
 import { withImmediateValueOrDefault } from "applesauce-core";
 import { User } from "applesauce-core/casts";
-import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { combineLatest, map } from "rxjs";
 import {
   compareProfileBadgeEvents,
   getProfileBadgeSlots,
   isValidProfileBadges,
   LEGACY_PROFILE_BADGES_IDENTIFIER,
+  LEGACY_PROFILE_BADGES_KIND,
   PROFILE_BADGES_KIND,
   ProfileBadgeSlot,
 } from "../helpers/profile-badges.js";
@@ -71,7 +72,7 @@ Object.defineProperty(User.prototype, "profileBadges$", {
       combineLatest([
         store.replaceable({ kind: PROFILE_BADGES_KIND, pubkey: this.pubkey }),
         store.replaceable({
-          kind: kinds.ProfileBadges,
+          kind: LEGACY_PROFILE_BADGES_KIND,
           pubkey: this.pubkey,
           identifier: LEGACY_PROFILE_BADGES_IDENTIFIER,
         }),

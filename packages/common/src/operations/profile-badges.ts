@@ -84,6 +84,18 @@ function sameAward(a: EventPointer, b: EventPointer): boolean {
   return a.id === b.id;
 }
 
+/** Returns the tag-index ranges [start, start+2) for each slot pair */
+function getSlotRanges(tags: string[][]): Array<[start: number, end: number]> {
+  const ranges: Array<[number, number]> = [];
+  for (let i = 0; i < tags.length; i++) {
+    if (tags[i][0] === "a" && i + 1 < tags.length && tags[i + 1][0] === "e") {
+      ranges.push([i, i + 2]);
+      i += 1;
+    }
+  }
+  return ranges;
+}
+
 /** Replaces every badge slot with the provided list */
 export function setSlots(slots: Array<ProfileBadgeSlotInput | ProfileBadgeSlot>): EventOperation {
   const normalized = slots.map(normalizeSlot);
@@ -130,4 +142,40 @@ export function removeSlotByAward(award: EventPointer | NostrEvent | string): Ev
   if (!pointer) throw new Error("Invalid award pointer provided");
 
   return modifyPublicTags((tags) => removeSlotPairs(tags, (slot) => sameAward(slot.award, pointer!)));
+}
+
+/** Inserts a slot at a specific position among existing slots */
+export function insertSlot(index: number, slot: ProfileBadgeSlotInput | ProfileBadgeSlot): EventOperation {
+  const normalized = normalizeSlot(slot);
+  return modifyPublicTags((tags) => {
+    const ranges = getSlotRanges(tags);
+    const encoded = encodeSlot(normalized);
+
+    if (ranges.length === 0 || index >= ranges.length) return [...tags, ...encoded];
+
+    const insertAt = ranges[Math.max(0, index)][0];
+    return [...tags.slice(0, insertAt), ...encoded, ...tags.slice(insertAt)];
+  });
+}
+
+/** Inserts a slot at the beginning */
+export function prependSlot(slot: ProfileBadgeSlotInput | ProfileBadgeSlot): EventOperation {
+  return insertSlot(0, slot);
+}
+
+/** Inserts a slot at the end */
+export function appendSlot(slot: ProfileBadgeSlotInput | ProfileBadgeSlot): EventOperation {
+  return insertSlot(Infinity, slot);
+}
+
+/** Replaces the slot at a specific position with a new one */
+export function setSlot(index: number, slot: ProfileBadgeSlotInput | ProfileBadgeSlot): EventOperation {
+  const normalized = normalizeSlot(slot);
+  return modifyPublicTags((tags) => {
+    const ranges = getSlotRanges(tags);
+    if (index < 0 || index >= ranges.length) throw new Error(`Slot index ${index} out of range`);
+
+    const [start, end] = ranges[index];
+    return [...tags.slice(0, start), ...encodeSlot(normalized), ...tags.slice(end)];
+  });
 }

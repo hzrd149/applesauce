@@ -1,7 +1,15 @@
 import { EventTemplate, unixNow } from "applesauce-core/helpers";
 import { kinds } from "applesauce-core/helpers/event";
 import { describe, expect, it } from "vitest";
-import { addSlot, clearSlots, removeSlotByAward, removeSlotByBadge, setSlots } from "../../operations/profile-badges";
+import {
+  addSlot,
+  clearSlots,
+  insertSlot,
+  removeSlotByAward,
+  removeSlotByBadge,
+  setSlot,
+  setSlots,
+} from "../../operations/profile-badges";
 import { PROFILE_BADGES_KIND } from "../../helpers/profile-badges";
 import type { ProfileBadgeSlot } from "../../helpers/profile-badges";
 
@@ -63,5 +71,32 @@ describe("profile badge operations", () => {
     const draft = createProfileBadgeDraft([...slotTags(badgeA), ...slotTags(badgeB)]);
     const cleared = await clearSlots()(draft);
     expect(cleared.tags).toHaveLength(0);
+  });
+
+  it("inserts a slot at the beginning", async () => {
+    const draft = createProfileBadgeDraft(slotTags(badgeA));
+    const updated = await insertSlot(0, badgeB)(draft);
+    expect(updated.tags).toEqual([...slotTags(badgeB), ...slotTags(badgeA)]);
+  });
+
+  it("inserts a slot at the end when index >= length", async () => {
+    const draft = createProfileBadgeDraft(slotTags(badgeA));
+    const updated = await insertSlot(5, badgeB)(draft);
+    expect(updated.tags).toEqual([...slotTags(badgeA), ...slotTags(badgeB)]);
+  });
+
+  it("replaces a slot at a specific index", async () => {
+    const badgeC: ProfileBadgeSlot = {
+      badge: { kind: kinds.BadgeDefinition, pubkey: "c".repeat(64), identifier: "gamma" },
+      award: { id: "3".repeat(64) },
+    };
+    const draft = createProfileBadgeDraft([...slotTags(badgeA), ...slotTags(badgeB)]);
+    const updated = await setSlot(1, badgeC)(draft);
+    expect(updated.tags).toEqual([...slotTags(badgeA), ...slotTags(badgeC)]);
+  });
+
+  it("throws when setSlot index is out of range", async () => {
+    const draft = createProfileBadgeDraft(slotTags(badgeA));
+    await expect(setSlot(2, badgeB)(draft)).rejects.toThrow("out of range");
   });
 });

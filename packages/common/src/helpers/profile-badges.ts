@@ -1,5 +1,5 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
+import { getReplaceableIdentifier, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
   EventPointer,
@@ -9,6 +9,7 @@ import {
 import { isATag, isETag } from "applesauce-core/helpers/tags";
 
 export const PROFILE_BADGES_KIND = 10008;
+export const LEGACY_PROFILE_BADGES_KIND = 30008;
 export const LEGACY_PROFILE_BADGES_IDENTIFIER = "profile_badges";
 
 const ProfileBadgeSlotsSymbol = Symbol.for("profile-badge-slots");
@@ -23,14 +24,14 @@ export type ProfileBadgeSlot = {
 export type ProfileBadgesEvent = KnownEvent<typeof PROFILE_BADGES_KIND>;
 
 /** Legacy kind 30008 profile badges event (NIP-58 original spec) */
-export type LegacyProfileBadgesEvent = KnownEvent<typeof kinds.ProfileBadges>;
+export type LegacyProfileBadgesEvent = KnownEvent<typeof LEGACY_PROFILE_BADGES_KIND>;
 
 /** Returns true if the event is a profile badges list (kind 10008 or legacy 30008 `profile_badges`). */
 export function isValidProfileBadges(event?: NostrEvent): event is ProfileBadgesEvent | LegacyProfileBadgesEvent {
   if (!event) return false;
   if (event.kind === PROFILE_BADGES_KIND) return true;
-  if (event.kind === kinds.ProfileBadges) {
-    return event.tags.some((tag) => tag[0] === "d" && tag[1] === LEGACY_PROFILE_BADGES_IDENTIFIER);
+  if (event.kind === LEGACY_PROFILE_BADGES_KIND) {
+    return getReplaceableIdentifier(event) === LEGACY_PROFILE_BADGES_IDENTIFIER;
   }
   return false;
 }

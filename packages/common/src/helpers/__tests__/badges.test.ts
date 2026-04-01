@@ -14,6 +14,7 @@ import {
   compareProfileBadgeEvents,
   getProfileBadgeSlots,
   LEGACY_PROFILE_BADGES_IDENTIFIER,
+  LEGACY_PROFILE_BADGES_KIND,
   PROFILE_BADGES_KIND,
 } from "../profile-badges.js";
 
@@ -86,7 +87,7 @@ describe("badge helpers", () => {
 
   it("parses profile badge slots for legacy kind", () => {
     const event = createEvent({
-      kind: kinds.ProfileBadges,
+      kind: LEGACY_PROFILE_BADGES_KIND,
       tags: [
         ["d", LEGACY_PROFILE_BADGES_IDENTIFIER],
         ["a", `30009:${"a".repeat(64)}:bravery`],
