@@ -2,6 +2,7 @@ name: Deploy nsite
 on:
   push:
     branches:
+      - next
       - master
 
 concurrency:
@@ -48,11 +49,19 @@ jobs:
       - name: Copy vitepress
         run: cp -r apps/docs/.vitepress/dist/* docs
 
-      # Pushes to master deploy to the "next" build channel for testing
+      # Pushes to next deploy to the "next" build channel for testing
       - name: Deploy next version
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/next'
         uses: sandwichfarm/nsite-action@v0.3.1
         with:
           nbunksec: ${{ secrets.NSITE_BUNKER }}
           directory: "./docs"
           name: next
+
+      # Pushes to master deploy the latest stable version.
+      - name: Deploy release
+        if: github.ref == 'refs/heads/master'
+        uses: sandwichfarm/nsite-action@v0.3.1
+        with:
+          nbunksec: ${{ secrets.NSITE_BUNKER }}
+          directory: "./docs"
