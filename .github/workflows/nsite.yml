@@ -49,6 +49,14 @@ jobs:
       - name: Copy vitepress
         run: cp -r apps/docs/.vitepress/dist/* docs
 
+      - name: Build llms bundle
+        run: pnpm build --filter applesauce-llms
+
+      - name: Copy llms bundle
+        run: |
+          mkdir -p docs
+          cp -r apps/llms/dist/. docs
+
       # Pushes to next deploy to the "next" build channel for testing
       - name: Deploy next version
         if: github.ref == 'refs/heads/next'
