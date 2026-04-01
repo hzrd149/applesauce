@@ -17,7 +17,7 @@ import { lastValueFrom } from "rxjs";
 import RelayPicker from "./relay-picker";
 
 // Common relay URLs that support NIP-50 search
-const SEARCH_RELAYS = relaySet(["wss://search.nos.today", "wss://antiprimal.net"]);
+const SEARCH_RELAYS = relaySet(["wss://relay.ditto.pub", "wss://antiprimal.net"]);
 
 // Create an event store for all events
 const eventStore = new EventStore();

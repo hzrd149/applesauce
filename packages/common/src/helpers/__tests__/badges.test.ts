@@ -1,20 +1,21 @@
-import { describe, expect, it } from "vitest";
 import { kinds } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer } from "applesauce-core/helpers/pointers";
+import { describe, expect, it } from "vitest";
+import { getBadgeAwardPointer, getBadgeAwardRecipients } from "../badge-award";
 import {
-  LEGACY_PROFILE_BADGES_IDENTIFIER,
-  PROFILE_BADGES_KIND,
-  compareProfileBadgeEvents,
-  getBadgeAwardDefinitionPointer,
-  getBadgeAwardRecipients,
   getBadgeDescription,
   getBadgeHeroImage,
   getBadgeIdentifier,
   getBadgeImage,
   getBadgeName,
   getBadgeThumbnails,
-  getProfileBadgeSlots,
 } from "../badges.js";
+import {
+  compareProfileBadgeEvents,
+  getProfileBadgeSlots,
+  LEGACY_PROFILE_BADGES_IDENTIFIER,
+  PROFILE_BADGES_KIND,
+} from "../profile-badges.js";
 
 function createEvent(
   partial: Partial<import("applesauce-core/helpers/event").NostrEvent>,
@@ -62,7 +63,7 @@ describe("badge helpers", () => {
       ],
     });
 
-    expect(getBadgeAwardDefinitionPointer(event)?.identifier).toBe("bravery");
+    expect(getBadgeAwardPointer(event)?.identifier).toBe("bravery");
     expect(getBadgeAwardRecipients(event)).toHaveLength(2);
   });
 
@@ -79,7 +80,7 @@ describe("badge helpers", () => {
 
     const slots = getProfileBadgeSlots(event);
     expect(slots).toHaveLength(1);
-    expect(slots[0].definition.identifier).toBe("courage");
+    expect(slots[0].badge.identifier).toBe("courage");
     expect(slots[0].award.id).toBe(award.id);
   });
 
