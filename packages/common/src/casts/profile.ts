@@ -1,6 +1,11 @@
-import { NostrEvent, ProfileEvent } from "applesauce-core/helpers";
+import { kinds, NostrEvent, ProfileEvent } from "applesauce-core/helpers";
 import { getDisplayName, getProfileContent, getProfilePicture, isValidProfile } from "applesauce-core/helpers/profile";
 import { CastRefEventStore, EventCast } from "./cast.js";
+import { combineLatest, map } from "rxjs";
+import { ChainableObservable } from "../observable/chainable.js";
+import { LEGACY_PROFILE_BADGES_IDENTIFIER, PROFILE_BADGES_KIND, compareProfileBadgeEvents } from "../helpers/badges.js";
+import { castEventStream } from "../observable/cast-stream.js";
+import { ProfileBadges } from "./profile-badges.js";
 
 /** Cast a kind 0 event to a Profile */
 export class Profile extends EventCast<ProfileEvent> {
@@ -50,5 +55,21 @@ export class Profile extends EventCast<ProfileEvent> {
   }
   get languages() {
     return this.metadata.languages;
+  }
+
+  get badges$(): ChainableObservable<ProfileBadges | undefined> {
+    return this.$$ref("badges$", (store) =>
+      combineLatest([
+        store.replaceable({ kind: PROFILE_BADGES_KIND, pubkey: this.event.pubkey }),
+        store.replaceable({
+          kind: kinds.ProfileBadges,
+          pubkey: this.event.pubkey,
+          identifier: LEGACY_PROFILE_BADGES_IDENTIFIER,
+        }),
+      ]).pipe(
+        map(([modern, legacy]) => compareProfileBadgeEvents(modern, legacy)),
+        castEventStream(ProfileBadges, store),
+      ),
+    );
   }
 }

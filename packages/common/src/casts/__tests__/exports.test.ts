@@ -7,6 +7,8 @@ describe("exports", () => {
       [
         "Article",
         "AssertionProvider",
+        "BadgeAward",
+        "BadgeDefinition",
         "BlockedRelays",
         "BookmarksList",
         "BookmarksSet",
@@ -20,6 +22,7 @@ describe("exports", () => {
         "Mutes",
         "Note",
         "Profile",
+        "ProfileBadges",
         "PubkeyCast",
         "Reaction",
         "RelayDiscovery",
