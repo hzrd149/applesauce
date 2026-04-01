@@ -48,13 +48,11 @@ jobs:
       - name: Copy vitepress
         run: cp -r apps/docs/.vitepress/dist/* docs
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
+      # Pushes to master deploy to the "next" build channel for testing
+      - name: Deploy next version
+        if: github.ref == 'refs/heads/master'
+        uses: sandwichfarm/nsite-action@v0.3.1
         with:
-          deno-version: "v2.x"
-
-      - name: Install nsyte CLI
-        run: deno install -A -f -g -n nsyte jsr:@nsyte/cli
-
-      - name: Deploy nsite
-        run: nsyte upload docs -i --purge --privatekey ${{ secrets.NSITE_KEY }}
+          nbunksec: ${{ secrets.NSITE_BUNKER }}
+          directory: "./docs"
+          name: next
