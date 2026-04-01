@@ -42,6 +42,7 @@ describe("exports", () => {
         "JOIN_REQUEST_KIND",
         "LEAVE_REQUEST_KIND",
         "LEGACY_PROFILE_BADGES_IDENTIFIER",
+        "LEGACY_PROFILE_BADGES_KIND",
         "MediaAttachmentsSymbol",
         "MuteHiddenSymbol",
         "MutePublicSymbol",
