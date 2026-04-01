@@ -248,6 +248,14 @@ await runner.run(FollowUser, targetPubkey);
 
 ---
 
+## Exported API Reference
+
+Each package has a full exports reference listing every exported function, class, type, and const with JSDoc descriptions. Read the relevant package file when you need to find a specific API.
+
+{{exportsIndex}}
+
+---
+
 ## How To Use Examples
 
 Examples are complete, single-file React applications demonstrating real Applesauce usage. Each file is self-contained with all imports, state management, and UI.

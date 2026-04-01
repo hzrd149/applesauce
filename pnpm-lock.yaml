@@ -278,6 +278,12 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(yaml@2.8.2)
 
+  apps/llms:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   apps/snippets:
     dependencies:
       '@fontsource/roboto':
@@ -455,7 +461,7 @@ importers:
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       '@nostrability/schemata':
         specifier: github:nostrability/schemata
-        version: https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)
+        version: https://codeload.github.com/nostrability/schemata/tar.gz/6a758d64691b4ad42e4ae283ca03edc05f498bdc(@swc/core@1.15.10)(esbuild@0.25.12)
       '@types/debug':
         specifier: ^4.1.12
         version: 4.1.12
@@ -1612,11 +1618,9 @@ packages:
     peerDependencies:
       nostr-tools: ^2.17.0
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec':
-    resolution: {tarball: https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec}
-    version: 0.2.8
-    peerDependencies:
-      typescript: ^4.5.2
+  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/6a758d64691b4ad42e4ae283ca03edc05f498bdc':
+    resolution: {tarball: https://codeload.github.com/nostrability/schemata/tar.gz/6a758d64691b4ad42e4ae283ca03edc05f498bdc}
+    version: 0.3.1
 
   '@open-draft/deferred-promise@2.2.0':
     resolution: {integrity: sha512-CecwLWx3rhxVQF6V4bAgPS5t+So2sTbPgAzafKkVizyi7tlwpcFpdFqq+wqF2OwNBmqFuu6tOyouTuxgpMfzmA==}
@@ -6591,7 +6595,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/4ac4f9d7b3cfa7e11c674ea835aa682f809fbaec(@swc/core@1.15.10)(esbuild@0.25.12)(typescript@5.9.3)':
+  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/6a758d64691b4ad42e4ae283ca03edc05f498bdc(@swc/core@1.15.10)(esbuild@0.25.12)':
     dependencies:
       '@apidevtools/json-schema-ref-parser': 11.9.3
       ajv: 8.17.1
@@ -6599,7 +6603,6 @@ snapshots:
       json-loader: 0.5.7
       quicktype: 23.0.170(@swc/core@1.15.10)
       quicktype-core: 23.0.170
-      typescript: 5.9.3
       webpack: 5.93.0(@swc/core@1.15.10)(esbuild@0.25.12)(webpack-cli@5.1.4)
       webpack-cli: 5.1.4(webpack@5.93.0)
       webpack-merge: 6.0.1
