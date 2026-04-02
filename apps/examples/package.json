@@ -69,6 +69,7 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.18",
     "@types/create-torrent": "^6.1.0",
     "@types/leaflet": "^1.9.21",

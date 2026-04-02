@@ -9,7 +9,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayGroup, RelayPool } from "applesauce-relay";
 import { completeWhen } from "applesauce-relay/operators/complete-when";
 import { GroupReqMessage } from "applesauce-relay/types";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   finalize,
   last,
@@ -44,13 +44,36 @@ interface CompletionMarker {
 }
 
 const MESSAGE_STYLES = {
-  OPEN: "border border-blue-500 text-blue-700",
-  EVENT: "border border-green-500 text-green-700",
-  EOSE: "border border-yellow-500 text-yellow-700",
-  ERROR: "border border-red-500 text-red-700",
-  CLOSED: "border border-gray-500 text-gray-700",
-  RELAYS: "border border-indigo-500 text-indigo-700",
+  OPEN: "badge-info",
+  EVENT: "badge-success",
+  EOSE: "badge-warning",
+  ERROR: "badge-error",
+  CLOSED: "badge-neutral",
+  RELAYS: "badge-accent",
 };
+
+type RelayState = "PENDING" | "OPEN" | "EOSE" | "CLOSED" | "ERROR";
+
+const STATE_STYLES: Record<RelayState, string> = {
+  PENDING: "badge-ghost",
+  OPEN: "badge-info",
+  EOSE: "badge-success",
+  CLOSED: "badge-neutral",
+  ERROR: "badge-error",
+};
+
+function RelayBadge({ relay, state }: { relay: string; state: RelayState }) {
+  const icon = use$(() => pool.relay(relay).icon$, [relay]);
+  const hostname = new URL(relay).hostname;
+
+  return (
+    <div className={`badge gap-1.5 ${STATE_STYLES[state]}`}>
+      <img src={icon} alt="" className="w-4 h-4 rounded-sm" onError={(e) => (e.currentTarget.style.display = "none")} />
+      <span className="font-mono text-xs">{hostname}</span>
+      <span className="text-xs opacity-70">{state}</span>
+    </div>
+  );
+}
 
 export default function CompletionConditions() {
   const [relays, setRelays] = useState<string[]>(
@@ -61,6 +84,7 @@ export default function CompletionConditions() {
       "wss://relay.primal.net",
       "wss://nostr.wine",
       "wss://nostr-pub.wellorder.net",
+      "wss://relay.nostr.band", // Intentionally add dead relay
     ]),
   );
   const [currentRelay, setCurrentRelay] = useState("");
@@ -82,6 +106,19 @@ export default function CompletionConditions() {
 
   // Get pool status
   const poolStatuses = use$(pool.status$);
+
+  const relayStates = useMemo(() => {
+    const states = new Map<string, RelayState>();
+    for (const relay of relays) {
+      states.set(relay, "PENDING");
+    }
+    for (const msg of timelineMessages) {
+      if (msg.type === "OPEN" || msg.type === "EOSE" || msg.type === "CLOSED" || msg.type === "ERROR") {
+        states.set(msg.from, msg.type);
+      }
+    }
+    return states;
+  }, [relays, timelineMessages]);
 
   // Validate filter JSON
   const validateFilter = useCallback((json: string) => {
@@ -126,8 +163,10 @@ export default function CompletionConditions() {
       });
   }, []);
 
-  // Clear results
-  const handleClear = useCallback(() => {
+  const handleReset = useCallback(() => {
+    subscriptionsRef.current?.unsubscribe();
+    subscriptionsRef.current = undefined;
+    setIsQuerying(false);
     setTimelineMessages([]);
     setCompletionMarkers([]);
     setEvents([]);
@@ -141,8 +180,7 @@ export default function CompletionConditions() {
     if (!validateFilter(filterJson)) return;
     if (relays.length === 0) return;
 
-    // Reset state
-    handleClear();
+    handleReset();
     setIsQuerying(true);
 
     // Cleanup previous subscriptions
@@ -307,7 +345,7 @@ export default function CompletionConditions() {
     firstNRelaysCount,
     timeLimitMs,
     validateFilter,
-    handleClear,
+    handleReset,
   ]);
 
   // Format time display
@@ -441,8 +479,8 @@ export default function CompletionConditions() {
             >
               {isQuerying ? "Querying..." : "Start Query"}
             </button>
-            <button className="btn" onClick={handleClear} disabled={timelineMessages.length === 0}>
-              Clear Results
+            <button className="btn" onClick={handleReset} disabled={timelineMessages.length === 0 && !isQuerying}>
+              Reset
             </button>
             {poolStatuses && Object.keys(poolStatuses).length > 0 && (
               <div className="badge badge-lg ml-auto">
@@ -518,6 +556,11 @@ export default function CompletionConditions() {
         <div className="card bg-base-100">
           <div className="card-body">
             <h2 className="card-title">Message Timeline</h2>
+            <div className="flex flex-wrap gap-2">
+              {relays.map((relay) => (
+                <RelayBadge key={relay} relay={relay} state={relayStates.get(relay) || "PENDING"} />
+              ))}
+            </div>
             <div className="overflow-x-auto">
               <table className="table table-xs">
                 <thead>
@@ -570,7 +613,7 @@ export default function CompletionConditions() {
                           <td className="font-mono text-xs">{formatTime(msg.timestamp)}</td>
                           <td className="font-mono text-xs truncate max-w-[200px]">{msg.from}</td>
                           <td>
-                            <div className={`badge badge-sm ${MESSAGE_STYLES[msgType] || "border border-gray-300"}`}>
+                            <div className={`badge badge-sm ${MESSAGE_STYLES[msgType] || "badge-ghost"}`}>
                               {msg.type}
                             </div>
                           </td>

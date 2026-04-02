@@ -19,28 +19,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import RelayPicker from "../../components/relay-picker";
 
-// Memoize plugins and components at module level
 const remarkPlugins = [remarkGfm, remarkNostrMentions];
 const markdownComponents = {
-  h1: ({ ...props }: any) => <h1 className="text-3xl font-bold my-4" {...props} />,
-  h2: ({ ...props }: any) => <h2 className="text-2xl font-bold my-3" {...props} />,
-  p: ({ ...props }: any) => <p className="my-2" {...props} />,
-  a: ({ ...props }: any) => <a className="link link-primary" target="_blank" {...props} />,
-  ul: ({ ...props }: any) => <ul className="list-disc ml-4 my-2" {...props} />,
-  ol: ({ ...props }: any) => <ol className="list-decimal ml-4 my-2" {...props} />,
-  blockquote: ({ ...props }: any) => <blockquote className="border-l-4 border-primary pl-4 my-2" {...props} />,
-  code: ({ ...props }: any) => <code className="bg-base-300 rounded px-1" {...props} />,
-  pre: ({ ...props }: any) => <pre className="bg-base-300 rounded p-4 my-2 overflow-x-auto" {...props} />,
-  table: ({ ...props }: any) => (
-    <div className="overflow-x-auto my-4">
-      <table className="table table-zebra w-full" {...props} />
-    </div>
-  ),
-  thead: ({ ...props }: any) => <thead className="bg-base-200" {...props} />,
-  tbody: ({ ...props }: any) => <tbody {...props} />,
-  tr: ({ ...props }: any) => <tr {...props} />,
-  th: ({ ...props }: any) => <th {...props} />,
-  td: ({ ...props }: any) => <td {...props} />,
+  a: ({ ...props }: any) => <a target="_blank" rel="noopener noreferrer" {...props} />,
 };
 
 const eventStore = new EventStore();
@@ -66,21 +47,20 @@ function ArticleCard({ article, onClick }: { article: Article; onClick: () => vo
   const profile = use$(author.profile$);
 
   return (
-    <div className="card card-side bg-base-100 shadow-sm h-48">
-      <figure className="w-48 min-w-48 h-full">
-        <img src={article.image || ""} alt={article.title} className="w-full h-full object-cover" />
-      </figure>
-      <div className="card-body overflow-hidden">
-        <h2 className="card-title text-lg truncate">{article.title}</h2>
+    <div className="flex border border-base-300 rounded-lg h-48 overflow-hidden cursor-pointer hover:bg-base-200 transition-colors" onClick={onClick}>
+      <div className="w-48 min-w-48 h-full shrink-0 overflow-hidden bg-base-200">
+        {article.image ? (
+          <img src={article.image} alt="" className="size-full object-cover" />
+        ) : (
+          <div className="size-full flex items-center justify-center text-xs text-base-content/40">No image</div>
+        )}
+      </div>
+      <div className="flex flex-col gap-1 p-4 overflow-hidden">
+        <h2 className="text-lg font-semibold truncate">{article.title}</h2>
         <p className="text-sm opacity-70">
           By {profile?.displayName || author.npub.slice(0, 8)} • {article.publishedDate.toLocaleDateString()}
         </p>
-        <p className="line-clamp-2">{article.summary}</p>
-        <div className="card-actions justify-end mt-auto">
-          <button className="btn btn-primary" onClick={onClick}>
-            Read
-          </button>
-        </div>
+        <p className="line-clamp-2 text-sm opacity-80">{article.summary}</p>
       </div>
     </div>
   );
@@ -179,29 +159,25 @@ function ArticleView({ article, onBack }: { article: Article; onBack: () => void
   const profile = use$(author.profile$);
 
   return (
-    <div className="container mx-auto my-8 max-w-4xl px-4">
-      <div className="py-4">
-        <button className="btn btn-ghost gap-2 mb-4" onClick={onBack}>
-          ← Back to Articles
-        </button>
+    <div className="container mx-auto my-8 max-w-3xl px-4">
+      <button className="btn btn-ghost gap-2 mb-6" onClick={onBack}>
+        ← Back to Articles
+      </button>
 
-        {article.image && (
-          <div className="w-full h-[300px] mb-6 rounded-lg overflow-hidden">
-            <img src={article.image} alt={article.title} className="w-full h-full object-cover" />
-          </div>
-        )}
+      {article.image && (
+        <img src={article.image} alt={article.title} className="w-full h-64 object-cover rounded-lg mb-8" />
+      )}
 
-        <h1 className="text-4xl font-bold mb-4">{article.title}</h1>
-        <p className="text-lg opacity-70 mb-8">By {profile?.displayName || author.npub.slice(0, 8)}</p>
+      <article className="prose prose-lg dark:prose-invert max-w-none">
+        <h1>{article.title}</h1>
+        <p className="lead">By {profile?.displayName || author.npub.slice(0, 8)}</p>
 
-        <div className="prose prose-lg max-w-none">
-          <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
-            {article.event.content}
-          </ReactMarkdown>
-        </div>
+        <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
+          {article.event.content}
+        </ReactMarkdown>
+      </article>
 
-        <CommentsSection article={article} />
-      </div>
+      <CommentsSection article={article} />
     </div>
   );
 }

@@ -6,12 +6,11 @@
 import { Note, Zap } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core/event-store";
-import { kinds, relaySet } from "applesauce-core/helpers";
+import { kinds, npubEncode, relaySet } from "applesauce-core/helpers";
+import { decodeEventPointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { nip19 } from "nostr-tools";
-import { EventPointer, npubEncode } from "nostr-tools/nip19";
 import { useEffect, useState } from "react";
 
 // Setup event store
@@ -120,9 +119,9 @@ export default function ThreadExample() {
     }
 
     try {
-      const decoded = nip19.decode(neventInput.trim().replace(/^nostr:/, ""));
-      if (decoded.type === "nevent") {
-        setEventPointer(decoded.data);
+      const pointer = decodeEventPointer(neventInput.trim().replace(/^nostr:/, ""));
+      if (pointer) {
+        setEventPointer(pointer);
         setError(null);
       } else {
         throw new Error("Input must be a nevent (NIP-19 event pointer)");
