@@ -253,8 +253,7 @@ function Composer({ user, signer }: { user: User; signer: ExtensionSigner }) {
           onChange={() => setMediaOptimization((v) => !v)}
         />
         <span>
-          Media optimization{" "}
-          <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
+          Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
         </span>
       </label>
 

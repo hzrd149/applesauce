@@ -250,10 +250,7 @@ function EditorView({ user }: { user: User }) {
 
   const slots = profileBadges?.slots ?? [];
 
-  const publishRelays = useMemo(
-    () => (mailboxes ? relaySet(RELAYS, mailboxes.outboxes) : RELAYS),
-    [mailboxes],
-  );
+  const publishRelays = useMemo(() => (mailboxes ? relaySet(RELAYS, mailboxes.outboxes) : RELAYS), [mailboxes]);
 
   const runAction = useCallback(async (action: string, factory: ProfileBadgesFactory) => {
     const signer = signer$.value;

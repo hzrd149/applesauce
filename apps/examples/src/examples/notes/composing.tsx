@@ -224,8 +224,7 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: Extens
           onChange={() => setMediaOptimization((v) => !v)}
         />
         <span>
-          Media optimization{" "}
-          <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
+          Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
         </span>
       </label>
       {buildError && <div className="text-error text-sm">{buildError}</div>}
@@ -393,9 +392,7 @@ function SignedInFlow({ user, signer }: { user: User; signer: ExtensionSigner })
       <div className={screen === "compose" ? "" : "hidden"}>
         <ComposerBody user={user} signer={signer} onContinue={goPublish} />
       </div>
-      {screen === "publish" && draft && (
-        <PublishBody user={user} signer={signer} draft={draft} onBack={goCompose} />
-      )}
+      {screen === "publish" && draft && <PublishBody user={user} signer={signer} draft={draft} onBack={goCompose} />}
     </>
   );
 }

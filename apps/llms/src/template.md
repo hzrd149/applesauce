@@ -31,9 +31,11 @@ React hooks (use$, useRenderedContent, useEventModel)
 ## Packages
 
 ### applesauce-core
+
 Central package. Provides `EventStore`, `EventFactory`, helpers, models, casts, RxJS operators.
 
 **Key exports by subpath:**
+
 - `applesauce-core` — `EventStore`, `EventFactory`, logger
 - `applesauce-core/event-store` — `EventStore`, `AsyncEventStore`, `EventMemory`
 - `applesauce-core/helpers` — event/tag/filter/profile/relay utility functions
@@ -44,9 +46,11 @@ Central package. Provides `EventStore`, `EventFactory`, helpers, models, casts, 
 - `applesauce-core/observable` — `mapEventsToStore`, `mapEventsToTimeline`, `watchEventUpdates`
 
 ### applesauce-common
+
 NIP-specific helpers, factories, casts, and operations for most event kinds.
 
 **Key exports by subpath:**
+
 - `applesauce-common/helpers` — NIP-specific helpers (badges, zaps, groups, bookmarks, calendar, gift-wrap, etc.)
 - `applesauce-common/factories` — `NoteFactory`, `CommentFactory`, `ReactionFactory`, `ZapRequestFactory`, `BadgeFactory`, `ProfileBadgesFactory`, list/relay factories
 - `applesauce-common/operations` — per-NIP operations (`Note`, `Zap`, `Badge`, `BadgeAward`, `ProfileBadges`, `GiftWrap`)
@@ -54,6 +58,7 @@ NIP-specific helpers, factories, casts, and operations for most event kinds.
 - `applesauce-common/models` — domain-specific models
 
 ### applesauce-relay
+
 Relay connections and pooling.
 
 - `applesauce-relay` — `RelayPool`, `Relay`, `RelayGroup`, `RelayLiveness`
@@ -63,6 +68,7 @@ Relay connections and pooling.
 - `applesauce-relay/negentropy` — NIP-77 sync
 
 ### applesauce-loaders
+
 Batched, deduplicated event loading.
 
 - `applesauce-loaders` — `UpstreamPool`, `CacheRequest`, `NostrRequest`
@@ -70,29 +76,34 @@ Batched, deduplicated event loading.
 - `applesauce-loaders/operators` — `distinctRelays`, `distinctTimeout`
 
 ### applesauce-signers
+
 Event signing implementations.
 
 - `applesauce-signers/signers` — `ExtensionSigner` (NIP-07), `PrivateKeySigner`, `PasswordSigner` (NIP-49), `NostrConnectSigner` (NIP-46 client), `NostrConnectProvider` (NIP-46 server), `SerialPortSigner`, `SimpleSigner`, `ReadonlySigner`
 
 ### applesauce-actions
+
 High-level actions that orchestrate factory → sign → publish.
 
 - `applesauce-actions` — `ActionRunner`
 - `applesauce-actions/actions` — `CreateProfile`, `UpdateProfile`, `FollowUser`, `UnfollowUser`, `MuteUser`, `UnmuteUser`, `BookmarkEvent`, `UnbookmarkEvent`, `CreateComment`, plus calendar, blossom, list, relay, and app-data actions
 
 ### applesauce-accounts
+
 Multi-account management.
 
 - `applesauce-accounts` — `AccountManager`, `ProxySigner`
 - `applesauce-accounts/accounts` — `ExtensionAccount`, `PasswordAccount`, `PrivateKeyAccount`, `NostrConnectAccount`, `ReadonlyAccount`, `SerialPortAccount`, `SimpleAccount`
 
 ### applesauce-react
+
 React bindings.
 
 - `applesauce-react/hooks` — `use$`, `useEventModel`, `useObservable`, `useObservableMemo`, `useRenderedContent`, `useRenderNast`, `useAccountManager`, `useActiveAccount`, `useAccounts`, `useActionRunner`, `useAction`, `useEventStore`
 - `applesauce-react/providers` — `EventStoreProvider`, `AccountsProvider`, `ActionsProvider`
 
 ### applesauce-content
+
 Parse and render note/article content.
 
 - `applesauce-content/text` — `getParsedContent`, transformers: `links`, `nostrMentions`, `galleries`, `emojis`, `hashtags`, `lightningInvoices`, `cashuTokens`
@@ -100,6 +111,7 @@ Parse and render note/article content.
 - `applesauce-content/markdown` — `remarkNostrMentions`
 
 ### applesauce-sqlite
+
 SQLite-backed event databases for persistent storage.
 
 - `applesauce-sqlite/better-sqlite3` — `BetterSqlite3EventDatabase` (sync, Node.js)
@@ -110,6 +122,7 @@ SQLite-backed event databases for persistent storage.
 - `applesauce-sqlite/bun` — `BunSqliteEventDatabase`
 
 ### applesauce-wallet
+
 NIP-60 Cashu wallet (WIP).
 
 - `applesauce-wallet/casts` — `Wallet`, `WalletToken`, `WalletHistory`, `Nutzap`
@@ -117,6 +130,7 @@ NIP-60 Cashu wallet (WIP).
 - `applesauce-wallet/actions` — `CreateWallet`, `UnlockWallet`, `ReceiveToken`, `ReceiveNutzaps`
 
 ### applesauce-wallet-connect
+
 NIP-47 Nostr Wallet Connect.
 
 - `applesauce-wallet-connect/wallet-connect` — `WalletConnect` (client)
@@ -127,9 +141,11 @@ NIP-47 Nostr Wallet Connect.
 ## Core Concepts
 
 ### EventStore
+
 Single source of truth for events. Handles dedup, replaceable events (NIP-33), addressable events, and deletions. All reads return Observables that update when data changes.
 
 **Key methods:**
+
 - `add(event)` — add event, returns the event or undefined if rejected
 - `event(id)` — Observable of event by id
 - `replaceable(kind, pubkey)` — Observable of latest replaceable event
@@ -142,6 +158,7 @@ Single source of truth for events. Handles dedup, replaceable events (NIP-33), a
 - `getEvent(id)` — sync get (returns event or undefined)
 
 ### Reactive Pattern (RxJS)
+
 All store queries, casts, and loaders return RxJS Observables. In React, use `use$` to subscribe:
 
 ```tsx
@@ -150,16 +167,19 @@ const notes = use$(() => castTimelineStream(store.timeline(filters), Note), [fil
 ```
 
 ### Casts
+
 Type-safe wrappers around raw nostr events. Created via `castEvent(store, event, CastClass)` or `castEventStream` / `castTimelineStream` for collections. Each cast exposes typed properties and `$` observables for related data.
 
 Common casts: `Note`, `Article`, `Profile`, `User`, `Reaction`, `Zap`, `Badge`, `BadgeAward`.
 
 ### Models
+
 Reactive computed views from the store. Created via `store.model(ModelClass, ...args)`. Cached by arguments. Return Observables.
 
 Built-in: `ProfileModel`, `ContactsModel`, `MailboxesModel`, `ReactionsModel`, `CommentsModel`.
 
 ### EventFactory + Operations
+
 Typed factories (e.g. `NoteFactory`) extend `EventFactory` and provide static `.create()` / `.modify()` entry points. Chain `.as(signer)` then `.sign()` to produce a signed event:
 
 ```ts
@@ -169,15 +189,17 @@ const signed = await NoteFactory.create("Hello world").as(signer).sign();
 `EventOperation` and `TagOperation` are composable functions for modifying event drafts. Use `modifyPublicTags(tagPipe(...ops))` to chain tag mutations.
 
 ### Loaders
+
 Factory functions that batch requests and deduplicate via the store. `createEventLoaderForStore` wires a unified loader into the store so that `store.event()`, `store.replaceable()`, and `store.addressable()` automatically trigger network requests.
 
 ```ts
 createEventLoaderForStore(store, pool, { lookupRelays: ["wss://purplepag.es"] });
 // Now store queries auto-load from relays:
-store.event({ id }).subscribe(event => console.log(event));
+store.event({ id }).subscribe((event) => console.log(event));
 ```
 
 ### Actions
+
 Async functions receiving `ActionContext` with `events` (EventStore), `self` (user pubkey), `signer`, `publish`, and `run` (nest actions). `ActionRunner` orchestrates execution.
 
 ```ts
@@ -186,21 +208,29 @@ await runner.run(FollowUser, targetPubkey);
 ```
 
 ### RelayPool
+
 Manages relay connections. Supports subscriptions, publishing, outbox model (NIP-65), NIP-42 auth, and negentropy sync.
 
 ```ts
 const pool = new RelayPool();
-pool.subscription(filters, ["wss://relay.example.com"]).pipe(onlyEvents()).subscribe(e => store.add(e));
+pool
+  .subscription(filters, ["wss://relay.example.com"])
+  .pipe(onlyEvents())
+  .subscribe((e) => store.add(e));
 ```
 
 ### Signers
+
 All implement the NIP-07 signer interface (`signEvent`, `nip04`, `nip44`). Use `ExtensionSigner` for browser extensions, `NostrConnectSigner` for NIP-46 remote signing, `PasswordSigner` for NIP-49 encrypted keys.
 
 ### AccountManager
+
 Manages multiple accounts with serialization. Integrates with `EventFactory` via `ProxySigner` so switching accounts automatically changes the signer.
 
 ### Caching / Storage
+
 Two patterns:
+
 1. **Client cache**: `EventStore` + `persistEventsToCache` (from `applesauce-core/helpers`) + `cacheRequest` on loaders. Uses `NostrIDB` (IndexedDB) or `window.nostrdb`.
 2. **Full database**: `AsyncEventStore` + SQL backend (`LibsqlEventDatabase`, `TursoWasmEventDatabase`, etc.) for server-side or heavy clients.
 
@@ -209,6 +239,7 @@ Two patterns:
 ## Common Patterns
 
 ### Minimal app setup
+
 ```ts
 import { EventStore } from "applesauce-core";
 import { RelayPool } from "applesauce-relay";
@@ -220,6 +251,7 @@ createEventLoaderForStore(store, pool);
 ```
 
 ### React integration
+
 ```tsx
 import { EventStoreProvider } from "applesauce-react/providers";
 import { use$ } from "applesauce-react/hooks";
@@ -229,6 +261,7 @@ const profile = use$(store.profile(pubkey));
 ```
 
 ### Creating and publishing events
+
 ```ts
 import { NoteFactory } from "applesauce-common/factories";
 
@@ -238,6 +271,7 @@ store.add(signed);
 ```
 
 ### Using actions
+
 ```ts
 import { ActionRunner } from "applesauce-actions";
 import { FollowUser } from "applesauce-actions/actions";
@@ -272,6 +306,7 @@ Each example is listed below with a link to its rendered markdown file. The mark
 ### Example structure
 
 Every example follows this pattern:
+
 - **JSDoc header**: description, tags, and related examples
 - **Imports**: all applesauce packages plus React, RxJS, and UI dependencies
 - **Shared services**: `EventStore`, `RelayPool`, loaders instantiated at module level
