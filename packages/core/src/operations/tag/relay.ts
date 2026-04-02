@@ -1,4 +1,4 @@
-import { TagOperation } from "../../event-factory/types.js";
+import type { TagOperation } from "../../factories/types.js";
 import { isSameURL, normalizeURL } from "../../helpers/url.js";
 import { addNameValueTag } from "./common.js";
 

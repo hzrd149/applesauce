@@ -6,7 +6,6 @@
 import { ActionRunner } from "applesauce-actions";
 import { AddBlossomServer, RemoveBlossomServer, SetDefaultBlossomServer } from "applesauce-actions/actions/blossom";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core";
 import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
@@ -28,11 +27,8 @@ const pool = new RelayPool();
 // Create NIP-07 signer
 const signer = new ExtensionSigner();
 
-// Setup factory with extension signer
-const factory = new EventFactory({ signer });
-
 // Create action hub for running actions
-const actions = new ActionRunner(eventStore, factory);
+const actions = new ActionRunner(eventStore, signer);
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {

@@ -1,4 +1,4 @@
-import { CommentBlueprint, CommentBlueprintOptions } from "applesauce-common/blueprints";
+import { CommentFactory, CommentBlueprintOptions } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { CommentPointer, isCommentAddressPointer, isCommentEventPointer } from "applesauce-common/helpers/comment";
 import { relaySet } from "applesauce-core/helpers";
@@ -28,7 +28,9 @@ export function CreateComment(
   content: string,
   options?: CommentBlueprintOptions,
 ): Action {
-  return async ({ factory, user, publish, events, sign }) => {
+  return async ({ signer, user, publish, events }) => {
+    if (!signer) throw new Error("Missing signer");
+
     // Get the parent author's pubkey from the pointer/event (without loading the full event)
     const parentAuthorPubkey = getParentPubkey(parent);
 
@@ -41,7 +43,7 @@ export function CreateComment(
     ]);
 
     // Create and sign the comment
-    const comment = await factory.create(CommentBlueprint, parent, content, options).then(sign);
+    const comment = await CommentFactory.create(parent, content, options).sign(signer);
 
     // Combine all relay lists (remove duplicates)
     const relays = relaySet(parentAuthorInboxes, userOutboxes);

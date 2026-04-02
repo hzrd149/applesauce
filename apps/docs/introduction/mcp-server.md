@@ -59,6 +59,17 @@ Configure the MCP server for your preferred IDE:
 }
 ```
 
+```json [Zed]
+// settings.json or ~/.config/zed/settings.json
+{
+  "context_servers": {
+    "applesauce": {
+      "url": "https://mcp.applesauce.build/mcp"
+    }
+  }
+}
+```
+
 ```json [Claude Desktop]
 // ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)
 // %APPDATA%\Claude\claude_desktop_config.json (Windows)
@@ -89,6 +100,7 @@ Configure the MCP server for your preferred IDE:
 
 - [MCP in OpenCode](https://opencode.ai/docs/mcp-servers/)
 - [MCP in Cursor](https://cursor.com/docs/context/mcp)
+- [MCP in Zed](https://zed.dev/docs/ai/mcp)
 
 ## Recommended: Install Nostrbook MCP
 
@@ -127,6 +139,21 @@ Add Nostrbook MCP alongside Applesauce in your configuration:
 // .cursor/mcp.json (project) or ~/.cursor/mcp.json (global)
 {
   "mcpServers": {
+    "applesauce": {
+      "url": "https://mcp.applesauce.build/mcp"
+    },
+    "nostr": {
+      "command": "npx",
+      "args": ["-y", "@nostrbook/mcp@latest"]
+    }
+  }
+}
+```
+
+```json [Zed]
+// settings.json or ~/.config/zed/settings.json
+{
+  "context_servers": {
     "applesauce": {
       "url": "https://mcp.applesauce.build/mcp"
     },

@@ -1,30 +1,27 @@
+import { CalendarFactory } from "applesauce-common/factories";
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers/calendar-event";
-import * as Calendar from "applesauce-common/operations/calendar";
-import { EventOperation } from "applesauce-core/event-factory";
 import { AddressPointer } from "applesauce-core/helpers";
-import { isEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { isEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { firstValueFrom, of, timeout } from "rxjs";
-import { Action } from "../action-runner.js";
+import { Action, ActionContext } from "../action-runner.js";
 
-function ModifyCalendarEvent(calendar: NostrEvent | AddressPointer, operations: EventOperation[]): Action {
-  return async ({ factory, user, publish, events, sign }) => {
-    const [event, outboxes] = await Promise.all([
-      isEvent(calendar)
-        ? Promise.resolve(calendar)
-        : firstValueFrom(
-            events.replaceable(kinds.Calendar, user.pubkey).pipe(timeout({ first: 1000, with: () => of(undefined) })),
-          ),
-      user.outboxes$.$first(1000, undefined),
-    ]);
+async function modifyCalendar(
+  calendar: NostrEvent | AddressPointer,
+  { events, user }: ActionContext,
+): Promise<[CalendarFactory, string[] | undefined]> {
+  const [calendarEvent, outboxes] = await Promise.all([
+    isEvent(calendar)
+      ? Promise.resolve(calendar)
+      : firstValueFrom(events.replaceable(calendar).pipe(timeout({ first: 1000, with: () => of(undefined) }))),
+    user.outboxes$.$first(1000, undefined),
+  ]);
 
-    if (!event) throw new Error("Calendar event not found");
+  if (!calendarEvent) throw new Error("Calendar event not found");
 
-    const signed = await factory.modify(event, ...operations).then(sign);
-    await publish(signed, outboxes);
-  };
+  return [CalendarFactory.modify(calendarEvent), outboxes];
 }
 
 /** Adds a calendar event to a calendar */
@@ -32,7 +29,11 @@ export function AddEventToCalendar(calendar: NostrEvent | AddressPointer, event:
   if (event.kind !== DATE_BASED_CALENDAR_EVENT_KIND && event.kind !== TIME_BASED_CALENDAR_EVENT_KIND)
     throw new Error("Event is not a calendar event");
 
-  return ModifyCalendarEvent(calendar, [Calendar.addEvent(event)]);
+  return async (context) => {
+    const [factory, outboxes] = await modifyCalendar(calendar, context);
+    const signed = await factory.addEvent(event).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
 /** Removes a calendar event from a calendar */
@@ -43,19 +44,19 @@ export function RemoveEventFromCalendar(
   if (event.kind !== DATE_BASED_CALENDAR_EVENT_KIND && event.kind !== TIME_BASED_CALENDAR_EVENT_KIND)
     throw new Error("Event is not a calendar event");
 
-  return ModifyCalendarEvent(calendar, [Calendar.removeEvent(event)]);
+  return async (context) => {
+    const [factory, outboxes] = await modifyCalendar(calendar, context);
+    const signed = await factory.removeEvent(event).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
-/** Creates a new calendar event with title and events */
+/** Creates a new calendar with a title and optional events */
 export function CreateCalendar(title: string, events?: (NostrEvent | AddressPointer)[]): Action {
-  return async ({ factory, sign, publish, user }) => {
-    const event = await factory
-      .build(
-        { kind: kinds.Calendar },
-        Calendar.setTitle(title),
-        ...(events?.map((event) => Calendar.addEvent(event)) ?? []),
-      )
-      .then(sign);
-    await publish(event, await user.outboxes$.$first(1000, undefined));
+  return async ({ signer, publish, user }) => {
+    let factory = CalendarFactory.create(title);
+    for (const event of events ?? []) factory = factory.addEvent(event);
+    const signed = await factory.sign(signer);
+    await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
 }

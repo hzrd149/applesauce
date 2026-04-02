@@ -1,6 +1,6 @@
 import { mapEventsToTimeline } from "applesauce-core";
 import { isEvent, type NostrEvent } from "applesauce-core/helpers";
-import { completeOnEose, Relay, type RelayOptions } from "applesauce-relay";
+import { Relay, type RelayOptions } from "applesauce-relay";
 import { filter, lastValueFrom, Observable } from "rxjs";
 
 export const DEFAULT_PRIMAL_RELAY = "wss://cache2.primal.net/v1";
@@ -252,10 +252,10 @@ export class PrimalCache extends Relay {
 
   /** Make a "cache" request to the caching server */
   cacheRequest<R extends CacheRequest>(request: CacheRequest["req"]): Observable<R["event"]> {
-    return this.req({
+    return this.request({
       // @ts-expect-error
       cache: request,
-    }).pipe(completeOnEose()) as unknown as Observable<R["event"]>;
+    }) as unknown as Observable<R["event"]>;
   }
 
   /** Makes a cache request and returns a timeline of events */

@@ -1,5 +1,5 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { EventFactory, EventStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { unlockHiddenTags } from "applesauce-core/helpers";
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -12,13 +12,11 @@ const testPubkey = "test-pubkey";
 const testIdentifier = "test-list";
 
 let events: EventStore;
-let factory: EventFactory;
 let hub: ActionRunner;
 
 beforeEach(() => {
   events = new EventStore();
-  factory = new EventFactory({ signer: user });
-  hub = new ActionRunner(events, factory);
+  hub = new ActionRunner(events, user);
 
   // Add a follow set event to work with
   const followSet = user.event({

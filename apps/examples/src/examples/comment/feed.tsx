@@ -7,7 +7,8 @@ import { Comment } from "applesauce-common/casts";
 import { COMMENT_KIND, CommentPointer } from "applesauce-common/helpers";
 import { CommentsModel } from "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { CommentFactory } from "applesauce-common/factories";
+import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, NostrEvent, persistEventsToCache, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -47,9 +48,7 @@ const appRelays = new BehaviorSubject<string[]>(["wss://relay.damus.io/", "wss:/
 // BehaviorSubject to store the selected thread root pointer
 const selectedThread$ = new BehaviorSubject<CommentPointer | null>(null);
 
-// Setup EventFactory for creating comments
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
 
 /** Component to render a single comment in the feed */
 function CommentItem({ comment }: { comment: Comment }) {
@@ -177,9 +176,8 @@ function ReplyForm({
         return;
       }
 
-      // Create comment using the blueprint
-      const commentTemplate = await factory.comment(parentEvent, content.trim());
-      const signed = await factory.sign(commentTemplate);
+      // Create and sign comment
+      const signed = await CommentFactory.create(parentEvent, content.trim()).sign(signer);
 
       // Publish to relays
       await pool.publish(relays, signed);

@@ -3,14 +3,11 @@
  * @tags nip-29, nip-72, group, threads, comments
  * @related group/groups, comment/feed
  */
-import { CommentBlueprint } from "applesauce-common/blueprints";
+import { CommentFactory, GroupThreadFactory } from "applesauce-common/factories";
 import { COMMENT_KIND, decodeGroupPointer, GroupPointer } from "applesauce-common/helpers";
 import { CommentsModel } from "applesauce-common/models";
-import * as Operations from "applesauce-common/operations";
-import { EventFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets, NostrEvent } from "applesauce-core/helpers";
-import { setShortTextContent } from "applesauce-core/operations/content";
-import { includeSingletonTag } from "applesauce-core/operations/tags";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -24,7 +21,6 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
 
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
@@ -115,11 +111,8 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
     e.preventDefault();
     setSending(true);
     try {
-      let draft = await factory.create(CommentBlueprint, event, content);
-      // Include the group h tag
-      draft = await factory.modify(draft, Operations.Group.setGroupPointer(pointer));
-      // Sign the event
-      const signed = await factory.sign(draft);
+      // Create a comment and include the group h tag
+      const signed = await CommentFactory.create(event, content).group(pointer).sign(signer);
       // Publish the event
       await pool.publish([pointer.relay], signed);
       // Add to the event store for the app
@@ -196,16 +189,7 @@ function NewThreadForm({
     e.preventDefault();
     setSending(true);
     try {
-      const draft = await factory.build(
-        { kind: 11 },
-        // Include the "h" tag for the group
-        Operations.Group.setGroupPointer(pointer),
-        // Set the title
-        includeSingletonTag(["title", title]),
-        // Set the content and handle hashtags and mentions
-        setShortTextContent(content),
-      );
-      const signed = await factory.sign(draft);
+      const signed = await GroupThreadFactory.create(pointer, title, content).sign(signer);
       // Add to the event store for the app
       eventStore.add(signed);
       // Publish the event

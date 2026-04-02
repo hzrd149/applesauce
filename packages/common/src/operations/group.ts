@@ -1,4 +1,4 @@
-import { EventOperation, TagOperation } from "applesauce-core/event-factory";
+import { EventOperation, TagOperation } from "applesauce-core/factories";
 import {
   ensureNamedValueTag,
   ensureWebSocketURL,

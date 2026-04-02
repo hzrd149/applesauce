@@ -57,15 +57,15 @@
       "import": "./dist/casts/*.js",
       "require": "./dist/casts/*.js"
     },
-    "./blueprints": {
-      "types": "./dist/blueprints/index.d.ts",
-      "import": "./dist/blueprints/index.js",
-      "require": "./dist/blueprints/index.js"
+    "./factories": {
+      "types": "./dist/factories/index.d.ts",
+      "import": "./dist/factories/index.js",
+      "require": "./dist/factories/index.js"
     },
-    "./blueprints/*": {
-      "types": "./dist/blueprints/*.d.ts",
-      "import": "./dist/blueprints/*.js",
-      "require": "./dist/blueprints/*.js"
+    "./factories/*": {
+      "types": "./dist/factories/*.d.ts",
+      "import": "./dist/factories/*.js",
+      "require": "./dist/factories/*.js"
     },
     "./operations": {
       "types": "./dist/operations/index.d.ts",

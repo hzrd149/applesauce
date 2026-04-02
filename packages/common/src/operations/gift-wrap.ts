@@ -1,7 +1,8 @@
 // Read https://github.com/nostr-protocol/nips/blob/master/59.md#overview for details on rumors and seals
 // Gift wrap (signed random key) -> seal (signed sender key) -> rumor (unsigned)
 
-import { buildEvent, EventOperation } from "applesauce-core/event-factory";
+import type { EventOperation } from "applesauce-core/factories";
+import { blankEventTemplate } from "applesauce-core/factories";
 import { EncryptedContentSymbol } from "applesauce-core/helpers/encrypted-content";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import {
@@ -29,16 +30,21 @@ function randomNow() {
   return unixNow() - Math.floor(Math.random() * 60 * 60);
 }
 
-/** Converts an event to a rumor. The first operation in the gift wrap pipeline */
-export function toRumor(): EventOperation<EventTemplate | UnsignedEvent | NostrEvent, Rumor> {
-  return async (draft, ctx) => {
+/**
+ * Converts an event to a rumor. The first operation in the gift wrap pipeline
+ * @param signer - EventSigner for getting pubkey
+ */
+export function toRumor(
+  signer?: import("applesauce-core/factories").EventSigner,
+): EventOperation<EventTemplate | UnsignedEvent | NostrEvent, Rumor> {
+  return async (draft) => {
     // @ts-expect-error
     const rumor: Rumor = { ...draft };
 
     // Ensure rumor has pubkey
     if (!Reflect.has(rumor, "pubkey")) {
-      if (!ctx.signer) throw new Error("A signer is required to create a rumor");
-      rumor.pubkey = await ctx.signer.getPublicKey();
+      if (!signer) throw new Error("A signer is required to create a rumor");
+      rumor.pubkey = await signer.getPublicKey();
     }
 
     // Ensure rumor has id
@@ -51,22 +57,27 @@ export function toRumor(): EventOperation<EventTemplate | UnsignedEvent | NostrE
   };
 }
 
-/** Seals a rumor in a NIP-59 seal. The second operation in the gift wrap pipeline */
-export function sealRumor(pubkey: string): EventOperation<Rumor, NostrEvent> {
-  return async (rumor, ctx) => {
-    if (!ctx.signer) throw new Error("A signer is required to create a seal");
+/**
+ * Seals a rumor in a NIP-59 seal. The second operation in the gift wrap pipeline
+ * @param pubkey - Pubkey to encrypt seal for
+ * @param signer - EventSigner for signing the seal
+ */
+export function sealRumor(
+  pubkey: string,
+  signer?: import("applesauce-core/factories").EventSigner,
+): EventOperation<Rumor, NostrEvent> {
+  return async (rumor) => {
+    if (!signer) throw new Error("A signer is required to create a seal");
 
     const plaintext = JSON.stringify(rumor);
-    const unsigned = await buildEvent(
-      { kind: kinds.Seal, created_at: randomNow() },
-      ctx,
+    const unsigned = await eventPipe(
       // Set the encrypted content
-      setEncryptedContent(pubkey, plaintext),
-      // Stamp the seal with the signers's pubkey
-      stamp(),
-    );
+      setEncryptedContent(pubkey, plaintext, signer),
+      // Stamp the seal with the signer's pubkey
+      stamp(signer),
+    )({ ...blankEventTemplate(kinds.Seal), created_at: randomNow() });
 
-    const seal = await ctx.signer.signEvent(unsigned);
+    const seal = await signer.signEvent(unsigned);
 
     // Set the downstream reference on the seal
     Reflect.set(seal, RumorSymbol, rumor);
@@ -88,18 +99,15 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
     const key = generateSecretKey();
     const plaintext = JSON.stringify(seal);
 
-    const draft = await buildEvent(
-      {
-        kind: kinds.GiftWrap,
-        created_at: randomNow(),
-        content: nip44.encrypt(plaintext, nip44.getConversationKey(key, pubkey)),
-        tags: [["p", pubkey]],
-      },
-      // Pass an empty context here so here there is no chance to use the users pubkey
-      {},
+    const draft = await eventPipe(
       // Set meta tags on the gift wrap
       setMetaTags(opts),
-    );
+    )({
+      ...blankEventTemplate(kinds.GiftWrap),
+      created_at: randomNow(),
+      content: nip44.encrypt(plaintext, nip44.getConversationKey(key, pubkey)),
+      tags: [["p", pubkey]],
+    });
 
     const gift = finalizeEvent(draft, key);
 
@@ -116,15 +124,21 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
   };
 }
 
-/** An operation that gift wraps an event to a pubkey */
+/**
+ * An operation that gift wraps an event to a pubkey
+ * @param pubkey - Pubkey to gift wrap for
+ * @param signer - EventSigner for creating rumor and seal
+ * @param opts - Optional gift wrap options
+ */
 export function giftWrap(
   pubkey: string,
+  signer?: import("applesauce-core/factories").EventSigner,
   opts?: GiftWrapOptions,
 ): EventOperation<EventTemplate | UnsignedEvent | NostrEvent, NostrEvent> {
   return eventPipe(
-    toRumor(),
+    toRumor(signer),
     // @ts-expect-error
-    sealRumor(pubkey),
+    sealRumor(pubkey, signer),
     wrapSeal(pubkey, opts),
   ) as EventOperation<EventTemplate | UnsignedEvent | NostrEvent, NostrEvent>;
 }

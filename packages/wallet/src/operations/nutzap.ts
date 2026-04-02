@@ -27,7 +27,7 @@ export function setMint(mint: string): EventOperation {
 
 /** Sets the recipient of a nutzap event */
 export function setRecipient(recipient: string | ProfilePointer): EventOperation {
-  return modifyPublicTags(addProfilePointerTag(recipient, true));
+  return modifyPublicTags(addProfilePointerTag(recipient, undefined, true));
 }
 
 /** Sets the event that is being nutzapped */

@@ -111,7 +111,8 @@ export default defineConfig({
                 text: "Event Factory",
                 link: "/creating/factory/event-factory",
               },
-              { text: "Blueprints", link: "/creating/factory/blueprints" },
+              { text: "Common Factories", link: "/creating/factory/common-factories" },
+              { text: "Extending Factories", link: "/creating/factory/extending-factories" },
               {
                 text: "Event Operations",
                 link: "/creating/factory/event-operations",
@@ -231,6 +232,7 @@ export default defineConfig({
         text: "Migrations",
         collapsed: true,
         items: [
+          { text: "v5 to v6", link: "/migration/v5-v6" },
           { text: "v4 to v5", link: "/migration/v4-v5" },
           { text: "v2 to v3", link: "/migration/v2-v3" },
           { text: "v1 to v2", link: "/migration/v1-v2" },

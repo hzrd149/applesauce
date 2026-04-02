@@ -26,7 +26,7 @@ pnpm install applesauce-core
 
 ## Common
 
-The `applesauce-common` package contains the helpers, models, and blueprints for common nostr application patterns. [see more](https://applesauce.build/typedoc/modules/applesauce-common.html)
+The `applesauce-common` package contains the helpers, models, factories, and NIP-specific utilities for common nostr application patterns. [see more](https://applesauce.build/typedoc/modules/applesauce-common.html)
 
 :::code-group
 
@@ -106,7 +106,7 @@ pnpm install applesauce-accounts
 
 ## Factory
 
-The `EventFactory` class is part of the `applesauce-core` package. Blueprints and additional operations are available in the `applesauce-common` package. [see more](https://applesauce.build/typedoc/modules/applesauce-core.html)
+`applesauce-core` provides the base `EventFactory` builder. `applesauce-common` provides typed factories like `NoteFactory`, `CommentFactory`, and `ContactsFactory`. [see more](https://applesauce.build/typedoc/modules/applesauce-core.html)
 
 :::code-group
 

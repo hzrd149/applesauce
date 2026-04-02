@@ -114,8 +114,7 @@ function HandlerCard({
             <button className="btn btn-sm join-item" onClick={() => modal.current?.showModal()}>
               View event
             </button>
-            {/* @ts-expect-error */}
-            <a className="btn btn-primary btn-sm join-item" href={link} target="_blank" disabled={!link}>
+            <a className="btn btn-primary btn-sm join-item" href={link} target="_blank" aria-disabled={!link}>
               Open with App
             </a>
           </div>

@@ -18,7 +18,7 @@ import {
   unlockGiftWrap,
 } from "applesauce-common/helpers";
 import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesModel } from "applesauce-common/models";
-import { defined, EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import { persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -60,11 +60,8 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
-// Setup event factory for creating events with the signer
-const factory = new EventFactory({ signer: new ProxySigner(signer$) });
-
 // Setup an action runner for running pre-built actions
-const actions = new ActionRunner(eventStore, factory, async (event, relays) => {
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (event, relays) => {
   if (!relays) relays = await user$.value?.inboxes$.$first(1000, undefined);
   if (!relays) throw new Error("No relays found");
 

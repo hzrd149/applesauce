@@ -9,6 +9,7 @@ import { parseBolt11, ParsedInvoice } from "./bolt11.js";
 
 /** Type for validated zap event */
 export type ZapEvent = KnownEvent<kinds.Zap>;
+export type ZapRequestEvent = KnownEvent<kinds.ZapRequest>;
 
 export const ZapRequestSymbol = Symbol.for("zap-request");
 export const ZapSenderSymbol = Symbol.for("zap-sender");
@@ -79,42 +80,45 @@ export function getZapPreimage(zap: NostrEvent): string | undefined {
 }
 
 /** Returns the zap request event inside the zap receipt */
-export function getZapRequest(zap: ZapEvent): NostrEvent;
-export function getZapRequest(zap: NostrEvent): NostrEvent | undefined;
-export function getZapRequest(zap: NostrEvent): NostrEvent | undefined {
+export function getZapRequest(zap: ZapEvent): ZapRequestEvent;
+export function getZapRequest(zap: NostrEvent): ZapRequestEvent | undefined;
+export function getZapRequest(zap: NostrEvent): ZapRequestEvent | undefined {
   return getOrComputeCachedValue(zap, ZapRequestSymbol, () => {
     const description = getTagValue(zap, "description");
     if (!description) return;
 
-    // Attempt to parse the zap request
     try {
-      // Copied from nostr-tools/nip57 and modified to use the internal verifyZap method and return the zap request event
-      let zapRequest: NostrEvent;
-
-      try {
-        zapRequest = JSON.parse(description);
-      } catch (err) {
-        throw new Error("Invalid zap request JSON.");
-      }
-
-      if (!isEvent(zapRequest)) throw new Error("Zap request is not a valid Nostr event.");
-      if (!verifyWrappedEvent(zapRequest)) throw new Error("Invalid signature on zap request.");
-
-      let p = zapRequest.tags.find(([t, v]) => t === "p" && v);
-      if (!p) throw new Error("Zap request doesn't have a 'p' tag.");
-      if (!p[1].match(/^[a-f0-9]{64}$/)) throw new Error("Zap request 'p' tag is not valid hex.");
-
-      let e = zapRequest.tags.find(([t, v]) => t === "e" && v);
-      if (e && !e[1].match(/^[a-f0-9]{64}$/)) throw new Error("Zap request 'e' tag is not valid hex.");
-
-      let relays = zapRequest.tags.find(([t, v]) => t === "relays" && v);
-      if (!relays) throw new Error("Zap request doesn't have a 'relays' tag.");
-
-      return zapRequest;
-    } catch (error) {
+      const zapRequest: NostrEvent = JSON.parse(description);
+      if (isValidZapRequest(zapRequest)) return zapRequest;
+      return undefined;
+    } catch {
       return undefined;
     }
   });
+}
+
+/**
+ * Checks if a zap request event is valid
+ * Validates kind, signature, required p tag (valid hex), optional e tag (valid hex), and relays tag
+ */
+export function isValidZapRequest(event?: NostrEvent): event is ZapRequestEvent {
+  if (!event) return false;
+  if (event.kind !== kinds.ZapRequest) return false;
+
+  if (!isEvent(event)) return false;
+  if (!verifyWrappedEvent(event)) return false;
+
+  const p = event.tags.find(([t, v]) => t === "p" && v);
+  if (!p) return false;
+  if (!p[1].match(/^[a-f0-9]{64}$/)) return false;
+
+  const e = event.tags.find(([t, v]) => t === "e" && v);
+  if (e && !e[1].match(/^[a-f0-9]{64}$/)) return false;
+
+  const relays = event.tags.find(([t, v]) => t === "relays" && v);
+  if (!relays) return false;
+
+  return true;
 }
 
 /**

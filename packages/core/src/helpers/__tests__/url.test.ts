@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isImageURL, isVideoURL, isStreamURL, isAudioURL, ensureWebSocketURL, ensureHttpURL } from "../url.js";
+import {
+  ensureHttpURL,
+  ensureWebSocketURL,
+  isAudioURL,
+  isImageURL,
+  isStreamURL,
+  isVideoURL,
+  normalizeURL,
+} from "../url.js";
 
 describe("isImageURL", () => {
   it("should return true for valid image URLs", () => {
@@ -165,6 +173,29 @@ describe("ensureWebSocketURL", () => {
     expect(typeof ensureWebSocketURL(stringInput)).toBe("string");
     expect(ensureWebSocketURL(urlInput)).toBeInstanceOf(URL);
   });
+
+  it("should convert unknown protocols to wss:", () => {
+    expect(ensureWebSocketURL("ftp://example.com/path")).toBe("wss://example.com/path");
+    expect(ensureWebSocketURL("file://example.com/path")).toBe("wss://example.com/path");
+    expect(ensureWebSocketURL(new URL("ftp://example.com/path"))).toEqual(new URL("wss://example.com/path"));
+  });
+
+  it("should not mutate a URL object passed as input", () => {
+    const input = new URL("http://example.com/path");
+    ensureWebSocketURL(input);
+    expect(input.protocol).toBe("http:");
+  });
+
+  it("should preserve credentials in URLs", () => {
+    expect(ensureWebSocketURL("ws://user:pass@example.com/")).toBe("ws://user:pass@example.com/");
+    expect(ensureWebSocketURL("https://user:pass@example.com/")).toBe("wss://user:pass@example.com/");
+  });
+
+  it("should handle IPv6 host addresses", () => {
+    expect(ensureWebSocketURL("http://[::1]/")).toBe("ws://[::1]/");
+    expect(ensureWebSocketURL("https://[::1]:8443/path")).toBe("wss://[::1]:8443/path");
+    expect(ensureWebSocketURL(new URL("http://[::1]/"))).toEqual(new URL("ws://[::1]/"));
+  });
 });
 
 describe("ensureHttpURL", () => {
@@ -223,5 +254,54 @@ describe("ensureHttpURL", () => {
 
     expect(typeof ensureHttpURL(stringInput)).toBe("string");
     expect(ensureHttpURL(urlInput)).toBeInstanceOf(URL);
+  });
+});
+
+describe("normalizeURL", () => {
+  it("should remove default port 80 for http: and ws:", () => {
+    expect(normalizeURL("http://example.com:80/path")).toBe("http://example.com/path");
+    expect(normalizeURL("ws://example.com:80/path")).toBe("ws://example.com/path");
+  });
+
+  it("should remove default port 443 for https: and wss:", () => {
+    expect(normalizeURL("https://example.com:443/path")).toBe("https://example.com/path");
+    expect(normalizeURL("wss://example.com:443/path")).toBe("wss://example.com/path");
+  });
+
+  it("should preserve non-default ports", () => {
+    expect(normalizeURL("http://example.com:8080/path")).toBe("http://example.com:8080/path");
+    expect(normalizeURL("https://example.com:8443/path")).toBe("https://example.com:8443/path");
+    expect(normalizeURL("ws://example.com:9000/")).toBe("ws://example.com:9000/");
+  });
+
+  it("should not remove port 80 for https: or wss:", () => {
+    expect(normalizeURL("https://example.com:80/path")).toBe("https://example.com:80/path");
+    expect(normalizeURL("wss://example.com:80/path")).toBe("wss://example.com:80/path");
+  });
+
+  it("should not remove port 443 for http: or ws:", () => {
+    expect(normalizeURL("http://example.com:443/path")).toBe("http://example.com:443/path");
+    expect(normalizeURL("ws://example.com:443/path")).toBe("ws://example.com:443/path");
+  });
+
+  it("should collapse double slashes in pathname", () => {
+    expect(normalizeURL("https://example.com//foo//bar")).toBe("https://example.com/foo/bar");
+    expect(normalizeURL("https://example.com/foo///bar/baz")).toBe("https://example.com/foo/bar/baz");
+  });
+
+  it("should preserve query parameters and fragments", () => {
+    expect(normalizeURL("https://example.com/path?q=1#anchor")).toBe("https://example.com/path?q=1#anchor");
+  });
+
+  it("should return a URL object when a URL object is passed", () => {
+    const input = new URL("https://example.com:443/path");
+    const result = normalizeURL(input);
+    expect(result).toBeInstanceOf(URL);
+    expect(result.port).toBe("");
+    expect(result.pathname).toBe("/path");
+  });
+
+  it("should return a string when a string is passed", () => {
+    expect(typeof normalizeURL("https://example.com/path")).toBe("string");
   });
 });

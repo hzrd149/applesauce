@@ -102,23 +102,22 @@ manager.active$.subscribe((account) => {
 
 ### With EventFactory
 
-The AccountManager's `signer` property automatically points to the active account:
+The AccountManager's `signer` property always points to the active account, so you can pass it straight into factory chains:
 
 ```ts
-const factory = new EventFactory({ signer: manager.signer });
+const note = NoteFactory.create("Hello").as(manager.signer);
 
 manager.setActive(account1);
-await factory.sign(draft); // Uses account1
+await note.sign();
 
 manager.setActive(account2);
-await factory.sign(draft); // Uses account2
+await note.sign();
 ```
 
 ### With ActionRunner
 
 ```ts
-const factory = new EventFactory({ signer: manager.signer });
-const actions = new ActionRunner(eventStore, factory, publishFn);
+const actions = new ActionRunner(eventStore, manager.signer, publishFn);
 
 await actions.run(FollowUser, pubkey); // Uses active account
 

@@ -1,8 +1,11 @@
-import { NostrEvent } from "./event.js";
+import { isKind, kinds, KnownEvent, NostrEvent } from "./event.js";
 import { getOrComputeCachedValue } from "./cache.js";
 import { isSafeRelayURL } from "./relays.js";
 import { isRTag } from "./tags.js";
 import { normalizeURL } from "./url.js";
+
+/** Type for NIP-65 relay list events */
+export type MailboxesEvent = KnownEvent<kinds.RelayList>;
 
 export const MailboxesInboxesSymbol = Symbol.for("mailboxes-inboxes");
 export const MailboxesOutboxesSymbol = Symbol.for("mailboxes-outboxes");
@@ -56,4 +59,9 @@ export function getOutboxes(event: NostrEvent): string[] {
 
     return outboxes;
   });
+}
+
+/** Checks if an event is a valid mailboxes event */
+export function isMailboxesEvent(event: any): event is MailboxesEvent {
+  return isKind(event, kinds.RelayList);
 }

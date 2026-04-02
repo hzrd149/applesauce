@@ -1,14 +1,13 @@
 import { MintInfo, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { MintRecommendationBlueprint } from "../blueprints/mint-recommendation.js";
+import { MintRecommendationFactory } from "../factories/mint-recommendation.js";
 import { getCashuMintPubkey, getCashuMintURL, isValidCashuMintInfo } from "../helpers/mint-info.js";
 import {
   MINT_RECOMMENDATION_KIND,
   getRecommendationMintPubkey,
   isValidMintRecommendation,
 } from "../helpers/mint-recommendation.js";
-import { setComment } from "../operations/mint-recommendation.js";
 
 // Helper function to fetch mint pubkey from URL
 async function fetchMintPubkey(mintUrl: string): Promise<string> {
@@ -40,10 +39,11 @@ export type ReviewMintOptions = {
  * Can accept a mint URL, Wallet instance, or MintInfo event.
  */
 export function RecommendMint(input: string | Wallet | NostrEvent, options?: ReviewMintOptions): Action {
-  return async ({ factory, sign, publish }) => {
+  return async ({ signer, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     let mintPubkey: string;
     let url: string | undefined;
-    let addressPointer: NostrEvent | undefined = undefined;
+    let mintInfoEvent: NostrEvent | undefined = undefined;
 
     // Handle different input types
     if (typeof input === "string") {
@@ -61,19 +61,15 @@ export function RecommendMint(input: string | Wallet | NostrEvent, options?: Rev
 
       mintPubkey = getCashuMintPubkey(input)!;
       url = getCashuMintURL(input);
-      // Use the event itself as address pointer (blueprint will convert it)
-      addressPointer = input;
+      // Use the event itself as address pointer (factory will convert it)
+      mintInfoEvent = input;
     }
 
     // Create the mint recommendation event
-    const recommendation = await factory
-      .create(MintRecommendationBlueprint, {
-        mintPubkey,
-        url,
-        addressPointer,
-        comment: options?.comment,
-      })
-      .then(sign);
+    let recommendationFactory = MintRecommendationFactory.create(url || "", mintPubkey);
+    if (mintInfoEvent) recommendationFactory = recommendationFactory.mintInfo(mintInfoEvent);
+    if (options?.comment) recommendationFactory = recommendationFactory.comment(options.comment);
+    const recommendation = await recommendationFactory.sign(signer);
 
     // Publish the event
     await publish(recommendation, options?.relays);
@@ -97,7 +93,7 @@ export function UpdateMintRecommendation(
   comment: string,
   options?: UpdateMintRecommendationOptions,
 ): Action {
-  return async ({ events, factory, self, sign, publish }) => {
+  return async ({ events, signer, self, publish }) => {
     let recommendation: NostrEvent | undefined;
 
     // Handle different input types
@@ -121,7 +117,7 @@ export function UpdateMintRecommendation(
     }
 
     // Update the comment
-    const updated = await factory.modify(recommendation, setComment(comment)).then(sign);
+    const updated = await MintRecommendationFactory.modify(recommendation).comment(comment).sign(signer);
 
     // Publish the updated event
     await publish(updated, options?.relays);

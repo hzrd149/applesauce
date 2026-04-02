@@ -24,10 +24,10 @@ export type ProfileContent = {
   banner?: string;
   /** A web URL related in any way to the event author */
   website?: string;
+  /** A LNURL-based Lightning address in the format `lnurlp://…` */
+  lud06?: string;
   /** Lightning address in the format `user@domain.com` (LUD-16 format) */
   lud16?: string;
-  /** Lightning address in the format `user@domain.com` (LUD-06 format) */
-  lud06?: string;
   /** DNS-based verification identifier in the format `_@domain.com` or `user@domain.com` */
   nip05?: string;
   /** Boolean to clarify that the content is entirely or partially the result of automation, such as with chatbots or newsfeeds */

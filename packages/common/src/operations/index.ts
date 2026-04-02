@@ -1,4 +1,7 @@
 export * as AppData from "./app-data.js";
+export * as Badge from "./badge.js";
+export * as BadgeAward from "./badge-award.js";
+export * as CodeSnippet from "./code-snippet.js";
 export * as Calendar from "./calendar.js";
 export * as CalendarEvent from "./calendar-event.js";
 export * as CalendarRsvp from "./calendar-rsvp.js";
@@ -20,11 +23,14 @@ export * as PicturePost from "./picture-post.js";
 export * as Poll from "./poll.js";
 export * as PollResponse from "./poll-response.js";
 export * as Reaction from "./reaction.js";
+export * as ProfileBadges from "./profile-badges.js";
 export * as Stream from "./stream.js";
 export * as StreamChat from "./stream-chat.js";
 export * as Torrent from "./torrent.js";
 export * as WrappedMessage from "./wrapped-message.js";
-export * as Zap from "./zap-split.js";
+export * as Zap from "./zap.js";
 export * as ZapGoal from "./zap-goal.js";
+export * as ZapRequest from "./zap-request.js";
+export * as ZapSplit from "./zap-split.js";
 
 export * as TagOperations from "./tag/index.js";

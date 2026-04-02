@@ -1,17 +1,14 @@
-import {
-  LegacyMessageBlueprint,
-  LegacyMessageBlueprintOptions,
-  LegacyMessageReplyBlueprint,
-} from "applesauce-common/blueprints";
+import { LegacyMessageFactory, LegacyMessageBlueprintOptions } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 
 import { Action } from "../action-runner.js";
 
 /** Sends a legacy NIP-04 message to a recipient */
-export function SendLegacyMessage(recipient: string, message: string, opts?: LegacyMessageBlueprintOptions): Action {
-  return async ({ factory, sign, publish, events }) => {
-    const signed = await factory.create(LegacyMessageBlueprint, recipient, message, opts).then(sign);
+export function SendLegacyMessage(recipient: string, message: string, _opts?: LegacyMessageBlueprintOptions): Action {
+  return async ({ signer, publish, events }) => {
+    if (!signer) throw new Error("Missing signer");
+    const signed = await LegacyMessageFactory.create(recipient, message).sign(signer);
 
     // Get the recipient's inbox relays
     const receiver = castUser(recipient, events);
@@ -30,13 +27,19 @@ export function SendLegacyMessage(recipient: string, message: string, opts?: Leg
 export function ReplyToLegacyMessage(
   parent: NostrEvent,
   message: string,
-  opts?: LegacyMessageBlueprintOptions,
+  _opts?: LegacyMessageBlueprintOptions,
 ): Action {
-  return async ({ factory, sign, publish, events }) => {
+  return async ({ signer, publish, events }) => {
+    if (!signer) throw new Error("Missing signer");
     if (parent.kind !== kinds.EncryptedDirectMessage)
       throw new Error("Legacy messages can only reply to other legacy messages");
 
-    const signed = await factory.create(LegacyMessageReplyBlueprint, parent, message, opts).then(sign);
+    // Determine the reply recipient: if we sent the parent, reply to the tagged p; otherwise reply to the sender
+    const self = await signer.getPublicKey();
+    const recipient = parent.pubkey === self ? parent.tags.find((t) => t[0] === "p")?.[1] : parent.pubkey;
+    if (!recipient) throw new Error("Could not determine reply recipient");
+
+    const signed = await LegacyMessageFactory.reply(parent, recipient, message).sign(signer);
 
     // Get the recipient's inbox relays (the sender of the parent message)
     const receiver = castUser(parent.pubkey, events);

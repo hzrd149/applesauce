@@ -1,4 +1,4 @@
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import { NostrEvent, isAddressableKind, isEvent, isReplaceableKind } from "../helpers/event.js";
 import { ensureAddressPointerTag, ensureEventPointerTag, ensureKTag } from "../helpers/factory.js";
 import { getAddressPointerForEvent } from "../helpers/pointers.js";

@@ -1,9 +1,9 @@
 import { CheckStateEnum, Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
-import { DeleteBlueprint } from "applesauce-common/blueprints/delete";
+import { DeleteFactory } from "applesauce-core/factories";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { WalletHistoryBlueprint } from "../blueprints/history.js";
-import { WalletTokenBlueprint } from "../blueprints/tokens.js";
+import { WalletHistoryFactory } from "../factories/history.js";
+import { WalletTokenFactory } from "../factories/tokens.js";
 import { getProofUID, ignoreDuplicateProofs } from "../helpers/cashu.js";
 import { Couch } from "../helpers/couch.js";
 import {
@@ -27,22 +27,25 @@ import "../casts/__register__.js";
 export function AddToken(token: Token, options?: { redeemed?: string[]; fee?: number; addHistory?: boolean }): Action {
   const { redeemed, fee, addHistory = true } = options ?? {};
 
-  return async ({ factory, user, publish, signer, sign }) => {
+  return async ({ signer, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
     const amount = sumProofs(token.proofs);
 
     // Create the token and history events
-    const tokenEvent = await factory.create(WalletTokenBlueprint, token).then(sign);
+    const tokenEvent = await WalletTokenFactory.create(token).sign(signer);
 
     let history: NostrEvent | undefined;
     if (addHistory || redeemed?.length) {
-      history = await factory
-        .create(
-          WalletHistoryBlueprint,
-          { direction: "in", amount, mint: token.mint, created: [tokenEvent.id], fee },
-          redeemed,
-        )
-        .then(sign);
+      let historyFactory = WalletHistoryFactory.create({
+        direction: "in",
+        amount,
+        mint: token.mint,
+        created: [tokenEvent.id],
+        fee,
+      });
+      if (redeemed?.length) historyFactory = historyFactory.redeemed(redeemed);
+      history = await historyFactory.sign(signer);
     }
 
     // Publish the events
@@ -93,28 +96,28 @@ export function ReceiveToken(token: Token, options?: { addHistory?: boolean; cou
 
 /** An action that deletes old tokens and creates a new one but does not add a history event */
 export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
-  return async ({ factory, user, publish, signer, sign }) => {
+  return async ({ signer, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
 
     // create a new token event
-    const tokenEvent = await factory
-      .create(
-        WalletTokenBlueprint,
-        token,
-        tokens.map((e) => e.id),
-      )
-      .then(sign);
+    const tokenEvent = await WalletTokenFactory.create(
+      token,
+      tokens.map((e) => e.id),
+    ).sign(signer);
+
     // create a delete event for old tokens
-    const deleteDraft = await factory.create(DeleteBlueprint, tokens).then(sign);
+    const deleteEvent = await DeleteFactory.fromEvents(tokens).sign(signer);
 
     // publish events
-    await publish([tokenEvent, deleteDraft], wallet.relays);
+    await publish([tokenEvent, deleteEvent], wallet.relays);
   };
 }
 
 /** An action that deletes old token events and adds a spend history item */
 export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch): Action {
-  return async ({ factory, user, publish, signer, sign }) => {
+  return async ({ signer, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     if (spent.length === 0) throw new Error("Cant complete spent with no token events");
 
     const unlocked = spent.filter(isTokenContentUnlocked);
@@ -133,13 +136,10 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
       // create a new token event if needed
       const tokenEvent =
         changeAmount > 0
-          ? await factory
-              .create(
-                WalletTokenBlueprint,
-                change,
-                spent.map((e) => e.id),
-              )
-              .then(sign)
+          ? await WalletTokenFactory.create(
+              change,
+              spent.map((e) => e.id),
+            ).sign(signer)
           : undefined;
 
       // Get tokens total amount
@@ -149,16 +149,17 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
       const diff = total - changeAmount;
 
       // sign delete and token
-      const deleteEvent = await factory.create(DeleteBlueprint, spent).then(sign);
+      const deleteEvent = await DeleteFactory.fromEvents(spent).sign(signer);
 
       // create a history entry
-      const history = await factory
-        .create(
-          WalletHistoryBlueprint,
-          { direction: "out", mint: change.mint, amount: diff, created: tokenEvent ? [tokenEvent.id] : [] },
-          [],
-        )
-        .then(sign);
+      const history = await WalletHistoryFactory.create({
+        direction: "out",
+        mint: change.mint,
+        amount: diff,
+        created: tokenEvent ? [tokenEvent.id] : [],
+      })
+        .redeemed([])
+        .sign(signer);
 
       // publish events
       await publish(
@@ -177,13 +178,13 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
 
 /** Combines all unlocked token events into a single event per mint */
 export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action {
-  return async ({ events, factory, self, sign, user, signer, publish }) => {
+  return async ({ events, signer, self, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
     const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
 
     // Unlock tokens if requested
     if (options?.unlockTokens) {
-      if (!signer) throw new Error("Missing signer");
       for (const token of tokens) {
         if (!isTokenContentUnlocked(token)) {
           try {
@@ -215,7 +216,7 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action 
 
       // If there are no proofs, just delete the old tokens without interacting with the mint
       if (proofs.length === 0) {
-        const deleteEvent = await factory.create(DeleteBlueprint, tokens).then(sign);
+        const deleteEvent = await DeleteFactory.fromEvents(tokens).sign(signer);
         await publish(deleteEvent, wallet.relays);
         continue;
       }
@@ -231,17 +232,14 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action 
       // Only create a token event if there are unspent proofs
       const tokenEvent =
         notSpent.length > 0
-          ? await factory
-              .create(
-                WalletTokenBlueprint,
-                { mint, proofs: notSpent },
-                tokens.map((t) => t.id),
-              )
-              .then(sign)
+          ? await WalletTokenFactory.create(
+              { mint, proofs: notSpent },
+              tokens.map((t) => t.id),
+            ).sign(signer)
           : undefined;
 
       // create delete event
-      const deleteEvent = await factory.create(DeleteBlueprint, tokens).then(sign);
+      const deleteEvent = await DeleteFactory.fromEvents(tokens).sign(signer);
 
       // Publish events
       await publish(
@@ -258,7 +256,8 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action 
  * @param couch the couch interface to recover tokens from
  */
 export function RecoverFromCouch(couch: Couch): Action {
-  return async ({ events, factory, self, sign, user, signer, publish }) => {
+  return async ({ events, signer, self, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
 
     // Get all tokens from the couch
@@ -269,13 +268,11 @@ export function RecoverFromCouch(couch: Couch): Action {
     const walletTokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
 
     // Unlock wallet tokens if needed
-    if (signer) {
-      for (const token of walletTokens) {
-        if (!isTokenContentUnlocked(token)) {
-          try {
-            await unlockTokenContent(token, signer);
-          } catch {}
-        }
+    for (const token of walletTokens) {
+      if (!isTokenContentUnlocked(token)) {
+        try {
+          await unlockTokenContent(token, signer);
+        } catch {}
       }
     }
 
@@ -331,7 +328,7 @@ export function RecoverFromCouch(couch: Couch): Action {
         unit: tokens[0]?.unit,
       };
 
-      const tokenEvent = await factory.create(WalletTokenBlueprint, recoveredToken).then(sign);
+      const tokenEvent = await WalletTokenFactory.create(recoveredToken).sign(signer);
 
       // Publish the token event
       await publish(tokenEvent, wallet.relays);

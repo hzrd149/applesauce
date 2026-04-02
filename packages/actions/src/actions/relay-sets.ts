@@ -1,42 +1,31 @@
-import * as List from "applesauce-common/operations/list";
-import { TagOperation } from "applesauce-core";
+import { RelaySetFactory } from "applesauce-common/factories";
 import { getReplaceableIdentifier, kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { modifyHiddenTags, modifyPublicTags } from "applesauce-core/operations";
-import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
-import { Action } from "../action-runner.js";
+import { Action, ActionContext } from "../action-runner.js";
 
-function ModifyRelaySetEvent(operations: TagOperation[], set: NostrEvent | string, hidden = false): Action {
-  const identifier = typeof set === "string" ? set : getReplaceableIdentifier(set);
+async function modifyRelaySet(
+  identifier: string,
+  { user }: ActionContext,
+): Promise<[RelaySetFactory, string[] | undefined]> {
+  const [event, outboxes] = await Promise.all([
+    user.replaceable(kinds.Relaysets, identifier).$first(1000, undefined),
+    user.outboxes$.$first(1000, undefined),
+  ]);
 
-  return async ({ factory, user, publish, sign }) => {
-    const [event, outboxes] = await Promise.all([
-      user.replaceable(kinds.Relaysets, identifier).$first(1000, undefined),
-      user.outboxes$.$first(1000, undefined),
-    ]);
-
-    const operation = hidden ? modifyHiddenTags(...operations) : modifyPublicTags(...operations);
-
-    // Modify or build new event
-    const signed = event
-      ? await factory.modify(event, operation).then(sign)
-      : await factory.build({ kind: kinds.Relaysets }, operation).then(sign);
-
-    // Publish the event to the user's outboxes
-    await publish(signed, outboxes);
-  };
+  return [event ? RelaySetFactory.modify(event) : RelaySetFactory.create(), outboxes];
 }
 
-/** An action that adds a relay to a relay set*/
+/** An action that adds a relay to a relay set */
 export function AddRelayToRelaySet(
   relay: string | string[],
   identifier: NostrEvent | string,
   hidden?: boolean,
 ): Action {
-  return ModifyRelaySetEvent(
-    Array.isArray(relay) ? relay.map((r) => addRelayTag(r)) : [addRelayTag(relay)],
-    identifier,
-    hidden,
-  );
+  const id = typeof identifier === "string" ? identifier : getReplaceableIdentifier(identifier);
+  return async (context) => {
+    const [factory, outboxes] = await modifyRelaySet(id, context);
+    const signed = await factory.addRelay(relay, hidden).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
 /** An action that removes a relay from a relay set */
@@ -45,11 +34,12 @@ export function RemoveRelayFromRelaySet(
   identifier: NostrEvent | string,
   hidden?: boolean,
 ): Action {
-  return ModifyRelaySetEvent(
-    Array.isArray(relay) ? relay.map((r) => removeRelayTag(r)) : [removeRelayTag(relay)],
-    identifier,
-    hidden,
-  );
+  const id = typeof identifier === "string" ? identifier : getReplaceableIdentifier(identifier);
+  return async (context) => {
+    const [factory, outboxes] = await modifyRelaySet(id, context);
+    const signed = await factory.removeRelay(relay, hidden).sign(context.signer);
+    await context.publish(signed, outboxes);
+  };
 }
 
 /** An action that creates a new relay set */
@@ -58,23 +48,17 @@ export function CreateRelaySet(
   options?: {
     description?: string;
     image?: string;
-    public?: string[]; // relay URLs
-    hidden?: string[]; // relay URLs
+    public?: string[];
+    hidden?: string[];
   },
 ): Action {
-  return async ({ factory, user, publish, sign }) => {
-    const signed = await factory
-      .build(
-        { kind: kinds.Relaysets },
-
-        List.setTitle(title),
-        options?.description ? List.setDescription(options.description) : undefined,
-        options?.image ? List.setImage(options.image) : undefined,
-
-        options?.public ? modifyPublicTags(...options.public.map((r) => addRelayTag(r))) : undefined,
-        options?.hidden ? modifyHiddenTags(...options.hidden.map((r) => addRelayTag(r))) : undefined,
-      )
-      .then(sign);
+  return async ({ signer, user, publish }) => {
+    let factory = RelaySetFactory.create().title(title);
+    if (options?.description) factory = factory.description(options.description);
+    if (options?.image) factory = factory.image(options.image);
+    if (options?.public) factory = factory.addRelay(options.public);
+    if (options?.hidden) factory = factory.addRelay(options.hidden, true);
+    const signed = await factory.sign(signer);
 
     await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
@@ -83,13 +67,9 @@ export function CreateRelaySet(
 /** An action that updates the title, description, or image of a relay set */
 export function UpdateRelaySetInformation(
   identifier: string,
-  info: {
-    title?: string;
-    description?: string;
-    image?: string;
-  },
+  info: { title?: string; description?: string; image?: string },
 ): Action {
-  return async ({ factory, sign, user, publish }) => {
+  return async ({ user, signer, publish }) => {
     const [event, outboxes] = await Promise.all([
       user.replaceable(kinds.Relaysets, identifier).$first(1000, undefined),
       user.outboxes$.$first(1000, undefined),
@@ -97,15 +77,11 @@ export function UpdateRelaySetInformation(
 
     if (!event) throw new Error("Relay set not found");
 
-    const signed = await factory
-      .modify(
-        event,
-
-        info?.title ? List.setTitle(info.title) : undefined,
-        info?.description ? List.setDescription(info.description) : undefined,
-        info?.image ? List.setImage(info.image) : undefined,
-      )
-      .then(sign);
+    let factory = RelaySetFactory.modify(event);
+    if (info.title) factory = factory.title(info.title);
+    if (info.description) factory = factory.description(info.description);
+    if (info.image) factory = factory.image(info.image);
+    const signed = await factory.sign(signer);
 
     await publish(signed, outboxes);
   };

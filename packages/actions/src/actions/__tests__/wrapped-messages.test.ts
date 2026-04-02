@@ -1,8 +1,9 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { WrappedMessageBlueprint } from "applesauce-common/blueprints";
-import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-common/helpers/gift-wrap";
-import { EventFactory, EventStore } from "applesauce-core";
+import { WrappedMessageFactory } from "applesauce-common/factories";
+import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked, Rumor } from "applesauce-common/helpers/gift-wrap";
+import { EventStore } from "applesauce-core";
 import { getTagValue, kinds } from "applesauce-core/helpers/event";
+import { TagOperations } from "applesauce-core/operations";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { ActionRunner } from "../../action-runner.js";
@@ -11,7 +12,6 @@ import { GiftWrapMessageToParticipants, SendWrappedMessage } from "../wrapped-me
 const bob = new FakeUser();
 const alice = new FakeUser();
 const carol = new FakeUser();
-let factory: EventFactory;
 let hub: ActionRunner;
 let events: EventStore;
 
@@ -22,8 +22,7 @@ const bobRelays = ["wss://bob-relay1.com/"];
 
 beforeEach(() => {
   events = new EventStore();
-  factory = new EventFactory({ signer: bob });
-  hub = new ActionRunner(events, factory);
+  hub = new ActionRunner(events, bob);
 
   // Setup profiles
   events.add(bob.profile({ name: "Bob" }));
@@ -76,26 +75,19 @@ describe("SendWrappedMessage", () => {
       expect(getGiftWrapRumor(gift)).toBeDefined();
     }
   });
-
-  it("should throw error when no signer is provided", async () => {
-    const factory = new EventFactory();
-    const hub = new ActionRunner(events, factory);
-
-    const spy = subscribeSpyTo(hub.exec(SendWrappedMessage, alice.pubkey, "hello world"), { expectErrors: true });
-    await spy.onError();
-
-    expect(spy.receivedError()).toBeTruthy();
-  });
 });
 
 describe("GiftWrapMessageToParticipants", () => {
   it("should publish gift wraps to each user's kind 10050 relay lists", async () => {
     // Mock the publish function to track which events are published to which relays
     const publishMock = vi.fn().mockResolvedValue(undefined);
-    const hubWithPublish = new ActionRunner(events, factory, publishMock);
+    const hubWithPublish = new ActionRunner(events, bob, publishMock);
 
-    // Create a rumor message to alice and carol
-    const rumor = await factory.create(WrappedMessageBlueprint, [alice.pubkey, carol.pubkey], "hello world");
+    // Create a rumor message to alice and carol (add carol as extra p-tag participant)
+    const rumor = (await WrappedMessageFactory.create(alice.pubkey, "hello world")
+      .modifyPublicTags(TagOperations.addNameValueTag(["p", carol.pubkey], false))
+      .as(bob)
+      .stamp()) as unknown as Rumor;
 
     // Execute the action
     await hubWithPublish.run(GiftWrapMessageToParticipants, rumor);

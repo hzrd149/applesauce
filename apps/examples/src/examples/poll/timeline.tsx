@@ -3,7 +3,7 @@
  * @tags nip-69, poll, timeline, voting
  * @related feed/relay-timeline
  */
-import { PollResponseBlueprint } from "applesauce-common/blueprints/poll";
+import { PollResponseFactory } from "applesauce-common/factories";
 import {
   getPollEndsAt,
   getPollOptions,
@@ -15,7 +15,7 @@ import {
   POLL_KIND,
   POLL_RESPONSE_KIND,
 } from "applesauce-common/helpers";
-import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, mergeRelaySets, NostrEvent, ProfileContent } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTagValueLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -31,7 +31,6 @@ import RelayPicker from "../../components/relay-picker";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
 
 // Create loaders
 const pollResponseLoader = createTagValueLoader(pool, "e", {
@@ -123,13 +122,9 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
       setIsVoting(true);
       setVoteError(null);
 
-      // Create the poll response event
-      const responseEvent = await factory.create(PollResponseBlueprint, poll, selectedOptions, {
-        comment: comment.trim(),
-      });
-
-      // Sign the event
-      const signedResponse = await factory.sign(responseEvent);
+      // Create and sign the poll response event
+      const response = PollResponseFactory.create(poll, selectedOptions);
+      const signedResponse = await (comment.trim() ? response.comment(comment.trim()) : response).sign(signer);
 
       // Publish to the selected relay
       await pool.publish(mergeRelaySets(selectedRelay, getPollRelays(poll)), signedResponse);

@@ -1,17 +1,16 @@
 import { castEvent, CodeSnippet } from "applesauce-common/casts";
-import { blueprint, EventFactory } from "applesauce-core";
+import { DeleteFactory } from "applesauce-core";
 import { normalizeToEventPointer } from "applesauce-core/helpers/pointers";
 import { relaySet } from "applesauce-core/helpers/relays";
-import { setContent } from "applesauce-core/operations/content";
-import { setDeleteEvents } from "applesauce-core/operations/delete";
 import { use$ } from "applesauce-react/hooks";
 import { onlyEvents } from "applesauce-relay";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
 import type { NostrEvent } from "nostr-tools";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { map } from "rxjs";
+
 import { AccountDisplay, UserAvatar, UserName } from "../components";
 import { usePocketContext } from "../contexts/PocketContext";
 import { COMMENT_KIND } from "../helpers/nostr";
@@ -26,11 +25,6 @@ hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("javascript", javascript);
 
 // Factory will be created with active account's signer in the component
-
-// Blueprint for creating deletion events following NIP-09
-function DeleteBlueprint(events: (string | NostrEvent)[], reason?: string) {
-  return blueprint(5, reason ? setContent(reason) : undefined, setDeleteEvents(events));
-}
 
 interface CodeSnippetDetailsProps {
   eventId: string;
@@ -67,12 +61,6 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
 
   // Derive current user pubkey from active account
   const currentUserPubkey = activeAccount?.pubkey || null;
-
-  // Create factory with active account's signer
-  const factory = useMemo(() => {
-    if (!activeAccount) return null;
-    return new EventFactory({ signer: activeAccount });
-  }, [activeAccount]);
 
   // Load the main event
   useEffect(() => {
@@ -217,7 +205,7 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
   };
 
   const handleDelete = async () => {
-    if (!snippet || !activeAccount || !factory) return;
+    if (!snippet || !activeAccount) return;
 
     try {
       setIsDeleting(true);
@@ -229,8 +217,9 @@ export default function CodeSnippetDetails({ eventId, relays, onBack, onNavigate
       }
 
       // Create & sign deletion event
-      const draft = await factory.create(DeleteBlueprint, [snippet.event], deleteReason.trim() || undefined);
-      const signed = await factory.sign(draft);
+      const signed = await DeleteFactory.fromEvents([snippet.event], deleteReason.trim() || undefined).sign(
+        activeAccount,
+      );
 
       // Publish to all relays
       await pool.publish(relays, signed);

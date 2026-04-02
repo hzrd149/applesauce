@@ -6,11 +6,14 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "AppData",
+        "Badge",
+        "BadgeAward",
         "Calendar",
         "CalendarEvent",
         "CalendarRsvp",
         "Channel",
         "Client",
+        "CodeSnippet",
         "Comment",
         "FileMetadata",
         "Geohash",
@@ -26,6 +29,7 @@ describe("exports", () => {
         "PicturePost",
         "Poll",
         "PollResponse",
+        "ProfileBadges",
         "Reaction",
         "Stream",
         "StreamChat",
@@ -34,6 +38,8 @@ describe("exports", () => {
         "WrappedMessage",
         "Zap",
         "ZapGoal",
+        "ZapRequest",
+        "ZapSplit",
       ]
     `);
   });

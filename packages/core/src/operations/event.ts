@@ -1,14 +1,22 @@
 import { nanoid } from "nanoid";
-
-import { EventOperation } from "../event-factory/types.js";
-import { getTagValue } from "../helpers/event.js";
-import { EventTemplate, isAddressableKind, NostrEvent, UnsignedEvent } from "../helpers/event.js";
+import { isKind } from "nostr-tools/kinds";
+import type { EventOperation } from "../factories/types.js";
+import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
+import {
+  EventTemplate,
+  getTagValue,
+  isAddressableKind,
+  KnownEvent,
+  KnownEventTemplate,
+  KnownUnsignedEvent,
+  NostrEvent,
+  UnsignedEvent,
+} from "../helpers/event.js";
 import { eventPipe, skip } from "../helpers/pipeline.js";
 import { ensureSingletonTag } from "../helpers/tags.js";
 import { unixNow } from "../helpers/time.js";
 import { removeSingletonTag, setSingletonTag } from "./tag/common.js";
 import { includeSingletonTag, modifyPublicTags } from "./tags.js";
-import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 
 /** An operation that removes the signature from the event template */
 export function stripSignature<Input extends NostrEvent | UnsignedEvent | EventTemplate>(): EventOperation<
@@ -105,17 +113,20 @@ export function setMetaTags(options?: MetaTagOptions): EventOperation {
 
 /**
  * An operation that adds the signers pubkey to the event
+ * @param signer - Optional EventSigner (throws if not provided)
  * @throws {Error} if no signer is provided
  */
-export function stamp(): EventOperation<EventTemplate, UnsignedEvent> {
-  return async (draft, ctx) => {
-    if (!ctx.signer) throw new Error("Missing signer");
+export function stamp<K extends number = number>(
+  signer?: import("../factories/types.js").EventSigner,
+): EventOperation<KnownEventTemplate<K>, KnownUnsignedEvent<K>> {
+  return async (draft) => {
+    if (!signer) throw new Error("Missing signer");
 
     // Remove old fields from signed nostr event
     Reflect.deleteProperty(draft, "id");
     Reflect.deleteProperty(draft, "sig");
 
-    const pubkey = await ctx.signer.getPublicKey();
+    const pubkey = await signer.getPublicKey();
     const newDraft = { ...draft, pubkey };
 
     // copy the plaintext hidden content if its on the draft
@@ -128,13 +139,24 @@ export function stamp(): EventOperation<EventTemplate, UnsignedEvent> {
 
 /**
  * An operation that signs the event
+ * @param signer - Optional EventSigner (throws if not provided)
  * @throws {Error} if no signer is provided
  */
-export function sign(): EventOperation<EventTemplate | UnsignedEvent, NostrEvent> {
-  return async (draft, ctx) => {
-    if (!ctx.signer) throw new Error("Missing signer");
-    draft = await stamp()(draft, ctx);
-    const signed = await ctx.signer.signEvent(draft);
+export function sign<K extends number = number, T extends KnownEventTemplate<K> = KnownEventTemplate<K>>(
+  signer?: import("../factories/types.js").EventSigner,
+): EventOperation<T, KnownEvent<K>> {
+  return async (draft) => {
+    if (!signer) throw new Error("Missing signer");
+
+    const unsigned = await stamp<K>(signer)(draft);
+    const signed = await signer.signEvent(unsigned);
+
+    // Verify the pubkey has not changed
+    if (Reflect.has(draft, "pubkey") && Reflect.get(draft, "pubkey") !== signed.pubkey)
+      throw new Error("Signer modified pubkey");
+
+    // If its the same kind, return the signed event
+    if (!isKind(signed, draft.kind)) throw new Error("Signer modified event kind");
 
     // copy the plaintext hidden content if its on the draft
     if (Reflect.has(draft, EncryptedContentSymbol))

@@ -11,8 +11,6 @@ describe("exports", () => {
         "ActionsProvider",
         "EventStoreContext",
         "EventStoreProvider",
-        "FactoryContext",
-        "FactoryProvider",
       ]
     `);
   });

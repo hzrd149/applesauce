@@ -2,6 +2,7 @@ name: Deploy nsite
 on:
   push:
     branches:
+      - next
       - master
 
 concurrency:
@@ -48,13 +49,27 @@ jobs:
       - name: Copy vitepress
         run: cp -r apps/docs/.vitepress/dist/* docs
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
+      - name: Build llms bundle
+        run: pnpm build --filter applesauce-llms
+
+      - name: Copy llms bundle
+        run: |
+          mkdir -p docs
+          cp -r apps/llms/dist/. docs
+
+      # Pushes to next deploy to the "next" build channel for testing
+      - name: Deploy next version
+        if: github.ref == 'refs/heads/next'
+        uses: sandwichfarm/nsite-action@v0.3.1
         with:
-          deno-version: "v2.x"
+          nbunksec: ${{ secrets.NSITE_BUNKER }}
+          directory: "./docs"
+          name: next
 
-      - name: Install nsyte CLI
-        run: deno install -A -f -g -n nsyte jsr:@nsyte/cli
-
-      - name: Deploy nsite
-        run: nsyte upload docs -i --purge --privatekey ${{ secrets.NSITE_KEY }}
+      # Pushes to master deploy the latest stable version.
+      - name: Deploy release
+        if: github.ref == 'refs/heads/master'
+        uses: sandwichfarm/nsite-action@v0.3.1
+        with:
+          nbunksec: ${{ secrets.NSITE_BUNKER }}
+          directory: "./docs"

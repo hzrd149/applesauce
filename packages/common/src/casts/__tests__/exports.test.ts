@@ -6,6 +6,9 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "Article",
+        "AssertionProvider",
+        "Badge",
+        "BadgeAward",
         "BlockedRelays",
         "BookmarksList",
         "BookmarksSet",
@@ -19,6 +22,8 @@ describe("exports", () => {
         "Mutes",
         "Note",
         "Profile",
+        "ProfileBadges",
+        "PubkeyCast",
         "Reaction",
         "RelayDiscovery",
         "RelayMonitor",
@@ -28,10 +33,14 @@ describe("exports", () => {
         "Stream",
         "StreamChatMessage",
         "Torrent",
+        "TrustedProviderList",
         "User",
+        "UserAssertion",
         "Zap",
         "ZapGoal",
         "castEvent",
+        "castPubkey",
+        "castTrustedProviders",
         "castUser",
       ]
     `);

@@ -1,319 +1,99 @@
 ---
-description: Transform event templates with operations for modifying content, tags, and event properties
+description: Compose reusable event transforms for content, metadata, stamping, signing, and tag changes
 ---
 
 # Event Operations
 
-Event operations are the core building blocks of the event factory system. They provide a composable, functional approach to creating and modifying Nostr events by focusing on single-responsibility transformations.
+Event operations are the reusable building blocks underneath the factory system.
 
-## Overview
+An event operation takes a draft, returns a new draft, and can be synchronous or async.
 
-An event operation is a function that takes an event template and returns a modified version of that event. Operations are designed to be:
+## What It Is
 
-- **Composable**: Multiple operations can be chained together using `eventPipe()`
-- **Pure**: Operations don't mutate the input, they return new objects
-- **Focused**: Each operation handles one specific aspect of event creation/modification
-- **Async-aware**: Operations can be synchronous or asynchronous
+The current type is context-free:
 
-See all available event operations in the [reference](https://applesauce.build/typedoc/modules/applesauce-core.Operations.html).
-
-## Type Definition
-
-```typescript
-type EventOperation = (draft: EventTemplate, context: EventFactoryContext) => EventTemplate | Promise<EventTemplate>;
+```ts
+type EventOperation<Input = EventTemplate, Result = EventTemplate> = (value: Input) => Result | Promise<Result>;
 ```
 
-Every event operation receives:
+Use operations when you want logic that can be shared across multiple factory classes.
 
-- **`draft`**: The current event template/draft to transform
-- **`context`**: An `EventFactoryContext` containing optional signer, relay hints, emojis, and client information
+## How To Use It
 
-## Core Patterns
+Apply a single operation with `this.chain(...)` inside a factory method:
 
-### 1. Simple Property Operations
+```ts
+import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
+import { includeAltTag } from "applesauce-core/operations/event";
 
-These operations modify basic event properties like content or timestamps:
-
-```typescript
-// Set event content
-export function setContent(content: string): EventOperation {
-  return async (draft) => {
-    return { ...draft, content };
-  };
-}
-
-// Update created_at timestamp
-export function updateCreatedAt(): EventOperation {
-  return (draft) => ({ ...draft, created_at: unixNow() });
+alt(text: string) {
+  return this.chain(includeAltTag(text));
 }
 ```
 
-### 2. Tag Manipulation Operations
+Compose several operations with `eventPipe(...)`:
 
-These operations modify the event's tags array using the [`modifyPublicTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyPublicTags.html) and [`modifyHiddenTags`](https://applesauce.build/typedoc/functions/applesauce-core.Operations.modifyHiddenTags.html) event operations and some [tag operations](./tag-operations.md):
+```ts
+import { eventPipe, skip } from "applesauce-core/helpers/pipeline";
+import { includeAltTag, setMetaTags } from "applesauce-core/operations/event";
 
-```typescript
-// Include a singleton tag (only one instance allowed)
-export function includeSingletonTag(tag: [string, ...string[]], replace = true): EventOperation {
-  return modifyPublicTags(setSingletonTag(tag, replace));
-}
-
-// Include NIP-31 alt tag
-export function includeAltTag(description: string): EventOperation {
-  return modifyPublicTags(setSingletonTag(["alt", description]));
-}
+const withMeta = (alt?: string) =>
+  eventPipe(skip(), alt ? includeAltTag(alt) : skip(), setMetaTags({ protected: true }));
 ```
 
-### 3. Context-Aware Operations
+Use them from a subclass:
 
-These operations use the context to make decisions or fetch additional data:
-
-```typescript
-// Include reaction tags with relay hints
-export function includeReactionTags(event: NostrEvent): EventOperation {
-  return async (draft, ctx) => {
-    let tags = Array.from(draft.tags);
-
-    const eventHint = await ctx?.getEventRelayHint?.(event.id);
-    const pubkeyHint = await ctx?.getPubkeyRelayHint?.(event.pubkey);
-
-    // Add tags with relay hints if available
-    tags = ensureEventPointerTag(tags, {
-      id: event.id,
-      relays: eventHint ? [eventHint] : undefined,
-    });
-
-    return { ...draft, tags };
-  };
+```ts
+class CustomFactory extends EventFactory<1> {
+  withMeta(alt?: string) {
+    return this.chain(withMeta(alt));
+  }
 }
+
+const signed = await new CustomFactory((resolve) => resolve(blankEventTemplate(1)))
+  .withMeta("Short text note")
+  .content("Hello")
+  .sign(signer);
 ```
 
-### 4. Composite Operations
+## Common Operations
 
-These operations can combine multiple smaller operations using `eventPipe()` for example:
+Some low-level operations you will use often:
 
-```typescript
-// Set text content with automatic processing
-export function setShortTextContent(content: string, options?: TextContentOptions): EventOperation {
-  return eventPipe(
-    setContent(content), // Set the content
-    repairContentNostrLinks(), // Fix @mentions
-    tagPubkeyMentionedInContent(), // Add "p" tags for mentions
-    includeQuoteTags(), // Add "q" tags for quotes
-    includeContentHashtags(), // Add "t" tags for hashtags
-    options?.emojis ? includeContentEmojiTags(options.emojis) : skip(),
-    options?.contentWarning !== undefined ? setContentWarning(options.contentWarning) : skip(),
-  );
+- `includeAltTag()`
+- `setExpirationTimestamp()`
+- `setMetaTags()`
+- `setProtected()`
+- `stamp()`
+- `sign()`
+- `modifyPublicTags()`
+- `modifyHiddenTags()`
+
+```ts
+import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
+import { setMetaTags } from "applesauce-core/operations/event";
+
+class NoteLikeFactory extends EventFactory<1> {
+  metaTags() {
+    return this.chain(setMetaTags({ alt: "Short text note", protected: true }));
+  }
 }
+
+const signed = await new NoteLikeFactory((resolve) => resolve(blankEventTemplate(1)))
+  .metaTags()
+  .content("Hello")
+  .sign(signer);
 ```
 
-## Custom Operations
+## Integration
 
-### Basic Custom Operation
+Operations are what make typed factories concise.
 
-Here's how to create a simple operation that adds a "title" tag:
-
-```typescript
-export function setTitle(title: string): EventOperation {
-  return (draft) => {
-    let tags = Array.from(draft.tags);
-
-    // Remove existing title tags
-    tags = tags.filter((tag) => tag[0] !== "title");
-
-    // Add new title tag
-    tags.push(["title", title]);
-
-    return { ...draft, tags };
-  };
-}
-```
-
-### JSON Content Merger Operation
-
-Here's an example of a more complex operation that merges JSON data into existing JSON content:
-
-```typescript
-export function mergeJsonContent(jsonData: Record<string, any>): EventOperation {
-  return (draft) => {
-    let existingContent: Record<string, any> = {};
-
-    // Try to parse existing content as JSON
-    if (draft.content) {
-      try {
-        existingContent = JSON.parse(draft.content);
-      } catch (error) {
-        // If parsing fails, treat as empty object
-        existingContent = {};
-      }
-    }
-
-    // Merge the new data with existing content
-    const mergedContent = { ...existingContent, ...jsonData };
-
-    // Return draft with updated JSON content
-    return { ...draft, content: JSON.stringify(mergedContent) };
-  };
-}
-
-// Usage example:
-const draft = await factory.modify(
-  existingEvent,
-  mergeJsonContent({
-    version: "1.0",
-    author: "Alice",
-    tags: ["music", "art"],
-  }),
-);
-```
-
-### Context-Aware Custom Operation
-
-Here's an operation that uses the context to conditionally add client information:
-
-```typescript
-export function includeClientTag(): EventOperation {
-  return (draft, ctx) => {
-    // Only add client tag if client info is available in context
-    if (!ctx.client?.name) return draft;
-
-    let tags = Array.from(draft.tags);
-
-    // Remove existing client tags
-    tags = tags.filter((tag) => tag[0] !== "client");
-
-    // Add client tag with optional address
-    const clientTag = ["client", ctx.client.name];
-    if (ctx.client.address) {
-      const { kind, pubkey, identifier } = ctx.client.address;
-      clientTag.push(`${kind}:${pubkey}:${identifier}`);
-    }
-
-    tags.push(clientTag);
-
-    return { ...draft, tags };
-  };
-}
-```
-
-### Async Custom Operation
-
-Operations can be asynchronous when they need to perform I/O or complex computations:
-
-```typescript
-export function includeHashOfContent(): EventOperation {
-  return async (draft) => {
-    // Simulate async hash computation
-    const hash = await computeHash(draft.content);
-
-    let tags = Array.from(draft.tags);
-    tags = tags.filter((tag) => tag[0] !== "content-hash");
-    tags.push(["content-hash", hash]);
-
-    return { ...draft, tags };
-  };
-}
-
-async function computeHash(content: string): Promise<string> {
-  // Your hash implementation here
-  return "sha256:" + content.length.toString(); // Simplified example
-}
-```
+`ProfileFactory`, `NoteFactory`, and `CommentFactory` all expose small fluent methods, but most of the real work lives in reusable operations.
 
 ## Best Practices
 
-### 1. Single Responsibility
-
-Each operation should focus on one specific transformation:
-
-```typescript
-// Good: Focused on one thing
-export function setTitle(title: string): EventOperation {
-  /* ... */
-}
-
-// Avoid: Doing too many things
-export function setTitleAndContentAndTags(/* ... */) {
-  /* ... */
-}
-```
-
-### 2. Immutability
-
-Always return new objects, never mutate the input:
-
-```typescript
-// Good: Creates new objects
-return { ...draft, content: newContent };
-
-// Bad: Mutates input
-draft.content = newContent;
-return draft;
-```
-
-### 3. Array Copying
-
-When modifying tags, always copy the array first:
-
-```typescript
-// Good: Copy first
-let tags = Array.from(draft.tags);
-tags.push(newTag);
-
-// Bad: Direct mutation
-draft.tags.push(newTag);
-```
-
-### 4. Conditional Operations
-
-Use `skip()` for conditional operations in pipes:
-
-```typescript
-eventPipe(
-  setContent(content),
-  shouldAddTitle ? setTitle(title) : skip(),
-  // ... other operations
-);
-```
-
-### 5. Error Handling
-
-Handle errors gracefully if there error isn't critical, especially in async operations:
-
-```typescript
-export function safeJsonOperation(data: any): EventOperation {
-  return (draft) => {
-    try {
-      const content = JSON.stringify(data);
-      return { ...draft, content };
-    } catch (error) {
-      console.warn("Failed to serialize JSON data:", error);
-      return draft; // Return unchanged on error
-    }
-  };
-}
-```
-
-## Composition
-
-The `eventPipe()` function allows you to compose multiple operations into a single operation:
-
-```typescript
-function setArticleContent(content: string): EventOperation {
-  return eventPipe(
-    // Set the content
-    setShortTextContent(content),
-    // Add an alt tag for accessibility
-    includeAltTag("A long form article"),
-    // Update the created_at timestamp
-    updateCreatedAt(),
-    // Add a client tag
-    includeClientTag(),
-  );
-}
-
-// Use in event factory
-const event = await factory.build({ kind: 300023 }, setArticleContent("...content"));
-```
-
-Operations in a pipe are executed sequentially, with each operation receiving the result of the previous operation. The `eventPipe()` function handles both synchronous and asynchronous operations seamlessly.
+- Keep each operation focused on one transformation
+- Return new objects instead of mutating the input draft
+- Compose shared behavior with `eventPipe()`
+- Put signer-dependent behavior in methods that already have access to `.as(signer)` or `.sign(signer)`

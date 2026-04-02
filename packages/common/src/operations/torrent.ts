@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { addNameValueTag, removeNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 import { modifyPublicTags } from "applesauce-core/operations/tags";
 import {

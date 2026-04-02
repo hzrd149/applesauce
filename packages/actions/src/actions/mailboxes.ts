@@ -1,22 +1,26 @@
+import { MailboxesFactory } from "applesauce-core/factories";
 import { getOutboxes, relaySet } from "applesauce-core/helpers";
-import { kinds } from "applesauce-core/helpers/event";
-import {
-  addInboxRelay,
-  addOutboxRelay,
-  removeInboxRelay,
-  removeOutboxRelay,
-} from "applesauce-core/operations/mailboxes";
-import { Action } from "../action-runner.js";
+import { kinds, KnownEvent } from "applesauce-core/helpers/event";
+import { Action, ActionContext } from "../action-runner.js";
+
+async function modifyMailboxes({ user }: ActionContext): Promise<[MailboxesFactory, string[] | undefined]> {
+  const mailboxes = await user.replaceable(kinds.RelayList).$first(1000, undefined);
+  const factory = mailboxes
+    ? MailboxesFactory.modify(mailboxes as KnownEvent<kinds.RelayList>)
+    : MailboxesFactory.create();
+  return [factory, mailboxes ? getOutboxes(mailboxes) : undefined];
+}
 
 /** An action to create a new kind 10002 relay list event */
 export function CreateMailboxes(inboxes: string[], outboxes: string[]): Action {
-  return async ({ factory, user, publish, sign }) => {
+  return async ({ signer, user, publish }) => {
     const mailboxes = await user.replaceable(kinds.RelayList).$first(1000, undefined);
     if (mailboxes) throw new Error("Mailbox event already exists");
 
-    const signed = await factory
-      .build({ kind: kinds.RelayList }, ...inboxes.map(addInboxRelay), ...outboxes.map(addOutboxRelay))
-      .then(sign);
+    let factory = MailboxesFactory.create();
+    for (const inbox of inboxes) factory = factory.addInbox(inbox);
+    for (const outbox of outboxes) factory = factory.addOutbox(outbox);
+    const signed = await factory.sign(signer);
 
     await publish(signed, relaySet(getOutboxes(signed)));
   };
@@ -24,60 +28,58 @@ export function CreateMailboxes(inboxes: string[], outboxes: string[]): Action {
 
 /** An action to add an inbox relay to the kind 10002 relay list */
 export function AddInboxRelay(relay: string | string[]): Action {
-  return async ({ factory, user, publish, sign }) => {
-    if (typeof relay === "string") relay = [relay];
+  const relays = Array.isArray(relay) ? relay : [relay];
+  return async (context) => {
+    const [factory, oldOutboxes] = await modifyMailboxes(context);
+    let f = factory;
+    for (const r of relays) f = f.addInbox(r);
+    const signed = await f.sign(context.signer);
 
-    const mailboxes = await user.replaceable(kinds.RelayList).$first(1000, undefined);
-    const signed = mailboxes
-      ? await factory.modify(mailboxes, ...relay.map(addInboxRelay)).then(sign)
-      : await factory.build({ kind: kinds.RelayList }, ...relay.map(addInboxRelay)).then(sign);
-
-    // Publish the event to the old and new outboxes
-    await publish(signed, relaySet(getOutboxes(signed), mailboxes && getOutboxes(mailboxes)));
+    // Publish to both old and new outboxes so the event propagates
+    await context.publish(signed, relaySet(getOutboxes(signed), oldOutboxes));
   };
 }
 
 /** An action to remove an inbox relay from the kind 10002 relay list */
 export function RemoveInboxRelay(relay: string | string[]): Action {
-  return async ({ factory, user, publish, sign }) => {
-    if (typeof relay === "string") relay = [relay];
+  const relays = Array.isArray(relay) ? relay : [relay];
+  return async (context) => {
+    const [factory, oldOutboxes] = await modifyMailboxes(context);
+    if (!oldOutboxes) return;
 
-    const mailboxes = await user.replaceable(kinds.RelayList).$first(1000, undefined);
-    if (!mailboxes) return;
+    let f = factory;
+    for (const r of relays) f = f.removeInbox(r);
+    const signed = await f.sign(context.signer);
 
-    const signed = await factory.modify(mailboxes, ...relay.map(removeInboxRelay)).then(sign);
-
-    // Publish to outboxes
-    await publish(signed, getOutboxes(signed));
+    await context.publish(signed, getOutboxes(signed));
   };
 }
 
 /** An action to add an outbox relay to the kind 10002 relay list */
 export function AddOutboxRelay(relay: string | string[]): Action {
-  return async ({ factory, user, publish, sign }) => {
-    if (typeof relay === "string") relay = [relay];
+  const relays = Array.isArray(relay) ? relay : [relay];
+  return async (context) => {
+    const [factory, oldOutboxes] = await modifyMailboxes(context);
+    let f = factory;
+    for (const r of relays) f = f.addOutbox(r);
+    const signed = await f.sign(context.signer);
 
-    const mailboxes = await user.replaceable(kinds.RelayList).$first(1000, undefined);
-    const signed = mailboxes
-      ? await factory.modify(mailboxes, ...relay.map(addOutboxRelay)).then(sign)
-      : await factory.build({ kind: kinds.RelayList }, ...relay.map(addOutboxRelay)).then(sign);
-
-    // Publish to outboxes
-    await publish(signed, getOutboxes(signed));
+    // Publish to both old and new outboxes so the event propagates
+    await context.publish(signed, relaySet(getOutboxes(signed), oldOutboxes));
   };
 }
 
 /** An action to remove an outbox relay from the kind 10002 relay list */
 export function RemoveOutboxRelay(relay: string | string[]): Action {
-  return async ({ factory, user, publish, sign }) => {
-    if (typeof relay === "string") relay = [relay];
+  const relays = Array.isArray(relay) ? relay : [relay];
+  return async (context) => {
+    const [factory, oldOutboxes] = await modifyMailboxes(context);
+    if (!oldOutboxes) return;
 
-    const mailboxes = await user.replaceable(kinds.RelayList).$first(1000, undefined);
-    if (!mailboxes) return;
+    let f = factory;
+    for (const r of relays) f = f.removeOutbox(r);
+    const signed = await f.sign(context.signer);
 
-    const signed = await factory.modify(mailboxes, ...relay.map(removeOutboxRelay)).then(sign);
-
-    // Publish to outboxes
-    await publish(signed, getOutboxes(signed));
+    await context.publish(signed, getOutboxes(signed));
   };
 }

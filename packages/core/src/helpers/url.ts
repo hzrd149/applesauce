@@ -82,10 +82,7 @@ export function ensureHttpURL<T extends string | URL>(url: T): T {
   return typeof url === "string" ? p.toString() : p;
 }
 
-/**
- * Normalizes a string into a relay URL
- * Does not remove the trailing slash
- */
+/** Normalizes a string into a cleaner URL by dropping port if its not needed */
 export function normalizeURL<T extends string | URL>(url: T): T {
   let p = new URL(url);
   // Remove any double slashes

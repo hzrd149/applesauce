@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "applesauce-core/helpers/pointers";
 import { addEventPointerTag } from "applesauce-core/operations/tag/common";
@@ -6,7 +6,7 @@ import { modifyPublicTags } from "applesauce-core/operations/tags";
 
 /** Sets the poll event that this response is for using an 'e' tag */
 export function setPollEvent(poll: NostrEvent | EventPointer | string): EventOperation {
-  return modifyPublicTags(addEventPointerTag(poll, true));
+  return modifyPublicTags(addEventPointerTag(poll, undefined, true));
 }
 
 /** Sets multiple response options at once, replacing any existing response tags */

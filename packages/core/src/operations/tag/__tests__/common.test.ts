@@ -17,7 +17,7 @@ describe("addProfilePointerTag", () => {
   it("should add a 'p' tag from a string pubkey", async () => {
     const operation = addProfilePointerTag(pubkey);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("p");
@@ -28,7 +28,7 @@ describe("addProfilePointerTag", () => {
     const pointer = { pubkey, relays: [relay] };
     const operation = addProfilePointerTag(pointer);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("p");
@@ -37,9 +37,9 @@ describe("addProfilePointerTag", () => {
   });
 
   it("should replace existing 'p' tag when replace is true", async () => {
-    const operation = addProfilePointerTag(pubkey, true);
+    const operation = addProfilePointerTag(pubkey, undefined, true);
     const tags: string[][] = [["p", pubkey, "old-relay"]];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("p");
@@ -48,9 +48,9 @@ describe("addProfilePointerTag", () => {
   });
 
   it("should not replace existing 'p' tag when replace is false", async () => {
-    const operation = addProfilePointerTag(pubkey, false);
+    const operation = addProfilePointerTag(pubkey, undefined, false);
     const tags: string[][] = [["p", pubkey, "old-relay"]];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][1]).toBe(pubkey);
@@ -58,11 +58,9 @@ describe("addProfilePointerTag", () => {
   });
 
   it("should add relay hint when getPubkeyRelayHint is provided", async () => {
-    const operation = addProfilePointerTag(pubkey);
+    const operation = addProfilePointerTag(pubkey, async () => relay);
     const tags: string[][] = [];
-    const result = await operation(tags, {
-      getPubkeyRelayHint: async () => relay,
-    });
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][2]).toBe(relay);
@@ -70,11 +68,9 @@ describe("addProfilePointerTag", () => {
 
   it("should not override existing relay hint", async () => {
     const pointer = { pubkey, relays: [relay] };
-    const operation = addProfilePointerTag(pointer);
+    const operation = addProfilePointerTag(pointer, async () => "wss://different-relay.com");
     const tags: string[][] = [];
-    const result = await operation(tags, {
-      getPubkeyRelayHint: async () => "wss://different-relay.com",
-    });
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][2]).toBe(relay); // should keep original relay
@@ -86,7 +82,7 @@ describe("addProfilePointerTag", () => {
       ["e", "event-id"],
       ["a", "30000:pubkey:identifier"],
     ];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(3);
     expect(result[0][0]).toBe("e");
@@ -104,7 +100,7 @@ describe("removeProfilePointerTag", () => {
       ["p", pubkey],
       ["p", "other-pubkey"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][1]).toBe("other-pubkey");
@@ -117,7 +113,7 @@ describe("removeProfilePointerTag", () => {
       ["p", pubkey],
       ["p", "other-pubkey"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][1]).toBe("other-pubkey");
@@ -131,7 +127,7 @@ describe("removeProfilePointerTag", () => {
       ["p", pubkey, "relay"],
       ["p", "other-pubkey"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][0]).toBe("e");
@@ -146,7 +142,7 @@ describe("removeProfilePointerTag", () => {
       ["e", "event-id"],
       ["a", "30000:pubkey:identifier"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][0]).toBe("e");
@@ -162,7 +158,7 @@ describe("addEventPointerTag", () => {
   it("should add an 'e' tag from a string id", async () => {
     const operation = addEventPointerTag(eventId);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("e");
@@ -173,7 +169,7 @@ describe("addEventPointerTag", () => {
     const pointer = { id: eventId, relays: [relay] };
     const operation = addEventPointerTag(pointer);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("e");
@@ -185,7 +181,7 @@ describe("addEventPointerTag", () => {
     const event = user.event({ kind: kinds.ShortTextNote });
     const operation = addEventPointerTag(event);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("e");
@@ -193,9 +189,9 @@ describe("addEventPointerTag", () => {
   });
 
   it("should replace existing 'e' tag when replace is true", async () => {
-    const operation = addEventPointerTag(eventId, true);
+    const operation = addEventPointerTag(eventId, undefined, true);
     const tags: string[][] = [["e", eventId, "old-relay"]];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("e");
@@ -204,9 +200,9 @@ describe("addEventPointerTag", () => {
   });
 
   it("should not replace existing 'e' tag when replace is false", async () => {
-    const operation = addEventPointerTag(eventId, false);
+    const operation = addEventPointerTag(eventId, undefined, false);
     const tags: string[][] = [["e", eventId, "old-relay"]];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][1]).toBe(eventId);
@@ -214,11 +210,9 @@ describe("addEventPointerTag", () => {
   });
 
   it("should add relay hint when getEventRelayHint is provided", async () => {
-    const operation = addEventPointerTag(eventId);
+    const operation = addEventPointerTag(eventId, async () => relay);
     const tags: string[][] = [];
-    const result = await operation(tags, {
-      getEventRelayHint: async () => relay,
-    });
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][2]).toBe(relay);
@@ -226,11 +220,9 @@ describe("addEventPointerTag", () => {
 
   it("should not override existing relay hint", async () => {
     const pointer = { id: eventId, relays: [relay] };
-    const operation = addEventPointerTag(pointer);
+    const operation = addEventPointerTag(pointer, async () => "wss://different-relay.com");
     const tags: string[][] = [];
-    const result = await operation(tags, {
-      getEventRelayHint: async () => "wss://different-relay.com",
-    });
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][2]).toBe(relay); // should keep original relay
@@ -242,7 +234,7 @@ describe("addEventPointerTag", () => {
       ["p", "pubkey"],
       ["a", "30000:pubkey:identifier"],
     ];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(3);
     expect(result[0][0]).toBe("p");
@@ -260,7 +252,7 @@ describe("removeEventPointerTag", () => {
       ["e", eventId],
       ["e", "other-event-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][1]).toBe("other-event-id");
@@ -273,7 +265,7 @@ describe("removeEventPointerTag", () => {
       ["e", eventId],
       ["e", "other-event-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][1]).toBe("other-event-id");
@@ -287,7 +279,7 @@ describe("removeEventPointerTag", () => {
       ["e", eventId, "relay"],
       ["e", "other-event-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][0]).toBe("p");
@@ -302,7 +294,7 @@ describe("removeEventPointerTag", () => {
       ["p", "pubkey"],
       ["a", "30000:pubkey:identifier"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][0]).toBe("p");
@@ -319,7 +311,7 @@ describe("addAddressPointerTag", () => {
   it("should add an 'a' tag from a string address", async () => {
     const operation = addAddressPointerTag(address);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("a");
@@ -330,7 +322,7 @@ describe("addAddressPointerTag", () => {
     const pointer = { kind: 30000, pubkey, identifier: "identifier", relays: [relay] };
     const operation = addAddressPointerTag(pointer);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("a");
@@ -342,7 +334,7 @@ describe("addAddressPointerTag", () => {
     const event = user.event({ kind: kinds.Metadata });
     const operation = addAddressPointerTag(event);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("a");
@@ -350,9 +342,9 @@ describe("addAddressPointerTag", () => {
   });
 
   it("should replace existing 'a' tag when replace is true", async () => {
-    const operation = addAddressPointerTag(address, true);
+    const operation = addAddressPointerTag(address, undefined, true);
     const tags: string[][] = [["a", address, "old-relay"]];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("a");
@@ -361,9 +353,9 @@ describe("addAddressPointerTag", () => {
   });
 
   it("should not replace existing 'a' tag when replace is false", async () => {
-    const operation = addAddressPointerTag(address, false);
+    const operation = addAddressPointerTag(address, undefined, false);
     const tags: string[][] = [["a", address, "old-relay"]];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][1]).toBe(address);
@@ -371,11 +363,9 @@ describe("addAddressPointerTag", () => {
   });
 
   it("should add relay hint when getPubkeyRelayHint is provided", async () => {
-    const operation = addAddressPointerTag(address);
+    const operation = addAddressPointerTag(address, async () => relay);
     const tags: string[][] = [];
-    const result = await operation(tags, {
-      getPubkeyRelayHint: async () => relay,
-    });
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][2]).toBe(relay);
@@ -383,11 +373,9 @@ describe("addAddressPointerTag", () => {
 
   it("should not override existing relay hint", async () => {
     const pointer = { kind: 30000, pubkey, identifier: "identifier", relays: [relay] };
-    const operation = addAddressPointerTag(pointer);
+    const operation = addAddressPointerTag(pointer, async () => "wss://different-relay.com");
     const tags: string[][] = [];
-    const result = await operation(tags, {
-      getPubkeyRelayHint: async () => "wss://different-relay.com",
-    });
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][2]).toBe(relay); // should keep original relay
@@ -399,7 +387,7 @@ describe("addAddressPointerTag", () => {
       ["p", "pubkey"],
       ["e", "event-id"],
     ];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(3);
     expect(result[0][0]).toBe("p");
@@ -410,7 +398,7 @@ describe("addAddressPointerTag", () => {
   it("should NOT add or remove 'e' tags", async () => {
     const operation = addAddressPointerTag(address);
     const tags: string[][] = [["e", "existing-event-id"]];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][0]).toBe("e");
@@ -422,7 +410,7 @@ describe("addAddressPointerTag", () => {
     const event = user.event({ kind: kinds.Metadata });
     const operation = addAddressPointerTag(event);
     const tags: string[][] = [];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][0]).toBe("a");
@@ -443,7 +431,7 @@ describe("removeAddressPointerTag", () => {
       ["a", address],
       ["a", "30000:other-pubkey:other-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][1]).toBe("30000:other-pubkey:other-id");
@@ -456,7 +444,7 @@ describe("removeAddressPointerTag", () => {
       ["a", address],
       ["a", "30000:other-pubkey:other-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(1);
     expect(result[0][1]).toBe("30000:other-pubkey:other-id");
@@ -469,7 +457,7 @@ describe("removeAddressPointerTag", () => {
       ["a", `${kinds.Metadata}:${user.pubkey}:`],
       ["a", "30000:other-pubkey:other-id"],
     ];
-    const result = operation(tags, {}) as string[][];
+    const result = operation(tags) as string[][];
 
     // Should remove the matching 'a' tag
     expect(result.length).toBeLessThanOrEqual(2);
@@ -483,7 +471,7 @@ describe("removeAddressPointerTag", () => {
       ["a", address, "relay"],
       ["a", "30000:other-pubkey:other-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][0]).toBe("p");
@@ -498,7 +486,7 @@ describe("removeAddressPointerTag", () => {
       ["p", "pubkey"],
       ["e", "event-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     expect(result).toHaveLength(2);
     expect(result[0][0]).toBe("p");
@@ -513,7 +501,7 @@ describe("removeAddressPointerTag", () => {
       ["e", "event-id-2"],
       ["p", "pubkey"],
     ];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     expect(result).toHaveLength(3);
     const eTags = result.filter((t) => t[0] === "e");
@@ -528,7 +516,7 @@ describe("removeAddressPointerTag", () => {
       ["a", address],
       ["e", "event-id"],
     ];
-    const result = operation(tags, {});
+    const result = operation(tags);
 
     // skip() should return the tags unchanged
     expect(result).toEqual(tags);
@@ -542,7 +530,7 @@ describe("removeAddressPointerTag", () => {
       ["e", "existing-event-id"],
       ["e", event.id],
     ];
-    const result = await operation(tags, {});
+    const result = await operation(tags);
 
     // Should keep all 'e' tags
     const eTags = result.filter((t) => t[0] === "e");

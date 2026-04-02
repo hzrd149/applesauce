@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { kinds } from "applesauce-core/helpers/event";
 import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { includeNameValueTag } from "applesauce-core/operations/tags";

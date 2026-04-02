@@ -7,9 +7,9 @@ Actions are the core building blocks for creating and modifying Nostr events in 
 An action is a function that takes parameters and returns an `Action` function. The action function receives a context with:
 
 - `events` - The event store for reading existing events
-- `factory` - The event factory for creating and modifying events
 - `user` - The current user's cast (provides convenient access to user data)
 - `self` - The current user's public key
+- `signer` - The active signer
 - `sign` - A helper function to sign events
 - `publish` - A function to publish events (optionally to specific relays)
 - `run` - A function to run sub-actions
@@ -18,20 +18,19 @@ Actions follow this basic pattern:
 
 ```ts
 import { Action } from "applesauce-actions";
+import { ProfileFactory } from "applesauce-core/factories";
 
-function MyAction(param1: string, param2?: boolean): Action {
-  return async ({ events, factory, user, publish, sign }) => {
+function SetAbout(about: string): Action {
+  return async ({ events, user, publish, signer }) => {
     // Read existing events from the store
-    const existingEvent = events.getReplaceable(kind, user.pubkey);
+    const existingEvent = events.getReplaceable(0, user.pubkey);
+    if (!existingEvent) throw new Error("Profile not found");
 
-    // Create or modify events using the factory
-    const draft = await factory.modify(existingEvent, ...operations);
-
-    // Sign the event
-    const signed = await sign(draft);
+    // Create or modify events with a typed factory
+    const signed = await ProfileFactory.modify(existingEvent).about(about).sign(signer);
 
     // Publish the event (optionally to specific relays)
-    await publish(signed, relays);
+    await publish(signed);
   };
 }
 ```
@@ -69,12 +68,15 @@ Some examples include:
 When creating a new replaceable event, actions typically check if one already exists:
 
 ```ts
+import { kinds } from "applesauce-core/helpers";
+import { ProfileFactory } from "applesauce-core/factories";
+
 export function CreateProfile(content: ProfileContent): Action {
-  return async ({ events, factory, self, publish, sign }) => {
+  return async ({ events, self, publish, signer }) => {
     const metadata = events.getReplaceable(kinds.Metadata, self);
     if (metadata) throw new Error("Profile already exists");
 
-    const signed = await factory.build({ kind: kinds.Metadata }, setProfileContent(content)).then(sign);
+    const signed = await ProfileFactory.create().override(content).sign(signer);
     await publish(signed);
   };
 }
@@ -85,8 +87,10 @@ export function CreateProfile(content: ProfileContent): Action {
 When updating events, actions verify the event exists before modifying:
 
 ```ts
+import { ProfileFactory } from "applesauce-core/factories";
+
 export function UpdateProfile(content: Partial<ProfileContent>): Action {
-  return async ({ factory, user, publish, sign }) => {
+  return async ({ user, publish, signer }) => {
     // Load the profile and outboxes in parallel
     const [profile, outboxes] = await Promise.all([
       user.profile$.$first(1000, undefined),
@@ -95,7 +99,7 @@ export function UpdateProfile(content: Partial<ProfileContent>): Action {
 
     if (!profile) throw new Error("Profile does not exist");
 
-    const signed = await factory.modify(profile.event, updateProfileContent(content)).then(sign);
+    const signed = await ProfileFactory.modify(profile.event).update(content).sign(signer);
     await publish(signed, outboxes);
   };
 }
@@ -107,9 +111,13 @@ Many actions work by adding or removing tags from existing events:
 
 ```ts
 import { firstValueFrom, of, timeout } from "rxjs";
+import { ContactsFactory } from "applesauce-common/factories";
+import { kinds } from "applesauce-core/helpers";
+import { TagOperation } from "applesauce-core/factories";
+import { addProfilePointerTag } from "applesauce-core/operations/tag/common";
 
 function ModifyContactsEvent(operations: TagOperation[]): Action {
-  return async ({ events, factory, user, publish, sign }) => {
+  return async ({ events, user, publish, signer }) => {
     const [event, outboxes] = await Promise.all([
       firstValueFrom(
         events.replaceable(kinds.Contacts, user.pubkey).pipe(timeout({ first: 1000, with: () => of(undefined) })),
@@ -117,12 +125,8 @@ function ModifyContactsEvent(operations: TagOperation[]): Action {
       user.outboxes$.$first(1000, undefined),
     ]);
 
-    const operation = modifyPublicTags(...operations);
-
-    // Modify or build new event
-    const signed = event
-      ? await factory.modify(event, operation).then(sign)
-      : await factory.build({ kind: kinds.Contacts }, operation).then(sign);
+    const draft = event ? ContactsFactory.modify(event) : ContactsFactory.create();
+    const signed = await draft.modifyPublicTags(...operations).sign(signer);
 
     await publish(signed, outboxes);
   };
@@ -138,22 +142,23 @@ export function FollowUser(user: string | ProfilePointer): Action {
 Some actions perform multiple operations or create multiple events:
 
 ```ts
+import { BookmarkListFactory } from "applesauce-common/factories";
+
 export function CreateBookmarkSet(
   title: string,
   description: string,
   additional: { image?: string; hidden?: NostrEvent[]; public?: NostrEvent[] },
 ): Action {
-  return async ({ factory, user, publish, sign }) => {
-    const signed = await factory
-      .build(
-        { kind: kinds.BookmarkList },
-        List.setTitle(title),
-        List.setDescription(description),
-        additional.image ? List.setImage(additional.image) : undefined,
-        additional.public ? modifyPublicTags(...additional.public.map(addEventBookmarkTag)) : undefined,
-        additional.hidden ? modifyHiddenTags(...additional.hidden.map(addEventBookmarkTag)) : undefined,
-      )
-      .then(sign);
+  return async ({ user, publish, signer }) => {
+    let draft = BookmarkListFactory.create()
+      .title(title)
+      .description(description)
+      .image(additional.image ?? null);
+
+    for (const event of additional.public ?? []) draft = draft.bookmarkEvent(event);
+    for (const event of additional.hidden ?? []) draft = draft.bookmarkEvent(event, true);
+
+    const signed = await draft.as(signer).sign();
 
     await publish(signed, await user.outboxes$.$first(1000, undefined));
   };
@@ -166,27 +171,15 @@ To create your own action, define a function that takes parameters and returns a
 
 ```ts
 import { Action } from "applesauce-actions";
-import { kinds } from "applesauce-core/helpers/event";
+import { ProfileFactory } from "applesauce-core/factories";
 
 function SetDisplayName(displayName: string): Action {
-  return async ({ factory, user, publish, sign }) => {
+  return async ({ user, publish, signer }) => {
     // Get the current profile
     const profile = await user.profile$.$first(1000, undefined);
     if (!profile) throw new Error("Profile not found");
 
-    // Parse existing content
-    const content = JSON.parse(profile.event.content || "{}");
-
-    // Update the display name
-    content.display_name = displayName;
-
-    // Create a new profile event with updated content
-    const signed = await factory
-      .modify(profile.event, (event) => {
-        event.content = JSON.stringify(content);
-        return event;
-      })
-      .then(sign);
+    const signed = await ProfileFactory.modify(profile.event).displayName(displayName).sign(signer);
 
     // Publish the event
     const outboxes = await user.outboxes$.$first(1000, undefined);
@@ -200,19 +193,19 @@ function SetDisplayName(displayName: string): Action {
 Actions can publish multiple events if needed:
 
 ```ts
+import { ContactsFactory } from "applesauce-common/factories";
+import { addProfilePointerTag } from "applesauce-core/operations/tag/common";
+
 function CreateUserSetup(profile: ProfileContent, initialFollows: string[]): Action {
-  return async ({ factory, user, publish, sign }) => {
+  return async ({ user, publish, signer }) => {
     // Create profile
-    const profileSigned = await factory.build({ kind: kinds.Metadata }, setProfileContent(profile)).then(sign);
+    const profileSigned = await ProfileFactory.create().override(profile).sign(signer);
     await publish(profileSigned);
 
     // Create contacts list
-    const contactsSigned = await factory
-      .build({
-        kind: kinds.Contacts,
-        tags: initialFollows.map((pubkey) => ["p", pubkey]),
-      })
-      .then(sign);
+    const contactsSigned = await ContactsFactory.create()
+      .modifyPublicTags(...initialFollows.map((pubkey) => addProfilePointerTag(pubkey)))
+      .sign(signer);
 
     const outboxes = await user.outboxes$.$first(1000, undefined);
     await publish(contactsSigned, outboxes);
@@ -239,7 +232,7 @@ function SetupNewUser(profile: ProfileContent, initialFollows: string[]): Action
 ## Best Practices
 
 1. **Validate inputs** - Check that required events exist before attempting modifications
-2. **Use factory operations** - Leverage the event factory's built-in operations for common tasks
+2. **Use typed factories** - Prefer `ProfileFactory`, `ContactsFactory`, and other typed builders when they exist
 3. **Handle errors gracefully** - Throw descriptive errors when preconditions aren't met
 4. **Keep actions focused** - Each action should have a single, clear responsibility
 5. **Document parameters** - Use JSDoc comments to describe action parameters and behavior

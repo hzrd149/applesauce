@@ -1,4 +1,4 @@
-import { EventSigner } from "applesauce-core/event-factory";
+import { EventSigner } from "applesauce-core/factories";
 import {
   EncryptedContentSigner,
   EventTemplate,

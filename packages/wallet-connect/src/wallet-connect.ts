@@ -1,7 +1,7 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { simpleTimeout } from "applesauce-core";
 import { EncryptionMethod } from "applesauce-core/helpers";
-import { createEvent, EventSigner } from "applesauce-core";
+import { EventSigner } from "applesauce-core";
 import { finalizeEvent, getPublicKey, NostrEvent, verifyEvent } from "applesauce-core/helpers";
 import { nip04, nip44 } from "applesauce-core/helpers/encryption";
 import {
@@ -33,10 +33,11 @@ import {
   toArray,
 } from "rxjs";
 
-import { WalletRequestBlueprint } from "./blueprints/index.js";
+import { WalletRequestFactory } from "./factories/index.js";
 import { createWalletError } from "./helpers/error.js";
 import {
   createWalletAuthURI,
+  createWalletConnectURI,
   getPreferredEncryption,
   getWalletRequestEncryption,
   getWalletResponseRequestId,
@@ -128,6 +129,12 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
   public service$ = new BehaviorSubject<string | undefined>(undefined);
   public get service(): string | undefined {
     return this.service$.value;
+  }
+
+  /** The wallet connect URI for this connection, or undefined if the service pubkey is not yet known */
+  public get connectURI(): string | undefined {
+    if (!this.service) return undefined;
+    return createWalletConnectURI({ service: this.service, relays: this.relays, secret: bytesToHex(this.secret) });
   }
 
   /** Default timeout for requests */
@@ -305,17 +312,8 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
       // Get the preferred encryption method for the wallet
       const encryption = await firstValueFrom(this.encryption$);
 
-      // Create the request event
-      const draft = await createEvent(
-        { signer: this.signer },
-        WalletRequestBlueprint,
-        this.service!,
-        { method, params },
-        encryption,
-      );
-
-      // Sign the request event
-      return await this.signer.signEvent(draft);
+      // Create and sign the request event
+      return await WalletRequestFactory.create(this.service!, { method, params }, encryption).as(this.signer).sign();
     }).pipe(
       // Then switch to the request observable
       switchMap((requestEvent) => {

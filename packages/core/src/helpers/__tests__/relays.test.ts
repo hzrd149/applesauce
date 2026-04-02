@@ -129,6 +129,31 @@ describe("mergeRelaySets", () => {
     expect(result).toEqual([]);
   });
 
+  it("should handle null values", () => {
+    const result = mergeRelaySets(null, ["wss://relay.damus.io/"], null, "wss://nostrue.com/");
+
+    expect(result).toHaveLength(2);
+    expect(result).toContain("wss://relay.damus.io/");
+    expect(result).toContain("wss://nostrue.com/");
+  });
+
+  it("should accept bare domains without a protocol", () => {
+    const result = mergeRelaySets("relay.damus.io", ["nostrue.com"]);
+
+    expect(result).toHaveLength(2);
+    expect(result.some((url) => url.includes("relay.damus.io"))).toBe(true);
+    expect(result.some((url) => url.includes("nostrue.com"))).toBe(true);
+    expect(result.every((url) => url.startsWith("wss://"))).toBe(true);
+  });
+
+  it("should accept bare domains with paths and no protocol", () => {
+    const result = mergeRelaySets("relay.damus.io/path", ["nostrue.com/ws"]);
+
+    expect(result).toHaveLength(2);
+    expect(result).toContain("wss://relay.damus.io/path");
+    expect(result).toContain("wss://nostrue.com/ws");
+  });
+
   it("should handle large number of arguments", () => {
     const args = [
       ["wss://relay1.com/"],

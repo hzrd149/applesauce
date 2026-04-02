@@ -3,11 +3,10 @@
  * @tags nip-23, nip-84, highlight, article, markdown
  * @related highlight/timeline, content/articles
  */
+import { HighlightFactory } from "applesauce-common/factories";
+import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-common/helpers";
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { defined, EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core";
-import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-common/helpers";
-import { HighlightBlueprint } from "applesauce-common/blueprints";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -53,7 +52,6 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
 
 interface HighlightButtonProps {
   onHighlight: (text: string) => void;
@@ -150,13 +148,7 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
   const [selectedRelays, setSelectedRelays] = useState<string[]>(["wss://relay.damus.io/"]);
   const [customRelay, setCustomRelay] = useState("");
 
-  const defaultRelays = [
-    "wss://relay.damus.io/",
-    "wss://nos.lol/",
-    "wss://relay.primal.net/",
-    "wss://nostr.wine/",
-    "wss://relay.nostr.band/",
-  ];
+  const defaultRelays = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/", "wss://nostr.wine/"];
 
   const handleAddCustomRelay = () => {
     if (customRelay && !selectedRelays.includes(customRelay)) {
@@ -321,13 +313,10 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
           identifier: article.tags.find((tag) => tag[0] === "d")?.[1] || "",
         };
 
-        // Create highlight event using the blueprint
-        const highlightEvent = await factory.create(
-          HighlightBlueprint,
-          selectedText,
-          addressPointer,
-          comment ? { comment } : undefined,
-        );
+        // Create and sign the highlight event
+        let highlightFactory = HighlightFactory.create(selectedText, addressPointer);
+        if (comment) highlightFactory = highlightFactory.comment(comment);
+        const highlightEvent = await highlightFactory.sign(signer);
 
         // Publish to selected relays (in a real app)
         console.log("Publishing highlight to relays:", relays);

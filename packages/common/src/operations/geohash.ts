@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/event-factory";
+import { EventOperation } from "applesauce-core/factories";
 import { modifyPublicTags } from "applesauce-core/operations";
 
 /** Adds all "g" geohash tags for a given geohash or removes them if null */

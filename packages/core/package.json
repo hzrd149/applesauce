@@ -67,10 +67,15 @@
       "require": "./dist/event-store/index.js",
       "types": "./dist/event-store/index.d.ts"
     },
-    "./event-factory": {
-      "import": "./dist/event-factory/index.js",
-      "require": "./dist/event-factory/index.js",
-      "types": "./dist/event-factory/index.d.ts"
+    "./factories": {
+      "import": "./dist/factories/index.js",
+      "require": "./dist/factories/index.js",
+      "types": "./dist/factories/index.d.ts"
+    },
+    "./factories/*": {
+      "import": "./dist/factories/*.js",
+      "require": "./dist/factories/*.js",
+      "types": "./dist/factories/*.d.ts"
     },
     "./operations": {
       "import": "./dist/operations/index.js",
@@ -81,6 +86,16 @@
       "import": "./dist/operations/*.js",
       "require": "./dist/operations/*.js",
       "types": "./dist/operations/*.d.ts"
+    },
+    "./casts": {
+      "import": "./dist/casts/index.js",
+      "require": "./dist/casts/index.js",
+      "types": "./dist/casts/index.d.ts"
+    },
+    "./casts/*": {
+      "import": "./dist/casts/*.js",
+      "require": "./dist/casts/*.js",
+      "types": "./dist/casts/*.d.ts"
     }
   },
   "dependencies": {

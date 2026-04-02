@@ -152,3 +152,33 @@ Never add drop shadows and avoid using cards, the UI looks better when its simpl
 # Using DaisyUI
 
 THERE IS NO `.form-control` class.
+
+# Adding Support For A New NIP
+
+Use this checklist whenever we introduce a new NIP-specific feature (e.g., NIP-58 badges) so helpers, casts, operations, and factories ship together and stay consistent.
+
+1. **Helpers**
+   - Create guarded helper modules under `packages/common/src/helpers/` that expose type guards (`isValidFooEvent`), pointer extractors, and lightweight parsing caches.
+   - Export via `helpers/index.ts` so downstream packages get the new APIs and update helper snapshot tests.
+   - Keep helpers framework-agnostic; any UI/state usage belongs elsewhere.
+
+2. **Casts**
+   - Mirror the helper functionality with casts under `packages/common/src/casts/` when the new NIP has an event-centric UX (e.g., `BadgeAward` casting recipients and badge pointer).
+   - Ensure casts validate events using the helper guard before instantiating and expose observable relationships (e.g., `badge$`, `issuer`).
+
+3. **Operations**
+   - Implement tag-level `EventOperation`s inside `packages/common/src/operations/` that mutate drafts in a composable way (no direct mutation, always `modifyPublicTags`).
+   - Export the module from `operations/index.ts` and cover it with Vitest suites exercising add/remove/update flows.
+
+4. **Factories**
+   - Add event factories in `packages/common/src/factories/` to wrap the operations behind fluent builders (`create()`/`modify()`).
+   - Re-export each factory from `factories/index.ts` and add factory tests verifying both creation and modification scenarios.
+
+5. **Tests & Snapshots**
+   - Helpers: extend `helpers/__tests__/badges.test.ts`-style suites plus update `helpers/__tests__/exports.test.ts` snapshots.
+   - Operations: add targeted unit tests mirroring the exported API, keeping cases short and focused.
+   - Factories: ensure new builders round-trip the operations and update export snapshots if necessary.
+
+6. **Verification**
+   - Run `pnpm --filter applesauce-common test` after wiring helpers, casts, operations, and factories to keep snapshot coverage in sync.
+   - Address any renamed helper paths (e.g., `badge.ts` replacing `badges.ts`) across the repo before final run.

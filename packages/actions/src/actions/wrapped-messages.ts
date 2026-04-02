@@ -1,9 +1,4 @@
-import {
-  GiftWrapBlueprint,
-  WrappedMessageBlueprint,
-  WrappedMessageBlueprintOptions,
-  WrappedMessageReplyBlueprint,
-} from "applesauce-common/blueprints";
+import { GiftWrapFactory, WrappedMessageFactory, WrappedMessageBlueprintOptions } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { Rumor } from "applesauce-common/helpers/gift-wrap";
 import { getConversationParticipants } from "applesauce-common/helpers/messages";
@@ -13,7 +8,9 @@ import { Action } from "../action-runner.js";
 
 /** Gift wraps a message to a list of participants and publishes it to their inbox relays */
 export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOptions): Action {
-  return async ({ factory, user, publish, events }) => {
+  return async ({ signer, user, publish, events }) => {
+    if (!signer) throw new Error("Missing signer");
+
     // Get the pubkeys to send this message to and ensure the sender is included
     const receivers = new Set(getConversationParticipants(message));
     receivers.add(user.pubkey);
@@ -25,9 +22,12 @@ export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOpt
         const receiver = castUser(pubkey, events);
 
         // Use the dm relays or inboxes as the inbox relays for the participant
-        const relays =
-          (await receiver.directMessageRelays$.$first(1_000, undefined)) ??
-          (await receiver.inboxes$.$first(1_000, undefined));
+        const relays = (
+          await Promise.all([
+            receiver.directMessageRelays$.$first(1_000, undefined),
+            receiver.inboxes$.$first(1_000, undefined),
+          ])
+        ).find((arr) => arr && arr?.length > 0);
 
         if (relays) inboxRelays.set(pubkey, relays);
       }),
@@ -36,7 +36,7 @@ export function GiftWrapMessageToParticipants(message: Rumor, opts?: GiftWrapOpt
     // Create the gift wraps to send
     const giftWraps: { event: NostrEvent; relays?: string[] }[] = [];
     for (const receiver of receivers) {
-      const event = await factory.create(GiftWrapBlueprint, receiver, message, opts);
+      const event = await GiftWrapFactory.create(signer, receiver, message, opts);
       const relays = inboxRelays.get(receiver);
       giftWraps.push({ event, relays });
     }
@@ -58,10 +58,12 @@ export function SendWrappedMessage(
   message: string,
   opts?: WrappedMessageBlueprintOptions & GiftWrapOptions,
 ): Action {
-  return async ({ factory, run }) => {
-    // Create the rumor of the message
-    const rumor = await factory.create(WrappedMessageBlueprint, participants, message, opts);
-    await run(GiftWrapMessageToParticipants, rumor, opts);
+  return async ({ signer, run }) => {
+    if (!signer) throw new Error("Missing signer");
+
+    // Create the rumor of the message, including all participants as p-tags
+    const rumor = await WrappedMessageFactory.create(participants, message).as(signer).stamp();
+    await run(GiftWrapMessageToParticipants, rumor as Rumor, opts);
   };
 }
 
@@ -77,9 +79,12 @@ export function ReplyToWrappedMessage(
   message: string,
   opts?: WrappedMessageBlueprintOptions & GiftWrapOptions,
 ): Action {
-  return async ({ factory, run }) => {
+  return async ({ signer, run }) => {
+    if (!signer) throw new Error("Missing signer");
+    const recipient = parent.tags.find((t) => t[0] === "p")?.[1] ?? parent.pubkey;
+
     // Create the reply message
-    const rumor = await factory.create(WrappedMessageReplyBlueprint, parent, message, opts);
-    await run(GiftWrapMessageToParticipants, rumor, opts);
+    const rumor = await WrappedMessageFactory.reply(parent, recipient, message).as(signer).stamp();
+    await run(GiftWrapMessageToParticipants, rumor as Rumor, opts);
   };
 }

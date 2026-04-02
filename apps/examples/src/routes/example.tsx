@@ -1,33 +1,10 @@
-import Prism from "prismjs";
-import "prismjs/themes/prism.css";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { Link, useParams } from "react-router";
 import SideNav from "../components/nav";
 
-import "prismjs/components/prism-javascript";
-import "prismjs/components/prism-jsx";
-import "prismjs/components/prism-tsx";
-import "prismjs/components/prism-typescript";
-
-import { CheckIcon, CodeIcon, ExternalLinkIcon } from "../components/icons";
+import { CheckIcon, ExternalLinkIcon } from "../components/icons";
 import examples, { Example } from "../examples";
-
-function CodeBlock({ code, language }: { code: string; language: string }) {
-  const ref = useRef<HTMLElement | null>(null);
-
-  useLayoutEffect(() => {
-    if (ref.current) Prism.highlightElement(ref.current);
-  }, []);
-
-  return (
-    <pre className="p-4 my-0">
-      <code ref={ref} className={`language-${language}`}>
-        {code}
-      </code>
-    </pre>
-  );
-}
 
 export default function ExamplePage() {
   const { "*": splat } = useParams();
@@ -36,13 +13,9 @@ export default function ExamplePage() {
   const [source, setSource] = useState("");
   const [metadata, setMetadata] = useState<Example["metadata"]>();
   const [Component, setComponent] = useState<(() => JSX.Element) | null>();
-  const [mode, setMode] = useState<"code" | "preview">("preview");
   const [copied, setCopied] = useState(false);
 
   const example = examples.find((e) => e.id === exampleId);
-
-  // Set mode to preview when example changes
-  useEffect(() => setMode("preview"), [example]);
 
   // Handle copy to clipboard
   const handleCopy = async () => {
@@ -137,14 +110,6 @@ export default function ExamplePage() {
               {copied ? <CheckIcon /> : null}
               {copied ? "Copied!" : "Copy code"}
             </button>
-
-            <button
-              className={`btn btn-sm ${mode === "code" ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => setMode(mode === "code" ? "preview" : "code")}
-            >
-              <CodeIcon /> Source
-            </button>
-
             <a
               target="_blank"
               className="btn btn-sm btn-ghost btn-square"
@@ -197,22 +162,18 @@ export default function ExamplePage() {
         )}
 
         {/* Page content */}
-        {mode === "preview" ? (
-          Component ? (
-            <ErrorBoundary
-              fallbackRender={({ error }) => (
-                <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>
-              )}
-            >
-              <Component />
-            </ErrorBoundary>
-          ) : (
-            <div className="flex justify-center items-center h-full">
-              <span className="loading loading-dots loading-xl"></span>
-            </div>
-          )
+        {Component ? (
+          <ErrorBoundary
+            fallbackRender={({ error }) => (
+              <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>
+            )}
+          >
+            <Component />
+          </ErrorBoundary>
         ) : (
-          <CodeBlock code={source} language="tsx" />
+          <div className="flex justify-center items-center h-full">
+            <span className="loading loading-dots loading-xl"></span>
+          </div>
         )}
       </div>
 

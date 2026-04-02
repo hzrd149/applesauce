@@ -3,10 +3,10 @@
  * @tags nip-53, stream, viewer, chat
  * @related feed/relay-timeline
  */
-import { StreamChatMessage as StreamChatMessageBlueprint } from "applesauce-common/blueprints";
+import { StreamChatMessageFactory } from "applesauce-common/factories";
 import { Stream, StreamChatMessage } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { EventStore, mapEventsToStore } from "applesauce-core";
 import { buildCommonEventRelationFilters, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -22,7 +22,6 @@ import RelayPicker from "../../components/relay-picker";
 const eventStore = new EventStore();
 
 const signer = new ExtensionSigner();
-const factory = new EventFactory({ signer });
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -147,8 +146,7 @@ function ChatMessageForm({ stream }: { stream: Stream }) {
     const relays = inboxes || stream.relays;
     if (!relays) throw new Error("No relays found for stream");
 
-    const draft = await factory.create(StreamChatMessageBlueprint, stream.event, values.content);
-    const event = await factory.sign(draft);
+    const event = await StreamChatMessageFactory.create(stream.event, values.content).sign(signer);
 
     eventStore.add(event);
     reset();

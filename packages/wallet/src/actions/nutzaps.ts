@@ -3,9 +3,9 @@ import { Action } from "applesauce-actions";
 import { castUser } from "applesauce-common/casts";
 import { bytesToHex, NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { WalletHistoryBlueprint } from "../blueprints/history.js";
-import { WalletTokenBlueprint } from "../blueprints/tokens.js";
-import { NutzapBlueprint, ProfileNutzapBlueprint } from "../blueprints/zaps.js";
+import { WalletHistoryFactory } from "../factories/history.js";
+import { WalletTokenFactory } from "../factories/tokens.js";
+import { NutzapFactory } from "../factories/nutzap.js";
 import { Couch } from "../helpers/couch.js";
 import { verifyProofsLocked } from "../helpers/nutzap-info.js";
 import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
@@ -16,7 +16,8 @@ import "../casts/__register__.js";
 
 /** Creates a NIP-61 nutzap event for an event with a token */
 export function NutzapEvent(event: NostrEvent, token: Token, options?: { comment?: string; couch?: Couch }): Action {
-  return async ({ events, factory, user, signer, sign, publish }) => {
+  return async ({ events, signer, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     const { comment, couch } = options ?? {};
 
     const clearStoredToken = await couch?.store(token);
@@ -34,7 +35,7 @@ export function NutzapEvent(event: NostrEvent, token: Token, options?: { comment
       verifyProofsLocked(token.proofs, info.event);
 
       // Create the nutzap event
-      const nutzap = await factory.create(NutzapBlueprint, event, token, comment || token.memo).then(sign);
+      const nutzap = await NutzapFactory.forEvent(event, token, comment || token.memo).sign(signer);
 
       // Publish the nutzap event
       await publish(nutzap, wallet.relays);
@@ -50,7 +51,8 @@ export function NutzapProfile(
   token: Token,
   options?: { comment?: string; couch?: Couch },
 ): Action {
-  return async ({ events, factory, sign, publish }) => {
+  return async ({ events, signer, publish }) => {
+    if (!signer) throw new Error("Missing signer");
     const { comment, couch } = options ?? {};
 
     const clearStoredToken = await couch?.store(token);
@@ -65,7 +67,7 @@ export function NutzapProfile(
       verifyProofsLocked(token.proofs, info.event);
 
       // Create the nutzap event
-      const nutzap = await factory.create(ProfileNutzapBlueprint, recipient, token, comment || token.memo).then(sign);
+      const nutzap = await NutzapFactory.forProfile(recipient, token, comment || token.memo).sign(signer);
 
       // Publish the nutzap event
       await publish(nutzap, info.relays);
@@ -83,7 +85,7 @@ export function NutzapProfile(
  * @param couch optional couch interface for temporarily storing tokens during the operation
  */
 export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[], couch?: Couch): Action {
-  return async ({ factory, user, signer, sign, publish }) => {
+  return async ({ signer, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
 
     // Normalize to array
@@ -162,13 +164,18 @@ export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[], couch?: Couch
           clearMethods.push(clearStoredToken);
         }
 
-        const tokenEvent = await factory.create(WalletTokenBlueprint, receivedToken, []).then(sign);
+        const tokenEvent = await WalletTokenFactory.create(receivedToken, []).sign(signer);
 
         // Create history event marking nutzap events as redeemed
         const nutzapIds = mintNutzaps.map((n) => n.id);
-        const history = await factory
-          .create(WalletHistoryBlueprint, { direction: "in", amount, mint, created: [tokenEvent.id] }, nutzapIds)
-          .then(sign);
+        const history = await WalletHistoryFactory.create({
+          direction: "in",
+          amount,
+          mint,
+          created: [tokenEvent.id],
+        })
+          .redeemed(nutzapIds)
+          .sign(signer);
 
         // Publish events
         await publish(tokenEvent, wallet.relays);

@@ -1,4 +1,4 @@
-import { TagOperation } from "applesauce-core/event-factory";
+import { TagOperation } from "applesauce-core/factories";
 import { isEvent, isReplaceable, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer, isAddressPointer, isEventPointer } from "applesauce-core/helpers/pointers";
 import {

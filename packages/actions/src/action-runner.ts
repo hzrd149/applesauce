@@ -1,5 +1,5 @@
 import { castUser, User } from "applesauce-common/casts/user";
-import { EventFactory, EventSigner } from "applesauce-core/event-factory";
+import { EventSigner } from "applesauce-core";
 import {
   EventModels,
   IEventStoreActions,
@@ -23,10 +23,8 @@ export type ActionContext = {
   /** The {@link User} cast that is signing the events */
   user: User;
   /** The event signer used to sign events */
-  signer?: EventSigner;
-  /** The event factory used to build and modify events */
-  factory: EventFactory;
-  /** Sign an event using the event factory */
+  signer: EventSigner;
+  /** Sign an event using the signer */
   sign: (draft: EventTemplate | UnsignedEvent) => Promise<NostrEvent>;
   /** The method to publish events to an optional list of relays */
   publish: (event: NostrEvent | NostrEvent[], relays?: string[]) => Promise<void>;
@@ -45,26 +43,28 @@ export class ActionRunner {
   /** Whether to save all events created by actions to the event store */
   saveToStore = true;
 
+  private _context: ActionContext | undefined;
+
   constructor(
     public events: IEventStoreRead & IEventStoreStreams & IEventSubscriptions & IEventStoreActions & EventModels,
-    public factory: EventFactory,
+    public signer: EventSigner,
     private publishMethod?: UpstreamPool,
   ) {}
 
-  protected async getContext() {
-    if (!this.factory.context.signer) throw new Error("Missing signer");
-    const self = await this.factory.context.signer.getPublicKey();
+  protected async getContext(): Promise<ActionContext> {
+    if (this._context) return this._context;
+    const self = await this.signer.getPublicKey();
     const user = castUser(self, this.events);
-    return {
+    this._context = {
       self,
       user,
       events: this.events,
-      signer: this.factory.context.signer,
-      factory: this.factory,
+      signer: this.signer,
       publish: this.publish.bind(this),
       run: this.run.bind(this),
-      sign: this.factory.sign.bind(this.factory),
+      sign: (draft) => this.signer.signEvent(draft) as Promise<NostrEvent>,
     };
+    return this._context;
   }
 
   /** Internal method for publishing events to relays */

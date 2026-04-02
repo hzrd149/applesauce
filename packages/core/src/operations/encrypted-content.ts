@@ -1,13 +1,24 @@
-import { EventOperation } from "../event-factory/types.js";
+import type { EventOperation } from "../factories/types.js";
 import {
   EncryptedContentSymbol,
   EncryptionMethod,
   getEncryptedContentEncryptionMethods,
 } from "../helpers/encrypted-content.js";
 
-/** Sets the content to be encrypted to the pubkey with optional override method */
-export function setEncryptedContent(pubkey: string, content: string, override?: EncryptionMethod): EventOperation {
-  return async (draft, { signer }) => {
+/**
+ * Sets the content to be encrypted to the pubkey with optional override method
+ * @param pubkey - Pubkey to encrypt the content for
+ * @param content - Plaintext content to encrypt
+ * @param signer - EventSigner for encryption
+ * @param override - Optional encryption method override
+ */
+export function setEncryptedContent(
+  pubkey: string,
+  content: string,
+  signer?: import("../factories/types.js").EventSigner,
+  override?: EncryptionMethod,
+): EventOperation {
+  return async (draft) => {
     if (!signer) throw new Error("Signer required for encrypted content");
 
     // Set method based on kind if not provided

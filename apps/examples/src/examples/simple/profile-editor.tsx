@@ -7,7 +7,7 @@ import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { UpdateProfile } from "applesauce-actions/actions";
 import { castUser, User } from "applesauce-common/casts";
-import { defined, EventFactory, EventStore } from "applesauce-core";
+import { defined, EventStore } from "applesauce-core";
 import { ProfileContent } from "applesauce-core/helpers/profile";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -28,8 +28,7 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionRunner(eventStore, factory, async (event, relays) => {
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
   if (relays && relays.length > 0) {
     await pool.publish(relays, event);
   } else {

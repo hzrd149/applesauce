@@ -1,0 +1,12 @@
+{
+  "name": "applesauce-llms",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node src/build.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

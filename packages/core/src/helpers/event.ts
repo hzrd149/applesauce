@@ -1,6 +1,7 @@
 import { kinds } from "nostr-tools";
+import { isKind } from "nostr-tools/kinds";
 import { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
-import { NostrEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
+import { EventTemplate, NostrEvent, UnsignedEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
 import { IAsyncEventStore, IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
@@ -23,10 +24,16 @@ export {
   insertEventIntoAscendingList,
   insertEventIntoDescendingList,
 } from "nostr-tools/utils";
-export { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind, kinds };
+export { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind, kinds, isKind };
 
 /** An event with a known kind. this is used to know if events have been validated */
 export type KnownEvent<K extends number> = Omit<NostrEvent, "kind"> & { kind: K };
+
+/** An event template with a known kind. used in event factories */
+export type KnownEventTemplate<K extends number> = Omit<EventTemplate, "kind"> & { kind: K };
+
+/** An unsigned event with a known kind. used in event factories */
+export type KnownUnsignedEvent<K extends number> = Omit<UnsignedEvent, "kind"> & { kind: K };
 
 /** A symbol on an event that marks which event store its part of */
 export const EventStoreSymbol = Symbol.for("event-store");

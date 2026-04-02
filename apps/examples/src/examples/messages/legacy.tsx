@@ -6,7 +6,7 @@
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { SendLegacyMessage } from "applesauce-actions/actions";
-import { defined, EventFactory, EventStore, mapEventsToStore } from "applesauce-core";
+import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import {
   getDisplayName,
   getProfilePicture,
@@ -49,8 +49,7 @@ const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const factory = new EventFactory({ signer: new ProxySigner(signer$.pipe(defined())) });
-const actions = new ActionRunner(eventStore, factory);
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())));
 
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
