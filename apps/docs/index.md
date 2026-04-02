@@ -21,7 +21,7 @@ hero:
       link: /introduction/mcp-server
     - theme: alt
       text: Migrations
-      link: /migration/v1-v2
+      link: /migration
 
 features:
   - title: Reactive
