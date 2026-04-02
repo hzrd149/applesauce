@@ -4,9 +4,10 @@
  * @related content/articles, feed/algorithmic-relay
  */
 import { Link } from "applesauce-content/nast";
+import { Note } from "applesauce-common/casts";
+import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -16,11 +17,9 @@ import { merge } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
-// Create stores and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-/** Create a component for rendering media links */
 function LinkRenderer({ node: link }: { node: Link }) {
   if (isImageURL(link.href))
     return (
@@ -38,7 +37,6 @@ function LinkRenderer({ node: link }: { node: Link }) {
     );
 }
 
-// Create components for rendering content
 const components: ComponentMap = {
   text: ({ node }) => <span>{node.value}</span>,
   link: LinkRenderer,
@@ -65,9 +63,9 @@ const components: ComponentMap = {
   ),
 };
 
-// Create unified event loader for the store
 const eventLoader = createEventLoaderForStore(eventStore, pool, {
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
 
 const examples: EventPointer[] = [
@@ -89,13 +87,25 @@ const examples: EventPointer[] = [
   "nevent1qvzqqqqqqypzpmnw5yatnljuff5w47d35d87q99xddqpzlzsac4xzn6vm22ekmn5qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qghwaehxw309aex2mrp0yh8qunfd4skctnwv46z7qpqsawl5hw6rjhmzv74ydzajevrq4vqgkqq7cugwavlwpsy628hyrpqa7vu8w",
 ].map((nevent) => decode(nevent.replace(/^nostr:/, "")).data as EventPointer);
 
-function EventCard({ event }: { event: NostrEvent }) {
-  const content = useRenderedContent(event, components);
+function NoteCard({ note }: { note: Note }) {
+  const author = note.author;
+  const profile = use$(author.profile$);
+  const content = useRenderedContent(note.event, components);
 
   return (
-    <div key={event.id} className="p-4 bg-base-200 rounded-lg overflow-hidden whitespace-pre-wrap">
-      <div className="mb-2 text-sm text-base-content/70">Event: {event.id.substring(0, 8)}...</div>
-      {content}
+    <div className="p-4 border border-base-300 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="avatar">
+          <div className="w-10 rounded-full">
+            <img src={profile?.picture ?? `https://robohash.org/${author.pubkey}.png`} alt="" />
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold truncate">{profile?.displayName || author.npub.slice(0, 8)}</div>
+          <div className="text-xs text-base-content/60">{note.createdAt.toLocaleString()}</div>
+        </div>
+      </div>
+      <div className="whitespace-pre-wrap">{content}</div>
     </div>
   );
 }
@@ -103,7 +113,6 @@ function EventCard({ event }: { event: NostrEvent }) {
 export default function ContentRenderingExample() {
   const [relay, setRelay] = useState<string>("");
 
-  // Load the examples on mount
   use$(() => merge(...examples.map(eventLoader)), []);
 
   use$(
@@ -120,7 +129,7 @@ export default function ContentRenderingExample() {
     [relay],
   );
 
-  const events = use$(() => eventStore.timeline({ kinds: [1] }), []);
+  const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(castTimelineStream(Note, eventStore)), []);
 
   return (
     <div className="container mx-auto p-2 h-full">
@@ -130,8 +139,8 @@ export default function ContentRenderingExample() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {events?.map((event) => (
-          <EventCard key={event.id} event={event} />
+        {notes?.map((note) => (
+          <NoteCard key={note.id} note={note} />
         ))}
       </div>
     </div>

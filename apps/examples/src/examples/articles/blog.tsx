@@ -25,7 +25,7 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 const pubkey$ = new BehaviorSubject(
-  normalizeToPubkey("npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr"),
+  normalizeToPubkey("npub1klkk3vrzme455yh9rl2jshq7rc8dpegj3ndf82c3ks2sk40dxt7qulx3vt"),
 );
 const selectedArticle$ = new BehaviorSubject<Article | null>(null);
 

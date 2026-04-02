@@ -1,5 +1,5 @@
 import { castUser as coreCastUser, User } from "applesauce-core/casts";
-import { kinds, NostrEvent, nprofileEncode } from "applesauce-core/helpers";
+import { kinds, nprofileEncode } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { combineLatest, defer, from, map, MonoTypeOperatorFunction, ReplaySubject, share, switchMap, tap } from "rxjs";
 import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
@@ -72,7 +72,7 @@ defineGetter("profile$", function (this: User) {
 defineGetter("contacts$", function (this: User) {
   return this.$$ref("contacts$", (store) =>
     this.outboxes$.pipe(
-      switchMap((outboxes: string[] | undefined) => store.contacts({ pubkey: this.pubkey, relays: outboxes })),
+      switchMap((outboxes) => store.contacts({ pubkey: this.pubkey, relays: outboxes })),
       map((arr: ProfilePointer[]) => arr.map((p) => coreCastUser(p, store))),
     ),
   );
@@ -157,10 +157,10 @@ defineGetter("blockedRelays$", function (this: User) {
 defineGetter("directMessageRelays$", function (this: User) {
   return this.$$ref("dmRelays$", (store) =>
     this.outboxes$.pipe(
-      switchMap((outboxes: string[] | undefined) =>
+      switchMap((outboxes) =>
         store
           .replaceable({ kind: kinds.DirectMessageRelaysList, pubkey: this.pubkey, relays: outboxes })
-          .pipe(map((event: NostrEvent | undefined) => event && getRelaysFromList(event))),
+          .pipe(map((event) => event && getRelaysFromList(event))),
       ),
     ),
   );
@@ -169,10 +169,10 @@ defineGetter("directMessageRelays$", function (this: User) {
 defineGetter("blossomServers$", function (this: User) {
   return this.$$ref("blossomServers$", (store) =>
     this.outboxes$.pipe(
-      switchMap((outboxes: string[] | undefined) =>
+      switchMap((outboxes) =>
         store
           .replaceable({ kind: BLOSSOM_SERVER_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
-          .pipe(map((event: NostrEvent | undefined) => event && getBlossomServersFromList(event))),
+          .pipe(map((event) => event && getBlossomServersFromList(event))),
       ),
     ),
   );
@@ -185,24 +185,6 @@ defineGetter("groups$", function (this: User) {
         store
           .replaceable({ kind: GROUPS_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(GroupsList, store)),
-      ),
-    ),
-  );
-});
-
-defineGetter("live$", function (this: User) {
-  return this.$$ref("live$", (store) =>
-    defer(() => import("./stream.js").then((m) => m.Stream)).pipe(
-      switchMap((Stream) =>
-        store
-          .timeline([
-            { kinds: [kinds.LiveEvent], "#p": [this.pubkey] },
-            { kinds: [kinds.LiveEvent], authors: [this.pubkey] },
-          ])
-          .pipe(
-            map((events: NostrEvent[]) => events[0] as NostrEvent | undefined),
-            castEventStream(Stream, store),
-          ),
       ),
     ),
   );
@@ -236,9 +218,8 @@ declare module "applesauce-core/casts" {
     get searchRelays$(): ChainableObservable<import("./relay-lists.js").SearchRelays | undefined>;
     get blockedRelays$(): ChainableObservable<import("./relay-lists.js").BlockedRelays | undefined>;
     get directMessageRelays$(): ChainableObservable<string[] | undefined>;
-    get blossomServers$(): ChainableObservable<string[] | undefined>;
+    get blossomServers$(): ChainableObservable<URL[] | undefined>;
     get groups$(): ChainableObservable<import("./groups.js").GroupsList | undefined>;
-    get live$(): ChainableObservable<import("./stream.js").Stream | undefined>;
     get trustedProviders$(): ChainableObservable<import("./trusted-assertions.js").TrustedProviderList | undefined>;
   }
 }
