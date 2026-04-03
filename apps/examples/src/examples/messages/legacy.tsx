@@ -19,7 +19,7 @@ import { CacheRequest } from "applesauce-loaders";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "nostr-tools";
@@ -45,7 +45,7 @@ const EXPIRATIONS: Record<string, number> = {
 };
 
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -123,7 +123,7 @@ function ContactList({
   );
 }
 
-function Message({ pubkey, message, signer }: { pubkey: string; message: NostrEvent; signer: ExtensionSigner }) {
+function Message({ pubkey, message, signer }: { pubkey: string; message: NostrEvent; signer: ISigner }) {
   const sender = message.pubkey;
   const content = use$(() => eventStore.model(EncryptedContentModel, message), [message.id]);
 
@@ -204,7 +204,7 @@ function DirectMessageView({
   pubkey: string;
   correspondent: string;
   relay: string;
-  signer: ExtensionSigner;
+  signer: ISigner;
 }) {
   const filters = useMemo<Filter[]>(
     () => [
@@ -269,7 +269,7 @@ function DirectMessageView({
   );
 }
 
-function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner }) {
+function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
   const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -341,7 +341,7 @@ function App() {
       signer$.next(new ExtensionSigner());
     }
   };
-  const handleLogin = async (signer: ExtensionSigner, pubkey: string) => {
+  const handleLogin = async (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     pubkey$.next(pubkey);
     if (storage) await storage.setItem("pubkey", pubkey);

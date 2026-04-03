@@ -23,7 +23,7 @@ import { persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool, SyncDirection } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
 import { addEvents, openDB } from "nostr-idb";
 import { kinds, NostrEvent } from "nostr-tools";
@@ -48,7 +48,7 @@ const EXPIRATIONS: Record<string, number> = {
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 
 // Subjects for holding the signer and user
-const signer$ = new BehaviorSubject<ExtensionSigner | undefined>(undefined);
+const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
 const user$ = new BehaviorSubject<User | undefined>(undefined);
 
 // Setup event store and relay connection pool
@@ -502,7 +502,7 @@ function App() {
     }
   };
 
-  const handleLogin = async (signer: ExtensionSigner, pubkey: string) => {
+  const handleLogin = async (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     user$.next(castUser(pubkey, eventStore));
     if (storage) await storage.setItem("pubkey", pubkey);

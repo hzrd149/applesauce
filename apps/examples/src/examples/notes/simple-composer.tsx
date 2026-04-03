@@ -12,7 +12,7 @@ import { isAudioURL, isImageURL, isVideoURL, relaySet } from "applesauce-core/he
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import type { ISigner } from "applesauce-signers";
 import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { nip19 } from "nostr-tools";
@@ -32,7 +32,7 @@ createEventLoaderForStore(eventStore, pool, {
   extraRelays: FALLBACK_RELAYS,
 });
 
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
@@ -41,7 +41,7 @@ const DEFAULT_BLOSSOM_SERVERS = [new URL("https://blossom.primal.net")];
 /** Upload a file to the user's blossom servers and return the URL */
 async function uploadToBlossom(
   file: File,
-  signer: ExtensionSigner,
+  signer: ISigner,
   blossomServers: URL[] | undefined,
   useMediaOptimization: boolean,
 ): Promise<string> {
@@ -160,7 +160,7 @@ function NotePreview({ content }: { content: string }) {
   return <div className="whitespace-pre-wrap">{rendered}</div>;
 }
 
-function Composer({ user, signer }: { user: User; signer: ExtensionSigner }) {
+function Composer({ user, signer }: { user: User; signer: ISigner }) {
   const [content, setContent] = useState("");
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [publishing, setPublishing] = useState(false);

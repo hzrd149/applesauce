@@ -17,7 +17,7 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import type { ISigner } from "applesauce-signers";
 import { nip19 } from "nostr-tools";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
@@ -34,7 +34,7 @@ createEventLoaderForStore(eventStore, pool, {
   extraRelays: RELAYS,
 });
 
-const signer$ = new BehaviorSubject<ExtensionSigner | undefined>(undefined);
+const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
 const user$ = new BehaviorSubject<User | undefined>(undefined);
 
 function formatPubkey(pk: string) {
@@ -457,7 +457,7 @@ export default function BadgeEditorExample() {
   const signer = use$(signer$);
   const user = use$(user$);
 
-  const handleLogin = useCallback(async (s: ExtensionSigner, pubkey: string) => {
+  const handleLogin = useCallback(async (s: ISigner, pubkey: string) => {
     signer$.next(s);
     user$.next(castUser(pubkey, eventStore));
   }, []);

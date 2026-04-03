@@ -12,7 +12,7 @@ import { Filter, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import type { ISigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
 import { IndexedDBCouch } from "applesauce-wallet/helpers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -23,7 +23,7 @@ import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
 
 // Application state
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
@@ -381,7 +381,7 @@ export default function NutzapContacts() {
   const pubkey = use$(pubkey$);
   const user = use$(user$);
 
-  const handleLogin = useCallback(async (newSigner: ExtensionSigner, newPubkey: string) => {
+  const handleLogin = useCallback(async (newSigner: ISigner, newPubkey: string) => {
     signer$.next(newSigner);
     pubkey$.next(newPubkey);
   }, []);

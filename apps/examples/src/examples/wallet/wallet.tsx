@@ -23,6 +23,7 @@ import {
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import type { ISigner } from "applesauce-signers";
 import { ExtensionSigner } from "applesauce-signers/signers/extension-signer";
 import {
   AddNutzapInfoMint,
@@ -60,7 +61,7 @@ import RelayPicker from "../../components/relay-picker";
 
 // Setup application state
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 const autoUnlock$ = new BehaviorSubject<boolean>(false);
@@ -1513,7 +1514,7 @@ export default function WalletExample() {
   }, []);
 
   const handleLogin = useCallback(
-    async (newSigner: ExtensionSigner, newPubkey: string) => {
+    async (newSigner: ISigner, newPubkey: string) => {
       signer$.next(newSigner);
       pubkey$.next(newPubkey);
       if (storage) await storage.setItem("pubkey", newPubkey);

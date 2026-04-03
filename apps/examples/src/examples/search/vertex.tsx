@@ -10,7 +10,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Vertex } from "applesauce-extra";
-import { ExtensionSigner } from "applesauce-signers";
+import type { ISigner } from "applesauce-signers";
 import { npubEncode, nprofileEncode } from "nostr-tools/nip19";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
@@ -31,7 +31,7 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 // State management for signer and pubkey
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
 /** Create a hook for loading a users profile */
@@ -129,7 +129,7 @@ function ProfileListItem({ user }: { user: ProfilePointer }) {
   );
 }
 
-function SearchView({ signer }: { signer: ExtensionSigner }) {
+function SearchView({ signer }: { signer: ISigner }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ProfilePointer[]>([]);
   const [searching, setSearching] = useState(false);
@@ -278,7 +278,7 @@ export default function VertexSearch() {
   const signer = use$(signer$);
   const pubkey = use$(pubkey$);
 
-  const handleLogin = async (newSigner: ExtensionSigner, newPubkey: string) => {
+  const handleLogin = async (newSigner: ISigner, newPubkey: string) => {
     signer$.next(newSigner);
     pubkey$.next(newPubkey);
   };

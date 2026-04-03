@@ -29,14 +29,14 @@ import {
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import type { ISigner } from "applesauce-signers";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, firstValueFrom, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
 
 // Setup application state
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
@@ -739,7 +739,7 @@ function MuteManager({ user }: { user: User }) {
 export default function MutesExample() {
   const user = use$(user$);
 
-  const handleLogin = async (signer: ExtensionSigner, pubkey: string) => {
+  const handleLogin = async (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     pubkey$.next(pubkey);
   };

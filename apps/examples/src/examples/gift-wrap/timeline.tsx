@@ -11,7 +11,7 @@ import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
@@ -21,14 +21,14 @@ import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
-function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ExtensionSigner }) {
+function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ISigner }) {
   const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unlocked = isGiftWrapUnlocked(event);
@@ -70,7 +70,7 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: Extension
 }
 
 type FilterType = "all" | "locked" | "unlocked";
-function HomeView({ pubkey, signer }: { pubkey: string; signer: ExtensionSigner }) {
+function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
   const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
   const [filter, setFilter] = useState<FilterType>("all");
 
@@ -131,7 +131,7 @@ export default function App() {
       signer$.next(new ExtensionSigner());
     }
   };
-  const handleLogin = async (signer: ExtensionSigner, pubkey: string) => {
+  const handleLogin = async (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     pubkey$.next(pubkey);
     if (storage) await storage.setItem("pubkey", pubkey);

@@ -15,7 +15,7 @@ import { relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ExtensionSigner } from "applesauce-signers";
+import type { ISigner } from "applesauce-signers";
 import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import type { FileAttributes, NostrStorage, UploadTask } from "nostr-editor";
@@ -37,7 +37,7 @@ createEventLoaderForStore(eventStore, pool, {
   extraRelays: FALLBACK_RELAYS,
 });
 
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
@@ -47,11 +47,7 @@ const draftNote$ = new BehaviorSubject<NoteTemplate | null>(null);
 const DEFAULT_BLOSSOM_SERVERS = [new URL("https://blossom.primal.net")];
 
 /** Create a blossom upload handler for nostr-editor's fileUpload extension */
-function createBlossomUploader(
-  signer: ExtensionSigner,
-  blossomServers: URL[] | undefined,
-  useMediaOptimization: boolean,
-) {
+function createBlossomUploader(signer: ISigner, blossomServers: URL[] | undefined, useMediaOptimization: boolean) {
   return async (attrs: FileAttributes): Promise<UploadTask> => {
     const file = attrs.file;
     if (!file) return { error: "No file provided" };
@@ -144,7 +140,7 @@ async function noteTemplateFromEditor(editor: Editor): Promise<NoteTemplate> {
   return factory;
 }
 
-function ComposerBody({ user, signer, onContinue }: { user: User; signer: ExtensionSigner; onContinue: () => void }) {
+function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigner; onContinue: () => void }) {
   const [buildError, setBuildError] = useState<string | null>(null);
   const [mediaOptimization, setMediaOptimization] = useState(true);
   const blossomServers = use$(() => user.blossomServers$, [user.pubkey]);
@@ -267,7 +263,7 @@ function PublishBody({
   onBack,
 }: {
   user: User;
-  signer: ExtensionSigner;
+  signer: ISigner;
   draft: NoteTemplate;
   onBack: () => void;
 }) {
@@ -376,7 +372,7 @@ function PublishBody({
   );
 }
 
-function SignedInFlow({ user, signer }: { user: User; signer: ExtensionSigner }) {
+function SignedInFlow({ user, signer }: { user: User; signer: ISigner }) {
   const draft = use$(draftNote$);
   const [screen, setScreen] = useState<"compose" | "publish">("compose");
 
