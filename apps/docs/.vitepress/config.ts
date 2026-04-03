@@ -24,7 +24,6 @@ export default defineConfig({
     nav: [
       { text: "Home", link: "/" },
       { text: "Examples", link: "https://applesauce.build/examples" },
-      { text: "Snippets", link: "https://applesauce.build/snippets" },
       {
         text: "Reference",
         link: "https://applesauce.build/typedoc/index.html",
