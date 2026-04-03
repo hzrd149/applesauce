@@ -1,9 +1,9 @@
 import { EventOperation } from "applesauce-core/factories";
 import { createImetaTagForAttachment } from "../helpers/file-metadata.js";
-import { FileMetadata } from "../helpers/file-metadata.js";
+import { FileMetadataFields } from "../helpers/file-metadata.js";
 
 /** Adds "imeta" tags on to any event */
-export function addMediaAttachments(attachments: FileMetadata[]): EventOperation {
+export function addMediaAttachments(attachments: FileMetadataFields[]): EventOperation {
   return (draft) => {
     const tags = Array.from(draft.tags);
 

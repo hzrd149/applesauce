@@ -1,17 +1,24 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { NativeSqliteEventDatabase } from "../event-database.js";
 
-let database: NativeSqliteEventDatabase;
+const nativeSqliteModule = await import("node:sqlite").catch(() => null);
+const NativeSqliteEventDatabase = nativeSqliteModule
+  ? (await import("../event-database.js")).NativeSqliteEventDatabase
+  : undefined;
+
+let database: InstanceType<(typeof import("../event-database.js"))["NativeSqliteEventDatabase"]>;
 let user: FakeUser;
 
+const describeIfNativeSqlite = NativeSqliteEventDatabase ? describe : describe.skip;
+
 beforeEach(() => {
+  if (!NativeSqliteEventDatabase) return;
   database = new NativeSqliteEventDatabase(":memory:");
   user = new FakeUser();
 });
 
-describe("add", () => {
+describeIfNativeSqlite("add", () => {
   it("should ignore duplicate tag values within a single event", () => {
     const event = user.note("Hello World", {
       tags: [

@@ -5,6 +5,7 @@ export * from "./code-snippet.js";
 export * from "./comment.js";
 export * from "./emoji-pack.js";
 export * from "./favorite-emojis.js";
+export * from "./file-metadata.js";
 export * from "./groups.js";
 export * from "./mutes.js";
 export * from "./note.js";

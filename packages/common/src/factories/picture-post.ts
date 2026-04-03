@@ -2,7 +2,7 @@ import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate } from "applesauce-core/helpers";
 import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
 import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
-import { FileMetadata } from "../helpers/file-metadata.js";
+import { FileMetadataFields } from "../helpers/file-metadata.js";
 import { PICTURE_POST_KIND } from "../helpers/picture-post.js";
 import { setImageMetadata } from "../operations/picture-post.js";
 import { addMediaAttachments } from "../operations/media-attachment.js";
@@ -17,7 +17,7 @@ export class PicturePostFactory extends EventFactory<typeof PICTURE_POST_KIND, P
    * @param attachments - One or more image attachments
    * @param caption - Optional caption text
    */
-  static create(attachments: FileMetadata | FileMetadata[], caption?: string): PicturePostFactory {
+  static create(attachments: FileMetadataFields | FileMetadataFields[], caption?: string): PicturePostFactory {
     const list = Array.isArray(attachments) ? attachments : [attachments];
     let factory = new PicturePostFactory((res) => res(blankEventTemplate(PICTURE_POST_KIND))).attachments(list);
     if (caption) factory = factory.caption(caption);
@@ -25,12 +25,12 @@ export class PicturePostFactory extends EventFactory<typeof PICTURE_POST_KIND, P
   }
 
   /** Adds image attachments via "imeta" tags */
-  attachments(attachments: FileMetadata[]) {
+  attachments(attachments: FileMetadataFields[]) {
     return this.chain(addMediaAttachments(attachments));
   }
 
   /** Sets the image metadata (x/m tags) for the post */
-  imageMetadata(pictures: FileMetadata[]) {
+  imageMetadata(pictures: FileMetadataFields[]) {
     return this.chain(setImageMetadata(pictures));
   }
 

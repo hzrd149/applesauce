@@ -20,6 +20,7 @@ describe("exports", () => {
         "EventCast",
         "FavoriteEmojis",
         "FavoriteRelays",
+        "FileMetadata",
         "GroupsList",
         "Mutes",
         "Note",

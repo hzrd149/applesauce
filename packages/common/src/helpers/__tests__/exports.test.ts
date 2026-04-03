@@ -355,6 +355,7 @@ describe("exports", () => {
         "isValidEmojiPack",
         "isValidFavoriteEmojiPacks",
         "isValidFavoriteRelaysList",
+        "isValidFileMetadata",
         "isValidLegacyMessage",
         "isValidList",
         "isValidMuteList",

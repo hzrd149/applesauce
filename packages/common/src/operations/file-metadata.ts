@@ -1,10 +1,10 @@
 import { EventOperation } from "applesauce-core/factories";
 import { ensureSingletonTag } from "applesauce-core/helpers";
 import { createFileMetadataTags } from "../helpers/file-metadata.js";
-import { FileMetadata } from "../helpers/file-metadata.js";
+import { FileMetadataFields } from "../helpers/file-metadata.js";
 
-/** Sets all NIP-94 tags for {@link FileMetadata} */
-export function setFileMetadata(metadata: FileMetadata): EventOperation {
+/** Sets all NIP-94 tags for {@link FileMetadataFields} */
+export function setFileMetadata(metadata: FileMetadataFields): EventOperation {
   return (draft) => {
     let tags = Array.from(draft.tags);
 

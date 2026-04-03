@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FileMetadata, getFileMetadataFromImetaTag, parseFileMetadataTags } from "../file-metadata.js";
+import {
+  FileMetadataFields,
+  getFileMetadata,
+  getFileMetadataFromImetaTag,
+  isValidFileMetadata,
+  parseFileMetadataTags,
+} from "../file-metadata.js";
 
 describe("file metadata helpers", () => {
   describe("parseFileMetadataTags", () => {
@@ -44,7 +50,61 @@ describe("file metadata helpers", () => {
         summary: "Khaleesi call dragons Daenerys Targaryen",
         fallback: ["https://media.tenor.com/wpvrkjn192gAAAAC/daenerys-targaryen.gif"],
         alt: "a woman with blonde hair and a brooch on her shoulder",
-      } satisfies FileMetadata);
+      } satisfies FileMetadataFields);
+    });
+  });
+
+  describe("isValidFileMetadata", () => {
+    it("should validate a kind 1063 event with a url tag", () => {
+      expect(
+        isValidFileMetadata({
+          id: "1",
+          kind: 1063,
+          pubkey: "pubkey",
+          created_at: 0,
+          content: "",
+          sig: "sig",
+          tags: [["url", "https://example.com/file.png"]],
+        }),
+      ).toBe(true);
+    });
+
+    it("should reject kind 1063 events without a url tag", () => {
+      expect(
+        isValidFileMetadata({
+          id: "1",
+          kind: 1063,
+          pubkey: "pubkey",
+          created_at: 0,
+          content: "",
+          sig: "sig",
+          tags: [],
+        }),
+      ).toBe(false);
+    });
+  });
+
+  describe("getFileMetadata", () => {
+    it("should parse a kind 1063 event", () => {
+      expect(
+        getFileMetadata({
+          id: "1",
+          kind: 1063,
+          pubkey: "pubkey",
+          created_at: 0,
+          content: "",
+          sig: "sig",
+          tags: [
+            ["url", "https://example.com/file.png"],
+            ["m", "image/png"],
+            ["x", "a".repeat(64)],
+          ],
+        }),
+      ).toEqual({
+        url: "https://example.com/file.png",
+        type: "image/png",
+        sha256: "a".repeat(64),
+      });
     });
   });
 

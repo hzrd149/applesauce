@@ -1,8 +1,8 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { NameValueTag } from "applesauce-core/helpers";
 
-export type FileMetadata = {
+export type FileMetadataFields = {
   /** URL of the file */
   url?: string;
   /** MIME type */
@@ -36,11 +36,19 @@ export type FileMetadata = {
   fallback?: string[];
 };
 
-/** Alias for {@link FileMetadata} */
-export type MediaAttachment = FileMetadata;
+/** A kind 1063 file metadata event */
+export type FileMetadataEvent = KnownEvent<1063>;
 
-/** Parses file metadata tags into {@link FileMetadata} */
-export function parseFileMetadataTags(tags: string[][]): FileMetadata {
+/** Alias for {@link FileMetadataFields} */
+export type MediaAttachment = FileMetadataFields;
+
+/** Type guard for a valid kind 1063 file metadata event */
+export function isValidFileMetadata(event?: NostrEvent): event is FileMetadataEvent {
+  return !!event && event.kind === 1063 && !!getTagValue(event, "url");
+}
+
+/** Parses file metadata tags into {@link FileMetadataFields} */
+export function parseFileMetadataTags(tags: string[][]): FileMetadataFields {
   const fields: Record<string, string> = {};
   let fallback: string[] | undefined = undefined;
 
@@ -55,7 +63,7 @@ export function parseFileMetadataTags(tags: string[][]): FileMetadata {
     }
   }
 
-  const metadata: FileMetadata = { url: fields.url, fallback };
+  const metadata: FileMetadataFields = { url: fields.url, fallback };
 
   // parse size
   if (fields.size) metadata.size = parseInt(fields.size);
@@ -76,8 +84,8 @@ export function parseFileMetadataTags(tags: string[][]): FileMetadata {
   return metadata;
 }
 
-/** Parses a imeta tag into a {@link FileMetadata} */
-export function getFileMetadataFromImetaTag(tag: string[]): FileMetadata {
+/** Parses a imeta tag into a {@link FileMetadataFields} */
+export function getFileMetadataFromImetaTag(tag: string[]): FileMetadataFields {
   const parts = tag.slice(1);
   const tags: string[][] = [];
 
@@ -96,7 +104,7 @@ export function getFileMetadataFromImetaTag(tag: string[]): FileMetadata {
 export const MediaAttachmentsSymbol = Symbol.for("media-attachments");
 
 /** Gets all the media attachments on an event */
-export function getMediaAttachments(event: NostrEvent): FileMetadata[] {
+export function getMediaAttachments(event: NostrEvent): FileMetadataFields[] {
   return getOrComputeCachedValue(event, MediaAttachmentsSymbol, () => {
     return event.tags
       .filter((t) => t[0] === "imeta")
@@ -113,7 +121,10 @@ export function getMediaAttachments(event: NostrEvent): FileMetadata[] {
 }
 
 /** Gets {@link FileMetadata} for a NIP-94 kind 1063 event */
-export function getFileMetadata(file: NostrEvent) {
+export function getFileMetadata(file: FileMetadataEvent): FileMetadataFields;
+export function getFileMetadata(file?: NostrEvent): FileMetadataFields | undefined;
+export function getFileMetadata(file?: NostrEvent): FileMetadataFields | undefined {
+  if (!isValidFileMetadata(file)) return undefined;
   return parseFileMetadataTags(file.tags);
 }
 
@@ -127,8 +138,8 @@ export function getSha256FromURL(url: string | URL): string | undefined {
   return;
 }
 
-/** Creates tags for {@link FileMetadata} */
-export function createFileMetadataTags(attachment: FileMetadata): NameValueTag[] {
+/** Creates tags for {@link FileMetadataFields} */
+export function createFileMetadataTags(attachment: FileMetadataFields): NameValueTag[] {
   const tags: NameValueTag[] = [];
 
   const add = (name: string, value: string | number) => tags.push([name, String(value)]);
@@ -152,6 +163,6 @@ export function createFileMetadataTags(attachment: FileMetadata): NameValueTag[]
 }
 
 /** Creates an imeta tag for a media attachment */
-export function createImetaTagForAttachment(attachment: FileMetadata): string[] {
+export function createImetaTagForAttachment(attachment: FileMetadataFields): string[] {
   return ["imeta", ...createFileMetadataTags(attachment).map((t) => t.join(" "))];
 }
