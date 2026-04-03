@@ -12,6 +12,7 @@ export * from "./channels.js";
 export * from "./comment.js";
 export * from "./content.js";
 export * from "./emoji.js";
+export * from "./emoji-pack.js";
 export * from "./encrypted-content-cache.js";
 export * from "./file-metadata.js";
 export * from "./gift-wrap.js";

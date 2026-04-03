@@ -3,6 +3,7 @@
 export * from "./profile.js";
 export * from "./mutes.js";
 export * from "./bookmarks.js";
+export * from "./favorite-emojis.js";
 export * from "./relay-lists.js";
 export * from "./groups.js";
 export * from "./trusted-assertions.js";

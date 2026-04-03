@@ -24,5 +24,24 @@ describe("user", () => {
 
       expect(name).toBe("John Doe");
     });
+
+    it("should resolve favorite emoji packs", async () => {
+      const signer = new FakeUser();
+      const profile = signer.profile({ name: "John Doe" });
+      const favorites = signer.event({
+        kind: 10030,
+        tags: [["a", `30030:${signer.pubkey}:animals`]],
+      });
+      const eventStore = new EventStore();
+      eventStore.add(profile);
+      eventStore.add(favorites);
+
+      const user = castUser(profile, eventStore);
+      const favoriteEmojiPacks = await firstValueFrom(user.favoriteEmojis$);
+
+      expect(favoriteEmojiPacks?.packPointers).toEqual([
+        expect.objectContaining({ kind: 30030, pubkey: signer.pubkey, identifier: "animals" }),
+      ]);
+    });
   });
 });

@@ -3,6 +3,7 @@ import { kinds, nprofileEncode } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { combineLatest, defer, from, map, MonoTypeOperatorFunction, ReplaySubject, share, switchMap, tap } from "rxjs";
 import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
+import { FAVORITE_EMOJI_PACKS_KIND } from "../helpers/emoji-pack.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
@@ -130,6 +131,18 @@ defineGetter("favoriteRelays$", function (this: User) {
   );
 });
 
+defineGetter("favoriteEmojis$", function (this: User) {
+  return this.$$ref("favoriteEmojis$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ FavoriteEmojis }, outboxes]) =>
+        store
+          .replaceable({ kind: FAVORITE_EMOJI_PACKS_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(FavoriteEmojis, store)),
+      ),
+    ),
+  );
+});
+
 defineGetter("searchRelays$", function (this: User) {
   return this.$$ref("searchRelays$", (store) =>
     combineLatest([Circular, this.outboxes$]).pipe(
@@ -214,6 +227,7 @@ declare module "applesauce-core/casts" {
     get outboxes$(): ChainableObservable<string[] | undefined>;
     get inboxes$(): ChainableObservable<string[] | undefined>;
     get bookmarks$(): ChainableObservable<import("./bookmarks.js").BookmarksList | undefined>;
+    get favoriteEmojis$(): ChainableObservable<import("./favorite-emojis.js").FavoriteEmojis | undefined>;
     get favoriteRelays$(): ChainableObservable<import("./relay-lists.js").FavoriteRelays | undefined>;
     get searchRelays$(): ChainableObservable<import("./relay-lists.js").SearchRelays | undefined>;
     get blockedRelays$(): ChainableObservable<import("./relay-lists.js").BlockedRelays | undefined>;
