@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { getEmojiFromTags, getEmojiTag, getEmojis, getReactionEmoji } from "../emoji.js";
+import { getEmojiFromTags, getEmojiTag, getReactionEmoji } from "../emoji.js";
+import {
+  getEmojiPackEmojis,
+  getEmojiPackName,
+  getFavoriteEmojiPackPointers,
+  getFavoriteEmojis,
+  getHiddenFavoriteEmojiPackPointers,
+  getHiddenFavoriteEmojis,
+  isValidEmojiPack,
+  isValidFavoriteEmojiPacks,
+  unlockHiddenFavoriteEmojiPacks,
+} from "../emoji-pack.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
 
 const user = new FakeUser();
@@ -62,7 +73,7 @@ describe("getEmojis", () => {
       ],
       content: "",
     });
-    expect(getEmojis(pack)).toEqual([
+    expect(getEmojiPackEmojis(pack)).toEqual([
       { shortcode: "heart", url: "https://cdn.example.com/heart.png" },
       { shortcode: "star", url: "https://cdn.example.com/star.png" },
     ]);
@@ -77,7 +88,7 @@ describe("getEmojis", () => {
       ],
       content: "",
     });
-    expect(getEmojis(pack)).toEqual([
+    expect(getEmojiPackEmojis(pack)).toEqual([
       {
         shortcode: "heart",
         url: "https://cdn.example.com/heart.png",
@@ -85,6 +96,85 @@ describe("getEmojis", () => {
       },
       { shortcode: "star", url: "https://cdn.example.com/star.png" },
     ]);
+  });
+});
+
+describe("emoji packs", () => {
+  it("returns the title as the pack name", () => {
+    const pack = user.event({
+      kind: 30030,
+      tags: [
+        ["d", "my-pack"],
+        ["title", "My Pack"],
+      ],
+    });
+    expect(getEmojiPackName(pack)).toBe("My Pack");
+  });
+
+  it("falls back to the d tag for pack name", () => {
+    const pack = user.event({ kind: 30030, tags: [["d", "my-pack"]] });
+    expect(getEmojiPackName(pack)).toBe("my-pack");
+  });
+
+  it("validates emoji packs require a d tag", () => {
+    expect(isValidEmojiPack(user.event({ kind: 30030, tags: [["d", "pack"]] }))).toBe(true);
+    expect(isValidEmojiPack(user.event({ kind: 30030, tags: [] }))).toBe(false);
+  });
+
+  it("validates favorite emoji pack lists by kind", () => {
+    expect(isValidFavoriteEmojiPacks(user.event({ kind: 10030 }))).toBe(true);
+    expect(isValidFavoriteEmojiPacks(user.event({ kind: 10003 }))).toBe(false);
+  });
+
+  it("reads public favorite emojis and pack pointers", () => {
+    const list = user.event({
+      kind: 10030,
+      tags: [
+        ["emoji", "heart", "https://cdn.example.com/heart.png", `30030:${user.pubkey}:animals`],
+        ["emoji", "star", "https://cdn.example.com/star.png"],
+        ["a", `30030:${user.pubkey}:animals`],
+        ["a", `30002:${user.pubkey}:relays`],
+      ],
+    });
+
+    expect(getFavoriteEmojis(list)).toEqual([
+      {
+        shortcode: "heart",
+        url: "https://cdn.example.com/heart.png",
+        address: { kind: 30030, pubkey: user.pubkey, identifier: "animals" },
+      },
+      { shortcode: "star", url: "https://cdn.example.com/star.png" },
+    ]);
+    expect(getFavoriteEmojiPackPointers(list)).toEqual([
+      expect.objectContaining({ kind: 30030, pubkey: user.pubkey, identifier: "animals" }),
+    ]);
+  });
+
+  it("unlocks hidden favorite emojis and pack pointers", async () => {
+    const hiddenTags = [
+      ["emoji", "wave", "https://cdn.example.com/wave.png", `30030:${user.pubkey}:greetings`],
+      ["a", `30030:${user.pubkey}:greetings`],
+    ];
+    const list = user.event({
+      kind: 10030,
+      tags: [],
+      content: await user.nip44.encrypt(user.pubkey, JSON.stringify(hiddenTags)),
+    });
+
+    const unlocked = await unlockHiddenFavoriteEmojiPacks(list, user);
+
+    expect(unlocked).toEqual({
+      emojis: [
+        {
+          shortcode: "wave",
+          url: "https://cdn.example.com/wave.png",
+          address: { kind: 30030, pubkey: user.pubkey, identifier: "greetings" },
+        },
+      ],
+      packPointers: [expect.objectContaining({ kind: 30030, pubkey: user.pubkey, identifier: "greetings" })],
+    });
+    expect(getHiddenFavoriteEmojis(list)).toEqual(unlocked.emojis);
+    expect(getHiddenFavoriteEmojiPackPointers(list)).toEqual(unlocked.packPointers);
   });
 });
 

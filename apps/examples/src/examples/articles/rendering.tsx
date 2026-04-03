@@ -47,7 +47,10 @@ function ArticleCard({ article, onClick }: { article: Article; onClick: () => vo
   const profile = use$(author.profile$);
 
   return (
-    <div className="flex border border-base-300 rounded-lg h-48 overflow-hidden cursor-pointer hover:bg-base-200 transition-colors" onClick={onClick}>
+    <div
+      className="flex border border-base-300 rounded-lg h-48 overflow-hidden cursor-pointer hover:bg-base-200 transition-colors"
+      onClick={onClick}
+    >
       <div className="w-48 min-w-48 h-full shrink-0 overflow-hidden bg-base-200">
         {article.image ? (
           <img src={article.image} alt="" className="size-full object-cover" />

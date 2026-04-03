@@ -1,7 +1,5 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { getTagValue } from "applesauce-core/helpers/event";
-import { AddressPointer } from "applesauce-core/helpers/pointers";
-import { parseReplaceableAddress } from "applesauce-core/helpers/pointers";
+import { AddressPointer, parseReplaceableAddress } from "applesauce-core/helpers/pointers";
 
 export type Emoji = {
   /** The emoji shortcode (without the ::) */
@@ -31,23 +29,6 @@ export function getEmojiFromTags(event: { tags: string[][] } | string[][], code:
 
   const address = tag[3] ? parseReplaceableAddress(tag[3]) : undefined;
   return address ? { shortcode: tag[1], url: tag[2], address } : { shortcode: tag[1], url: tag[2] };
-}
-
-/** Returns the name of a NIP-30 emoji pack */
-export function getPackName(pack: NostrEvent): string | undefined {
-  return getTagValue(pack, "title") || getTagValue(pack, "d");
-}
-
-/** Returns an array of emojis from a NIP-30 emoji pack */
-export function getEmojis(pack: NostrEvent): Emoji[] {
-  return pack.tags
-    .filter((t) => t[0] === "emoji" && t[1] && t[2])
-    .map((t) => {
-      const address = t[3] ? parseReplaceableAddress(t[3]) : undefined;
-      return address
-        ? { shortcode: t[1] as string, url: t[2] as string, address }
-        : { shortcode: t[1] as string, url: t[2] as string };
-    });
 }
 
 /** Returns the custom emoji for a reaction event */

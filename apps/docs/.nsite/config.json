@@ -2,7 +2,7 @@
   "bunkerPubkey": "10b4878a2351ba0726b6af289d601082f0f018b791acda27e6ef4408ba667c4c",
   "relays": ["wss://relay.primal.net", "wss://relay.damus.io", "wss://nos.lol", "wss://nsite.run"],
   "servers": ["https://cdn.hzrd149.com", "https://blossom.primal.net", "https://nsite.run"],
-  "id": null,
-  "title": "Applesauce",
-  "description": "Applesauce is a typescript SDK for building Nostr applications."
+  "id": "docs",
+  "title": "Applesauce Documentation",
+  "description": "Markdown documentation for applesauce"
 }

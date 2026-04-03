@@ -33,7 +33,9 @@ describe("badge award operations", () => {
     expect(result.tags).toEqual([["a", `${badgePointer.kind}:${issuer.pubkey}:${badgePointer.identifier}`]]);
 
     const updated = await setBadgePointer(secondBadgePointer)(result);
-    expect(updated.tags).toEqual([["a", `${secondBadgePointer.kind}:${issuer.pubkey}:${secondBadgePointer.identifier}`]]);
+    expect(updated.tags).toEqual([
+      ["a", `${secondBadgePointer.kind}:${issuer.pubkey}:${secondBadgePointer.identifier}`],
+    ]);
   });
 
   it("clears badge pointer tags", async () => {

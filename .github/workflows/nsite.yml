@@ -66,6 +66,26 @@ jobs:
           directory: "./docs"
           name: next
 
+      - name: Deploy next examples
+        if: github.ref == 'refs/heads/next'
+        uses: sandwichfarm/nsite-action@v0.3.1
+        with:
+          nbunksec: ${{ secrets.NSITE_BUNKER }}
+          directory: "./apps/examples/dist"
+          name: examples
+          title: Applesauce Examples
+          description: A collection of mini react examples for applesauce
+
+      - name: Deploy next docs
+        if: github.ref == 'refs/heads/next'
+        uses: sandwichfarm/nsite-action@v0.3.1
+        with:
+          nbunksec: ${{ secrets.NSITE_BUNKER }}
+          directory: "./apps/docs/.vitepress/dist"
+          name: docs
+          title: Applesauce Documentation
+          description: Markdown documentation for applesauce
+
       # Pushes to master deploy the latest stable version.
       - name: Deploy release
         if: github.ref == 'refs/heads/master'

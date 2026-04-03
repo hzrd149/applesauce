@@ -48,7 +48,10 @@ function mapSourceToExportPath(sourceFile, exportsMap, packageRoot) {
     const importTarget = exportValue.import || exportValue.types || exportValue.require;
     if (!importTarget) continue;
 
-    let srcPath = importTarget.replace("./dist/", "src/").replace(/\.js$/, ".ts").replace(/\.d\.ts$/, ".ts");
+    let srcPath = importTarget
+      .replace("./dist/", "src/")
+      .replace(/\.js$/, ".ts")
+      .replace(/\.d\.ts$/, ".ts");
 
     if (srcPath.includes("*")) {
       const prefix = srcPath.replace("*", "");
@@ -99,7 +102,10 @@ function getJSDocComment(node) {
 
 function getSignatureLine(node, sourceFile) {
   let text = node.getText(sourceFile).split("\n")[0];
-  text = text.replace(/^export\s+/, "").replace(/\{$/, "").trim();
+  text = text
+    .replace(/^export\s+/, "")
+    .replace(/\{$/, "")
+    .trim();
   if (text.length > 200) text = text.substring(0, 200) + "...";
   return text;
 }
