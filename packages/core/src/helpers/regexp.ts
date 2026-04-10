@@ -1,9 +1,9 @@
 export const Expressions = {
   get url() {
-    return /(?:https?|wss?|ircs?|s?ftp):\/\/([a-zA-Z0-9\.\-]+\.[a-zA-Z]+(?::\d+)?)([\/\?#][\p{L}\p{N}\p{M}&\.-\/\?=#\-@%\+_,:!~*]*)?/gu;
+    return /(?:https?|wss?|ircs?|s?ftp):\/\/((?:(?:\d{1,3}\.){3}\d{1,3}|localhost|[a-zA-Z0-9\.\-]+\.[a-zA-Z]+)(?::\d+)?)([\/\?#][\p{L}\p{N}\p{M}&\.-\/\?=#\-@%\+_,:!~*]*)?/gu;
   },
   get link() {
-    return /https?:\/\/([a-zA-Z0-9\.\-]+\.[a-zA-Z]+(?::\d+)?)([\/\?#][\p{L}\p{N}\p{M}&\.-\/\?=#\-@%\+_,:!~*]*)?/gu;
+    return /https?:\/\/((?:(?:\d{1,3}\.){3}\d{1,3}|localhost|[a-zA-Z0-9\.\-]+\.[a-zA-Z]+)(?::\d+)?)([\/\?#][\p{L}\p{N}\p{M}&\.-\/\?=#\-@%\+_,:!~*]*)?/gu;
   },
   get cashu() {
     return /(?:cashu:\/{0,2})?(cashu(?:A|B)[A-Za-z0-9_-]{100,}={0,3})/gi;
