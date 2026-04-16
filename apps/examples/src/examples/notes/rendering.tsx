@@ -1,65 +1,121 @@
 /**
- * Render simple text notes with basic formatting and media detection
- * @tags nip-27, content, text, rendering
+ * Render simple text notes with basic formatting, media detection, and image galleries.
+ * Uses blossom-client-sdk `handleBrokenMedia` so img/video/audio under each note (including galleries)
+ * get blossom server fallbacks when URLs fail or `blossom:` cannot load directly.
+ * @tags nip-27, nip-96, content, text, rendering, blossom
  * @related content/articles, feed/algorithmic-relay
  */
-import { Link } from "applesauce-content/nast";
 import { Note } from "applesauce-common/casts";
+import "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore } from "applesauce-core";
+import type { BlossomURI, Gallery, Link } from "applesauce-content/nast";
+import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import { handleBrokenMedia } from "blossom-client-sdk";
 import { decode, EventPointer } from "nostr-tools/nip19";
-import { useState } from "react";
-import { merge } from "rxjs";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { firstValueFrom, merge, take, timeout } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
+/** Resolves NIP-96 blossom servers for any pubkey (used when HTTP blob URLs or blossom `as=` hints need fallbacks). */
+async function getBlossomServersForPubkey(pubkey?: string) {
+  if (!pubkey) return undefined;
+  return firstValueFrom(eventStore.blossomServers({ pubkey }).pipe(defined(), take(1), timeout(5000)))
+}
+
 function LinkRenderer({ node: link }: { node: Link }) {
   if (isImageURL(link.href))
     return (
-      <a href={link.href} target="_blank">
-        <img src={link.href} className="max-h-64 rounded" alt="Gallery image" />
-      </a>
+        <a href={link.href} target="_blank">
+          <img src={link.href} className="max-h-64 rounded" alt="Gallery image" />
+        </a>
     );
-  else if (isVideoURL(link.href)) return <video src={link.href} className="max-h-64 rounded" controls />;
-  else if (isAudioURL(link.href)) return <audio src={link.href} className="max-h-64 rounded" controls />;
+  else if (isVideoURL(link.href))
+    return (
+        <video src={link.href} className="max-h-64 rounded" controls />
+    );
+  else if (isAudioURL(link.href))
+    return (
+        <audio src={link.href} className="max-h-64 rounded" controls />
+    );
   else
     return (
-      <a href={link.href} target="_blank" className="text-blue-500 hover:underline">
-        {link.value}
-      </a>
+        <a href={link.href} target="_blank" className="text-blue-500 hover:underline">
+          {link.value}
+        </a>
     );
+}
+
+function BlossomRenderer({ node }: { node: BlossomURI }) {
+  const probe = new URL(`https://example.com/x.${node.ext}`);
+  let inner: ReactNode;
+  if (isImageURL(probe)) inner = <img src={node.raw} className="max-h-64 rounded" alt="Blossom image" />;
+  else if (isVideoURL(probe)) inner = <video src={node.raw} className="max-h-64 rounded" controls />;
+  else if (isAudioURL(probe)) inner = <audio src={node.raw} className="max-h-64 rounded" controls />;
+  else inner = <span className="text-sm text-base-content/70">{node.raw}</span>;
+  return (
+      inner
+  );
+}
+
+/** Adjacent image links and blossom image URIs are merged into a gallery by the text parser; `links` are full hrefs (`https://…` or `blossom:…`). */
+function GalleryRenderer({ node }: { node: Gallery }) {
+  return (
+      <div className="flex flex-nowrap gap-2 my-2 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+        {node.links.map((href, i) => (
+          <a
+            key={`${href}-${i}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block shrink-0 max-w-[min(100%,20rem)] border border-base-300 rounded overflow-hidden"
+          >
+            <img
+              src={href}
+              className="max-h-64 w-full h-auto object-contain"
+              alt={`Gallery image ${i + 1}`}
+              loading="lazy"
+            />
+          </a>
+        ))}
+      </div>
+  );
 }
 
 const components: ComponentMap = {
   text: ({ node }) => <span>{node.value}</span>,
   link: LinkRenderer,
+  blossom: BlossomRenderer,
+  gallery: GalleryRenderer,
   mention: ({ node }) => (
-    <a href={`https://njump.me/${node.encoded}`} target="_blank" className="text-purple-500 hover:underline">
-      @{node.encoded.slice(0, 8)}...
-    </a>
+      <a href={`https://njump.me/${node.encoded}`} target="_blank" className="text-purple-500 hover:underline">
+        @{node.encoded.slice(0, 8)}...
+      </a>
   ),
-  hashtag: ({ node }) => <span className="text-orange-500">#{node.hashtag}</span>,
+  hashtag: ({ node }) => (
+      <span className="text-orange-500">#{node.hashtag}</span>
+  ),
   emoji: ({ node }) => (
-    <span className="text-green-500">
-      <img title={node.raw} src={node.url} className="w-6 h-6 inline" /> {node.raw}
-    </span>
+      <span className="text-green-500">
+        <img title={node.raw} src={node.url} className="w-6 h-6 inline" /> {node.raw}
+      </span>
   ),
   cashu: ({ node }) => (
-    <span className="text-pink-500">
-      @{node.raw.slice(0, 10)}...{node.raw.slice(-5)}
-    </span>
+      <span className="text-pink-500">
+        @{node.raw.slice(0, 10)}...{node.raw.slice(-5)}
+      </span>
   ),
   lightning: ({ node }) => (
-    <span className="text-yellow-400">
-      {node.invoice.slice(0, 10)}...{node.invoice.slice(-5)}
-    </span>
+      <span className="text-yellow-400">
+        {node.invoice.slice(0, 10)}...{node.invoice.slice(-5)}
+      </span>
   ),
 };
 
@@ -69,6 +125,7 @@ const eventLoader = createEventLoaderForStore(eventStore, pool, {
 });
 
 const examples: EventPointer[] = [
+  "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qg3waehxw309ahx7um5wgh8w6twv5hsqgqtlsc3aun67vuehq8uun4fmsqy4r7tnemg05c7p7f0tryma5e42cdyfdnq",
   "nevent1qvzqqqqqqypzqxh4f92ex6lgqnu4qyry06j6mfw8vfldmurnfflczwa6pcc7aktqqy2hwumn8ghj7mn0wd68ytn00p68ytnyv4mz7qg4waehxw309aex2mrp0yhxgctdw4eju6t09uqzq5uj68wa0cgqwak43wtalf35ypclethsmmmrnn7u926fwwpy9fw58geyf6",
   "nevent1qqsfhafvv705g5wt8rcaytkj6shsshw3dwgamgfe3za8knk0uq4yesgpzpmhxue69uhkummnw3ezuamfdejszrthwden5te0dehhxtnvdakqsrnltk",
   "nevent1qvzqqqqqqypzp22rfmsktmgpk2rtan7zwu00zuzax5maq5dnsu5g3xxvqr2u3pd7qyghwumn8ghj7mn0wd68ytnhd9hx2tcpzamhxue69uhhyetvv9ujumn0wd68ytnzv9hxgtcqyqtplwkqnp05239mvxmpewhtkhtq3fvljp7kqlxduzvz9pqryhtacxpum48",
@@ -81,6 +138,7 @@ const examples: EventPointer[] = [
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qyf8wumn8ghj7mn0wd68yat99e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qpqd29yg6e5y0uyq0ttva728agcjzhxffgnz8a5kqwfrf5njk68yxmqp4mwth",
   "nevent1qvzqqqqqqypzp22rfmsktmgpk2rtan7zwu00zuzax5maq5dnsu5g3xxvqr2u3pd7qyghwumn8ghj7mn0wd68ytnhd9hx2tcpzamhxue69uhhyetvv9ujumn0wd68ytnzv9hxgtcqyznatxwe42lsqutcjafw2v72dtxh0v2w0327m5yh4w3kgwzp0mkx7edh4e6",
   "nevent1qvzqqqqqqypzp978pfzrv6n9xhq5tvenl9e74pklmskh4xw6vxxyp3j8qkke3cezqy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qgwwaehxw309ahx7uewd3hkctcqyzzw77p395ld4zgamuswcd9rj452hewfdmaqp5nynedakztl96h57r9u6r3",
+  "nevent1qvzqqqqqqypzps0x2pwq9k5drv99k0tdkmsekt4j9hx4fu8gvvrwez3p8yptx9t7qyg8wumn8ghj77npwqh8wct5vd5z7qgewaehxw309aex2mrp0yhx6mmddaehgu3wwp5ku6e0qqsggwu4a0aczytdg8p69v4w2ua66gaqh387mgmvhnd6gdmx0qsku6g2vz43x",
   "nevent1qvzqqqqqqypzp022u0n8u2vkf4y5zu3xrhz989wgna4a9em5vshrvcf8zuwlhq04qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qghwaehxw309aex2mrp0yh8qunfd4skctnwv46z7qpq9dn29mvp39q48fawujfxrnrhjtsm3wf4y0nvdjdwea4h9ykxzxpsamhr4l",
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qyf8wumn8ghj7mn0wd68yat99e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qpqw9tjg79fycymqv9ppzksk6fmafpw9tzlsy7sqckvxd5ggqpy49as5x0yxh",
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qyf8wumn8ghj7mn0wd68yat99e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qpqgwjv0apdkf8u583ktddtnrwenlahrcm3yq9qujdxmyfc2mtf64squlvysu",
@@ -91,9 +149,18 @@ function NoteCard({ note }: { note: Note }) {
   const author = note.author;
   const profile = use$(author.profile$);
   const content = useRenderedContent(note.event, components);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  use$(() => eventStore.blossomServers({ pubkey: author.pubkey }), [author.pubkey]);
+
+  useEffect(() => {
+    const root = cardRef.current;
+    if (!root) return;
+    return handleBrokenMedia(root, getBlossomServersForPubkey);
+  }, []);
 
   return (
-    <div className="p-4 border border-base-300 rounded-lg overflow-hidden">
+    <div ref={cardRef} data-pubkey={author.pubkey} className="p-4 border border-base-300 rounded-lg overflow-hidden">
       <div className="flex items-center gap-3 mb-3">
         <div className="avatar">
           <div className="w-10 rounded-full">

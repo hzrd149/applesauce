@@ -13,7 +13,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
+import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { nip19 } from "nostr-tools";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -49,10 +49,8 @@ async function uploadToBlossom(
   const isImageOrVideo = file.type.startsWith("image/") || file.type.startsWith("video/");
   const isMedia = useMediaOptimization && isImageOrVideo;
 
-  const results = await multiServerUpload(servers, file, {
+  const results = await (isMedia ? multiServerMediaUpload : multiServerUpload)(servers, file, {
     onAuth: (_server, sha256, type) => createUploadAuth((draft) => signer.signEvent(draft), sha256, { type }),
-    isMedia,
-    mediaUploadFallback: isMedia,
   });
 
   const [, blob] = results.entries().next().value!;

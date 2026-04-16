@@ -16,7 +16,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
+import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import type { FileAttributes, NostrStorage, UploadTask } from "nostr-editor";
 import { NostrExtension } from "nostr-editor";
@@ -57,10 +57,8 @@ function createBlossomUploader(signer: ISigner, blossomServers: URL[] | undefine
     const isMedia = useMediaOptimization && isImageOrVideo;
 
     try {
-      const results = await multiServerUpload(servers, file, {
+      const results = await (isMedia ? multiServerMediaUpload : multiServerUpload)(servers, file, {
         onAuth: (_server, sha256, type) => createUploadAuth((draft) => signer.signEvent(draft), sha256, { type }),
-        isMedia,
-        mediaUploadFallback: isMedia,
       });
 
       // Use the first successful result (primary server)

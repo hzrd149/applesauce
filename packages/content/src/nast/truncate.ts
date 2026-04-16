@@ -16,6 +16,9 @@ export function truncateContent(tree: Root, maxLength = 256) {
       case "cashu":
         length += node.raw.length;
         break;
+      case "blossom":
+        length += node.raw.length;
+        break;
       case "gallery":
         length += node.links.reduce((t, l) => t + l.length, 0);
         break;

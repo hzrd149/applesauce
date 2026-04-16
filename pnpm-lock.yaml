@@ -157,8 +157,8 @@ importers:
         specifier: ^5.0.0
         version: link:../../packages/wallet-connect
       blossom-client-sdk:
-        specifier: ^4.1.0
-        version: 4.1.0
+        specifier: next
+        version: 5.0.0-2(@cashu/cashu-ts@3.6.2)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -390,8 +390,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       '@nostrability/schemata':
-        specifier: github:nostrability/schemata
-        version: https://codeload.github.com/nostrability/schemata/tar.gz/e784d9502f3c95ad073312ca17541594a2935a8b(@swc/core@1.15.21)(esbuild@0.25.12)
+        specifier: ^0.3.2
+        version: 0.3.2(@swc/core@1.15.21)(esbuild@0.25.12)
       '@types/debug':
         specifier: ^4.1.12
         version: 4.1.13
@@ -953,10 +953,6 @@ packages:
 
   '@capacitor/core@7.6.1':
     resolution: {integrity: sha512-nsNouCMxgYenyemy20sZwZYMtFi93LSZVWm2KqHTYIPIDgwx24+PzwHIdRQBZdK7hpvD5jQEhWuo/QyLLnAyBQ==}
-
-  '@cashu/cashu-ts@2.9.0':
-    resolution: {integrity: sha512-UesYcBkkJAGPbob2I/SX0aht4MQlfxUVPzI+NQqLKSg2l3m0EnmMznvnXZQnDZnhGy0Hd6rkgwAJTVOYcr0v/Q==}
-    engines: {node: '>=22.4.0'}
 
   '@cashu/cashu-ts@3.6.2':
     resolution: {integrity: sha512-wdlX1rIFC+cdr+qVnVl2ko6ShKeNSJCGnQFQ1NyeS+EwZ8e0t6BQXF5uLgGnA8DB44RkfCgiH2Iw5RHTDkb6YQ==}
@@ -1554,9 +1550,8 @@ packages:
     peerDependencies:
       nostr-tools: ^2.17.0
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/e784d9502f3c95ad073312ca17541594a2935a8b':
-    resolution: {tarball: https://codeload.github.com/nostrability/schemata/tar.gz/e784d9502f3c95ad073312ca17541594a2935a8b}
-    version: 0.3.2
+  '@nostrability/schemata@0.3.2':
+    resolution: {integrity: sha512-KlMsA53phra3UY91eQskh+J7DXjaWrNW2Bm57dYOozwIEcT6o+RmHRAzwaMkxffk2RBQWVSJoynhL323gmRogw==}
 
   '@open-draft/deferred-promise@2.2.0':
     resolution: {integrity: sha512-CecwLWx3rhxVQF6V4bAgPS5t+So2sTbPgAzafKkVizyi7tlwpcFpdFqq+wqF2OwNBmqFuu6tOyouTuxgpMfzmA==}
@@ -1729,9 +1724,6 @@ packages:
 
   '@scure/bip32@1.3.1':
     resolution: {integrity: sha512-osvveYtyzdEVbt3OfwwXFr4P2iVBL5u1Q3q4ONBfDY/UpOuXmOlbgwc1xECEboY8wIays8Yt6onaWMUdUbfl0A==}
-
-  '@scure/bip32@1.7.0':
-    resolution: {integrity: sha512-E4FFX/N3f4B80AKWp5dP6ow+flD1LQZo/w8UnLGYZO674jS6YnYeepycOOksv+vLPSpgN35wgKgy+ybfTb2SMw==}
 
   '@scure/bip32@2.0.1':
     resolution: {integrity: sha512-4Md1NI5BzoVP+bhyJaY3K6yMesEFzNS1sE/cP+9nuvE7p/b0kx9XbpDHHFl8dHtufcbdHRUUQdRqLIPHN/s7yA==}
@@ -2885,9 +2877,17 @@ packages:
   block-iterator@1.1.2:
     resolution: {integrity: sha512-yAHUP44v2K25xLPdrgVTgwtuQctlullzjczu9CoUZom5AP3g4p1R1+aWHjS1GHG9JtcSUVUnbEPiuXiW5YZ24w==}
 
-  blossom-client-sdk@4.1.0:
-    resolution: {integrity: sha512-IEjX3/e6EYnEonlog8qbd1/7qYIatOKEAQMWGkPCPjTO/b9fsrSnoELwOam52a5U3M83XLvYFhf6qE9MmlmJuQ==}
+  blossom-client-sdk@5.0.0-2:
+    resolution: {integrity: sha512-g54Aa/tKf9cMk/R1IKiEx+zGtQ979FRo3J6Esw3gLxxgjaIo9oqFC6gvmXqBNJaW0p4pbvQ046JqUduBWTGkYQ==}
     engines: {node: '>=18'}
+    peerDependencies:
+      '@cashu/cashu-ts': ^2.4.3
+      hls.js: ^1.6.16
+    peerDependenciesMeta:
+      '@cashu/cashu-ts':
+        optional: true
+      hls.js:
+        optional: true
 
   body-parser@2.2.2:
     resolution: {integrity: sha512-oP5VkATKlNwcgvxi0vM0p/D3n2C3EReYVX+DNYs5TjZFn/oQt2j+4sVJtSMr18pdRr8wjTcBl6LoV+FUwzPmNA==}
@@ -5867,12 +5867,6 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@cashu/cashu-ts@2.9.0':
-    dependencies:
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
-      '@scure/bip32': 1.7.0
-
   '@cashu/cashu-ts@3.6.2':
     dependencies:
       '@noble/curves': 2.0.1
@@ -6616,7 +6610,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nostrability/schemata@https://codeload.github.com/nostrability/schemata/tar.gz/e784d9502f3c95ad073312ca17541594a2935a8b(@swc/core@1.15.21)(esbuild@0.25.12)':
+  '@nostrability/schemata@0.3.2(@swc/core@1.15.21)(esbuild@0.25.12)':
     dependencies:
       '@apidevtools/json-schema-ref-parser': 11.9.3
       ajv: 8.17.1
@@ -6742,12 +6736,6 @@ snapshots:
       '@noble/curves': 1.1.0
       '@noble/hashes': 1.3.1
       '@scure/base': 1.1.1
-
-  '@scure/bip32@1.7.0':
-    dependencies:
-      '@noble/curves': 1.9.7
-      '@noble/hashes': 1.8.0
-      '@scure/base': 1.2.6
 
   '@scure/bip32@2.0.1':
     dependencies:
@@ -7978,10 +7966,11 @@ snapshots:
 
   block-iterator@1.1.2: {}
 
-  blossom-client-sdk@4.1.0:
+  blossom-client-sdk@5.0.0-2(@cashu/cashu-ts@3.6.2):
     dependencies:
-      '@cashu/cashu-ts': 2.9.0
       '@noble/hashes': 1.8.0
+    optionalDependencies:
+      '@cashu/cashu-ts': 3.6.2
 
   body-parser@2.2.2:
     dependencies:

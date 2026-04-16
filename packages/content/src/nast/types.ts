@@ -64,6 +64,22 @@ export interface Emoji extends Node {
   tag: ["emoji", ...string[]];
 }
 
+export interface BlossomURI extends Node {
+  type: "blossom";
+  /** The original matched text, e.g. `blossom:<hash>.pdf?xs=...` */
+  raw: string;
+  /** 64 character lowercase hex sha256 hash of the blob */
+  sha256: string;
+  /** File extension without the leading dot */
+  ext: string;
+  /** Optional exact blob size in bytes */
+  size?: number;
+  /** Server hints from repeated `xs` query parameters */
+  servers: string[];
+  /** Author hex pubkeys from repeated `as` query parameters */
+  authors: string[];
+}
+
 export interface ContentMap {
   text: Text;
   link: Link;
@@ -73,6 +89,7 @@ export interface ContentMap {
   hashtag: Hashtag;
   emoji: Emoji;
   gallery: Gallery;
+  blossom: BlossomURI;
 }
 
 export type Content = ContentMap[keyof ContentMap];

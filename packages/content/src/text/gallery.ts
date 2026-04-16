@@ -1,27 +1,36 @@
 import { Transformer } from "unified";
 import { convertToUrl, getURLFilename, IMAGE_EXT } from "applesauce-core/helpers/url";
 
-import { Link, Root } from "../nast/types.js";
+import { BlossomURI, Link, Root } from "../nast/types.js";
+
+export interface GalleriesOptions {
+  /** When true, adjacent `blossom:` image URIs are clustered alongside HTTP image links. Defaults to false. */
+  includeBlossom?: boolean;
+}
 
 /** Group images into galleries in an ATS tree */
-export function galleries(types = IMAGE_EXT): Transformer<Root> {
+export function galleries(types = IMAGE_EXT, options: GalleriesOptions = {}): Transformer<Root> {
+  const { includeBlossom = false } = options;
+
   return (tree) => {
-    let links: Link[] = [];
+    let items: (Link | BlossomURI)[] = [];
+
+    const getItemHref = (item: Link | BlossomURI): string => (item.type === "link" ? item.href : item.raw);
 
     const commit = (index: number) => {
       // only create a gallery if there are more than a single image
-      if (links.length > 1) {
-        const start = tree.children.indexOf(links[0]);
-        const end = tree.children.indexOf(links[links.length - 1]);
+      if (items.length > 1) {
+        const start = tree.children.indexOf(items[0]);
+        const end = tree.children.indexOf(items[items.length - 1]);
 
         // replace all nodes with a gallery
-        tree.children.splice(start, 1 + end - start, { type: "gallery", links: links.map((l) => l.href) });
-        links = [];
+        tree.children.splice(start, 1 + end - start, { type: "gallery", links: items.map(getItemHref) });
+        items = [];
 
         // return new cursor
         return end - 1;
       } else {
-        links = [];
+        items = [];
         return index;
       }
     };
@@ -35,11 +44,17 @@ export function galleries(types = IMAGE_EXT): Transformer<Root> {
           const filename = getURLFilename(url);
 
           if (filename && types.some((ext) => filename.endsWith(ext))) {
-            links.push(node);
+            items.push(node);
           } else {
             i = commit(i);
           }
-        } else if (node.type === "text" && links.length > 0) {
+        } else if (node.type === "blossom" && includeBlossom) {
+          if (types.some((ext) => ext === `.${node.ext.toLowerCase()}`)) {
+            items.push(node);
+          } else {
+            i = commit(i);
+          }
+        } else if (node.type === "text" && items.length > 0) {
           const isEmpty = node.value === "\n" || !node.value.match(/[^\s]/g);
 
           if (!isEmpty) i = commit(i);

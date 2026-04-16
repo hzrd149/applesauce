@@ -21,6 +21,9 @@ export const Expressions = {
   get lightning() {
     return /(?:lightning:)?(LNBC[A-Za-z0-9]+)/gim;
   },
+  get blossom() {
+    return /blossom:([0-9a-f]{64})\.([a-zA-Z0-9]+)(\?[^\s]*)?/g;
+  },
 };
 
 /** A list of Regular Expressions that match tokens surrounded by whitespace to avoid matching in URLs */
@@ -45,5 +48,8 @@ export const Tokens = {
   },
   get lightning() {
     return new RegExp(`(?<=^|\\s)${Expressions.lightning.source}`, "gim");
+  },
+  get blossom() {
+    return new RegExp(`(?<=^|\\s)${Expressions.blossom.source}`, "g");
   },
 };

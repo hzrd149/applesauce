@@ -6,16 +6,16 @@
 import { castEvent, castUser, FileMetadata, User } from "applesauce-common/casts";
 import { FileMetadataFactory } from "applesauce-common/factories";
 import { EventStore } from "applesauce-core";
-import { relaySet, getDisplayName, getProfilePicture, type NostrEvent } from "applesauce-core/helpers";
+import { getDisplayName, getProfilePicture, relaySet, type NostrEvent } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
+import type { ISigner } from "applesauce-signers";
+import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { nip19 } from "nostr-tools";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
-import type { ISigner } from "applesauce-signers";
 import LoginView from "../../components/login-view";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
@@ -92,13 +92,11 @@ async function uploadFileToBlossom(
   const isImageOrVideo = file.type.startsWith("image/") || file.type.startsWith("video/");
   const isMedia = useMediaOptimization && isImageOrVideo;
 
-  const results = await multiServerUpload(servers, file, {
+  const results = await (isMedia ? multiServerMediaUpload : multiServerUpload)(servers, file, {
     onAuth: (_server, sha256, type) => createUploadAuth((draft) => signer.signEvent(draft), sha256, { type }),
     onStart: (server: URL) => hooks?.onStart?.(server),
     onUpload: (server: URL) => hooks?.onUpload?.(server),
     onError: (server: URL, uploadError: unknown) => hooks?.onError?.(server, uploadError),
-    isMedia,
-    mediaUploadFallback: isMedia,
   });
 
   const uploads = Array.from(results.values());

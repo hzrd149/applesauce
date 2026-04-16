@@ -11,11 +11,13 @@ import { galleries } from "./gallery.js";
 import { lightningInvoices } from "./lightning.js";
 import { eolMetadata } from "../nast/eol-metadata.js";
 import { links } from "./links.js";
+import { blossomURIs } from "./blossom.js";
 
 export const TextNoteContentSymbol = Symbol.for("text-note-content");
 
 // default kind 1 transformers
 export const textNoteTransformers = [
+  blossomURIs,
   links,
   nostrMentions,
   galleries,
