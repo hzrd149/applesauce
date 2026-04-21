@@ -157,8 +157,8 @@ importers:
         specifier: ^5.0.0
         version: link:../../packages/wallet-connect
       blossom-client-sdk:
-        specifier: next
-        version: 5.0.0-2(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16)
+        specifier: ^5.0.0
+        version: 5.0.0(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -2880,8 +2880,8 @@ packages:
   block-iterator@1.1.2:
     resolution: {integrity: sha512-yAHUP44v2K25xLPdrgVTgwtuQctlullzjczu9CoUZom5AP3g4p1R1+aWHjS1GHG9JtcSUVUnbEPiuXiW5YZ24w==}
 
-  blossom-client-sdk@5.0.0-2:
-    resolution: {integrity: sha512-g54Aa/tKf9cMk/R1IKiEx+zGtQ979FRo3J6Esw3gLxxgjaIo9oqFC6gvmXqBNJaW0p4pbvQ046JqUduBWTGkYQ==}
+  blossom-client-sdk@5.0.0:
+    resolution: {integrity: sha512-xz7w6eBQv6uiNK9ogh5AymnzCAohiU029XySpKxJyG7RsDHkoru+xoZhY55tiIOyWFX/5s8pip4hVh5hO1PN/Q==}
     engines: {node: '>=18'}
     peerDependencies:
       '@cashu/cashu-ts': ^2.4.3
@@ -7977,7 +7977,7 @@ snapshots:
 
   block-iterator@1.1.2: {}
 
-  blossom-client-sdk@5.0.0-2(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16):
+  blossom-client-sdk@5.0.0(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16):
     dependencies:
       '@noble/hashes': 1.8.0
     optionalDependencies:
