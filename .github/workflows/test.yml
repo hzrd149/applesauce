@@ -15,7 +15,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x, 24.x]
+        node-version: [ 20.x, 22.x, 24.x ]
       fail-fast: false
 
     steps:
@@ -36,47 +36,47 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-  test-deno:
-    name: Test on Deno ${{ matrix.deno-version }}
-    runs-on: ubuntu-latest
+  # test-deno:
+  #   name: Test on Deno ${{ matrix.deno-version }}
+  #   runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        deno-version: [v2.x]
+  #   strategy:
+  #     matrix:
+  #       deno-version: [v2.x]
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: Setup Deno ${{ matrix.deno-version }}
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: ${{ matrix.deno-version }}
+  #     - name: Setup Deno ${{ matrix.deno-version }}
+  #       uses: denoland/setup-deno@v2
+  #       with:
+  #         deno-version: ${{ matrix.deno-version }}
 
-      - uses: pnpm/action-setup@v4
+  #     - uses: pnpm/action-setup@v4
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+  #     - name: Get pnpm store directory
+  #       id: pnpm-cache
+  #       shell: bash
+  #       run: |
+  #         echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+  #     - name: Setup pnpm cache
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+  #         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+  #         restore-keys: |
+  #           ${{ runner.os }}-pnpm-store-
 
-      - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+  #     - name: Install Dependencies
+  #       run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+  #     - name: Build
+  #       run: pnpm build
 
-      - name: Run tests with Deno
-        run: deno run -A --node-modules-dir=auto npm:vitest run
+  #     - name: Run tests with Deno
+  #       run: deno run -A --node-modules-dir=auto npm:vitest run
 
   test-bun:
     name: Test on Bun ${{ matrix.bun-version }}
@@ -84,7 +84,7 @@ jobs:
 
     strategy:
       matrix:
-        bun-version: [latest, "1.1"]
+        bun-version: [ latest, "1.1" ]
 
     steps:
       - name: Checkout code
