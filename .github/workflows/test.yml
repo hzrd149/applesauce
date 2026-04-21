@@ -72,6 +72,9 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build
+        run: pnpm build
+
       - name: Run tests with Deno
         run: deno run -A --node-modules-dir=auto npm:vitest run
 
@@ -110,6 +113,9 @@ jobs:
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
 
       - name: Run tests with Bun
         run: bun run vitest run
