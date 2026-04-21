@@ -158,7 +158,7 @@ importers:
         version: link:../../packages/wallet-connect
       blossom-client-sdk:
         specifier: next
-        version: 5.0.0-2(@cashu/cashu-ts@3.6.2)
+        version: 5.0.0-2(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -177,6 +177,9 @@ importers:
       daisyui:
         specifier: ^5.5.14
         version: 5.5.19
+      hls.js:
+        specifier: ^1.6.16
+        version: 1.6.16
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
@@ -3567,8 +3570,8 @@ packages:
   hls-video-element@1.5.11:
     resolution: {integrity: sha512-tJJ65/52CDxj8XFyIve6zT9nVVdUIc6mqvKR25X0ycPKHk07rpjp4xxVteeCefDUBSf/tFLhlICFmn3KWj37xA==}
 
-  hls.js@1.6.15:
-    resolution: {integrity: sha512-E3a5VwgXimGHwpRGV+WxRTKeSp2DW5DI5MWv34ulL3t5UNmyJWCQ1KmLEHbYzcfThfXG8amBL+fCYPneGHC4VA==}
+  hls.js@1.6.16:
+    resolution: {integrity: sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==}
 
   hoist-non-react-statics@3.3.2:
     resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
@@ -6547,7 +6550,7 @@ snapshots:
 
   '@mux/playback-core@0.33.3':
     dependencies:
-      hls.js: 1.6.15
+      hls.js: 1.6.16
       mux-embed: 5.17.10
 
   '@napi-rs/wasm-runtime@1.1.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)':
@@ -7974,11 +7977,12 @@ snapshots:
 
   block-iterator@1.1.2: {}
 
-  blossom-client-sdk@5.0.0-2(@cashu/cashu-ts@3.6.2):
+  blossom-client-sdk@5.0.0-2(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16):
     dependencies:
       '@noble/hashes': 1.8.0
     optionalDependencies:
       '@cashu/cashu-ts': 3.6.2
+      hls.js: 1.6.16
 
   body-parser@2.2.2:
     dependencies:
@@ -8697,10 +8701,10 @@ snapshots:
   hls-video-element@1.5.11:
     dependencies:
       custom-media-element: 1.4.6
-      hls.js: 1.6.15
+      hls.js: 1.6.16
       media-tracks: 0.3.5
 
-  hls.js@1.6.15: {}
+  hls.js@1.6.16: {}
 
   hoist-non-react-statics@3.3.2:
     dependencies:

@@ -10,13 +10,15 @@ import "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
 import type { BlossomURI, Gallery, Link } from "applesauce-content/nast";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
-import { isAudioURL, isImageURL, isVideoURL } from "applesauce-core/helpers";
+import { isAudioURL, isImageURL, isStreamURL, isVideoURL } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { handleBrokenMedia } from "blossom-client-sdk";
+import { Actions, handleBrokenMedia } from "blossom-client-sdk";
+import { createBlossomHlsLoaders } from "blossom-client-sdk/hls";
+import Hls from "hls.js";
 import { decode, EventPointer } from "nostr-tools/nip19";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { firstValueFrom, merge, take, timeout } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
@@ -24,68 +26,161 @@ import RelayPicker from "../../components/relay-picker";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
+const NoteAuthorPubkeyContext = createContext<string | undefined>(undefined);
+
+function useNoteAuthorPubkey() {
+  return useContext(NoteAuthorPubkeyContext);
+}
+
+type HlsBlossomStreamProps = {
+  src: string;
+  className?: string;
+  authorPubkey?: string;
+  blossomAuthorPubkey?: string;
+  getServersForPubkey?: (pubkey: string) => Promise<(string | URL)[] | undefined>;
+};
+
+function HlsBlossomStream({
+  src,
+  className,
+  authorPubkey,
+  blossomAuthorPubkey,
+  getServersForPubkey,
+}: HlsBlossomStreamProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let hls: Hls | undefined;
+    let cancelled = false;
+
+    void (async () => {
+      let primary: string;
+      let fallbackServers: (string | URL)[] = [];
+
+      if (src.startsWith("blossom:")) {
+        const hintPubkey = blossomAuthorPubkey || authorPubkey;
+        const extraFallbacks = hintPubkey && getServersForPubkey ? ((await getServersForPubkey(hintPubkey)) ?? []) : [];
+
+        const urls = await Actions.getBlobUrls(src, {
+          getServers: getServersForPubkey ? async (pubkey: string) => getServersForPubkey(pubkey) : undefined,
+          fallbackServers: extraFallbacks.length ? extraFallbacks : undefined,
+        });
+        if (cancelled) return;
+        if (!urls.length) return;
+
+        primary = urls[0];
+        fallbackServers = urls.slice(1);
+      } else {
+        primary = src;
+      }
+
+      if (cancelled) return;
+
+      const { pLoader, fLoader } = createBlossomHlsLoaders({
+        fallbackServers,
+        stickyFailover: true,
+      });
+
+      if (cancelled) return;
+
+      if (Hls.isSupported()) {
+        hls = new Hls({ pLoader, fLoader });
+        hls.loadSource(primary);
+        hls.attachMedia(video);
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = primary;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      hls?.destroy();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [src, authorPubkey, blossomAuthorPubkey, getServersForPubkey]);
+
+  return <video ref={videoRef} className={className} controls playsInline />;
+}
+
 /** Resolves NIP-96 blossom servers for any pubkey (used when HTTP blob URLs or blossom `as=` hints need fallbacks). */
 async function getBlossomServersForPubkey(pubkey?: string) {
   if (!pubkey) return undefined;
-  return firstValueFrom(eventStore.blossomServers({ pubkey }).pipe(defined(), take(1), timeout(5000)))
+  return firstValueFrom(eventStore.blossomServers({ pubkey }).pipe(defined(), take(1), timeout(5000)));
 }
 
 function LinkRenderer({ node: link }: { node: Link }) {
+  const authorPubkey = useNoteAuthorPubkey();
+  if (isStreamURL(link.href))
+    return (
+      <HlsBlossomStream
+        src={link.href}
+        className="max-h-64 rounded w-full"
+        authorPubkey={authorPubkey}
+        getServersForPubkey={getBlossomServersForPubkey}
+      />
+    );
   if (isImageURL(link.href))
     return (
-        <a href={link.href} target="_blank">
-          <img src={link.href} className="max-h-64 rounded" alt="Gallery image" />
-        </a>
+      <a href={link.href} target="_blank">
+        <img src={link.href} className="max-h-64 rounded" alt="Gallery image" />
+      </a>
     );
-  else if (isVideoURL(link.href))
-    return (
-        <video src={link.href} className="max-h-64 rounded" controls />
-    );
-  else if (isAudioURL(link.href))
-    return (
-        <audio src={link.href} className="max-h-64 rounded" controls />
-    );
+  else if (isVideoURL(link.href)) return <video src={link.href} className="max-h-64 rounded" controls />;
+  else if (isAudioURL(link.href)) return <audio src={link.href} className="max-h-64 rounded" controls />;
   else
     return (
-        <a href={link.href} target="_blank" className="text-blue-500 hover:underline">
-          {link.value}
-        </a>
+      <a href={link.href} target="_blank" className="text-blue-500 hover:underline">
+        {link.value}
+      </a>
     );
 }
 
 function BlossomRenderer({ node }: { node: BlossomURI }) {
+  const authorPubkey = useNoteAuthorPubkey();
   const probe = new URL(`https://example.com/x.${node.ext}`);
   let inner: ReactNode;
   if (isImageURL(probe)) inner = <img src={node.raw} className="max-h-64 rounded" alt="Blossom image" />;
+  else if (isStreamURL(probe))
+    inner = (
+      <HlsBlossomStream
+        src={node.raw}
+        className="max-h-64 rounded w-full"
+        authorPubkey={authorPubkey}
+        blossomAuthorPubkey={node.authors[0]}
+        getServersForPubkey={getBlossomServersForPubkey}
+      />
+    );
   else if (isVideoURL(probe)) inner = <video src={node.raw} className="max-h-64 rounded" controls />;
   else if (isAudioURL(probe)) inner = <audio src={node.raw} className="max-h-64 rounded" controls />;
   else inner = <span className="text-sm text-base-content/70">{node.raw}</span>;
-  return (
-      inner
-  );
+  return inner;
 }
 
 /** Adjacent image links and blossom image URIs are merged into a gallery by the text parser; `links` are full hrefs (`https://…` or `blossom:…`). */
 function GalleryRenderer({ node }: { node: Gallery }) {
   return (
-      <div className="flex flex-nowrap gap-2 my-2 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
-        {node.links.map((href, i) => (
-          <a
-            key={`${href}-${i}`}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block shrink-0 max-w-[min(100%,20rem)] border border-base-300 rounded overflow-hidden"
-          >
-            <img
-              src={href}
-              className="max-h-64 w-full h-auto object-contain"
-              alt={`Gallery image ${i + 1}`}
-              loading="lazy"
-            />
-          </a>
-        ))}
-      </div>
+    <div className="flex flex-nowrap gap-2 my-2 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+      {node.links.map((href, i) => (
+        <a
+          key={`${href}-${i}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block shrink-0 max-w-[min(100%,20rem)] border border-base-300 rounded overflow-hidden"
+        >
+          <img
+            src={href}
+            className="max-h-64 w-full h-auto object-contain"
+            alt={`Gallery image ${i + 1}`}
+            loading="lazy"
+          />
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -95,27 +190,25 @@ const components: ComponentMap = {
   blossom: BlossomRenderer,
   gallery: GalleryRenderer,
   mention: ({ node }) => (
-      <a href={`https://njump.me/${node.encoded}`} target="_blank" className="text-purple-500 hover:underline">
-        @{node.encoded.slice(0, 8)}...
-      </a>
+    <a href={`https://njump.me/${node.encoded}`} target="_blank" className="text-purple-500 hover:underline">
+      @{node.encoded.slice(0, 8)}...
+    </a>
   ),
-  hashtag: ({ node }) => (
-      <span className="text-orange-500">#{node.hashtag}</span>
-  ),
+  hashtag: ({ node }) => <span className="text-orange-500">#{node.hashtag}</span>,
   emoji: ({ node }) => (
-      <span className="text-green-500">
-        <img title={node.raw} src={node.url} className="w-6 h-6 inline" /> {node.raw}
-      </span>
+    <span className="text-green-500">
+      <img title={node.raw} src={node.url} className="w-6 h-6 inline" /> {node.raw}
+    </span>
   ),
   cashu: ({ node }) => (
-      <span className="text-pink-500">
-        @{node.raw.slice(0, 10)}...{node.raw.slice(-5)}
-      </span>
+    <span className="text-pink-500">
+      @{node.raw.slice(0, 10)}...{node.raw.slice(-5)}
+    </span>
   ),
   lightning: ({ node }) => (
-      <span className="text-yellow-400">
-        {node.invoice.slice(0, 10)}...{node.invoice.slice(-5)}
-      </span>
+    <span className="text-yellow-400">
+      {node.invoice.slice(0, 10)}...{node.invoice.slice(-5)}
+    </span>
   ),
 };
 
@@ -127,13 +220,16 @@ const eventLoader = createEventLoaderForStore(eventStore, pool, {
 const examples: EventPointer[] = [
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qg3waehxw309ahx7um5wgh8w6twv5hsqgqtlsc3aun67vuehq8uun4fmsqy4r7tnemg05c7p7f0tryma5e42cdyfdnq",
   "nevent1qvzqqqqqqypzqxh4f92ex6lgqnu4qyry06j6mfw8vfldmurnfflczwa6pcc7aktqqy2hwumn8ghj7mn0wd68ytn00p68ytnyv4mz7qg4waehxw309aex2mrp0yhxgctdw4eju6t09uqzq5uj68wa0cgqwak43wtalf35ypclethsmmmrnn7u926fwwpy9fw58geyf6",
+  "nostr:nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qg3waehxw309ahx7um5wgh8w6twv5hsqgzvn5uf7uws838qmljmlfl7mpll82tvwrnkdr8t0nn9j3zgmvtwvvmf8c6g",
   "nevent1qqsfhafvv705g5wt8rcaytkj6shsshw3dwgamgfe3za8knk0uq4yesgpzpmhxue69uhkummnw3ezuamfdejszrthwden5te0dehhxtnvdakqsrnltk",
   "nevent1qvzqqqqqqypzp22rfmsktmgpk2rtan7zwu00zuzax5maq5dnsu5g3xxvqr2u3pd7qyghwumn8ghj7mn0wd68ytnhd9hx2tcpzamhxue69uhhyetvv9ujumn0wd68ytnzv9hxgtcqyqtplwkqnp05239mvxmpewhtkhtq3fvljp7kqlxduzvz9pqryhtacxpum48",
+  "nostr:nevent1qvzqqqqqqypzqlchwur26ms2af66nce5tk0lmtn8vah6lujfhejhkktrwhsua5u3qyw8wumn8ghj7un9d3shjtnzd96xxmmfdecxzunt9e3k7mf0qyd8wumn8ghj7um9dejxjapwdehhxenvv9ex2tnrdakj7qpqt4cvpzntvc6cqxz28220fqshttgwlnyqf0k4vaen4ff9elu8gq6qhxzmxa",
   "nevent1qvzqqqqqqypzqwlsccluhy6xxsr6l9a9uhhxf75g85g8a709tprjcn4e42h053vaqyd8wumn8ghj7mr0vd4kymmc9enxjct5dfskvtnrdakj7qg4waehxw309aex2mrp0yhxgctdw4eju6t09uqzp3s3dg4pxlncurwnslqxxxskq7z8ys3j8wfr9m5s9ufspka3jfc3tq9y28",
   "nevent1qvzqqqqqqypzqwlsccluhy6xxsr6l9a9uhhxf75g85g8a709tprjcn4e42h053vaqyd8wumn8ghj7mr0vd4kymmc9enxjct5dfskvtnrdakj7qg4waehxw309aex2mrp0yhxgctdw4eju6t09uqzpawhd8gw3pzl4t923uc5r5wvpd3z6p3argdwz45g0dwd38meqf7k887dps",
   "nevent1qvzqqqqqqypzqwlsccluhy6xxsr6l9a9uhhxf75g85g8a709tprjcn4e42h053vaqyd8wumn8ghj7mr0vd4kymmc9enxjct5dfskvtnrdakj7qg4waehxw309aex2mrp0yhxgctdw4eju6t09uqzpxyres0r4mtyv2jw37fxp2rcc7jqgjagjl7sww5wsmphf5z53az5c0dnzm",
   "nevent1qvzqqqqqqypzqwlsccluhy6xxsr6l9a9uhhxf75g85g8a709tprjcn4e42h053vaqyd8wumn8ghj7mr0vd4kymmc9enxjct5dfskvtnrdakj7qpqu35ew3sp89shfd22ujzuc05jmazgrjzx545f63nt8vc49zltgzsqcx9h9t",
   "nevent1qvzqqqqqqypzqaqc0waan5czxr9ltuxjpavwpq8lp38huc9va7ynrvcgjwd8hdtsqy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qgwwaehxw309ahx7uewd3hkctcqypd2ejn8dykjp03r0zcwll979v7qyj25ku8hpyxr36ydakjey4dr65pnxfg",
+  "nostr:nevent1qvzqqqqqqypzph4t08d058ptuj62d5av5y6hkm92pd6yhar26556ttjxg2y908ngqyghwumn8ghj7mn0wd68ytnhd9hx2tcpzemhxue69uhkummnw3ex2mrfw3jhxtn0wfnj7qpq36lz0w4last9zmvhcwkyfdsp6y7306vsv3xtkhrc69evsaz0fg0s29qhxe",
   "nevent1qvzqqqqqqypzpl0ejdgzyg0rrnvvzcmhyytd5xcefa4rntw4ss6nqd54j3c7ad40qqsqmemkxzgs74w4xt3xlghanaj24hjlpeda2xajzyc4ruxrehk0j7sed8ztc",
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qyf8wumn8ghj7mn0wd68yat99e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qpqd29yg6e5y0uyq0ttva728agcjzhxffgnz8a5kqwfrf5njk68yxmqp4mwth",
   "nevent1qvzqqqqqqypzp22rfmsktmgpk2rtan7zwu00zuzax5maq5dnsu5g3xxvqr2u3pd7qyghwumn8ghj7mn0wd68ytnhd9hx2tcpzamhxue69uhhyetvv9ujumn0wd68ytnzv9hxgtcqyznatxwe42lsqutcjafw2v72dtxh0v2w0327m5yh4w3kgwzp0mkx7edh4e6",
@@ -160,20 +256,22 @@ function NoteCard({ note }: { note: Note }) {
   }, []);
 
   return (
-    <div ref={cardRef} data-pubkey={author.pubkey} className="p-4 border border-base-300 rounded-lg overflow-hidden">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="avatar">
-          <div className="w-10 rounded-full">
-            <img src={profile?.picture ?? `https://robohash.org/${author.pubkey}.png`} alt="" />
+    <NoteAuthorPubkeyContext.Provider value={author.pubkey}>
+      <div ref={cardRef} data-pubkey={author.pubkey} className="p-4 border border-base-300 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="avatar">
+            <div className="w-10 rounded-full">
+              <img src={profile?.picture ?? `https://robohash.org/${author.pubkey}.png`} alt="" />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold truncate">{profile?.displayName || author.npub.slice(0, 8)}</div>
+            <div className="text-xs text-base-content/60">{note.createdAt.toLocaleString()}</div>
           </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold truncate">{profile?.displayName || author.npub.slice(0, 8)}</div>
-          <div className="text-xs text-base-content/60">{note.createdAt.toLocaleString()}</div>
-        </div>
+        <div className="whitespace-pre-wrap">{content}</div>
       </div>
-      <div className="whitespace-pre-wrap">{content}</div>
-    </div>
+    </NoteAuthorPubkeyContext.Provider>
   );
 }
 
