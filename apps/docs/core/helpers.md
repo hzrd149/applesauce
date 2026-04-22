@@ -31,30 +31,10 @@ The [`applesauce-core`](https://applesauce.build/typedoc/modules/applesauce-core
 - [`getInboxes`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getInboxes.html) Gets the inbox relays from a `10002` event
 - [`getOutboxes`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getOutboxes.html) Gets the outbox relays from a `10002` event
 
-### Comments
-
-- [`getCommentRootPointer`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getCommentRootPointer.html) Get the root pointer for a NIP-22 comment
-- [`getCommentReplyPointer`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getCommentReplyPointer.html) Get the reply pointer for a NIP-22 comment
-
 ### Event relays
 
 - [`addSeenRelay`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.addSeenRelay.html) Adds a relay to the list of relay the event was seen on
 - [`getSeenRelays`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getSeenRelays.html) Get the list of relays this event was seen on
-
-### Zaps
-
-- [`isValidZap`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.isValidZap.html) Checks if an event is a valid zap and can be parsed
-- [`getZapSender`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getZapSender.html) Gets the senders pubkey
-- [`getZapRecipient`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getZapRecipient.html) Gets the pubkey of the user who received the zap
-- [`getZapPayment`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getZapPayment.html) Gets the parsed bolt11 invoice
-- [`getZapAddressPointer`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getZapAddressPointer.html) Gets the address pointer of the zap
-- [`getZapEventPointer`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getZapEventPointer.html) Gets the event pointer of the zap
-- [`getZapRequest`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getZapRequest.html) Gets the zap request event inside the zap event
-
-### Lightning
-
-- [`parseBolt11`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.parseBolt11.html) Parses a bolt11 lightning invoice
-- [`parseLNURLOrAddress`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.parseLNURLOrAddress.html) Parses a LNURL or lightning address into a LNURLp
 
 ### Pointers
 
@@ -68,12 +48,6 @@ The [`applesauce-core`](https://applesauce.build/typedoc/modules/applesauce-core
 
 - [`getDeleteEventPointers`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getDeleteEventPointers.html) Gets a list of referenced event ids
 - [`getDeleteAddressPointers`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getDeleteAddressPointers.html) Get the list of replaceable event coordinates the event is referencing
-
-### Emojis
-
-- [`getPackName`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getPackName.html) Gets the emoji pack name
-- [`getEmojis`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getEmojis.html) Get all emojis in an emoji pack
-- [`getEmojiTag`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getEmojiTag.html) CGets an "emoji" tag that matches an emoji code
 
 ### URLs
 
@@ -101,7 +75,6 @@ Hidden tags are used in [NIP-51](https://github.com/nostr-protocol/nips/blob/mas
 - [`getHiddenTags`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getHiddenTags.html) Returns the hidden tags for an event if they are unlocked
 - [`isHiddenTagsUnlocked`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.isHiddenTagsUnlocked.html) Checks if the hidden tags are locked
 - [`unlockHiddenTags`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.unlockHiddenTags.html) Unlocks the hidden tags using a `signer`
-- [`modifyEventTags`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.modifyEventTags.html) Modifies an events public or hidden tags
 
 ### Filters
 
@@ -110,6 +83,34 @@ Hidden tags are used in [NIP-51](https://github.com/nostr-protocol/nips/blob/mas
 ### Time
 
 - [`unixNow`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.unixNow.html) Returns the current unix timestamp
+
+## Common helpers
+
+The [`applesauce-common`](https://applesauce.build/typedoc/modules/applesauce-common.Helpers.html) package exports helpers for NIP-specific event kinds (comments, zaps, lightning, emoji packs, etc).
+
+### Comments (NIP-22)
+
+- [`getCommentRootPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getCommentRootPointer.html) Get the root pointer for a NIP-22 comment
+- [`getCommentReplyPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getCommentReplyPointer.html) Get the reply pointer for a NIP-22 comment
+
+### Zaps (NIP-57)
+
+- [`isValidZap`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.isValidZap.html) Checks if an event is a valid zap and can be parsed
+- [`getZapSender`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapSender.html) Gets the sender's pubkey
+- [`getZapRecipient`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapRecipient.html) Gets the pubkey of the user who received the zap
+- [`getZapPayment`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapPayment.html) Gets the parsed bolt11 invoice
+- [`getZapAddressPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapAddressPointer.html) Gets the address pointer of the zap
+- [`getZapEventPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapEventPointer.html) Gets the event pointer of the zap
+- [`getZapRequest`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapRequest.html) Gets the zap request event inside the zap event
+
+### Lightning
+
+- [`parseBolt11`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.parseBolt11.html) Parses a bolt11 lightning invoice
+- [`parseLNURLOrAddress`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.parseLNURLOrAddress.html) Parses a LNURL or lightning address into a LNURLp
+
+### Emoji packs (NIP-30)
+
+- [`getEmojiTag`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getEmojiTag.html) Gets an `"emoji"` tag that matches an emoji code
 
 ## Factory Helpers
 

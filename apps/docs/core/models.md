@@ -50,11 +50,17 @@ console.log(first === second); // true
 
 There are some common prebuilt models that come with `applesauce-core`
 
-- [`ProfileModel`](https://applesauce.build/typedoc/classes/applesauce-core.Models.ProfileModel.html) subscribes to a single pubkey's profile (kind 0)
-- [`TimelineModel`](https://applesauce.build/typedoc/classes/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of events that match filters
-- [`RepliesQuery`](https://applesauce.build/typedoc/classes/applesauce-core.Models.RepliesModel.html) subscribes to all NIP-10 and NIP-22 replies to an event
+- [`ProfileModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ProfileModel.html) subscribes to a single pubkey's profile (kind 0)
+- [`TimelineModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of events that match filters
+- [`ContactsModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ContactsModel.html) subscribes to a user's contact list (kind 3)
+- [`MailboxesModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.MailboxesModel.html) subscribes to a user's inbox/outbox relays (kind 10002)
 
-And there are a lot more in [the docs](https://applesauce.build/typedoc/modules/applesauce-core.Models.html)
+There are many more models in `applesauce-common/models` for common NIPs like replies, reactions, zaps, bookmarks, and more. For example:
+
+- [`RepliesModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.RepliesModel.html) subscribes to all NIP-10 and NIP-22 replies to an event
+- [`ReactionsModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.ReactionsModel.html) subscribes to reactions for an event
+
+See the full list in [the API docs](https://applesauce.build/typedoc/modules/applesauce-core.Models.html) and [applesauce-common models](https://applesauce.build/typedoc/modules/applesauce-common.Models.html).
 
 ## Custom Models
 

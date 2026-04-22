@@ -44,7 +44,7 @@ Connect to a wallet service using a connection string:
 ```typescript
 import { WalletConnect } from "applesauce-wallet-connect";
 
-const wallet = WalletConnect.fromConnectionString("nostr+walletconnect://relay.example.com?secret=...&pubkey=...");
+const wallet = WalletConnect.fromConnectURI("nostr+walletconnect://relay.example.com?secret=...&pubkey=...");
 
 // Pay an invoice
 const result = await wallet.payInvoice("lnbc1...");

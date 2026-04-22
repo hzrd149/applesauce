@@ -35,15 +35,17 @@ const root = getParsedContent(event);
 
 **Default Transformers:**
 
-The default transformer pipeline includes:
+The default transformer pipeline (in order) includes:
 
-1. `links` - Detect URLs and create link nodes
-2. `nostrMentions` - Parse NIP-19 mentions (npub, nevent, etc.)
-3. `galleries` - Group consecutive images into galleries
-4. `emojis` - Replace :emoji_code: with custom emoji tags
-5. `hashtags` - Identify #hashtags
-6. `lightningInvoices` - Detect LNBC invoices
-7. `cashuTokens` - Find cashu tokens
+1. `blossomURIs` - Detect BUD-10 `blossom://` URIs
+2. `links` - Detect URLs and create link nodes
+3. `nostrMentions` - Parse NIP-19 mentions (npub, nevent, etc.)
+4. `galleries` - Group consecutive images into galleries
+5. `emojis` - Replace `:emoji_code:` with NIP-30 custom emoji tags
+6. `hashtags` - Identify `#hashtags`
+7. `lightningInvoices` - Detect LNBC invoices
+8. `cashuTokens` - Find cashu tokens
+9. `eolMetadata` - Attach end-of-line metadata for rendering
 
 **Custom Transformers:**
 

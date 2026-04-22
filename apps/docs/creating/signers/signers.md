@@ -68,9 +68,12 @@ try {
 - [`unlocked`](https://applesauce.build/typedoc/classes/applesauce-signers.PasswordSigner.html#unlocked) a boolean field whether the signer is unlocked
 - [`testPassword`](https://applesauce.build/typedoc/classes/applesauce-signers.PasswordSigner.html#testPassword) will return a promise that resolves or rejects based on if can decrypt the ncryptsec
 
-## Simple Signer
+## Private Key Signer
 
-The [`PrivateKeySigner`](https://applesauce.build/typedoc/classes/applesauce-signers.PrivateKeySigner.html) class is a standard signer that holds the secret key in memory and supports NIP-04 and NIP-44 encryption
+The [`PrivateKeySigner`](https://applesauce.build/typedoc/classes/applesauce-signers.PrivateKeySigner.html) class is a standard signer that holds the secret key in memory and supports NIP-04 and NIP-44 encryption.
+
+> [!INFO]
+> The previously exported `SimpleSigner` is a deprecated alias for `PrivateKeySigner`. Use `PrivateKeySigner` in new code.
 
 You can create a new signer and secret key by not passing anything into the constructor
 
@@ -78,17 +81,49 @@ You can create a new signer and secret key by not passing anything into the cons
 const signer = new PrivateKeySigner();
 ```
 
-Or you can import and existing secret key
+Or you can import an existing secret key
 
 ```ts
-const key = new Uint8Array();
+const key = new Uint8Array(32);
 window.crypto.getRandomValues(key);
 
 // pass the key into constructor
 const signer = new PrivateKeySigner(key);
-// or set it manually
-signer.key = key;
 ```
+
+Or use the static `fromKey` method to accept either a hex string, NIP-19 nsec, or `Uint8Array`:
+
+```ts
+const signer = PrivateKeySigner.fromKey("nsec1...");
+```
+
+## Extension Signer
+
+The [`ExtensionSigner`](https://applesauce.build/typedoc/classes/applesauce-signers.ExtensionSigner.html) class wraps the browser's [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md) `window.nostr` provider (Alby, nos2x, etc).
+
+```ts
+import { ExtensionSigner } from "applesauce-signers";
+
+const signer = new ExtensionSigner();
+const pubkey = await signer.getPublicKey();
+```
+
+> [!WARNING]
+> `ExtensionSigner` requires `window.nostr` to be available. Check for support before use.
+
+## Readonly Signer
+
+The [`ReadonlySigner`](https://applesauce.build/typedoc/classes/applesauce-signers.ReadonlySigner.html) is a signer that only exposes the public key and cannot sign events. It's useful for viewing another user's account without any signing capability.
+
+```ts
+import { ReadonlySigner } from "applesauce-signers";
+
+const signer = new ReadonlySigner("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+```
+
+## Android Native Signer
+
+The [`AndroidNativeSigner`](https://applesauce.build/typedoc/classes/applesauce-signers.AndroidNativeSigner.html) integrates with native Android signing implementations for apps built with frameworks that expose a native bridge (Capacitor, Cordova, etc).
 
 ## Serial Port Signer
 

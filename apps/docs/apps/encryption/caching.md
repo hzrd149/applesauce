@@ -68,17 +68,15 @@ Here's a complete example showing how it's used in practice:
 ```typescript
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
-import { defined, EventStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
+import { defined } from "applesauce-core/observable";
 import { persistEncryptedContent } from "applesauce-common/helpers";
-import { persistEventsToCache } from "applesauce-core/helpers";
-import { BehaviorSubject } from "rxjs";
 import { ExtensionSigner } from "applesauce-signers";
-import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
+import { BehaviorSubject } from "rxjs";
 
 // Setup application state
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
-const pubkey$ = new BehaviorSubject<string | null>(null);
 
 // Setup event store
 const eventStore = new EventStore();
