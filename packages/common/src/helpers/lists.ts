@@ -5,7 +5,7 @@ import {
   isReplaceableKind,
   NostrEvent,
 } from "applesauce-core/helpers/event";
-import { getHiddenTags } from "applesauce-core/helpers/hidden-tags";
+import { getHiddenTags, isHiddenTagsUnlocked } from "applesauce-core/helpers/hidden-tags";
 import {
   AddressPointer,
   EventPointer,
@@ -20,6 +20,38 @@ import { relaySet } from "applesauce-core/helpers/relays";
 import { isATag, isETag, isPTag, processTags } from "applesauce-core/helpers/tags";
 
 export type ReadListTags = "public" | "hidden" | "all";
+
+/** A symbol used to cache profile pointers from a list event */
+export const ListProfilePointersSymbol = Symbol.for("list-profile-pointers");
+/** A symbol used to cache event pointers from a list event */
+export const ListEventPointersSymbol = Symbol.for("list-event-pointers");
+/** A symbol used to cache address pointers from a list event */
+export const ListAddressPointersSymbol = Symbol.for("list-address-pointers");
+/** A symbol used to cache relay pointers from a list event */
+export const ListRelaysSymbol = Symbol.for("list-relays");
+
+type ListCacheByType<T> = Partial<Record<ReadListTags, T>>;
+
+function getOrComputeListCache<T>(
+  list: NostrEvent,
+  symbol: symbol,
+  type: ReadListTags | undefined,
+  compute: () => T,
+): T {
+  const cacheType = type ?? "public";
+
+  // Hidden/all results depend on unlocked hidden tags, so avoid caching until available
+  if ((cacheType === "hidden" || cacheType === "all") && !isHiddenTagsUnlocked(list)) return compute();
+
+  const cache = (Reflect.get(list, symbol) as ListCacheByType<T> | undefined) ?? ({} as ListCacheByType<T>);
+  Reflect.set(list, symbol, cache);
+  const cached = cache[cacheType];
+  if (cached !== undefined) return cached;
+
+  const value = compute();
+  cache[cacheType] = value;
+  return value;
+}
 
 /** Returns all the tags of a list or set */
 export function getListTags(list: NostrEvent, type?: ReadListTags): string[][] {
@@ -97,10 +129,12 @@ export function isEventInList(list: NostrEvent, event: NostrEvent): boolean {
  * @param type - Which types of tags to read
  */
 export function getEventPointersFromList(list: NostrEvent, type?: ReadListTags): EventPointer[] {
-  return processTags(
-    getListTags(list, type),
-    (tag) => (isETag(tag) ? tag : undefined),
-    (t) => getEventPointerFromETag(t) ?? undefined,
+  return getOrComputeListCache(list, ListEventPointersSymbol, type, () =>
+    processTags(
+      getListTags(list, type),
+      (tag) => (isETag(tag) ? tag : undefined),
+      (t) => getEventPointerFromETag(t) ?? undefined,
+    ),
   );
 }
 
@@ -110,10 +144,12 @@ export function getEventPointersFromList(list: NostrEvent, type?: ReadListTags):
  * @param type - Which types of tags to read
  */
 export function getAddressPointersFromList(list: NostrEvent, type?: ReadListTags): AddressPointer[] {
-  return processTags(
-    getListTags(list, type),
-    (t) => (isATag(t) ? t : undefined),
-    (t) => getAddressPointerFromATag(t) ?? undefined,
+  return getOrComputeListCache(list, ListAddressPointersSymbol, type, () =>
+    processTags(
+      getListTags(list, type),
+      (t) => (isATag(t) ? t : undefined),
+      (t) => getAddressPointerFromATag(t) ?? undefined,
+    ),
   );
 }
 
@@ -123,10 +159,12 @@ export function getAddressPointersFromList(list: NostrEvent, type?: ReadListTags
  * @param type - Which types of tags to read
  */
 export function getProfilePointersFromList(list: NostrEvent, type?: ReadListTags): ProfilePointer[] {
-  return processTags(
-    getListTags(list, type),
-    (t) => (isPTag(t) ? t : undefined),
-    (t) => getProfilePointerFromPTag(t) ?? undefined,
+  return getOrComputeListCache(list, ListProfilePointersSymbol, type, () =>
+    processTags(
+      getListTags(list, type),
+      (t) => (isPTag(t) ? t : undefined),
+      (t) => getProfilePointerFromPTag(t) ?? undefined,
+    ),
   );
 }
 
@@ -136,7 +174,9 @@ export function getProfilePointersFromList(list: NostrEvent, type?: ReadListTags
  * @param type - Which types of tags to read
  */
 export function getRelaysFromList(list: NostrEvent, type?: ReadListTags): string[] {
-  return relaySet(processTags(getListTags(list, type), (t) => (t[0] === "relay" ? t[1] : undefined)));
+  return getOrComputeListCache(list, ListRelaysSymbol, type, () =>
+    relaySet(processTags(getListTags(list, type), (t) => (t[0] === "relay" ? t[1] : undefined))),
+  );
 }
 
 /** Returns if an event is a valid list or set */
