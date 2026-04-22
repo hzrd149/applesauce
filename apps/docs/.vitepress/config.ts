@@ -5,6 +5,7 @@ export default defineConfig({
   base: process.env.VITE_BASE || "/",
   title: "Applesauce",
   description: "Functional Nostr SDK for building reactive web apps",
+  head: [["link", { rel: "icon", href: "/favicon.ico" }]],
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     logo: "/logo.png",
