@@ -2,4 +2,4 @@
 "applesauce-wallet-connect": minor
 ---
 
-Add `WalletConnect.connectURU` property to easily access existing connect URI
+Add `WalletConnect.connectURI` property to easily access existing connect URI
