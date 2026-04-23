@@ -19,6 +19,9 @@ import RelayPicker from "../../components/relay-picker";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
+// Skip event signature verification for faster loading ( testing only )
+eventStore.verifyEvent = undefined;
+
 const STORAGE_GRAPH = "social-graph";
 const STORAGE_ROOT = "social-graph-root";
 
@@ -81,7 +84,11 @@ function startSocialGraphSync(relay: string, level: number, since?: number) {
       // Limit updates to 1 per second
       throttleTime(1000),
       // Recalculate the follow distances after the throttle
-      exhaustMap(async () => socialGraph$.value?.recalculateFollowDistances()),
+      exhaustMap(async () => {
+        await socialGraph$.value?.recalculateFollowDistances();
+        // cooldown for 1 second
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }),
     )
     .subscribe({
       next: () => {
