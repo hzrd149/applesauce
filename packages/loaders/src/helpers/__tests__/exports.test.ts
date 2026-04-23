@@ -15,6 +15,7 @@ describe("exports", () => {
         "groupAddressPointersByKind",
         "groupAddressPointersByPubkey",
         "groupAddressPointersByPubkeyOrKind",
+        "groupAddressPointersBySince",
         "isLoadableAddressPointer",
         "loadAsyncMap",
         "makeCacheRequest",

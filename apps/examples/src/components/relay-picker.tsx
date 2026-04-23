@@ -28,8 +28,9 @@ import { map } from "rxjs";
 export const COMMON_RELAYS = relaySet([
   "wss://relay.damus.io",
   "wss://relay.snort.social",
-  "wss://nos.lol",
+  "wss://relay.ditto.pub",
   "wss://relay.primal.net",
+  "wss://nos.lol",
   "wss://nostr.wine",
   "wss://nostr-pub.wellorder.net/",
 ]);

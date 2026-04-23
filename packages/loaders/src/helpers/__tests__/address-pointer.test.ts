@@ -20,5 +20,42 @@ describe("address pointer helpers", () => {
         ]),
       );
     });
+
+    it("should combine pointers with the same `since` into a single filter", () => {
+      expect(
+        createFiltersFromAddressPointers([
+          { kind: kinds.Metadata, pubkey: "pubkey", since: 100 },
+          { kind: kinds.Metadata, pubkey: "pubkey2", since: 100 },
+        ]),
+      ).toEqual([{ kinds: [kinds.Metadata], authors: ["pubkey", "pubkey2"], since: 100 }]);
+    });
+
+    it("should split pointers with different `since` values into separate filters", () => {
+      expect(
+        createFiltersFromAddressPointers([
+          { kind: kinds.Metadata, pubkey: "pubkey", since: 100 },
+          { kind: kinds.Metadata, pubkey: "pubkey2", since: 200 },
+        ]),
+      ).toEqual(
+        expect.arrayContaining([
+          { kinds: [kinds.Metadata], authors: ["pubkey"], since: 100 },
+          { kinds: [kinds.Metadata], authors: ["pubkey2"], since: 200 },
+        ]),
+      );
+    });
+
+    it("should split pointers with and without `since` into separate filters", () => {
+      expect(
+        createFiltersFromAddressPointers([
+          { kind: kinds.Metadata, pubkey: "pubkey", since: 100 },
+          { kind: kinds.Metadata, pubkey: "pubkey2" },
+        ]),
+      ).toEqual(
+        expect.arrayContaining([
+          { kinds: [kinds.Metadata], authors: ["pubkey"], since: 100 },
+          { kinds: [kinds.Metadata], authors: ["pubkey2"] },
+        ]),
+      );
+    });
   });
 });

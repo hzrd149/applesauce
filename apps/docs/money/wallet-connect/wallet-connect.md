@@ -83,9 +83,7 @@ The most common way to create a client is using a connection string:
 import { WalletConnect } from "applesauce-wallet-connect";
 
 // Create a new client from a connection string
-const wallet = WalletConnect.fromConnectURI(
-  "nostr+walletconnect://relay.example.com?secret=abc123&pubkey=def456",
-);
+const wallet = WalletConnect.fromConnectURI("nostr+walletconnect://relay.example.com?secret=abc123&pubkey=def456");
 
 // Start using the wallet
 await wallet.getInfo();
