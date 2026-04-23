@@ -88,7 +88,7 @@ createEventLoaderForStore(eventStore, pool);
 
 // Subscribe to events from the relay
 pool
-  .subscription(["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band"], { kinds: [1], limit: 20 })
+  .subscription(["wss://relay.damus.io", "wss://nos.lol"], { kinds: [1], limit: 20 })
   .pipe(onlyEvents())
   .subscribe((event) => store.add(event));
 
