@@ -1,4 +1,4 @@
-import { CommentFactory, CommentBlueprintOptions } from "applesauce-common/factories";
+import { CommentFactory, CommentFactoryOptions } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { CommentPointer, isCommentAddressPointer, isCommentEventPointer } from "applesauce-common/helpers/comment";
 import { relaySet } from "applesauce-core/helpers";
@@ -26,7 +26,7 @@ function getParentPubkey(parent: NostrEvent | CommentPointer): string | undefine
 export function CreateComment(
   parent: NostrEvent | CommentPointer,
   content: string,
-  options?: CommentBlueprintOptions,
+  options?: CommentFactoryOptions,
 ): Action {
   return async ({ signer, user, publish, events }) => {
     if (!signer) throw new Error("Missing signer");

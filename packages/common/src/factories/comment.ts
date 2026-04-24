@@ -9,15 +9,11 @@ import { setGroupPointer } from "../operations/group.js";
 import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 
 export type CommentTemplate = KnownEventTemplate<typeof COMMENT_KIND>;
-export type CommentBlueprintOptions = TextContentOptions & MetaTagOptions;
+export type CommentFactoryOptions = TextContentOptions & MetaTagOptions;
 
 export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTemplate> {
   /** Creates a new comment event */
-  static create(
-    parent: NostrEvent | CommentPointer,
-    content: string,
-    options?: CommentBlueprintOptions,
-  ): CommentFactory {
+  static create(parent: NostrEvent | CommentPointer, content: string, options?: CommentFactoryOptions): CommentFactory {
     let factory = new CommentFactory((res) => res(blankEventTemplate(COMMENT_KIND)))
       .parent(parent)
       .text(content, options);
@@ -27,11 +23,7 @@ export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTem
   }
 
   /** Creates a new comment that is replying to a parent event or pointer */
-  static reply(
-    parent: NostrEvent | CommentPointer,
-    content: string,
-    options?: CommentBlueprintOptions,
-  ): CommentFactory {
+  static reply(parent: NostrEvent | CommentPointer, content: string, options?: CommentFactoryOptions): CommentFactory {
     let factory = new CommentFactory((res) => res(blankEventTemplate(COMMENT_KIND))).parent(parent).text(content);
     if (options) factory = factory.meta(options);
     return factory;
