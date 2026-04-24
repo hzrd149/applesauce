@@ -1,5 +1,11 @@
 # applesauce-common
 
+## 6.0.1
+
+### Patch Changes
+
+- 4a00f90: Fix `NoteFactory.create()` not accepting options
+
 ## 6.0.0
 
 ### Minor Changes
