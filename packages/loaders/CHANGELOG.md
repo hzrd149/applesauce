@@ -1,5 +1,20 @@
 # applesauce-loaders
 
+## 6.0.0
+
+### Major Changes
+
+- 5928c51: Update `createSocialGraphLoader` to take an upstream pool as first argument instead of an `AddressLoader`
+
+### Minor Changes
+
+- d856044: Update social graph loader to accept `since` date to limit returned contacts events
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.0.0
+
 ## 5.1.0
 
 ### Minor Changes

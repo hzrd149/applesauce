@@ -1,5 +1,14 @@
 # applesauce-wallet
 
+## 6.0.0
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.0.0
+  - applesauce-common@6.0.0
+  - applesauce-actions@6.0.0
+
 ## 5.0.0
 
 ### Minor Changes

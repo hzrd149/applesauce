@@ -1,6 +1,6 @@
 {
   "name": "applesauce-sqlite",
-  "version": "5.2.0",
+  "version": "6.0.0",
   "description": "sqlite event databases for applesauce",
   "type": "module",
   "main": "dist/index.js",
@@ -110,7 +110,7 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^5.2.0"
+    "applesauce-core": "^6.0.0"
   },
   "peerDependencies": {
     "@libsql/client": "^0.15.15",
@@ -125,7 +125,7 @@
     "@tursodatabase/database-wasm": "^0.2.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.18.1",
-    "applesauce-signers": "^5.2.0",
+    "applesauce-signers": "^6.0.0",
     "better-sqlite3": "^12.8.0",
     "rimraf": "^6.1.2",
     "typescript": "^5.9.3",

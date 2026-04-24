@@ -1,5 +1,25 @@
 # applesauce-relay
 
+## 6.0.0
+
+### Major Changes
+
+- bca9737: Update `RelayPool` and `RelayGroup` to never return virtual EOSE on `req`, and `subscription`
+- ef729d9: Remove `eoseTimeout` from `Relay`. request timeouts should be handled downstream
+- 7f70ea6: Relay: `CLOSED` messages complete subscriptions instead of erroring
+- bca9737: Remove `markFromRelay` operator
+- bca9737: Remove `IRelay`, `IGroup` and `IPool` interfaces. too complex to make classes generic
+
+### Minor Changes
+
+- 474e259: Add `timeout` to `Relay.request`, `RelayGroup.request`, and `RelayPool.request` options
+
+### Patch Changes
+
+- 6c80677: Add a `waitForAuth` option to REQ flows so callers can disable auth waiting and receive auth-required errors directly.
+- Updated dependencies
+  - applesauce-core@6.0.0
+
 ## 5.2.0
 
 ### Minor Changes

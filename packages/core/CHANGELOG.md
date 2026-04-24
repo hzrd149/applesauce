@@ -1,5 +1,27 @@
 # applesauce-core
 
+## 6.0.0
+
+### Major Changes
+
+- 2e15ea6: Remove legacy `EventFactory` class and `buildEvent`/`modifyEvent`/`createEvent` functions; use the new factory classes from `applesauce-core/factories` and `applesauce-common` instead
+
+### Minor Changes
+
+- 2d5a6d6: Add support for IP addresses and localhost in link RegExp
+- bf88188: Make context optional in event operations
+- 3713825: Add `timeoutWithIgnore` observable operator
+- dcfa592: Add `combineLatestByValue` observable operator
+- 04f7b9e: Add BUD-10 blossom URIs RegExp
+- 3713825: Add `combineLatestBy`, `combineLatestByIndex`, and `combineLatestByKey` observable operators
+- a3153e4: Move `castEvent`, `castPubkey`, `EventCast`, `PubkeyCast`, `User`, `castUser`, and `ChainableObservable` to `applesauce-core/casts`; `applesauce-common` re-exports all of them and augments `User` with Nostr-specific observable getters via prototype
+
+### Patch Changes
+
+- 42dcaf2: Add `catchErrorInline` observable operator
+- c9c0aba: Fix stale symbol caches leaking between EventFactory chain steps
+- ef96ec4: Fix `blankEventTemplate` missing `d` tag for addressable kinds
+
 ## 5.2.0
 
 ### Patch Changes

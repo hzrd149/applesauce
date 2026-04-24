@@ -20,6 +20,5 @@ describe("address pointer helpers", () => {
         ]),
       );
     });
-
   });
 });

@@ -143,9 +143,7 @@ function EventView({
             <p className="opacity-60">Encrypted with {display.method}. Decrypt to view.</p>
           )}
           {display?.kind === "json" && (
-            <pre className="bg-base-200 rounded p-3 overflow-x-auto">
-              {JSON.stringify(display.value, null, 2)}
-            </pre>
+            <pre className="bg-base-200 rounded p-3 overflow-x-auto">{JSON.stringify(display.value, null, 2)}</pre>
           )}
           {display?.kind === "raw" && (
             <>

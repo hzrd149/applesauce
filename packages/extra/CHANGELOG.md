@@ -1,5 +1,12 @@
 # applesauce-extra
 
+## 6.0.0
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.0.0
+
 ## 5.0.0
 
 ### Patch Changes

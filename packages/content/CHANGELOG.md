@@ -1,5 +1,17 @@
 # applesauce-content
 
+## 6.0.0
+
+### Minor Changes
+
+- 04f7b9e: Add BUD-10 blossom URI nodes for text and markdown
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.0.0
+  - applesauce-common@6.0.0
+
 ## 5.0.0
 
 ### Major Changes

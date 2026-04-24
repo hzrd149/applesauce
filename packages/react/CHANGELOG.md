@@ -1,5 +1,11 @@
 # applesauce-react
 
+## 6.0.0
+
+### Major Changes
+
+- af03a7b: Remove the legacy `useEventFactory`, `FactoryContext`, and `FactoryProvider` exports
+
 ## 5.1.0
 
 ### Minor Changes

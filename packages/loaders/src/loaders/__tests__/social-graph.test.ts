@@ -25,9 +25,7 @@ describe("createSocialGraphLoader", () => {
     const spy = subscribeSpyTo(loader({ pubkey: user.pubkey, relays: ["wss://relay.com"], distance: 0 }));
     await flushPromises();
 
-    expect(request).toHaveBeenCalledWith(["wss://relay.com/"], [
-      { kinds: [kinds.Contacts], authors: [user.pubkey] },
-    ]);
+    expect(request).toHaveBeenCalledWith(["wss://relay.com/"], [{ kinds: [kinds.Contacts], authors: [user.pubkey] }]);
     expect(spy.getValues()).toEqual([contacts]);
     expect(spy.receivedComplete()).toBe(true);
   });
@@ -68,9 +66,10 @@ describe("createSocialGraphLoader", () => {
     subscribeSpyTo(loader({ pubkey: user.pubkey, relays: ["wss://relay.com"], distance: 0, since: 100 }));
     await flushPromises();
 
-    expect(request).toHaveBeenCalledWith(["wss://relay.com/"], [
-      { kinds: [kinds.Contacts], authors: [user.pubkey], since: 100 },
-    ]);
+    expect(request).toHaveBeenCalledWith(
+      ["wss://relay.com/"],
+      [{ kinds: [kinds.Contacts], authors: [user.pubkey], since: 100 }],
+    );
   });
 
   it("should use cache results and skip relay requests without since", async () => {
@@ -100,9 +99,10 @@ describe("createSocialGraphLoader", () => {
     await flushPromises();
 
     expect(cacheRequest).toHaveBeenCalledOnce();
-    expect(request).toHaveBeenCalledWith(["wss://relay.com/"], [
-      { kinds: [kinds.Contacts], authors: [user.pubkey], since: 150 },
-    ]);
+    expect(request).toHaveBeenCalledWith(
+      ["wss://relay.com/"],
+      [{ kinds: [kinds.Contacts], authors: [user.pubkey], since: 150 }],
+    );
     expect(spy.getValues()).toEqual([cachedContacts, relayContacts]);
   });
 
