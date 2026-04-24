@@ -1,12 +1,15 @@
 import { IAsyncEventStoreActions, IAsyncEventStoreRead, IEventStoreActions, IEventStoreRead } from "applesauce-core";
 import { getPublicContacts } from "applesauce-core/helpers";
+import { Filter } from "applesauce-core/helpers/filter";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
 import { mapEventsToStore } from "applesauce-core/observable";
-import { firstValueFrom, identity, isObservable, merge, Observable, tap } from "rxjs";
+import { catchError, EMPTY, filter, firstValueFrom, identity, isObservable, Observable, tap } from "rxjs";
+import { makeCacheRequest } from "../helpers/cache.js";
+import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
-import { AddressPointerLoader, LoadableAddressPointer } from "./address-loader.js";
+import { CacheRequest, UpstreamPool } from "../types.js";
 
 /**
  * A loader that loads the social graph of a user out to a set distance.
@@ -25,7 +28,9 @@ export type SocialGraphEventStore = (IEventStoreActions | IAsyncEventStoreAction
 export type SocialGraphLoaderOptions = Partial<{
   /** An event store to send all the events to and fall back to when the relay returns nothing */
   eventStore?: SocialGraphEventStore;
-  /** The number of parallel requests to make (default 300) */
+  /** A method used to load events from a local cache */
+  cacheRequest: CacheRequest;
+  /** The number of parallel contacts to load at once (default 300) */
   parallel: number;
   /** Extra relays to load from */
   extraRelays?: string[] | Observable<string[]>;
@@ -33,21 +38,48 @@ export type SocialGraphLoaderOptions = Partial<{
   hints?: boolean;
 }>;
 
+type QueuedProfilePointer = ProfilePointer & { distance: number; since?: number };
+
+/** Create filters for loading contact lists, keeping different since windows separate. */
+function createContactsFilters(pointers: QueuedProfilePointer[]): Filter[] {
+  const bySince = new Map<number | undefined, string[]>();
+
+  for (const pointer of pointers) {
+    const authors = bySince.get(pointer.since);
+    if (authors) authors.push(pointer.pubkey);
+    else bySince.set(pointer.since, [pointer.pubkey]);
+  }
+
+  return Array.from(bySince.entries()).map(([since, authors]) => {
+    const filter: Filter = { kinds: [kinds.Contacts], authors };
+    if (since !== undefined) filter.since = since;
+    return filter;
+  });
+}
+
+function isRequestedContactsEvent(event: NostrEvent, pointers: QueuedProfilePointer[]) {
+  return event.kind === kinds.Contacts && pointers.some((pointer) => pointer.pubkey === event.pubkey);
+}
+
+function getBatchRelays(pointers: QueuedProfilePointer[], baseRelays: string[], hints?: boolean) {
+  if (hints) return mergeRelaySets(baseRelays, ...pointers.map((pointer) => pointer.relays));
+  else return baseRelays;
+}
+
 /** Create a social graph loader */
-export function createSocialGraphLoader(
-  addressLoader: AddressPointerLoader,
-  opts?: SocialGraphLoaderOptions,
-): SocialGraphLoader {
+export function createSocialGraphLoader(pool: UpstreamPool, opts?: SocialGraphLoaderOptions): SocialGraphLoader {
+  const request = wrapUpstreamPool(pool);
+
   return wrapGeneratorFunction<[ProfilePointer & { distance: number; since?: number }], NostrEvent>(
     async function* (user) {
       const seen = new Set<string>();
       // Carry `since` on every queue entry so descendants share the same window
-      const queue: (ProfilePointer & { distance: number; since?: number })[] = [user];
+      const queue: QueuedProfilePointer[] = [user];
       // Maximum parallel requests (default to 300)
       const maxParallel = opts?.parallel ?? 300;
 
       // get the relays to load from
-      const relays = mergeRelaySets(
+      const baseRelays = mergeRelaySets(
         user.relays,
         isObservable(opts?.extraRelays) ? await firstValueFrom(opts?.extraRelays) : opts?.extraRelays,
       );
@@ -56,38 +88,45 @@ export function createSocialGraphLoader(
       while (queue.length > 0) {
         // Process up to maxParallel items at once
         const batch = queue.splice(0, maxParallel);
+        let remaining = batch;
 
         // Track the latest contacts event per pubkey so we can expand the queue once
         // the batch observable completes. Using a side-effect here lets us stream every
         // event out to subscribers as it arrives rather than buffering to arrays.
         const latestByPubkey = new Map<string, NostrEvent>();
+        const trackLatest = tap<NostrEvent>((event) => {
+          const current = latestByPubkey.get(event.pubkey);
+          if (!current || event.created_at > current.created_at) latestByPubkey.set(event.pubkey, event);
+        });
 
-        const batchObservable = merge(
-          ...batch.map((pointer) => {
-            const address: LoadableAddressPointer = {
-              kind: kinds.Contacts,
-              pubkey: pointer.pubkey,
-              relays: opts?.hints ? mergeRelaySets(pointer.relays, relays) : relays,
-              since: pointer.since,
-            };
+        if (opts?.cacheRequest) {
+          yield makeCacheRequest(opts.cacheRequest, createContactsFilters(batch)).pipe(
+            filter((event) => isRequestedContactsEvent(event, batch)),
+            // Pass all events to the store if set
+            opts?.eventStore ? mapEventsToStore(opts.eventStore) : identity,
+            // Remember the newest contacts event per pubkey for queue expansion
+            trackLatest,
+            // If the cache throws an error, skip it
+            catchError(() => EMPTY),
+          );
 
-            return addressLoader(address).pipe(
-              // Pass all events to the store if set
-              opts?.eventStore ? mapEventsToStore(opts.eventStore) : identity,
-              // Remember the newest contacts event per pubkey for queue expansion
-              tap((event) => {
-                const current = latestByPubkey.get(pointer.pubkey);
-                if (!current || event.created_at > current.created_at) {
-                  latestByPubkey.set(pointer.pubkey, event);
-                }
-              }),
-            );
-          }),
-        );
+          remaining = batch.filter((pointer) => pointer.since !== undefined || !latestByPubkey.has(pointer.pubkey));
+        }
 
-        // Yield the merged observable so every event streams out to subscribers
-        // as it arrives from the relay.
-        yield batchObservable;
+        const relays = getBatchRelays(remaining, baseRelays, opts?.hints);
+        if (remaining.length > 0 && relays.length > 0) {
+          // Yield the relay observable so every event streams out to subscribers
+          // as it arrives from the relay.
+          yield request(relays, createContactsFilters(remaining)).pipe(
+            filter((event) => isRequestedContactsEvent(event, remaining)),
+            // Pass all events to the store if set
+            opts?.eventStore ? mapEventsToStore(opts.eventStore) : identity,
+            // Remember the newest contacts event per pubkey for queue expansion
+            trackLatest,
+            // If the relay request throws an error, continue expanding from cache/store
+            catchError(() => EMPTY),
+          );
+        }
 
         // Batch has completed — expand the queue using the latest contacts event
         // for each pointer, falling back to the event store if the relay returned

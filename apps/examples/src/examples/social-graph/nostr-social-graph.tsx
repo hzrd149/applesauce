@@ -27,12 +27,12 @@ const STORAGE_ROOT = "social-graph-root";
 
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
-const eventLoader = createEventLoaderForStore(eventStore, pool, {
+createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
 });
 
 // Create a social graph loader
-const graphLoader = createSocialGraphLoader(eventLoader, { eventStore });
+const graphLoader = createSocialGraphLoader(pool, { eventStore });
 
 // Live social graph instance (mutated by handleEvent as events arrive)
 const socialGraph$ = new BehaviorSubject<SocialGraph | undefined>(undefined);
@@ -68,6 +68,9 @@ async function persistGraph() {
 function startSocialGraphSync(relay: string, level: number, since?: number) {
   const root = socialGraph$.value?.getRoot();
   if (!root) return;
+
+  // Reset the sync state
+  syncState$.next({ loaded: 0 });
 
   // Create a new sync subscription
   const sub = graphLoader({ pubkey: root, relays: [relay], distance: level, since })

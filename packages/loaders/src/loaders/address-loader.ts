@@ -25,8 +25,6 @@ export type LoadableAddressPointer = {
   relays?: string[];
   /** Whether to ignore the cache */
   cache?: boolean;
-  /** Only load events with created_at >= since (unix seconds) */
-  since?: number;
 };
 
 /** A method that takes address pointers and returns an observable of events */
@@ -134,12 +132,6 @@ export function consolidateAddressPointers(pointers: LoadableAddressPointer[]): 
 
       // merge cache flag
       if (pointer.cache === false) current.cache = false;
-
-      // merge since: take the minimum so the widest window wins.
-      // If either pointer lacks since, drop it entirely (missing since means "any time").
-      if (current.since !== undefined && pointer.since !== undefined)
-        current.since = Math.min(current.since, pointer.since);
-      else current.since = undefined;
     } else byAddress.set(addr, cloneLoadablePointer(pointer));
   }
 
