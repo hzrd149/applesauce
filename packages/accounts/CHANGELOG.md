@@ -1,5 +1,13 @@
 # applesauce-accounts
 
+## 6.0.0
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.0.0
+  - applesauce-signers@6.0.0
+
 ## 5.2.0
 
 ### Minor Changes

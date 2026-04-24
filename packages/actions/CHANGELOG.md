@@ -1,5 +1,15 @@
 # applesauce-actions
 
+## 6.0.0
+
+### Patch Changes
+
+- c9c0aba: Fix stale symbol caches leaking between EventFactory chain steps
+- 23542dc: Add `NIP51RelayListFactory`, `NIP51UserListFactory`, and `NIP51ItemListFactory` base classes for NIP-51 list factories, and update specific list factories to extend them.
+- Updated dependencies
+  - applesauce-core@6.0.0
+  - applesauce-common@6.0.0
+
 ## 5.1.1
 
 ### Patch Changes

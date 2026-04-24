@@ -1,5 +1,12 @@
 # applesauce-sqlite
 
+## 6.0.0
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.0.0
+
 ## 5.2.0
 
 ### Patch Changes
