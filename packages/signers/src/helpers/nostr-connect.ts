@@ -10,7 +10,7 @@ export function isErrorResponse(response: any): response is NostrConnectErrorRes
 }
 
 export enum Permission {
-  GetPublicKey = "get_pubic_key",
+  GetPublicKey = "get_public_key",
   SignEvent = "sign_event",
   Ping = "ping",
   Nip04Encrypt = "nip04_encrypt",
