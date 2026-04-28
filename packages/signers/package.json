@@ -1,6 +1,6 @@
 {
   "name": "applesauce-signers",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "description": "Signer classes for applesauce",
   "type": "module",
   "main": "dist/index.js",

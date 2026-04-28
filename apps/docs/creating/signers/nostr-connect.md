@@ -163,7 +163,7 @@ The `NostrConnectSigner` uses a set of predefined permissions that can be reques
 
 ```typescript
 enum Permission {
-  GetPublicKey = "get_pubic_key",
+  GetPublicKey = "get_public_key",
   SignEvent = "sign_event",
   Nip04Encrypt = "nip04_encrypt",
   Nip04Decrypt = "nip04_decrypt",
