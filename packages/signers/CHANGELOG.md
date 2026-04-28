@@ -1,5 +1,11 @@
 # applesauce-signer
 
+## 6.0.2
+
+### Patch Changes
+
+- 9531f51: Fix typo in Permission enum: get_pubic_key -> get_public_key
+
 ## 6.0.0
 
 ### Patch Changes
