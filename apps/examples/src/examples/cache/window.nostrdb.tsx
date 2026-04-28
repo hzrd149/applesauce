@@ -24,7 +24,7 @@ const pool = new RelayPool();
 
 // Create cache request function that loads from event store
 function cacheRequest(filters: Filter[]) {
-  return window.nostrdb.filters(filters);
+  return window.nostrdb.query(filters);
 }
 
 // Create unified event loader for the store
