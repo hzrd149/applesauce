@@ -16,6 +16,7 @@ export * from "./emoji-pack.js";
 export * from "./encrypted-content-cache.js";
 export * from "./file-metadata.js";
 export * from "./gift-wrap.js";
+export * from "./git-lists.js";
 export * from "./groups.js";
 export * from "./hashtag.js";
 export * from "./highlight.js";

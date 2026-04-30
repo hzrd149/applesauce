@@ -21,6 +21,8 @@ describe("exports", () => {
         "FavoriteEmojis",
         "FavoriteRelays",
         "FileMetadata",
+        "GitAuthors",
+        "GitRepositories",
         "GroupsList",
         "Mutes",
         "Note",

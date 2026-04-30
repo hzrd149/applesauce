@@ -43,5 +43,32 @@ describe("user", () => {
         expect.objectContaining({ kind: 30030, pubkey: signer.pubkey, identifier: "animals" }),
       ]);
     });
+
+    it("should resolve favorite git lists", async () => {
+      const signer = new FakeUser();
+      const profile = signer.profile({ name: "John Doe" });
+      const author = "a".repeat(64);
+      const authors = signer.event({
+        kind: 10017,
+        tags: [["p", author]],
+      });
+      const repositories = signer.event({
+        kind: 10018,
+        tags: [["a", `30617:${signer.pubkey}:applesauce`]],
+      });
+      const eventStore = new EventStore();
+      eventStore.add(profile);
+      eventStore.add(authors);
+      eventStore.add(repositories);
+
+      const user = castUser(profile, eventStore);
+      const gitAuthors = await firstValueFrom(user.gitAuthors$);
+      const gitRepositories = await firstValueFrom(user.favoriteGitRepos$);
+
+      expect(gitAuthors?.pubkeys).toEqual([author]);
+      expect(gitRepositories?.repositories).toEqual([
+        expect.objectContaining({ kind: 30617, pubkey: signer.pubkey, identifier: "applesauce" }),
+      ]);
+    });
   });
 });

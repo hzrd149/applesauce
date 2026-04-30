@@ -4,6 +4,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { combineLatest, defer, from, map, MonoTypeOperatorFunction, ReplaySubject, share, switchMap, tap } from "rxjs";
 import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
 import { FAVORITE_EMOJI_PACKS_KIND } from "../helpers/emoji-pack.js";
+import { GIT_AUTHORS_KIND, GIT_REPOSITORIES_KIND } from "../helpers/git-lists.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
@@ -143,6 +144,30 @@ defineGetter("favoriteEmojis$", function (this: User) {
   );
 });
 
+defineGetter("gitAuthors$", function (this: User) {
+  return this.$$ref("gitAuthors$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ GitAuthors }, outboxes]) =>
+        store
+          .replaceable({ kind: GIT_AUTHORS_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(GitAuthors, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("gitRepositories$", function (this: User) {
+  return this.$$ref("favoriteGitRepos", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ FavoriteGitRepos }, outboxes]) =>
+        store
+          .replaceable({ kind: GIT_REPOSITORIES_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(FavoriteGitRepos, store)),
+      ),
+    ),
+  );
+});
+
 defineGetter("searchRelays$", function (this: User) {
   return this.$$ref("searchRelays$", (store) =>
     combineLatest([Circular, this.outboxes$]).pipe(
@@ -229,6 +254,8 @@ declare module "applesauce-core/casts" {
     get bookmarks$(): ChainableObservable<import("./bookmarks.js").BookmarksList | undefined>;
     get favoriteEmojis$(): ChainableObservable<import("./favorite-emojis.js").FavoriteEmojis | undefined>;
     get favoriteRelays$(): ChainableObservable<import("./relay-lists.js").FavoriteRelays | undefined>;
+    get gitAuthors$(): ChainableObservable<import("./git-lists.js").GitAuthors | undefined>;
+    get favoriteGitRepos$(): ChainableObservable<import("./git-lists.js").FavoriteGitRepos | undefined>;
     get searchRelays$(): ChainableObservable<import("./relay-lists.js").SearchRelays | undefined>;
     get blockedRelays$(): ChainableObservable<import("./relay-lists.js").BlockedRelays | undefined>;
     get directMessageRelays$(): ChainableObservable<string[] | undefined>;
