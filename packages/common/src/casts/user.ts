@@ -4,7 +4,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { combineLatest, defer, from, map, MonoTypeOperatorFunction, ReplaySubject, share, switchMap, tap } from "rxjs";
 import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
 import { FAVORITE_EMOJI_PACKS_KIND } from "../helpers/emoji-pack.js";
-import { GIT_AUTHORS_KIND, GIT_REPOSITORIES_KIND } from "../helpers/git-lists.js";
+import { GIT_AUTHORS_KIND, FAVORITE_GIT_REPOS_KIND } from "../helpers/git-lists.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
@@ -156,12 +156,12 @@ defineGetter("gitAuthors$", function (this: User) {
   );
 });
 
-defineGetter("gitRepositories$", function (this: User) {
+defineGetter("favoriteGitRepos$", function (this: User) {
   return this.$$ref("favoriteGitRepos", (store) =>
     combineLatest([Circular, this.outboxes$]).pipe(
       switchMap(([{ FavoriteGitRepos }, outboxes]) =>
         store
-          .replaceable({ kind: GIT_REPOSITORIES_KIND, pubkey: this.pubkey, relays: outboxes })
+          .replaceable({ kind: FAVORITE_GIT_REPOS_KIND, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(FavoriteGitRepos, store)),
       ),
     ),

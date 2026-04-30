@@ -9,11 +9,11 @@ import {
 import { map, of } from "rxjs";
 import {
   getGitAuthors,
-  getGitRepositories,
+  getFavoriteGitReposPointers,
   GitAuthorsListEvent,
   FavoriteGitReposListEvent,
   isValidGitAuthorsList,
-  isValidGitRepositoriesList,
+  isValidFavoriteGitReposList,
 } from "../helpers/git-lists.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
 
@@ -70,18 +70,18 @@ export class GitAuthors extends EventCast<GitAuthorsListEvent> {
 /** Class for git repositories lists (kind 10018) */
 export class FavoriteGitRepos extends EventCast<FavoriteGitReposListEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
-    if (!isValidGitRepositoriesList(event)) throw new Error("Invalid git repositories list");
+    if (!isValidFavoriteGitReposList(event)) throw new Error("Invalid git repositories list");
     super(event, store);
   }
 
   /** The public NIP-34 repositories in the list */
   get repositories() {
-    return getGitRepositories(this.event);
+    return getFavoriteGitReposPointers(this.event);
   }
 
   /** The unlocked hidden NIP-34 repositories in the list */
   get hidden() {
-    return getGitRepositories(this.event, "hidden");
+    return getFavoriteGitReposPointers(this.event, "hidden");
   }
 
   /** An observable that updates when the hidden repositories are unlocked */
@@ -89,7 +89,7 @@ export class FavoriteGitRepos extends EventCast<FavoriteGitReposListEvent> {
     return this.$$ref("hidden$", (store) =>
       of(this.event).pipe(
         watchEventUpdates(store),
-        map((event) => event && getGitRepositories(event, "hidden")),
+        map((event) => event && getFavoriteGitReposPointers(event, "hidden")),
         defined(),
       ),
     );

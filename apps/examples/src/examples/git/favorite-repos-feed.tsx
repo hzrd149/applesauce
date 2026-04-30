@@ -4,7 +4,7 @@
  * @related casting/custom, bookmarks/manager
  */
 import { FavoriteGitRepos } from "applesauce-common/casts/git-lists";
-import { GIT_REPOSITORIES_KIND, REPOSITORY_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
+import { FAVORITE_GIT_REPOS_KIND, REPOSITORY_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
 import { catchErrorInline, EventStore, mapEventsToStore } from "applesauce-core";
 import {
@@ -217,14 +217,14 @@ export default function FavoriteRepositoriesFeed() {
     () =>
       pool
         .relay(relay)
-        .subscription({ kinds: [GIT_REPOSITORIES_KIND], limit: 100 })
+        .subscription({ kinds: [FAVORITE_GIT_REPOS_KIND], limit: 100 })
         .pipe(mapEventsToStore(eventStore), catchErrorInline()),
     [relay],
   );
 
   const lists = use$(
     () =>
-      eventStore.timeline({ kinds: [GIT_REPOSITORIES_KIND] }).pipe(castTimelineStream(FavoriteGitRepos, eventStore)),
+      eventStore.timeline({ kinds: [FAVORITE_GIT_REPOS_KIND] }).pipe(castTimelineStream(FavoriteGitRepos, eventStore)),
     [],
   );
 
@@ -238,7 +238,7 @@ export default function FavoriteRepositoriesFeed() {
           <div>
             <h1 className="text-3xl font-bold">Public Favorite Git Repositories</h1>
             <p className="text-base-content/70 mt-2 max-w-3xl">
-              This feed watches public NIP-51 Git repository lists (kind {GIT_REPOSITORIES_KIND}) and loads the NIP-34
+              This feed watches public NIP-51 Git repository lists (kind {FAVORITE_GIT_REPOS_KIND}) and loads the NIP-34
               repository announcements (kind {REPOSITORY_ANNOUNCEMENT_KIND}) they reference.
             </p>
           </div>
@@ -272,7 +272,7 @@ export default function FavoriteRepositoriesFeed() {
         <div className="border border-base-300 p-6 text-center">
           <h2 className="font-semibold">No public Git repository favorites found yet</h2>
           <p className="text-sm text-base-content/70 mt-2">
-            Try another relay, or wait for kind {GIT_REPOSITORIES_KIND} events to arrive.
+            Try another relay, or wait for kind {FAVORITE_GIT_REPOS_KIND} events to arrive.
           </p>
         </div>
       ) : (

@@ -7,14 +7,14 @@ import {
   parseReplaceableAddress,
 } from "applesauce-core/helpers/pointers";
 import {
-  GIT_REPOSITORIES_KIND,
+  FAVORITE_GIT_REPOS_KIND,
   FavoriteGitReposListEvent,
   GitRepositoryPointer,
   REPOSITORY_ANNOUNCEMENT_KIND,
 } from "../helpers/git-lists.js";
 import { NIP51ItemListFactory } from "./list.js";
 
-export type FavoriteGitReposTemplate = KnownEventTemplate<typeof GIT_REPOSITORIES_KIND>;
+export type FavoriteGitReposTemplate = KnownEventTemplate<typeof FAVORITE_GIT_REPOS_KIND>;
 export type FavoriteGitRepoInput = string | GitRepositoryPointer | NostrEvent;
 
 function getRepositoryAddress(repository: FavoriteGitRepoInput): string | GitRepositoryPointer {
@@ -36,17 +36,17 @@ function getRepositoryAddress(repository: FavoriteGitRepoInput): string | GitRep
 
 /** A factory class for building kind 10018 git repositories list events */
 export class FavoriteGitReposFactory extends NIP51ItemListFactory<
-  typeof GIT_REPOSITORIES_KIND,
+  typeof FAVORITE_GIT_REPOS_KIND,
   FavoriteGitReposTemplate
 > {
   /** Creates a new git repositories list factory */
   static create(): FavoriteGitReposFactory {
-    return new FavoriteGitReposFactory((res) => res(blankEventTemplate(GIT_REPOSITORIES_KIND)));
+    return new FavoriteGitReposFactory((res) => res(blankEventTemplate(FAVORITE_GIT_REPOS_KIND)));
   }
 
   /** Creates a new git repositories list factory from an existing list event */
-  static modify(event: NostrEvent | KnownEvent<typeof GIT_REPOSITORIES_KIND>): FavoriteGitReposFactory {
-    if (event.kind !== GIT_REPOSITORIES_KIND) throw new Error("Event is not a git repositories list event");
+  static modify(event: NostrEvent | KnownEvent<typeof FAVORITE_GIT_REPOS_KIND>): FavoriteGitReposFactory {
+    if (event.kind !== FAVORITE_GIT_REPOS_KIND) throw new Error("Event is not a git repositories list event");
     return new FavoriteGitReposFactory((res) => res(toEventTemplate(event as FavoriteGitReposListEvent)));
   }
 

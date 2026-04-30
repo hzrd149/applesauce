@@ -2,12 +2,12 @@ import { unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import {
+  FAVORITE_GIT_REPOS_KIND,
+  getFavoriteGitReposPointers,
   getGitAuthors,
-  getGitRepositories,
   GIT_AUTHORS_KIND,
-  GIT_REPOSITORIES_KIND,
+  isValidFavoriteGitReposList,
   isValidGitAuthorsList,
-  isValidGitRepositoriesList,
   REPOSITORY_ANNOUNCEMENT_KIND,
 } from "../git-lists.js";
 
@@ -16,10 +16,10 @@ const user = new FakeUser();
 describe("git list helpers", () => {
   it("validates git authors and repositories list kinds", () => {
     expect(isValidGitAuthorsList(user.event({ kind: GIT_AUTHORS_KIND }))).toBe(true);
-    expect(isValidGitAuthorsList(user.event({ kind: GIT_REPOSITORIES_KIND }))).toBe(false);
+    expect(isValidGitAuthorsList(user.event({ kind: FAVORITE_GIT_REPOS_KIND }))).toBe(false);
 
-    expect(isValidGitRepositoriesList(user.event({ kind: GIT_REPOSITORIES_KIND }))).toBe(true);
-    expect(isValidGitRepositoriesList(user.event({ kind: GIT_AUTHORS_KIND }))).toBe(false);
+    expect(isValidFavoriteGitReposList(user.event({ kind: FAVORITE_GIT_REPOS_KIND }))).toBe(true);
+    expect(isValidFavoriteGitReposList(user.event({ kind: GIT_AUTHORS_KIND }))).toBe(false);
   });
 
   it("returns git authors from public and hidden tags", async () => {
@@ -48,7 +48,7 @@ describe("git list helpers", () => {
     const hiddenRepo = `${REPOSITORY_ANNOUNCEMENT_KIND}:${user.pubkey}:hidden`;
     const article = `30023:${user.pubkey}:article`;
     const list = user.event({
-      kind: GIT_REPOSITORIES_KIND,
+      kind: FAVORITE_GIT_REPOS_KIND,
       tags: [
         ["a", publicRepo, "wss://relay.example"],
         ["a", article],
@@ -56,13 +56,13 @@ describe("git list helpers", () => {
       content: await user.nip44.encrypt(user.pubkey, JSON.stringify([["a", hiddenRepo]])),
     });
 
-    expect(getGitRepositories(list)).toEqual([
+    expect(getFavoriteGitReposPointers(list)).toEqual([
       expect.objectContaining({ kind: REPOSITORY_ANNOUNCEMENT_KIND, identifier: "applesauce" }),
     ]);
 
     await unlockHiddenTags(list, user);
 
-    expect(getGitRepositories(list, "all")).toEqual([
+    expect(getFavoriteGitReposPointers(list, "all")).toEqual([
       expect.objectContaining({ kind: REPOSITORY_ANNOUNCEMENT_KIND, identifier: "hidden" }),
       expect.objectContaining({ kind: REPOSITORY_ANNOUNCEMENT_KIND, identifier: "applesauce" }),
     ]);

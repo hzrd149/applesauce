@@ -1,8 +1,10 @@
 import { EventStore } from "applesauce-core/event-store";
+import { firstValueFrom } from "rxjs";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures";
+import { FAVORITE_EMOJI_PACKS_KIND } from "../../helpers/emoji-pack";
+import { FAVORITE_GIT_REPOS_KIND, GIT_AUTHORS_KIND } from "../../helpers/git-lists";
 import { castUser } from "../user";
-import { firstValueFrom } from "rxjs";
 
 describe("user", () => {
   describe("references", () => {
@@ -29,7 +31,7 @@ describe("user", () => {
       const signer = new FakeUser();
       const profile = signer.profile({ name: "John Doe" });
       const favorites = signer.event({
-        kind: 10030,
+        kind: FAVORITE_EMOJI_PACKS_KIND,
         tags: [["a", `30030:${signer.pubkey}:animals`]],
       });
       const eventStore = new EventStore();
@@ -49,11 +51,11 @@ describe("user", () => {
       const profile = signer.profile({ name: "John Doe" });
       const author = "a".repeat(64);
       const authors = signer.event({
-        kind: 10017,
+        kind: GIT_AUTHORS_KIND,
         tags: [["p", author]],
       });
       const repositories = signer.event({
-        kind: 10018,
+        kind: FAVORITE_GIT_REPOS_KIND,
         tags: [["a", `30617:${signer.pubkey}:applesauce`]],
       });
       const eventStore = new EventStore();

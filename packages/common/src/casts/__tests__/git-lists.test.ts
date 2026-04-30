@@ -1,7 +1,7 @@
 import { unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { GIT_AUTHORS_KIND, GIT_REPOSITORIES_KIND, REPOSITORY_ANNOUNCEMENT_KIND } from "../../helpers/git-lists.js";
+import { GIT_AUTHORS_KIND, FAVORITE_GIT_REPOS_KIND, REPOSITORY_ANNOUNCEMENT_KIND } from "../../helpers/git-lists.js";
 import { FavoriteGitRepos, GitAuthors } from "../git-lists.js";
 
 const user = new FakeUser();
@@ -29,12 +29,12 @@ describe("GitAuthors", () => {
   });
 });
 
-describe("GitRepositories", () => {
+describe("FavoriteGitRepos", () => {
   it("casts git repositories lists", async () => {
     const publicRepo = `${REPOSITORY_ANNOUNCEMENT_KIND}:${user.pubkey}:applesauce`;
     const hiddenRepo = `${REPOSITORY_ANNOUNCEMENT_KIND}:${user.pubkey}:hidden`;
     const event = user.event({
-      kind: GIT_REPOSITORIES_KIND,
+      kind: FAVORITE_GIT_REPOS_KIND,
       tags: [["a", publicRepo]],
       content: await user.nip44.encrypt(user.pubkey, JSON.stringify([["a", hiddenRepo]])),
     });
