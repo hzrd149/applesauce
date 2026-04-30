@@ -11,7 +11,7 @@ export const GIT_REPOSITORIES_KIND = 10018;
 export const REPOSITORY_ANNOUNCEMENT_KIND = 30617;
 
 export type GitAuthorsListEvent = KnownEvent<typeof GIT_AUTHORS_KIND>;
-export type GitRepositoriesListEvent = KnownEvent<typeof GIT_REPOSITORIES_KIND>;
+export type FavoriteGitReposListEvent = KnownEvent<typeof GIT_REPOSITORIES_KIND>;
 export type GitRepositoryPointer = AddressPointer & { kind: typeof REPOSITORY_ANNOUNCEMENT_KIND };
 
 // Set the default encrypted content method for the kinds
@@ -24,7 +24,7 @@ export function isValidGitAuthorsList(event: NostrEvent): event is GitAuthorsLis
 }
 
 /** Validates that an event is a NIP-51 git repositories list */
-export function isValidGitRepositoriesList(event: NostrEvent): event is GitRepositoriesListEvent {
+export function isValidGitRepositoriesList(event: NostrEvent): event is FavoriteGitReposListEvent {
   return event.kind === GIT_REPOSITORIES_KIND;
 }
 

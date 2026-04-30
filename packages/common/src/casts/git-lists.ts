@@ -11,7 +11,7 @@ import {
   getGitAuthors,
   getGitRepositories,
   GitAuthorsListEvent,
-  GitRepositoriesListEvent,
+  FavoriteGitReposListEvent,
   isValidGitAuthorsList,
   isValidGitRepositoriesList,
 } from "../helpers/git-lists.js";
@@ -68,7 +68,7 @@ export class GitAuthors extends EventCast<GitAuthorsListEvent> {
 }
 
 /** Class for git repositories lists (kind 10018) */
-export class FavoriteGitRepos extends EventCast<GitRepositoriesListEvent> {
+export class FavoriteGitRepos extends EventCast<FavoriteGitReposListEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidGitRepositoriesList(event)) throw new Error("Invalid git repositories list");
     super(event, store);

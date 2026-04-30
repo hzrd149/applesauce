@@ -28,7 +28,7 @@ export * from "./favorite-relays.js";
 export * from "./dm-relays.js";
 export * from "./blossom-server-list.js";
 export * from "./git-authors.js";
-export * from "./git-repositories.js";
+export * from "./favorite-git-repos.js";
 export * from "./follow-set.js";
 export * from "./relay-set.js";
 export * from "./list.js";

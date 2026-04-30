@@ -2,7 +2,7 @@ import { unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { GIT_AUTHORS_KIND, GIT_REPOSITORIES_KIND, REPOSITORY_ANNOUNCEMENT_KIND } from "../../helpers/git-lists.js";
-import { GitAuthors, GitRepositories } from "../git-lists.js";
+import { FavoriteGitRepos, GitAuthors } from "../git-lists.js";
 
 const user = new FakeUser();
 const store = {} as any;
@@ -38,7 +38,7 @@ describe("GitRepositories", () => {
       tags: [["a", publicRepo]],
       content: await user.nip44.encrypt(user.pubkey, JSON.stringify([["a", hiddenRepo]])),
     });
-    const cast = new GitRepositories(event, store);
+    const cast = new FavoriteGitRepos(event, store);
 
     expect(cast.repositories).toEqual([expect.objectContaining({ identifier: "applesauce" })]);
 
