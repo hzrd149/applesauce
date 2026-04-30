@@ -290,6 +290,7 @@ type RepoFormInput = {
 function RepositoryManagerView({ user }: { user: User }) {
   const signer = use$(signer$);
   const outboxes = use$(user.outboxes$);
+  const graspServers = use$(user.graspServers$)?.servers;
 
   // Start a subscription to fetch the users repositories from their outboxes
   use$(
@@ -348,7 +349,8 @@ function RepositoryManagerView({ user }: { user: User }) {
 
         const signed = await factory.sign(signer);
         eventStore.add(signed);
-        await pool.publish(outboxes, signed);
+        const relays = Array.from(new Set([...outboxes, ...(graspServers ?? [])]));
+        await pool.publish(relays, signed);
       } catch (err) {
         console.error(err);
         setError(err instanceof Error ? err.message : "Failed to save repository");
@@ -356,7 +358,7 @@ function RepositoryManagerView({ user }: { user: User }) {
         setIsSaving(false);
       }
     },
-    [selectedRepository, signer, outboxes],
+    [selectedRepository, signer, outboxes, graspServers],
   );
 
   return (
