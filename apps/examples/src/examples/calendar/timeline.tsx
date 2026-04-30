@@ -37,7 +37,7 @@ const pool = new RelayPool();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es"],
+  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
 });
 
 // Helper components

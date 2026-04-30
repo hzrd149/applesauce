@@ -11,6 +11,8 @@ export * as Comment from "./comment.js";
 export * as FileMetadata from "./file-metadata.js";
 export * as Geohash from "./geohash.js";
 export * as GiftWrap from "./gift-wrap.js";
+export * as GitGraspList from "./git-grasp-list.js";
+export * as GitRepository from "./git-repository.js";
 export * as Group from "./group.js";
 export * as Hashtags from "./hashtags.js";
 export * as Highlight from "./highlight.js";

@@ -3,6 +3,7 @@ import { firstValueFrom } from "rxjs";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures";
 import { FAVORITE_EMOJI_PACKS_KIND } from "../../helpers/emoji-pack";
+import { GIT_GRASP_LIST_KIND } from "../../helpers/git-grasp-list";
 import { FAVORITE_GIT_REPOS_KIND, GIT_AUTHORS_KIND } from "../../helpers/git-lists";
 import { castUser } from "../user";
 
@@ -68,9 +69,26 @@ describe("user", () => {
       const gitRepositories = await firstValueFrom(user.favoriteGitRepos$);
 
       expect(gitAuthors?.pubkeys).toEqual([author]);
-      expect(gitRepositories?.repositories).toEqual([
+      expect(gitRepositories?.repositoryPointers).toEqual([
         expect.objectContaining({ kind: 30617, pubkey: signer.pubkey, identifier: "applesauce" }),
       ]);
+    });
+
+    it("should resolve git grasp lists", async () => {
+      const signer = new FakeUser();
+      const profile = signer.profile({ name: "John Doe" });
+      const graspList = signer.event({
+        kind: GIT_GRASP_LIST_KIND,
+        tags: [["g", "wss://grasp.example"]],
+      });
+      const eventStore = new EventStore();
+      eventStore.add(profile);
+      eventStore.add(graspList);
+
+      const user = castUser(profile, eventStore);
+      const gitGraspList = await firstValueFrom(user.graspServers$);
+
+      expect(gitGraspList?.servers).toEqual(["wss://grasp.example/"]);
     });
   });
 });

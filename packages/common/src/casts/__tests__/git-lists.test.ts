@@ -40,7 +40,7 @@ describe("FavoriteGitRepos", () => {
     });
     const cast = new FavoriteGitRepos(event, store);
 
-    expect(cast.repositories).toEqual([expect.objectContaining({ identifier: "applesauce" })]);
+    expect(cast.repositoryPointers).toEqual([expect.objectContaining({ identifier: "applesauce" })]);
 
     await unlockHiddenTags(event, user);
 

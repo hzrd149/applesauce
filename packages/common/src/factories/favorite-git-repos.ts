@@ -9,9 +9,9 @@ import {
 import {
   FAVORITE_GIT_REPOS_KIND,
   FavoriteGitReposListEvent,
-  GitRepositoryPointer,
   REPOSITORY_ANNOUNCEMENT_KIND,
 } from "../helpers/git-lists.js";
+import { GitRepositoryPointer } from "../helpers/git-repository.js";
 import { NIP51ItemListFactory } from "./list.js";
 
 export type FavoriteGitReposTemplate = KnownEventTemplate<typeof FAVORITE_GIT_REPOS_KIND>;
@@ -64,5 +64,3 @@ export class FavoriteGitReposFactory extends NIP51ItemListFactory<
     );
   }
 }
-
-export type { FavoriteGitReposListEvent as GitRepositoriesListEvent, GitRepositoryPointer };

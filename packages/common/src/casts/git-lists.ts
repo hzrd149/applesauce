@@ -1,21 +1,24 @@
 import { defined, watchEventUpdates } from "applesauce-core";
 import {
+  addRelayHintsToPointer,
   hasHiddenTags,
   HiddenContentSigner,
   isHiddenTagsUnlocked,
   NostrEvent,
   unlockHiddenTags,
 } from "applesauce-core/helpers";
-import { map, of } from "rxjs";
+import { combineLatest, map, of, switchMap } from "rxjs";
 import {
-  getGitAuthors,
-  getFavoriteGitReposPointers,
-  GitAuthorsListEvent,
   FavoriteGitReposListEvent,
-  isValidGitAuthorsList,
+  getFavoriteGitReposPointers,
+  getGitAuthors,
+  GitAuthorsListEvent,
   isValidFavoriteGitReposList,
+  isValidGitAuthorsList,
 } from "../helpers/git-lists.js";
+import { castEventStream } from "../observable/cast-stream.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
+import { GitRepository } from "./git-repository.js";
 
 /** Class for git authors lists (kind 10017) */
 export class GitAuthors extends EventCast<GitAuthorsListEvent> {
@@ -74,23 +77,63 @@ export class FavoriteGitRepos extends EventCast<FavoriteGitReposListEvent> {
     super(event, store);
   }
 
-  /** The public NIP-34 repositories in the list */
-  get repositories() {
+  /** The public NIP-34 repository address pointers in the list */
+  get repositoryPointers() {
     return getFavoriteGitReposPointers(this.event);
   }
 
-  /** The unlocked hidden NIP-34 repositories in the list */
+  /** Returns an observable of {@link GitRepository} casts for the public pointers as they resolve in the store */
+  get repositories$() {
+    return this.$$ref("repositories$", (store) =>
+      this.author.mailboxes$.pipe(
+        switchMap((mailboxes) =>
+          combineLatest(
+            this.repositoryPointers.map((pointer) =>
+              store
+                .replaceable(
+                  // Add outbox relay hints to point if available
+                  mailboxes?.outboxes ? addRelayHintsToPointer(pointer, mailboxes?.outboxes) : pointer,
+                )
+                // Cast all events to GitRepositories
+                .pipe(castEventStream(GitRepository, store)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /** The unlocked hidden NIP-34 repository address pointers in the list */
   get hidden() {
     return getFavoriteGitReposPointers(this.event, "hidden");
   }
 
-  /** An observable that updates when the hidden repositories are unlocked */
-  get hidden$() {
-    return this.$$ref("hidden$", (store) =>
+  /** Returns an observable of the hidden repository pointers as they resolve in the store */
+  get hiddenPointers$() {
+    return this.$$ref("hiddenPointers$", (store) =>
       of(this.event).pipe(
         watchEventUpdates(store),
         map((event) => event && getFavoriteGitReposPointers(event, "hidden")),
         defined(),
+      ),
+    );
+  }
+
+  /** Returns an observable of {@link GitRepository} casts for the hidden pointers as they resolve in the store */
+  get hiddenRepositories$() {
+    return this.$$ref("hiddenRepositories$", (store) =>
+      combineLatest([this.author.mailboxes$, this.hiddenPointers$]).pipe(
+        switchMap(([mailboxes, pointers]) =>
+          combineLatest(
+            pointers.map((pointer) =>
+              store
+                // Add outbox relay hints to point if available
+                .replaceable(mailboxes?.outboxes ? addRelayHintsToPointer(pointer, mailboxes?.outboxes) : pointer)
+                // Cast the event to a GitRepository
+                .pipe(castEventStream(GitRepository, store)),
+            ),
+          ),
+        ),
       ),
     );
   }

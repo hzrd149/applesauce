@@ -23,6 +23,8 @@ describe("exports", () => {
         "FavoriteRelays",
         "FileMetadata",
         "GitAuthors",
+        "GitGraspList",
+        "GitRepository",
         "GroupsList",
         "Mutes",
         "Note",

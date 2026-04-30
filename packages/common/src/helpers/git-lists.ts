@@ -1,6 +1,7 @@
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { setHiddenTagsEncryptionMethod } from "applesauce-core/helpers/hidden-tags";
-import { AddressPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { GIT_REPOSITORY_KIND, GitRepositoryPointer } from "./git-repository.js";
 import { getAddressPointersFromList, getProfilePointersFromList, ReadListTags } from "./lists.js";
 
 /** NIP-51 git authors list kind */
@@ -8,11 +9,10 @@ export const GIT_AUTHORS_KIND = 10017;
 /** NIP-51 git repositories list kind */
 export const FAVORITE_GIT_REPOS_KIND = 10018;
 /** NIP-34 repository announcement event kind */
-export const REPOSITORY_ANNOUNCEMENT_KIND = 30617;
+export const REPOSITORY_ANNOUNCEMENT_KIND = GIT_REPOSITORY_KIND;
 
 export type GitAuthorsListEvent = KnownEvent<typeof GIT_AUTHORS_KIND>;
 export type FavoriteGitReposListEvent = KnownEvent<typeof FAVORITE_GIT_REPOS_KIND>;
-export type GitRepositoryPointer = AddressPointer & { kind: typeof REPOSITORY_ANNOUNCEMENT_KIND };
 
 // Set the default encrypted content method for the kinds
 setHiddenTagsEncryptionMethod(GIT_AUTHORS_KIND, "nip44");
