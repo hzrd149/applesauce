@@ -2,6 +2,8 @@ import { relaySet } from "applesauce-core/helpers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { getReplaceableIdentifier, getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
+import { isSafeRelayURL } from "applesauce-core/helpers/relays";
+import { normalizeURL } from "applesauce-core/helpers/url";
 
 export const GIT_REPOSITORY_KIND = 30617;
 
@@ -13,6 +15,7 @@ export const GitRepositoryCloneUrlsSymbol = Symbol.for("git-repository-clone-url
 export const GitRepositoryRelaysSymbol = Symbol.for("git-repository-relays");
 export const GitRepositoryMaintainersSymbol = Symbol.for("git-repository-maintainers");
 export const GitRepositoryHashtagsSymbol = Symbol.for("git-repository-hashtags");
+export const GitRepositoryUpstreamSymbol = Symbol.for("git-repository-upstream");
 
 function getTagValues(event: NostrEvent, name: string) {
   return event.tags.filter((tag) => tag[0] === name && tag[1]).flatMap((tag) => tag.slice(1));
@@ -73,16 +76,31 @@ export function getGitRepositoryMaintainers(event?: NostrEvent): string[] {
   return getOrComputeCachedValue(event, GitRepositoryMaintainersSymbol, () => getTagValues(event, "maintainers"));
 }
 
-/** Returns repository hashtags, excluding the personal-fork marker (NIP-34 flat `t` tag). */
+/** Returns repository topic tags (NIP-34: values from each `["t", ...]` tag). */
 export function getGitRepositoryHashtags(event?: NostrEvent): string[] {
   if (!isValidGitRepository(event)) return [];
-  return getOrComputeCachedValue(event, GitRepositoryHashtagsSymbol, () =>
-    getTagValues(event, "t").filter((v) => v && v !== "personal-fork"),
-  );
+  return getOrComputeCachedValue(event, GitRepositoryHashtagsSymbol, () => getTagValues(event, "t"));
 }
 
-/** Returns whether the announcement marks the repository as a personal fork. */
-export function isGitRepositoryPersonalFork(event?: NostrEvent): boolean {
-  if (!isValidGitRepository(event)) return false;
-  return event.tags.some((tag) => tag[0] === "t" && tag[1] === "personal-fork");
+/**
+ * Returns the upstream repository pointer (the repo this one was forked from), if declared.
+ * Parsed from the `["u", "30617:<pubkey>:<identifier>", "<relay hint>"]` tag.
+ */
+export function getGitRepositoryUpstream(event?: NostrEvent): GitRepositoryPointer | undefined {
+  if (!isValidGitRepository(event)) return undefined;
+  return getOrComputeCachedValue(event, GitRepositoryUpstreamSymbol, () => {
+    const tag = event.tags.find((t) => t[0] === "u" && t[1]);
+    if (!tag || !tag[1]) return undefined;
+    const parts = tag[1].split(":");
+    if (parts.length < 3) return undefined;
+    const kind = parseInt(parts[0]);
+    const pubkey = parts[1];
+    const identifier = parts.slice(2).join(":");
+    if (kind !== GIT_REPOSITORY_KIND) return undefined;
+    if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return undefined;
+    if (!identifier) return undefined;
+    const pointer: GitRepositoryPointer = { kind: GIT_REPOSITORY_KIND, pubkey: pubkey.toLowerCase(), identifier };
+    if (tag[2] && isSafeRelayURL(tag[2])) pointer.relays = [normalizeURL(tag[2])];
+    return pointer;
+  });
 }

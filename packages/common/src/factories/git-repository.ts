@@ -1,6 +1,6 @@
 import { blankEventTemplate, EventFactory, toEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
-import { GIT_REPOSITORY_KIND, isValidGitRepository } from "../helpers/git-repository.js";
+import { GIT_REPOSITORY_KIND, GitRepositoryPointer, isValidGitRepository } from "../helpers/git-repository.js";
 import {
   addGitRepositoryCloneUrl,
   addGitRepositoryHashtag,
@@ -19,8 +19,8 @@ import {
   setGitRepositoryIdentifier,
   setGitRepositoryMaintainers,
   setGitRepositoryName,
-  setGitRepositoryPersonalFork,
   setGitRepositoryRelays,
+  setGitRepositoryUpstream,
   setGitRepositoryWebUrls,
 } from "../operations/git-repository.js";
 
@@ -119,7 +119,7 @@ export class GitRepositoryFactory extends EventFactory<typeof GIT_REPOSITORY_KIN
     return this.chain(removeGitRepositoryMaintainer(pubkey));
   }
 
-  /** Replaces subject hashtags; keeps `personal-fork` if present. */
+  /** Replaces subject hashtags. */
   setHashtags(hashtags: string[]) {
     return this.chain(setGitRepositoryHashtags(hashtags));
   }
@@ -134,8 +134,8 @@ export class GitRepositoryFactory extends EventFactory<typeof GIT_REPOSITORY_KIN
     return this.chain(removeGitRepositoryHashtag(hashtag));
   }
 
-  /** Sets or clears the personal-fork marker. */
-  personalFork(value = true) {
-    return this.chain(setGitRepositoryPersonalFork(value));
+  /** Sets or clears the upstream repository pointer (the repo this one was forked from). */
+  upstream(pointer: GitRepositoryPointer | null) {
+    return this.chain(setGitRepositoryUpstream(pointer));
   }
 }

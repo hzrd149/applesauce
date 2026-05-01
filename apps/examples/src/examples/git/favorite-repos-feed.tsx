@@ -39,7 +39,6 @@ function Favoriter({ list }: { list: FavoriteGitRepos }) {
   const profile = use$(list.author.profile$);
   const displayName = profile?.displayName || profile?.name || pubkey.slice(0, 8) + "...";
   const picture = profile?.picture || `https://robohash.org/${pubkey}.png`;
-
   return (
     <div className="tooltip flex-none" data-tip={displayName}>
       <div className="avatar">

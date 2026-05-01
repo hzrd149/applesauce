@@ -13,6 +13,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { lastValueFrom } from "rxjs";
 import RelayPicker from "./relay-picker";
 
@@ -196,7 +197,7 @@ function ProfileSearchModal({
     onClose();
   };
 
-  return (
+  const modal = (
     <dialog className={`modal ${isOpen ? "modal-open" : ""}`}>
       <div className="modal-box max-w-4xl">
         <h3 className="font-bold text-lg mb-4">Search Profiles</h3>
@@ -208,12 +209,14 @@ function ProfileSearchModal({
           </label>
           <div className="flex gap-2 flex-wrap">
             <button
+              type="button"
               className={`btn btn-sm ${searchMethod === "primal" ? "btn-primary" : "btn-outline"}`}
               onClick={() => setSearchMethod("primal")}
             >
               Primal
             </button>
             <button
+              type="button"
               className={`btn btn-sm ${searchMethod === "vertex" ? "btn-primary" : "btn-outline"}`}
               onClick={() => setSearchMethod("vertex")}
               disabled={!extensionAvailable}
@@ -222,6 +225,7 @@ function ProfileSearchModal({
               Vertex
             </button>
             <button
+              type="button"
               className={`btn btn-sm ${searchMethod === "nip50" ? "btn-primary" : "btn-outline"}`}
               onClick={() => setSearchMethod("nip50")}
             >
@@ -249,6 +253,7 @@ function ProfileSearchModal({
               onKeyPress={(e) => e.key === "Enter" && handleSearch()}
             />
             <button
+              type="button"
               className="btn btn-primary join-item"
               onClick={handleSearch}
               disabled={!searchQuery.trim() || isSearching || (searchMethod === "vertex" && !extensionAvailable)}
@@ -314,6 +319,7 @@ function ProfileSearchModal({
                   onChange={(e) => setCustomRelayUrl(e.target.value)}
                 />
                 <button
+                  type="button"
                   className="btn btn-primary join-item"
                   onClick={() => {
                     handleCustomRelaySubmit();
@@ -328,6 +334,7 @@ function ProfileSearchModal({
             </div>
             <div className="modal-action">
               <button
+                type="button"
                 className="btn"
                 onClick={() => {
                   const modal = document.getElementById("custom-relay-modal") as HTMLDialogElement;
@@ -342,10 +349,15 @@ function ProfileSearchModal({
       </div>
 
       <form method="dialog" className="modal-backdrop">
-        <button onClick={handleClose}>close</button>
+        <button type="button" onClick={handleClose}>
+          close
+        </button>
       </form>
     </dialog>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(modal, document.body);
 }
 
 function ProfileSearchResultItem({
@@ -450,7 +462,12 @@ export default function PubkeyPicker({
             inputValue.trim() && !isValidPubkey ? "input-error" : isValidPubkey ? "input-success" : ""
           }`}
         />
-        <button className="btn join-item" onClick={() => setIsSearchModalOpen(true)} title="Search profiles">
+        <button
+          type="button"
+          className="btn join-item"
+          onClick={() => setIsSearchModalOpen(true)}
+          title="Search profiles"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-4 w-4"
@@ -467,7 +484,7 @@ export default function PubkeyPicker({
           </svg>
         </button>
         {typeof window !== "undefined" && window.nostr && (
-          <button onClick={handleGetFromExtension} className="btn join-item">
+          <button type="button" onClick={handleGetFromExtension} className="btn join-item">
             Extension
           </button>
         )}

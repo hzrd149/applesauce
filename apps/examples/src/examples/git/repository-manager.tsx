@@ -5,7 +5,7 @@
  */
 import { castUser, GitRepository, type User } from "applesauce-common/casts";
 import { GitRepositoryFactory } from "applesauce-common/factories";
-import { GIT_REPOSITORY_KIND } from "applesauce-common/helpers";
+import { GIT_REPOSITORY_KIND, type GitRepositoryPointer } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -13,8 +13,8 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
-import { BehaviorSubject, map } from "rxjs";
+import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { BehaviorSubject, EMPTY, map, of } from "rxjs";
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
 
@@ -51,7 +51,9 @@ type RepoEditorFormValues = {
   maintainers: { pubkey: string }[];
   hashtags: string;
   earliestUniqueCommit: string;
-  personalFork: boolean;
+  upstreamPubkey: string;
+  upstreamIdentifier: string;
+  upstreamRelay: string;
 };
 
 function MaintainerListItem({ pubkey, onRemove }: { pubkey: string; onRemove: () => void }) {
@@ -83,10 +85,14 @@ function MaintainerListItem({ pubkey, onRemove }: { pubkey: string; onRemove: ()
 
 function RepositoryEditor({
   repository,
+  user,
+  graspRelayHints,
   onSave,
   isSaving,
 }: {
   repository: GitRepository;
+  user: User;
+  graspRelayHints: string[];
   onSave: (input: RepoFormInput) => void;
   isSaving: boolean;
 }) {
@@ -96,6 +102,7 @@ function RepositoryEditor({
     reset,
     watch,
     control,
+    setValue,
     formState: { isValid },
   } = useForm<RepoEditorFormValues>({
     mode: "onChange",
@@ -108,7 +115,9 @@ function RepositoryEditor({
       maintainers: [],
       hashtags: "",
       earliestUniqueCommit: "",
-      personalFork: false,
+      upstreamPubkey: "",
+      upstreamIdentifier: "",
+      upstreamRelay: "",
     },
   });
   const [newMaintainer, setNewMaintainer] = useState("");
@@ -121,6 +130,37 @@ function RepositoryEditor({
     name: "maintainers",
   });
   const maintainers = watch("maintainers") ?? [];
+  const upstreamPubkeyValue = watch("upstreamPubkey");
+  const [upstreamEnabled, setUpstreamEnabled] = useState(
+    () => !!(repository.upstream?.pubkey && repository.upstream?.identifier),
+  );
+
+  const upstreamAuthor = useMemo(() => {
+    const pk = upstreamPubkeyValue?.trim();
+    if (!upstreamEnabled || !pk || !/^[0-9a-f]{64}$/i.test(pk)) return null;
+    return castUser(pk.toLowerCase(), eventStore);
+  }, [upstreamEnabled, upstreamPubkeyValue]);
+
+  use$(() => {
+    if (!upstreamEnabled) return EMPTY;
+    const pk = upstreamPubkeyValue?.trim();
+    if (!pk || !/^[0-9a-f]{64}$/i.test(pk)) return EMPTY;
+    return pool.subscription(
+      user.outboxes$.pipe(defined()),
+      { kinds: [GIT_REPOSITORY_KIND], authors: [pk.toLowerCase()] },
+      { eventStore },
+    );
+  }, [user.pubkey, upstreamEnabled, upstreamPubkeyValue]);
+
+  const upstreamRepos = use$(
+    () => (upstreamAuthor ? upstreamAuthor.timeline$(GIT_REPOSITORY_KIND, GitRepository) : of([] as GitRepository[])),
+    [upstreamAuthor],
+  );
+
+  const upstreamIdentifierOptions = useMemo(() => {
+    const repos = upstreamRepos ?? [];
+    return [...new Set(repos.map((r) => r.identifier).filter(Boolean))].sort();
+  }, [upstreamRepos]);
 
   useEffect(() => {
     reset({
@@ -129,12 +169,15 @@ function RepositoryEditor({
       webUrls: toDelimitedText(repository.webUrls),
       cloneUrls: toDelimitedText(repository.cloneUrls),
       relays: toDelimitedText(repository.relays),
-      maintainers: repository.maintainers.map((pubkey) => ({ pubkey })),
+      maintainers: repository.maintainerPubkeys.map((pubkey) => ({ pubkey })),
       hashtags: toDelimitedText(repository.hashtags),
       earliestUniqueCommit: repository.earliestUniqueCommit ?? "",
-      personalFork: repository.personalFork,
+      upstreamPubkey: repository.upstream?.pubkey ?? "",
+      upstreamIdentifier: repository.upstream?.identifier ?? "",
+      upstreamRelay: repository.upstream?.relays?.[0] ?? "",
     });
     setNewMaintainer("");
+    setUpstreamEnabled(!!(repository.upstream?.pubkey && repository.upstream?.identifier));
   }, [repository.uid, reset]);
 
   const addMaintainer = useCallback(() => {
@@ -157,7 +200,9 @@ function RepositoryEditor({
           maintainers: values.maintainers.map((maintainer) => maintainer.pubkey),
           hashtags: parseDelimitedText(values.hashtags),
           earliestUniqueCommit: values.earliestUniqueCommit.trim(),
-          personalFork: values.personalFork,
+          upstreamPubkey: upstreamEnabled ? values.upstreamPubkey.trim() : "",
+          upstreamIdentifier: upstreamEnabled ? values.upstreamIdentifier.trim() : "",
+          upstreamRelay: upstreamEnabled ? values.upstreamRelay.trim() : "",
         }),
       )}
     >
@@ -261,11 +306,78 @@ function RepositoryEditor({
         />
       </div>
 
-      <div>
-        <label className="label cursor-pointer justify-start gap-3">
-          <input type="checkbox" className="checkbox" {...register("personalFork")} />
-          <span>Mark as personal fork</span>
+      <div className="space-y-3">
+        <label className="label cursor-pointer justify-start gap-2 py-0">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={upstreamEnabled}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setUpstreamEnabled(on);
+              if (!on) {
+                setValue("upstreamPubkey", "");
+                setValue("upstreamIdentifier", "");
+                setValue("upstreamRelay", "");
+              }
+            }}
+          />
+          <span className="label-text">Forked from another Nostr git repository</span>
         </label>
+        <p className="text-xs text-base-content/60 -mt-1">
+          Links this repo to the upstream pointer (NIP-34 <code className="text-xs">u</code> tag). Uncheck to clear.
+        </p>
+
+        {upstreamEnabled ? (
+          <>
+            <div>
+              <label className="label">Upstream author</label>
+              <Controller
+                name="upstreamPubkey"
+                control={control}
+                render={({ field }) => (
+                  <PubkeyPicker
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Pubkey or nostr identifier of upstream repo author"
+                    className="w-full"
+                  />
+                )}
+              />
+            </div>
+            <div>
+              <label className="label">Upstream identifier (d tag)</label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                list={`upstream-ident-${repository.uid}`}
+                {...register("upstreamIdentifier")}
+                placeholder="upstream-repo-name"
+              />
+              <datalist id={`upstream-ident-${repository.uid}`}>
+                {upstreamIdentifierOptions.map((id) => (
+                  <option key={id} value={id} />
+                ))}
+              </datalist>
+              {upstreamAuthor && upstreamIdentifierOptions.length === 0 ? (
+                <p className="text-xs text-base-content/60 mt-1">No repositories loaded for this author yet.</p>
+              ) : null}
+            </div>
+            <div>
+              <label className="label">Upstream relay hint (optional)</label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                list={`upstream-relay-${repository.uid}`}
+                {...register("upstreamRelay")}
+                placeholder="wss://relay.example.com"
+              />
+              <datalist id={`upstream-relay-${repository.uid}`}>
+                {graspRelayHints.map((url) => (
+                  <option key={url} value={url} />
+                ))}
+              </datalist>
+            </div>
+          </>
+        ) : null}
       </div>
 
       <button className={`btn btn-primary ${isSaving ? "loading" : ""}`} type="submit" disabled={isSaving || !isValid}>
@@ -284,7 +396,9 @@ type RepoFormInput = {
   maintainers: string[];
   hashtags: string[];
   earliestUniqueCommit: string;
-  personalFork: boolean;
+  upstreamPubkey: string;
+  upstreamIdentifier: string;
+  upstreamRelay: string;
 };
 
 function RepositoryManagerView({ user }: { user: User }) {
@@ -335,6 +449,16 @@ function RepositoryManagerView({ user }: { user: User }) {
         setError(null);
         setIsSaving(true);
 
+        const upstream: GitRepositoryPointer | null =
+          input.upstreamPubkey && input.upstreamIdentifier
+            ? {
+                kind: GIT_REPOSITORY_KIND,
+                pubkey: input.upstreamPubkey,
+                identifier: input.upstreamIdentifier,
+                ...(input.upstreamRelay ? { relays: [input.upstreamRelay] } : {}),
+              }
+            : null;
+
         const factory = GitRepositoryFactory.modify(selectedRepository.event)
           .identifier(selectedRepository.identifier)
           .name(input.name || null)
@@ -345,7 +469,7 @@ function RepositoryManagerView({ user }: { user: User }) {
           .setMaintainers(input.maintainers)
           .setHashtags(input.hashtags)
           .earliestUniqueCommit(input.earliestUniqueCommit || null)
-          .personalFork(input.personalFork);
+          .upstream(upstream);
 
         const signed = await factory.sign(signer);
         eventStore.add(signed);
@@ -413,6 +537,8 @@ function RepositoryManagerView({ user }: { user: User }) {
             <div className="border border-base-300 p-4">
               <RepositoryEditor
                 repository={selectedRepository}
+                user={user}
+                graspRelayHints={graspServers ?? []}
                 onSave={(input) => void handleSave(input)}
                 isSaving={isSaving}
               />

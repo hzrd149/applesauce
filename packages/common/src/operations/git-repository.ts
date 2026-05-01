@@ -1,6 +1,11 @@
 import { EventOperation } from "applesauce-core/factories";
+import { getReplaceableAddressFromPointer } from "applesauce-core/helpers/pointers";
+import { isSafeRelayURL } from "applesauce-core/helpers/relays";
+import { normalizeURL } from "applesauce-core/helpers/url";
 import { includeSingletonTag, modifyPublicTags } from "applesauce-core/operations/tags";
 import { removeSingletonTag, setSingletonTag } from "applesauce-core/operations/tag/common";
+import { GIT_REPOSITORY_KIND, GitRepositoryPointer } from "../helpers/git-repository.js";
+import { addHashtag, removeHashtag, setHashtags } from "./hashtags.js";
 
 /** NIP-34 uses one tag per name with all values in that tag: `["web", url1, url2, ...]`. */
 function collectFlatTagValues(tags: string[][], name: string): string[] {
@@ -19,23 +24,6 @@ function withFlatListTag(tags: string[][], name: string, values: string[]): stri
   const base = stripTagsNamed(tags, name);
   if (values.length === 0) return base;
   return [...base, [name, ...values]];
-}
-
-function isPersonalForkTag(tag: string[]): boolean {
-  return tag[0] === "t" && tag.length === 2 && tag[1] === "personal-fork";
-}
-
-function collectTopicHashtags(tags: string[][]): string[] {
-  return collectFlatTagValues(tags, "t").filter((v) => v !== "personal-fork");
-}
-
-function rebuildWithTopics(tags: string[][], topics: string[]): string[][] {
-  const hasFork = tags.some(isPersonalForkTag);
-  const base = tags.filter((tag) => tag[0] !== "t");
-  const out = [...base];
-  if (hasFork) out.push(["t", "personal-fork"]);
-  if (topics.length > 0) out.push(["t", ...topics]);
-  return out;
 }
 
 /** Sets the repository identifier `d` tag. */
@@ -71,18 +59,6 @@ export function setGitRepositoryRelays(relays: string[]): EventOperation {
     const normalized = relays.map((relay) => new URL(relay).toString());
     return withFlatListTag(tags, "relays", normalized);
   });
-}
-
-/** Sets the recognized maintainer pubkeys (single `maintainers` tag). */
-export function setGitRepositoryMaintainers(pubkeys: string[]): EventOperation {
-  return modifyPublicTags((tags) => withFlatListTag(tags, "maintainers", pubkeys));
-}
-
-/**
- * Sets repository hashtags (one flat `t` tag for topics). Does not remove the `personal-fork` marker.
- */
-export function setGitRepositoryHashtags(hashtags: string[]): EventOperation {
-  return modifyPublicTags((tags) => rebuildWithTopics(tags, hashtags));
 }
 
 /** Adds a web browsing URL. */
@@ -146,6 +122,11 @@ export function setGitRepositoryEarliestUniqueCommit(commit: string | null): Eve
   });
 }
 
+/** Sets the recognized maintainer pubkeys (single `maintainers` tag). */
+export function setGitRepositoryMaintainers(pubkeys: string[]): EventOperation {
+  return modifyPublicTags((tags) => withFlatListTag(tags, "maintainers", pubkeys));
+}
+
 /** Adds a recognized maintainer pubkey. */
 export function addGitRepositoryMaintainer(pubkey: string): EventOperation {
   return modifyPublicTags((tags) => {
@@ -163,27 +144,35 @@ export function removeGitRepositoryMaintainer(pubkey: string): EventOperation {
   });
 }
 
-/** Adds a repository hashtag (flat `t` tag with other topics). */
+/** Sets repository hashtags (NIP-34: multiple `["t", "<topic>"]` tags). */
+export function setGitRepositoryHashtags(hashtags: string[]): EventOperation {
+  return setHashtags(hashtags);
+}
+
+/** Adds a repository hashtag (NIP-34: `["t", "<topic>"]`). */
 export function addGitRepositoryHashtag(hashtag: string): EventOperation {
-  return modifyPublicTags((tags) => {
-    const topics = collectTopicHashtags(tags);
-    if (topics.includes(hashtag)) return tags;
-    return rebuildWithTopics(tags, [...topics, hashtag]);
-  });
+  return addHashtag(hashtag);
 }
 
 /** Removes a repository hashtag. */
 export function removeGitRepositoryHashtag(hashtag: string): EventOperation {
-  return modifyPublicTags((tags) => {
-    const topics = collectTopicHashtags(tags).filter((h) => h !== hashtag);
-    return rebuildWithTopics(tags, topics);
-  });
+  return removeHashtag(hashtag);
 }
 
-/** Sets or clears the personal-fork marker. */
-export function setGitRepositoryPersonalFork(personalFork = true): EventOperation {
+/**
+ * Sets or clears the upstream repository pointer (the repo this one was forked from).
+ * Writes a `["u", "30617:<pubkey>:<identifier>", "<relay hint>"]` tag.
+ */
+export function setGitRepositoryUpstream(pointer: GitRepositoryPointer | null): EventOperation {
   return modifyPublicTags((tags) => {
-    const withoutFork = tags.filter((tag) => !isPersonalForkTag(tag));
-    return personalFork ? [...withoutFork, ["t", "personal-fork"]] : withoutFork;
+    const filtered = tags.filter((tag) => tag[0] !== "u");
+    if (!pointer) return filtered;
+    if (pointer.kind !== GIT_REPOSITORY_KIND)
+      throw new Error(`Upstream pointer must reference kind ${GIT_REPOSITORY_KIND}`);
+    if (!pointer.identifier) throw new Error("Upstream pointer must include an identifier");
+    const address = getReplaceableAddressFromPointer(pointer);
+    const hint = pointer.relays?.find((url) => isSafeRelayURL(url));
+    const tag = hint ? ["u", address, normalizeURL(hint)] : ["u", address];
+    return [...filtered, tag];
   });
 }

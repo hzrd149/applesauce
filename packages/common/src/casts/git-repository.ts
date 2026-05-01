@@ -9,13 +9,14 @@ import {
   getGitRepositoryMaintainers,
   getGitRepositoryName,
   getGitRepositoryRelays,
+  getGitRepositoryUpstream,
   getGitRepositoryWebUrls,
   GitRepositoryEvent,
   GitRepositoryPointer,
-  isGitRepositoryPersonalFork,
   isValidGitRepository,
 } from "../helpers/git-repository.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
+import { castUser } from "applesauce-core";
 
 /** Cast for NIP-34 repository announcement events. */
 export class GitRepository extends EventCast<GitRepositoryEvent> {
@@ -57,6 +58,10 @@ export class GitRepository extends EventCast<GitRepositoryEvent> {
   }
 
   get maintainers() {
+    return this.maintainerPubkeys.map((pubkey) => castUser(pubkey, this.store));
+  }
+
+  get maintainerPubkeys() {
     return getGitRepositoryMaintainers(this.event);
   }
 
@@ -64,7 +69,8 @@ export class GitRepository extends EventCast<GitRepositoryEvent> {
     return getGitRepositoryHashtags(this.event);
   }
 
-  get personalFork() {
-    return isGitRepositoryPersonalFork(this.event);
+  /** Pointer to the upstream repository this one was forked from, if declared. */
+  get upstream() {
+    return getGitRepositoryUpstream(this.event);
   }
 }

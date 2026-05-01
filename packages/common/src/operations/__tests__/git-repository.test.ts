@@ -1,6 +1,6 @@
 import { EventTemplate, unixNow } from "applesauce-core/helpers";
 import { describe, expect, it } from "vitest";
-import { GIT_REPOSITORY_KIND } from "../../helpers/git-repository.js";
+import { GIT_REPOSITORY_KIND, GitRepositoryPointer } from "../../helpers/git-repository.js";
 import {
   addGitRepositoryCloneUrl,
   addGitRepositoryHashtag,
@@ -19,14 +19,22 @@ import {
   setGitRepositoryIdentifier,
   setGitRepositoryMaintainers,
   setGitRepositoryName,
-  setGitRepositoryPersonalFork,
   setGitRepositoryRelays,
+  setGitRepositoryUpstream,
   setGitRepositoryWebUrls,
 } from "../git-repository.js";
 
 function createDraft(tags: string[][] = []): EventTemplate {
   return { kind: GIT_REPOSITORY_KIND, content: "", tags, created_at: unixNow() };
 }
+
+const UPSTREAM_PUBKEY = "f".repeat(64);
+const upstreamPointer = (relay?: string): GitRepositoryPointer => ({
+  kind: GIT_REPOSITORY_KIND,
+  pubkey: UPSTREAM_PUBKEY,
+  identifier: "upstream-repo",
+  ...(relay ? { relays: [relay] } : {}),
+});
 
 describe("git repository operations", () => {
   it("sets singleton metadata", async () => {
@@ -65,15 +73,6 @@ describe("git repository operations", () => {
       ["relays", "wss://new.relay/"],
       ["maintainers", "c".repeat(64)],
       ["t", "nostr"],
-    ]);
-  });
-
-  it("setHashtags keeps personal-fork marker", async () => {
-    const withFork = await setGitRepositoryPersonalFork()(await addGitRepositoryHashtag("old")(createDraft()));
-    const updated = await setGitRepositoryHashtags(["new"])(withFork);
-    expect(updated.tags).toEqual([
-      ["t", "personal-fork"],
-      ["t", "new"],
     ]);
   });
 
@@ -132,11 +131,54 @@ describe("git repository operations", () => {
     expect(removed.tags).toEqual([]);
   });
 
-  it("sets personal fork marker", async () => {
-    const marked = await setGitRepositoryPersonalFork()(createDraft());
-    expect(marked.tags).toEqual([["t", "personal-fork"]]);
+  it("uses separate t tags per topic (NIP-34)", async () => {
+    const draft = await addGitRepositoryHashtag("nostr")(await addGitRepositoryHashtag("rust")(createDraft()));
+    expect(draft.tags).toEqual([
+      ["t", "rust"],
+      ["t", "nostr"],
+    ]);
+  });
 
-    const cleared = await setGitRepositoryPersonalFork(false)(marked);
+  it("sets upstream pointer with relay hint", async () => {
+    const withUpstream = await setGitRepositoryUpstream(upstreamPointer("wss://relay.example.com"))(createDraft());
+    expect(withUpstream.tags).toEqual([
+      ["u", `${GIT_REPOSITORY_KIND}:${UPSTREAM_PUBKEY}:upstream-repo`, "wss://relay.example.com/"],
+    ]);
+  });
+
+  it("sets upstream pointer without relay hint", async () => {
+    const withUpstream = await setGitRepositoryUpstream(upstreamPointer())(createDraft());
+    expect(withUpstream.tags).toEqual([["u", `${GIT_REPOSITORY_KIND}:${UPSTREAM_PUBKEY}:upstream-repo`]]);
+  });
+
+  it("modifies existing upstream pointer", async () => {
+    const initial = await setGitRepositoryUpstream(upstreamPointer("wss://old.relay"))(createDraft());
+    const updated = await setGitRepositoryUpstream({
+      kind: GIT_REPOSITORY_KIND,
+      pubkey: "a".repeat(64),
+      identifier: "other-repo",
+      relays: ["wss://new.relay"],
+    })(initial);
+    expect(updated.tags).toEqual([
+      ["u", `${GIT_REPOSITORY_KIND}:${"a".repeat(64)}:other-repo`, "wss://new.relay/"],
+    ]);
+  });
+
+  it("removes upstream pointer", async () => {
+    const initial = await setGitRepositoryUpstream(upstreamPointer())(createDraft());
+    const cleared = await setGitRepositoryUpstream(null)(initial);
     expect(cleared.tags).toEqual([]);
+  });
+
+  it("rejects upstream pointer with wrong kind", async () => {
+    await expect(
+      setGitRepositoryUpstream({ kind: 30000 as any, pubkey: UPSTREAM_PUBKEY, identifier: "x" })(createDraft()),
+    ).rejects.toThrow();
+  });
+
+  it("rejects upstream pointer without identifier", async () => {
+    await expect(
+      setGitRepositoryUpstream({ kind: GIT_REPOSITORY_KIND, pubkey: UPSTREAM_PUBKEY, identifier: "" })(createDraft()),
+    ).rejects.toThrow();
   });
 });

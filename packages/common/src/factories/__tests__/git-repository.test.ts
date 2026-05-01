@@ -16,7 +16,12 @@ describe("GitRepositoryFactory", () => {
       .earliestUniqueCommit("abc123")
       .maintainer(HEX("a"))
       .hashtag("typescript")
-      .personalFork();
+      .upstream({
+        kind: GIT_REPOSITORY_KIND,
+        pubkey: HEX("f"),
+        identifier: "upstream",
+        relays: ["wss://relay.example.com"],
+      });
 
     expect(draft.kind).toBe(GIT_REPOSITORY_KIND);
     expect(draft.tags).toEqual([
@@ -29,11 +34,11 @@ describe("GitRepositoryFactory", () => {
       ["r", "abc123", "euc"],
       ["maintainers", HEX("a")],
       ["t", "typescript"],
-      ["t", "personal-fork"],
+      ["u", `${GIT_REPOSITORY_KIND}:${HEX("f")}:upstream`, "wss://relay.example.com/"],
     ]);
   });
 
-  it("modifies a repository announcement", async () => {
+  it("modifies a repository announcement and removes upstream", async () => {
     const existing: NostrEvent = {
       kind: GIT_REPOSITORY_KIND,
       id: HEX("1"),
@@ -44,11 +49,11 @@ describe("GitRepositoryFactory", () => {
       tags: [
         ["d", "applesauce"],
         ["name", "Old"],
-        ["t", "personal-fork"],
+        ["u", `${GIT_REPOSITORY_KIND}:${HEX("f")}:upstream`, "wss://relay.example.com/"],
       ],
     };
 
-    const draft = await GitRepositoryFactory.modify(existing).name("New").personalFork(false);
+    const draft = await GitRepositoryFactory.modify(existing).name("New").upstream(null);
 
     expect(draft.tags).toEqual([
       ["d", "applesauce"],
