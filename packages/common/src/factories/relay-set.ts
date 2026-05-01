@@ -2,7 +2,7 @@ import { blankEventTemplate, toEventTemplate } from "applesauce-core/factories";
 import { isKind, kinds, KnownEvent, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { includeReplaceableIdentifier } from "applesauce-core/operations/index";
 import { nanoid } from "nanoid";
-import { NIP51RelayListFactory } from "./list.js";
+import { NIP51RelayListFactory } from "./relay-lists.js";
 
 export type RelaySetTemplate = KnownEventTemplate<kinds.Relaysets>;
 

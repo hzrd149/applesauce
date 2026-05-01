@@ -26,6 +26,7 @@ describe("exports", () => {
         "GitGraspList",
         "GitRepository",
         "GroupsList",
+        "LookupRelayList",
         "Mutes",
         "Note",
         "Profile",

@@ -9,20 +9,29 @@ import {
   FavoriteRelaysListEvent,
   isValidBlockedRelaysList,
   isValidFavoriteRelaysList,
+  isValidLookupRelayList,
   isValidSearchRelaysList,
+  LOOKUP_RELAY_LIST_KIND,
+  LookupRelayListEvent,
   SearchRelaysListEvent,
 } from "../helpers/relay-list.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
 
 /** Base class for relay lists */
 class RelayListBase<
-  T extends KnownEvent<typeof FAVORITE_RELAYS_KIND | typeof kinds.SearchRelaysList | kinds.BlockedRelaysList>,
+  T extends KnownEvent<
+    | typeof FAVORITE_RELAYS_KIND
+    | typeof kinds.SearchRelaysList
+    | kinds.BlockedRelaysList
+    | typeof LOOKUP_RELAY_LIST_KIND
+  >,
 > extends EventCast<T> {
   constructor(event: T, store: CastRefEventStore) {
     if (
       event.kind !== FAVORITE_RELAYS_KIND &&
       event.kind !== kinds.SearchRelaysList &&
-      event.kind !== kinds.BlockedRelaysList
+      event.kind !== kinds.BlockedRelaysList &&
+      event.kind !== LOOKUP_RELAY_LIST_KIND
     )
       throw new Error(`Invalid relay list (kind ${event.kind})`);
     super(event, store);
@@ -85,6 +94,14 @@ export class SearchRelays extends RelayListBase<SearchRelaysListEvent> {
 export class BlockedRelays extends RelayListBase<BlockedRelaysListEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidBlockedRelaysList(event)) throw new Error("Invalid blocked relays list");
+    super(event, store);
+  }
+}
+
+/** Class for lookup / indexer relays lists (kind 10086) */
+export class LookupRelayList extends RelayListBase<LookupRelayListEvent> {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
+    if (!isValidLookupRelayList(event)) throw new Error("Invalid lookup relay list");
     super(event, store);
   }
 }

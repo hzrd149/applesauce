@@ -82,7 +82,7 @@ const draft = StatusFactory.create().priority("high").as(signer);
 const signed = await draft.sign();
 ```
 
-You can also build small inheritance layers for families of events. The list factories in `applesauce-common/factories/list.ts` are a good example: `ListFactory` adds shared metadata methods, then specialized subclasses add relay, user, or item helpers.
+You can also build small inheritance layers for families of events. `applesauce-common/factories/list.ts` defines `ListFactory` plus user- and item-oriented subclasses; `applesauce-common/factories/relay-lists.ts` defines `NIP51RelayListFactory` and the replaceable relay-list factories (search, blocked, DM, favorite, lookup) that add `addRelay` / `removeRelay` on top of the same list metadata helpers.
 
 ## Best Practices
 
