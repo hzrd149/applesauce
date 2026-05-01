@@ -18,6 +18,7 @@ export * from "./pipeline.js";
 export * from "./pointers.js";
 export * from "./profile.js";
 export * from "./regexp.js";
+export * from "./relay-liveness-filter.js";
 export * from "./relay-selection.js";
 export * from "./relays.js";
 export * from "./string.js";
