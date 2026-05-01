@@ -5,6 +5,7 @@ import { FakeUser } from "../../__tests__/fixtures";
 import { FAVORITE_EMOJI_PACKS_KIND } from "../../helpers/emoji-pack";
 import { GIT_GRASP_LIST_KIND } from "../../helpers/git-grasp-list";
 import { FAVORITE_GIT_REPOS_KIND, GIT_AUTHORS_KIND } from "../../helpers/git-lists";
+import { LOOKUP_RELAY_LIST_KIND } from "../../helpers/relay-list";
 import { castUser } from "../user";
 
 describe("user", () => {
@@ -89,6 +90,23 @@ describe("user", () => {
       const gitGraspList = await firstValueFrom(user.graspServers$);
 
       expect(gitGraspList?.servers).toEqual(["wss://grasp.example/"]);
+    });
+
+    it("should resolve lookup relay lists", async () => {
+      const signer = new FakeUser();
+      const profile = signer.profile({ name: "John Doe" });
+      const lookupList = signer.event({
+        kind: LOOKUP_RELAY_LIST_KIND,
+        tags: [["relay", "wss://indexer.example"]],
+      });
+      const eventStore = new EventStore();
+      eventStore.add(profile);
+      eventStore.add(lookupList);
+
+      const user = castUser(profile, eventStore);
+      const list = await firstValueFrom(user.lookupRelayList$);
+
+      expect(list?.relays).toEqual(["wss://indexer.example/"]);
     });
   });
 });

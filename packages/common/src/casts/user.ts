@@ -8,7 +8,7 @@ import { GIT_GRASP_LIST_KIND } from "../helpers/git-grasp-list.js";
 import { GIT_AUTHORS_KIND, FAVORITE_GIT_REPOS_KIND } from "../helpers/git-lists.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
-import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
+import { FAVORITE_RELAYS_KIND, LOOKUP_RELAY_LIST_KIND } from "../helpers/relay-list.js";
 import { TRUSTED_PROVIDER_LIST_KIND } from "../helpers/trusted-assertions.js";
 import { castEventStream } from "../observable/cast-stream.js";
 import { ChainableObservable } from "../observable/chainable.js";
@@ -193,6 +193,18 @@ defineGetter("searchRelays$", function (this: User) {
   );
 });
 
+defineGetter("lookupRelayList$", function (this: User) {
+  return this.$$ref("lookupRelayList$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ LookupRelayList }, outboxes]) =>
+        store
+          .replaceable({ kind: LOOKUP_RELAY_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(LookupRelayList, store)),
+      ),
+    ),
+  );
+});
+
 defineGetter("blockedRelays$", function (this: User) {
   return this.$$ref("blockedRelays$", (store) =>
     combineLatest([Circular, this.outboxes$]).pipe(
@@ -271,6 +283,7 @@ declare module "applesauce-core/casts" {
     get favoriteGitRepos$(): ChainableObservable<import("./git-lists.js").FavoriteGitRepos | undefined>;
     get graspServers$(): ChainableObservable<import("./git-grasp-list.js").GitGraspList | undefined>;
     get searchRelays$(): ChainableObservable<import("./relay-lists.js").SearchRelays | undefined>;
+    get lookupRelayList$(): ChainableObservable<import("./relay-lists.js").LookupRelayList | undefined>;
     get blockedRelays$(): ChainableObservable<import("./relay-lists.js").BlockedRelays | undefined>;
     get directMessageRelays$(): ChainableObservable<string[] | undefined>;
     get blossomServers$(): ChainableObservable<URL[] | undefined>;

@@ -13,7 +13,6 @@ import {
   removeSingletonTag,
   setSingletonTag,
 } from "applesauce-core/operations/tag/common";
-import { addRelayTag, removeRelayTag } from "applesauce-core/operations/tag/relay";
 
 /** A factory class for modifying any NIP-51 list event (kind-agnostic) */
 export class ListFactory<
@@ -44,31 +43,6 @@ export class ListFactory<
     return image === null
       ? this.modifyPublicTags(removeSingletonTag("image"))
       : this.modifyPublicTags(setSingletonTag(["image", image], true));
-  }
-}
-
-/**
- * A base factory class for NIP-51 lists that contain relay URLs.
- * Provides `addRelay` and `removeRelay` methods in addition to `title`, `description`, and `image`.
- */
-export class NIP51RelayListFactory<
-  K extends number = number,
-  T extends KnownEventTemplate<K> = KnownEventTemplate<K>,
-> extends ListFactory<K, T> {
-  /** Adds a relay URL to the list's public tags */
-  addRelay(relay: string | string[], hidden = false) {
-    const relays = Array.isArray(relay) ? relay : [relay];
-    return hidden
-      ? this.modifyHiddenTags(...relays.map((r) => addRelayTag(r)))
-      : this.modifyPublicTags(...relays.map((r) => addRelayTag(r)));
-  }
-
-  /** Removes a relay URL from the list */
-  removeRelay(relay: string | string[], hidden = false) {
-    const relays = Array.isArray(relay) ? relay : [relay];
-    return hidden
-      ? this.modifyHiddenTags(...relays.map((r) => removeRelayTag(r)))
-      : this.modifyPublicTags(...relays.map((r) => removeRelayTag(r)));
   }
 }
 
