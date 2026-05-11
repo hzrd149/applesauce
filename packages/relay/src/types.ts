@@ -59,12 +59,12 @@ export type RelayReqOptions = {
    */
   waitForAuth?: boolean;
   /**
-   * Whether to resubscribe if the subscription is closed by the relay. default is false
+   * Whether to resubscribe after a clean CLOSED message from the relay. default is false
    * @see https://rxjs.dev/api/index/function/repeat
    */
   resubscribe?: boolean | number | Parameters<typeof repeat>[0];
   /**
-   * Whether to reconnect when socket is closed. default is true (3 retries with 1 second delay)
+   * Whether to retry connection errors. default is true (3 retries with linear backoff)
    * @see https://rxjs.dev/api/index/function/retry
    */
   reconnect?: boolean | number | Parameters<typeof retry>[0];

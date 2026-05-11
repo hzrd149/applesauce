@@ -51,6 +51,24 @@ const mockEvent: NostrEvent = {
   sig: "5a57b5a12bba4b7cf0121077b1421cf4df402c5c221376c076204fc4f7519e28ce6508f26ddc132c406ccfe6e62cc6db857b96c788565cdca9674fe9a0710ac2",
 };
 
+describe("constructor", () => {
+  it("should default request and subscription reconnect to 3 retries", () => {
+    expect(relay.subscriptionReconnect.count).toBe(3);
+    expect(relay.requestReconnect.count).toBe(3);
+  });
+
+  it("should support numeric request and subscription reconnect options", () => {
+    const custom = new Relay("wss://test", { requestReconnect: 2, subscriptionReconnect: 5 });
+
+    expect(custom.requestReconnect.count).toBe(2);
+    expect(custom.requestReconnect.delay).toEqual(relay.requestReconnect.delay);
+    expect(custom.requestReconnect.resetOnSuccess).toBe(true);
+    expect(custom.subscriptionReconnect.count).toBe(5);
+    expect(custom.subscriptionReconnect.delay).toEqual(relay.subscriptionReconnect.delay);
+    expect(custom.subscriptionReconnect.resetOnSuccess).toBe(true);
+  });
+});
+
 describe("req", () => {
   it("should trigger connection to relay", async () => {
     subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
@@ -172,6 +190,45 @@ describe("req", () => {
     await spy.onComplete();
     expect(spy.receivedComplete()).toBe(true);
     expect(spy.receivedError()).toBe(false);
+  });
+
+  it("should resubscribe when relay sends clean CLOSED and resubscribe is enabled", async () => {
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", resubscribe: true }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", ""]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    expect(spy.receivedComplete()).toBe(false);
+
+    spy.unsubscribe();
+  });
+
+  it("should not resubscribe when the websocket closes cleanly", async () => {
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", resubscribe: true }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.close();
+    await server.closed;
+
+    expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("should reconnect when the websocket errors and reconnect is enabled", async () => {
+    relay.reconnectTimer = () => timer(0);
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", reconnect: { count: 1, delay: 0 } }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+    await server.closed;
+
+    expect(spy.receivedError()).toBe(false);
+    await expect(server.connected).resolves.toBeDefined();
+
+    spy.unsubscribe();
+    await server.closed;
   });
 
   it("should not send multiple REQ messages for multiple subscriptions", async () => {
@@ -349,11 +406,10 @@ describe("req", () => {
     expect(sub.receivedComplete()).toBe(true);
   });
 
-  it("should complete observable when relay closes connection", async () => {
+  it("should complete observable when websocket closes cleanly", async () => {
     const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
     await server.connected;
 
-    // Send CLOSE message
     server.close();
 
     expect(sub.receivedComplete()).toBe(true);
@@ -373,23 +429,27 @@ describe("req", () => {
     expect(sub.receivedError()).toBe(true);
   });
 
+  it("should pass reconnect option to retry operator", () => {
+    const retry = vi.spyOn(relay as any, "customConnectionRetryOperator");
+
+    relay.req([{ kinds: [1] }], { id: "sub1", reconnect: false });
+
+    expect(retry).toHaveBeenCalledWith(false);
+  });
+
   it("should reconnect when repeat operator is used", async () => {
     const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }).pipe(repeat()));
 
-    // First connection
-    await server.connected;
-    server.close();
-    await server.closed;
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", ""]);
 
     // Should not complete
     expect(sub.receivedComplete()).toBe(false);
 
-    // Should reconnect
-    await expect(server.connected).resolves.toBeDefined();
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
 
     // Cleanup to prevent retries breaking other tests
     sub.unsubscribe();
-    await server.closed;
   });
 });
 
@@ -869,20 +929,17 @@ describe("request", () => {
   });
 
   it("should support resubscribe", async () => {
-    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { resubscribe: true }));
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { id: "sub1", resubscribe: true }));
 
-    await server.connected;
-    server.close();
-    await server.closed;
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", ""]);
 
     expect(spy.receivedComplete()).toBe(false);
 
-    // Should reconnect
-    await expect(server.connected).resolves.toBeDefined();
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
 
     // Cleanup to prevent retries breaking other tests
     spy.unsubscribe();
-    await server.closed;
   });
 
   it("should support reconnect on connection errors", async () => {
@@ -898,6 +955,15 @@ describe("request", () => {
     // Cleanup to prevent retries breaking other tests
     spy.unsubscribe();
     await server.closed;
+  });
+
+  it("should pass request reconnect option to req retry operator", () => {
+    const reconnect = { count: 2, delay: 5 };
+    const retry = vi.spyOn(relay as any, "customConnectionRetryOperator");
+
+    relay.request({ kinds: [1] }, { reconnect });
+
+    expect(retry).toHaveBeenCalledWith(reconnect);
   });
 
   it("should throw AuthRequiredError when waitForAuth=false and relay responds with auth-required", async () => {
@@ -949,20 +1015,17 @@ describe("subscription", () => {
   });
 
   it("should support resubscribe", async () => {
-    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { resubscribe: true }));
+    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { id: "sub1", resubscribe: true }));
 
-    await server.connected;
-    server.close();
-    await server.closed;
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", ""]);
 
     expect(spy.receivedComplete()).toBe(false);
 
-    // Should reconnect
-    await expect(server.connected).resolves.toBeDefined();
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
 
     // Cleanup to prevent resubscribe breaking other tests
     spy.unsubscribe();
-    await server.closed;
   });
 
   it("should support reconnection on connection errors", async () => {
@@ -978,6 +1041,15 @@ describe("subscription", () => {
     // Cleanup to prevent reconnection breaking other tests
     spy.unsubscribe();
     await server.closed;
+  });
+
+  it("should pass subscription reconnect option to req retry operator", () => {
+    const reconnect = { count: 2, delay: 5 };
+    const retry = vi.spyOn(relay as any, "customConnectionRetryOperator");
+
+    relay.subscription({ kinds: [1] }, { reconnect });
+
+    expect(retry).toHaveBeenCalledWith(reconnect);
   });
 
   it("should throw AuthRequiredError when waitForAuth=false and relay responds with auth-required", async () => {

@@ -83,10 +83,10 @@ pool.event(relays, event).subscribe({
 
 ### Publish Method
 
-The `publish` method is a wrapper around the `event` method that returns a `Promise<PublishResponse[]>` and automatically handles reconnecting and retrying:
+The `publish` method is a wrapper around the `event` method that returns a `Promise<PublishResponse[]>` and automatically handles retrying:
 
 ```typescript
-// Publish with retries (defaults to 10 retries)
+// Publish with retries (defaults to 3 retries)
 const responses = await pool.publish(relays, event);
 for (const response of responses) {
   console.log(`Published to ${response.from}:`, response.ok, response.message);
@@ -95,7 +95,7 @@ for (const response of responses) {
 
 ### Request Method
 
-The `request` method allows you to make one-off requests with automatic retries:
+The `request` method allows you to make one-off requests with automatic retries for connection errors:
 
 ```typescript
 // Request with automatic retries
@@ -108,7 +108,7 @@ pool
       limit: 50,
     },
     {
-      retries: 2,
+      reconnect: 2,
       timeout: 5000, // 5 seconds
     },
   )
@@ -120,7 +120,7 @@ pool
 
 ### Subscription Method
 
-The `subscription` method creates persistent subscriptions that automatically reconnect:
+The `subscription` method creates persistent subscriptions that retry connection errors and can resubscribe after clean relay `CLOSED` messages:
 
 ```typescript
 // Create persistent subscription
@@ -133,7 +133,8 @@ const subscription = pool
     },
     {
       id: "custom-sub-id", // optional custom subscription ID
-      retries: Infinity, // retry forever
+      reconnect: Infinity, // retry connection errors forever
+      resubscribe: true, // resubscribe after clean relay CLOSED messages
     },
   )
   .subscribe({

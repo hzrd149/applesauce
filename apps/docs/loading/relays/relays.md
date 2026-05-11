@@ -25,7 +25,7 @@ relay.notices$.subscribe((notices) => console.log("Relay notices:", notices));
 The `req` or `subscription` methods returns an observable that emits events from the relay.
 
 :::warning
-The `req` method will `complete` when the connection is closed or `error` when the connection has an error. for Persistent subscriptions you should use the `subscription` method.
+The `req` method will `complete` when the connection closes cleanly or when the relay sends a clean `CLOSED` message. It will `error` for connection errors or error-prefixed relay `CLOSED` messages. For persistent event streams, use `subscription`.
 :::
 
 ```typescript
@@ -52,7 +52,7 @@ relay
 Send events to the relay using the `event` or `publish` methods.
 
 :::info
-The `publish` method is a wrapper around the `event` method that returns a `Promise<PublishResponse>` and automatically handles reconnecting and retrying (default 10 retries with 1 second delay).
+The `publish` method is a wrapper around the `event` method that returns a `Promise<PublishResponse>` and automatically handles retrying (default 3 retries with linear backoff).
 :::
 
 ```typescript
@@ -171,20 +171,20 @@ relay.challenge$.subscribe(async (challenge) => {
 
 ## Persistent Subscriptions
 
-The `subscription` method can be used to create persistent subscriptions that automatically reconnect after connection issues. It provides two key options for handling failures:
+The `subscription` method can be used to create persistent subscriptions. It provides two separate options for handling interruptions:
 
 ### Reconnection Options
 
-The `reconnect` option controls whether the subscription should automatically reconnect when the WebSocket connection is closed. It accepts:
+The `reconnect` option controls whether connection errors should retry the REQ. It does not retry relay `CLOSED` errors such as `rate-limited:` or `blocked:`. It accepts:
 
-- `true` - Reconnect 10 times with 1 second delay (default)
+- `true` - Retry with the relay default config (3 retries with linear backoff)
 - `false` Don't reconnect
 - `number` - Reconnect a specific number of times
-- `Infinity` - Reconnect infinite times with default delay (1s)
+- `Infinity` - Reconnect infinite times
 - `RetryConfig` - Full RxJS retry configuration
 
 ```typescript
-// Infinite reconnection with default delay (1s)
+// Infinite reconnection
 const subscription = relay
   .subscription({ kinds: [1] }, { id: "persistent-feed", reconnect: Infinity })
   .subscribe(console.log);
@@ -209,7 +209,7 @@ const subscription = relay
 
 ### Resubscribe Options
 
-The `resubscribe` option controls how many times the subscription will resubscribe if the relay explicitly closes the subscription (`CLOSE`). use `reconnect` for websocket connection errors.
+The `resubscribe` option controls how many times the subscription will resubscribe after the relay explicitly closes the REQ with a clean `CLOSED` message. Use `reconnect` for websocket connection errors.
 
 ```typescript
 // Basic resubscribe with number of attempts
@@ -242,15 +242,15 @@ const subscription = relay
 
 Under the hood, the `subscription` method uses RxJS operators to implement retry and reconnection logic:
 
-1. **Resubscribe Logic**: Uses the [`repeat()`](https://rxjs.dev/api/operators/repeat) operator to resubscribe when the subscription is closed based on the `resubscribe` option
-2. **Reconnection Logic**: Uses the [`retry()`](https://rxjs.dev/api/operators/retry) operator to restart the subscription when the connection is lost based on the `reconnect` option
+1. **Resubscribe Logic**: Uses the [`repeat()`](https://rxjs.dev/api/operators/repeat) operator only after a clean relay `CLOSED` message, based on the `resubscribe` option
+2. **Reconnection Logic**: Uses the [`retry()`](https://rxjs.dev/api/operators/retry) operator for connection errors, based on the `reconnect` option
 
 ## Dynamic Filters
 
 The `req`, and `subscription` methods can accept an observable for the filters. this allows for you to set the filters later or update them dynamically.
 
 :::warning
-Make sure to use a `ReplaySubject`, `BehaviorSubject`, or the `shareReplay(1)` operator to keep the last filters in case the relay disconnects and needs to resubscribe.
+Make sure to use a `ReplaySubject`, `BehaviorSubject`, or the `shareReplay(1)` operator to keep the last filters in case the REQ retries or resubscribes.
 :::
 
 ```typescript

@@ -11,6 +11,7 @@ import {
   catchError,
   combineLatest,
   defer,
+  EMPTY,
   endWith,
   filter,
   finalize,
@@ -75,12 +76,17 @@ import {
 
 const AUTH_REQUIRED_PREFIX = "auth-required:";
 
-/** Default retry subscription, request, and publish. linear backoff */
+/** Default reconnect/retry config for request, subscription, and publish. linear backoff */
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
   count: 3,
   delay: (_err, count) => timer(count * 1000),
   resetOnSuccess: true,
 };
+
+function normalizeRetryConfig(config?: number | RetryConfig): RetryConfig {
+  if (typeof config === "number") return { ...DEFAULT_RETRY_CONFIG, count: config };
+  return { ...DEFAULT_RETRY_CONFIG, ...(config ?? {}) };
+}
 
 /** Flags for the negentropy sync type */
 export enum SyncDirection {
@@ -158,10 +164,10 @@ export type RelayOptions = {
     now: number;
     attempts: number;
   }) => "reconnect" | "close" | "ignore";
-  /** Default reconnect config for subscription() method */
-  subscriptionReconnect?: RetryConfig;
-  /** Default reconnect config for request() method */
-  requestReconnect?: RetryConfig;
+  /** Default retry count or config for subscription() connection errors (default: 3) */
+  subscriptionReconnect?: number | RetryConfig;
+  /** Default retry count or config for request() connection errors (default: 3) */
+  requestReconnect?: number | RetryConfig;
   /** Default retry config for publish() method */
   publishRetry?: RetryConfig;
 };
@@ -294,9 +300,9 @@ export class Relay {
   /** How long to wait for EOSE response in milliseconds (default 20000) */
   pingTimeout = 20_000;
 
-  /** Default reconnect config for subscription() method */
+  /** Default retry config for subscription() connection errors */
   subscriptionReconnect: RetryConfig;
-  /** Default reconnect config for request() method */
+  /** Default retry config for request() connection errors */
   requestReconnect: RetryConfig;
   /** Default retry config for publish() method */
   publishRetry: RetryConfig;
@@ -342,8 +348,8 @@ export class Relay {
     if (opts?.onUnresponsive !== undefined) this.onUnresponsive = opts.onUnresponsive;
 
     // Set retry configs
-    this.subscriptionReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.subscriptionReconnect ?? {}) };
-    this.requestReconnect = { ...DEFAULT_RETRY_CONFIG, ...(opts?.requestReconnect ?? {}) };
+    this.subscriptionReconnect = normalizeRetryConfig(opts?.subscriptionReconnect);
+    this.requestReconnect = normalizeRetryConfig(opts?.requestReconnect);
     this.publishRetry = { ...DEFAULT_RETRY_CONFIG, ...(opts?.publishRetry ?? {}) };
 
     // Create an observable that tracks boolean authentication state
@@ -634,7 +640,12 @@ export class Relay {
     this.socket.next(message);
   }
 
-  /** Create a REQ observable that emits events or "EOSE" or errors */
+  /**
+   * Create a REQ observable that emits OPEN, EVENT, EOSE, and CLOSED messages.
+   *
+   * `resubscribe` only repeats after the relay sends a clean CLOSED message for this REQ.
+   * `reconnect` only retries connection errors and does not retry relay CLOSED errors.
+   */
   req(filters: FilterInput, opts?: RelayReqOptions): Observable<RelayReqMessage> {
     const id = opts?.id ?? nanoid();
     const waitForAuth = opts?.waitForAuth ?? true;
@@ -657,6 +668,7 @@ export class Relay {
 
     // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE
     let relayClosedSub = false;
+    let shouldResubscribe = false;
 
     // Create an observable that filters responses from the relay to just the ones for this REQ
     const messages = this.socket.pipe(
@@ -676,6 +688,7 @@ export class Relay {
           relayClosedSub = true;
           const error = parseClosedError(m.reason);
           if (error) throw error;
+          shouldResubscribe = true;
         }
       }),
       // Complete the stream on unprefixed CLOSED, emitting the CLOSED message last (inclusive)
@@ -690,6 +703,7 @@ export class Relay {
       map((filters) => {
         // Reset closed flag on each new REQ (resubscribe cycles)
         relayClosedSub = false;
+        shouldResubscribe = false;
         this.socket.next(["REQ", id, ...filters]);
         // Add to tracking when REQ is sent
         this.reqs$.next({ ...this.reqs$.value, [id]: filters });
@@ -729,7 +743,7 @@ export class Relay {
     // Wait for auth only when enabled and make sure to start the watch tower
     const reqWithAuthStrategy = waitForAuth ? this.waitForAuth(this.authRequiredForRead$, observable) : observable;
 
-    return this.waitForReady(reqWithAuthStrategy).pipe(
+    return defer(() => this.waitForReady(reqWithAuthStrategy)).pipe(
       // Retry only auth-required errors, optionally waiting for authentication first
       retry({
         delay: (error) => {
@@ -750,8 +764,10 @@ export class Relay {
           );
         },
       }),
-      // Create resubscribe logic (repeat operator)
-      this.customRepeatOperator(opts?.resubscribe),
+      // Retry connection errors independently from relay CLOSED errors
+      this.customConnectionRetryOperator(opts?.reconnect),
+      // Resubscribe only after the relay cleanly CLOSED this REQ
+      this.customRepeatOperator(opts?.resubscribe, () => shouldResubscribe),
       // Only create one upstream subscription
       share(),
     );
@@ -901,7 +917,7 @@ export class Relay {
     return lastValueFrom(start.pipe(switchMap((event) => this.auth(event))));
   }
 
-  /** Internal operator for creating the retry() operator for reconnecting to the websocket */
+  /** Internal operator for creating a retry() operator */
   protected customRetryOperator<T extends unknown = unknown>(
     times: undefined | boolean | number | RetryConfig,
     base?: RetryConfig,
@@ -912,14 +928,53 @@ export class Relay {
     else return retry({ ...base, ...times });
   }
 
-  /** Internal operator for creating the repeat() operator for resubscribing */
-  protected customRepeatOperator<T extends unknown = unknown>(
-    times: undefined | boolean | number | RepeatConfig | undefined,
+  /** Internal operator for retrying connection failures without retrying relay CLOSED errors */
+  protected customConnectionRetryOperator<T extends unknown = unknown>(
+    times: undefined | boolean | number | RetryConfig,
+    base?: RetryConfig,
   ): MonoTypeOperatorFunction<T> {
     if (times === false || times === undefined) return identity;
-    else if (times === true) return repeat();
-    else if (typeof times === "number") return repeat(times);
-    else return repeat(times);
+
+    const config: RetryConfig =
+      typeof times === "number"
+        ? { ...base, count: times }
+        : times === true
+          ? (base ?? {})
+          : { ...base, ...times };
+
+    return retry({
+      ...config,
+      delay: (error, count) => {
+        if (error instanceof RelayClosedError) return throwError(() => error);
+
+        if (typeof config.delay === "number") return timer(config.delay);
+        if (typeof config.delay === "function") return config.delay(error, count);
+        return of(null);
+      },
+    });
+  }
+
+  /** Internal operator for creating the repeat() operator, optionally gated by a condition */
+  protected customRepeatOperator<T extends unknown = unknown>(
+    times: undefined | boolean | number | RepeatConfig | undefined,
+    condition?: () => boolean,
+  ): MonoTypeOperatorFunction<T> {
+    if (times === false || times === undefined) return identity;
+
+    const delay = (repeatCount: number) => {
+      if (condition && !condition()) return EMPTY;
+
+      if (typeof times === "object") {
+        if (typeof times.delay === "number") return timer(times.delay);
+        if (typeof times.delay === "function") return times.delay(repeatCount);
+      }
+
+      return of(null);
+    };
+
+    if (times === true) return repeat({ delay });
+    else if (typeof times === "number") return repeat({ count: times, delay });
+    else return repeat({ ...times, delay });
   }
 
   /** Internal operator for creating the timeout() operator */
@@ -935,7 +990,7 @@ export class Relay {
     else return simpleTimeout(timeout ?? defaultTimeout);
   }
 
-  /** Creates a REQ that retries when relay errors ( default 3 retries ) */
+  /** Creates a persistent REQ that retries connection errors (default 3 retries) */
   subscription(filters: FilterInput, opts?: RelaySubscriptionOptions): Observable<RelaySubscriptionResponse> {
     return this.req(filters, {
       ...opts,
@@ -950,7 +1005,7 @@ export class Relay {
     );
   }
 
-  /** Makes a single request that retires on errors and completes on EOSE */
+  /** Makes a single request that retries connection errors and completes on EOSE */
   request(filters: FilterInput, opts?: RelayRequestOptions): Observable<RelayRequestResponse> {
     const req = this.req(filters, {
       ...opts,

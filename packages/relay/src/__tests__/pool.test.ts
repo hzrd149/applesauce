@@ -63,6 +63,14 @@ describe("relay", () => {
     expect(pool.relay("wss://relay.example.com:443")).toBe(pool.relay("wss://relay.example.com/"));
     expect(pool.relay("ws://relay.example.com:80")).toBe(pool.relay("ws://relay.example.com/"));
   });
+
+  it("should pass numeric reconnect defaults to created relays", () => {
+    const custom = new RelayPool({ requestReconnect: 2, subscriptionReconnect: 5 });
+    const relay = custom.relay("wss://relay1.example.com");
+
+    expect(relay.requestReconnect.count).toBe(2);
+    expect(relay.subscriptionReconnect.count).toBe(5);
+  });
 });
 
 describe("add$", () => {

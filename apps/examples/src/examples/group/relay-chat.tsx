@@ -63,7 +63,7 @@ function ChatLog({ pointer }: { pointer: GroupPointer }) {
     () =>
       pool
         .relay(pointer.relay)
-        .subscription({ kinds: [9], "#h": [pointer.id], limit: 100 })
+        .subscription({ kinds: [9], "#h": [pointer.id], limit: 100 }, { reconnect: true })
         .pipe(
           // map to store
           mapEventsToStore(eventStore),
