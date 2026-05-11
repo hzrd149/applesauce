@@ -8,8 +8,8 @@ import {
   EventPointer,
   getReplaceableAddressFromPointer,
   isAddressPointer,
-  isEventPointer,
   isAddressPointerSame,
+  isEventPointer,
   isEventPointerSame,
 } from "applesauce-core/helpers/pointers";
 import { type Observable } from "rxjs";
@@ -116,7 +116,9 @@ export function RepliesModel(
   overrideKinds?: number[],
 ): Model<NostrEvent[]> {
   return (events) => {
-    const filter: Filter = { kinds: overrideKinds || event.kind === 1 ? [1, COMMENT_KIND] : [COMMENT_KIND] };
+    const filter: Filter = {
+      kinds: overrideKinds ?? (event.kind === 1 ? [1, COMMENT_KIND] : [COMMENT_KIND]),
+    };
 
     return events.timeline(buildCommonEventRelationFilters(filter, event)).pipe(
       map((events) =>
@@ -130,11 +132,15 @@ export function RepliesModel(
             if (!refs.reply) return false;
 
             // If the input was provided as an event pointer, test the reply.e
-            if (isEventPointer(event)) return refs.reply?.e && isEventPointerSame(event, refs.reply.e);
-            // If the input was provided as an address pointer, test the reply.a
-            else if (isAddressPointer(event)) return refs.reply?.a && isAddressPointerSame(event, refs.reply.a);
-            // Else test the reply against the event
-            else return eventMatchesPointer(event, refs.reply?.a || refs.reply?.e);
+            if (isEventPointer(event)) {
+              return refs.reply?.e && isEventPointerSame(event, refs.reply.e);
+            } // If the input was provided as an address pointer, test the reply.a
+            else if (isAddressPointer(event)) {
+              return refs.reply?.a && isAddressPointerSame(event, refs.reply.a);
+            } // Else test the reply against the event
+            else {
+              return eventMatchesPointer(event, refs.reply?.a || refs.reply?.e);
+            }
           } else if (reply.kind === COMMENT_KIND) {
             // Check if a NIP-22 reply is a direct reply to this event
             const pointer = getCommentReplyPointer(reply);
@@ -144,11 +150,12 @@ export function RepliesModel(
             if (pointer.type === "external") return true;
 
             // Input is an event pointer, check if they match
-            if (isEventPointer(event)) return pointer.type === "event" ? isEventPointerSame(event, pointer) : false;
-            // Input is an address pointer, check if they match
-            else if (isAddressPointer(event))
+            if (isEventPointer(event)) {
+              return pointer.type === "event" ? isEventPointerSame(event, pointer) : false;
+            } // Input is an address pointer, check if they match
+            else if (isAddressPointer(event)) {
               return pointer.type === "address" ? isAddressPointerSame(event, pointer) : false;
-            // Else test the reply against the event
+            } // Else test the reply against the event
             else return eventMatchesPointer(event, pointer);
           }
           return false;

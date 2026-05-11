@@ -936,11 +936,7 @@ export class Relay {
     if (times === false || times === undefined) return identity;
 
     const config: RetryConfig =
-      typeof times === "number"
-        ? { ...base, count: times }
-        : times === true
-          ? (base ?? {})
-          : { ...base, ...times };
+      typeof times === "number" ? { ...base, count: times } : times === true ? (base ?? {}) : { ...base, ...times };
 
     return retry({
       ...config,

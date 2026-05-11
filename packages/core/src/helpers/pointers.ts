@@ -417,9 +417,9 @@ export function isEventPointerSame(a: EventPointer, b: EventPointer): boolean {
     a.id === b.id &&
     // Because event id's are unique, we can skip extra checks if either pointer is missing some fields
     // If any kind is undefined, ignore it
-    (a.kind !== undefined || b.kind !== undefined ? a.kind === b.kind : true) &&
+    (a.kind !== undefined && b.kind !== undefined ? a.kind === b.kind : true) &&
     // If any author is undefined, ignore it
-    (a.author !== undefined || b.author !== undefined ? a.author === b.author : true)
+    (a.author !== undefined && b.author !== undefined ? a.author === b.author : true)
   );
 }
 

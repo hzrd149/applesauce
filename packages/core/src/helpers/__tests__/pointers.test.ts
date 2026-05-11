@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "nostr-tools/nip19";
 import {
+  isEventPointerSame,
   mergeAddressPointers,
   mergeEventPointers,
   mergeProfilePointers,
@@ -681,5 +682,29 @@ describe("normalizeToEventPointer", () => {
   it("should return null for invalid hex key (too short)", () => {
     const result = normalizeToEventPointer("abc123");
     expect(result).toBeNull();
+  });
+});
+
+describe("isEventPointerSame", () => {
+  it("matches when only one side has kind", () => {
+    expect(isEventPointerSame({ id: "a", kind: 1 }, { id: "a" })).toBe(true);
+    expect(isEventPointerSame({ id: "a" }, { id: "a", kind: 1 })).toBe(true);
+  });
+
+  it("matches when only one side has author", () => {
+    expect(isEventPointerSame({ id: "a", author: "p" }, { id: "a" })).toBe(true);
+    expect(isEventPointerSame({ id: "a" }, { id: "a", author: "p" })).toBe(true);
+  });
+
+  it("rejects when both sides have differing kinds", () => {
+    expect(isEventPointerSame({ id: "a", kind: 1 }, { id: "a", kind: 30023 })).toBe(false);
+  });
+
+  it("rejects when both sides have differing authors", () => {
+    expect(isEventPointerSame({ id: "a", author: "p1" }, { id: "a", author: "p2" })).toBe(false);
+  });
+
+  it("rejects when ids differ regardless of metadata", () => {
+    expect(isEventPointerSame({ id: "a", kind: 1 }, { id: "b", kind: 1 })).toBe(false);
   });
 });
