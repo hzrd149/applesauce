@@ -65,6 +65,59 @@ describe("relay", () => {
   });
 });
 
+describe("add$", () => {
+  it("should emit when a new relay is created", () => {
+    const added: Relay[] = [];
+    pool.add$.subscribe((r) => added.push(r));
+
+    const relay = pool.relay("wss://relay1.example.com");
+
+    expect(added).toHaveLength(1);
+    expect(added[0]).toBe(relay);
+  });
+
+  it("should not emit when an existing relay is returned", () => {
+    const added: Relay[] = [];
+    pool.add$.subscribe((r) => added.push(r));
+
+    pool.relay("wss://relay1.example.com");
+    pool.relay("wss://relay1.example.com");
+
+    expect(added).toHaveLength(1);
+  });
+});
+
+describe("remove$", () => {
+  it("should emit when a relay is removed by url", () => {
+    const removed: Relay[] = [];
+    pool.remove$.subscribe((r) => removed.push(r));
+
+    const relay = pool.relay("wss://relay1.example.com");
+    pool.remove("wss://relay1.example.com/", false);
+
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toBe(relay);
+  });
+
+  it("should emit when a relay is removed by instance", () => {
+    const removed: Relay[] = [];
+    pool.remove$.subscribe((r) => removed.push(r));
+
+    const relay = pool.relay("wss://relay1.example.com");
+    pool.remove(relay, false);
+
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toBe(relay);
+  });
+
+  it("should remove the relay from the pool", () => {
+    pool.relay("wss://relay1.example.com");
+    pool.remove("wss://relay1.example.com/", false);
+
+    expect(pool.relays.size).toBe(0);
+  });
+});
+
 describe("req", () => {
   it("should send subscription to multiple relays", async () => {
     const urls = ["wss://relay1.example.com", "wss://relay2.example.com"];

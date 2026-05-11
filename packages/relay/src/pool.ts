@@ -85,6 +85,7 @@ export class RelayPool {
     relay = new Relay(url, this.options);
     this.relays.set(url, relay);
     this.relays$.next(this.relays);
+    this.add$.next(relay);
     return relay;
   }
 
