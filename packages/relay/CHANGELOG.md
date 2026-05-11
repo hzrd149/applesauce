@@ -1,5 +1,12 @@
 # applesauce-relay
 
+## 6.0.2
+
+### Patch Changes
+
+- 45d7972: Fix RelayPool.relay() not emitting add$
+- 77d5e42: Apply `reconnect` to REQ errors, limit `resubscribe`, and support numeric defaults
+
 ## 6.0.0
 
 ### Major Changes

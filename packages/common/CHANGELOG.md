@@ -1,5 +1,11 @@
 # applesauce-common
 
+## 6.0.2
+
+### Patch Changes
+
+- 85274e5: Fix sparse event pointer matching and direct note reply filtering
+
 ## 6.0.1
 
 ### Patch Changes
