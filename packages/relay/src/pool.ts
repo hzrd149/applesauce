@@ -4,7 +4,9 @@ import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/r
 import { normalizeURL } from "applesauce-core/helpers/url";
 import {
   BehaviorSubject,
+  combineLatest,
   distinctUntilChanged,
+  filter,
   isObservable,
   map,
   merge,
@@ -15,19 +17,20 @@ import {
   startWith,
   Subject,
   switchMap,
+  take,
 } from "rxjs";
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
-import { Relay, SyncDirection, type RelayOptions } from "./relay.js";
+import { Relay, type RelayOptions, SyncDirection } from "./relay.js";
 import type {
-  RelayCountResponse,
   FilterInput,
-  GroupReqOptions,
   GroupReqMessage,
-  PoolRelayInput,
+  GroupReqOptions,
   NegentropyReadStore,
   NegentropySyncStore,
+  PoolRelayInput,
   PublishResponse,
+  RelayCountResponse,
   RelayStatus,
 } from "./types.js";
 
@@ -40,8 +43,11 @@ export class RelayPool {
   /** Observable of relay status for all relays in the pool */
   status$: Observable<Record<string, RelayStatus>>;
 
-  /** Whether to ignore relays that are ready=false */
-  ignoreOffline = true;
+  /**
+   * Whether to ignore relays that are ready=false
+   * @deprecated use {@link ignoreUnhealthyRelays} in group() or request() input
+   */
+  ignoreOffline = false;
 
   /** A signal when a relay is added */
   add$ = new Subject<Relay>();
@@ -91,14 +97,30 @@ export class RelayPool {
 
   /** Create a group of relays */
   group(relays: PoolRelayInput, ignoreOffline = this.ignoreOffline): RelayGroup {
-    let input = Array.isArray(relays)
+    let input: Relay[] | Observable<Relay[]> = Array.isArray(relays)
       ? relays.map((url) => this.relay(url))
       : relays.pipe(map((urls) => urls.map((url) => this.relay(url))));
 
     if (ignoreOffline) {
-      // Filter out the offline relays
-      if (Array.isArray(input)) input = input.filter((relay) => relay.ready);
-      else input = input.pipe(map((relays) => relays.filter((relay) => relay.ready)));
+      // Convert input to an observable so it can react to relays becoming ready.
+      // Each relay is included once `ready$` first emits true, and stays included
+      // afterwards (subsequent ready=false changes are ignored since the request
+      // or subscription will have already started).
+      const input$ = Array.isArray(input) ? of(input) : input;
+      input = input$.pipe(
+        switchMap((relays) => {
+          if (relays.length === 0) return of([] as Relay[]);
+          const signals = relays.map((relay) =>
+            relay.ready$.pipe(
+              filter((ready) => ready),
+              take(1),
+              map(() => relay),
+              startWith(null as Relay | null),
+            ),
+          );
+          return combineLatest(signals).pipe(map((arr) => arr.filter((r): r is Relay => r !== null)));
+        }),
+      );
     }
 
     return new RelayGroup(input);
@@ -122,14 +144,12 @@ export class RelayPool {
 
   /** Make a REQ to multiple relays that does not deduplicate events */
   req(relays: PoolRelayInput, filters: FilterInput, opts?: GroupReqOptions): Observable<GroupReqMessage> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).req(filters, opts);
+    return this.group(relays).req(filters, opts);
   }
 
   /** Send an EVENT message to multiple relays */
   event(relays: PoolRelayInput, event: NostrEvent): Observable<PublishResponse> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).event(event);
+    return this.group(relays).event(event);
   }
 
   /** Negentropy sync event ids with the relays and an event store */
@@ -140,7 +160,7 @@ export class RelayPool {
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
   ): Promise<boolean> {
-    return this.group(relays, false).negentropy(store, filter, reconcile, opts);
+    return this.group(relays).negentropy(store, filter, reconcile, opts);
   }
 
   /** Publish an event to multiple relays */
@@ -214,7 +234,8 @@ export class RelayPool {
     filters: Filter | Filter[],
     id?: string,
   ): Observable<Record<string, RelayCountResponse>> {
-    return this.group(relays).count(filters, id);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).count(filters, id);
   }
 
   /** Negentropy sync events with the relays and an event store */
@@ -224,6 +245,7 @@ export class RelayPool {
     filter: Filter,
     direction?: SyncDirection,
   ): Observable<NostrEvent> {
-    return this.group(relays).sync(store, filter, direction);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).sync(store, filter, direction);
   }
 }
