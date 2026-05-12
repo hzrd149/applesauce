@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 6.0.3
+
+### Patch Changes
+
+- 90d525a: Implement NIP-01 tie-break for replaceable events with the same `created_at` (keep the lower `id`).
+
 ## 6.0.2
 
 ### Patch Changes
