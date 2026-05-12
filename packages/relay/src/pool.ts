@@ -149,7 +149,8 @@ export class RelayPool {
     event: Parameters<RelayGroup["publish"]>[0],
     opts?: Parameters<RelayGroup["publish"]>[1],
   ): Promise<PublishResponse[]> {
-    return this.group(relays).publish(event, opts);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).publish(event, opts);
   }
 
   /** Request events from multiple relays */
@@ -158,7 +159,8 @@ export class RelayPool {
     filters: Parameters<RelayGroup["request"]>[0],
     opts?: Parameters<RelayGroup["request"]>[1],
   ): Observable<NostrEvent> {
-    return this.group(relays).request(filters, opts);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).request(filters, opts);
   }
 
   /** Open a subscription to multiple relays */
@@ -167,7 +169,8 @@ export class RelayPool {
     filters: Parameters<RelayGroup["subscription"]>[0],
     options?: Parameters<RelayGroup["subscription"]>[1],
   ): Observable<NostrEvent> {
-    return this.group(relays).subscription(filters, options);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).subscription(filters, options);
   }
 
   /** Open a subscription for a map of relays and filters */
@@ -214,7 +217,8 @@ export class RelayPool {
     filters: Filter | Filter[],
     id?: string,
   ): Observable<Record<string, RelayCountResponse>> {
-    return this.group(relays).count(filters, id);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).count(filters, id);
   }
 
   /** Negentropy sync events with the relays and an event store */
@@ -224,6 +228,7 @@ export class RelayPool {
     filter: Filter,
     direction?: SyncDirection,
   ): Observable<NostrEvent> {
-    return this.group(relays).sync(store, filter, direction);
+    // Never filter out offline relays in manual methods
+    return this.group(relays, false).sync(store, filter, direction);
   }
 }
