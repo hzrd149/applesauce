@@ -4,7 +4,9 @@ import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/r
 import { normalizeURL } from "applesauce-core/helpers/url";
 import {
   BehaviorSubject,
+  combineLatest,
   distinctUntilChanged,
+  filter,
   isObservable,
   map,
   merge,
@@ -15,6 +17,7 @@ import {
   startWith,
   Subject,
   switchMap,
+  take,
 } from "rxjs";
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
@@ -40,7 +43,10 @@ export class RelayPool {
   /** Observable of relay status for all relays in the pool */
   status$: Observable<Record<string, RelayStatus>>;
 
-  /** Whether to ignore relays that are ready=false */
+  /**
+   * Whether to ignore relays that are ready=false
+   * @deprecated use {@link ignoreUnhealthyRelays} in group() or request() input
+   */
   ignoreOffline = true;
 
   /** A signal when a relay is added */
@@ -91,14 +97,30 @@ export class RelayPool {
 
   /** Create a group of relays */
   group(relays: PoolRelayInput, ignoreOffline = this.ignoreOffline): RelayGroup {
-    let input = Array.isArray(relays)
+    let input: Relay[] | Observable<Relay[]> = Array.isArray(relays)
       ? relays.map((url) => this.relay(url))
       : relays.pipe(map((urls) => urls.map((url) => this.relay(url))));
 
     if (ignoreOffline) {
-      // Filter out the offline relays
-      if (Array.isArray(input)) input = input.filter((relay) => relay.ready);
-      else input = input.pipe(map((relays) => relays.filter((relay) => relay.ready)));
+      // Convert input to an observable so it can react to relays becoming ready.
+      // Each relay is included once `ready$` first emits true, and stays included
+      // afterwards (subsequent ready=false changes are ignored since the request
+      // or subscription will have already started).
+      const input$ = Array.isArray(input) ? of(input) : input;
+      input = input$.pipe(
+        switchMap((relays) => {
+          if (relays.length === 0) return of([] as Relay[]);
+          const signals = relays.map((relay) =>
+            relay.ready$.pipe(
+              filter((ready) => ready),
+              take(1),
+              map(() => relay),
+              startWith(null as Relay | null),
+            ),
+          );
+          return combineLatest(signals).pipe(map((arr) => arr.filter((r): r is Relay => r !== null)));
+        }),
+      );
     }
 
     return new RelayGroup(input);
