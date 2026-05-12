@@ -3,27 +3,15 @@
  * @tags nip-57, zap, timeline, lightning
  * @related zap/graph, nutzap/zap-feed
  */
-import { getZapAmount, getZapEventPointer, getZapSender, isValidZap } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import {
-  addRelayHintsToPointer,
-  Filter,
-  getDisplayName,
-  getProfilePicture,
-  getSeenRelays,
-  kinds,
-  KnownEvent,
-  mergeRelaySets,
-  persistEventsToCache,
-  ProfileContent,
-  ProfilePointer,
-} from "applesauce-core/helpers";
+import { castUser, User, Zap } from "applesauce-common/casts";
+import { castTimelineStream } from "applesauce-common/observable";
+import type { Link } from "applesauce-content/nast";
+import { EventStore, mapEventsToStore } from "applesauce-core";
+import { isAudioURL, isImageURL, isVideoURL, kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useEffect, useMemo, useState } from "react";
-import { map } from "rxjs";
+import { useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -31,115 +19,151 @@ import RelayPicker from "../../components/relay-picker";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-// Setup a local event cache
-const cache = await openDB();
-function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters).then((events) => {
-    console.log("loaded events from cache", events.length);
-    return events;
-  });
-}
-
-// Save all new events to the cache
-persistEventsToCache(eventStore, (events) => addEvents(cache, events));
-
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  cacheRequest,
-  lookupRelays: ["wss://purplepag.es/"],
+  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com", "wss://indexer.coracle.social"],
 });
 
-/** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+function LinkRenderer({ node: link }: { node: Link }) {
+  if (isImageURL(link.href))
+    return (
+      <a href={link.href} target="_blank">
+        <img src={link.href} className="max-h-64 rounded" alt="" />
+      </a>
+    );
+  if (isVideoURL(link.href)) return <video src={link.href} className="max-h-64 rounded" controls />;
+  if (isAudioURL(link.href)) return <audio src={link.href} className="rounded" controls />;
+  return (
+    <a href={link.href} target="_blank" className="text-blue-500 hover:underline">
+      {link.value}
+    </a>
+  );
 }
 
+/** Renders the zap request content using the same renderers as the notes/rendering example. */
+const components: ComponentMap = {
+  text: ({ node }) => <span>{node.value}</span>,
+  link: LinkRenderer,
+  mention: ({ node }) => (
+    <a href={`https://njump.me/${node.encoded}`} target="_blank" className="text-purple-500 hover:underline">
+      @{node.encoded.slice(0, 8)}...
+    </a>
+  ),
+  hashtag: ({ node }) => <span className="text-orange-500">#{node.hashtag}</span>,
+  emoji: ({ node }) => <img title={node.raw} src={node.url} className="w-6 h-6 inline align-text-bottom" />,
+};
+
 /** A component for rendering user avatars */
-function Avatar({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
-  const profile = useProfile({ pubkey, relays });
+function Avatar({ user }: { user: User }) {
+  const profile = use$(user.profile$);
 
   return (
     <div className="avatar">
       <div className="w-8 rounded-full">
-        <img src={getProfilePicture(profile, `https://robohash.org/${pubkey}.png`)} />
+        <img src={profile?.picture ?? `https://robohash.org/${user.pubkey}.png`} />
       </div>
     </div>
   );
 }
 
 /** A component for rendering usernames */
-function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
-  const profile = useProfile({ pubkey, relays });
-
-  return <>{getDisplayName(profile, "unknown")}</>;
+function Username({ user }: { user: User }) {
+  const profile = use$(user.profile$);
+  return <>{profile?.displayName ?? profile?.name ?? "unknown"}</>;
 }
 
-function ZapEvent({ event }: { event: KnownEvent<kinds.Zap> }) {
-  const pointer = getZapEventPointer(event) ?? undefined;
-  const sender = getZapSender(event);
-  const amount = Math.round(getZapAmount(event) / 1000); // Convert msats to sats
+function ZapEvent({ zap }: { zap: Zap }) {
+  const amount = Math.round(zap.amount / 1000); // Convert msats to sats
+  const addressPointer = zap.addressPointer ?? undefined;
+  const eventPointer = zap.eventPointer ?? undefined;
+  const isProfileZap = !addressPointer && !eventPointer;
+  const zappedEvent = use$(zap.event$);
 
-  // Load the shared event from the pointer
-  useEffect(() => {
-    if (!pointer) return;
-    const sub = eventStore
-      .event(
-        // Add extra relay hints to the pointer to load
-        addRelayHintsToPointer(pointer, getSeenRelays(event)),
-      )
-      .subscribe();
-    return () => sub.unsubscribe();
-  }, [pointer, event]);
-
-  const relays = useMemo(() => mergeRelaySets(getSeenRelays(event), pointer?.relays), [event, pointer]);
-
-  const zappedEvent = use$(() => pointer && eventStore.event(pointer.id), [pointer?.id]);
+  // The zap message lives on the zap request (kind 9734) embedded in the receipt.
+  const message = zap.request.content.trim();
+  const renderedMessage = useRenderedContent(zap.request, components);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2 items-center">
-        <Avatar pubkey={sender} relays={relays} />
+        <Avatar user={zap.sender} />
         <h2>
           <span className="font-bold">
-            <Username pubkey={sender} relays={relays} />
+            <Username user={zap.sender} />
           </span>
           <span> zapped </span>
+          {isProfileZap && (
+            <>
+              <span className="font-bold">
+                <Username user={zap.recipient} />
+              </span>{" "}
+            </>
+          )}
           <span className="text-warning font-bold">{amount} sats</span>
         </h2>
-        <time className="ms-auto text-sm text-gray-500">{new Date(event.created_at * 1000).toLocaleString()}</time>
+        <time className="ms-auto text-sm text-gray-500">{new Date(zap.event.created_at * 1000).toLocaleString()}</time>
       </div>
 
-      {zappedEvent ? (
+      {message && (
+        <div className="whitespace-pre-wrap border-l-4 border-warning ps-3 py-1 text-sm">{renderedMessage}</div>
+      )}
+
+      {isProfileZap ? (
         <div className="card card-sm bg-base-100 shadow-md">
           <div className="card-body">
             <div className="flex items-center gap-4">
-              <Avatar pubkey={zappedEvent.pubkey} relays={relays} />
+              <Avatar user={zap.recipient} />
+              <div className="flex flex-col">
+                <h2 className="card-title">
+                  <Username user={zap.recipient} />
+                </h2>
+                <span className="text-xs text-gray-500">Profile zap</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : zappedEvent ? (
+        <div className="card card-sm bg-base-100 shadow-md">
+          <div className="card-body">
+            <div className="flex items-center gap-4">
+              <Avatar user={castUser(zappedEvent.pubkey, eventStore)} />
               <h2 className="card-title">
-                <Username pubkey={zappedEvent.pubkey} relays={relays} />
+                <Username user={castUser(zappedEvent.pubkey, eventStore)} />
               </h2>
             </div>
             <p>{zappedEvent.content}</p>
           </div>
         </div>
-      ) : pointer ? (
+      ) : addressPointer ? (
         <div className="card card-sm bg-base-200 shadow-md opacity-50">
           <div className="card-body">
             <div className="flex items-center gap-4">
               <span className="loading loading-dots loading-lg" />
               <div className="flex flex-col gap-1">
-                <p className="text-sm font-mono">Loading event: {pointer.id}</p>
-                {pointer.relays && pointer.relays.length > 0 && (
-                  <p className="text-xs text-gray-500">Checking relays: {pointer.relays.join(", ")}</p>
+                <p className="text-sm font-mono">
+                  Loading address: {addressPointer.kind}:{addressPointer.pubkey.slice(0, 8)}…:
+                  {addressPointer.identifier}
+                </p>
+                {addressPointer.relays && addressPointer.relays.length > 0 && (
+                  <p className="text-xs text-gray-500">Checking relays: {addressPointer.relays.join(", ")}</p>
                 )}
               </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="card card-sm bg-error text-error-content shadow-md">
+        <div className="card card-sm bg-base-200 shadow-md opacity-50">
           <div className="card-body">
-            <p>Invalid zap: no event pointer found</p>
+            <div className="flex items-center gap-4">
+              <span className="loading loading-dots loading-lg" />
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-mono">Loading event: {eventPointer!.id}</p>
+                {eventPointer!.relays && eventPointer!.relays.length > 0 && (
+                  <p className="text-xs text-gray-500">Checking relays: {eventPointer!.relays.join(", ")}</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -150,18 +174,16 @@ function ZapEvent({ event }: { event: KnownEvent<kinds.Zap> }) {
 export default function ZapsTimeline() {
   const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
 
-  const zaps = use$(
+  use$(
     () =>
       pool
         .relay(relay)
-        .subscription({ kinds: [kinds.Zap], limit: 20 })
-        .pipe(
-          mapEventsToStore(eventStore),
-          mapEventsToTimeline(),
-          map((events) => [...events]),
-        ),
+        .subscription({ kinds: [kinds.Zap], limit: 100 }, { reconnect: true })
+        .pipe(mapEventsToStore(eventStore)),
     [relay],
   );
+
+  const zaps = use$(() => eventStore.timeline({ kinds: [kinds.Zap] }).pipe(castTimelineStream(Zap, eventStore)), []);
 
   return (
     <div className="container mx-auto p-2 h-full max-w-4xl">
@@ -170,8 +192,8 @@ export default function ZapsTimeline() {
       </div>
 
       <div className="flex flex-col gap-4">
-        {zaps?.filter(isValidZap).map((event) => (
-          <ZapEvent key={event.id} event={event} />
+        {zaps?.map((zap) => (
+          <ZapEvent key={zap.event.id} zap={zap} />
         ))}
       </div>
     </div>

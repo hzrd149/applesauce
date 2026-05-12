@@ -61,6 +61,7 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^18.3.1",
     "react-error-boundary": "^6.0.1",
+    "react-force-graph-2d": "^1.29.1",
     "react-hook-form": "^7.69.0",
     "react-leaflet": "^4.2.1",
     "react-markdown": "^10.1.0",

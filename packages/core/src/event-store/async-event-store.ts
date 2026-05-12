@@ -203,8 +203,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
       if (existing && existing.length > 0) {
         let winner = existing[0];
         for (const e of existing) {
-          if (e.created_at > winner.created_at || (e.created_at === winner.created_at && e.id < winner.id))
-            winner = e;
+          if (e.created_at > winner.created_at || (e.created_at === winner.created_at && e.id < winner.id)) winner = e;
         }
         const incomingBeatsWinner =
           event.created_at > winner.created_at || (event.created_at === winner.created_at && event.id < winner.id);
@@ -253,8 +252,7 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
         // Find the NIP-01 winner across all stored versions.
         let winner = existing[0];
         for (const e of existing) {
-          if (e.created_at > winner.created_at || (e.created_at === winner.created_at && e.id < winner.id))
-            winner = e;
+          if (e.created_at > winner.created_at || (e.created_at === winner.created_at && e.id < winner.id)) winner = e;
         }
         const losers = existing.filter((e) => e !== winner);
         for (const old of losers) await this.remove(old);
