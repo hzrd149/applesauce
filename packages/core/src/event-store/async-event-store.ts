@@ -193,14 +193,25 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     // Get the replaceable identifier
     const identifier = isReplaceable(event.kind) ? getReplaceableIdentifier(event) : undefined;
 
-    // Don't insert the event if there is already a newer version
+    // Don't insert the event if there is already a winning version
+    // (NIP-01: newer created_at wins; on tie, lexicographically lower id wins).
     if (this.keepOldVersions === false && isReplaceable(event.kind)) {
       const existing = await this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
-      // If there is already a newer version, copy cached symbols and return existing event
-      if (existing && existing.length > 0 && existing[0].created_at >= event.created_at) {
-        if (EventStore.copySymbolsToDuplicateEvent(event, existing[0])) await this.update(existing[0]);
-        return existing[0];
+      // If the existing set has any event that beats the incoming one per
+      // NIP-01, the incoming event is rejected.
+      if (existing && existing.length > 0) {
+        let winner = existing[0];
+        for (const e of existing) {
+          if (e.created_at > winner.created_at || (e.created_at === winner.created_at && e.id < winner.id))
+            winner = e;
+        }
+        const incomingBeatsWinner =
+          event.created_at > winner.created_at || (event.created_at === winner.created_at && event.id < winner.id);
+        if (!incomingBeatsWinner) {
+          if (EventStore.copySymbolsToDuplicateEvent(event, winner)) await this.update(winner);
+          return winner;
+        }
       }
     }
 
@@ -233,17 +244,24 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
       if (EventStore.copySymbolsToDuplicateEvent(event, inserted)) await this.update(inserted);
     }
 
-    // remove all old version of the replaceable event
+    // remove all losing versions of the replaceable event
+    // (NIP-01: keep newest created_at; on tie, keep lowest id).
     if (this.keepOldVersions === false && isReplaceable(event.kind)) {
       const existing = await this.database.getReplaceableHistory(event.kind, event.pubkey, identifier);
 
       if (existing && existing.length > 0) {
-        const older = Array.from(existing).filter((e) => e.created_at < event.created_at);
-        for (const old of older) await this.remove(old);
+        // Find the NIP-01 winner across all stored versions.
+        let winner = existing[0];
+        for (const e of existing) {
+          if (e.created_at > winner.created_at || (e.created_at === winner.created_at && e.id < winner.id))
+            winner = e;
+        }
+        const losers = existing.filter((e) => e !== winner);
+        for (const old of losers) await this.remove(old);
 
-        // return the newest version of the replaceable event
+        // return the winning version of the replaceable event
         // most of the time this will be === event, but not always
-        if (existing.length !== older.length) return existing[0];
+        if (losers.length > 0) return winner;
       }
     }
 

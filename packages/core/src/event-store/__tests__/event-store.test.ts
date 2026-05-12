@@ -151,6 +151,54 @@ describe("add", () => {
   it("should handle addressable events without an identifier", () => {
     expect(() => eventStore.add(user.event({ kind: 30000 }))).not.toThrow();
   });
+
+  describe("NIP-01 tie-break for replaceable events", () => {
+    // Build two replaceable events with the same created_at but different ids.
+    // NIP-01 says: keep the one with the lexicographically lower id.
+    function makeTiePair() {
+      const ts = unixNow();
+      const a = user.profile({ name: "a" }, { created_at: ts });
+      let b = user.profile({ name: "b" }, { created_at: ts });
+      // Ensure two distinct ids (content already differs, but be explicit)
+      while (b.id === a.id) b = user.profile({ name: "b" + Math.random() }, { created_at: ts });
+      const [winner, loser] = a.id < b.id ? [a, b] : [b, a];
+      return { winner, loser };
+    }
+
+    it("should keep the lower-id event when same-created_at incoming arrives second", () => {
+      const { winner, loser } = makeTiePair();
+      // Add the loser first so it is the "existing" event when the winner arrives.
+      eventStore.add(loser);
+      eventStore.add(winner);
+      expect(eventStore.getReplaceable(0, user.pubkey)).toBe(winner);
+      expect(eventStore.getEvent(loser.id)).toBeUndefined();
+    });
+
+    it("should reject a higher-id incoming event when the lower-id is already stored", () => {
+      const { winner, loser } = makeTiePair();
+      eventStore.add(winner);
+      const result = eventStore.add(loser);
+      expect(result).toBe(winner);
+      expect(eventStore.getReplaceable(0, user.pubkey)).toBe(winner);
+      expect(eventStore.getEvent(loser.id)).toBeUndefined();
+    });
+
+    it("should emit remove$ for the losing same-created_at event", () => {
+      const { winner, loser } = makeTiePair();
+      eventStore.add(loser);
+      const spy = subscribeSpyTo(eventStore.remove$);
+      eventStore.add(winner);
+      expect(spy.getValues()).toEqual([loser]);
+    });
+
+    it("should not emit insert$ when a higher-id same-created_at event arrives", () => {
+      const { winner, loser } = makeTiePair();
+      eventStore.add(winner);
+      const spy = subscribeSpyTo(eventStore.insert$);
+      eventStore.add(loser);
+      expect(spy.getValues()).toEqual([]);
+    });
+  });
 });
 
 describe("removes", () => {
