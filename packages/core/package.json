@@ -1,6 +1,6 @@
 {
   "name": "applesauce-core",
-  "version": "6.0.0",
+  "version": "6.0.2",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
