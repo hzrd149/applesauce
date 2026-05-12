@@ -4,13 +4,13 @@
  * @tags nip-57, zap, lightning, modal, qrcode, invoice
  * @related zap/timeline, zap/graph, nwc/simple-wallet
  */
-import { Note, Zap } from "applesauce-common/casts";
+import { castEvent, Note, Zap } from "applesauce-common/casts";
+import { User } from "applesauce-common/casts/user";
 import { ZapRequestFactory } from "applesauce-common/factories";
 import { parseBolt11, parseLNURLOrAddress } from "applesauce-common/helpers";
 import { castEventStream } from "applesauce-common/observable";
 import { Link } from "applesauce-content/nast";
-import { castEvent, defined, EventStore, mapEventsToStore } from "applesauce-core";
-import { User } from "applesauce-core/casts/user";
+import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import {
   decodeEventPointer,
   Filter,
@@ -464,7 +464,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
           // Add zap events to store for UI updates
           mapEventsToStore(eventStore),
           // Parse zap events
-          castEventStream(Zap, eventStore),
+          castEventStream(Zap),
           // Filter out bad zaps
           defined(),
         )
@@ -847,7 +847,7 @@ function ZapModal({ note }: { note: Note }) {
 export default function ZapModalExample() {
   // Load the note event using the full pointer so the event loader knows which relays to check
   const noteEvent = use$(() => eventStore.event(eventPointer), [eventPointer.id]);
-  const note = useMemo(() => (noteEvent ? castEvent(noteEvent, Note, eventStore) : undefined), [noteEvent]);
+  const note = useMemo(() => (noteEvent ? castEvent(noteEvent, Note) : undefined), [noteEvent]);
 
   // Subscribe to zaps on the event
   use$(() => {
