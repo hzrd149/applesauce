@@ -21,16 +21,16 @@ import {
 } from "rxjs";
 import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
-import { Relay, SyncDirection, type RelayOptions } from "./relay.js";
+import { Relay, type RelayOptions, SyncDirection } from "./relay.js";
 import type {
-  RelayCountResponse,
   FilterInput,
-  GroupReqOptions,
   GroupReqMessage,
-  PoolRelayInput,
+  GroupReqOptions,
   NegentropyReadStore,
   NegentropySyncStore,
+  PoolRelayInput,
   PublishResponse,
+  RelayCountResponse,
   RelayStatus,
 } from "./types.js";
 
@@ -47,7 +47,7 @@ export class RelayPool {
    * Whether to ignore relays that are ready=false
    * @deprecated use {@link ignoreUnhealthyRelays} in group() or request() input
    */
-  ignoreOffline = true;
+  ignoreOffline = false;
 
   /** A signal when a relay is added */
   add$ = new Subject<Relay>();
@@ -144,14 +144,12 @@ export class RelayPool {
 
   /** Make a REQ to multiple relays that does not deduplicate events */
   req(relays: PoolRelayInput, filters: FilterInput, opts?: GroupReqOptions): Observable<GroupReqMessage> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).req(filters, opts);
+    return this.group(relays).req(filters, opts);
   }
 
   /** Send an EVENT message to multiple relays */
   event(relays: PoolRelayInput, event: NostrEvent): Observable<PublishResponse> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).event(event);
+    return this.group(relays).event(event);
   }
 
   /** Negentropy sync event ids with the relays and an event store */
@@ -162,7 +160,7 @@ export class RelayPool {
     reconcile: ReconcileFunction,
     opts?: NegentropySyncOptions,
   ): Promise<boolean> {
-    return this.group(relays, false).negentropy(store, filter, reconcile, opts);
+    return this.group(relays).negentropy(store, filter, reconcile, opts);
   }
 
   /** Publish an event to multiple relays */
@@ -171,8 +169,7 @@ export class RelayPool {
     event: Parameters<RelayGroup["publish"]>[0],
     opts?: Parameters<RelayGroup["publish"]>[1],
   ): Promise<PublishResponse[]> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).publish(event, opts);
+    return this.group(relays).publish(event, opts);
   }
 
   /** Request events from multiple relays */
@@ -181,8 +178,7 @@ export class RelayPool {
     filters: Parameters<RelayGroup["request"]>[0],
     opts?: Parameters<RelayGroup["request"]>[1],
   ): Observable<NostrEvent> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).request(filters, opts);
+    return this.group(relays).request(filters, opts);
   }
 
   /** Open a subscription to multiple relays */
@@ -191,8 +187,7 @@ export class RelayPool {
     filters: Parameters<RelayGroup["subscription"]>[0],
     options?: Parameters<RelayGroup["subscription"]>[1],
   ): Observable<NostrEvent> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).subscription(filters, options);
+    return this.group(relays).subscription(filters, options);
   }
 
   /** Open a subscription for a map of relays and filters */
