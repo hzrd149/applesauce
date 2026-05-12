@@ -198,6 +198,19 @@ describe("add", () => {
       eventStore.add(loser);
       expect(spy.getValues()).toEqual([]);
     });
+
+    it("should keep both tied same-created_at events when keepOldVersions is enabled", () => {
+      const store = new EventStore({ keepOldVersions: true });
+      const { winner, loser } = makeTiePair();
+      store.add(winner);
+      store.add(loser);
+
+      const history = store.getReplaceableHistory(0, user.pubkey);
+      expect(history).toEqual(expect.arrayContaining([winner, loser]));
+      expect(history).toHaveLength(2);
+      expect(store.getEvent(winner.id)).toBe(winner);
+      expect(store.getEvent(loser.id)).toBe(loser);
+    });
   });
 });
 
