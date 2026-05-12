@@ -35,10 +35,10 @@ export const Tokens = {
     return Expressions.link;
   },
   get cashu() {
-    return new RegExp(`(?<=^|\\s)${Expressions.cashu.source}`, "gi");
+    return new RegExp(`(?<=^|\\s|\\s\\()${Expressions.cashu.source}`, "gi");
   },
   get nostrLink() {
-    return new RegExp(`(?<=^|\\s)${Expressions.nostrLink.source}`, "gi");
+    return new RegExp(`(?<=^|\\s|\\s\\()${Expressions.nostrLink.source}`, "gi");
   },
   get emoji() {
     return Expressions.emoji;
@@ -47,9 +47,9 @@ export const Tokens = {
     return Expressions.hashtag;
   },
   get lightning() {
-    return new RegExp(`(?<=^|\\s)${Expressions.lightning.source}`, "gim");
+    return new RegExp(`(?<=^|\\s|\\s\\()${Expressions.lightning.source}`, "gim");
   },
   get blossom() {
-    return new RegExp(`(?<=^|\\s)${Expressions.blossom.source}`, "g");
+    return new RegExp(`(?<=^|\\s|\\s\\()${Expressions.blossom.source}`, "g");
   },
 };
