@@ -5,10 +5,12 @@ import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { Action } from "../action-runner.js";
 
 /** Sends a legacy NIP-04 message to a recipient */
-export function SendLegacyMessage(recipient: string, message: string): Action {
+export function SendLegacyMessage(recipient: string, message: string, options?: { expiration?: number }): Action {
   return async ({ signer, publish, events }) => {
     if (!signer) throw new Error("Missing signer");
-    const signed = await LegacyMessageFactory.create(recipient, message).sign(signer);
+    let draft = LegacyMessageFactory.create(recipient, message);
+    if (options?.expiration) draft = draft.expiration(options.expiration);
+    const signed = await draft.sign(signer);
 
     // Get the recipient's inbox relays
     const receiver = castUser(recipient, events);
@@ -24,7 +26,7 @@ export function SendLegacyMessage(recipient: string, message: string): Action {
 }
 
 /** Send a reply to a legacy message */
-export function ReplyToLegacyMessage(parent: NostrEvent, message: string): Action {
+export function ReplyToLegacyMessage(parent: NostrEvent, message: string, options?: { expiration?: number }): Action {
   return async ({ signer, publish, events }) => {
     if (!signer) throw new Error("Missing signer");
     if (parent.kind !== kinds.EncryptedDirectMessage)
@@ -35,7 +37,9 @@ export function ReplyToLegacyMessage(parent: NostrEvent, message: string): Actio
     const recipient = parent.pubkey === self ? parent.tags.find((t) => t[0] === "p")?.[1] : parent.pubkey;
     if (!recipient) throw new Error("Could not determine reply recipient");
 
-    const signed = await LegacyMessageFactory.reply(parent, recipient, message).sign(signer);
+    let draft = LegacyMessageFactory.reply(parent, recipient, message);
+    if (options?.expiration) draft = draft.expiration(options.expiration);
+    const signed = await draft.sign(signer);
 
     // Get the recipient's inbox relays (the sender of the parent message)
     const receiver = castUser(parent.pubkey, events);
