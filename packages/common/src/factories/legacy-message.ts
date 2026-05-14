@@ -3,7 +3,6 @@ import { kinds, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { setMessageParent } from "../operations/legacy-message.js";
 
 export type LegacyMessageTemplate = KnownEventTemplate<kinds.EncryptedDirectMessage>;
-export type LegacyMessageBlueprintOptions = {};
 
 export class LegacyMessageFactory extends EventFactory<kinds.EncryptedDirectMessage, LegacyMessageTemplate> {
   static create(recipient: string, message: string): LegacyMessageFactory {

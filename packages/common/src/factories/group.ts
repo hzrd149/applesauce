@@ -1,7 +1,6 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
 import { includeNameValueTag, includeSingletonTag } from "applesauce-core/operations/tags";
 import { GROUP_MESSAGE_KIND, GROUP_THREAD_KIND, GroupPointer } from "../helpers/groups.js";
 import { addPreviousRefs, setGroupPointer } from "../operations/group.js";
@@ -10,9 +9,13 @@ import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 export type GroupMessageTemplate = KnownEventTemplate<typeof GROUP_MESSAGE_KIND>;
 export type GroupThreadTemplate = KnownEventTemplate<typeof GROUP_THREAD_KIND>;
 
+export type GroupMessageFactoryOptions = TextContentOptions;
+
 export class GroupMessageFactory extends EventFactory<typeof GROUP_MESSAGE_KIND, GroupMessageTemplate> {
-  static create(group: GroupPointer, content: string): GroupMessageFactory {
-    return new GroupMessageFactory((res) => res(blankEventTemplate(GROUP_MESSAGE_KIND))).group(group).text(content);
+  static create(group: GroupPointer, content: string, options?: GroupMessageFactoryOptions): GroupMessageFactory {
+    return new GroupMessageFactory((res) => res(blankEventTemplate(GROUP_MESSAGE_KIND)))
+      .group(group)
+      .text(content, options);
   }
 
   group(pointer: GroupPointer) {
@@ -32,27 +35,35 @@ export class GroupMessageFactory extends EventFactory<typeof GROUP_MESSAGE_KIND,
     return this.chain(includeNameValueTag(["e", parent.id]));
   }
 
-  meta(options: MetaTagOptions) {
-    return this.chain((draft) => setMetaTags(options)(draft));
-  }
-
   /** Creates a reply to a group message */
-  static reply(group: GroupPointer, parent: NostrEvent, content: string): GroupMessageFactory {
+  static reply(
+    group: GroupPointer,
+    parent: NostrEvent,
+    content: string,
+    options?: GroupMessageFactoryOptions,
+  ): GroupMessageFactory {
     return new GroupMessageFactory((res) => res(blankEventTemplate(GROUP_MESSAGE_KIND)))
       .group(group)
       .replyTo(parent)
-      .text(content);
+      .text(content, options);
   }
 }
+
+export type GroupThreadFactoryOptions = TextContentOptions;
 
 /** A factory class for building NIP-29 group thread events (kind 11) */
 export class GroupThreadFactory extends EventFactory<typeof GROUP_THREAD_KIND, GroupThreadTemplate> {
   /** Creates a new group thread event */
-  static create(group: GroupPointer, title: string, content: string): GroupThreadFactory {
+  static create(
+    group: GroupPointer,
+    title: string,
+    content: string,
+    options?: GroupThreadFactoryOptions,
+  ): GroupThreadFactory {
     return new GroupThreadFactory((res) => res(blankEventTemplate(GROUP_THREAD_KIND)))
       .group(group)
       .title(title)
-      .text(content);
+      .text(content, options);
   }
 
   /** Sets the NIP-29 group pointer "h" tag */
@@ -78,10 +89,5 @@ export class GroupThreadFactory extends EventFactory<typeof GROUP_THREAD_KIND, G
   /** Adds multiple hashtags as "t" tags */
   hashtags(hashtags: string[]) {
     return this.chain(includeHashtags(hashtags));
-  }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
   }
 }

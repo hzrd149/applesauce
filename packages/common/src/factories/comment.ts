@@ -1,7 +1,7 @@
 import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { MetaTagOptions } from "applesauce-core/operations/event";
 import { COMMENT_KIND, CommentPointer } from "../helpers/comment.js";
 import { setParent } from "../operations/comment.js";
 import { GroupPointer } from "../helpers/groups.js";
@@ -17,15 +17,16 @@ export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTem
     let factory = new CommentFactory((res) => res(blankEventTemplate(COMMENT_KIND)))
       .parent(parent)
       .text(content, options);
-
-    if (options) factory = factory.meta(options);
+    if (options) factory.meta(options);
     return factory;
   }
 
   /** Creates a new comment that is replying to a parent event or pointer */
   static reply(parent: NostrEvent | CommentPointer, content: string, options?: CommentFactoryOptions): CommentFactory {
-    let factory = new CommentFactory((res) => res(blankEventTemplate(COMMENT_KIND))).parent(parent).text(content);
-    if (options) factory = factory.meta(options);
+    let factory = new CommentFactory((res) => res(blankEventTemplate(COMMENT_KIND)))
+      .parent(parent)
+      .text(content, options);
+    if (options) factory.meta(options);
     return factory;
   }
 
@@ -52,10 +53,5 @@ export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTem
   /** Adds multiple hashtags as "t" tags */
   hashtags(tags: string[]) {
     return this.chain(includeHashtags(tags));
-  }
-
-  /** Sets the meta tags for the comment */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
   }
 }

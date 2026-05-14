@@ -1,11 +1,12 @@
 import { EventOperation } from "applesauce-core/factories";
 import { modifyPublicTags } from "applesauce-core/operations";
+import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
 import { includeSingletonTag } from "applesauce-core/operations/tags";
 import { PollType } from "../helpers/poll.js";
 
-/** Sets the content (poll question/label) for a poll event */
-export function setQuestion(question: string): EventOperation {
-  return (draft) => ({ ...draft, content: question });
+/** Sets the poll question as event content, with hashtag / mention / quote / custom emoji handling */
+export function setQuestion(question: string, options?: TextContentOptions): EventOperation {
+  return setShortTextContent(question, options);
 }
 
 /** Adds an option to a poll with an option ID and label */

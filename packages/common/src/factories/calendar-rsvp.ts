@@ -12,6 +12,7 @@ export class CalendarEventRSVPFactory extends EventFactory<typeof CALENDAR_EVENT
    * Creates a new RSVP factory for a calendar event
    * @param calendarEvent - The calendar event being RSVPed to
    * @param status - The RSVP status (accepted, declined, tentative)
+   * @param relay - Optional relay hint for the calendar event pointer
    */
   static create(
     calendarEvent: NostrEvent | AddressPointer,

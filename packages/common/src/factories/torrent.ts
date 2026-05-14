@@ -1,6 +1,6 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate } from "applesauce-core/helpers";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { MetaTagOptions } from "applesauce-core/operations/event";
 import { TORRENT_KIND, TorrentExternalIdentifier, TorrentFile } from "../helpers/torrent.js";
 import {
   addTorrentExternalIdentifier,
@@ -127,10 +127,5 @@ export class TorrentFactory extends EventFactory<typeof TORRENT_KIND, TorrentTem
       }
       return result;
     });
-  }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain((draft) => setMetaTags(options)(draft));
   }
 }

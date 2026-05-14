@@ -1,6 +1,6 @@
 import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
 import { KnownEventTemplate } from "applesauce-core/helpers";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { MetaTagOptions } from "applesauce-core/operations/event";
 import { ZAP_GOAL_KIND } from "../helpers/zap-goal.js";
 import * as ZapGoal from "../operations/zap-goal.js";
 import { setZapSplit, ZapOptions } from "../operations/zap-split.js";
@@ -60,10 +60,5 @@ export class ZapGoalFactory extends EventFactory<typeof ZAP_GOAL_KIND, ZapGoalTe
   /** Sets the zap split for the zap goal */
   zapSplit(options: ZapOptions) {
     return this.chain(setZapSplit(options, undefined));
-  }
-
-  /** Sets the meta tags for the zap goal */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
   }
 }

@@ -1,6 +1,6 @@
 import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
 import { KnownEventTemplate } from "applesauce-core/helpers";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { MetaTagOptions } from "applesauce-core/operations/event";
 import { CODE_SNIPPET_KIND } from "../helpers/code-snippet.js";
 import {
   addCodeSnippetDependency,
@@ -137,10 +137,5 @@ export class CodeSnippetFactory extends EventFactory<typeof CODE_SNIPPET_KIND, C
   /** Adds multiple hashtags as "t" tags */
   hashtags(tags: string[]) {
     return this.chain(includeHashtags(tags));
-  }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
   }
 }

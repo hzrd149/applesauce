@@ -1,7 +1,6 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { kinds, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { TextContentOptions } from "applesauce-core/operations/content";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
 import { setMessage, setStream } from "../operations/stream-chat.js";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
 
@@ -34,10 +33,5 @@ export class StreamChatMessageFactory extends EventFactory<kinds.LiveChatMessage
   /** Sets the message content */
   message(content: string, options?: TextContentOptions) {
     return this.chain(setMessage(content, options));
-  }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
   }
 }

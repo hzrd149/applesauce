@@ -1,7 +1,6 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate } from "applesauce-core/helpers";
 import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
 import { FileMetadataFields } from "../helpers/file-metadata.js";
 import { PICTURE_POST_KIND } from "../helpers/picture-post.js";
 import { setImageMetadata } from "../operations/picture-post.js";
@@ -9,6 +8,7 @@ import { addMediaAttachments } from "../operations/media-attachment.js";
 import { addHashtag, includeHashtags } from "../operations/hashtags.js";
 
 export type PicturePostTemplate = KnownEventTemplate<typeof PICTURE_POST_KIND>;
+export type PicturePostFactoryOptions = TextContentOptions;
 
 /** A factory class for building kind 20 picture post events */
 export class PicturePostFactory extends EventFactory<typeof PICTURE_POST_KIND, PicturePostTemplate> {
@@ -16,11 +16,16 @@ export class PicturePostFactory extends EventFactory<typeof PICTURE_POST_KIND, P
    * Creates a new picture post factory
    * @param attachments - One or more image attachments
    * @param caption - Optional caption text
+   * @param options - Optional content
    */
-  static create(attachments: FileMetadataFields | FileMetadataFields[], caption?: string): PicturePostFactory {
+  static create(
+    attachments: FileMetadataFields | FileMetadataFields[],
+    caption?: string,
+    options?: PicturePostFactoryOptions,
+  ): PicturePostFactory {
     const list = Array.isArray(attachments) ? attachments : [attachments];
     let factory = new PicturePostFactory((res) => res(blankEventTemplate(PICTURE_POST_KIND))).attachments(list);
-    if (caption) factory = factory.caption(caption);
+    if (caption) factory = factory.caption(caption, options);
     return factory;
   }
 
@@ -47,10 +52,5 @@ export class PicturePostFactory extends EventFactory<typeof PICTURE_POST_KIND, P
   /** Adds multiple hashtags as "t" tags */
   hashtags(tags: string[]) {
     return this.chain(includeHashtags(tags));
-  }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
   }
 }

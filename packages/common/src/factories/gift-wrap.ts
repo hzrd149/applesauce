@@ -20,13 +20,17 @@ export class GiftWrapFactory extends EventFactory<kinds.GiftWrap, KnownEventTemp
     opts?: MetaTagOptions,
   ): Promise<KnownEvent<kinds.GiftWrap>> {
     const _innerEvent = rumor instanceof EventFactory ? await rumor : rumor;
-    return giftWrap(recipient, signer, opts)(_innerEvent as any) as Promise<KnownEvent<kinds.GiftWrap>>;
+    return giftWrap(recipient, signer, { alt: "A gift-wrapped event", ...opts })(_innerEvent) as Promise<
+      KnownEvent<kinds.GiftWrap>
+    >;
   }
 
   /** Sets the inner rumor event of the gift wrap */
   wrapEvent(pubkey: string, event: EventTemplate | Rumor, opts?: MetaTagOptions): this {
     let result: this;
-    result = this.chain(async (_draft) => giftWrap(pubkey, result.signer, opts)(event as any));
+    result = this.chain(async (_draft) =>
+      giftWrap(pubkey, result.signer, { alt: "A gift-wrapped event", ...opts })(event),
+    );
     return result;
   }
 }

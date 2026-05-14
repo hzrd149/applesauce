@@ -2,7 +2,7 @@ import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { EventPointer } from "applesauce-core/helpers/pointers";
 import { setContent } from "applesauce-core/operations/content";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
+import { MetaTagOptions } from "applesauce-core/operations/event";
 import { POLL_RESPONSE_KIND } from "../helpers/poll.js";
 import * as PollResponse from "../operations/poll-response.js";
 
@@ -50,10 +50,5 @@ export class PollResponseFactory extends EventFactory<typeof POLL_RESPONSE_KIND,
   /** Sets an optional comment */
   comment(comment: string) {
     return this.chain((draft) => setContent(comment)(draft));
-  }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain((draft) => setMetaTags(options)(draft));
   }
 }

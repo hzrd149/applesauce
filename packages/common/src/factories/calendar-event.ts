@@ -2,7 +2,6 @@ import { EventFactory, blankEventTemplate, toEventTemplate } from "applesauce-co
 import { isKind, KnownEvent, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
 import { setContent } from "applesauce-core/operations/content";
-import { MetaTagOptions, setMetaTags } from "applesauce-core/operations/event";
 import { includeReplaceableIdentifier } from "applesauce-core/operations/index";
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,
@@ -112,11 +111,6 @@ export class DateBasedCalendarEventFactory extends EventFactory<
   hashtags(hashtags: string[]) {
     return this.chain(includeHashtags(hashtags));
   }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
-  }
 }
 
 /** A factory class for building NIP-52 time-based calendar events (kind 31923) */
@@ -215,10 +209,5 @@ export class TimeBasedCalendarEventFactory extends EventFactory<
   /** Adds multiple hashtags to the calendar event */
   hashtags(hashtags: string[]) {
     return this.chain(includeHashtags(hashtags));
-  }
-
-  /** Sets meta tags */
-  meta(options: MetaTagOptions) {
-    return this.chain(setMetaTags(options));
   }
 }
