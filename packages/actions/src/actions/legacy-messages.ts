@@ -1,11 +1,11 @@
-import { LegacyMessageFactory, LegacyMessageBlueprintOptions } from "applesauce-common/factories";
+import { LegacyMessageFactory } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 
 import { Action } from "../action-runner.js";
 
 /** Sends a legacy NIP-04 message to a recipient */
-export function SendLegacyMessage(recipient: string, message: string, _opts?: LegacyMessageBlueprintOptions): Action {
+export function SendLegacyMessage(recipient: string, message: string): Action {
   return async ({ signer, publish, events }) => {
     if (!signer) throw new Error("Missing signer");
     const signed = await LegacyMessageFactory.create(recipient, message).sign(signer);
@@ -24,11 +24,7 @@ export function SendLegacyMessage(recipient: string, message: string, _opts?: Le
 }
 
 /** Send a reply to a legacy message */
-export function ReplyToLegacyMessage(
-  parent: NostrEvent,
-  message: string,
-  _opts?: LegacyMessageBlueprintOptions,
-): Action {
+export function ReplyToLegacyMessage(parent: NostrEvent, message: string): Action {
   return async ({ signer, publish, events }) => {
     if (!signer) throw new Error("Missing signer");
     if (parent.kind !== kinds.EncryptedDirectMessage)
