@@ -90,17 +90,22 @@ export function loadBackwardBlocks(
 
         // Count returned events so complete set
         let count = 0;
+        let minCreatedAt: number | undefined;
+        const until = cursor;
 
         log?.(`Loading block since:${cursor}`);
 
         // Request the next block of events
-        return request(cursor).pipe(
+        return request(until).pipe(
           tap((event) => {
             count++;
-            // Track the minimum created_at seen from the events
-            cursor = Math.min(event.created_at, cursor ?? Infinity);
+            minCreatedAt = Math.min(event.created_at, minCreatedAt ?? Infinity);
           }),
           finalize(() => {
+            // NIP-01 defines `until` as inclusive. Move past the oldest event in
+            // the block so the next request does not repeat the boundary second.
+            if (minCreatedAt !== undefined) cursor = minCreatedAt - 1;
+
             loading = false;
             complete = count === 0;
 
