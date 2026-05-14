@@ -4,15 +4,14 @@
  * @related simple/profile-editor
  */
 import { castUser, Note, User } from "applesauce-common/casts";
-import { castTimelineStream } from "applesauce-common/observable";
-import { DeleteFactory, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { DeleteFactory, EventStore } from "applesauce-core";
 import { getDisplayName, kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { NostrEvent } from "nostr-tools";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 
@@ -102,25 +101,25 @@ function NotesList({ user }: { user: User }) {
   const [success, setSuccess] = useState(false);
 
   // Load user's kind 1 notes
-  const notes = use$(
-    () =>
-      pool
-        .subscription(
-          // User outboxes or fallback
-          user.outboxes$.pipe(
-            map((outboxes) => outboxes ?? ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"]),
-          ),
-          // Filter for kind 1 notes by the user
-          {
-            kinds: [kinds.ShortTextNote],
-            authors: [user.pubkey],
-            limit: 50,
-          },
-        )
-        // Add events to the event store and convert to timeline
-        .pipe(mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(Note)),
-    [user.pubkey],
-  );
+  useEffect(() => {
+    const sub = pool
+      .subscription(
+        // User outboxes or fallback
+        user.outboxes$.pipe(map((outboxes) => outboxes ?? ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"])),
+        // Filter for kind 1 notes by the user
+        {
+          kinds: [kinds.ShortTextNote],
+          authors: [user.pubkey],
+          limit: 50,
+        },
+        { eventStore },
+      )
+      .subscribe();
+
+    return () => sub.unsubscribe();
+  }, [user.pubkey]);
+
+  const notes = use$(() => user.timeline$({ kinds: [kinds.ShortTextNote], limit: 50 }, Note), [user.pubkey]);
 
   const hasSelection = selectedIds.size > 0;
 

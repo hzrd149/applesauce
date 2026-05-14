@@ -15,6 +15,14 @@ export function removeHashtag(hashtag: string): EventOperation {
   return modifyPublicTags((tags) => tags.filter((t) => t[0] !== "t" || t[1].toLocaleLowerCase() !== cleanTag));
 }
 
+/** Sets all the hashtags on an event. */
+export function setHashtags(hashtags: string[]): EventOperation {
+  return modifyPublicTags((tags) => [
+    ...tags.filter((t) => t[0] !== "t"),
+    ...hashtags.map((hashtag) => ["t", hashtag.toLocaleLowerCase()]),
+  ]);
+}
+
 /** Adds "t" tags for an array of hashtags */
 export function includeHashtags(hashtags: string[]): EventOperation {
   return modifyPublicTags(...hashtags.map((hashtag) => addNameValueTag(["t", hashtag.toLocaleLowerCase()])));

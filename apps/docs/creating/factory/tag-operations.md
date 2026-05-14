@@ -71,7 +71,7 @@ const signed = await EventFactory.fromKind(1)
 
 ## Integration
 
-Tag operations are the main building blocks for list-style factories in `applesauce-common/factories/list.ts`.
+Tag operations are the main building blocks for list-style factories in `applesauce-common/factories/list.ts` and `applesauce-common/factories/relay-lists.ts`.
 
 That keeps methods like `addUser`, `addRelay`, and `addEventItem` short while still reusing the same core helpers.
 

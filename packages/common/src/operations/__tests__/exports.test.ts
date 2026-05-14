@@ -18,6 +18,8 @@ describe("exports", () => {
         "FileMetadata",
         "Geohash",
         "GiftWrap",
+        "GitGraspList",
+        "GitRepository",
         "Group",
         "Hashtags",
         "Highlight",

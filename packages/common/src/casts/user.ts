@@ -4,9 +4,11 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { combineLatest, defer, from, map, MonoTypeOperatorFunction, ReplaySubject, share, switchMap, tap } from "rxjs";
 import { BLOSSOM_SERVER_LIST_KIND, getBlossomServersFromList } from "../helpers/blossom.js";
 import { FAVORITE_EMOJI_PACKS_KIND } from "../helpers/emoji-pack.js";
+import { GIT_GRASP_LIST_KIND } from "../helpers/git-grasp-list.js";
+import { GIT_AUTHORS_KIND, FAVORITE_GIT_REPOS_KIND } from "../helpers/git-lists.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
-import { FAVORITE_RELAYS_KIND } from "../helpers/relay-list.js";
+import { FAVORITE_RELAYS_KIND, LOOKUP_RELAY_LIST_KIND } from "../helpers/relay-list.js";
 import { TRUSTED_PROVIDER_LIST_KIND } from "../helpers/trusted-assertions.js";
 import { castEventStream } from "../observable/cast-stream.js";
 import { ChainableObservable } from "../observable/chainable.js";
@@ -143,6 +145,42 @@ defineGetter("favoriteEmojis$", function (this: User) {
   );
 });
 
+defineGetter("gitAuthors$", function (this: User) {
+  return this.$$ref("gitAuthors$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ GitAuthors }, outboxes]) =>
+        store
+          .replaceable({ kind: GIT_AUTHORS_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(GitAuthors, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("favoriteGitRepos$", function (this: User) {
+  return this.$$ref("favoriteGitRepos", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ FavoriteGitRepos }, outboxes]) =>
+        store
+          .replaceable({ kind: FAVORITE_GIT_REPOS_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(FavoriteGitRepos, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("graspServers$", function (this: User) {
+  return this.$$ref("graspServers$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ GitGraspList }, outboxes]) =>
+        store
+          .replaceable({ kind: GIT_GRASP_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(GitGraspList, store)),
+      ),
+    ),
+  );
+});
+
 defineGetter("searchRelays$", function (this: User) {
   return this.$$ref("searchRelays$", (store) =>
     combineLatest([Circular, this.outboxes$]).pipe(
@@ -150,6 +188,18 @@ defineGetter("searchRelays$", function (this: User) {
         store
           .replaceable({ kind: kinds.SearchRelaysList, pubkey: this.pubkey, relays: outboxes })
           .pipe(castEventStream(SearchRelays, store)),
+      ),
+    ),
+  );
+});
+
+defineGetter("lookupRelayList$", function (this: User) {
+  return this.$$ref("lookupRelayList$", (store) =>
+    combineLatest([Circular, this.outboxes$]).pipe(
+      switchMap(([{ LookupRelayList }, outboxes]) =>
+        store
+          .replaceable({ kind: LOOKUP_RELAY_LIST_KIND, pubkey: this.pubkey, relays: outboxes })
+          .pipe(castEventStream(LookupRelayList, store)),
       ),
     ),
   );
@@ -229,7 +279,11 @@ declare module "applesauce-core/casts" {
     get bookmarks$(): ChainableObservable<import("./bookmarks.js").BookmarksList | undefined>;
     get favoriteEmojis$(): ChainableObservable<import("./favorite-emojis.js").FavoriteEmojis | undefined>;
     get favoriteRelays$(): ChainableObservable<import("./relay-lists.js").FavoriteRelays | undefined>;
+    get gitAuthors$(): ChainableObservable<import("./git-lists.js").GitAuthors | undefined>;
+    get favoriteGitRepos$(): ChainableObservable<import("./git-lists.js").FavoriteGitRepos | undefined>;
+    get graspServers$(): ChainableObservable<import("./git-grasp-list.js").GitGraspList | undefined>;
     get searchRelays$(): ChainableObservable<import("./relay-lists.js").SearchRelays | undefined>;
+    get lookupRelayList$(): ChainableObservable<import("./relay-lists.js").LookupRelayList | undefined>;
     get blockedRelays$(): ChainableObservable<import("./relay-lists.js").BlockedRelays | undefined>;
     get directMessageRelays$(): ChainableObservable<string[] | undefined>;
     get blossomServers$(): ChainableObservable<URL[] | undefined>;
