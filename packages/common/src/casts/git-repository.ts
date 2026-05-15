@@ -1,5 +1,11 @@
+import { castUser, ChainableObservable } from "applesauce-core";
+import { User } from "applesauce-core/casts/user";
 import { getAddressPointerForEvent } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
+import { castEventStream, castTimelineStream } from "applesauce-core/observable/cast-stream";
+import { map, of } from "rxjs";
+
+import { FAVORITE_GIT_REPOS_KIND } from "../helpers/git-lists.js";
 import {
   getGitRepositoryCloneUrls,
   getGitRepositoryDescription,
@@ -15,8 +21,9 @@ import {
   GitRepositoryPointer,
   isValidGitRepository,
 } from "../helpers/git-repository.js";
+import { ReactionsModel } from "../models/reactions.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
-import { castUser } from "applesauce-core";
+import { Reaction } from "./reaction.js";
 
 /** Cast for NIP-34 repository announcement events. */
 export class GitRepository extends EventCast<GitRepositoryEvent> {
@@ -72,5 +79,28 @@ export class GitRepository extends EventCast<GitRepositoryEvent> {
   /** Pointer to the upstream repository this one was forked from, if declared. */
   get upstream() {
     return getGitRepositoryUpstream(this.event);
+  }
+
+  /** Subscribes  the upstream {@link GitRepository} if there is one, otherwise `undefined`. */
+  get upstream$(): ChainableObservable<GitRepository | undefined> {
+    return this.$$ref("upstream$", (store) =>
+      this.upstream ? store.replaceable(this.upstream).pipe(castEventStream(GitRepository)) : of(undefined),
+    );
+  }
+
+  /** Returns a timeline of users who have favorited this git repository */
+  get followers$(): ChainableObservable<User[]> {
+    return this.$$ref("followers$", (store) =>
+      store
+        .timeline({ kinds: [FAVORITE_GIT_REPOS_KIND], "#a": [this.coordinate!] })
+        .pipe(map((events) => events.map((event) => castUser(event, store)))),
+    );
+  }
+
+  /** Returns a timeline of all reactions to this git repository */
+  get reactions$(): ChainableObservable<Reaction[]> {
+    return this.$$ref("reactions$", (store) =>
+      store.model(ReactionsModel, this.event).pipe(castTimelineStream(Reaction, store)),
+    );
   }
 }

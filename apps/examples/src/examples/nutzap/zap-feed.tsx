@@ -103,7 +103,7 @@ function NutzapEvent({ nutzap }: { nutzap: Nutzap }) {
             <p>{zappedEvent.content}</p>
           </div>
         </div>
-      ) : nutzap.pointer ? (
+      ) : nutzap.zapPointer ? (
         <div className="card bg-base-200 shadow-md opacity-50">
           <div className="card-body">
             <div className="flex items-center gap-4">

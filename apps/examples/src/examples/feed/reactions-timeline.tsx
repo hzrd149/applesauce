@@ -61,7 +61,7 @@ function Username({ user }: { user: User }) {
 }
 
 function ReactionEvent({ reaction }: { reaction: Reaction }) {
-  const pointer = reaction.pointer;
+  const pointer = reaction.reactedPointer;
   const reactedTo = use$(reaction.reactedTo$);
   const reactedToUser = useMemo(() => reactedTo && castUser(reactedTo, eventStore), [reactedTo]);
 
@@ -98,7 +98,7 @@ function ReactionEvent({ reaction }: { reaction: Reaction }) {
             <div className="flex items-center gap-4">
               <span className="loading loading-dots loading-lg" />
               <div className="flex flex-col gap-1">
-                <p className="text-sm font-mono">{encodePointer(reaction.pointer)}</p>
+                <p className="text-sm font-mono">{encodePointer(pointer)}</p>
                 {pointer.relays && pointer.relays.length > 0 && (
                   <p className="text-xs text-gray-500">Checking relays: {pointer.relays.join(", ")}</p>
                 )}

@@ -183,12 +183,12 @@ function RepoCard({ pool, event, relayHints }: { pool: RelayPool; event: NostrEv
   const ownerName = getDisplayName(profile, event.pubkey.slice(0, 8) + "...");
   const ownerPicture = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
 
-  const upstream = repo.upstream;
+  const upstream = use$(repo.upstream$);
   const graspServers = useMemo(() => graspServersFromRepoTags(event), [event]);
   const hasRelays = repo.relays.length > 0;
   const hasGrasp = graspServers.length > 0;
 
-  const upstreamPubkey = upstream?.pubkey;
+  const upstreamPubkey = upstream?.author.pubkey;
   const upstreamProfile = use$(
     () => (upstreamPubkey ? eventStore.profile(upstreamPubkey) : undefined),
     [upstreamPubkey ?? ""],
@@ -202,9 +202,9 @@ function RepoCard({ pool, event, relayHints }: { pool: RelayPool; event: NostrEv
   const nostrNaddrUri = `nostr:${naddrEncode(repo.pointer)}`;
 
   const upstreamWorkshopUrl = upstream
-    ? `https://gitworkshop.dev/${npubEncode(upstream.pubkey)}/${encodeURIComponent(upstream.identifier)}`
+    ? `https://gitworkshop.dev/${npubEncode(upstream.author.pubkey)}/${encodeURIComponent(upstream.identifier)}`
     : "";
-  const upstreamNostrNaddrUri = upstream ? `nostr:${naddrEncode(upstream)}` : "";
+  const upstreamNostrNaddrUri = upstream ? `nostr:${naddrEncode(upstream.pointer)}` : "";
 
   const [naddrCopied, setNaddrCopied] = useState(false);
   const [upstreamNaddrCopied, setUpstreamNaddrCopied] = useState(false);

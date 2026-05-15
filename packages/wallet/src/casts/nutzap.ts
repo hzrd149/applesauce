@@ -41,12 +41,12 @@ export class Nutzap extends EventCast<NutzapEvent> {
   }
 
   /** The pointer to the event that was zapped */
-  get pointer() {
+  get zapPointer() {
     return getNutzapAddressPointer(this.event) ?? getNutzapEventPointer(this.event);
   }
 
   /** The event that was zapped */
   get zapped$() {
-    return this.$$ref("zapped$", (store) => (this.pointer ? store.event(this.pointer) : of(undefined)));
+    return this.$$ref("zapped$", (store) => (this.zapPointer ? store.event(this.zapPointer) : of(undefined)));
   }
 }

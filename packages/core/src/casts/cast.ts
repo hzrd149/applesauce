@@ -1,9 +1,6 @@
-import { Observable } from "rxjs";
 import { EventModels, IEventStoreStreams, IEventSubscriptions } from "../event-store/index.js";
-import { getEventUID, getParentEventStore, NostrEvent } from "../helpers/event.js";
-import { getSeenRelays } from "../helpers/relays.js";
-import { chainable, ChainableObservable } from "../observable/chainable.js";
-import { castUser, User } from "./user.js";
+import { getParentEventStore, NostrEvent } from "../helpers/event.js";
+import { EventCast } from "./event.js";
 
 /** The type of event store that is passed to cast references */
 export type CastRefEventStore = IEventSubscriptions & EventModels & IEventStoreStreams;
@@ -40,51 +37,4 @@ export function castEvent<C extends EventCast<NostrEvent>>(
   else casts.set(cls, cast);
 
   return cast;
-}
-
-/** The base class for all casts */
-export class EventCast<T extends NostrEvent = NostrEvent> {
-  get id() {
-    return this.event.id;
-  }
-  get uid() {
-    return getEventUID(this.event);
-  }
-
-  get createdAt() {
-    return new Date(this.event.created_at * 1000);
-  }
-
-  /** Get the {@link User} that authored this event */
-  get author(): User {
-    return castUser(this.event, this.store);
-  }
-
-  /** Return the set of relays this event was seen on */
-  get seen() {
-    return getSeenRelays(this.event);
-  }
-
-  // Enfore kind check in constructor. this will force child classes to verify the event before calling super()
-  constructor(
-    readonly event: T,
-    public readonly store: CastRefEventStore,
-  ) {}
-
-  /** A cache of observable references */
-  #refs: Record<string, ChainableObservable<unknown>> = {};
-
-  /** Internal method for creating a reference */
-  protected $$ref<Return extends unknown>(
-    key: string,
-    builder: (store: CastRefEventStore) => Observable<Return>,
-  ): ChainableObservable<Return> {
-    // Return cached observable
-    if (this.#refs[key]) return this.#refs[key] as ChainableObservable<Return>;
-
-    // Build a new observable and cache it
-    const observable = chainable(builder(this.store));
-    this.#refs[key] = observable;
-    return observable;
-  }
 }

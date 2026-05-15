@@ -247,6 +247,13 @@ export function getReplaceableAddressFromPointer(pointer: AddressPointer): strin
   return pointer.kind + ":" + pointer.pubkey + ":" + pointer.identifier;
 }
 
+/** Returns the replaceable coordinate for a replaceable event ( used for "a" tags to reference replaceable events ). */
+export function getReplaceableAddressForEvent(event: NostrEvent): string | null {
+  if (!isReplaceableKind(event.kind) && !isAddressableKind(event.kind)) return null;
+  const d = getReplaceableIdentifier(event);
+  return event.kind + ":" + event.pubkey + ":" + d;
+}
+
 /** Returns an AddressPointer for a replaceable event. Returns null if the event is not addressable or replaceable. */
 export function getAddressPointerForEvent(event: NostrEvent, relays?: string[]): AddressPointer | null {
   if (!isAddressableKind(event.kind) && !isReplaceableKind(event.kind)) return null;

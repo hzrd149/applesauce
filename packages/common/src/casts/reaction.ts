@@ -36,16 +36,21 @@ export class Reaction extends EventCast<KnownEvent<7>> {
   }
 
   /** Get the pointer (event or address) for the event being reacted to */
-  get pointer() {
+  get reactedPointer() {
     return this.addressPointer || this.eventPointer;
   }
 
   /** Get the event that this reaction is reacting to */
   get reactedTo$() {
     return this.$$ref("reactedTo$", (store) => {
-      const pointer = this.pointer;
+      const pointer = this.reactedPointer;
       if (!pointer) return of(undefined);
       else return store.event(addRelayHintsToPointer(pointer, this.seen));
     });
+  }
+
+  /** Alias for {@link reactedTo$} */
+  get reactedEvent$() {
+    return this.reactedTo$;
   }
 }

@@ -1,4 +1,4 @@
-import { relaySet } from "applesauce-core/helpers";
+import { isHexKey, relaySet } from "applesauce-core/helpers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { getReplaceableIdentifier, getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer } from "applesauce-core/helpers/pointers";
@@ -70,10 +70,13 @@ export function getGitRepositoryEarliestUniqueCommit(event?: NostrEvent): string
   return event.tags.find((tag) => tag[0] === "r" && tag[2] === "euc")?.[1];
 }
 
-/** Returns all recognized maintainer pubkeys. */
+/** Returns all recognized maintainer pubkeys including the author of the repository event. */
 export function getGitRepositoryMaintainers(event?: NostrEvent): string[] {
   if (!isValidGitRepository(event)) return [];
-  return getOrComputeCachedValue(event, GitRepositoryMaintainersSymbol, () => getTagValues(event, "maintainers"));
+  return getOrComputeCachedValue(event, GitRepositoryMaintainersSymbol, () => {
+    const pubkeys = getTagValues(event, "maintainers").filter(isHexKey);
+    return pubkeys.includes(event.pubkey) ? pubkeys : [event.pubkey, ...pubkeys];
+  });
 }
 
 /** Returns repository topic tags (NIP-34: values from each `["t", ...]` tag). */

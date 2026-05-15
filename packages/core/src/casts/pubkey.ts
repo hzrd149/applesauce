@@ -1,5 +1,3 @@
-/** A constructor type for {@link PubkeyCast} subclasses */
-
 import { Observable } from "rxjs";
 import { isEvent, NostrEvent } from "../helpers/event.js";
 import type { ProfilePointer } from "../helpers/pointers.js";

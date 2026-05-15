@@ -1,6 +1,6 @@
 import { map, OperatorFunction } from "rxjs";
 import type { CastConstructor, CastRefEventStore } from "../casts/cast.js";
-import { castEvent, EventCast } from "../casts/cast.js";
+import { castEvent, EventCast } from "../casts/index.js";
 import { NostrEvent } from "../helpers/event.js";
 import { defined } from "./defined.js";
 

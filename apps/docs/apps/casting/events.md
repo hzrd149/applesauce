@@ -196,7 +196,7 @@ reactions.forEach((reaction) => {
   const emoji = reaction.emoji; // Custom emoji if used
   const eventPointer = reaction.eventPointer; // Event pointer
   const addressPointer = reaction.addressPointer; // Address pointer (for replaceable)
-  const pointer = reaction.pointer; // Either event or address pointer
+  const pointer = reaction.reactedPointer; // Either event or address pointer
 });
 
 // Get the reacted event

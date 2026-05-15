@@ -4,9 +4,10 @@ import { NostrEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
 import { nprofileEncode, npubEncode, ProfilePointer } from "../helpers/pointers.js";
 import { chainable, ChainableObservable } from "../observable/chainable.js";
-import type { CastConstructor, CastRefEventStore, EventCast } from "./cast.js";
+import type { CastConstructor, CastRefEventStore } from "./cast.js";
 import { castPubkey, PubkeyCast } from "./pubkey.js";
 import { castTimelineStream } from "../observable/cast-stream.js";
+import { EventCast } from "./event.js";
 
 /** Cast a Nostr event or pointer into a {@link User} */
 export function castUser(event: NostrEvent, store: CastRefEventStore): User;
@@ -20,10 +21,12 @@ export class User extends PubkeyCast {
   /** A global cache of pubkey -> {@link User} */
   static cache = new Map<string, User>();
 
+  /** Returns the NIP-19 npub for this user */
   get npub() {
     return npubEncode(this.pubkey);
   }
 
+  /** Returns the NIP-19 nprofile for this user */
   get nprofile() {
     return nprofileEncode(this.pointer);
   }
