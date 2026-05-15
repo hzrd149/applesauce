@@ -2,7 +2,7 @@ import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { EventStore } from "../../event-store/event-store.js";
-import { EventCast } from "../cast.js";
+import { EventCast } from "../event.js";
 import { castUser, User } from "../user.js";
 
 class KindOneCast extends EventCast {

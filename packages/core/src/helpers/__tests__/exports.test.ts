@@ -120,6 +120,7 @@ describe("exports", () => {
         "getRelaysFromContactsEvent",
         "getRelaysFromDecodeResult",
         "getReplaceableAddress",
+        "getReplaceableAddressForEvent",
         "getReplaceableAddressFromPointer",
         "getReplaceableIdentifier",
         "getReplaceableUID",
