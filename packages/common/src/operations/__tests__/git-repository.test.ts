@@ -159,9 +159,7 @@ describe("git repository operations", () => {
       identifier: "other-repo",
       relays: ["wss://new.relay"],
     })(initial);
-    expect(updated.tags).toEqual([
-      ["u", `${GIT_REPOSITORY_KIND}:${"a".repeat(64)}:other-repo`, "wss://new.relay/"],
-    ]);
+    expect(updated.tags).toEqual([["u", `${GIT_REPOSITORY_KIND}:${"a".repeat(64)}:other-repo`, "wss://new.relay/"]]);
   });
 
   it("removes upstream pointer", async () => {

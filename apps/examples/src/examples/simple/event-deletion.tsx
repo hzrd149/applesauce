@@ -105,7 +105,9 @@ function NotesList({ user }: { user: User }) {
     const sub = pool
       .subscription(
         // User outboxes or fallback
-        user.outboxes$.pipe(map((outboxes) => outboxes ?? ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"])),
+        user.outboxes$.pipe(
+          map((outboxes) => outboxes ?? ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"]),
+        ),
         // Filter for kind 1 notes by the user
         {
           kinds: [kinds.ShortTextNote],
