@@ -153,6 +153,10 @@ Never add drop shadows and avoid using cards, the UI looks better when its simpl
 
 THERE IS NO `.form-control` class.
 
+# Working On Agent Skills
+
+When working in `apps/agent-skills/`, load and follow the `skill-creator` skill recommendations before making changes to skill definitions, generation logic, evaluations, or related documentation.
+
 # Adding Support For A New NIP
 
 Use this checklist whenever we introduce a new NIP-specific feature (e.g., NIP-58 badges) so helpers, casts, operations, and factories ship together and stay consistent.
