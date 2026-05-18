@@ -13,7 +13,7 @@ import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import { BehaviorSubject } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
@@ -78,11 +78,11 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
   const events = useObservableEagerMemo(() => {
     switch (filter) {
       case "locked":
-        return eventStore.model(GiftWrapsModel, pubkey, false).pipe(map((t) => [...t]));
+        return eventStore.model(GiftWrapsModel, pubkey, false);
       case "unlocked":
-        return eventStore.model(GiftWrapsModel, pubkey, true).pipe(map((t) => [...t]));
+        return eventStore.model(GiftWrapsModel, pubkey, true);
       default:
-        return eventStore.model(GiftWrapsModel, pubkey).pipe(map((t) => [...t]));
+        return eventStore.model(GiftWrapsModel, pubkey);
     }
   }, [pubkey, filter]);
 

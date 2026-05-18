@@ -18,7 +18,6 @@ import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { ProfilePointer } from "nostr-tools/nip19";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -181,7 +180,7 @@ export default function PoWNotes() {
   }, [timelineLoader]);
 
   // Get all events from the event store
-  const allEvents = use$(() => eventStore.timeline({ kinds: [1] }).pipe(map((t) => [...t])), []);
+  const allEvents = use$(() => eventStore.timeline({ kinds: [1] }), []);
 
   // Filter and sort events
   const filteredAndSortedEvents = useMemo(() => {

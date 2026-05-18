@@ -80,7 +80,7 @@ The `applesauce-mcp` tool provides semantic search over Applesauce documentation
 
 **Quick Start:** Connect to the public server at `https://mcp.applesauce.build/mcp` in your AI-powered IDE (OpenCode, Cursor, Claude Desktop, etc.)
 
-[Full Documentation](https://applesauce.build/introduction/mcp-server.html) | [Source Code](https://github.com/hzrd149/applesauce-mcp)
+[Full Documentation](https://applesauce.build/introduction/agents.html) | [Source Code](https://github.com/hzrd149/applesauce-mcp)
 
 ## Contributing
 

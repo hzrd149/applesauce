@@ -255,15 +255,10 @@ function SyncedReactions({ pointer, active }: { pointer: EventPointer | null; ac
   const reactions = use$(() => {
     if (!pointer) return of([]);
 
-    return eventStore
-      .timeline({
-        kinds: [kinds.Reaction],
-        "#e": [pointer.id],
-      })
-      .pipe(
-        // Duplicate the timeline array to make react happy
-        map((events) => [...events]),
-      );
+    return eventStore.timeline({
+      kinds: [kinds.Reaction],
+      "#e": [pointer.id],
+    });
   }, [pointer?.id]);
 
   return (

@@ -281,10 +281,7 @@ function AppDataManager({ user }: { user: User }) {
     return () => sub.unsubscribe();
   }, [outboxes?.join("|"), user.pubkey]);
 
-  const events = use$(
-    () => eventStore.timeline({ kinds: [APP_DATA_KIND], authors: [user.pubkey] }).pipe(map((e) => [...e])),
-    [user.pubkey],
-  );
+  const events = use$(() => eventStore.timeline({ kinds: [APP_DATA_KIND], authors: [user.pubkey] }), [user.pubkey]);
 
   const selected = events?.find((e) => e.id === selectedId) ?? null;
 

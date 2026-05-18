@@ -17,8 +17,8 @@ hero:
       text: Examples
       link: https://applesauce.build/examples/
     - theme: alt
-      text: MCP Server
-      link: /introduction/mcp-server
+      text: Agents
+      link: /introduction/agents
     - theme: alt
       text: Migrations
       link: /migration

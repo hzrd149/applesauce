@@ -142,14 +142,7 @@ export default function FeedWithReactions() {
   }, [timeline]);
 
   // Subscribe to the timeline from the event store
-  const feed = use$(
-    () =>
-      eventStore.timeline(filter).pipe(
-        // Duplicate the timeline array to make react happy
-        map((t) => [...t]),
-      ),
-    [filter],
-  );
+  const feed = use$(() => eventStore.timeline(filter), [filter]);
 
   return (
     <div className="container mx-auto my-8 px-4">

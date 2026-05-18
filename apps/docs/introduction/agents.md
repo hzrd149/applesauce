@@ -1,27 +1,52 @@
 ---
-description: Connect AI agents to Applesauce documentation and examples using the MCP server
+description: Connect AI agents to Applesauce documentation, examples, and best practices using the agent skill or MCP server
 ---
 
-# MCP Server
+# Agents
+
+Applesauce provides two ways to help AI coding agents build Nostr applications with accurate package, API, and example context:
+
+- **Agent skill** - Installable guidance and references that travel with your agent environment
+- **MCP server** - Live semantic search over Applesauce documentation and examples
+
+Use the skill for durable Applesauce-specific instructions, and add the MCP server when your agent supports tool-based documentation lookup.
+
+## Agent Skill
+
+The Applesauce agent skill is hosted at:
+
+```txt
+https://applesauce.build/.well-known/agent-skills
+```
+
+Install it with the Skills CLI:
+
+```bash
+npx skills add applesauce.build
+```
+
+The skill gives compatible agents Applesauce-specific context, examples, and workflow guidance. It is the fastest way to make an agent aware of common Applesauce patterns before it starts editing code.
+
+## MCP Server
 
 The Applesauce MCP (Model Context Protocol) server helps AI agents build Nostr applications by providing semantic search over Applesauce documentation and code examples. By integrating this into your AI-powered IDE or coding assistant, your agent gains instant access to comprehensive documentation, real-world examples, and best practices.
 
-## Why Use the MCP Server?
+### Why Use the MCP Server?
 
 - **Reduce hallucinations** - AI agents can verify API usage against actual documentation
 - **Faster development** - Find relevant examples and patterns through natural language queries
 - **Stay current** - Access up-to-date documentation and examples
 - **Better code quality** - Learn from real-world usage patterns
 
-## Quick Start
+### Quick Start
 
 The easiest way to use the MCP server is through the public HTTP endpoint:
 
-```
+```txt
 https://mcp.applesauce.build/mcp
 ```
 
-No installation required! Just configure your IDE to connect to this endpoint.
+No installation required. Just configure your IDE to connect to this endpoint.
 
 If you want to test out the tool manually you can run this command:
 
@@ -29,7 +54,7 @@ If you want to test out the tool manually you can run this command:
 npx @modelcontextprotocol/inspector --server-url https://mcp.applesauce.build/mcp
 ```
 
-## IDE Integration
+### IDE Integration
 
 Configure the MCP server for your preferred IDE:
 
@@ -102,7 +127,7 @@ Configure the MCP server for your preferred IDE:
 - [MCP in Cursor](https://cursor.com/docs/context/mcp)
 - [MCP in Zed](https://zed.dev/docs/ai/mcp)
 
-## Recommended: Install Nostrbook MCP
+### Recommended: Install Nostrbook MCP
 
 For comprehensive Nostr protocol knowledge, we recommend also installing the [Nostrbook MCP server](https://nostrbook.dev/mcp). While Applesauce MCP provides documentation and examples for building with Applesauce, Nostrbook MCP gives agents direct access to NIPs, event kinds, tags, and protocol documentation.
 
@@ -201,23 +226,23 @@ Add Nostrbook MCP alongside Applesauce in your configuration:
 
 See [nostrbook.dev/mcp](https://nostrbook.dev/mcp) for full installation instructions and available tools.
 
-## Available Tools
+### Available Tools
 
 Once configured, AI agents can use these tools:
 
-### Documentation Tools
+#### Documentation Tools
 
 - **`search_docs`** - Semantic search through Applesauce documentation
 - **`list_docs`** - List all available documentation files
 - **`read_docs`** - Read full content of specific documentation files
 
-### Example Code Tools
+#### Example Code Tools
 
 - **`search_examples`** - Search real-world code examples
 - **`list_examples`** - List all available examples
 - **`read_example`** - Read full source code and metadata for examples
 
-## Running Locally
+### Running Locally
 
 For advanced users who want to run the MCP server locally:
 
@@ -250,7 +275,7 @@ docker run -p 3000:3000 applesauce-mcp
 - [Deno](https://deno.land) installed
 - [Ollama](https://ollama.ai) running locally for embeddings
 
-### Custom Embedding Providers
+#### Custom Embedding Providers
 
 The server supports multiple embedding providers (Ollama, OpenAI, OpenRouter, etc.). Configure using environment variables:
 
@@ -267,7 +292,7 @@ export OPENAI_API_KEY=sk-or-v1-your-api-key
 export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-## Source Code
+### Source Code
 
 The MCP server is open source and available on GitHub:
 

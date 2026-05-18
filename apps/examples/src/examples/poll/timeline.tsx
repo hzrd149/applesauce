@@ -23,7 +23,6 @@ import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode, ProfilePointer } from "nostr-tools/nip19";
 import { useEffect, useMemo, useState } from "react";
-import { map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -568,13 +567,7 @@ export default function PollGridApp() {
   );
 
   // Get polls from the event store
-  const polls = use$(
-    () =>
-      eventStore.timeline({ kinds: [POLL_KIND] }).pipe(
-        map((timeline) => [...timeline]), // Create a new array for React
-      ),
-    [],
-  );
+  const polls = use$(() => eventStore.timeline({ kinds: [POLL_KIND] }), []);
 
   if (selectedPoll) {
     return <PollDetails poll={selectedPoll} onBack={() => setSelectedPoll(null)} selectedRelay={selectedRelay} />;

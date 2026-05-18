@@ -23,7 +23,6 @@ import { NostrEvent } from "applesauce-core/helpers";
 import { decode } from "ngeohash";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
-import { map } from "rxjs";
 
 import "leaflet/dist/leaflet.css";
 import RelayPicker from "../../components/relay-picker";
@@ -139,14 +138,9 @@ export default function CalendarMap() {
   // Load calendar events from selected relay (following timeline.tsx pattern)
   const events = use$(
     () =>
-      eventStore
-        .timeline({
-          kinds: [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND],
-        })
-        .pipe(
-          // Duplicate the timeline array to make react happy
-          map((t) => [...t]),
-        ),
+      eventStore.timeline({
+        kinds: [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND],
+      }),
     [relay],
   );
 

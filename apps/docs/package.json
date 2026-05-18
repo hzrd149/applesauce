@@ -8,6 +8,7 @@
     "preview": "vitepress preview"
   },
   "devDependencies": {
+    "applesauce-agent-skills": "workspace:*",
     "vitepress": "^1.6.4"
   },
   "dependencies": {

@@ -18,7 +18,7 @@ import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "nostr-tools/nip19";
 import { useCallback, useMemo, useState } from "react";
-import { catchError, EMPTY, map } from "rxjs";
+import { catchError, EMPTY } from "rxjs";
 
 import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
 
@@ -118,7 +118,7 @@ export default function GiftWrapDashboard() {
   );
 
   // Subscribe to a timeline of gift wrap events
-  const giftWrapEvents = use$(() => eventStore.timeline({ kinds: [kinds.GiftWrap] }).pipe(map((t) => [...t])), []);
+  const giftWrapEvents = use$(() => eventStore.timeline({ kinds: [kinds.GiftWrap] }), []);
 
   // Process events to group by recipient and count
   const recipientStats = useMemo(() => {

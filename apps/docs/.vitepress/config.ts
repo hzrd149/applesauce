@@ -38,7 +38,7 @@ export default defineConfig({
         items: [
           { text: "Getting Started", link: "/introduction/getting-started" },
           { text: "Packages", link: "/introduction/packages" },
-          { text: "MCP Server", link: "/introduction/mcp-server" },
+          { text: "Agents", link: "/introduction/agents" },
           { text: "Glossary", link: "/introduction/glossary" },
         ],
       },

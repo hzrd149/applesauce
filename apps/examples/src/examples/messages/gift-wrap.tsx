@@ -208,10 +208,7 @@ function MessageGroup({ messages, pubkey }: { messages: Rumor[]; pubkey: string 
 function ConversationView({ pubkey, conversation }: { pubkey: string; conversation: string }) {
   // Get all messages for this conversation
   const messages = use$(
-    () =>
-      eventStore
-        .model(WrappedMessagesGroup, pubkey, getConversationParticipants(conversation))
-        .pipe(map((t) => [...t])),
+    () => eventStore.model(WrappedMessagesGroup, pubkey, getConversationParticipants(conversation)),
     [pubkey, conversation],
   );
 

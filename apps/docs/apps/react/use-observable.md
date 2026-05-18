@@ -322,17 +322,11 @@ function Profile({ pubkey }) {
 }
 ```
 
-### 7. Clone Arrays for Timeline Updates
+### 7. Timeline Arrays and React Updates
 
-EventStore returns the same array reference. Clone it to trigger React updates:
+`eventStore.timeline` (and model timelines backed by it) emit a **new array instance** whenever the timeline changes. You can subscribe directly; you do **not** need `map((t) => [...t])` to force React to see updates:
 
 ```tsx
-import { map } from "rxjs";
-
-// ✅ Good - clone array
-const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(map((timeline) => [...timeline])), []);
-
-// ❌ Bad - React may not detect updates
 const notes = use$(() => eventStore.timeline({ kinds: [1] }), []);
 ```
 
