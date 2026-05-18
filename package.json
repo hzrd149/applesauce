@@ -15,21 +15,21 @@
     "docs": "cd apps/docs && pnpm dev"
   },
   "dependencies": {
-    "@changesets/cli": "^2.29.8",
-    "typedoc": "^0.28.16"
+    "@changesets/cli": "^2.31.0",
+    "typedoc": "^0.28.19"
   },
   "devDependencies": {
     "@changesets/changelog-git": "^0.2.1",
     "@changesets/types": "^6.1.0",
     "@hirez_io/observer-spy": "^2.2.0",
-    "@vitest/browser": "^4.0.16",
-    "@vitest/browser-playwright": "^4.0.16",
-    "@vitest/coverage-v8": "^4.0.16",
-    "playwright": "^1.57.0",
-    "prettier": "^3.8.0",
-    "turbo": "^2.7.5",
+    "@vitest/browser": "^4.1.6",
+    "@vitest/browser-playwright": "^4.1.6",
+    "@vitest/coverage-v8": "^4.1.6",
+    "playwright": "^1.60.0",
+    "prettier": "^3.8.3",
+    "turbo": "^2.9.14",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16",
+    "vitest": "^4.1.6",
     "vitest-websocket-mock": "^0.5.0"
   },
   "engines": {
