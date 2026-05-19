@@ -22,7 +22,7 @@ https://applesauce.build/.well-known/agent-skills
 Install it with the Skills CLI:
 
 ```bash
-npx skills add applesauce.build
+npx skills add https://applesauce.build
 ```
 
 The skill gives compatible agents Applesauce-specific context, examples, and workflow guidance. It is the fastest way to make an agent aware of common Applesauce patterns before it starts editing code.
