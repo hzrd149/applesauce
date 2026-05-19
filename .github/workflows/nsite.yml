@@ -1,9 +1,7 @@
 name: Deploy nsite
+
 on:
-  push:
-    branches:
-      - next
-      - master
+  workflow_dispatch:
 
 concurrency:
   group: "nsite"
