@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",
+    "postbuild": "bash scripts/copy-markdown-sources.sh",
     "preview": "vitepress preview"
   },
   "devDependencies": {

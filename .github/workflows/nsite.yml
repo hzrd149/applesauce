@@ -35,8 +35,6 @@ jobs:
 
       - name: Build examples
         run: VITE_BASE=/examples pnpm build --filter applesauce-examples
-      - name: Copy examples
-        run: mkdir -p docs/examples && cp -r apps/examples/dist/* docs/examples
 
       - name: Build agent skills
         run: pnpm --filter applesauce-agent-skills build
@@ -59,6 +57,9 @@ jobs:
         run: |
           mkdir -p docs
           cp -r apps/llms/dist/. docs
+
+      - name: Copy examples
+        run: mkdir -p docs/examples && cp -r apps/examples/dist/* docs/examples
 
       # Pushes to next deploy to the "next" build channel for testing
       - name: Deploy next version
