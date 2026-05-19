@@ -1,5 +1,13 @@
 # applesauce-loaders
 
+## 6.1.0
+
+### Patch Changes
+
+- b03c0d9: Fix timeline backwards loader not handling `until` correctly on filters
+- Updated dependencies
+  - applesauce-core@6.1.0
+
 ## 6.0.0
 
 ### Major Changes

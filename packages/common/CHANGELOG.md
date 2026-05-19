@@ -1,5 +1,26 @@
 # applesauce-common
 
+## 6.1.0
+
+### Minor Changes
+
+- d493ec2: Add `upstream$`, `followers$` and `reactions$` to `GitRepository` cast
+- ae34093: Add support for NIP-51 kind 10086 lookup relay lists
+- 30601a1: Add `User.favoriteGitRepos$` property
+- 30601a1: Add NIP-34 `GitRepositoryFactory`, `GitGraspListFactory`, and `FavoriteGitReposFactory` factories
+- 30601a1: Add NIP-34 `GitRepository`, `GitGraspList`, and `FavoriteGitRepos` casts
+- 30601a1: Add `User.gitAuthors$` property
+- 30601a1: Add `User.graspServers$` property to get users NIP-34 grasp servers
+
+### Patch Changes
+
+- d493ec2: Fix `getGitRepositoryMaintainers` returning invalid pubkeys
+- d493ec2: Rename `Reaction.pointer` to `Reaction.reactedPointer`
+- d493ec2: Fix `getGitRepositoryMaintainers` not including repo event author
+- 5549e74: Fix some factories missing text content options
+- Updated dependencies
+  - applesauce-core@6.1.0
+
 ## 6.0.2
 
 ### Patch Changes

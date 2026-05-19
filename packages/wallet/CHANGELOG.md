@@ -1,5 +1,15 @@
 # applesauce-wallet
 
+## 6.1.0
+
+### Patch Changes
+
+- d493ec2: Clarify naming of `Nutzap.pointer` to `Nutzap.zapPointer`
+- Updated dependencies
+  - applesauce-common@6.1.0
+  - applesauce-core@6.1.0
+  - applesauce-actions@6.1.0
+
 ## 6.0.0
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # applesauce-core
 
+## 6.1.0
+
+### Minor Changes
+
+- d493ec2: Add `replaceableAddress` to `EventCast` to get NIP-01 replaceable address for addressable events
+- d493ec2: Add `pointer` and `kind` to `EventCast`
+- 30601a1: Add `timeline$()` method to base `User` cast
+- d493ec2: Add `getReplaceableAddressForEvent` helper method
+
 ## 6.0.3
 
 ### Patch Changes
