@@ -1,7 +1,7 @@
 import { parseMetadata, type ExampleMetadata } from "./metadata";
 
-const modules = import.meta.glob("./examples/**/*.(tsx|ts)");
-const sources = import.meta.glob("./examples/**/*.(tsx|ts)", { query: "?raw" }) as Record<
+const modules = import.meta.glob(["./examples/**/*.tsx", "./examples/**/*.ts"]);
+const sources = import.meta.glob(["./examples/**/*.tsx", "./examples/**/*.ts"], { query: "?raw" }) as Record<
   string,
   () => Promise<{ default: string }>
 >;
