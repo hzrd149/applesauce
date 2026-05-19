@@ -1,5 +1,14 @@
 # applesauce-actions
 
+## 6.1.0
+
+### Patch Changes
+
+- da5ec22: Fix `SendLegacyMessage` and `ReplyToLegacyMessage` ignoring `expiration` option
+- Updated dependencies
+  - applesauce-common@6.1.0
+  - applesauce-core@6.1.0
+
 ## 6.0.0
 
 ### Patch Changes

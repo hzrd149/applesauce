@@ -130,22 +130,22 @@ importers:
         specifier: ^6.0.0
         version: link:../../packages/accounts
       applesauce-actions:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../../packages/actions
       applesauce-common:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../../packages/common
       applesauce-content:
         specifier: ^6.0.0
         version: link:../../packages/content
       applesauce-core:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../../packages/core
       applesauce-extra:
         specifier: ^6.0.0
         version: link:../../packages/extra
       applesauce-loaders:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../../packages/loaders
       applesauce-react:
         specifier: ^6.0.0
@@ -160,7 +160,7 @@ importers:
         specifier: ^6.0.0
         version: link:../../packages/sqlite
       applesauce-wallet:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../../packages/wallet
       applesauce-wallet-connect:
         specifier: ^6.0.0
@@ -349,10 +349,10 @@ importers:
   packages/actions:
     dependencies:
       applesauce-common:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../common
       applesauce-core:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../core
       rxjs:
         specifier: ^7.8.1
@@ -386,7 +386,7 @@ importers:
         specifier: ^1.2.4
         version: 1.2.6
       applesauce-core:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../core
       hash-sum:
         specifier: ^2.0.0
@@ -559,7 +559,7 @@ importers:
   packages/loaders:
     dependencies:
       applesauce-core:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -764,13 +764,13 @@ importers:
         specifier: ^1.1.12
         version: 1.1.12
       applesauce-actions:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../actions
       applesauce-common:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../common
       applesauce-core:
-        specifier: ^6.0.0
+        specifier: ^6.1.0
         version: link:../core
       rxjs:
         specifier: ^7.8.1

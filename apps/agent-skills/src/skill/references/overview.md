@@ -73,9 +73,7 @@ pool
 import { castTimelineStream } from "applesauce-common/observable";
 import { Note } from "applesauce-common/casts";
 
-const notes$ = eventStore
-  .timeline({ kinds: [1] })
-  .pipe(castTimelineStream(Note, eventStore));
+const notes$ = eventStore.timeline({ kinds: [1] }).pipe(castTimelineStream(Note, eventStore));
 
 notes$.subscribe((notes) => {
   // notes: Note[] — sorted, deduped, kept up to date
@@ -87,25 +85,25 @@ For a pool-side variant, use `mapEventsToStore(eventStore)` from `applesauce-cor
 
 ## When to reach for which package
 
-| You want to...                                                       | Read                                                                       |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Store and react to events                                            | `packages/core.md`                                                         |
-| NIP-10 threads, NIP-22 comments, NIP-57 zaps, NIP-58 badges, etc.    | `packages/common.md`                                                       |
-| Connect to relays                                                    | `packages/relay.md`                                                        |
-| Sign events                                                          | `packages/signers.md`                                                      |
-| Manage user accounts and active session                              | `packages/accounts.md`                                                     |
-| Load events on demand                                                | `packages/loaders.md`                                                      |
-| Mutate lists / sets / profile (follow, mute, bookmark, pin, profile) | `packages/actions.md`                                                      |
-| Send NIP-04 / NIP-17 / NIP-59 messages                               | `packages/actions.md` (`SendLegacyMessage`, `SendWrappedMessage`)          |
+| You want to...                                                       | Read                                                                                                                                        |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Store and react to events                                            | `packages/core.md`                                                                                                                          |
+| NIP-10 threads, NIP-22 comments, NIP-57 zaps, NIP-58 badges, etc.    | `packages/common.md`                                                                                                                        |
+| Connect to relays                                                    | `packages/relay.md`                                                                                                                         |
+| Sign events                                                          | `packages/signers.md`                                                                                                                       |
+| Manage user accounts and active session                              | `packages/accounts.md`                                                                                                                      |
+| Load events on demand                                                | `packages/loaders.md`                                                                                                                       |
+| Mutate lists / sets / profile (follow, mute, bookmark, pin, profile) | `packages/actions.md`                                                                                                                       |
+| Send NIP-04 / NIP-17 / NIP-59 messages                               | `packages/actions.md` (`SendLegacyMessage`, `SendWrappedMessage`)                                                                           |
 | Publish a note / article / reaction / share                          | `packages/common.md` (factory blueprints) + `packages/signers.md` + `packages/relay.md` (`pool.publish`) — there is **no** action for these |
-| Build typed event drafts                                             | `packages/core.md` (`EventFactory`) + `packages/common.md` (NIP blueprints) |
-| Render note content (text, mentions, embeds, hashtags, media)        | `packages/content.md`                                                      |
-| Persist events between sessions (server / desktop / WASM browser)    | `packages/sqlite.md`                                                       |
-| Cache events in the browser (IndexedDB / worker-relay)               | `examples/cache/nostr-idb.md` + `packages/loaders.md` (`cacheRequest`)     |
-| Use from React                                                       | `packages/react.md`                                                        |
-| NIP-60 wallet                                                        | `packages/wallet.md`                                                       |
-| NIP-47 wallet-connect (client or service)                            | `packages/wallet-connect.md`                                               |
-| Primal cache search or Vertex reputation                             | `packages/extra.md`                                                        |
+| Build typed event drafts                                             | `packages/core.md` (`EventFactory`) + `packages/common.md` (NIP blueprints)                                                                 |
+| Render note content (text, mentions, embeds, hashtags, media)        | `packages/content.md`                                                                                                                       |
+| Persist events between sessions (server / desktop / WASM browser)    | `packages/sqlite.md`                                                                                                                        |
+| Cache events in the browser (IndexedDB / worker-relay)               | `examples/cache/nostr-idb.md` + `packages/loaders.md` (`cacheRequest`)                                                                      |
+| Use from React                                                       | `packages/react.md`                                                                                                                         |
+| NIP-60 wallet                                                        | `packages/wallet.md`                                                                                                                        |
+| NIP-47 wallet-connect (client or service)                            | `packages/wallet-connect.md`                                                                                                                |
+| Primal cache search or Vertex reputation                             | `packages/extra.md`                                                                                                                         |
 
 ## Two non-negotiable rules
 

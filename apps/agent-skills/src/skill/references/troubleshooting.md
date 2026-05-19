@@ -98,14 +98,14 @@ The store maintains a sorted timeline by `created_at` descending. If you see a d
 
 `applesauce-sqlite` ships six implementations — pick by environment:
 
-| Subpath                             | Environment                                          |
-| ----------------------------------- | ---------------------------------------------------- |
-| `applesauce-sqlite/better-sqlite3`  | Node, native build (`better-sqlite3` peer dep)       |
-| `applesauce-sqlite/native`          | Node ≥22 (`node:sqlite`); also aliased `/deno`       |
-| `applesauce-sqlite/bun`             | Bun (`bun:sqlite`)                                   |
-| `applesauce-sqlite/libsql`          | LibSQL (async)                                       |
-| `applesauce-sqlite/turso`           | Turso hosted (async)                                 |
-| `applesauce-sqlite/turso-wasm`      | Browser via WASM (async — only browser-side option)  |
+| Subpath                            | Environment                                         |
+| ---------------------------------- | --------------------------------------------------- |
+| `applesauce-sqlite/better-sqlite3` | Node, native build (`better-sqlite3` peer dep)      |
+| `applesauce-sqlite/native`         | Node ≥22 (`node:sqlite`); also aliased `/deno`      |
+| `applesauce-sqlite/bun`            | Bun (`bun:sqlite`)                                  |
+| `applesauce-sqlite/libsql`         | LibSQL (async)                                      |
+| `applesauce-sqlite/turso`          | Turso hosted (async)                                |
+| `applesauce-sqlite/turso-wasm`     | Browser via WASM (async — only browser-side option) |
 
 All async drivers require `AsyncEventStore`, not `EventStore`. Browser apps that just want caching (not a full event database) should use `persistEventsToCache` + `cacheRequest` against `nostr-idb` or similar instead — see `examples/cache/nostr-idb.md`.
 

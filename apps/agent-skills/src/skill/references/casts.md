@@ -1,10 +1,10 @@
 # Casts — Typed Reactive Views over Events and Pubkeys
 
-Read this when you have events in the store (or a pubkey you want to read about) and need to display, traverse, or react to *derived* and *relational* data — author profiles, reply chains, reactions, zaps, contacts, outboxes, bookmarks, etc.
+Read this when you have events in the store (or a pubkey you want to read about) and need to display, traverse, or react to _derived_ and _relational_ data — author profiles, reply chains, reactions, zaps, contacts, outboxes, bookmarks, etc.
 
 ## What casts are (and why)
 
-The relay pool + event store handle **ingestion** (subscribe, dedup, persist, sort). Casts handle **consumption**: they wrap a raw `NostrEvent` (or a `pubkey`) in a typed class whose properties are either *parsed values* or *chainable observables* that walk the event graph for you.
+The relay pool + event store handle **ingestion** (subscribe, dedup, persist, sort). Casts handle **consumption**: they wrap a raw `NostrEvent` (or a `pubkey`) in a typed class whose properties are either _parsed values_ or _chainable observables_ that walk the event graph for you.
 
 > **Most rendering code should never touch raw events.** Cast first, then read.
 
@@ -14,10 +14,11 @@ A `Note` knows it's a `kind: 1`. A `Profile` exposes `displayName`, `picture`, `
 
 Applesauce ships two cast base classes (both in `applesauce-core/casts`, re-exported by `applesauce-common/casts`):
 
-- **`EventCast<T>`** — wraps a `NostrEvent`. The cast is cached *on the event itself* (via a `Symbol`), so `castEvent(event, Note)` returns the same `Note` instance every time. Instances: `Note`, `Article`, `Profile`, `Reaction`, `Comment`, `Share`, `Zap`, `Mutes`, `BookmarksList`, `BadgeAward`, `Stream`, `Report`, `Torrent`, `RelayMonitor`, … (full list: `packages/common.md`).
-- **`PubkeyCast`** — wraps a `ProfilePointer` (`{pubkey, relays?}`). The cast is cached *per pubkey* in a static `Map` on the subclass. Instances: `User` (the only one applesauce ships, but you can subclass for domain-specific pubkey views).
+- **`EventCast<T>`** — wraps a `NostrEvent`. The cast is cached _on the event itself_ (via a `Symbol`), so `castEvent(event, Note)` returns the same `Note` instance every time. Instances: `Note`, `Article`, `Profile`, `Reaction`, `Comment`, `Share`, `Zap`, `Mutes`, `BookmarksList`, `BadgeAward`, `Stream`, `Report`, `Torrent`, `RelayMonitor`, … (full list: `packages/common.md`).
+- **`PubkeyCast`** — wraps a `ProfilePointer` (`{pubkey, relays?}`). The cast is cached _per pubkey_ in a static `Map` on the subclass. Instances: `User` (the only one applesauce ships, but you can subclass for domain-specific pubkey views).
 
 Both classes:
+
 - Accept `(event_or_pointer, store: CastRefEventStore)` in their constructor.
 - Expose a `.store` reference so derived observables can query the store.
 - Provide a `$$ref(key, builder)` helper to cache lazy observables per-instance per-property.
@@ -50,22 +51,22 @@ Casts mix both:
 
 ```ts
 // Synchronous — direct on the event
-note.id              // string
-note.kind            // 1
-note.createdAt       // Date
-note.uid             // string (replaceable address or event id)
-note.isReply         // boolean
-note.references      // NIP-10 root/reply pointers
-note.author          // User (cached via castUser)
+note.id; // string
+note.kind; // 1
+note.createdAt; // Date
+note.uid; // string (replaceable address or event id)
+note.isReply; // boolean
+note.references; // NIP-10 root/reply pointers
+note.author; // User (cached via castUser)
 
 // Reactive — chainable observables (end in `$`)
-note.author.profile$    // ChainableObservable<Profile | undefined>
-note.replyingTo$        // ChainableObservable<NostrEvent | undefined>
-note.replies$           // ChainableObservable<Note[]>
-note.reactions$         // ChainableObservable<Reaction[]>
-note.comments$          // ChainableObservable<Comment[]>
-note.zaps$              // ChainableObservable<Zap[]>
-note.shares$            // ChainableObservable<Share[]>
+note.author.profile$; // ChainableObservable<Profile | undefined>
+note.replyingTo$; // ChainableObservable<NostrEvent | undefined>
+note.replies$; // ChainableObservable<Note[]>
+note.reactions$; // ChainableObservable<Reaction[]>
+note.comments$; // ChainableObservable<Comment[]>
+note.zaps$; // ChainableObservable<Zap[]>
+note.shares$; // ChainableObservable<Share[]>
 ```
 
 The `$`-suffix rule is consistent across the entire surface — if you see it, it's an observable. Memorise it.
@@ -75,19 +76,19 @@ The `$`-suffix rule is consistent across the entire surface — if you see it, i
 Every `EventCast` exposes `.author: User` synchronously. It just calls `castUser(event.pubkey, store)` and caches the result. From there you can walk the user's reactive surface:
 
 ```ts
-note.author.npub                       // string (sync)
-note.author.profile$                   // ChainableObservable<Profile | undefined>
-note.author.profile$.displayName       // ChainableObservable<string | undefined>
-note.author.outboxes$                  // ChainableObservable<string[] | undefined>
-note.author.contacts$                  // ChainableObservable<User[] | undefined>
-note.author.contacts$.length           // ChainableObservable<number | undefined>
+note.author.npub; // string (sync)
+note.author.profile$; // ChainableObservable<Profile | undefined>
+note.author.profile$.displayName; // ChainableObservable<string | undefined>
+note.author.outboxes$; // ChainableObservable<string[] | undefined>
+note.author.contacts$; // ChainableObservable<User[] | undefined>
+note.author.contacts$.length; // ChainableObservable<number | undefined>
 ```
 
 That second-to-last line is the punch line of the chainable system: `note.author.profile$.displayName` is a `ChainableObservable<string>` even though `displayName` is just a plain getter on the `Profile` class. The proxy walks the chain for you and resolves at the leaf.
 
 ## Resolving chainable observables
 
-A `ChainableObservable<T>` *is* an `Observable<T>` — you can `.subscribe()`, `.pipe()`, `firstValueFrom(...)` it like any RxJS observable. The two extras:
+A `ChainableObservable<T>` _is_ an `Observable<T>` — you can `.subscribe()`, `.pipe()`, `firstValueFrom(...)` it like any RxJS observable. The two extras:
 
 ```ts
 // `$first(timeoutMs, fallback?)` — wait for the first non-null/undefined value
@@ -119,33 +120,31 @@ import { Note } from "applesauce-common/casts";
 const note$ = eventStore.event(pointer).pipe(castEventStream(Note, eventStore));
 
 // Timeline → array of casts (invalid kinds silently filtered)
-const notes$ = eventStore
-  .timeline({ kinds: [1] })
-  .pipe(castTimelineStream(Note, eventStore));
+const notes$ = eventStore.timeline({ kinds: [1] }).pipe(castTimelineStream(Note, eventStore));
 ```
 
 These pair naturally with the canonical wiring (see `patterns.md`) and `User.timeline$(filter, Cast)`.
 
 ## The `User` cast — the relational hub
 
-`castUser(pubkey, store)` returns a `User` that exposes the user's whole NIP graph as chainable observables. Many take the user's outboxes into account automatically when querying replaceable lists, so you get the *latest* version even if the store doesn't have it locally yet (assuming a loader is wired — see `patterns.md`).
+`castUser(pubkey, store)` returns a `User` that exposes the user's whole NIP graph as chainable observables. Many take the user's outboxes into account automatically when querying replaceable lists, so you get the _latest_ version even if the store doesn't have it locally yet (assuming a loader is wired — see `patterns.md`).
 
-| Property | Yields | NIP |
-|---|---|---|
-| `npub` / `nprofile` / `pointer` | sync NIP-19 / pointer values | 19 |
-| `profile$` | `Profile \| undefined` (kind 0) | 01 |
-| `contacts$` | `User[]` (kind 3 contacts, each as a cached User) | 02 |
-| `mutes$` | `Mutes \| undefined` (kind 10000) | 51 |
-| `mailboxes$` | `{inboxes, outboxes} \| undefined` | 65 |
-| `outboxes$` / `inboxes$` | `string[] \| undefined` (from `mailboxes$`) | 65 |
-| `bookmarks$` | `BookmarksList \| undefined` | 51 |
-| `favoriteRelays$` / `searchRelays$` / `lookupRelayList$` / `blockedRelays$` | `RelaysList \| undefined` | 51/77/65 |
-| `directMessageRelays$` | `string[] \| undefined` | 17 |
-| `blossomServers$` | `URL[] \| undefined` | (Blossom) |
-| `favoriteEmojis$` | `FavoriteEmojis \| undefined` | 30 |
-| `gitAuthors$` / `favoriteGitRepos$` / `graspServers$` | git lists | 34 |
-| `groups$` | `GroupsList \| undefined` | 29 |
-| `trustedProviders$` | `TrustedProviderList \| undefined` | 87 |
+| Property                                                                    | Yields                                            | NIP       |
+| --------------------------------------------------------------------------- | ------------------------------------------------- | --------- |
+| `npub` / `nprofile` / `pointer`                                             | sync NIP-19 / pointer values                      | 19        |
+| `profile$`                                                                  | `Profile \| undefined` (kind 0)                   | 01        |
+| `contacts$`                                                                 | `User[]` (kind 3 contacts, each as a cached User) | 02        |
+| `mutes$`                                                                    | `Mutes \| undefined` (kind 10000)                 | 51        |
+| `mailboxes$`                                                                | `{inboxes, outboxes} \| undefined`                | 65        |
+| `outboxes$` / `inboxes$`                                                    | `string[] \| undefined` (from `mailboxes$`)       | 65        |
+| `bookmarks$`                                                                | `BookmarksList \| undefined`                      | 51        |
+| `favoriteRelays$` / `searchRelays$` / `lookupRelayList$` / `blockedRelays$` | `RelaysList \| undefined`                         | 51/77/65  |
+| `directMessageRelays$`                                                      | `string[] \| undefined`                           | 17        |
+| `blossomServers$`                                                           | `URL[] \| undefined`                              | (Blossom) |
+| `favoriteEmojis$`                                                           | `FavoriteEmojis \| undefined`                     | 30        |
+| `gitAuthors$` / `favoriteGitRepos$` / `graspServers$`                       | git lists                                         | 34        |
+| `groups$`                                                                   | `GroupsList \| undefined`                         | 29        |
+| `trustedProviders$`                                                         | `TrustedProviderList \| undefined`                | 87        |
 
 Plus methods:
 
@@ -156,7 +155,7 @@ user.timeline$(kindOrFilter)                  // Observable<NostrEvent[]> by aut
 user.timeline$(kindOrFilter, NoteCast)        // Observable<Note[]>
 ```
 
-`user.timeline$(1, Note)` is the cleanest way to get a typed live timeline of *this user's* notes from the store, sorted, deduped, and cast — no manual filter composition.
+`user.timeline$(1, Note)` is the cleanest way to get a typed live timeline of _this user's_ notes from the store, sorted, deduped, and cast — no manual filter composition.
 
 ## Composition patterns
 
@@ -181,10 +180,10 @@ function CommentView({ comment }: { comment: Comment }) {
 }
 ```
 
-### Subscribe to all replies *and* reactions on a note in one component
+### Subscribe to all replies _and_ reactions on a note in one component
 
 ```tsx
-const replies = use$(note.replies$);     // Note[]
+const replies = use$(note.replies$); // Note[]
 const reactions = use$(note.reactions$); // Reaction[]
 // Both auto-update as new events flow into the store.
 ```

@@ -53,10 +53,7 @@ Or, if you want to compose it into a longer pipeline:
 ```ts
 import { mapEventsToStore } from "applesauce-core/observable";
 
-pool
-  .subscription(relays, filter)
-  .pipe(onlyEvents(), mapEventsToStore(eventStore))
-  .subscribe();
+pool.subscription(relays, filter).pipe(onlyEvents(), mapEventsToStore(eventStore)).subscribe();
 ```
 
 Pumping through the store guarantees deduplication, ordering, replaceable resolution, delete handling, and that **every** model/cast/hook sees every event exactly once.
@@ -123,9 +120,7 @@ Loader inventory (`applesauce-loaders/loaders`): `createEventLoader`, `createAdd
 import { ActionRunner } from "applesauce-actions";
 import { FollowUser, MuteUser } from "applesauce-actions/actions";
 
-const runner = new ActionRunner(eventStore, signer, (event, relays) =>
-  pool.publish(relays, event),
-);
+const runner = new ActionRunner(eventStore, signer, (event, relays) => pool.publish(relays, event));
 
 await runner.run(FollowUser, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
 await runner.run(MuteUser, otherPubkey);
@@ -140,9 +135,7 @@ The actions package covers **list/set/profile/metadata management and DMs only**
 ```ts
 import { NoteFactory } from "applesauce-common/factories";
 
-const signed = await NoteFactory.create("Hello #nostr")
-  .addHashtag("applesauce")
-  .sign(signer);
+const signed = await NoteFactory.create("Hello #nostr").addHashtag("applesauce").sign(signer);
 
 await pool.publish(myOutboxes, signed);
 eventStore.add(signed); // optimistic UI
@@ -154,7 +147,7 @@ Replies to a note use `NoteFactory.reply(parentEvent, content)` (validates paren
 
 For custom kinds, subclass `EventFactory<K>`. See `references/packages/core.md` for the base class API.
 
-For publishing to the *right* relays (the author's outboxes, recipients' inboxes), see `references/outbox.md`.
+For publishing to the _right_ relays (the author's outboxes, recipients' inboxes), see `references/outbox.md`.
 
 ## Bridging observables to Promises
 

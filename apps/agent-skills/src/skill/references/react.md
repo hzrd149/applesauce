@@ -17,7 +17,7 @@ import { EventStoreProvider, AccountsProvider, ActionsProvider } from "applesauc
       <App />
     </ActionsProvider>
   </AccountsProvider>
-</EventStoreProvider>
+</EventStoreProvider>;
 ```
 
 Inside the tree, `useEventStore()`, `useAccountManager()`, `useActiveAccount()`, `useActionRunner()` read from these.
@@ -44,7 +44,7 @@ const profile = use$(() => eventStore.profile(pubkey), [pubkey]);
 ## Other commonly-used hooks
 
 - `useEventModel(ModelClass, [args])` — subscribe to a NIP-specific model from `applesauce-common/models`. Handles the factory-with-deps pattern internally.
-- `useObservableMemo(factory, deps)` — like `use$`, but returns the observable's *latest* value across renders rather than subscribing freshly.
+- `useObservableMemo(factory, deps)` — like `use$`, but returns the observable's _latest_ value across renders rather than subscribing freshly.
 - `useObservable(observable)` — bare observable subscription; prefer `use$`.
 - `useObservableEagerState(observable, initial)` — when you need a synchronous initial render value.
 - `useActiveAccount()` / `useAccountManager()` / `useEventStore()` — context accessors.
@@ -53,7 +53,7 @@ const profile = use$(() => eventStore.profile(pubkey), [pubkey]);
 
 ## Timeline observables in React
 
-Timeline observables already emit a *new array* each time the timeline changes, so cloning with `map((t) => [...t])` is unnecessary — React will see the new reference and re-render.
+Timeline observables already emit a _new array_ each time the timeline changes, so cloning with `map((t) => [...t])` is unnecessary — React will see the new reference and re-render.
 
 ```tsx
 const notes = use$(() => eventStore.timeline({ kinds: [1] }), []);
@@ -66,10 +66,7 @@ For typed casts in the list:
 import { castTimelineStream } from "applesauce-common/observable";
 import { Note } from "applesauce-common/casts";
 
-const notes = use$(
-  () => eventStore.timeline({ kinds: [1] }).pipe(castTimelineStream(Note, eventStore)),
-  [],
-);
+const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(castTimelineStream(Note, eventStore)), []);
 ```
 
 ## Render once, no flicker

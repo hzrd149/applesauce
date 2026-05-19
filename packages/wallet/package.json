@@ -1,6 +1,6 @@
 {
   "name": "applesauce-wallet",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -91,9 +91,9 @@
   "dependencies": {
     "@cashu/cashu-ts": "^3.1.1",
     "@gandlaf21/bc-ur": "^1.1.12",
-    "applesauce-actions": "^6.0.0",
-    "applesauce-common": "^6.0.0",
-    "applesauce-core": "^6.0.0",
+    "applesauce-actions": "^6.1.0",
+    "applesauce-common": "^6.1.0",
+    "applesauce-core": "^6.1.0",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
