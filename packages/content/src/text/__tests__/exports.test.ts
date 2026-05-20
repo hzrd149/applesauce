@@ -13,6 +13,7 @@ describe("exports", () => {
         "galleries",
         "getParsedContent",
         "hashtags",
+        "imetaLinks",
         "links",
         "nostrMentions",
         "removeParsedTextContent",
