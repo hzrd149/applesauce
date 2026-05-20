@@ -1,5 +1,14 @@
 # applesauce-content
 
+## 6.1.0
+
+### Minor Changes
+
+- 64c5be2: Add `imeta` tag handling for links in content
+- 58af482: Add opt-in `remarkCashuTokens` transformer at `applesauce-content/markdown/cashu`
+- 58af482: Move lightning invoice parsing to `applesauce-content/text/lightning`
+- 58af482: Move cashu token parsing to `applesauce-content/text/cashu`
+
 ## 6.0.0
 
 ### Minor Changes

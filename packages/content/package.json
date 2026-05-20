@@ -1,6 +1,6 @@
 {
   "name": "applesauce-content",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "description": "Unified plugins for processing event content",
   "type": "module",
   "main": "dist/index.js",
