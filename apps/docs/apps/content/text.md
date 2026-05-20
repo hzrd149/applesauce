@@ -43,9 +43,26 @@ The default transformer pipeline (in order) includes:
 4. `galleries` - Group consecutive images into galleries
 5. `emojis` - Replace `:emoji_code:` with NIP-30 custom emoji tags
 6. `hashtags` - Identify `#hashtags`
-7. `lightningInvoices` - Detect LNBC invoices
-8. `cashuTokens` - Find cashu tokens
-9. `eolMetadata` - Attach end-of-line metadata for rendering
+7. `eolMetadata` - Attach end-of-line metadata for rendering
+
+**Optional Transformers:**
+
+To keep the default bundle lean, transformers that pull in extra dependencies are opt-in. Importing the module by its subpath registers it in the default pipeline as a side effect:
+
+```ts
+// Adds lightning invoice parsing (depends on light-bolt11-decoder)
+import "applesauce-content/text/lightning";
+
+// Adds cashu token parsing (depends on @cashu/cashu-ts — install it as a peer)
+import "applesauce-content/text/cashu";
+
+import { getParsedContent } from "applesauce-content/text";
+
+// `getParsedContent` now produces `lightning` and `cashu` nodes
+const root = getParsedContent(event);
+```
+
+Both `@cashu/cashu-ts` and the bolt11 decoder are declared as optional peers — apps that don't import these modules won't include them in their bundle.
 
 **Custom Transformers:**
 
@@ -218,9 +235,13 @@ const content = useRenderedContent(event, components, {
 });
 ```
 
-### Lightning invoices
+### Lightning invoices (opt-in)
 
-The [`lightningInvoices`](https://applesauce.build/typedoc/functions/applesauce-content.Text.lightningInvoices.html) transformer detects LNBC payment requests.
+The [`lightningInvoices`](https://applesauce.build/typedoc/functions/applesauce-content.Text.lightningInvoices.html) transformer detects LNBC payment requests. Import it explicitly to enable invoice parsing:
+
+```ts
+import "applesauce-content/text/lightning";
+```
 
 ```typescript
 interface LightningInvoice {
@@ -229,9 +250,13 @@ interface LightningInvoice {
 }
 ```
 
-### Cashu tokens
+### Cashu tokens (opt-in)
 
-The [`cashuTokens`](https://applesauce.build/typedoc/functions/applesauce-content.Text.cashuTokens.html) transformer detects Cashu ecash tokens.
+The [`cashuTokens`](https://applesauce.build/typedoc/functions/applesauce-content.Text.cashuTokens.html) transformer detects Cashu ecash tokens. `@cashu/cashu-ts` is an optional peer dependency — install it and import the module to enable parsing:
+
+```ts
+import "applesauce-content/text/cashu";
+```
 
 ```typescript
 interface CashuToken {

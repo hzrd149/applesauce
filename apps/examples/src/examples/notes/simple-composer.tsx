@@ -7,6 +7,8 @@
 import { castUser, User } from "applesauce-common/casts";
 import { NoteFactory } from "applesauce-common/factories";
 import { Link } from "applesauce-content/nast";
+import "applesauce-content/text/cashu";
+import "applesauce-content/text/lightning";
 import { EventStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";

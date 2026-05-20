@@ -1,5 +1,3 @@
-import { type Token } from "@cashu/cashu-ts";
-import { type ParsedInvoice } from "applesauce-common/helpers/bolt11";
 import { type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { type DecodeResult } from "applesauce-core/helpers/pointers";
 import { type Parent, type Node as UnistNode } from "unist";
@@ -32,18 +30,6 @@ export interface Mention extends Node {
   type: "mention";
   decoded: DecodeResult;
   encoded: string;
-}
-
-export interface CashuToken extends Node {
-  type: "cashu";
-  token: Token;
-  raw: string;
-}
-
-export interface LightningInvoice extends Node {
-  type: "lightning";
-  invoice: string;
-  parsed: ParsedInvoice;
 }
 
 export interface Hashtag extends Node {
@@ -84,8 +70,6 @@ export interface ContentMap {
   text: Text;
   link: Link;
   mention: Mention;
-  cashu: CashuToken;
-  lightning: LightningInvoice;
   hashtag: Hashtag;
   emoji: Emoji;
   gallery: Gallery;

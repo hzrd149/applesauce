@@ -98,6 +98,46 @@ const compiled = await compile(mdxContent, {
 });
 ```
 
+## Optional Transformers
+
+### Cashu tokens (opt-in)
+
+Cashu token parsing is exposed under a separate subpath so the default markdown bundle stays free of `@cashu/cashu-ts` (an optional peer dependency). Install `@cashu/cashu-ts` alongside `applesauce-content` and add the plugin to your `remarkPlugins`:
+
+```tsx
+import { remarkCashuTokens } from "applesauce-content/markdown/cashu";
+
+const plugins = [remarkGfm, remarkNostrMentions, remarkCashuTokens];
+```
+
+The transformer produces a standard `link` node whose `data` field carries the decoded token:
+
+```typescript
+interface CashuMdastLink {
+  type: "link";
+  url: string; // `cashu:<raw>`
+  data: { token: Token; raw: string };
+}
+```
+
+Detect cashu links in your `link` component by checking `node.data.token`:
+
+```tsx
+<ReactMarkdown
+  remarkPlugins={plugins}
+  components={{
+    a: ({ node, children, ...props }) => {
+      if (node?.data && "token" in node.data) {
+        return <CashuTokenView token={node.data.token} />;
+      }
+      return <a {...props}>{children}</a>;
+    },
+  }}
+>
+  {content}
+</ReactMarkdown>
+```
+
 ## Advanced Usage
 
 ### Extract Nostr Links from Markdown

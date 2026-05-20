@@ -2,29 +2,28 @@ import { Transformer, unified } from "unified";
 import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { nostrMentions } from "./mentions.js";
-import { cashuTokens } from "./cashu.js";
 import { emojis } from "./emoji.js";
 import { createEventContentTree } from "./parser.js";
 import { Root } from "../nast/types.js";
 import { hashtags } from "./hashtag.js";
 import { galleries } from "./gallery.js";
-import { lightningInvoices } from "./lightning.js";
 import { eolMetadata } from "../nast/eol-metadata.js";
 import { links } from "./links.js";
 import { blossomURIs } from "./blossom.js";
 
 export const TextNoteContentSymbol = Symbol.for("text-note-content");
 
-// default kind 1 transformers
-export const textNoteTransformers = [
+// default kind 1 transformers. Optional transformers (like `cashuTokens` and
+// `lightningInvoices`) opt in by appending to this array when their module is
+// imported — see `applesauce-content/text/cashu` and
+// `applesauce-content/text/lightning`.
+export const textNoteTransformers: (() => Transformer<Root>)[] = [
   blossomURIs,
   links,
   nostrMentions,
   galleries,
   emojis,
   hashtags,
-  lightningInvoices,
-  cashuTokens,
   eolMetadata,
 ];
 

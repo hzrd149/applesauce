@@ -145,6 +145,15 @@ Before completing documentation work:
 3. Ensure navigation is updated in VitePress config
 4. Confirm no duplicate or orphaned files remain
 
+# Writing Changesets
+
+Each changeset file in `.changeset/` MUST describe exactly **one** change, and the body MUST be a **single sentence of markdown**. No bullet lists, no code blocks, no multiple paragraphs, no examples — just the sentence.
+
+- ✅ `Make cashu token parsing optional`
+- ❌ A body with bullets, code fences, or "this change does X and Y"
+
+If a piece of work introduces multiple distinct changes, create one changeset file per change. Pick the smallest applicable bump (`patch` / `minor` / `major`) per package in the frontmatter.
+
 # Building examples
 
 Never add drop shadows and avoid using cards, the UI looks better when its simple, clean and uses borders.

@@ -9,6 +9,8 @@ import { Note } from "applesauce-common/casts";
 import "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
 import type { BlossomURI, Gallery, Link } from "applesauce-content/nast";
+import "applesauce-content/text/cashu";
+import "applesauce-content/text/lightning";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isStreamURL, isVideoURL } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";

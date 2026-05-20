@@ -46,14 +46,23 @@
       "require": "./dist/markdown/index.js",
       "types": "./dist/markdown/index.d.ts"
     },
+    "./markdown/*": {
+      "import": "./dist/markdown/*.js",
+      "require": "./dist/markdown/*.js",
+      "types": "./dist/markdown/*.d.ts"
+    },
     "./text": {
       "import": "./dist/text/index.js",
       "require": "./dist/text/index.js",
       "types": "./dist/text/index.d.ts"
+    },
+    "./text/*": {
+      "import": "./dist/text/*.js",
+      "require": "./dist/text/*.js",
+      "types": "./dist/text/*.d.ts"
     }
   },
   "dependencies": {
-    "@cashu/cashu-ts": "^3.1.1",
     "@types/hast": "^3.0.4",
     "@types/mdast": "^4.0.4",
     "@types/unist": "^3.0.3",
@@ -66,10 +75,19 @@
     "unist-util-visit-parents": "^6.0.1"
   },
   "devDependencies": {
+    "@cashu/cashu-ts": "^3.1.1",
     "applesauce-signers": "^6.0.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vitest": "^4.0.15"
+  },
+  "peerDependencies": {
+    "@cashu/cashu-ts": "^3.1.1"
+  },
+  "peerDependenciesMeta": {
+    "@cashu/cashu-ts": {
+      "optional": true
+    }
   },
   "funding": {
     "type": "lightning",

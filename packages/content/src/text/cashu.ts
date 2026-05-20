@@ -1,8 +1,22 @@
-import { getDecodedToken } from "@cashu/cashu-ts";
+import { getDecodedToken, type Token } from "@cashu/cashu-ts";
 import { Tokens } from "applesauce-core/helpers/regexp";
 import { Transformer } from "unified";
+
 import { findAndReplace } from "../nast/find-and-replace.js";
-import { Root } from "../nast/types.js";
+import { Node, Root } from "../nast/types.js";
+import { textNoteTransformers } from "./content.js";
+
+export interface CashuToken extends Node {
+  type: "cashu";
+  token: Token;
+  raw: string;
+}
+
+declare module "../nast/types.js" {
+  interface ContentMap {
+    cashu: CashuToken;
+  }
+}
 
 /** Parse cashu tokens from an ATS tree */
 export function cashuTokens(): Transformer<Root> {
@@ -26,4 +40,11 @@ export function cashuTokens(): Transformer<Root> {
       ],
     ]);
   };
+}
+
+// Register the cashu transformer in the default text-note pipeline as a side
+// effect of importing this module. Consumers opt-in to cashu support by
+// importing `applesauce-content/text/cashu`.
+if (!textNoteTransformers.includes(cashuTokens)) {
+  textNoteTransformers.push(cashuTokens);
 }
