@@ -58,6 +58,7 @@
     "parse-torrent": "^11.0.19",
     "pastellify": "^0.1.4",
     "react": "^18.3.1",
+    "react-blurhash": "^0.3.0",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^18.3.1",
     "react-error-boundary": "^6.0.1",

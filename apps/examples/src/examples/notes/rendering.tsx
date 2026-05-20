@@ -9,8 +9,6 @@ import { Note } from "applesauce-common/casts";
 import "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
 import type { BlossomURI, Gallery, Link } from "applesauce-content/nast";
-import "applesauce-content/text/cashu";
-import "applesauce-content/text/lightning";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isStreamURL, isVideoURL } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -20,8 +18,14 @@ import { Actions, handleBrokenMedia } from "blossom-client-sdk";
 import { createBlossomHlsLoaders } from "blossom-client-sdk/hls";
 import Hls from "hls.js";
 import { decode, EventPointer } from "nostr-tools/nip19";
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Blurhash } from "react-blurhash";
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { firstValueFrom, merge, take, timeout } from "rxjs";
+
+// Export extra token types to parse
+import "applesauce-content/text/cashu";
+import "applesauce-content/text/imeta";
+import "applesauce-content/text/lightning";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -114,6 +118,88 @@ async function getBlossomServersForPubkey(pubkey?: string) {
   return firstValueFrom(eventStore.blossomServers({ pubkey }).pipe(defined(), take(1), timeout(5000)));
 }
 
+/**
+ * Scales a NIP-94 `dim` value (e.g. `"800x600"`) to fit within `maxW`/`maxH` while preserving
+ * aspect ratio. Returns intrinsic pixel dimensions so the placeholder occupies the same box
+ * the real `<img>`/`<video>` would once loaded.
+ */
+function fitMediaDimensions(dim: string | undefined, maxW = 384, maxH = 256) {
+  if (!dim) return undefined;
+  const match = dim.match(/^(\d+)x(\d+)$/);
+  if (!match) return undefined;
+  const w = parseInt(match[1], 10);
+  const h = parseInt(match[2], 10);
+  if (!w || !h) return undefined;
+  const scale = Math.min(maxW / w, maxH / h, 1);
+  return { width: Math.round(w * scale), height: Math.round(h * scale) };
+}
+
+/** A blurhash placeholder button — clicking calls `onReveal` to swap in the real media element. */
+function BlurhashPlaceholder({
+  blurhash,
+  dim,
+  label,
+  onReveal,
+}: {
+  blurhash: string;
+  dim?: string;
+  label: string;
+  onReveal: () => void;
+}) {
+  const size = fitMediaDimensions(dim);
+  const style: CSSProperties = size
+    ? { width: size.width, height: size.height, maxWidth: "100%" }
+    : { width: 192, height: 192 };
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onReveal();
+      }}
+      aria-label={label}
+      className="relative block overflow-hidden rounded cursor-pointer"
+      style={style}
+    >
+      <Blurhash hash={blurhash} width="100%" height="100%" punch={1} />
+      <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-white drop-shadow">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+/** Renders a blurhash placeholder first; on click, swaps in the real `<img>`. */
+function BlurhashImage({ src, blurhash, dim, alt }: { src: string; blurhash?: string; dim?: string; alt?: string }) {
+  const [revealed, setRevealed] = useState(!blurhash);
+  if (!revealed && blurhash)
+    return (
+      <BlurhashPlaceholder blurhash={blurhash} dim={dim} label="Tap to load image" onReveal={() => setRevealed(true)} />
+    );
+  return <img src={src} alt={alt ?? "Image"} loading="lazy" className="max-h-64 rounded" />;
+}
+
+/** Renders a blurhash placeholder first; on click, swaps in the real `<video>` element. */
+function BlurhashVideo({
+  src,
+  blurhash,
+  dim,
+  poster,
+}: {
+  src: string;
+  blurhash?: string;
+  dim?: string;
+  poster?: string;
+}) {
+  const [revealed, setRevealed] = useState(!blurhash);
+  if (!revealed && blurhash)
+    return (
+      <BlurhashPlaceholder blurhash={blurhash} dim={dim} label="Tap to load video" onReveal={() => setRevealed(true)} />
+    );
+  return <video src={src} poster={poster} className="max-h-64 rounded" controls playsInline autoPlay={!!blurhash} />;
+}
+
 function LinkRenderer({ node: link }: { node: Link }) {
   const authorPubkey = useNoteAuthorPubkey();
   if (isStreamURL(link.href))
@@ -127,11 +213,24 @@ function LinkRenderer({ node: link }: { node: Link }) {
     );
   if (isImageURL(link.href))
     return (
-      <a href={link.href} target="_blank">
-        <img src={link.href} className="max-h-64 rounded" alt="Gallery image" />
+      <a href={link.href} target="_blank" rel="noopener noreferrer">
+        <BlurhashImage
+          src={link.href}
+          blurhash={link.metadata?.blurhash}
+          dim={link.metadata?.dimensions}
+          alt={link.metadata?.alt}
+        />
       </a>
     );
-  else if (isVideoURL(link.href)) return <video src={link.href} className="max-h-64 rounded" controls />;
+  else if (isVideoURL(link.href))
+    return (
+      <BlurhashVideo
+        src={link.href}
+        blurhash={link.metadata?.blurhash}
+        dim={link.metadata?.dimensions}
+        poster={link.metadata?.thumbnail || link.metadata?.image}
+      />
+    );
   else if (isAudioURL(link.href)) return <audio src={link.href} className="max-h-64 rounded" controls />;
   else
     return (
@@ -223,6 +322,7 @@ const examples: EventPointer[] = [
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qg3waehxw309ahx7um5wgh8w6twv5hsqgqtlsc3aun67vuehq8uun4fmsqy4r7tnemg05c7p7f0tryma5e42cdyfdnq",
   "nevent1qvzqqqqqqypzqxh4f92ex6lgqnu4qyry06j6mfw8vfldmurnfflczwa6pcc7aktqqy2hwumn8ghj7mn0wd68ytn00p68ytnyv4mz7qg4waehxw309aex2mrp0yhxgctdw4eju6t09uqzq5uj68wa0cgqwak43wtalf35ypclethsmmmrnn7u926fwwpy9fw58geyf6",
   "nostr:nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qg3waehxw309ahx7um5wgh8w6twv5hsqgzvn5uf7uws838qmljmlfl7mpll82tvwrnkdr8t0nn9j3zgmvtwvvmf8c6g",
+  "nostr:nevent1qvzqqqqqqypzph4t08d058ptuj62d5av5y6hkm92pd6yhar26556ttjxg2y908ngqyghwumn8ghj7mn0wd68ytnhd9hx2tcpzemhxue69uhkummnw3ex2mrfw3jhxtn0wfnj7qpqd4hr5dshxsyv3axesxc0cekyw9w6n6wkclfy3h8x5f9vw7nzuvfs55ax0x",
   "nevent1qqsfhafvv705g5wt8rcaytkj6shsshw3dwgamgfe3za8knk0uq4yesgpzpmhxue69uhkummnw3ezuamfdejszrthwden5te0dehhxtnvdakqsrnltk",
   "nevent1qvzqqqqqqypzp22rfmsktmgpk2rtan7zwu00zuzax5maq5dnsu5g3xxvqr2u3pd7qyghwumn8ghj7mn0wd68ytnhd9hx2tcpzamhxue69uhhyetvv9ujumn0wd68ytnzv9hxgtcqyqtplwkqnp05239mvxmpewhtkhtq3fvljp7kqlxduzvz9pqryhtacxpum48",
   "nostr:nevent1qvzqqqqqqypzqlchwur26ms2af66nce5tk0lmtn8vah6lujfhejhkktrwhsua5u3qyw8wumn8ghj7un9d3shjtnzd96xxmmfdecxzunt9e3k7mf0qyd8wumn8ghj7um9dejxjapwdehhxenvv9ex2tnrdakj7qpqt4cvpzntvc6cqxz28220fqshttgwlnyqf0k4vaen4ff9elu8gq6qhxzmxa",

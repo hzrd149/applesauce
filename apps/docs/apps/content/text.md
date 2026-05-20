@@ -45,24 +45,7 @@ The default transformer pipeline (in order) includes:
 6. `hashtags` - Identify `#hashtags`
 7. `eolMetadata` - Attach end-of-line metadata for rendering
 
-**Optional Transformers:**
-
-To keep the default bundle lean, transformers that pull in extra dependencies are opt-in. Importing the module by its subpath registers it in the default pipeline as a side effect:
-
-```ts
-// Adds lightning invoice parsing (depends on light-bolt11-decoder)
-import "applesauce-content/text/lightning";
-
-// Adds cashu token parsing (depends on @cashu/cashu-ts — install it as a peer)
-import "applesauce-content/text/cashu";
-
-import { getParsedContent } from "applesauce-content/text";
-
-// `getParsedContent` now produces `lightning` and `cashu` nodes
-const root = getParsedContent(event);
-```
-
-Both `@cashu/cashu-ts` and the bolt11 decoder are declared as optional peers — apps that don't import these modules won't include them in their bundle.
+See [Optional Transformers](#optional-transformers) below for opt-in transformers like `lightning` and `cashu`.
 
 **Custom Transformers:**
 
@@ -235,9 +218,26 @@ const content = useRenderedContent(event, components, {
 });
 ```
 
-### Lightning invoices (opt-in)
+## Optional Transformers
 
-The [`lightningInvoices`](https://applesauce.build/typedoc/functions/applesauce-content.Text.lightningInvoices.html) transformer detects LNBC payment requests. Import it explicitly to enable invoice parsing:
+Some transformers pull in extra dependencies and are kept out of the default pipeline to keep the bundle lean. Importing the module by its subpath registers the transformer in the default pipeline as a side effect — there's no need to pass it to `getParsedContent` manually.
+
+```ts
+// Adds bolt11 lightning invoice parsing
+import "applesauce-content/text/lightning";
+
+// Adds cashu token parsing
+import "applesauce-content/text/cashu";
+
+import { getParsedContent } from "applesauce-content/text";
+
+// `getParsedContent` now produces `lightning` and `cashu` nodes
+const root = getParsedContent(event);
+```
+
+### Lightning invoices
+
+The [`lightningInvoices`](https://applesauce.build/typedoc/functions/applesauce-content.Text.lightningInvoices.html) transformer detects bolt11 LNBC payment requests. The `light-bolt11-decoder` dependency ships with `applesauce-common`; the transformer itself is only registered when its module is imported.
 
 ```ts
 import "applesauce-content/text/lightning";
@@ -250,9 +250,9 @@ interface LightningInvoice {
 }
 ```
 
-### Cashu tokens (opt-in)
+### Cashu tokens
 
-The [`cashuTokens`](https://applesauce.build/typedoc/functions/applesauce-content.Text.cashuTokens.html) transformer detects Cashu ecash tokens. `@cashu/cashu-ts` is an optional peer dependency — install it and import the module to enable parsing:
+The [`cashuTokens`](https://applesauce.build/typedoc/functions/applesauce-content.Text.cashuTokens.html) transformer detects Cashu ecash tokens. `@cashu/cashu-ts` is declared as an optional peer dependency — install it alongside the import to enable parsing.
 
 ```ts
 import "applesauce-content/text/cashu";
@@ -264,6 +264,102 @@ interface CashuToken {
   raw: string; // Full token string (cashuA...)
 }
 ```
+
+## Extending the Parser
+
+The parser is a [unified](https://unifiedjs.com) pipeline of transformers. Each transformer walks the NAST tree, finds `text` nodes that match a pattern, and replaces them with a richer node type. You can add your own transformer to detect new tokens, swap out a built-in one, or modify nodes after they've been created.
+
+### Adding a New Token
+
+Three steps: declare the node type, write the transformer, render it.
+
+**1. Declare the node type** and augment the `ContentMap` so TypeScript knows about it:
+
+```ts
+import { Node } from "applesauce-content/nast";
+
+export interface BitcoinAddress extends Node {
+  type: "bitcoin";
+  address: string;
+}
+
+declare module "applesauce-content/nast" {
+  interface ContentMap {
+    bitcoin: BitcoinAddress;
+  }
+}
+```
+
+**2. Write the transformer** using `findAndReplace` to swap matching `text` nodes for your new node:
+
+```ts
+import { findAndReplace } from "applesauce-content/nast";
+import { Transformer } from "unified";
+
+const BITCOIN = /\b(bc1[a-z0-9]{6,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})\b/g;
+
+export function bitcoinAddresses(): Transformer<Root> {
+  return (tree) => {
+    findAndReplace(tree, [[BITCOIN, (match: string) => ({ type: "bitcoin", address: match })]]);
+  };
+}
+```
+
+Return `false` from the replace function to skip a match (e.g. validation failed) and leave the original text in place — see `hashtags` for an example.
+
+**3. Wire it into the pipeline** either by passing it to `getParsedContent` or by appending to `textNoteTransformers` so it runs by default:
+
+```ts
+import { textNoteTransformers } from "applesauce-content/text";
+
+if (!textNoteTransformers.includes(bitcoinAddresses)) {
+  textNoteTransformers.push(bitcoinAddresses);
+}
+```
+
+Side-effect registration is how the optional `lightning` and `cashu` modules opt themselves in — consumers enable parsing by importing `your-package/bitcoin`.
+
+**4. Render it** by adding a component for the new node `type`:
+
+```tsx
+const components: ComponentMap = {
+  bitcoin: ({ node }) => <code className="text-orange-500">{node.address}</code>,
+};
+
+const content = useRenderedContent(event, components);
+```
+
+### Modifying Existing Nodes
+
+A transformer doesn't have to use `findAndReplace` — it can walk the tree and mutate nodes that earlier transformers produced. Useful for enriching link nodes, attaching metadata, or normalizing values:
+
+```ts
+import { visit } from "unist-util-visit";
+
+function annotateLinks(): Transformer<Root> {
+  return (tree) => {
+    visit(tree, "link", (node) => {
+      node.href = node.href.replace(/^http:/, "https:");
+    });
+  };
+}
+```
+
+Order matters: list this after `links` in your transformer array so the link nodes exist by the time it runs.
+
+### Replacing a Built-in Transformer
+
+Pass your own array to `getParsedContent` (or `useRenderedContent`) to fully control which transformers run and in what order:
+
+```ts
+import { links, nostrMentions, hashtags } from "applesauce-content/text";
+
+const content = useRenderedContent(event, components, {
+  transformers: [links, customGalleries, nostrMentions, hashtags],
+});
+```
+
+Use a custom `cacheKey` (or `null` to disable caching) when overriding transformers — otherwise results may collide with the default kind-1 cache. See [Caching](#caching) above.
 
 ## Media Detection
 
@@ -300,26 +396,37 @@ interface Hashtag {
   type: "hashtag";
   hashtag: string;
   name: string;
-  tag?: string[];
+  tag?: ["t", ...string[]];
 }
 interface Emoji {
   type: "emoji";
   code: string;
   url: string;
   raw: string;
-  tag: string[];
+  tag: ["emoji", ...string[]];
 }
 interface Gallery {
   type: "gallery";
   links: string[];
 }
+interface BlossomURI {
+  type: "blossom";
+  raw: string;
+  sha256: string;
+  ext: string;
+  size?: number;
+  servers: string[];
+  authors: string[];
+}
 interface LightningInvoice {
   type: "lightning";
   invoice: string;
+  parsed: ParsedInvoice;
 }
 interface CashuToken {
   type: "cashu";
   raw: string;
+  token: Token;
 }
 ```
 
@@ -407,84 +514,6 @@ const content = useRenderedContent(event, components, {
 });
 ```
 
-## Integration
-
-### With EventStore
-
-Content rendering integrates with EventStore for loading referenced events:
-
-```tsx
-import { use$ } from "applesauce-react/hooks";
-
-function NoteWithReplies({ eventId }) {
-  // Load the event
-  const note = use$(() => eventStore.event(eventId).pipe(castEventStream(Note, eventStore)), [eventId]);
-
-  // Render its content
-  const content = useRenderedContent(note?.event, components);
-
-  // Load and render replies
-  const replies = use$(note?.replies$);
-
-  return (
-    <div>
-      <div>{content}</div>
-      {replies?.map((reply) => (
-        <div key={reply.id}>{useRenderedContent(reply.event, components)}</div>
-      ))}
-    </div>
-  );
-}
-```
-
-### With Cast Events
-
-Cast event classes provide convenient access to author profiles:
-
-```tsx
-import { Note } from "applesauce-common/casts";
-
-function NoteCard({ note }: { note: Note }) {
-  const profile = use$(note.author.profile$);
-  const content = useRenderedContent(note.event, components);
-
-  return (
-    <div>
-      <div className="flex items-center gap-2">
-        <img src={profile?.picture} className="w-10 h-10 rounded-full" />
-        <span>{profile?.displayName || note.author.npub}</span>
-      </div>
-      <div>{content}</div>
-    </div>
-  );
-}
-```
-
-### With Event Loaders
-
-Set up event loaders to automatically fetch mentioned events:
-
-```tsx
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-
-// Setup loader for automatic loading
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/"],
-});
-
-// Now mentions will auto-load their target events
-const components: ComponentMap = {
-  mention: ({ node }) => {
-    if (node.decoded.type === "npub") {
-      // Profile will load automatically
-      const profile = use$(() => eventStore.profile(node.decoded.data.pubkey), [node.decoded.data.pubkey]);
-      return <span>@{profile?.displayName || "loading..."}</span>;
-    }
-    return <span>@{node.encoded.slice(0, 8)}...</span>;
-  },
-};
-```
-
 ## Best Practices
 
 ### Memoize ComponentMap
@@ -543,36 +572,6 @@ link: ({ node }) => (
 ),
 ```
 
-### Preserve Whitespace
-
-Use CSS to preserve line breaks:
-
-```tsx
-<div className="whitespace-pre-wrap overflow-hidden break-words">{content}</div>
-```
-
-### Interactive Components
-
-Create interactive components with click handlers:
-
-```tsx
-function NoteContent({ event, onHashtagClick }) {
-  const components = useMemo<ComponentMap>(
-    () => ({
-      text: ({ node }) => <span>{node.value}</span>,
-      hashtag: ({ node }) => (
-        <button onClick={() => onHashtagClick(node.hashtag)} className="text-orange-500 hover:underline cursor-pointer">
-          #{node.hashtag}
-        </button>
-      ),
-    }),
-    [onHashtagClick],
-  );
-
-  return <div>{useRenderedContent(event, components)}</div>;
-}
-```
-
 ### Content Length Limits
 
 For preview cards or feed items, truncate content:
@@ -590,20 +589,5 @@ if (root.truncated) {
       <button onClick={onShowFull}>Read more</button>
     </>
   );
-}
-```
-
-### Validate Event Structure
-
-Check for required data before rendering:
-
-```tsx
-function NoteContent({ event }) {
-  if (!event || !event.content) {
-    return <div className="text-base-content/50">No content</div>;
-  }
-
-  const content = useRenderedContent(event, components);
-  return <div>{content}</div>;
 }
 ```
