@@ -22,60 +22,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
+  build:
+    uses: ./.github/workflows/_build-site.yml
+    with:
+      vitepress-base: "/"
+
   deploy:
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Download site
+        uses: actions/download-artifact@v4
         with:
-          node-version: 22
-          cache: "pnpm"
+          name: site
 
-      - name: Install Dependencies
-        run: pnpm install
-
-      - name: Build
-        run: pnpm build
-
-      - name: Build typedoc
-        run: pnpm typedoc
-
-      - name: Build examples
-        run: VITE_BASE=/examples pnpm build --filter applesauce-examples
-
-      - name: Build agent skills
-        run: pnpm --filter applesauce-agent-skills build
-
-      - name: Build vitepress
-        run: VITE_BASE=/ pnpm build --filter applesauce-docs
-
-      - name: Copy vitepress
-        run: cp -r apps/docs/.vitepress/dist/. docs
-
-      - name: Copy agent skills
-        run: |
-          mkdir -p docs/.well-known
-          cp -r apps/agent-skills/dist/.well-known/. docs/.well-known
-
-      - name: Build llms bundle
-        run: pnpm build --filter applesauce-llms
-
-      - name: Copy llms bundle
-        run: |
-          mkdir -p docs
-          cp -r apps/llms/dist/. docs
-
-      - name: Copy examples
-        run: mkdir -p docs/examples && cp -r apps/examples/dist/* docs/examples
+      - name: Extract site
+        run: tar -xf site.tar && rm site.tar
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

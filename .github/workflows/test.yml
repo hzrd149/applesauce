@@ -9,8 +9,12 @@ on:
       - master
 
 jobs:
+  build:
+    uses: ./.github/workflows/_build-packages.yml
+
   test-node:
     name: Test on Node.js ${{ matrix.node-version }}
+    needs: build
     runs-on: ubuntu-latest
 
     strategy:
@@ -31,60 +35,28 @@ jobs:
           cache: "pnpm"
 
       - name: Install Dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
 
       - name: Run tests
-        run: pnpm test
-
-  # test-deno:
-  #   name: Test on Deno ${{ matrix.deno-version }}
-  #   runs-on: ubuntu-latest
-
-  #   strategy:
-  #     matrix:
-  #       deno-version: [v2.x]
-
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-
-  #     - name: Setup Deno ${{ matrix.deno-version }}
-  #       uses: denoland/setup-deno@v2
-  #       with:
-  #         deno-version: ${{ matrix.deno-version }}
-
-  #     - uses: pnpm/action-setup@v4
-
-  #     - name: Get pnpm store directory
-  #       id: pnpm-cache
-  #       shell: bash
-  #       run: |
-  #         echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-  #     - name: Setup pnpm cache
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-  #         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-  #         restore-keys: |
-  #           ${{ runner.os }}-pnpm-store-
-
-  #     - name: Install Dependencies
-  #       run: pnpm install --frozen-lockfile
-
-  #     - name: Build
-  #       run: pnpm build
-
-  #     - name: Run tests with Deno
-  #       run: deno run -A --node-modules-dir=auto npm:vitest run
+        run: pnpm exec vitest run
 
   test-bun:
     name: Test on Bun ${{ matrix.bun-version }}
+    needs: build
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
         bun-version: [latest, "1.1"]
+      fail-fast: false
 
     steps:
       - name: Checkout code
@@ -97,25 +69,22 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          node-version: 22
+          cache: "pnpm"
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
 
       - name: Run tests with Bun
         run: bun run vitest run

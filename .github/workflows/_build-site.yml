@@ -1,0 +1,267 @@
+name: Build site
+
+on:
+  workflow_call:
+    inputs:
+      vitepress-base:
+        description: VITE_BASE for the vitepress build
+        type: string
+        default: "/"
+
+jobs:
+  packages:
+    uses: ./.github/workflows/_build-packages.yml
+
+  typedoc:
+    name: Build typedoc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build typedoc
+        run: pnpm typedoc
+
+      - name: Bundle typedoc output
+        run: tar -cf typedoc-out.tar docs/typedoc
+
+      - name: Upload typedoc output
+        uses: actions/upload-artifact@v4
+        with:
+          name: typedoc-out
+          path: typedoc-out.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  examples:
+    name: Build examples
+    needs: packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
+
+      - name: Build examples
+        run: VITE_BASE=/examples pnpm build --filter applesauce-examples
+
+      - name: Bundle examples dist
+        run: tar -cf examples-dist.tar apps/examples/dist
+
+      - name: Upload examples dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: examples-dist
+          path: examples-dist.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  agent-skills:
+    name: Build agent skills
+    needs: packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
+
+      - name: Build agent skills
+        run: pnpm --filter applesauce-agent-skills build
+
+      - name: Bundle agent-skills dist
+        run: tar -cf agent-skills-dist.tar apps/agent-skills/dist
+
+      - name: Upload agent-skills dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-skills-dist
+          path: agent-skills-dist.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  vitepress:
+    name: Build vitepress
+    needs: packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
+
+      - name: Build vitepress
+        env:
+          VITE_BASE: ${{ inputs.vitepress-base }}
+        run: pnpm build --filter applesauce-docs
+
+      - name: Bundle vitepress dist
+        run: tar -cf vitepress-dist.tar apps/docs/.vitepress/dist
+
+      - name: Upload vitepress dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitepress-dist
+          path: vitepress-dist.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  llms:
+    name: Build llms bundle
+    needs: packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
+
+      - name: Build llms bundle
+        run: pnpm build --filter applesauce-llms
+
+      - name: Bundle llms dist
+        run: tar -cf llms-dist.tar apps/llms/dist
+
+      - name: Upload llms dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: llms-dist
+          path: llms-dist.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble:
+    name: Assemble site
+    needs: [typedoc, examples, agent-skills, vitepress, llms]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download typedoc output
+        uses: actions/download-artifact@v4
+        with:
+          name: typedoc-out
+
+      - name: Download examples dist
+        uses: actions/download-artifact@v4
+        with:
+          name: examples-dist
+
+      - name: Download agent-skills dist
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-skills-dist
+
+      - name: Download vitepress dist
+        uses: actions/download-artifact@v4
+        with:
+          name: vitepress-dist
+
+      - name: Download llms dist
+        uses: actions/download-artifact@v4
+        with:
+          name: llms-dist
+
+      - name: Extract artifacts
+        run: |
+          for f in typedoc-out examples-dist agent-skills-dist vitepress-dist llms-dist; do
+            tar -xf "${f}.tar"
+            rm "${f}.tar"
+          done
+
+      - name: Assemble docs directory
+        run: |
+          mkdir -p docs docs/.well-known docs/examples
+          cp -r apps/docs/.vitepress/dist/. docs
+          cp -r apps/agent-skills/dist/.well-known/. docs/.well-known
+          cp -r apps/llms/dist/. docs
+          cp -r apps/examples/dist/. docs/examples
+
+      - name: Bundle site
+        run: tar -cf site.tar docs
+
+      - name: Upload site
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site.tar
+          if-no-files-found: error
+          retention-days: 1
