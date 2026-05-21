@@ -6,6 +6,7 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "DnsIdentityLoader",
+        "NamecoinIdentityLoader",
         "addressPointerLoadingSequence",
         "cacheAddressPointersLoader",
         "cacheEventsLoader",
