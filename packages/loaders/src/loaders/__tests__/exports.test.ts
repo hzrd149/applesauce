@@ -8,6 +8,7 @@ describe("exports", () => {
         "COMMON_LIST_KINDS",
         "COMMON_SET_KINDS",
         "DnsIdentityLoader",
+        "NamecoinIdentityLoader",
         "addressPointerLoadingSequence",
         "cacheAddressPointersLoader",
         "cacheEventsLoader",

@@ -59,6 +59,7 @@
     }
   },
   "dependencies": {
+    "@noble/hashes": "^1.7.1",
     "applesauce-core": "^6.1.0",
     "nanoid": "^5.0.9",
     "rxjs": "^7.8.1"
