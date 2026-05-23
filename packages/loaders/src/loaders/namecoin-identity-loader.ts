@@ -26,10 +26,13 @@
 import { unixNow } from "applesauce-core/helpers";
 
 import {
+  DEFAULT_IMPORT_DEPTH,
+  expandImports,
   getIdentityFromNamecoinValue,
   Identity,
   IdentityStatus,
   NamecoinAddress,
+  NamecoinValueFetcher,
   parseNamecoinAddress,
 } from "../helpers/namecoin-identity.js";
 import type { AsyncIdentityCache } from "./dns-identity-loader.js";
@@ -75,6 +78,16 @@ export class NamecoinIdentityLoader {
   /** How long an identity should be kept until it's considered expired (in seconds). Defaults to 1 week. */
   expiration = 60 * 60 * 24 * 7;
 
+  /**
+   * Maximum recursion depth for ifa-0001 `"import"` directives. Set to `0`
+   * to disable import-chain following entirely. Defaults to the spec-mandated
+   * minimum of {@link DEFAULT_IMPORT_DEPTH}.
+   *
+   * Records without an `"import"` key pay zero extra I/O regardless of this
+   * setting.
+   */
+  importDepth = DEFAULT_IMPORT_DEPTH;
+
   constructor(public cache?: AsyncIdentityCache) {}
 
   /** Resolves a Namecoin name via {@link resolve} and parses the JSON value. */
@@ -100,6 +113,21 @@ export class NamecoinIdentityLoader {
           status: IdentityStatus.Error,
           error: message,
         };
+      }
+
+      // Expand any ifa-0001 `"import"` directives before extracting the
+      // `nostr` field, so apex records that delegate their `nostr.names`
+      // block to a sibling name (a common workaround for the 520-byte
+      // per-name limit) resolve correctly.
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) && this.importDepth > 0) {
+        const importLookup: NamecoinValueFetcher = async (name) => {
+          try {
+            return await this.resolve.call(undefined, name);
+          } catch {
+            return null;
+          }
+        };
+        parsed = await expandImports(parsed as Record<string, unknown>, importLookup, this.importDepth);
       }
 
       const identity = getIdentityFromNamecoinValue(address, parsed, checked);

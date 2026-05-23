@@ -164,3 +164,100 @@ describe("requestIdentity", () => {
     expect(r1).toBe(r2);
   });
 });
+
+const PK_TESTLS = "460c25e682fda7832b52d1f22d3d22b3176d972f60dcdc3212ed8c92ef85065c";
+const PK_M = "6cdebccabda1dfa058ab85352a79509b592b2bdfa0370325e28ec1cb4f18667d";
+
+describe('ifa-0001 "import" chain support', () => {
+  it("follows a bare-string import to resolve the root entry of a delegated record", async () => {
+    // Matches the canonical `testls.bit` deployment: apex bumps against the
+    // 520-byte per-name limit and delegates the nostr.names block to
+    // dd/testls. Without import support the root lookup would see no
+    // `nostr` field and miss.
+    const records: Record<string, string> = {
+      "d/testls": JSON.stringify({ import: "dd/testls", ip: "107.152.38.155" }),
+      "dd/testls": JSON.stringify({
+        nostr: { names: { _: PK_TESTLS, m: PK_M } },
+      }),
+    };
+    const seen: string[] = [];
+    loader.resolve = vi.fn(async (name: string) => {
+      seen.push(name);
+      const v = records[name];
+      if (v === undefined) throw new Error(`unknown name: ${name}`);
+      return v;
+    });
+
+    const identity = await loader.requestIdentity("testls.bit");
+    expect(identity.status).toBe(IdentityStatus.Found);
+    expect((identity as { pubkey: string }).pubkey).toBe(PK_TESTLS);
+    expect(seen).toContain("d/testls");
+    expect(seen).toContain("dd/testls");
+  });
+
+  it("follows the same import for a named local-part (alice@example.bit style)", async () => {
+    const records: Record<string, string> = {
+      "d/testls": JSON.stringify({ import: "dd/testls" }),
+      "dd/testls": JSON.stringify({ nostr: { names: { _: PK_TESTLS, m: PK_M } } }),
+    };
+    loader.resolve = vi.fn(async (name: string) => {
+      const v = records[name];
+      if (v === undefined) throw new Error(`unknown name: ${name}`);
+      return v;
+    });
+    const identity = await loader.requestIdentity("m@testls.bit");
+    expect(identity.status).toBe(IdentityStatus.Found);
+    expect((identity as { pubkey: string }).pubkey).toBe(PK_M);
+  });
+
+  it("issues exactly one resolver call for records without an `import` key", async () => {
+    // Regression guard for the spec's zero-extra-cost promise.
+    loader.resolve = vi.fn(async () => JSON.stringify({ nostr: { names: { _: PK_TESTLS } } }));
+    const identity = await loader.requestIdentity("plain.bit");
+    expect(identity.status).toBe(IdentityStatus.Found);
+    expect(loader.resolve).toHaveBeenCalledTimes(1);
+    expect(loader.resolve).toHaveBeenCalledWith("d/plain");
+  });
+
+  it("lets the apex record override a named entry inherited via import", async () => {
+    const apexPk = "aaaa000000000000000000000000000000000000000000000000000000000001";
+    const importedPk = "bbbb000000000000000000000000000000000000000000000000000000000002";
+    const records: Record<string, string> = {
+      "d/testls": JSON.stringify({
+        import: "dd/testls",
+        nostr: { names: { m: apexPk } },
+      }),
+      "dd/testls": JSON.stringify({ nostr: { names: { m: importedPk } } }),
+    };
+    loader.resolve = vi.fn(async (name: string) => records[name] ?? null);
+    const identity = await loader.requestIdentity("m@testls.bit");
+    expect(identity.status).toBe(IdentityStatus.Found);
+    // Importer-wins: the apex's `nostr` object replaces the imported one wholesale.
+    expect((identity as { pubkey: string }).pubkey).toBe(apexPk);
+  });
+
+  it("returns Found from local data when the imported sibling cannot be fetched", async () => {
+    const records: Record<string, string> = {
+      "d/testls": JSON.stringify({
+        import: "dd/missing",
+        nostr: { names: { _: PK_TESTLS } },
+      }),
+    };
+    loader.resolve = vi.fn(async (name: string) => {
+      const v = records[name];
+      if (v === undefined) throw new Error("name not found");
+      return v;
+    });
+    const identity = await loader.requestIdentity("testls.bit");
+    expect(identity.status).toBe(IdentityStatus.Found);
+    expect((identity as { pubkey: string }).pubkey).toBe(PK_TESTLS);
+  });
+
+  it("setting importDepth to 0 disables import-chain following entirely", async () => {
+    loader.importDepth = 0;
+    loader.resolve = vi.fn(async () => JSON.stringify({ import: "dd/testls", ip: "107.152.38.155" }));
+    const identity = await loader.requestIdentity("testls.bit");
+    expect(identity.status).toBe(IdentityStatus.Missing);
+    expect(loader.resolve).toHaveBeenCalledTimes(1);
+  });
+});

@@ -180,6 +180,235 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// -----------------------------------------------------------------------------
+// Import-chain resolution (ifa-0001 §"import")
+// -----------------------------------------------------------------------------
+
+/**
+ * The minimum recursion depth ifa-0001 requires implementations to support
+ * for the `"import"` directive.
+ *
+ * The spec mandates support for chains "at least four deep"; the default
+ * here pins that lower bound. Deeper chains are silently truncated by
+ * {@link expandImports} (the importing record's own items still apply).
+ */
+export const DEFAULT_IMPORT_DEPTH = 4;
+
+/**
+ * Async lookup callback used by {@link expandImports}. Should return the raw
+ * Namecoin name-value JSON string for the supplied name, or `null` when the
+ * name does not exist / cannot be fetched.
+ *
+ * Thrown errors are absorbed by {@link expandImports} so transient transport
+ * failures during a sub-import never nuke the importing record.
+ */
+export type NamecoinValueFetcher = (namecoinName: string) => Promise<string | null>;
+
+type ImportOp = {
+  /** Namecoin name to import (e.g. `d/foo`). */
+  name: string;
+  /** DNS-dotted subdomain selector inside the imported value. May be empty. */
+  selector: string;
+};
+
+function parseImportItem(item: unknown): ImportOp[] | null {
+  // Shorthand: bare string -> single import with no selector.
+  if (typeof item === "string") {
+    const trimmed = item.trim();
+    if (!trimmed) return null;
+    return [{ name: trimmed, selector: "" }];
+  }
+  if (!Array.isArray(item)) return null;
+  if (item.length === 0) return [];
+
+  // Distinguish canonical array-of-arrays from shorthand array-of-strings.
+  if (Array.isArray(item[0])) {
+    const ops: ImportOp[] = [];
+    for (const entry of item) {
+      if (!Array.isArray(entry)) continue;
+      const op = opFromArray(entry);
+      if (op) ops.push(op);
+    }
+    return ops;
+  }
+  const op = opFromArray(item);
+  return op ? [op] : [];
+}
+
+function opFromArray(arr: unknown[]): ImportOp | null {
+  if (arr.length === 0) return null;
+  const first = arr[0];
+  if (typeof first !== "string") return null;
+  const name = first.trim();
+  if (!name) return null;
+  let selector = "";
+  if (arr.length >= 2) {
+    const second = arr[1];
+    if (typeof second !== "string") return null;
+    selector = second.trim();
+  }
+  // Trailing dot is forbidden by spec; treat as malformed -> no selector.
+  if (selector.endsWith(".")) return null;
+  return { name, selector };
+}
+
+/**
+ * Walk a DNS-dotted `selector` into the imported value's `map` tree per
+ * ifa-0001 §"map". Returns the addressed node, or `null` if no match exists.
+ *
+ * Resolution rules per label, in order: exact match → `*` wildcard → `""`
+ * default. A non-object child terminates the walk with `null`.
+ */
+function applySelector(root: Record<string, unknown>, selector: string): Record<string, unknown> | null {
+  if (!selector) return root;
+  // DNS dotted: leftmost label is the most-specific, so walk right-to-left.
+  const labels = selector
+    .split(".")
+    .filter((l) => l.length > 0)
+    .reverse();
+  if (labels.length === 0) return root;
+
+  let current: Record<string, unknown> = root;
+  for (const label of labels) {
+    const map = current.map;
+    if (!isPlainObject(map)) return null;
+    const exact = map[label];
+    if (isPlainObject(exact)) {
+      current = exact;
+      continue;
+    }
+    const wildcard = map["*"];
+    if (isPlainObject(wildcard)) {
+      current = wildcard;
+      continue;
+    }
+    const fallback = map[""];
+    if (isPlainObject(fallback)) {
+      current = fallback;
+      continue;
+    }
+    return null;
+  }
+  return current;
+}
+
+function tryParseObject(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function omitImportKey(obj: Record<string, unknown>): Record<string, unknown> {
+  if (!("import" in obj)) return obj;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k !== "import") out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Merge `imported` underneath `importer` with importer-wins precedence per
+ * ifa-0001. Keys present in `importer` (including `null` values, which act
+ * as semantic suppression markers) override imported keys; remaining
+ * imported keys fill in.
+ */
+function mergeImporterWins(
+  importer: Record<string, unknown>,
+  imported: Record<string, unknown>,
+): Record<string, unknown> {
+  if (Object.keys(imported).length === 0) return importer;
+  if (Object.keys(importer).length === 0) return imported;
+  const out: Record<string, unknown> = {};
+  // Imported first so importer can overwrite.
+  for (const [k, v] of Object.entries(imported)) out[k] = v;
+  for (const [k, v] of Object.entries(importer)) out[k] = v;
+  return out;
+}
+
+/**
+ * Recursively resolve the [`"import"`][ifa-0001] directive on a parsed
+ * Namecoin name value, merging the imported names' contents into the
+ * importing object before downstream extractors (e.g. {@link extractNostrFromValue})
+ * see it.
+ *
+ * Per [ifa-0001](https://github.com/namecoin/proposals/blob/master/ifa-0001.md)
+ * §"import":
+ *
+ * - The importing object's items take precedence over imported items. A
+ *   `null` value in the importer is still "present" and so suppresses the
+ *   corresponding imported item.
+ * - The canonical `"import"` value is an array of arrays. Three shorthand
+ *   forms are also accepted (and common in real-world records):
+ *   - `"import": "d/foo"` ↔ `[["d/foo"]]`
+ *   - `"import": ["d/foo"]` ↔ `[["d/foo"]]`
+ *   - `"import": ["d/foo", "sub"]` ↔ `[["d/foo", "sub"]]`
+ * - The optional second element of each import is a DNS-dotted Subdomain
+ *   Selector that addresses a node inside the imported value's `map` tree.
+ * - Imports listed in the same array are merged left-to-right (later wins);
+ *   the importing object is then stacked on top of all of them.
+ * - The implementation supports the spec-mandated minimum recursion depth
+ *   of {@link DEFAULT_IMPORT_DEPTH}. Deeper chains are silently truncated.
+ * - Cycles are broken via a visited-set keyed on `name|selector`.
+ * - A failed import (lookup returns `null`, throws, or returns malformed
+ *   JSON) is treated as the empty object `{}` rather than failing the
+ *   whole record — matching this package's existing best-effort policy for
+ *   transient ElectrumX failures.
+ *
+ * If `value` has no `"import"` key, it is returned unchanged with zero extra
+ * I/O. The `"import"` key is stripped from the returned object.
+ */
+export async function expandImports(
+  value: Record<string, unknown>,
+  lookup: NamecoinValueFetcher,
+  maxDepth: number = DEFAULT_IMPORT_DEPTH,
+): Promise<Record<string, unknown>> {
+  if (!("import" in value)) return value;
+  return await expandRecursive(value, lookup, maxDepth, new Set<string>());
+}
+
+async function expandRecursive(
+  obj: Record<string, unknown>,
+  lookup: NamecoinValueFetcher,
+  budgetRemaining: number,
+  visited: Set<string>,
+): Promise<Record<string, unknown>> {
+  const item = obj.import;
+  if (item === undefined) return obj;
+  const ops = parseImportItem(item);
+  if (!ops || ops.length === 0 || budgetRemaining <= 0) return omitImportKey(obj);
+
+  let accumulator: Record<string, unknown> = {};
+  for (const op of ops) {
+    const visitKey = `${op.name}|${op.selector}`;
+    if (visited.has(visitKey)) continue;
+    visited.add(visitKey);
+    try {
+      let raw: string | null;
+      try {
+        raw = await lookup(op.name);
+      } catch {
+        raw = null;
+      }
+      if (raw == null) continue;
+      const importedRoot = tryParseObject(raw);
+      if (!importedRoot) continue;
+      const selectorView = applySelector(importedRoot, op.selector);
+      if (!selectorView) continue;
+      const expanded = await expandRecursive(selectorView, lookup, budgetRemaining - 1, visited);
+      accumulator = mergeImporterWins(expanded, accumulator);
+    } finally {
+      visited.delete(visitKey);
+    }
+  }
+
+  const withoutImport = omitImportKey(obj);
+  return mergeImporterWins(withoutImport, accumulator);
+}
+
 /** The shape of the `nostr` field in an extended Namecoin name value. */
 export type NamecoinNostrValue = {
   pubkey: string;
@@ -421,8 +650,7 @@ function readPushData(script: Uint8Array, pos: number): { data: Uint8Array; next
   }
   if (op === OP_PUSHDATA4) {
     if (pos + 5 > script.length) return null;
-    const length =
-      script[pos + 1] | (script[pos + 2] << 8) | (script[pos + 3] << 16) | (script[pos + 4] << 24);
+    const length = script[pos + 1] | (script[pos + 2] << 8) | (script[pos + 3] << 16) | (script[pos + 4] << 24);
     const end = pos + 5 + length;
     if (end > script.length) return null;
     return { data: script.subarray(pos + 5, end), next: end };

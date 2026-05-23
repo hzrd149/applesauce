@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sha256 } from "@noble/hashes/sha2";
 
 import {
   buildNameIndexScript,
   DEFAULT_ELECTRUMX_SERVERS,
   electrumScriptHash,
+  expandImports,
   extractNostrFromValue,
   formatNamecoinAddress,
   getIdentityFromNamecoinValue,
@@ -168,11 +169,7 @@ describe("extractNostrFromValue", () => {
 describe("getIdentityFromNamecoinValue", () => {
   it("returns a KnownIdentity for a valid value", () => {
     const addr = parseNamecoinAddress("alice@example.bit")!;
-    const identity = getIdentityFromNamecoinValue(
-      addr,
-      { nostr: { names: { alice: PK1 } } },
-      123,
-    );
+    const identity = getIdentityFromNamecoinValue(addr, { nostr: { names: { alice: PK1 } } }, 123);
     expect(identity).toEqual({
       name: "alice",
       domain: "d/example",
@@ -281,5 +278,162 @@ describe("DEFAULT_ELECTRUMX_SERVERS", () => {
       expect(s.portTcpTls).toBeGreaterThan(0);
       expect(s.portWss).toBeGreaterThan(0);
     }
+  });
+});
+
+// -----------------------------------------------------------------------------
+// expandImports: ifa-0001 §"import" chain resolution.
+// -----------------------------------------------------------------------------
+
+describe("expandImports", () => {
+  it("returns the object unchanged and performs no lookups when no `import` key is present", async () => {
+    const obj = { ip: "1.2.3.4" } as Record<string, unknown>;
+    const lookup = vi.fn(async () => {
+      throw new Error("must not be called");
+    });
+    const expanded = await expandImports(obj, lookup);
+    expect(expanded).toBe(obj);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("accepts the bare-string shorthand and merges imported items", async () => {
+    const lookup = vi.fn(async (name: string) =>
+      name === "d/lib" ? JSON.stringify({ ip: "9.9.9.9", nostr: { names: { _: "abc" } } }) : null,
+    );
+    const expanded = await expandImports({ import: "d/lib", ip: "1.1.1.1" }, lookup);
+    // importer wins on `ip`
+    expect(expanded.ip).toBe("1.1.1.1");
+    expect(expanded.nostr).toEqual({ names: { _: "abc" } });
+    expect("import" in expanded).toBe(false);
+  });
+
+  it("accepts the single-element array shorthand", async () => {
+    const lookup = vi.fn(async (name: string) => (name === "d/lib" ? JSON.stringify({ tag: "from-lib" }) : null));
+    const expanded = await expandImports({ import: ["d/lib"] }, lookup);
+    expect(expanded.tag).toBe("from-lib");
+  });
+
+  it("accepts the pair-array shorthand with a subdomain selector", async () => {
+    const lookup = vi.fn(async (name: string) =>
+      name === "d/lib" ? JSON.stringify({ ip: "1.1.1.1", map: { relay: { ip: "7.7.7.7", tag: "selected" } } }) : null,
+    );
+    const expanded = await expandImports({ import: ["d/lib", "relay"] }, lookup);
+    // Descended into map.relay, so the importer sees ip=7.7.7.7, not 1.1.1.1.
+    expect(expanded.ip).toBe("7.7.7.7");
+    expect(expanded.tag).toBe("selected");
+  });
+
+  it("accepts the canonical array-of-arrays form and merges left-to-right", async () => {
+    const lookup = vi.fn(async (name: string) => {
+      if (name === "d/a") return JSON.stringify({ ip: "10.0.0.1", tag: "from-a" });
+      if (name === "d/b") return JSON.stringify({ ip: "10.0.0.2", extra: "from-b" });
+      return null;
+    });
+    const expanded = await expandImports({ import: [["d/a"], ["d/b"]] }, lookup);
+    // d/b processed AFTER d/a; importer has no `ip`, so d/b's wins.
+    expect(expanded.ip).toBe("10.0.0.2");
+    expect(expanded.tag).toBe("from-a");
+    expect(expanded.extra).toBe("from-b");
+  });
+
+  it("lets the importing object override imported keys", async () => {
+    const lookup = vi.fn(async () => JSON.stringify({ ip: "9.9.9.9", extra: "remote", "only-imported": "yes" }));
+    const expanded = await expandImports({ import: "d/lib", ip: "1.1.1.1", extra: "local" }, lookup);
+    expect(expanded.ip).toBe("1.1.1.1");
+    expect(expanded.extra).toBe("local");
+    expect(expanded["only-imported"]).toBe("yes");
+  });
+
+  it("treats a `null` value in the importer as semantic suppression", async () => {
+    const lookup = vi.fn(async () => JSON.stringify({ ip: "9.9.9.9", other: "keep" }));
+    const expanded = await expandImports({ import: "d/lib", ip: null }, lookup);
+    // `ip` survives as JSON null (downstream extractors treat null as absent).
+    expect("ip" in expanded).toBe(true);
+    expect(expanded.ip).toBeNull();
+    expect(expanded.other).toBe("keep");
+  });
+
+  it("supports the spec-mandated depth-4 happy path", async () => {
+    const lookup = vi.fn(async (name: string) => {
+      if (name === "d/a") return JSON.stringify({ import: "d/b", layer: "a" });
+      if (name === "d/b") return JSON.stringify({ import: "d/c", layer: "b" });
+      if (name === "d/c") return JSON.stringify({ import: "d/d", layer: "c" });
+      if (name === "d/d") return JSON.stringify({ layer: "d", deep: "reached" });
+      return null;
+    });
+    const expanded = await expandImports({ import: "d/a" }, lookup);
+    // Each layer overrides `layer`; the top-most "a" wins.
+    expect(expanded.layer).toBe("a");
+    expect(expanded.deep).toBe("reached");
+  });
+
+  it("silently truncates chains beyond the depth budget while keeping the importer's own fields", async () => {
+    const lookup = vi.fn(async (name: string) => {
+      if (name === "d/a") return JSON.stringify({ import: "d/b", tag: "from-a" });
+      if (name === "d/b") return JSON.stringify({ tag: "from-b", leaf: "wont-show" });
+      return null;
+    });
+    const expanded = await expandImports({ import: "d/a", local: "keep" }, lookup, 1);
+    expect(expanded.tag).toBe("from-a");
+    expect(expanded.local).toBe("keep");
+    expect("leaf" in expanded).toBe(false);
+  });
+
+  it("treats a lookup returning null as the empty object", async () => {
+    const lookup = vi.fn(async () => null);
+    const expanded = await expandImports({ import: "d/missing", local: "survives" }, lookup);
+    expect(expanded.local).toBe("survives");
+    expect("import" in expanded).toBe(false);
+  });
+
+  it("treats a lookup that throws as the empty object", async () => {
+    const lookup = vi.fn(async () => {
+      throw new Error("electrumx down");
+    });
+    const expanded = await expandImports({ import: "d/missing", local: "survives" }, lookup);
+    expect(expanded.local).toBe("survives");
+  });
+
+  it("treats malformed imported JSON as the empty object", async () => {
+    const lookup = vi.fn(async () => "not valid json {{{");
+    const expanded = await expandImports({ import: "d/broken", local: "keep" }, lookup);
+    expect(expanded.local).toBe("keep");
+  });
+
+  it("ignores malformed `import` values and still drops the key", async () => {
+    const lookup = vi.fn(async () => {
+      throw new Error("must not be called");
+    });
+    const expanded = await expandImports({ import: 42, local: "keep" } as unknown as Record<string, unknown>, lookup);
+    expect(expanded.local).toBe("keep");
+    expect("import" in expanded).toBe(false);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("breaks A -> B -> A cycles without infinite recursion", async () => {
+    const lookup = vi.fn(async (name: string) => {
+      if (name === "d/a") return JSON.stringify({ import: "d/b", fromA: "yes" });
+      if (name === "d/b") return JSON.stringify({ import: "d/a", fromB: "yes" });
+      return null;
+    });
+    const expanded = await expandImports({ import: "d/a", local: "top" }, lookup);
+    expect(expanded.local).toBe("top");
+    expect("fromA" in expanded || "fromB" in expanded).toBe(true);
+  });
+
+  it("descends multi-label selectors in DNS order", async () => {
+    const lookup = vi.fn(async (name: string) =>
+      name === "d/lib" ? JSON.stringify({ map: { b: { map: { a: { value: "deep" } } } } }) : null,
+    );
+    const expanded = await expandImports({ import: [["d/lib", "a.b"]] }, lookup);
+    expect(expanded.value).toBe("deep");
+  });
+
+  it("falls back to the `*` wildcard when an exact label is missing", async () => {
+    const lookup = vi.fn(async (name: string) =>
+      name === "d/lib" ? JSON.stringify({ map: { "*": { value: "wildcard" } } }) : null,
+    );
+    const expanded = await expandImports({ import: ["d/lib", "ghost"] }, lookup);
+    expect(expanded.value).toBe("wildcard");
   });
 });
