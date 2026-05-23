@@ -6,6 +6,7 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "DEFAULT_ELECTRUMX_SERVERS",
+        "DEFAULT_IMPORT_DEPTH",
         "IdentityStatus",
         "batchLoader",
         "buildNameIndexScript",
@@ -13,6 +14,7 @@ describe("exports", () => {
         "createFilterFromAddressPointers",
         "createFiltersFromAddressPointers",
         "electrumScriptHash",
+        "expandImports",
         "extractNostrFromValue",
         "formatNamecoinAddress",
         "getIdentitiesFromJson",
