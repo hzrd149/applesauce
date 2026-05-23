@@ -561,6 +561,9 @@ importers:
 
   packages/loaders:
     dependencies:
+      '@noble/hashes':
+        specifier: ^1.7.1
+        version: 1.8.0
       applesauce-core:
         specifier: ^6.1.0
         version: link:../core
@@ -6796,7 +6799,7 @@ snapshots:
   '@scure/bip32@1.3.1':
     dependencies:
       '@noble/curves': 1.1.0
-      '@noble/hashes': 1.3.1
+      '@noble/hashes': 1.3.2
       '@scure/base': 1.1.1
 
   '@scure/bip32@2.0.1':
@@ -6807,7 +6810,7 @@ snapshots:
 
   '@scure/bip39@1.2.1':
     dependencies:
-      '@noble/hashes': 1.3.1
+      '@noble/hashes': 1.3.2
       '@scure/base': 1.1.1
 
   '@shikijs/core@2.5.0':
