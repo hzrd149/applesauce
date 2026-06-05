@@ -1,4 +1,4 @@
-import { CheckStateEnum, Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
+import { CheckStateEnum, normalizeProofAmounts, Proof, ProofLike, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { DeleteFactory } from "applesauce-core/factories";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -30,7 +30,7 @@ export function AddToken(token: Token, options?: { redeemed?: string[]; fee?: nu
   return async ({ signer, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
-    const amount = sumProofs(token.proofs);
+    const amount = sumProofs(token.proofs).toNumber();
 
     // Create the token and history events
     const tokenEvent = await WalletTokenFactory.create(token).sign(signer);
@@ -65,12 +65,12 @@ export function ReceiveToken(token: Token, options?: { addHistory?: boolean; cou
     const cashuWallet = new Wallet(token.mint);
     await cashuWallet.loadMint();
 
-    const amount = sumProofs(token.proofs);
+    const amount = sumProofs(token.proofs).toNumber();
 
     // Swap cashu tokens
     const receivedProofs = await cashuWallet.ops.receive(token).run();
 
-    const fee = amount - sumProofs(receivedProofs);
+    const fee = amount - sumProofs(receivedProofs).toNumber();
 
     // Create a new token with the received proofs
     const receivedToken: Token = {
@@ -124,7 +124,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
     if (unlocked.length !== spent.length) throw new Error("Cant complete spend with locked tokens");
     const wallet = await getUnlockedWallet(user, signer);
 
-    const changeAmount = sumProofs(change.proofs);
+    const changeAmount = sumProofs(change.proofs).toNumber();
 
     // Store change token in couch before creating token event
     let clearStoredToken: (() => void | Promise<void>) | undefined;
@@ -143,7 +143,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
           : undefined;
 
       // Get tokens total amount
-      const total = sumProofs(unlocked.map((s) => getTokenContent(s).proofs).flat());
+      const total = sumProofs(unlocked.map((s) => getTokenContent(s).proofs).flat()).toNumber();
 
       // calculate the amount that was spent
       const diff = total - changeAmount;
@@ -227,7 +227,7 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action 
 
       // NOTE: this assumes that the states array is the same length and order as the proofs array
       const states = await cashuWallet.checkProofsStates(proofs);
-      const notSpent: Proof[] = proofs.filter((_, i) => states[i].state !== CheckStateEnum.SPENT);
+      const notSpent = proofs.filter((_, i) => states[i].state !== CheckStateEnum.SPENT);
 
       // Only create a token event if there are unspent proofs
       const tokenEvent =
@@ -348,7 +348,7 @@ export type TokenSelectionFunction = (
   tokens: NostrEvent[],
   minAmount: number,
   mint?: string,
-) => { events: NostrEvent[]; proofs: Proof[] };
+) => { events: NostrEvent[]; proofs: ProofLike[] };
 
 /**
  * A generic action that safely selects tokens, performs an async operation, and handles change.
@@ -385,7 +385,11 @@ export type TokenSelectionFunction = (
  */
 export function TokensOperation(
   minAmount: number,
-  operation: (params: { selectedProofs: Proof[]; mint: string; cashuWallet: Wallet }) => Promise<{ change?: Proof[] }>,
+  operation: (params: {
+    selectedProofs: ProofLike[];
+    mint: string;
+    cashuWallet: Wallet;
+  }) => Promise<{ change?: Proof[] }>,
   options: { mint?: string; couch: Couch; tokenSelection?: TokenSelectionFunction },
 ): Action {
   const { mint, couch, tokenSelection = dumbTokenSelection } = options;
@@ -438,10 +442,10 @@ export function TokensOperation(
         throw new Error(`Selected tokens must be from the same mint. Found ${tokenMint} and ${selectedMint}`);
     }
 
-    // Store selected tokens in couch for safety
+    // Store selected tokens in couch for safety (normalize to cashu Amount proofs for encoding)
     const selectedToken: Token = {
       mint: selectedMint,
-      proofs: selectedProofs,
+      proofs: normalizeProofAmounts(selectedProofs),
       unit: "sat",
     };
     const clearStoredToken = await couch.store(selectedToken);

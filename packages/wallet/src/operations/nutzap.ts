@@ -1,4 +1,4 @@
-import { type Proof } from "@cashu/cashu-ts";
+import { type Proof, serializeProofs } from "@cashu/cashu-ts";
 import { EventOperation, TagOperation } from "applesauce-core";
 import { isAddressPointer, isEvent, isReplaceable } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -14,8 +14,8 @@ import {
 
 /** Sets the cashu proofs for a nutzap event */
 export function setProofs(proofs: Proof[]): EventOperation {
-  // Create an operation to append proof tags
-  const operation: TagOperation = (tags) => [...tags, ...proofs.map((proof) => ["proof", JSON.stringify(proof)])];
+  // Serialize proofs to canonical JSON (numeric amounts) and append as "proof" tags
+  const operation: TagOperation = (tags) => [...tags, ...serializeProofs(proofs).map((proof) => ["proof", proof])];
 
   return modifyPublicTags(operation);
 }

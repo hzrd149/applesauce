@@ -1,4 +1,4 @@
-import { Proof } from "@cashu/cashu-ts";
+import { normalizeProofAmounts, Proof, ProofLike, sumProofs } from "@cashu/cashu-ts";
 import {
   getAddressPointerFromATag,
   getEventPointerFromETag,
@@ -29,7 +29,11 @@ export const NutzapMintSymbol = Symbol.for("nutzap-mint");
 /** Returns the cashu proofs from a kind:9321 nutzap event */
 export function getNutzapProofs(event: NostrEvent): Proof[] {
   return getOrComputeCachedValue(event, NutzapProofsSymbol, () => {
-    return processTags(event.tags, (tag) => (tag[0] === "proof" ? safeParse(tag[1]) : undefined));
+    const raw = processTags(event.tags, (tag) =>
+      tag[0] === "proof" ? (safeParse(tag[1]) as ProofLike | undefined) : undefined,
+    );
+    // Normalize the parsed (numeric-amount) proofs into cashu Proofs with Amount values
+    return normalizeProofAmounts(raw);
   });
 }
 
@@ -79,10 +83,7 @@ export function getNutzapComment(event: NostrEvent): string | undefined {
 export function getNutzapAmount(event: NutzapEvent): number;
 export function getNutzapAmount(event: NostrEvent): number | undefined;
 export function getNutzapAmount(event: NostrEvent): number | undefined {
-  return getOrComputeCachedValue(event, NutzapAmountSymbol, () => {
-    const proofs = getNutzapProofs(event);
-    return proofs.reduce((total, proof) => total + (proof.amount || 0), 0);
-  });
+  return getOrComputeCachedValue(event, NutzapAmountSymbol, () => sumProofs(getNutzapProofs(event)).toNumber());
 }
 
 /** Checks if a nutzap is valid according to NIP-61 requirements */

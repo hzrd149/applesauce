@@ -157,7 +157,7 @@ export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[], couch?: Couch
         }
 
         // Calculate total amount
-        const amount = sumProofs(receivedProofs);
+        const amount = sumProofs(receivedProofs).toNumber();
 
         // Create token event with received unlocked proofs
         const receivedToken: Token = {

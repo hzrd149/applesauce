@@ -87,6 +87,7 @@ describe("exports", () => {
         "lockWallet",
         "receiveAnimated",
         "sendAnimated",
+        "toStoredProofs",
         "unlockHistoryContent",
         "unlockTokenContent",
         "unlockWallet",

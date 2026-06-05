@@ -1,9 +1,20 @@
-import { getDecodedToken, getEncodedToken, Proof, Token } from "@cashu/cashu-ts";
+import { Amount, getDecodedToken, getEncodedToken, ProofLike, Token } from "@cashu/cashu-ts";
 import { safeParse } from "applesauce-core/helpers";
 
+/** Our stored (NIP-60) proof representation with a numeric amount */
+export type StoredProof = { id: string; amount: number; secret: string; C: string };
+
+/**
+ * Converts cashu proofs (whose `amount` is an {@link Amount} value object) into the numeric-amount proofs
+ * stored in NIP-60 events. Also accepts proofs whose amounts are already numbers.
+ */
+export function toStoredProofs<T extends ProofLike>(proofs: T[]): (T & { amount: number })[] {
+  return proofs.map((proof) => ({ ...proof, amount: Amount.from(proof.amount).toNumber() }));
+}
+
 /** Internal method for creating a unique id for each proof */
-export function getProofUID(proof: Proof): string {
-  return proof.id + proof.amount + proof.C + proof.secret;
+export function getProofUID(proof: ProofLike): string {
+  return proof.id + String(proof.amount) + proof.C + proof.secret;
 }
 
 /**
@@ -11,7 +22,7 @@ export function getProofUID(proof: Proof): string {
  * @param proof the cashu proof to extract the pubkey from
  * @returns the pubkey, or undefined if not P2PK locked
  */
-export function getProofP2PKPubkey(proof: Proof): string | undefined {
+export function getProofP2PKPubkey(proof: ProofLike): string | undefined {
   const secret = safeParse(proof.secret);
   if (!secret) return;
   if (!Array.isArray(secret)) return;
@@ -24,7 +35,7 @@ export function getProofP2PKPubkey(proof: Proof): string | undefined {
 }
 
 /** Internal method to filter out duplicate proofs */
-export function ignoreDuplicateProofs(seen = new Set<string>()): (proof: Proof) => boolean {
+export function ignoreDuplicateProofs(seen = new Set<string>()): (proof: ProofLike) => boolean {
   return (proof) => {
     const id = getProofUID(proof);
     if (seen.has(id)) return false;
@@ -80,7 +91,8 @@ export function decodeTokenFromEmojiString(str: string): Token | undefined {
     // Switch out token if we found peanut data
     let decodedString = decoded.join("");
 
-    return getDecodedToken(decodedString);
+    // Pass an empty keyset list — works for tokens with standard hex keyset ids
+    return getDecodedToken(decodedString, []);
   } catch (error) {
     return undefined;
   }

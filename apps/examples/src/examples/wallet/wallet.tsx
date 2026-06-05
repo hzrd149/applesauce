@@ -3,7 +3,7 @@
  * @tags nip-60, nip-61, wallet, cashu, tokens, nutzaps
  * @related wallet/mint-discovery, nwc/simple-wallet
  */
-import { getDecodedToken, getEncodedToken } from "@cashu/cashu-ts";
+import { getDecodedToken, getEncodedToken, normalizeProofAmounts } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts";
@@ -334,7 +334,7 @@ function TokenEntry({ token }: { token: WalletToken }) {
 
   const encodedToken = useMemo(() => {
     if (!token.mint || !token.proofs) return undefined;
-    return getEncodedToken({ mint: token.mint, proofs: token.proofs, unit: "sat" });
+    return getEncodedToken({ mint: token.mint, proofs: normalizeProofAmounts(token.proofs), unit: "sat" });
   }, [token.mint, token.proofs]);
 
   const handleCopy = useCallback(() => {
@@ -1276,7 +1276,7 @@ function ReceiveTab({ wallet }: { wallet: Wallet }) {
 
     try {
       // Decode the cashu token
-      const token = getDecodedToken(tokenString.trim());
+      const token = getDecodedToken(tokenString.trim(), []);
 
       if (!token) {
         throw new Error("Failed to decode token. Please check the token format.");

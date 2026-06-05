@@ -3,7 +3,7 @@
  * @tags nip-61, nutzap, profile, lightning
  * @related nutzap/zap-feed, nutzap/contacts
  */
-import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
+import { MintQuoteBolt11Response, Wallet } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
@@ -182,7 +182,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
   const [amount, setAmount] = useState(21);
   const [comment, setComment] = useState("");
   const [selectedMint, setSelectedMint] = useState<string>("");
-  const [quote, setQuote] = useState<MintQuoteResponse | null>(null);
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState<"input" | "invoice" | "paid">("input");
 

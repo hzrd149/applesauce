@@ -3,7 +3,7 @@
  * @tags nip-60, nip-61, wallet, cashu, admin, debugging
  * @related wallet/wallet
  */
-import { getEncodedToken } from "@cashu/cashu-ts";
+import { getEncodedToken, normalizeProofAmounts } from "@cashu/cashu-ts";
 import { persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
 import { Filter, persistEventsToCache } from "applesauce-core/helpers";
@@ -345,7 +345,9 @@ function DebugSection({ wallet }: { wallet: NutWallet }) {
                 {couchTokens.map((token, i) => (
                   <tr key={i}>
                     <td className="font-mono">{token.mint}</td>
-                    <td className="text-right">{token.proofs.reduce((sum, p) => sum + p.amount, 0)} sats</td>
+                    <td className="text-right">
+                      {token.proofs.reduce((sum, p) => sum + p.amount.toNumber(), 0)} sats
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -491,7 +493,7 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
               const storedSet = new Set(stored);
               const encoded =
                 token.unlocked && token.mint && token.proofs
-                  ? getEncodedToken({ mint: token.mint, proofs: token.proofs })
+                  ? getEncodedToken({ mint: token.mint, proofs: normalizeProofAmounts(token.proofs) })
                   : null;
               return (
                 <tr key={token.id}>

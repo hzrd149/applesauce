@@ -32,7 +32,7 @@ export class WalletToken extends EventCast<WalletTokenEvent> {
     return this.meta?.mint;
   }
   get amount() {
-    return this.proofs && sumProofs(this.proofs);
+    return this.proofs && sumProofs(this.proofs).toNumber();
   }
   get deleted() {
     return this.meta?.del;
@@ -64,7 +64,7 @@ export class WalletToken extends EventCast<WalletTokenEvent> {
     return this.$$ref("proofs$", () => this.meta$.pipe(map((meta) => meta?.proofs)));
   }
   get amount$() {
-    return this.$$ref("amount$", () => this.proofs$.pipe(map(sumProofs)));
+    return this.$$ref("amount$", () => this.proofs$.pipe(map((proofs) => sumProofs(proofs).toNumber())));
   }
   get deleted$() {
     return this.$$ref("deleted$", () => this.meta$.pipe(map((meta) => meta?.del)));

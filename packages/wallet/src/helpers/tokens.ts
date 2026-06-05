@@ -1,4 +1,3 @@
-import { Proof } from "@cashu/cashu-ts";
 import {
   getHiddenContent,
   HiddenContentSigner,
@@ -10,7 +9,7 @@ import {
   unlockHiddenContent,
 } from "applesauce-core/helpers";
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
-import { ignoreDuplicateProofs } from "./cashu.js";
+import { ignoreDuplicateProofs, StoredProof } from "./cashu.js";
 
 export const WALLET_TOKEN_KIND = 7375;
 
@@ -28,8 +27,8 @@ setHiddenContentEncryptionMethod(WALLET_TOKEN_KIND, "nip44");
 export type TokenContent = {
   /** Cashu mint for the proofs */
   mint: string;
-  /** Cashu proofs */
-  proofs: { amount: number; secret: string; C: string; id: string }[];
+  /** Cashu proofs (stored with numeric amounts) */
+  proofs: StoredProof[];
   /** The cashu unit */
   unit?: string;
   /** tokens that were destroyed in the creation of this token (helps on wallet state transitions) */
@@ -124,7 +123,7 @@ export function dumbTokenSelection(
   tokens: NostrEvent[],
   minAmount: number,
   mint?: string,
-): { events: NostrEvent[]; proofs: Proof[] } {
+): { events: NostrEvent[]; proofs: StoredProof[] } {
   // If mint is not specified, find a mint with sufficient balance
   let targetMint = mint;
   if (!targetMint) {
@@ -174,7 +173,7 @@ export function dumbTokenSelection(
   let amount = 0;
   const seen = new Set<string>();
   const selectedTokens: NostrEvent[] = [];
-  const selectedProofs: Proof[] = [];
+  const selectedProofs: StoredProof[] = [];
 
   while (amount < minAmount) {
     const token = sorted.pop();

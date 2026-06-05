@@ -126,7 +126,7 @@ export class IndexedDBCouch implements Couch {
         const tokens = results
           .map((item) => {
             try {
-              return getDecodedToken(item.encodedToken);
+              return getDecodedToken(item.encodedToken, []);
             } catch {
               return null;
             }

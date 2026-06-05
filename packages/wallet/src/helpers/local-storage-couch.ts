@@ -62,7 +62,7 @@ export class LocalStorageCouch implements Couch {
     return stored
       .map((item) => {
         try {
-          return getDecodedToken(item.encodedToken);
+          return getDecodedToken(item.encodedToken, []);
         } catch {
           return null;
         }

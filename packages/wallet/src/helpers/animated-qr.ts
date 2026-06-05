@@ -1,4 +1,4 @@
-import { getEncodedTokenV4, Token } from "@cashu/cashu-ts";
+import { getEncodedToken, Token } from "@cashu/cashu-ts";
 import { UR, URDecoder, UREncoder } from "@gandlaf21/bc-ur/dist/lib/es6/index.js";
 import { defer, filter, interval, map, Observable, OperatorFunction, shareReplay } from "rxjs";
 
@@ -33,7 +33,7 @@ export type SendAnimatedOptions = {
 export function sendAnimated(token: Token | string, options?: SendAnimatedOptions): Observable<string> {
   // start the stream as soon as there is subscriber
   return defer(() => {
-    let str = typeof token === "string" ? token : getEncodedTokenV4(token);
+    let str = typeof token === "string" ? token : getEncodedToken(token);
     let utf8 = new TextEncoder();
     let buffer = utf8.encode(str);
     let ur = UR.from(buffer);

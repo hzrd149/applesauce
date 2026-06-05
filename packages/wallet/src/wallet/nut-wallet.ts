@@ -380,7 +380,7 @@ export class NutWallet {
   /** Receives a Cashu token (encoded string or decoded {@link Token}) into the wallet */
   async receiveToken(token: string | Token): Promise<void> {
     await this.track("receive", async () => {
-      const decoded = typeof token === "string" ? getDecodedToken(token) : token;
+      const decoded = typeof token === "string" ? getDecodedToken(token, []) : token;
       if (!decoded) throw new Error("Failed to decode token");
       this.log("Receiving token from mint %s", decoded.mint);
       await this.actions.run(ReceiveToken, decoded, { couch: this.couch });

@@ -79,8 +79,8 @@ importers:
   apps/examples:
     dependencies:
       '@cashu/cashu-ts':
-        specifier: ^3.2.2
-        version: 3.6.2
+        specifier: ^4.5.1
+        version: 4.5.1
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@18.3.28)(react@18.3.1)
@@ -167,7 +167,7 @@ importers:
         version: link:../../packages/wallet-connect
       blossom-client-sdk:
         specifier: ^5.0.0
-        version: 5.0.0(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16)
+        version: 5.0.0(@cashu/cashu-ts@4.5.1)(hls.js@1.6.16)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -475,8 +475,8 @@ importers:
         version: 6.0.2
     devDependencies:
       '@cashu/cashu-ts':
-        specifier: ^3.1.1
-        version: 3.6.2
+        specifier: ^4.5.1
+        version: 4.5.1
       applesauce-signers:
         specifier: ^6.0.0
         version: link:../signers
@@ -761,8 +761,8 @@ importers:
   packages/wallet:
     dependencies:
       '@cashu/cashu-ts':
-        specifier: ^3.6.2
-        version: 3.6.2
+        specifier: ^4.5.1
+        version: 4.5.1
       '@gandlaf21/bc-ur':
         specifier: ^1.1.12
         version: 1.1.12
@@ -983,8 +983,8 @@ packages:
   '@capacitor/core@7.6.1':
     resolution: {integrity: sha512-nsNouCMxgYenyemy20sZwZYMtFi93LSZVWm2KqHTYIPIDgwx24+PzwHIdRQBZdK7hpvD5jQEhWuo/QyLLnAyBQ==}
 
-  '@cashu/cashu-ts@3.6.2':
-    resolution: {integrity: sha512-wdlX1rIFC+cdr+qVnVl2ko6ShKeNSJCGnQFQ1NyeS+EwZ8e0t6BQXF5uLgGnA8DB44RkfCgiH2Iw5RHTDkb6YQ==}
+  '@cashu/cashu-ts@4.5.1':
+    resolution: {integrity: sha512-AGB7wh1SC0iANRSsdwM091eoS1uVhSf/Qf2VM3plw8EzlYjiFkwSa9X0Nh6NpsE1VVeAuPpNInvpznvElp2Q0A==}
     engines: {node: '>=22.4.0'}
 
   '@changesets/apply-release-plan@7.1.1':
@@ -1528,8 +1528,8 @@ packages:
     resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
     engines: {node: ^14.21.3 || >=16}
 
-  '@noble/curves@2.0.1':
-    resolution: {integrity: sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw==}
+  '@noble/curves@2.2.0':
+    resolution: {integrity: sha512-T/BoHgFXirb0ENSPBquzX0rcjXeM6Lo892a2jlYJkqk83LqZx0l1Of7DzlKJ6jkpvMrkHSnAcgb5JegL8SeIkQ==}
     engines: {node: '>= 20.19.0'}
 
   '@noble/hashes@1.3.1':
@@ -1544,8 +1544,8 @@ packages:
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
 
-  '@noble/hashes@2.0.1':
-    resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
+  '@noble/hashes@2.2.0':
+    resolution: {integrity: sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==}
     engines: {node: '>= 20.19.0'}
 
   '@noble/secp256k1@1.7.2':
@@ -1839,14 +1839,14 @@ packages:
   '@scure/base@1.2.6':
     resolution: {integrity: sha512-g/nm5FgUa//MCj1gV09zTJTaM6KBAHqLN907YVQqf7zC49+DcO4B1so4ZX07Ef10Twr6nuqYEH9GEggFXA4Fmg==}
 
-  '@scure/base@2.0.0':
-    resolution: {integrity: sha512-3E1kpuZginKkek01ovG8krQ0Z44E3DHPjc5S2rjJw9lZn3KSQOs8S7wqikF/AH7iRanHypj85uGyxk0XAyC37w==}
+  '@scure/base@2.2.0':
+    resolution: {integrity: sha512-b8XEupJibegiXV+tDUseI8oLQc8ei3d/4Jkb2RpbHh3MfE054ov3uIz2dhFkB3FI8iwYkEh0gGCApkrYggkPNg==}
 
   '@scure/bip32@1.3.1':
     resolution: {integrity: sha512-osvveYtyzdEVbt3OfwwXFr4P2iVBL5u1Q3q4ONBfDY/UpOuXmOlbgwc1xECEboY8wIays8Yt6onaWMUdUbfl0A==}
 
-  '@scure/bip32@2.0.1':
-    resolution: {integrity: sha512-4Md1NI5BzoVP+bhyJaY3K6yMesEFzNS1sE/cP+9nuvE7p/b0kx9XbpDHHFl8dHtufcbdHRUUQdRqLIPHN/s7yA==}
+  '@scure/bip32@2.2.0':
+    resolution: {integrity: sha512-zFr7t2F+a9+5tB7QbarF2HQNYrgjCNaoLAupZdKkrFMYMozJf5zqH2WJCQibMzm1qQ0QogrxVGO3qXfQDYMaQg==}
 
   '@scure/bip39@1.2.1':
     resolution: {integrity: sha512-Z3/Fsz1yr904dduJD0NpiyRHhRYHdcnyh73FZWiV+/qhWi83wNJ3NWolYqCEN+ZWsUz2TWwajJggcRE9r1zUYg==}
@@ -6017,12 +6017,12 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@cashu/cashu-ts@3.6.2':
+  '@cashu/cashu-ts@4.5.1':
     dependencies:
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
-      '@scure/base': 2.0.0
-      '@scure/bip32': 2.0.1
+      '@noble/curves': 2.2.0
+      '@noble/hashes': 2.2.0
+      '@scure/base': 2.2.0
+      '@scure/bip32': 2.2.0
 
   '@changesets/apply-release-plan@7.1.1':
     dependencies:
@@ -6677,9 +6677,9 @@ snapshots:
     dependencies:
       '@noble/hashes': 1.8.0
 
-  '@noble/curves@2.0.1':
+  '@noble/curves@2.2.0':
     dependencies:
-      '@noble/hashes': 2.0.1
+      '@noble/hashes': 2.2.0
 
   '@noble/hashes@1.3.1': {}
 
@@ -6687,7 +6687,7 @@ snapshots:
 
   '@noble/hashes@1.8.0': {}
 
-  '@noble/hashes@2.0.1': {}
+  '@noble/hashes@2.2.0': {}
 
   '@noble/secp256k1@1.7.2': {}
 
@@ -6891,7 +6891,7 @@ snapshots:
 
   '@scure/base@1.2.6': {}
 
-  '@scure/base@2.0.0': {}
+  '@scure/base@2.2.0': {}
 
   '@scure/bip32@1.3.1':
     dependencies:
@@ -6899,11 +6899,11 @@ snapshots:
       '@noble/hashes': 1.3.1
       '@scure/base': 1.1.1
 
-  '@scure/bip32@2.0.1':
+  '@scure/bip32@2.2.0':
     dependencies:
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
-      '@scure/base': 2.0.0
+      '@noble/curves': 2.2.0
+      '@noble/hashes': 2.2.0
+      '@scure/base': 2.2.0
 
   '@scure/bip39@1.2.1':
     dependencies:
@@ -8220,11 +8220,11 @@ snapshots:
 
   block-iterator@1.1.2: {}
 
-  blossom-client-sdk@5.0.0(@cashu/cashu-ts@3.6.2)(hls.js@1.6.16):
+  blossom-client-sdk@5.0.0(@cashu/cashu-ts@4.5.1)(hls.js@1.6.16):
     dependencies:
       '@noble/hashes': 1.8.0
     optionalDependencies:
-      '@cashu/cashu-ts': 3.6.2
+      '@cashu/cashu-ts': 4.5.1
       hls.js: 1.6.16
 
   blurhash@2.0.5: {}

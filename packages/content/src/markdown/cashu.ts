@@ -19,7 +19,7 @@ export function remarkCashuTokens(): Transformer<Nodes> {
       Tokens.cashu,
       (_: string, $1: string) => {
         try {
-          const token = getDecodedToken($1);
+          const token = getDecodedToken($1, []);
 
           return {
             type: "link",

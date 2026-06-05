@@ -3,7 +3,7 @@
  * @tags nip-02, nip-61, nutzap, contacts, lightning, cashu
  * @related nutzap/zap-feed, nutzap/zap-profile
  */
-import { MintQuoteResponse, Wallet } from "@cashu/cashu-ts";
+import { MintQuoteBolt11Response, Wallet } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts/user";
@@ -87,7 +87,7 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
   const [amount, setAmount] = useState(21);
   const [comment, setComment] = useState("");
   const [selectedMint, setSelectedMint] = useState<string>("");
-  const [quote, setQuote] = useState<MintQuoteResponse | null>(null);
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState<"input" | "invoice" | "paid">("input");
 
