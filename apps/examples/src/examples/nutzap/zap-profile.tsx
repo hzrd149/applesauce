@@ -188,8 +188,6 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
 
   const mints = getNutzapInfoMints(nutzapInfo);
   const rawNutzapPubkey = getNutzapInfoPubkey(nutzapInfo);
-  const nutzapRelays = getNutzapInfoRelays(nutzapInfo);
-
   // Set default selected mint when mints change
   useEffect(() => {
     if (mints.length > 0) {
@@ -236,14 +234,8 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
         // Create token from proofs
         const tokens = { mint: selectedMint, proofs: proofs, unit: "sat" };
 
-        // Create nutzap event
-        await actions.exec(NutzapProfile, nutzapInfo.pubkey, tokens, { comment, couch }).forEach(async (event) => {
-          try {
-            await pool.publish(nutzapRelays, event);
-          } catch (error) {
-            console.error("Failed to publish", error);
-          }
-        });
+        // Create and publish the nutzap event to the recipient's advertised relays.
+        await actions.run(NutzapProfile, nutzapInfo.pubkey, tokens, { comment, couch });
 
         setStatus("paid");
         onZapSent?.();

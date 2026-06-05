@@ -72,7 +72,12 @@ const couch = new IndexedDBCouch();
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event) => {
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, targetRelays) => {
+  if (targetRelays?.length) {
+    await pool.publish(targetRelays, event);
+    return;
+  }
+
   const mailboxes = await firstValueFrom(
     eventStore.mailboxes(event.pubkey).pipe(defined(), timeout({ first: 5_000, with: () => of(undefined) })),
   );
@@ -1355,7 +1360,9 @@ function WalletManager({ user }: { user: User }) {
   const tokens = use$(user.wallet$.tokens$);
   const outboxes = use$(user.outboxes$);
   const inboxes = use$(user.inboxes$);
-  const nutzapRelays = use$(user.nutzap$.relays);
+  const nutzapInfo = use$(user.nutzap$);
+  const nutzapRelays = nutzapInfo?.relays;
+  const nutzapMints = nutzapInfo?.mints.map(({ mint }) => mint);
   const relays = use$(user.wallet$.relays$);
   const autoUnlock = use$(autoUnlock$);
   const unlocking = useRef(false);
@@ -1382,8 +1389,10 @@ function WalletManager({ user }: { user: User }) {
     const all = relaySet(nutzapRelays, inboxes);
     if (all.length === 0) return undefined;
 
-    return pool.subscription(all, { kinds: [NUTZAP_KIND], "#p": [user.pubkey] }, { eventStore });
-  }, [inboxes?.join(","), nutzapRelays?.join(","), user.pubkey]);
+    if (!nutzapMints || nutzapMints.length === 0) return undefined;
+
+    return pool.subscription(all, { kinds: [NUTZAP_KIND], "#p": [user.pubkey], "#u": nutzapMints }, { eventStore });
+  }, [inboxes?.join(","), nutzapMints?.join(","), nutzapRelays?.join(","), user.pubkey]);
 
   // Automatically unlock wallet if autoUnlock$ is enabled
   useEffect(() => {

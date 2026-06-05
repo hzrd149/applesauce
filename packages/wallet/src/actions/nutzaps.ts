@@ -7,7 +7,7 @@ import { WalletHistoryFactory } from "../factories/history.js";
 import { WalletTokenFactory } from "../factories/tokens.js";
 import { NutzapFactory } from "../factories/nutzap.js";
 import { Couch } from "../helpers/couch.js";
-import { verifyProofsLocked } from "../helpers/nutzap-info.js";
+import { getNutzapInfoMints, verifyProofsLocked } from "../helpers/nutzap-info.js";
 import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
 import { getUnlockedWallet } from "./common.js";
 
@@ -28,8 +28,11 @@ export function NutzapEvent(event: NostrEvent, token: Token, options?: { comment
       const info = await recipient.nutzap$.$first(5000, undefined);
       if (!info) throw new Error("Nutzap info not found");
 
-      // Get the users wallet
-      const wallet = await getUnlockedWallet(user, signer);
+      // Ensure the user's wallet exists and is unlocked
+      await getUnlockedWallet(user, signer);
+
+      if (!getNutzapInfoMints(info.event).some(({ mint }) => mint === token.mint))
+        throw new Error("Token mint is not listed in the recipient's nutzap info");
 
       // Verify all tokens are p2pk locked
       verifyProofsLocked(token.proofs, info.event);
@@ -38,10 +41,11 @@ export function NutzapEvent(event: NostrEvent, token: Token, options?: { comment
       const nutzap = await NutzapFactory.forEvent(event, token, comment || token.memo).sign(signer);
 
       // Publish the nutzap event
-      await publish(nutzap, wallet.relays);
-    } catch {}
+      await publish(nutzap, info.relays);
+    } finally {
+      await clearStoredToken?.();
+    }
 
-    await clearStoredToken?.();
   };
 }
 
@@ -63,6 +67,9 @@ export function NutzapProfile(
       const info = await recipient.nutzap$.$first(5000, undefined);
       if (!info) throw new Error("Nutzap info not found");
 
+      if (!getNutzapInfoMints(info.event).some(({ mint }) => mint === token.mint))
+        throw new Error("Token mint is not listed in the recipient's nutzap info");
+
       // Verify all tokens are p2pk locked
       verifyProofsLocked(token.proofs, info.event);
 
@@ -71,9 +78,10 @@ export function NutzapProfile(
 
       // Publish the nutzap event
       await publish(nutzap, info.relays);
-    } catch {}
+    } finally {
+      await clearStoredToken?.();
+    }
 
-    await clearStoredToken?.();
   };
 }
 
