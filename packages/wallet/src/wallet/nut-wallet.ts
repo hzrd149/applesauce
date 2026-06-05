@@ -1,7 +1,7 @@
 import { getDecodedToken, getEncodedToken, Token } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
 import type { EventSigner } from "applesauce-core";
-import { EventStore, logger as baseLogger } from "applesauce-core";
+import { logger as baseLogger, EventStore } from "applesauce-core";
 import { castUser, User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers";
 import { getOutboxes, kinds, normalizeURL, notifyEventUpdate, relaySet } from "applesauce-core/helpers";
@@ -18,7 +18,7 @@ import {
   Subscription,
   timeout,
 } from "rxjs";
-import { map, startWith, switchMap } from "rxjs/operators";
+import { map, startWith } from "rxjs/operators";
 
 import {
   ConsolidateTokens,
@@ -30,9 +30,9 @@ import {
   TokensOperation,
   UnlockWallet,
 } from "../actions/index.js";
-import type { Wallet } from "../casts/wallet.js";
 import type { WalletHistory } from "../casts/wallet-history.js";
 import type { WalletToken } from "../casts/wallet-token.js";
+import type { Wallet } from "../casts/wallet.js";
 import type { Couch } from "../helpers/couch.js";
 import { lockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
 import { lockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
@@ -176,14 +176,14 @@ export class NutWallet {
 
     // Wallet state observables (derived from the registered user.wallet$ cast)
     this.wallet$ = this.user.wallet$;
-    this.balance$ = this.wallet$.pipe(switchMap((w) => (w ? w.balance$ : of(undefined))));
+    this.balance$ = this.wallet$.balance$;
     this.totalBalance$ = this.balance$.pipe(
       map((balance) => (balance ? Object.values(balance).reduce((sum, amount) => sum + amount, 0) : 0)),
     );
-    this.tokens$ = this.wallet$.pipe(switchMap((w) => (w ? w.tokens$ : of(undefined))));
-    this.history$ = this.wallet$.pipe(switchMap((w) => (w ? w.history$ : of(undefined))));
-    this.mints$ = this.wallet$.pipe(switchMap((w) => (w ? w.mints$ : of(undefined))));
-    this.walletRelays$ = this.wallet$.pipe(switchMap((w) => (w ? w.relays$ : of(undefined))));
+    this.tokens$ = this.wallet$.tokens$;
+    this.history$ = this.wallet$.history$;
+    this.mints$ = this.wallet$.mints$;
+    this.walletRelays$ = this.wallet$.relays$;
     this.unlocked$ = this.wallet$.pipe(map((w) => w?.unlocked ?? false));
     this.tokenCount$ = this.tokens$.pipe(map((tokens) => tokens?.length ?? 0));
     this.historyCount$ = this.history$.pipe(map((history) => history?.length ?? 0));
