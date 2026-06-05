@@ -11,6 +11,7 @@ describe("exports", () => {
         "CompleteSpend",
         "ConsolidateTokens",
         "CreateWallet",
+        "MintTokens",
         "NutzapEvent",
         "NutzapProfile",
         "ReceiveNutzaps",

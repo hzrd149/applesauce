@@ -3,7 +3,7 @@
  * @tags nip-60, nip-61, wallet, cashu, admin, debugging
  * @related wallet/wallet
  */
-import { getEncodedToken, normalizeProofAmounts } from "@cashu/cashu-ts";
+import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
 import { persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
 import { Filter, persistEventsToCache } from "applesauce-core/helpers";
@@ -15,10 +15,11 @@ import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { IndexedDBCouch } from "applesauce-wallet/helpers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { generateSecretKey } from "nostr-tools";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject } from "rxjs";
 
 import LoginView from "../../components/login-view";
+import QRCode from "../../components/qr-code";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 
@@ -345,9 +346,7 @@ function DebugSection({ wallet }: { wallet: NutWallet }) {
                 {couchTokens.map((token, i) => (
                   <tr key={i}>
                     <td className="font-mono">{token.mint}</td>
-                    <td className="text-right">
-                      {token.proofs.reduce((sum, p) => sum + p.amount.toNumber(), 0)} sats
-                    </td>
+                    <td className="text-right">{token.proofs.reduce((sum, p) => sum + p.amount.toNumber(), 0)} sats</td>
                   </tr>
                 ))}
               </tbody>
@@ -454,6 +453,163 @@ function ReceiveSection({ wallet }: { wallet: NutWallet }) {
   );
 }
 
+// ---- Deposit (mint) ----
+function DepositSection({ wallet }: { wallet: NutWallet }) {
+  const mints = use$(wallet.mintUrls$) ?? [];
+  const ops = use$(wallet.operationsState$) ?? {};
+  const [amount, setAmount] = useState("");
+  const [mint, setMint] = useState("");
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!mint && mints.length > 0) setMint(mints[0]);
+  }, [mints, mint]);
+
+  const handleDeposit = useCallback(async () => {
+    const sats = parseInt(amount, 10);
+    if (!sats || sats <= 0) return;
+    const target = mint || mints[0];
+    if (!target) return setError("Add a mint first");
+
+    setError(null);
+    const ac = new AbortController();
+    abortRef.current = ac;
+    try {
+      // wallet.mint creates the quote, surfaces the invoice, waits for payment, and redeems the proofs
+      await wallet.mint(target, sats, { onQuote: setQuote, signal: ac.signal });
+      setQuote(null);
+      setAmount("");
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
+      setError(err instanceof Error ? err.message : "Failed to deposit");
+      setQuote(null);
+    }
+  }, [wallet, amount, mint, mints]);
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+    setQuote(null);
+  }, []);
+
+  return (
+    <div className="max-w-2xl">
+      <Panel title="Deposit with Lightning">
+        {quote ? (
+          <div className="space-y-3">
+            <div className="flex justify-center">
+              <QRCode value={quote.request} size={220} className="rounded" alt="Lightning invoice QR code" />
+            </div>
+            <textarea
+              className="textarea textarea-bordered w-full h-24 font-mono text-xs"
+              value={quote.request}
+              readOnly
+            />
+            <div className="flex items-center gap-2 text-sm text-base-content/60">
+              <span className="loading loading-spinner loading-sm" />
+              {ops.mint ? "Payment received, minting tokens…" : "Waiting for payment…"}
+            </div>
+            <div className="flex gap-2">
+              <button className="btn btn-primary" onClick={() => navigator.clipboard.writeText(quote.request)}>
+                Copy invoice
+              </button>
+              <button className="btn" onClick={cancel}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <input
+              type="number"
+              className="input input-bordered w-full"
+              placeholder="Amount in sats"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            {mints.length > 0 && (
+              <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
+                {mints.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="btn btn-primary" onClick={handleDeposit} disabled={ops.mintQuote || !amount}>
+              {ops.mintQuote ? <span className="loading loading-spinner loading-sm" /> : "Create invoice"}
+            </button>
+            {error && <div className="alert alert-error">{error}</div>}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ---- Withdraw (melt) ----
+function WithdrawSection({ wallet }: { wallet: NutWallet }) {
+  const balance = use$(wallet.balance$);
+  const ops = use$(wallet.operationsState$) ?? {};
+  const [invoice, setInvoice] = useState("");
+  const [mint, setMint] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const mints = useMemo(() => (balance ? Object.keys(balance).filter((m) => (balance[m] || 0) > 0) : []), [balance]);
+
+  useEffect(() => {
+    if (!mint && mints.length > 0) setMint(mints[0]);
+  }, [mints, mint]);
+
+  const handlePay = useCallback(async () => {
+    const target = mint || mints[0];
+    if (!target) return setError("No mint with a balance to pay from");
+    if (!invoice.trim()) return;
+
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await wallet.payInvoice(target, invoice.trim());
+      const change = response.change.reduce((sum, proof) => sum + proof.amount.toNumber(), 0);
+      setSuccess(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
+      setInvoice("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to pay invoice");
+    }
+  }, [wallet, invoice, mint, mints]);
+
+  return (
+    <div className="max-w-2xl">
+      <Panel title="Withdraw with Lightning">
+        <div className="space-y-4">
+          <textarea
+            className="textarea textarea-bordered w-full h-24 font-mono text-xs"
+            placeholder="Paste a bolt11 invoice (lnbc...)"
+            value={invoice}
+            onChange={(e) => setInvoice(e.target.value)}
+          />
+          {mints.length > 0 && (
+            <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
+              {mints.map((m) => (
+                <option key={m} value={m}>
+                  {m} ({balance?.[m] || 0} sats)
+                </option>
+              ))}
+            </select>
+          )}
+          <button className="btn btn-primary" onClick={handlePay} disabled={ops.melt || !invoice.trim()}>
+            {ops.melt ? <span className="loading loading-spinner loading-sm" /> : "Pay invoice"}
+          </button>
+          {success && <div className="alert alert-success">{success}</div>}
+          {error && <div className="alert alert-error">{error}</div>}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 // ---- Tokens ----
 function TokensSection({ wallet }: { wallet: NutWallet }) {
   const coverage = use$(wallet.tokenRelayCoverage$);
@@ -471,8 +627,8 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
   return (
     <Panel title={`Tokens (${total})`}>
       <p className="text-sm text-base-content/60 mb-3">
-        Each column is a wallet relay. 🟢 means the relay is storing the token event, 🔴 means it is missing — a
-        column full of 🔴 is a relay that is not storing your tokens.
+        Each column is a wallet relay. 🟢 means the relay is storing the token event, 🔴 means it is missing — a column
+        full of 🔴 is a relay that is not storing your tokens.
       </p>
       <div className="overflow-x-auto">
         <table className="table">
@@ -634,7 +790,7 @@ function ListEditor({
 
 // ---- Settings ----
 function SettingsSection({ wallet }: { wallet: NutWallet }) {
-  const mints = use$(wallet.mints$) ?? [];
+  const mints = use$(wallet.mintUrls$) ?? [];
   const relays = use$(wallet.walletRelays$) ?? [];
   const ops = use$(wallet.operationsState$) ?? {};
 
@@ -730,7 +886,17 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
   );
 }
 
-const SECTIONS = ["Overview", "Send", "Receive", "Tokens", "History", "Settings", "Debug"] as const;
+const SECTIONS = [
+  "Overview",
+  "Send",
+  "Receive",
+  "Deposit",
+  "Withdraw",
+  "Tokens",
+  "History",
+  "Settings",
+  "Debug",
+] as const;
 type Section = (typeof SECTIONS)[number];
 
 function WalletDashboard({ wallet }: { wallet: NutWallet }) {
@@ -766,6 +932,8 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
           {section === "Overview" && <OverviewSection wallet={wallet} />}
           {section === "Send" && <SendSection wallet={wallet} />}
           {section === "Receive" && <ReceiveSection wallet={wallet} />}
+          {section === "Deposit" && <DepositSection wallet={wallet} />}
+          {section === "Withdraw" && <WithdrawSection wallet={wallet} />}
           {section === "Tokens" && <TokensSection wallet={wallet} />}
           {section === "History" && <HistorySection wallet={wallet} />}
           {section === "Settings" && <SettingsSection wallet={wallet} />}

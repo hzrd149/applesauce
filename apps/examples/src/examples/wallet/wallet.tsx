@@ -3,7 +3,13 @@
  * @tags nip-60, nip-61, wallet, cashu, tokens, nutzaps
  * @related wallet/mint-discovery, nwc/simple-wallet
  */
-import { getDecodedToken, getEncodedToken, normalizeProofAmounts } from "@cashu/cashu-ts";
+import {
+  getDecodedToken,
+  getEncodedToken,
+  MintQuoteBolt11Response,
+  MintQuoteState,
+  normalizeProofAmounts,
+} from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts";
@@ -29,6 +35,7 @@ import {
   AddNutzapInfoMint,
   ConsolidateTokens,
   CreateWallet,
+  MintTokens,
   ReceiveNutzaps,
   ReceiveToken,
   RecoverFromCouch,
@@ -40,8 +47,10 @@ import {
 } from "applesauce-wallet/actions";
 import { Nutzap, Wallet, WalletHistory, WalletToken } from "applesauce-wallet/casts";
 import {
+  createCashuWallet,
   getWalletRelays,
   IndexedDBCouch,
+  MintRegistry,
   NUTZAP_KIND,
   WALLET_HISTORY_KIND,
   WALLET_KIND,
@@ -57,6 +66,7 @@ import SecureStorage from "../../extra/encrypted-storage";
 // Explicitly import the wallet casts so user.wallet$ is available
 import "applesauce-wallet/casts";
 import { generateSecretKey } from "nostr-tools";
+import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
 // Setup application state
@@ -68,6 +78,11 @@ const autoUnlock$ = new BehaviorSubject<boolean>(false);
 
 // Setup IndexedDB couch for storing tokens during nutzap operations
 const couch = new IndexedDBCouch();
+
+// Cache of cashu-ts Mint instances reused across mint/melt operations
+const registry = new MintRegistry();
+// Builds a cashu Wallet from a cached Mint (passed to actions and used for quotes)
+const getCashuWallet = (mint: string) => createCashuWallet(registry.get(mint));
 
 // Setup event store and relay pool
 const eventStore = new EventStore();
@@ -1353,6 +1368,332 @@ function ReceiveTab({ wallet }: { wallet: Wallet }) {
   );
 }
 
+function DepositTab({ wallet }: { wallet: Wallet }) {
+  const mints = use$(wallet.mints$) ?? [];
+  const [amount, setAmount] = useState("");
+  const [selectedMint, setSelectedMint] = useState<string>("");
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
+  const [status, setStatus] = useState<"idle" | "waiting" | "redeeming">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Default to the first configured mint
+  useEffect(() => {
+    if (!selectedMint && mints.length > 0) setSelectedMint(mints[0]);
+  }, [mints, selectedMint]);
+
+  const reset = useCallback(() => {
+    abortRef.current?.abort();
+    setQuote(null);
+    setStatus("idle");
+    setError(null);
+  }, []);
+
+  const handleDeposit = useCallback(async () => {
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to deposit");
+    const mint = selectedMint || mints[0];
+    if (!mint) return setError("Add a mint to your wallet first");
+
+    const sats = parseInt(amount.trim(), 10);
+    if (isNaN(sats) || sats <= 0) return setError("Please enter a valid amount");
+
+    setError(null);
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    try {
+      // 1. Create a mint quote (lightning invoice) for the deposit
+      const cashuWallet = await getCashuWallet(mint);
+      const mintQuote = await cashuWallet.createMintQuoteBolt11(sats);
+      setQuote(mintQuote);
+      setStatus("waiting");
+
+      // 2. Wait for the invoice to be paid (NIP-17 websocket when supported, else poll)
+      if (cashuWallet.getMintInfo().isSupported(17).supported) {
+        await cashuWallet.on.onceMintPaid(mintQuote.quote, { signal: ac.signal });
+      } else {
+        while (!ac.signal.aborted) {
+          const check = await cashuWallet.checkMintQuoteBolt11(mintQuote.quote);
+          if (check.state === MintQuoteState.PAID || check.state === MintQuoteState.ISSUED) break;
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+      if (ac.signal.aborted) return;
+
+      // 3. Redeem the paid quote, minting proofs into the wallet
+      setStatus("redeeming");
+      await actions.run(MintTokens, mint, sats, mintQuote, { couch, getCashuWallet });
+
+      setQuote(null);
+      setStatus("idle");
+      setAmount("");
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
+      console.error("Failed to deposit:", err);
+      setError(err instanceof Error ? err.message : "Failed to deposit");
+      setStatus("idle");
+    }
+  }, [wallet.unlocked, amount, selectedMint, mints]);
+
+  const handleCopy = useCallback(() => {
+    if (!quote) return;
+    navigator.clipboard.writeText(quote.request);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [quote]);
+
+  if (!wallet.unlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center space-y-4">
+        <h2 className="text-2xl font-bold">Wallet Locked</h2>
+        <p className="text-base-content/70">Unlock your wallet to deposit</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold mb-2">Deposit with Lightning</h3>
+        <p className="text-sm text-base-content/70 mb-4">
+          Mint new ecash by paying a lightning invoice. Enter an amount, pay the generated invoice, and the proofs are
+          added to your wallet automatically.
+        </p>
+      </div>
+
+      {quote ? (
+        <div className="space-y-4">
+          <div className="flex justify-center">
+            <QRCode value={quote.request} size={220} className="rounded" alt="Lightning invoice QR code" />
+          </div>
+
+          <textarea
+            className="textarea textarea-bordered h-24 font-mono text-xs w-full"
+            value={quote.request}
+            readOnly
+          />
+
+          <div className="flex items-center gap-2 text-sm text-base-content/70">
+            <span className="loading loading-spinner loading-sm" />
+            {status === "redeeming" ? "Payment received, minting tokens..." : "Waiting for payment..."}
+          </div>
+
+          <div className="flex gap-2">
+            <button className="btn btn-primary flex-1" onClick={handleCopy}>
+              {copied ? "Copied!" : "Copy Invoice"}
+            </button>
+            <button className="btn btn-ghost" onClick={reset}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2 flex-col">
+            <label className="label">
+              <span className="label-text">Amount (sats)</span>
+            </label>
+            <input
+              type="number"
+              className="input input-bordered w-full"
+              placeholder="Enter amount in sats"
+              value={amount}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setError(null);
+              }}
+              min="1"
+            />
+          </div>
+
+          {mints.length > 0 && (
+            <div className="flex gap-2 flex-col">
+              <label className="label">
+                <span className="label-text">Mint</span>
+              </label>
+              <select
+                className="select select-bordered w-full"
+                value={selectedMint}
+                onChange={(e) => setSelectedMint(e.target.value)}
+              >
+                {mints.map((mint) => (
+                  <option key={mint} value={mint}>
+                    {mint}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            className="btn btn-primary w-full"
+            onClick={handleDeposit}
+            disabled={!amount.trim() || !wallet.unlocked}
+          >
+            Create Invoice
+          </button>
+
+          {error && (
+            <div className="alert alert-error">
+              <span>{error}</span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function WithdrawTab({ wallet }: { wallet: Wallet }) {
+  const balance = use$(wallet.balance$);
+  const [invoice, setInvoice] = useState("");
+  const [selectedMint, setSelectedMint] = useState<string>("");
+  const [paying, setPaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Mints that currently hold a balance to pay from
+  const availableMints = useMemo(() => {
+    if (!balance) return [];
+    return Object.keys(balance).filter((mint) => (balance[mint] || 0) > 0);
+  }, [balance]);
+
+  useEffect(() => {
+    if (!selectedMint && availableMints.length > 0) setSelectedMint(availableMints[0]);
+  }, [availableMints, selectedMint]);
+
+  const handlePay = useCallback(async () => {
+    if (!wallet.unlocked) return setError("Wallet must be unlocked to withdraw");
+    const mint = selectedMint || availableMints[0];
+    if (!mint) return setError("No mint with a balance to pay from");
+    if (!invoice.trim()) return setError("Please paste a lightning invoice");
+
+    setPaying(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      // Create the melt quote first so we know the exact amount + fee reserve
+      const cashuWallet = await getCashuWallet(mint);
+      const meltQuote = await cashuWallet.createMeltQuoteBolt11(invoice.trim());
+      const amount = meltQuote.amount.toNumber();
+      const fee = meltQuote.fee_reserve.toNumber();
+
+      const mintBalance = balance?.[mint] || 0;
+      if (mintBalance < amount + fee)
+        throw new Error(`Insufficient balance. Need ${amount + fee} sats, have ${mintBalance}`);
+
+      await actions.run(
+        TokensOperation,
+        amount + fee,
+        async ({ selectedProofs, cashuWallet }) => {
+          // Set aside the amount + fee reserve to melt and keep any remainder as change
+          const { keep, send } = await cashuWallet.ops
+            .send(amount + fee, selectedProofs)
+            .includeFees(true)
+            .run();
+          const response = await cashuWallet.meltProofsBolt11(meltQuote, send);
+          return { change: [...keep, ...response.change] };
+        },
+        { mint, couch, getCashuWallet },
+      );
+
+      setSuccess(`Paid ${amount} sats (+${fee} sat fee reserve) from ${mint}`);
+      setInvoice("");
+    } catch (err) {
+      console.error("Failed to pay invoice:", err);
+      setError(err instanceof Error ? err.message : "Failed to pay invoice");
+    } finally {
+      setPaying(false);
+    }
+  }, [wallet.unlocked, invoice, selectedMint, availableMints, balance]);
+
+  if (!wallet.unlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center space-y-4">
+        <h2 className="text-2xl font-bold">Wallet Locked</h2>
+        <p className="text-base-content/70">Unlock your wallet to withdraw</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold mb-2">Withdraw with Lightning</h3>
+        <p className="text-sm text-base-content/70 mb-4">
+          Pay a lightning invoice from a mint's balance (melts ecash to lightning). The mint pays the invoice and any
+          change is returned to your wallet.
+        </p>
+      </div>
+
+      <div className="flex gap-2 flex-col">
+        <label className="label">
+          <span className="label-text">Lightning Invoice</span>
+        </label>
+        <textarea
+          className="textarea textarea-bordered h-24 font-mono text-xs w-full"
+          placeholder="Paste a bolt11 invoice here (e.g., lnbc...)"
+          value={invoice}
+          onChange={(e) => {
+            setInvoice(e.target.value);
+            setError(null);
+          }}
+          disabled={paying}
+        />
+      </div>
+
+      {availableMints.length > 0 && (
+        <div className="flex gap-2 flex-col">
+          <label className="label">
+            <span className="label-text">Pay from mint</span>
+          </label>
+          <select
+            className="select select-bordered w-full"
+            value={selectedMint}
+            onChange={(e) => setSelectedMint(e.target.value)}
+            disabled={paying}
+          >
+            {availableMints.map((mint) => (
+              <option key={mint} value={mint}>
+                {mint} ({balance?.[mint] || 0} sats)
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <button
+        className="btn btn-primary w-full"
+        onClick={handlePay}
+        disabled={paying || !invoice.trim() || !wallet.unlocked}
+      >
+        {paying ? (
+          <>
+            <span className="loading loading-spinner loading-sm" />
+            Paying...
+          </>
+        ) : (
+          "Pay Invoice"
+        )}
+      </button>
+
+      {success && (
+        <div className="alert alert-success">
+          <span>{success}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="alert alert-error">
+          <span>{error}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Wallet Manager Component (shown when wallet exists)
 function WalletManager({ user }: { user: User }) {
   const wallet = use$(user.wallet$);
@@ -1469,6 +1810,16 @@ function WalletManager({ user }: { user: User }) {
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Receive" />
         <div className="tab-content bg-base-100 border-base-300 p-6">
           <ReceiveTab wallet={wallet} />
+        </div>
+
+        <input type="radio" name="wallet_tabs" className="tab" aria-label="Deposit" />
+        <div className="tab-content bg-base-100 border-base-300 p-6">
+          <DepositTab wallet={wallet} />
+        </div>
+
+        <input type="radio" name="wallet_tabs" className="tab" aria-label="Withdraw" />
+        <div className="tab-content bg-base-100 border-base-300 p-6">
+          <WithdrawTab wallet={wallet} />
         </div>
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Settings" />

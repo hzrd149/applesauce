@@ -1,4 +1,13 @@
-import { CheckStateEnum, normalizeProofAmounts, Proof, ProofLike, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
+import {
+  CheckStateEnum,
+  MintQuoteBolt11Response,
+  normalizeProofAmounts,
+  Proof,
+  ProofLike,
+  sumProofs,
+  Token,
+  Wallet,
+} from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { DeleteFactory } from "applesauce-core/factories";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -6,6 +15,7 @@ import { WalletHistoryFactory } from "../factories/history.js";
 import { WalletTokenFactory } from "../factories/tokens.js";
 import { getProofUID, ignoreDuplicateProofs } from "../helpers/cashu.js";
 import { Couch } from "../helpers/couch.js";
+import { CashuWalletProvider, loadCashuWallet } from "../helpers/cashu-wallet.js";
 import {
   dumbTokenSelection,
   getTokenContent,
@@ -57,13 +67,15 @@ export function AddToken(token: Token, options?: { redeemed?: string[]; fee?: nu
 }
 
 /** Similar to the AddToken action but swaps the tokens before receiving them */
-export function ReceiveToken(token: Token, options?: { addHistory?: boolean; couch?: Couch }): Action {
+export function ReceiveToken(
+  token: Token,
+  options?: { addHistory?: boolean; couch?: Couch; getCashuWallet?: CashuWalletProvider },
+): Action {
   return async ({ run }) => {
-    const { couch, ...restOptions } = options ?? {};
+    const { couch, getCashuWallet, ...restOptions } = options ?? {};
 
     // Get the cashu wallet
-    const cashuWallet = new Wallet(token.mint);
-    await cashuWallet.loadMint();
+    const cashuWallet = await loadCashuWallet(token.mint, getCashuWallet);
 
     const amount = sumProofs(token.proofs).toNumber();
 
@@ -84,6 +96,45 @@ export function ReceiveToken(token: Token, options?: { addHistory?: boolean; cou
     try {
       // Run the add token action
       await run(AddToken, receivedToken, { ...restOptions, fee });
+
+      // Clear the stored token from the couch after successful completion
+      await clearStoredToken?.();
+    } catch (error) {
+      // If an error occurs, don't clear the couch (tokens remain for recovery)
+      throw error;
+    }
+  };
+}
+
+/**
+ * Mints new proofs from an already-paid bolt11 mint quote and adds them to the wallet
+ * @param mint the mint url to mint the proofs from
+ * @param amount the amount of the paid mint quote in sats
+ * @param quote the paid mint quote id or response
+ * @param options.couch optional couch interface for temporarily storing the minted token
+ * @param options.getCashuWallet optional provider returning a cached cashu Wallet for a mint
+ */
+export function MintTokens(
+  mint: string,
+  amount: number,
+  quote: string | MintQuoteBolt11Response,
+  options?: { couch?: Couch; getCashuWallet?: CashuWalletProvider },
+): Action {
+  return async ({ run }) => {
+    const { couch, getCashuWallet } = options ?? {};
+
+    // Mint the new proofs from the paid quote (throws if the quote has not been paid)
+    const cashuWallet = await loadCashuWallet(mint, getCashuWallet);
+    const proofs = await cashuWallet.mintProofsBolt11(amount, quote);
+
+    const token: Token = { mint, proofs, unit: "sat" };
+
+    // Store the token in the couch immediately after minting it
+    const clearStoredToken = await couch?.store(token);
+
+    try {
+      // Add the minted token to the wallet (creates a token event + "in" history)
+      await run(AddToken, token);
 
       // Clear the stored token from the couch after successful completion
       await clearStoredToken?.();
@@ -177,7 +228,7 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
 }
 
 /** Combines all unlocked token events into a single event per mint */
-export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action {
+export function ConsolidateTokens(options?: { unlockTokens?: boolean; getCashuWallet?: CashuWalletProvider }): Action {
   return async ({ events, signer, self, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
@@ -222,8 +273,7 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action 
       }
 
       // Only interact with the mint if there are proofs to check
-      const cashuWallet = new Wallet(mint);
-      await cashuWallet.loadMint();
+      const cashuWallet = await loadCashuWallet(mint, options?.getCashuWallet);
 
       // NOTE: this assumes that the states array is the same length and order as the proofs array
       const states = await cashuWallet.checkProofsStates(proofs);
@@ -254,8 +304,9 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean }): Action 
  * Recovers tokens from a couch by checking if they exist in the wallet,
  * verifying they are unspent, and creating token events for any recoverable tokens
  * @param couch the couch interface to recover tokens from
+ * @param options.getCashuWallet optional provider returning a cached cashu Wallet for a mint
  */
-export function RecoverFromCouch(couch: Couch): Action {
+export function RecoverFromCouch(couch: Couch, options?: { getCashuWallet?: CashuWalletProvider }): Action {
   return async ({ events, signer, self, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
@@ -313,8 +364,7 @@ export function RecoverFromCouch(couch: Couch): Action {
       if (newProofs.length === 0) continue; // No new proofs to recover
 
       // Check if proofs are unspent from the mint
-      const cashuWallet = new Wallet(mint);
-      await cashuWallet.loadMint();
+      const cashuWallet = await loadCashuWallet(mint, options?.getCashuWallet);
 
       const states = await cashuWallet.checkProofsStates(newProofs);
       const unspentProofs: Proof[] = newProofs.filter((_, i) => states[i].state !== CheckStateEnum.SPENT);
@@ -390,9 +440,14 @@ export function TokensOperation(
     mint: string;
     cashuWallet: Wallet;
   }) => Promise<{ change?: Proof[] }>,
-  options: { mint?: string; couch: Couch; tokenSelection?: TokenSelectionFunction },
+  options: {
+    mint?: string;
+    couch: Couch;
+    tokenSelection?: TokenSelectionFunction;
+    getCashuWallet?: CashuWalletProvider;
+  },
 ): Action {
-  const { mint, couch, tokenSelection = dumbTokenSelection } = options;
+  const { mint, couch, getCashuWallet, tokenSelection = dumbTokenSelection } = options;
 
   return async ({ events, self, user, signer, run }) => {
     if (!signer) throw new Error("Missing signer");
@@ -452,8 +507,7 @@ export function TokensOperation(
 
     try {
       // Create cashu wallet for the mint
-      const cashuWallet = new Wallet(selectedMint);
-      await cashuWallet.loadMint();
+      const cashuWallet = await loadCashuWallet(selectedMint, getCashuWallet);
 
       // Perform the async operation
       // All selected proofs are considered used - the operation only needs to return change (if any)

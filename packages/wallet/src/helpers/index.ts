@@ -8,5 +8,7 @@ export * from "./cashu.js";
 export * from "./couch.js";
 export * from "./local-storage-couch.js";
 export * from "./indexed-db-couch.js";
+export * from "./cashu-wallet.js";
 export * from "./mint-info.js";
 export * from "./mint-recommendation.js";
+export * from "./mint-registry.js";

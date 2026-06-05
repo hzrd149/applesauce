@@ -1,4 +1,4 @@
-import { Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
+import { Proof, sumProofs, Token } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { castUser } from "applesauce-common/casts";
 import { bytesToHex, NostrEvent } from "applesauce-core/helpers/event";
@@ -7,6 +7,7 @@ import { WalletHistoryFactory } from "../factories/history.js";
 import { WalletTokenFactory } from "../factories/tokens.js";
 import { NutzapFactory } from "../factories/nutzap.js";
 import { Couch } from "../helpers/couch.js";
+import { CashuWalletProvider, loadCashuWallet } from "../helpers/cashu-wallet.js";
 import { getNutzapInfoMints, verifyProofsLocked } from "../helpers/nutzap-info.js";
 import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
 import { getUnlockedWallet } from "./common.js";
@@ -45,7 +46,6 @@ export function NutzapEvent(event: NostrEvent, token: Token, options?: { comment
     } finally {
       await clearStoredToken?.();
     }
-
   };
 }
 
@@ -81,7 +81,6 @@ export function NutzapProfile(
     } finally {
       await clearStoredToken?.();
     }
-
   };
 }
 
@@ -91,8 +90,13 @@ export function NutzapProfile(
  * Supports nutzaps with different mints by grouping them by mint and redeeming each group separately
  * @param nutzaps single nutzap event or array of nutzap events
  * @param couch optional couch interface for temporarily storing tokens during the operation
+ * @param getCashuWallet optional provider returning a cached cashu Wallet for a mint
  */
-export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[], couch?: Couch): Action {
+export function ReceiveNutzaps(
+  nutzaps: NostrEvent | NostrEvent[],
+  couch?: Couch,
+  getCashuWallet?: CashuWalletProvider,
+): Action {
   return async ({ signer, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
 
@@ -142,8 +146,7 @@ export function ReceiveNutzaps(nutzaps: NostrEvent | NostrEvent[], couch?: Couch
         };
 
         // Use cashu-ts to receive/unlock the P2PK-locked token
-        const cashuWallet = new Wallet(mint);
-        await cashuWallet.loadMint();
+        const cashuWallet = await loadCashuWallet(mint, getCashuWallet);
 
         // Receive the token using the new wallet.ops API
         // This will swap P2PK-locked proofs with unlocked proofs

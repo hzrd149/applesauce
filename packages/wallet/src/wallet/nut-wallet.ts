@@ -1,28 +1,30 @@
-import { getDecodedToken, getEncodedToken, Token } from "@cashu/cashu-ts";
+import {
+  getDecodedToken,
+  getEncodedToken,
+  type MeltProofsResponse,
+  type MeltQuoteBolt11Response,
+  Mint,
+  type MintQuoteBolt11Response,
+  MintQuoteState,
+  Token,
+  Wallet as CashuWallet,
+} from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
 import type { EventSigner } from "applesauce-core";
-import { logger as baseLogger, EventStore } from "applesauce-core";
+import { ChainableObservable, logger as baseLogger, chainable, EventStore } from "applesauce-core";
 import { castUser, User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers";
 import { getOutboxes, kinds, normalizeURL, notifyEventUpdate, relaySet } from "applesauce-core/helpers";
 import type { RelayPool, RelayStatus } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Debugger } from "debug";
-import {
-  BehaviorSubject,
-  combineLatest,
-  firstValueFrom,
-  isObservable,
-  Observable,
-  of,
-  Subscription,
-  timeout,
-} from "rxjs";
-import { map, startWith } from "rxjs/operators";
+import { BehaviorSubject, combineLatest, isObservable, Observable, of, Subscription } from "rxjs";
+import { distinctUntilChanged, map, shareReplay, startWith } from "rxjs/operators";
 
 import {
   ConsolidateTokens,
   CreateWallet,
+  MintTokens,
   ReceiveToken,
   RecoverFromCouch,
   SetWalletMints,
@@ -35,6 +37,7 @@ import type { WalletToken } from "../casts/wallet-token.js";
 import type { Wallet } from "../casts/wallet.js";
 import type { Couch } from "../helpers/couch.js";
 import { lockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
+import { MintRegistry } from "../helpers/mint-registry.js";
 import { lockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 import { getWalletRelays, lockWallet, WALLET_KIND } from "../helpers/wallet.js";
 import { loadWalletEvents, WalletLoaderStatus } from "./loading.js";
@@ -70,6 +73,27 @@ export function computeTokenRelayCoverage(tokens: WalletToken[], walletRelays: s
   return { relays: relayList, total: tokens.length, perRelay, tokens: coverage };
 }
 
+/** Stable comparison for two string arrays (order dependent, matches the wallet's tag order) */
+function sameStringSet(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
+
+/** Sleeps for a number of milliseconds, rejecting early with an AbortError if the signal aborts */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
  * A reusable NIP-60 / Cashu wallet.
  *
@@ -94,6 +118,10 @@ export class NutWallet {
   protected log: Debugger;
   /** Static relays passed by the caller, used as a publishing fallback before the wallet loads */
   protected fallbackRelays?: string[];
+  /** A cache of cashu-ts Mint instances keyed by url, reused across mint list changes */
+  protected registry = new MintRegistry();
+  /** A cache of loaded cashu Wallet instances keyed by normalized mint url (wallets are specific to this wallet) */
+  protected wallets = new Map<string, Promise<CashuWallet>>();
 
   // ---- Internal state subjects ----
   protected started$ = new BehaviorSubject<boolean>(false);
@@ -119,8 +147,10 @@ export class NutWallet {
   readonly tokens$;
   /** The wallet's history events */
   readonly history$;
-  /** The mints configured on the wallet (undefined until unlocked) */
-  readonly mints$;
+  /** The mint urls configured on the wallet (undefined until unlocked) */
+  readonly mintUrls$;
+  /** The cached cashu-ts Mint instances for the wallet's mints (reused across mint list changes) */
+  readonly mints$: ChainableObservable<Mint[]>;
   /** The relays configured on the wallet (undefined until unlocked) */
   readonly walletRelays$;
   /** Whether the wallet event is currently unlocked */
@@ -182,7 +212,21 @@ export class NutWallet {
     );
     this.tokens$ = this.wallet$.tokens$;
     this.history$ = this.wallet$.history$;
-    this.mints$ = this.wallet$.mints$;
+    this.mintUrls$ = this.wallet$.mints$;
+    // Map the mint urls to cached Mint instances, reusing instances for urls that haven't changed
+    this.mints$ = chainable(
+      this.mintUrls$.pipe(
+        map((urls) => urls ?? []),
+        distinctUntilChanged(sameStringSet),
+        map((urls) => {
+          // Drop cached wallets for mints that are no longer configured
+          const keys = new Set(urls.map(normalizeURL));
+          for (const key of this.wallets.keys()) if (!keys.has(key)) this.wallets.delete(key);
+          return this.registry.sync(urls);
+        }),
+        shareReplay({ bufferSize: 1, refCount: true }),
+      ),
+    );
     this.walletRelays$ = this.wallet$.relays$;
     this.unlocked$ = this.wallet$.pipe(map((w) => w?.unlocked ?? false));
     this.tokenCount$ = this.tokens$.pipe(map((tokens) => tokens?.length ?? 0));
@@ -210,19 +254,21 @@ export class NutWallet {
 
     // Resolve the relays used for loading and publishing
     if (options.relays) {
-      this.relays$ = isObservable(options.relays) ? options.relays : of(options.relays);
+      this.relays$ = isObservable(options.relays) ? chainable(options.relays) : chainable(of(options.relays));
       if (Array.isArray(options.relays)) this.fallbackRelays = options.relays;
     } else {
-      this.relays$ = combineLatest([
-        this.walletRelays$.pipe(
-          map((r) => r ?? []),
-          startWith([] as string[]),
-        ),
-        this.user.outboxes$.pipe(
-          map((r) => r ?? []),
-          startWith([] as string[]),
-        ),
-      ]).pipe(map(([wallet, outboxes]) => relaySet(wallet, outboxes)));
+      this.relays$ = chainable(
+        combineLatest([
+          this.walletRelays$.pipe(
+            map((r) => r ?? []),
+            startWith([] as string[]),
+          ),
+          this.user.outboxes$.pipe(
+            map((r) => r ?? []),
+            startWith([] as string[]),
+          ),
+        ]).pipe(map(([wallet, outboxes]) => relaySet(wallet, outboxes))),
+      );
     }
 
     // Per-relay connection status
@@ -285,6 +331,8 @@ export class NutWallet {
     this.loadingSub = undefined;
     this.autoUnlockSub?.unsubscribe();
     this.autoUnlockSub = undefined;
+    this.wallets.clear();
+    this.registry.dispose();
   }
 
   /** Alias for {@link stop} */
@@ -368,7 +416,7 @@ export class NutWallet {
           encoded = getEncodedToken({ mint, proofs: send, unit: "sat" });
           return { change: keep.length > 0 ? keep : undefined };
         },
-        { mint: options?.mint, couch: this.couch },
+        { mint: options?.mint, couch: this.couch, getCashuWallet: this.getCashuWallet },
       );
       if (!encoded) throw new Error("Failed to create token");
       this.log("Created token for %d sats", amount);
@@ -383,8 +431,110 @@ export class NutWallet {
       const decoded = typeof token === "string" ? getDecodedToken(token, []) : token;
       if (!decoded) throw new Error("Failed to decode token");
       this.log("Receiving token from mint %s", decoded.mint);
-      await this.actions.run(ReceiveToken, decoded, { couch: this.couch });
+      await this.actions.run(ReceiveToken, decoded, { couch: this.couch, getCashuWallet: this.getCashuWallet });
       await this.refreshCouch();
+    });
+  }
+
+  /**
+   * Creates a bolt11 mint quote (lightning invoice) to deposit `amount` sats into a mint.
+   * Pay the returned `request` invoice, then wait for it with {@link waitForMintQuote} and redeem it
+   * with {@link redeemMintQuote} (or use {@link mint} to do all three in one call).
+   */
+  async createMintQuote(mint: string, amount: number, description?: string): Promise<MintQuoteBolt11Response> {
+    return this.track("mintQuote", async () => {
+      this.log("Creating mint quote for %d sats at %s", amount, mint);
+      const cashuWallet = await this.getCashuWallet(mint);
+      return cashuWallet.createMintQuoteBolt11(amount, description);
+    });
+  }
+
+  /**
+   * Waits for a bolt11 mint quote to be paid. Uses a NIP-17 WebSocket subscription when the mint
+   * supports it and falls back to polling the quote otherwise.
+   * @param options.signal aborts the wait
+   * @param options.timeoutMs rejects after this many milliseconds
+   * @param options.interval polling interval in ms when the mint does not support NIP-17 (default 3000)
+   */
+  async waitForMintQuote(
+    mint: string,
+    quote: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number; interval?: number },
+  ): Promise<MintQuoteBolt11Response> {
+    const cashuWallet = await this.getCashuWallet(mint);
+    if (await this.mintSupports(mint, 17)) {
+      this.log("Waiting for mint quote %s via websocket", quote);
+      return cashuWallet.on.onceMintPaid(quote, { signal: options?.signal, timeoutMs: options?.timeoutMs });
+    }
+    this.log("Waiting for mint quote %s via polling", quote);
+    return this.pollMintQuote(cashuWallet, quote, options);
+  }
+
+  /** Redeems an already-paid bolt11 mint quote, minting proofs and adding them to the wallet */
+  async redeemMintQuote(mint: string, amount: number, quote: string | MintQuoteBolt11Response): Promise<void> {
+    await this.track("mint", async () => {
+      this.log("Redeeming mint quote for %d sats at %s", amount, mint);
+      await this.actions.run(MintTokens, mint, amount, quote, {
+        couch: this.couch,
+        getCashuWallet: this.getCashuWallet,
+      });
+      await this.refreshCouch();
+    });
+  }
+
+  /**
+   * Deposits `amount` sats into a mint by creating a quote, surfacing the invoice via `onQuote`,
+   * waiting for it to be paid, and redeeming the proofs into the wallet.
+   * @param options.onQuote called with the quote so the caller can display the lightning invoice
+   */
+  async mint(
+    mint: string,
+    amount: number,
+    options?: {
+      onQuote?: (quote: MintQuoteBolt11Response) => void;
+      description?: string;
+      signal?: AbortSignal;
+      timeoutMs?: number;
+    },
+  ): Promise<void> {
+    const quote = await this.createMintQuote(mint, amount, options?.description);
+    options?.onQuote?.(quote);
+    await this.waitForMintQuote(mint, quote.quote, { signal: options?.signal, timeoutMs: options?.timeoutMs });
+    await this.redeemMintQuote(mint, amount, quote);
+  }
+
+  /**
+   * Pays a bolt11 lightning invoice from a specific mint's balance (melts ecash to lightning).
+   * @returns the cashu melt response, including any change proofs returned by the mint
+   */
+  async payInvoice(mint: string, invoice: string): Promise<MeltProofsResponse<MeltQuoteBolt11Response>> {
+    return this.track("melt", async () => {
+      // Create the melt quote first so we know the exact amount + fee reserve to select
+      const quoteWallet = await this.getCashuWallet(mint);
+      const meltQuote = await quoteWallet.createMeltQuoteBolt11(invoice);
+      const amount = meltQuote.amount.toNumber();
+      const feeReserve = meltQuote.fee_reserve.toNumber();
+      this.log("Melting %d sats (+%d fee reserve) at %s", amount, feeReserve, mint);
+
+      let response: MeltProofsResponse<MeltQuoteBolt11Response> | undefined;
+      await this.actions.run(
+        TokensOperation,
+        amount + feeReserve,
+        async ({ selectedProofs, cashuWallet }) => {
+          // Set aside the amount + fee reserve to melt and keep any remainder as change
+          const { keep, send } = await cashuWallet.ops
+            .send(amount + feeReserve, selectedProofs)
+            .includeFees(true)
+            .run();
+          response = await cashuWallet.meltProofsBolt11(meltQuote, send);
+          return { change: [...keep, ...response.change] };
+        },
+        { mint, couch: this.couch, getCashuWallet: this.getCashuWallet },
+      );
+      if (!response) throw new Error("Failed to melt token");
+      this.log("Melted token at %s", mint);
+      await this.refreshCouch();
+      return response;
     });
   }
 
@@ -392,7 +542,7 @@ export class NutWallet {
   async consolidateTokens(): Promise<void> {
     await this.track("consolidate", async () => {
       this.log("Consolidating tokens");
-      await this.actions.run(ConsolidateTokens, { unlockTokens: true });
+      await this.actions.run(ConsolidateTokens, { unlockTokens: true, getCashuWallet: this.getCashuWallet });
       await this.refreshCouch();
     });
   }
@@ -401,7 +551,7 @@ export class NutWallet {
   async recoverFromCouch(): Promise<void> {
     await this.track("recover", async () => {
       this.log("Recovering tokens from couch");
-      await this.actions.run(RecoverFromCouch, this.couch);
+      await this.actions.run(RecoverFromCouch, this.couch, { getCashuWallet: this.getCashuWallet });
       await this.refreshCouch();
     });
   }
@@ -409,8 +559,10 @@ export class NutWallet {
   /** Re-publishes all token events to the wallet's relays */
   async syncTokens(): Promise<void> {
     await this.track("sync", async () => {
-      const tokens = await firstValueFrom(this.tokens$.pipe(timeout({ first: 5_000, with: () => of(undefined) })));
-      const relays = await firstValueFrom(this.relays$.pipe(timeout({ first: 5_000, with: () => of([] as string[]) })));
+      const [tokens, relays] = await Promise.all([
+        this.tokens$.$first(5_000, undefined),
+        this.relays$.$first(5_000, [] as string[]),
+      ]);
 
       if (!tokens?.length) return this.log("No tokens to sync");
       if (relays.length === 0) throw new Error("No relays configured to sync tokens");
@@ -507,6 +659,54 @@ export class NutWallet {
 
       if (needsUnlock) this.unlock().catch((error) => this.log("Auto-unlock failed: %s", error?.message ?? error));
     });
+  }
+
+  /**
+   * Returns a cached, loaded cashu {@link CashuWallet} for a mint, building it from the cached {@link Mint}.
+   * Bound to the instance so it can be passed to actions as a wallet provider.
+   */
+  protected getCashuWallet = (mint: string): Promise<CashuWallet> => {
+    const key = normalizeURL(mint);
+    let wallet = this.wallets.get(key);
+    if (!wallet) {
+      wallet = (async () => {
+        const instance = new CashuWallet(this.registry.get(mint));
+        await instance.loadMint();
+        return instance;
+      })();
+      // Drop the cache entry if loading fails so the next call retries
+      wallet.catch(() => this.wallets.delete(key));
+      this.wallets.set(key, wallet);
+    }
+    return wallet;
+  };
+
+  /** Returns whether the mint at a url supports a given NUT number */
+  protected async mintSupports(mint: string, nut: number): Promise<boolean> {
+    const info = await this.registry.get(mint).getLazyMintInfo();
+    return info.isSupported(nut as Parameters<typeof info.isSupported>[0]).supported;
+  }
+
+  /** Polls a bolt11 mint quote until it is paid (fallback for mints without NIP-17 support) */
+  protected async pollMintQuote(
+    cashuWallet: CashuWallet,
+    quote: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number; interval?: number },
+  ): Promise<MintQuoteBolt11Response> {
+    const interval = options?.interval ?? 3_000;
+    const deadline = options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : undefined;
+
+    for (;;) {
+      if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+
+      const status = await cashuWallet.checkMintQuoteBolt11(quote);
+      if (status.state === MintQuoteState.PAID || status.state === MintQuoteState.ISSUED) return status;
+
+      if (deadline !== undefined && Date.now() + interval > deadline)
+        throw new Error(`Mint quote ${quote} was not paid within the timeout`);
+
+      await sleep(interval, options?.signal);
+    }
   }
 
   /** Runs an async operation while tracking its busy state and surfacing any error */

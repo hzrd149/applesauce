@@ -189,7 +189,10 @@ describe("computeTokenRelayCoverage", () => {
   });
 
   it("falls back to the union of seen relays when no wallet relays are given", () => {
-    const coverage = computeTokenRelayCoverage([token("1", ["wss://a.example.com"]), token("2", ["wss://b.example.com"])], []);
+    const coverage = computeTokenRelayCoverage(
+      [token("1", ["wss://a.example.com"]), token("2", ["wss://b.example.com"])],
+      [],
+    );
     expect(coverage.relays).toHaveLength(2);
   });
 });

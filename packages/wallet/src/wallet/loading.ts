@@ -50,11 +50,7 @@ function sameRelays(a: string[], b: string[]): boolean {
  * Probes the relays for NIP-77 (negentropy) support and emits the result.
  * This is purely observational — {@link RelayPool.sync} performs its own filtering.
  */
-function probeNegentropySupport(
-  pool: RelayPool,
-  relays: string[],
-  logger: Debugger,
-): Observable<WalletLoaderStatus> {
+function probeNegentropySupport(pool: RelayPool, relays: string[], logger: Debugger): Observable<WalletLoaderStatus> {
   return defer(async () => {
     const results = await Promise.all(
       relays.map(async (url) => {
