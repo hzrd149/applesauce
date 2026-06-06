@@ -5,24 +5,23 @@ import { identity, map } from "rxjs";
 import { ignoreDuplicateProofs } from "../helpers/cashu.js";
 import { getTokenContent, isTokenContentUnlocked, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 
-/** removes deleted events from sorted array */
-function filterDeleted<T extends NostrEvent>(tokens: T[]): T[] {
+/** Collects the set of token event ids that newer (unlocked) token events have marked as deleted */
+function collectDeletedIds(tokens: NostrEvent[]): Set<string> {
   const deleted = new Set<string>();
-  return Array.from(tokens)
-    .reverse()
-    .filter((token) => {
-      // skip this event if it a newer event says its deleted
-      if (deleted.has(token.id)) return false;
+  for (const token of tokens) {
+    if (isTokenContentUnlocked(token)) for (const id of getTokenContent(token)!.del) deleted.add(id);
+  }
+  return deleted;
+}
 
-      // add ids to deleted array
-      if (isTokenContentUnlocked(token)) {
-        const details = getTokenContent(token)!;
-        for (const id of details.del) deleted.add(id);
-      }
-
-      return true;
-    })
-    .reverse();
+/**
+ * Removes token events that a newer token event has marked as deleted via its `del` field. Collects the
+ * full deleted set up front so it is independent of the timeline's sort order and handles delete chains
+ * (A deleted by B, B deleted by C) correctly.
+ */
+function filterDeleted<T extends NostrEvent>(tokens: T[]): T[] {
+  const deleted = collectDeletedIds(tokens);
+  return tokens.filter((token) => !deleted.has(token.id));
 }
 
 /** A model that subscribes to all token events for a wallet, passing unlocked will filter by token unlocked status */
@@ -33,6 +32,22 @@ export function WalletTokensModel(pubkey: string, unlocked?: boolean | undefined
       unlocked !== undefined ? map((tokens) => tokens.filter((t) => isTokenContentUnlocked(t) === unlocked)) : identity,
       // remove deleted events
       map(filterDeleted),
+    );
+  };
+}
+
+/**
+ * A model that returns token events which have been marked as deleted by a newer token event's `del`
+ * field but are still present in the store. These are the events that {@link CleanupDeletedTokens} (or
+ * a NIP-09 delete event) can safely remove from relays.
+ */
+export function WalletDeletedTokensModel(pubkey: string): Model<NostrEvent[]> {
+  return (events) => {
+    return events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }).pipe(
+      map((tokens) => {
+        const deleted = collectDeletedIds(tokens);
+        return tokens.filter((token) => deleted.has(token.id));
+      }),
     );
   };
 }

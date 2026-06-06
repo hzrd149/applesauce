@@ -164,28 +164,51 @@ export function MintTokens(
   };
 }
 
-/** An action that deletes old tokens and creates a new one but does not add a history event */
-export function RolloverTokens(tokens: NostrEvent[], token: Token): Action {
+/**
+ * An action that deletes old tokens and creates a new one but does not add a history event
+ * @param options.deleteOldTokens whether to publish a NIP-09 delete event for the old token events
+ *   (default true). The new token event always references the old ids in its `del` field, so the
+ *   wallet can reconcile its own balance without the delete event; skipping it saves a signing
+ *   operation at the cost of leaving the spent token events on relays until {@link CleanupDeletedTokens}.
+ */
+export function RolloverTokens(tokens: NostrEvent[], token: Token, options?: { deleteOldTokens?: boolean }): Action {
+  const deleteOldTokens = options?.deleteOldTokens ?? true;
+
   return async ({ signer, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
 
-    // create a new token event
+    // create a new token event (the old token ids are recorded in its `del` field)
     const tokenEvent = await WalletTokenFactory.create(
       token,
       tokens.map((e) => e.id),
     ).sign(signer);
 
-    // create a delete event for old tokens
-    const deleteEvent = await DeleteFactory.fromEvents(tokens).sign(signer);
+    // optionally create a delete event for old tokens
+    const deleteEvent = deleteOldTokens ? await DeleteFactory.fromEvents(tokens).sign(signer) : undefined;
 
     // publish events
-    await publish([tokenEvent, deleteEvent], wallet.relays);
+    await publish(
+      [tokenEvent, deleteEvent].filter((e) => !!e),
+      wallet.relays,
+    );
   };
 }
 
-/** An action that deletes old token events and adds a spend history item */
-export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch): Action {
+/**
+ * An action that deletes old token events and adds a spend history item
+ * @param options.deleteOldTokens whether to publish a NIP-09 delete event for the spent token events
+ *   (default true). The change token event always references the spent ids in its `del` field, so see
+ *   {@link RolloverTokens} for the trade-off of skipping it.
+ */
+export function CompleteSpend(
+  spent: NostrEvent[],
+  change: Token,
+  couch?: Couch,
+  options?: { deleteOldTokens?: boolean },
+): Action {
+  const deleteOldTokens = options?.deleteOldTokens ?? true;
+
   return async ({ signer, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
     if (spent.length === 0) throw new Error("Cant complete spent with no token events");
@@ -218,8 +241,8 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
       // calculate the amount that was spent
       const diff = total - changeAmount;
 
-      // sign delete and token
-      const deleteEvent = await DeleteFactory.fromEvents(spent).sign(signer);
+      // optionally sign a delete event for the spent tokens
+      const deleteEvent = deleteOldTokens ? await DeleteFactory.fromEvents(spent).sign(signer) : undefined;
 
       // create a history entry
       const history = await WalletHistoryFactory.create({
@@ -246,8 +269,18 @@ export function CompleteSpend(spent: NostrEvent[], change: Token, couch?: Couch)
   };
 }
 
-/** Combines all unlocked token events into a single event per mint */
-export function ConsolidateTokens(options?: { unlockTokens?: boolean; getCashuWallet?: CashuWalletProvider }): Action {
+/**
+ * Combines all unlocked token events into a single event per mint
+ * @param options.deleteOldTokens whether to publish a single batched NIP-09 delete event for the old
+ *   token events (default true). The new token events always reference the old ids in their `del` field.
+ */
+export function ConsolidateTokens(options?: {
+  unlockTokens?: boolean;
+  getCashuWallet?: CashuWalletProvider;
+  deleteOldTokens?: boolean;
+}): Action {
+  const deleteOldTokens = options?.deleteOldTokens ?? true;
+
   return async ({ events, signer, self, user, publish }) => {
     if (!signer) throw new Error("Missing signer");
     const wallet = await getUnlockedWallet(user, signer);
@@ -321,11 +354,52 @@ export function ConsolidateTokens(options?: { unlockTokens?: boolean; getCashuWa
     // Nothing to consolidate
     if (deletedTokens.length === 0) return;
 
-    // Create a single delete event for all of the old tokens across every mint
-    const deleteEvent = await DeleteFactory.fromEvents(deletedTokens).sign(signer);
+    // Optionally create a single delete event for all of the old tokens across every mint
+    const deleteEvent = deleteOldTokens ? await DeleteFactory.fromEvents(deletedTokens).sign(signer) : undefined;
 
     // Publish the new token events and the single batched delete event together
-    await publish([...newTokenEvents, deleteEvent], wallet.relays);
+    await publish(
+      [...newTokenEvents, deleteEvent].filter((e) => !!e),
+      wallet.relays,
+    );
+  };
+}
+
+/**
+ * Detects token events that have been marked as deleted by a newer token event's `del` field but are
+ * still present, and publishes a single NIP-09 delete event for them. Use this to clean up the old
+ * token events left behind when operations run with `deleteOldTokens: false`, batching what would
+ * otherwise be many per-operation delete events into a single signing operation.
+ */
+export function CleanupDeletedTokens(): Action {
+  return async ({ events, signer, self, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
+    const wallet = await getUnlockedWallet(user, signer);
+
+    const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
+
+    // Unlock tokens so their `del` references can be read
+    for (const token of tokens) {
+      if (!isTokenContentUnlocked(token)) {
+        try {
+          await unlockTokenContent(token, signer);
+        } catch {}
+      }
+    }
+
+    // Collect the ids that newer token events have marked as deleted
+    const deleted = new Set<string>();
+    for (const token of tokens) {
+      if (isTokenContentUnlocked(token)) for (const id of getTokenContent(token).del) deleted.add(id);
+    }
+
+    // Find token events that are marked deleted but still present in the store
+    const stale = tokens.filter((token) => deleted.has(token.id));
+    if (stale.length === 0) return;
+
+    // Publish a single delete event for all stale token events
+    const deleteEvent = await DeleteFactory.fromEvents(stale).sign(signer);
+    await publish(deleteEvent, wallet.relays);
   };
 }
 
@@ -475,9 +549,10 @@ export function TokensOperation(
     tokenSelection?: TokenSelectionFunction;
     wallet?: Wallet;
     getCashuWallet?: CashuWalletProvider;
+    deleteOldTokens?: boolean;
   },
 ): Action {
-  const { mint, couch, wallet, getCashuWallet, tokenSelection = dumbTokenSelection } = options;
+  const { mint, couch, wallet, getCashuWallet, deleteOldTokens, tokenSelection = dumbTokenSelection } = options;
 
   return async ({ events, self, user, signer, run }) => {
     if (!signer) throw new Error("Missing signer");
@@ -556,7 +631,7 @@ export function TokensOperation(
 
       // Complete the spend with change (if any)
       // If there's no change, all selected proofs were spent
-      await run(CompleteSpend, selectedTokenEvents, changeToken, couch);
+      await run(CompleteSpend, selectedTokenEvents, changeToken, couch, { deleteOldTokens });
 
       // Clear the stored token from the couch after successful completion
       await clearStoredToken();

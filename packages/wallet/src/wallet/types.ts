@@ -26,6 +26,13 @@ export interface NutWalletOptions {
   relays?: string[] | Observable<string[]>;
   /** Automatically unlock the wallet, tokens and history as they load */
   autoUnlock?: boolean;
+  /**
+   * Whether spend/rollover/consolidate operations publish a NIP-09 delete event for the old token
+   * events (default true). When false, the wallet relies on each new token event's `del` field to
+   * reconcile its balance and leaves the spent token events on relays until {@link NutWallet.cleanupDeletedTokens}
+   * removes them in a single batched delete. Can be toggled at runtime with {@link NutWallet.setDeleteOldTokens}.
+   */
+  deleteOldTokens?: boolean;
   /** A custom debug logger (defaults to the "applesauce:nut-wallet" namespace) */
   logger?: Debugger;
 }
@@ -63,6 +70,7 @@ export type NutWalletOperation =
   | "mint"
   | "melt"
   | "consolidate"
+  | "cleanup"
   | "recover"
   | "sync"
   | "setMints"

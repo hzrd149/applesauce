@@ -8,6 +8,7 @@ describe("exports", () => {
         "AddNutzapInfoMint",
         "AddNutzapInfoRelay",
         "AddToken",
+        "CleanupDeletedTokens",
         "CompleteSpend",
         "ConsolidateTokens",
         "CreateWallet",

@@ -22,6 +22,7 @@ import { BehaviorSubject, combineLatest, isObservable, Observable, of, Subscript
 import { distinctUntilChanged, map, shareReplay, startWith } from "rxjs/operators";
 
 import {
+  CleanupDeletedTokens,
   ConsolidateTokens,
   CreateWallet,
   MintTokens,
@@ -39,6 +40,7 @@ import type { Couch } from "../helpers/couch.js";
 import { lockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
 import { lockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 import { getWalletRelays, lockWallet, WALLET_KIND } from "../helpers/wallet.js";
+import { WalletDeletedTokensModel } from "../models/tokens.js";
 import { loadWalletEvents, WalletLoaderStatus } from "./loading.js";
 import {
   type CreateWalletOptions,
@@ -112,6 +114,11 @@ export class NutWallet {
   readonly eventStore: EventStore;
   readonly couch: Couch;
 
+  /** Whether to automatically unlock the wallet, tokens and history as they load */
+  autoUnlock: boolean;
+  /** Whether spend/rollover/consolidate operations publish a NIP-09 delete event for old token events */
+  deleteOldTokens: boolean;
+
   protected user: User;
   protected actions: ActionRunner;
   protected log: Debugger;
@@ -134,7 +141,6 @@ export class NutWallet {
   protected error$ = new BehaviorSubject<Error | null>(null);
   protected operations$ = new BehaviorSubject<Partial<Record<NutWalletOperation, boolean>>>({});
   protected negentropy$ = new BehaviorSubject<Record<string, boolean>>({});
-  protected autoUnlock$ = new BehaviorSubject<boolean>(false);
   protected couch$ = new BehaviorSubject<Token[]>([]);
 
   // ---- Wallet state observables ----
@@ -164,6 +170,10 @@ export class NutWallet {
   readonly historyCount$;
   /** How the wallet's token events are spread across its relays */
   readonly tokenRelayCoverage$: Observable<TokenRelayCoverage>;
+  /** Token events marked as deleted by a newer token event but still present (cleanup candidates) */
+  readonly staleTokens$: Observable<NostrEvent[]>;
+  /** The number of token events that are marked deleted but still present */
+  readonly staleTokenCount$: Observable<number>;
 
   // ---- Status / debugging observables ----
   /** The high-level lifecycle status of the wallet */
@@ -178,8 +188,6 @@ export class NutWallet {
   readonly operationsState$ = this.operations$.asObservable();
   /** Whether any async operation is currently running */
   readonly busy$;
-  /** Whether auto-unlock is enabled */
-  readonly autoUnlockState$ = this.autoUnlock$.asObservable();
   /** A map of relay url to whether it supports NIP-77 negentropy sync */
   readonly negentropySupport$ = this.negentropy$.asObservable();
   /** Per-relay connection status for the wallet's relays */
@@ -197,7 +205,8 @@ export class NutWallet {
     this.pool = options.pool;
     this.eventStore = options.eventStore;
     this.couch = options.couch;
-    this.autoUnlock$.next(options.autoUnlock ?? false);
+    this.autoUnlock = options.autoUnlock ?? false;
+    this.deleteOldTokens = options.deleteOldTokens ?? true;
     this.log = options.logger ?? baseLogger.extend("nut-wallet").extend(this.pubkey.slice(0, 8));
 
     this.user = castUser(this.pubkey, this.eventStore);
@@ -243,6 +252,10 @@ export class NutWallet {
         startWith([] as string[]),
       ),
     ]).pipe(map(([tokens, walletRelays]) => computeTokenRelayCoverage(tokens, walletRelays)));
+
+    // Token events that newer token events have marked as deleted but are still present
+    this.staleTokens$ = this.eventStore.model(WalletDeletedTokensModel, this.pubkey);
+    this.staleTokenCount$ = this.staleTokens$.pipe(map((tokens) => tokens.length));
 
     // Status enum derived from the lifecycle subjects and the wallet
     this.status$ = combineLatest([this.started$, this.loaded$, this.wallet$.pipe(startWith(undefined))]).pipe(
@@ -366,7 +379,16 @@ export class NutWallet {
 
   /** Enables or disables automatic unlocking */
   setAutoUnlock(enabled: boolean): void {
-    this.autoUnlock$.next(enabled);
+    this.autoUnlock = enabled;
+  }
+
+  /**
+   * Enables or disables publishing NIP-09 delete events for old token events during spend, rollover and
+   * consolidate operations. When disabled, spent token events are left on relays until
+   * {@link cleanupDeletedTokens} removes them in a single batched delete.
+   */
+  setDeleteOldTokens(enabled: boolean): void {
+    this.deleteOldTokens = enabled;
   }
 
   /** Unlocks the wallet event and all of its token and history events */
@@ -421,7 +443,13 @@ export class NutWallet {
           encoded = getEncodedToken({ mint, proofs: send, unit: "sat" });
           return { change: keep.length > 0 ? keep : undefined };
         },
-        { mint: options?.mint, couch: this.couch, wallet, getCashuWallet: this.getCashuWallet },
+        {
+          mint: options?.mint,
+          couch: this.couch,
+          wallet,
+          getCashuWallet: this.getCashuWallet,
+          deleteOldTokens: this.deleteOldTokens,
+        },
       );
       if (!encoded) throw new Error("Failed to create token");
       this.log("Created token for %d sats", amount);
@@ -537,7 +565,13 @@ export class NutWallet {
           response = await cashuWallet.meltProofsBolt11(meltQuote, send);
           return { change: [...keep, ...response.change] };
         },
-        { mint, couch: this.couch, wallet: quoteWallet, getCashuWallet: this.getCashuWallet },
+        {
+          mint,
+          couch: this.couch,
+          wallet: quoteWallet,
+          getCashuWallet: this.getCashuWallet,
+          deleteOldTokens: this.deleteOldTokens,
+        },
       );
       if (!response) throw new Error("Failed to melt token");
       this.log("Melted token at %s", mint);
@@ -550,7 +584,24 @@ export class NutWallet {
   async consolidateTokens(): Promise<void> {
     await this.track("consolidate", async () => {
       this.log("Consolidating tokens");
-      await this.actions.run(ConsolidateTokens, { unlockTokens: true, getCashuWallet: this.getCashuWallet });
+      await this.actions.run(ConsolidateTokens, {
+        unlockTokens: true,
+        getCashuWallet: this.getCashuWallet,
+        deleteOldTokens: this.deleteOldTokens,
+      });
+      await this.refreshCouch();
+    });
+  }
+
+  /**
+   * Publishes a single NIP-09 delete event for every token event that a newer token event has marked as
+   * deleted but is still present. Cleans up the spent token events left on relays when operations run
+   * with {@link setDeleteOldTokens} disabled.
+   */
+  async cleanupDeletedTokens(): Promise<void> {
+    await this.track("cleanup", async () => {
+      this.log("Cleaning up deleted token events");
+      await this.actions.run(CleanupDeletedTokens);
       await this.refreshCouch();
     });
   }
@@ -656,9 +707,8 @@ export class NutWallet {
       this.wallet$.pipe(startWith(undefined)),
       this.tokens$.pipe(startWith(undefined)),
       this.history$.pipe(startWith(undefined)),
-      this.autoUnlock$,
-    ]).subscribe(([wallet, tokens, history, autoUnlock]) => {
-      if (!autoUnlock || this.unlocking || !wallet) return;
+    ]).subscribe(([wallet, tokens, history]) => {
+      if (!this.autoUnlock || this.unlocking || !wallet) return;
 
       const needsUnlock =
         !wallet.unlocked ||
