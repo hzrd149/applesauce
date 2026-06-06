@@ -4,19 +4,24 @@
  * @related wallet/wallet
  */
 import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
-import { persistEncryptedContent } from "applesauce-common/helpers";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { parseBolt11, persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
-import { Filter, persistEventsToCache } from "applesauce-core/helpers";
+import { Filter, persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
+import { PrivateKeySigner } from "applesauce-signers";
+import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
+import { CashuWalletMethods, CommonWalletMethods, Transaction } from "applesauce-wallet-connect/helpers";
+import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
 import { IndexedDBCouch } from "applesauce-wallet/helpers";
+import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { generateSecretKey } from "nostr-tools";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject } from "rxjs";
+import { BehaviorSubject, firstValueFrom } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
@@ -49,7 +54,168 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://relay.ditto.pub"];
-const SUGGESTED_MINTS = ["https://mint.minibits.cash/Bitcoin", "https://stablenut.umint.cash", "https://21mint.me"];
+const SUGGESTED_MINTS = ["https://mint.minibits.cash/Bitcoin", "https://mint2.nutmix.cash", "https://21mint.me"];
+
+// ---- Nostr Wallet Connect service (lets external NWC apps use this cashu wallet) ----
+// Bind the wallet service transport to the shared relay pool
+WalletService.pool = pool;
+
+/** The wallet methods exposed over NWC */
+type NwcMethods = CommonWalletMethods | CashuWalletMethods;
+
+/** Persisted connection config so the service survives a page reload */
+type ConnectConfig = { key: string; secret: string; relays: string[] };
+
+/** The currently running wallet service (kept at module scope so it survives tab switches) */
+const service$ = new BehaviorSubject<WalletService<NwcMethods> | null>(null);
+
+/** In-memory lightning transactions, so list_transactions and lookup_invoice have something to return */
+const nwcTransactions$ = new BehaviorSubject<Transaction[]>([]);
+
+/** Inserts or replaces a transaction (keyed by payment hash, falling back to the invoice) */
+function upsertNwcTransaction(tx: Transaction): Transaction {
+  const key = tx.payment_hash || tx.invoice;
+  const rest = nwcTransactions$.value.filter((t) => (t.payment_hash || t.invoice) !== key);
+  nwcTransactions$.next([tx, ...rest]);
+  return tx;
+}
+
+const connectStorageKey = (pubkey: string) => `nwc-service:${pubkey}`;
+
+function loadConnectConfig(pubkey: string): ConnectConfig | null {
+  try {
+    const raw = localStorage.getItem(connectStorageKey(pubkey));
+    return raw ? (JSON.parse(raw) as ConnectConfig) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveConnectConfig(pubkey: string, config: ConnectConfig | null) {
+  if (config) localStorage.setItem(connectStorageKey(pubkey), JSON.stringify(config));
+  else localStorage.removeItem(connectStorageKey(pubkey));
+}
+
+/** Maps NWC method calls onto the NutWallet */
+function createNwcHandlers(wallet: NutWallet): WalletServiceHandlers<NwcMethods> {
+  return {
+    get_balance: async () => ({ balance: (await firstValueFrom(wallet.totalBalance$)) * 1000 }),
+    cashu_list_mints: async () => {
+      const balance = (await firstValueFrom(wallet.balance$)) ?? {};
+      return { mints: Object.entries(balance).map(([url, amount]) => ({ url, balances: { sat: amount } })) };
+    },
+    cashu_withdraw: async ({ amount, mints }) => ({ token: await wallet.sendToken(amount, { mint: mints?.[0] }) }),
+    cashu_deposit: async ({ token }) => {
+      await wallet.receiveToken(token);
+      return { success: true as const };
+    },
+
+    // ---- bolt11 lightning (mint = receive, melt = send) ----
+
+    // make_invoice mints: create a mint quote, return its invoice, then redeem in the background once paid
+    make_invoice: async ({ amount, description, description_hash }) => {
+      const mint = (await firstValueFrom(wallet.mintUrls$))?.[0];
+      if (!mint) throw new NotFoundError("No mint configured");
+
+      const sats = Math.floor(amount / 1000);
+      const quote = await wallet.createMintQuote(mint, sats, description);
+      const parsed = parseBolt11(quote.request);
+      const tx = upsertNwcTransaction({
+        type: "incoming",
+        state: "pending",
+        amount,
+        fees_paid: 0,
+        created_at: unixNow(),
+        invoice: quote.request,
+        description,
+        description_hash,
+        payment_hash: parsed.paymentHash,
+        expires_at: parsed.expiry,
+      });
+
+      // Wait for payment, mint the proofs, then mark settled and notify the client
+      wallet
+        .waitForMintQuote(mint, quote.quote)
+        .then(() => wallet.redeemMintQuote(mint, sats, quote))
+        .then(() => {
+          const settled = upsertNwcTransaction({ ...tx, state: "settled", settled_at: unixNow() });
+          service$.value?.notify("payment_received", settled).catch(() => {});
+        })
+        .catch((error) => console.error("Failed to redeem mint quote:", error));
+
+      return tx;
+    },
+
+    // pay_invoice melts: pick a mint with enough balance and pay the invoice with ecash
+    pay_invoice: async ({ invoice, amount }) => {
+      const parsed = parseBolt11(invoice);
+      const msats = amount ?? parsed.amount ?? 0;
+      if (!msats) throw new Error("Missing invoice amount");
+      const sats = Math.floor(msats / 1000);
+
+      const balance = (await wallet.balance$.$first()) ?? {};
+      const mint = Object.entries(balance)
+        .sort(([, a], [, b]) => b - a)
+        .find(([, value]) => value >= sats)?.[0];
+      if (!mint) throw new InsufficientBalanceError("No mint with enough balance to pay this invoice");
+
+      const response = await wallet.payInvoice(mint, invoice);
+      const preimage = response.quote.payment_preimage ?? "";
+      upsertNwcTransaction({
+        type: "outgoing",
+        state: "settled",
+        amount: msats,
+        fees_paid: 0,
+        created_at: unixNow(),
+        settled_at: unixNow(),
+        invoice,
+        description: parsed.description,
+        payment_hash: parsed.paymentHash,
+        preimage,
+      });
+
+      return { preimage };
+    },
+
+    lookup_invoice: async ({ payment_hash, invoice }) => {
+      const tx = nwcTransactions$.value.find(
+        (t) => (payment_hash && t.payment_hash === payment_hash) || (invoice && t.invoice === invoice),
+      );
+      if (!tx) throw new NotFoundError("Invoice not found");
+      return tx;
+    },
+
+    list_transactions: async () => ({ transactions: nwcTransactions$.value }),
+  };
+}
+
+/** Starts (or restarts) the NWC service from a config and persists it */
+async function startNwcService(wallet: NutWallet, config: ConnectConfig): Promise<void> {
+  service$.value?.stop();
+  const service = new WalletService<NwcMethods>({
+    relays: config.relays,
+    signer: PrivateKeySigner.fromKey(config.key),
+    secret: hexToBytes(config.secret),
+    handlers: createNwcHandlers(wallet),
+    notifications: ["payment_received", "payment_sent"],
+  });
+  await service.start();
+  saveConnectConfig(wallet.pubkey, config);
+  service$.next(service);
+}
+
+/** Stops the NWC service and clears the persisted config */
+function stopNwcService(pubkey: string): void {
+  service$.value?.stop();
+  saveConnectConfig(pubkey, null);
+  service$.next(null);
+}
+
+/** Restores a persisted NWC service for a wallet, if one was saved */
+function restoreNwcService(wallet: NutWallet): void {
+  const config = loadConnectConfig(wallet.pubkey);
+  if (config) startNwcService(wallet, config).catch((error) => console.error("Failed to restore NWC service:", error));
+}
 
 // ---- Small presentational helpers ----
 function StatusBadge({ status }: { status: WalletStatus }) {
@@ -886,6 +1052,88 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
   );
 }
 
+// ---- Connect (Nostr Wallet Connect) ----
+function ConnectSection({ wallet }: { wallet: NutWallet }) {
+  const service = use$(service$);
+  const walletRelays = use$(wallet.walletRelays$);
+  const [busy, setBusy] = useState(false);
+
+  const connect = useCallback(async () => {
+    setBusy(true);
+    try {
+      const relays = walletRelays?.length ? walletRelays : DEFAULT_RELAYS;
+      await startNwcService(wallet, {
+        key: bytesToHex(generateSecretKey()),
+        secret: bytesToHex(generateSecretKey()),
+        relays,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [wallet, walletRelays]);
+
+  const uri = service?.running ? service.getConnectURI() : null;
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <Panel
+        title="Nostr Wallet Connect"
+        action={
+          service ? (
+            <button className="btn btn-sm btn-error" onClick={() => stopNwcService(wallet.pubkey)}>
+              Disconnect
+            </button>
+          ) : (
+            <button className="btn btn-sm btn-primary" onClick={connect} disabled={busy}>
+              {busy ? <span className="loading loading-spinner loading-sm" /> : "Enable"}
+            </button>
+          )
+        }
+      >
+        {uri ? (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <QRCode value={uri} size={200} className="rounded shrink-0" alt="Wallet connect QR code" />
+            <div className="flex-1 space-y-3">
+              <p className="text-sm text-base-content/60">
+                Scan this code or paste the connection string into a Nostr Wallet Connect app to let it send and receive
+                lightning payments and cashu tokens with this wallet.
+              </p>
+              <textarea className="textarea textarea-bordered w-full h-24 font-mono text-xs" value={uri} readOnly />
+              <button className="btn btn-sm" onClick={() => navigator.clipboard.writeText(uri)}>
+                Copy connection string
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-base-content/60">
+            Enable Nostr Wallet Connect to let external apps use this cashu wallet. The connection is saved in this
+            browser and restored automatically when you reload.
+          </p>
+        )}
+      </Panel>
+
+      <Panel title="Exposed methods">
+        <div className="flex flex-wrap gap-2">
+          {[
+            "get_balance",
+            "make_invoice",
+            "pay_invoice",
+            "lookup_invoice",
+            "list_transactions",
+            "cashu_list_mints",
+            "cashu_withdraw",
+            "cashu_deposit",
+          ].map((method) => (
+            <span key={method} className="badge badge-lg font-mono">
+              {method}
+            </span>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 const SECTIONS = [
   "Overview",
   "Send",
@@ -894,6 +1142,7 @@ const SECTIONS = [
   "Withdraw",
   "Tokens",
   "History",
+  "Connect",
   "Settings",
   "Debug",
 ] as const;
@@ -936,6 +1185,7 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
           {section === "Withdraw" && <WithdrawSection wallet={wallet} />}
           {section === "Tokens" && <TokensSection wallet={wallet} />}
           {section === "History" && <HistorySection wallet={wallet} />}
+          {section === "Connect" && <ConnectSection wallet={wallet} />}
           {section === "Settings" && <SettingsSection wallet={wallet} />}
           {section === "Debug" && <DebugSection wallet={wallet} />}
         </>
@@ -952,7 +1202,14 @@ function WalletSession({ signer, pubkey }: { signer: ISigner; pubkey: string }) 
     const instance = new NutWallet({ pubkey, signer, pool, eventStore, couch, autoUnlock: true });
     instance.start();
     setWallet(instance);
-    return () => instance.stop();
+    // Restore a persisted NWC service (keeps connections alive across reloads)
+    restoreNwcService(instance);
+    return () => {
+      instance.stop();
+      // Stop the running service but keep its persisted config for the next load
+      service$.value?.stop();
+      service$.next(null);
+    };
   }, [signer, pubkey]);
 
   if (!wallet)
