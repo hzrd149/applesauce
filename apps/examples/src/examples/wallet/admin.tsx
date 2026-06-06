@@ -204,6 +204,15 @@ async function startNwcService(wallet: NutWallet, config: ConnectConfig): Promis
   service$.next(service);
 }
 
+/** Starts or restarts the service on a new relay set, keeping the existing connection identity */
+function setNwcRelays(wallet: NutWallet, relays: string[]): Promise<void> {
+  const existing = loadConnectConfig(wallet.pubkey);
+  const config: ConnectConfig = existing
+    ? { ...existing, relays }
+    : { key: bytesToHex(generateSecretKey()), secret: bytesToHex(generateSecretKey()), relays };
+  return startNwcService(wallet, config);
+}
+
 /** Stops the NWC service and clears the persisted config */
 function stopNwcService(pubkey: string): void {
   service$.value?.stop();
@@ -1057,20 +1066,32 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
   const service = use$(service$);
   const walletRelays = use$(wallet.walletRelays$);
   const [busy, setBusy] = useState(false);
+  const [relays, setRelays] = useState<string[]>([]);
+  const seeded = useRef(false);
 
-  const connect = useCallback(async () => {
+  // Seed the relay editor once from the saved config, the wallet relays, or the defaults
+  useEffect(() => {
+    if (seeded.current) return;
+    const saved = loadConnectConfig(wallet.pubkey)?.relays;
+    if (saved) {
+      setRelays(saved);
+      seeded.current = true;
+    } else if (walletRelays !== undefined) {
+      setRelays(walletRelays.length ? walletRelays : DEFAULT_RELAYS);
+      seeded.current = true;
+    }
+  }, [wallet.pubkey, walletRelays]);
+
+  // Start the service, or restart it on the edited relay set if it is already running
+  const apply = useCallback(async () => {
+    if (relays.length === 0) return;
     setBusy(true);
     try {
-      const relays = walletRelays?.length ? walletRelays : DEFAULT_RELAYS;
-      await startNwcService(wallet, {
-        key: bytesToHex(generateSecretKey()),
-        secret: bytesToHex(generateSecretKey()),
-        relays,
-      });
+      await setNwcRelays(wallet, relays);
     } finally {
       setBusy(false);
     }
-  }, [wallet, walletRelays]);
+  }, [wallet, relays]);
 
   const uri = service?.running ? service.getConnectURI() : null;
 
@@ -1084,7 +1105,7 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
               Disconnect
             </button>
           ) : (
-            <button className="btn btn-sm btn-primary" onClick={connect} disabled={busy}>
+            <button className="btn btn-sm btn-primary" onClick={apply} disabled={busy || relays.length === 0}>
               {busy ? <span className="loading loading-spinner loading-sm" /> : "Enable"}
             </button>
           )
@@ -1110,6 +1131,23 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
             browser and restored automatically when you reload.
           </p>
         )}
+      </Panel>
+
+      <Panel
+        title="Relays"
+        action={
+          service ? (
+            <button className="btn btn-sm" onClick={apply} disabled={busy}>
+              {busy ? <span className="loading loading-spinner loading-sm" /> : "Update relays"}
+            </button>
+          ) : undefined
+        }
+      >
+        <ListEditor items={relays} placeholder="wss://relay.example.com" busy={busy} onChange={setRelays} />
+        <p className="mt-3 text-sm text-base-content/60">
+          The relays the service listens on. Changing them while connected restarts the service and updates the
+          connection string.
+        </p>
       </Panel>
 
       <Panel title="Exposed methods">
