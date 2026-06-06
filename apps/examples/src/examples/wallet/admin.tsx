@@ -3,7 +3,13 @@
  * @tags nip-60, nip-61, wallet, cashu, admin, debugging
  * @related wallet/wallet
  */
-import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
+import {
+  Wallet as CashuWallet,
+  CheckStateEnum,
+  getEncodedToken,
+  MintQuoteBolt11Response,
+  normalizeProofAmounts,
+} from "@cashu/cashu-ts";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { parseBolt11, persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
@@ -21,7 +27,7 @@ import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { generateSecretKey } from "nostr-tools";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, firstValueFrom } from "rxjs";
+import { BehaviorSubject, firstValueFrom, Observable } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
@@ -1206,6 +1212,643 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
   );
 }
 
+// ======================================================================
+// Stress testing
+//
+// A set of tests that deliberately abuse the wallet to find where it breaks.
+// Each test runs through a shared harness that snapshots balance before and
+// after, then checks two invariants:
+//   1. Conservation — value in == value out (within a fee tolerance)
+//   2. Reconciliation — no proof the wallet still holds is SPENT at its mint
+// Reconciliation is the strict one: it catches the proof-state corruption that
+// concurrency races and the consolidate TOCTOU can leave behind.
+// ======================================================================
+
+/** A public test mint that issues "funny money" without a real lightning payment. */
+const TEST_MINT = "https://testnut.cashu.space";
+
+type StressStatus = "idle" | "running" | "pass" | "fail" | "stopped" | "error";
+
+/** A single pass/fail invariant checked after a test runs */
+type Invariant = { ok: boolean; detail: string };
+
+type StressResult = {
+  status: StressStatus;
+  elapsedMs: number;
+  metrics: Record<string, string | number>;
+  log: string[];
+  invariants: Invariant[];
+  error?: string;
+};
+
+/** Everything a test needs to drive the wallet and report progress */
+type StressContext = {
+  wallet: NutWallet;
+  /** The mint the test should operate against */
+  mint: string;
+  /** Aborts when the user hits Stop */
+  signal: AbortSignal;
+  log: (line: string) => void;
+  metric: (key: string, value: string | number) => void;
+};
+
+/** A tunable numeric input for a test, clamped differently for test vs real mints */
+type ParamSpec = { key: string; label: string; default: number; min: number; testMax: number; realMax: number };
+
+type StressTest = {
+  id: string;
+  name: string;
+  description: string;
+  params: ParamSpec[];
+  /** Sats that must already be at the mint before the test can run (0 if the test funds itself) */
+  requires?: (params: Record<string, number>) => number;
+  /**
+   * Runs the test. Returns `sentOut` — the net sats intentionally removed from the wallet
+   * (negative if the test minted new funds) — so the conservation check knows what to expect.
+   */
+  run: (ctx: StressContext, params: Record<string, number>) => Promise<{ sentOut?: number } | void>;
+};
+
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Reads the current value of an observable, falling back if it does not emit quickly */
+function first<T>(obs: Observable<T>, fallback: T, ms = 5000): Promise<T> {
+  return Promise.race([
+    firstValueFrom(obs).catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+type WalletSnapshot = { total: number; balance: Record<string, number>; tokenCount: number };
+
+async function snapshot(wallet: NutWallet): Promise<WalletSnapshot> {
+  const [total, balance, tokenCount] = await Promise.all([
+    first(wallet.totalBalance$, 0),
+    first(wallet.balance$, {} as Record<string, number>),
+    first(wallet.tokenCount$, 0),
+  ]);
+  return { total: total ?? 0, balance: balance ?? {}, tokenCount: tokenCount ?? 0 };
+}
+
+/** Value-in == value-out, within a fee tolerance */
+function conservationInvariant(before: WalletSnapshot, after: WalletSnapshot, sentOut: number): Invariant {
+  const expected = before.total - sentOut;
+  const drift = after.total - expected; // + value appeared, − value vanished
+  const tolerance = Math.max(10, Math.round(before.total * 0.02));
+  return {
+    ok: Math.abs(drift) <= tolerance,
+    detail: `balance ${before.total}→${after.total}, expected ~${expected} (net out ${sentOut}), drift ${
+      drift >= 0 ? "+" : ""
+    }${drift} sat (tolerance ±${tolerance})`,
+  };
+}
+
+/** Asks every mint whether the proofs the wallet still holds are actually unspent */
+async function reconcileWithMints(wallet: NutWallet, signal: AbortSignal): Promise<Invariant> {
+  const tokens = (await first(wallet.tokens$, [])) ?? [];
+  const byMint = new Map<string, ReturnType<typeof normalizeProofAmounts>>();
+  for (const token of tokens) {
+    if (!token.unlocked || !token.mint || !token.proofs) continue;
+    const proofs = normalizeProofAmounts(token.proofs);
+    byMint.set(token.mint, [...(byMint.get(token.mint) ?? []), ...proofs]);
+  }
+
+  let spent = 0;
+  let checked = 0;
+  for (const [url, proofs] of byMint) {
+    if (signal.aborted || proofs.length === 0) continue;
+    const cashu = new CashuWallet(url);
+    await cashu.loadMint();
+    const states = await cashu.checkProofsStates(proofs);
+    checked += proofs.length;
+    spent += states.filter((s) => s.state === CheckStateEnum.SPENT).length;
+  }
+
+  return {
+    ok: spent === 0,
+    detail:
+      spent === 0
+        ? `all ${checked} wallet proofs are unspent at their mints`
+        : `${spent} of ${checked} wallet proofs are already SPENT — the wallet is holding dead proofs`,
+  };
+}
+
+const STRESS_TESTS: StressTest[] = [
+  {
+    id: "send-storm",
+    name: "Concurrent Send Storm",
+    description:
+      "Fires many sendToken() calls at once with no awaiting between them. The wallet has no lock around proof selection, so concurrent sends can pick overlapping proofs and double-spend. Successful tokens are received back so funds return.",
+    params: [
+      { key: "concurrency", label: "Concurrent sends", default: 8, min: 2, testMax: 50, realMax: 5 },
+      { key: "amount", label: "Sats per send", default: 2, min: 1, testMax: 100, realMax: 4 },
+    ],
+    requires: (p) => p.amount * p.concurrency,
+    run: async (ctx, p) => {
+      const { wallet, mint } = ctx;
+      ctx.log(`Firing ${p.concurrency} concurrent sends of ${p.amount} sats from ${new URL(mint).hostname}`);
+      const settled = await Promise.allSettled(
+        Array.from({ length: p.concurrency }, () => wallet.sendToken(p.amount, { mint })),
+      );
+      const tokens = settled.filter((s) => s.status === "fulfilled").map((s) => s.value);
+      const failed = settled.length - tokens.length;
+      ctx.metric("sends ok", tokens.length);
+      ctx.metric("sends failed", failed);
+      ctx.log(`${tokens.length} sends succeeded, ${failed} failed (failures signal overlapping proof selection)`);
+
+      // Receive the created tokens back so the round trip conserves value
+      let recvFailed = 0;
+      for (const token of tokens) {
+        if (ctx.signal.aborted) break;
+        try {
+          await wallet.receiveToken(token);
+        } catch {
+          recvFailed++;
+        }
+      }
+      ctx.metric("returned", tokens.length - recvFailed);
+      ctx.metric("lost (unreturned)", recvFailed);
+      return { sentOut: recvFailed * p.amount };
+    },
+  },
+  {
+    id: "dust-storm",
+    name: "Dust Storm",
+    description:
+      "Mints many tiny token events to fragment the wallet, then times proof selection and consolidation and measures the largest token event. Targets the O(n) selection path and the ~65 KB relay event-size ceiling.",
+    params: [
+      { key: "fragments", label: "Token events to create", default: 12, min: 2, testMax: 200, realMax: 5 },
+      { key: "unit", label: "Sats per fragment", default: 2, min: 1, testMax: 50, realMax: 3 },
+    ],
+    run: async (ctx, p) => {
+      const { wallet, mint } = ctx;
+      ctx.log(`Minting ${p.fragments} token events of ${p.unit} sats at ${new URL(mint).hostname}`);
+      let minted = 0;
+      for (let i = 0; i < p.fragments; i++) {
+        if (ctx.signal.aborted) break;
+        try {
+          await wallet.mint(mint, p.unit, { signal: ctx.signal, timeoutMs: 60_000 });
+          minted++;
+          ctx.metric("minted", minted);
+        } catch (e) {
+          ctx.log(`mint ${i + 1} failed: ${errMsg(e)}`);
+        }
+      }
+
+      const tokens = (await first(wallet.tokens$, [])) ?? [];
+      const maxBytes = tokens.reduce((m, t) => Math.max(m, JSON.stringify(t.event).length), 0);
+      ctx.metric("token events", tokens.length);
+      ctx.metric("largest event (bytes)", maxBytes);
+      if (maxBytes > 60_000) ctx.log(`⚠ largest token event ${maxBytes} bytes is near the 65536 relay limit`);
+
+      // Time a single round-trip send through the fragmented wallet
+      const t0 = Date.now();
+      try {
+        const token = await wallet.sendToken(p.unit, { mint });
+        await wallet.receiveToken(token);
+      } catch (e) {
+        ctx.log(`select+send failed: ${errMsg(e)}`);
+      }
+      ctx.metric("select+send ms", Date.now() - t0);
+
+      // Time consolidation of the fragments
+      const t1 = Date.now();
+      await wallet.consolidateTokens();
+      ctx.metric("consolidate ms", Date.now() - t1);
+      ctx.metric("events after consolidate", (await first(wallet.tokenCount$, 0)) ?? 0);
+
+      return { sentOut: -(minted * p.unit) };
+    },
+  },
+  {
+    id: "churn",
+    name: "Send → Receive Churn",
+    description:
+      "Repeatedly sends a token and immediately receives it back. Hammers the swap / token rollover / history path. The balance should return to baseline every loop and the token count should stay bounded.",
+    params: [
+      { key: "iterations", label: "Send/receive loops", default: 20, min: 1, testMax: 200, realMax: 5 },
+      { key: "amount", label: "Sats per loop", default: 2, min: 1, testMax: 100, realMax: 4 },
+    ],
+    requires: (p) => p.amount,
+    run: async (ctx, p) => {
+      const { wallet, mint } = ctx;
+      const baseline = (await first(wallet.totalBalance$, 0)) ?? 0;
+      let maxLoop = 0;
+      let done = 0;
+      for (let i = 0; i < p.iterations; i++) {
+        if (ctx.signal.aborted) break;
+        const t0 = Date.now();
+        const token = await wallet.sendToken(p.amount, { mint });
+        await wallet.receiveToken(token);
+        maxLoop = Math.max(maxLoop, Date.now() - t0);
+        done = i + 1;
+        if (done % 5 === 0 || done === p.iterations) {
+          const bal = (await first(wallet.totalBalance$, 0)) ?? 0;
+          ctx.log(`loop ${done}/${p.iterations}: ${bal} sats, ${Date.now() - t0}ms`);
+        }
+        ctx.metric("loops done", done);
+      }
+      ctx.metric("max loop ms", maxLoop);
+      const end = (await first(wallet.totalBalance$, 0)) ?? 0;
+      ctx.metric("balance drift", end - baseline);
+      return { sentOut: 0 };
+    },
+  },
+  {
+    id: "consolidate-fire",
+    name: "Consolidate Under Fire",
+    description:
+      "Runs consolidateTokens() while a batch of sends is in flight. consolidateTokens checks proof states then publishes a consolidated token — a concurrent send can spend those proofs in the gap (TOCTOU), leaving the wallet holding spent proofs. Reconciliation must find zero spent proofs.",
+    params: [
+      { key: "fragments", label: "Seed token events", default: 6, min: 0, testMax: 50, realMax: 4 },
+      { key: "concurrency", label: "Concurrent sends", default: 6, min: 1, testMax: 30, realMax: 4 },
+      { key: "amount", label: "Sats each", default: 2, min: 1, testMax: 50, realMax: 3 },
+    ],
+    run: async (ctx, p) => {
+      const { wallet, mint } = ctx;
+      let seeded = 0;
+      if (p.fragments > 0) {
+        ctx.log(`Seeding ${p.fragments} token events`);
+        for (let i = 0; i < p.fragments; i++) {
+          if (ctx.signal.aborted) break;
+          try {
+            await wallet.mint(mint, p.amount, { signal: ctx.signal, timeoutMs: 60_000 });
+            seeded++;
+          } catch (e) {
+            ctx.log(`seed ${i + 1} failed: ${errMsg(e)}`);
+          }
+        }
+        ctx.metric("seeded events", seeded);
+      }
+
+      ctx.log(`Firing ${p.concurrency} sends concurrently with a consolidate`);
+      const consolidate = wallet
+        .consolidateTokens()
+        .then(() => "consolidate ok")
+        .catch((e) => `consolidate failed: ${errMsg(e)}`);
+      const sends = Array.from({ length: p.concurrency }, () =>
+        wallet
+          .sendToken(p.amount, { mint })
+          .then((token) => ({ token }))
+          .catch((e) => ({ error: errMsg(e) })),
+      );
+
+      const [consolidateResult, ...sendResults] = await Promise.all([consolidate, ...sends]);
+      ctx.log(consolidateResult);
+      const tokens = sendResults.filter((r): r is { token: string } => "token" in r).map((r) => r.token);
+      ctx.metric("sends ok", tokens.length);
+      ctx.metric("sends failed", p.concurrency - tokens.length);
+
+      // Return the sent tokens so value is conserved
+      let recvFailed = 0;
+      for (const token of tokens) {
+        if (ctx.signal.aborted) break;
+        try {
+          await wallet.receiveToken(token);
+        } catch {
+          recvFailed++;
+        }
+      }
+      ctx.metric("lost (unreturned)", recvFailed);
+      return { sentOut: recvFailed * p.amount - seeded * p.amount };
+    },
+  },
+];
+
+function StressStatusBadge({ status }: { status: StressStatus }) {
+  const map: Record<StressStatus, string> = {
+    idle: "badge-ghost",
+    running: "badge-warning",
+    pass: "badge-success",
+    fail: "badge-error",
+    stopped: "badge-ghost",
+    error: "badge-error",
+  };
+  return (
+    <span className={`badge ${map[status]} gap-2`}>
+      {status === "running" && <span className="loading loading-spinner loading-xs" />}
+      {status}
+    </span>
+  );
+}
+
+function StressCard({
+  test,
+  result,
+  params,
+  mode,
+  disabled,
+  disabledReason,
+  running,
+  onParam,
+  onRun,
+}: {
+  test: StressTest;
+  result?: StressResult;
+  params: Record<string, number>;
+  mode: "test" | "real";
+  disabled: boolean;
+  disabledReason?: string;
+  running: boolean;
+  onParam: (key: string, value: number) => void;
+  onRun: () => void;
+}) {
+  return (
+    <Panel
+      title={test.name}
+      action={
+        <div className="flex items-center gap-2">
+          {result && <StressStatusBadge status={result.status} />}
+          {result?.status && result.status !== "idle" && result.status !== "running" && (
+            <span className="text-sm text-base-content/60">{result.elapsedMs} ms</span>
+          )}
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-base-content/60">{test.description}</p>
+
+        <div className="flex flex-wrap gap-3">
+          {test.params.map((spec) => {
+            const max = mode === "test" ? spec.testMax : spec.realMax;
+            return (
+              <label key={spec.key} className="flex flex-col gap-1">
+                <span className="text-xs text-base-content/60">
+                  {spec.label} <span className="opacity-60">(max {max})</span>
+                </span>
+                <input
+                  type="number"
+                  className="input input-bordered input-sm w-40"
+                  min={spec.min}
+                  max={max}
+                  value={params[spec.key]}
+                  disabled={running}
+                  onChange={(e) =>
+                    onParam(spec.key, Math.max(spec.min, Math.min(max, parseInt(e.target.value, 10) || spec.min)))
+                  }
+                />
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button className="btn btn-primary btn-sm" onClick={onRun} disabled={disabled}>
+            {running ? <span className="loading loading-spinner loading-sm" /> : "Run"}
+          </button>
+          {disabled && !running && disabledReason && <span className="text-sm text-warning">{disabledReason}</span>}
+        </div>
+
+        {result && (result.invariants.length > 0 || Object.keys(result.metrics).length > 0 || result.error) && (
+          <div className="space-y-3 border-t border-base-300 pt-3">
+            {result.error && <div className="alert alert-error text-sm">{result.error}</div>}
+
+            {Object.keys(result.metrics).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(result.metrics).map(([k, v]) => (
+                  <span key={k} className="badge badge-ghost gap-1">
+                    {k}: <span className="font-medium">{v}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {result.invariants.map((inv, i) => (
+              <div key={i} className={`text-sm ${inv.ok ? "text-success" : "text-error"}`}>
+                {inv.ok ? "✓" : "✗"} {inv.detail}
+              </div>
+            ))}
+
+            {result.log.length > 0 && (
+              <div className="h-40 overflow-y-auto border border-base-300 bg-base-200 p-2 font-mono text-xs">
+                {result.log.map((line, i) => (
+                  <div key={i} className="whitespace-pre-wrap break-all">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function StressSection({ wallet }: { wallet: NutWallet }) {
+  const mintUrls = use$(wallet.mintUrls$) ?? [];
+  const balance = use$(wallet.balance$) ?? {};
+
+  const [mode, setMode] = useState<"test" | "real">("test");
+  const [realMint, setRealMint] = useState("");
+  const [confirmReal, setConfirmReal] = useState(false);
+  const [topupAmount, setTopupAmount] = useState("64");
+  const [toppingUp, setToppingUp] = useState(false);
+  const [params, setParams] = useState<Record<string, Record<string, number>>>(() =>
+    Object.fromEntries(STRESS_TESTS.map((t) => [t.id, Object.fromEntries(t.params.map((p) => [p.key, p.default]))])),
+  );
+  const [results, setResults] = useState<Record<string, StressResult>>({});
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!realMint && mintUrls.length > 0) setRealMint(mintUrls[0]);
+  }, [mintUrls, realMint]);
+
+  const mint = mode === "test" ? TEST_MINT : realMint;
+  const mintBalance = balance[mint] ?? 0;
+  const guardOk = mode === "test" || (!!realMint && confirmReal);
+
+  const topup = useCallback(async () => {
+    const sats = parseInt(topupAmount, 10);
+    if (!sats || sats <= 0) return;
+    setToppingUp(true);
+    try {
+      await wallet.mint(TEST_MINT, sats, { timeoutMs: 60_000 });
+    } catch (e) {
+      console.error("Test mint top-up failed:", e);
+    } finally {
+      setToppingUp(false);
+    }
+  }, [wallet, topupAmount]);
+
+  const run = useCallback(
+    async (test: StressTest) => {
+      const ac = new AbortController();
+      abortRef.current = ac;
+      setRunningId(test.id);
+
+      const logs: string[] = [];
+      const metrics: Record<string, string | number> = {};
+      const patch = (p: Partial<StressResult>) => setResults((r) => ({ ...r, [test.id]: { ...r[test.id], ...p } }));
+      const log = (line: string) => {
+        logs.push(`${new Date().toLocaleTimeString()}  ${line}`);
+        patch({ log: [...logs] });
+      };
+      const metric = (key: string, value: string | number) => {
+        metrics[key] = value;
+        patch({ metrics: { ...metrics } });
+      };
+
+      patch({ status: "running", elapsedMs: 0, log: [], metrics: {}, invariants: [], error: undefined });
+      const start = Date.now();
+      const before = await snapshot(wallet);
+      log(
+        `Start: ${before.total} sats across ${Object.keys(before.balance).length} mints, ${before.tokenCount} tokens`,
+      );
+
+      let sentOut = 0;
+      let crashed: unknown;
+      try {
+        const out = await test.run({ wallet, mint, signal: ac.signal, log, metric }, params[test.id]);
+        sentOut = out?.sentOut ?? 0;
+      } catch (e) {
+        crashed = e;
+      }
+
+      // Always reconcile afterward — even after a crash we want to see the damage
+      log("Checking invariants…");
+      const after = await snapshot(wallet);
+      let invariants: Invariant[] = [];
+      try {
+        invariants = [conservationInvariant(before, after, sentOut), await reconcileWithMints(wallet, ac.signal)];
+      } catch (e) {
+        log(`Invariant check failed: ${errMsg(e)}`);
+      }
+
+      const elapsedMs = Date.now() - start;
+      if (crashed && ac.signal.aborted) {
+        patch({ status: "stopped", invariants, elapsedMs });
+        log("Stopped");
+      } else if (crashed) {
+        patch({ status: "error", error: errMsg(crashed), invariants, elapsedMs });
+        log(`Error: ${errMsg(crashed)}`);
+      } else {
+        const ok = invariants.every((i) => i.ok);
+        patch({ status: ok ? "pass" : "fail", invariants, elapsedMs });
+        log(ok ? "PASS — invariants held" : "FAIL — an invariant was violated");
+      }
+
+      // Salvage anything a failure stranded in the couch
+      await wallet.recoverFromCouch().catch(() => {});
+      setRunningId(null);
+      abortRef.current = null;
+    },
+    [wallet, mint, params],
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="alert alert-warning">
+        <span>
+          These tests deliberately try to break the wallet by abusing it concurrently and at scale. Use the test mint
+          for safe, free runs. Running against a real mint spends real sats and is rate-limited below.
+        </span>
+      </div>
+
+      <Panel title="Target">
+        <div className="space-y-4">
+          <div role="tablist" className="tabs tabs-boxed w-fit">
+            <button role="tab" className={`tab ${mode === "test" ? "tab-active" : ""}`} onClick={() => setMode("test")}>
+              Test mint (funny money)
+            </button>
+            <button role="tab" className={`tab ${mode === "real" ? "tab-active" : ""}`} onClick={() => setMode("real")}>
+              Real mint
+            </button>
+          </div>
+
+          {mode === "test" ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-mono text-sm">{new URL(TEST_MINT).hostname}</span>
+                <span className="badge badge-ghost">{mintBalance} sats available</span>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-base-content/60">Top up (sats)</span>
+                  <input
+                    type="number"
+                    className="input input-bordered input-sm w-40"
+                    value={topupAmount}
+                    onChange={(e) => setTopupAmount(e.target.value)}
+                  />
+                </label>
+                <button className="btn btn-sm" onClick={topup} disabled={toppingUp || !!runningId}>
+                  {toppingUp ? <span className="loading loading-spinner loading-sm" /> : "Mint test funds"}
+                </button>
+              </div>
+              <p className="text-sm text-base-content/60">
+                The test mint issues ecash without a real lightning payment, so you can fund it freely.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {mintUrls.length > 0 ? (
+                <select
+                  className="select select-bordered w-full max-w-md"
+                  value={realMint}
+                  onChange={(e) => setRealMint(e.target.value)}
+                >
+                  {mintUrls.map((m) => (
+                    <option key={m} value={m}>
+                      {m} ({balance[m] ?? 0} sats)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-base-content/60">No mints configured on this wallet.</div>
+              )}
+              <label className="label cursor-pointer justify-start gap-3">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-warning"
+                  checked={confirmReal}
+                  onChange={(e) => setConfirmReal(e.target.checked)}
+                />
+                <span className="label-text">I understand these tests will spend real sats from this mint</span>
+              </label>
+            </div>
+          )}
+        </div>
+      </Panel>
+
+      {STRESS_TESTS.map((test) => {
+        const result = results[test.id];
+        const running = runningId === test.id;
+        const required = test.requires?.(params[test.id]) ?? 0;
+        let disabledReason: string | undefined;
+        if (!guardOk) disabledReason = mode === "real" ? "Select a mint and confirm above" : undefined;
+        else if (required > mintBalance)
+          disabledReason = `Needs ${required} sats at this mint — ${
+            mode === "test" ? "mint test funds above" : "fund this mint first"
+          }`;
+        const disabled = running || !!runningId || !guardOk || !!disabledReason || toppingUp;
+
+        return (
+          <StressCard
+            key={test.id}
+            test={test}
+            result={result}
+            params={params[test.id]}
+            mode={mode}
+            disabled={disabled}
+            disabledReason={disabledReason}
+            running={running}
+            onParam={(key, value) => setParams((prev) => ({ ...prev, [test.id]: { ...prev[test.id], [key]: value } }))}
+            onRun={() => run(test)}
+          />
+        );
+      })}
+
+      {runningId && (
+        <button className="btn btn-error" onClick={() => abortRef.current?.abort()}>
+          Stop running test
+        </button>
+      )}
+    </div>
+  );
+}
+
 const SECTIONS = [
   "Overview",
   "Send",
@@ -1216,6 +1859,7 @@ const SECTIONS = [
   "History",
   "Connect",
   "Settings",
+  "Stress",
   "Debug",
 ] as const;
 type Section = (typeof SECTIONS)[number];
@@ -1259,6 +1903,7 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
           {section === "History" && <HistorySection wallet={wallet} />}
           {section === "Connect" && <ConnectSection wallet={wallet} />}
           {section === "Settings" && <SettingsSection wallet={wallet} />}
+          {section === "Stress" && <StressSection wallet={wallet} />}
           {section === "Debug" && <DebugSection wallet={wallet} />}
         </>
       )}

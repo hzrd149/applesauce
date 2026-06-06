@@ -92,6 +92,30 @@ describe("ActionRunner", () => {
       });
     });
 
+    it("should save events to store before the publish resolves (local-first)", async () => {
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      let onPublish: () => void = () => {};
+      const published = new Promise<void>((r) => (onPublish = r));
+      // A publish method that signals when it is called and then hangs until released
+      const publish = vi.fn().mockImplementation(() => {
+        onPublish();
+        return gate;
+      });
+
+      const hub = new ActionRunner(events, user, publish);
+      const run = hub.run(CreateProfile, { name: "fiatjaf" });
+
+      // Wait until publish is in-flight (but still pending)
+      await published;
+
+      // The event is already in the store even though the publish has not resolved
+      expect(events.getReplaceable(kinds.Metadata, user.pubkey)).toBeTruthy();
+
+      release();
+      await run;
+    });
+
     it("should not save events to store when saveToStore is false", async () => {
       const publish = vi.fn().mockResolvedValue(undefined);
       const addSpy = vi.spyOn(events, "add");

@@ -77,21 +77,21 @@ export class ActionRunner {
       return;
     }
 
-    if (this.publishMethod) {
-      let result: void | Observable<any> | Promise<any>;
+    // Save the event to the store first so subscribers (and the UI) update immediately, before the
+    // potentially slow relay publish resolves. The event is already signed and valid at this point, so
+    // there is no reason to gate the local store update on the network round-trip.
+    if (this.saveToStore) this.events.add(event);
 
-      if ("publish" in this.publishMethod) result = this.publishMethod.publish(event, relays);
-      else if (typeof this.publishMethod === "function") result = this.publishMethod(event, relays);
-      else throw new Error("Invalid publish method");
+    let result: void | Observable<any> | Promise<any>;
 
-      if (isObservable(result)) {
-        await lastValueFrom(result);
-      } else if (result instanceof Promise) {
-        await result;
-      }
+    if ("publish" in this.publishMethod) result = this.publishMethod.publish(event, relays);
+    else if (typeof this.publishMethod === "function") result = this.publishMethod(event, relays);
+    else throw new Error("Invalid publish method");
 
-      // Optionally save the event to the store
-      if (this.saveToStore) this.events.add(event);
+    if (isObservable(result)) {
+      await lastValueFrom(result);
+    } else if (result instanceof Promise) {
+      await result;
     }
   }
 
