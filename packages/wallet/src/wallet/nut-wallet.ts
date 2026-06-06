@@ -37,7 +37,6 @@ import type { WalletToken } from "../casts/wallet-token.js";
 import type { Wallet } from "../casts/wallet.js";
 import type { Couch } from "../helpers/couch.js";
 import { lockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
-import { MintRegistry } from "../helpers/mint-registry.js";
 import { lockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 import { getWalletRelays, lockWallet, WALLET_KIND } from "../helpers/wallet.js";
 import { loadWalletEvents, WalletLoaderStatus } from "./loading.js";
@@ -118,8 +117,12 @@ export class NutWallet {
   protected log: Debugger;
   /** Static relays passed by the caller, used as a publishing fallback before the wallet loads */
   protected fallbackRelays?: string[];
-  /** A cache of cashu-ts Mint instances keyed by url, reused across mint list changes */
-  protected registry = new MintRegistry();
+  /**
+   * A cache of cashu-ts {@link Mint} instances keyed by normalized url, reused across mint list changes.
+   * A {@link Mint} caches the mint's info and owns a single WebSocket connection, so reusing instances
+   * avoids re-fetching mint info and keeps one socket per mint.
+   */
+  protected mints = new Map<string, Mint>();
   /** A cache of loaded cashu Wallet instances keyed by normalized mint url (wallets are specific to this wallet) */
   protected wallets = new Map<string, Promise<CashuWallet>>();
 
@@ -222,7 +225,7 @@ export class NutWallet {
           // Drop cached wallets for mints that are no longer configured
           const keys = new Set(urls.map(normalizeURL));
           for (const key of this.wallets.keys()) if (!keys.has(key)) this.wallets.delete(key);
-          return this.registry.sync(urls);
+          return this.syncMints(urls);
         }),
         shareReplay({ bufferSize: 1, refCount: true }),
       ),
@@ -332,7 +335,7 @@ export class NutWallet {
     this.autoUnlockSub?.unsubscribe();
     this.autoUnlockSub = undefined;
     this.wallets.clear();
-    this.registry.dispose();
+    this.disposeMints();
   }
 
   /** Alias for {@link stop} */
@@ -407,6 +410,8 @@ export class NutWallet {
    */
   async sendToken(amount: number, options?: { mint?: string }): Promise<string> {
     return this.track("send", async () => {
+      // Reuse a single loaded wallet instance when the mint is known up front
+      const wallet = options?.mint ? await this.getCashuWallet(options.mint) : undefined;
       let encoded: string | undefined;
       await this.actions.run(
         TokensOperation,
@@ -416,7 +421,7 @@ export class NutWallet {
           encoded = getEncodedToken({ mint, proofs: send, unit: "sat" });
           return { change: keep.length > 0 ? keep : undefined };
         },
-        { mint: options?.mint, couch: this.couch, getCashuWallet: this.getCashuWallet },
+        { mint: options?.mint, couch: this.couch, wallet, getCashuWallet: this.getCashuWallet },
       );
       if (!encoded) throw new Error("Failed to create token");
       this.log("Created token for %d sats", amount);
@@ -431,7 +436,8 @@ export class NutWallet {
       const decoded = typeof token === "string" ? getDecodedToken(token, []) : token;
       if (!decoded) throw new Error("Failed to decode token");
       this.log("Receiving token from mint %s", decoded.mint);
-      await this.actions.run(ReceiveToken, decoded, { couch: this.couch, getCashuWallet: this.getCashuWallet });
+      const wallet = await this.getCashuWallet(decoded.mint);
+      await this.actions.run(ReceiveToken, decoded, { couch: this.couch, wallet, getCashuWallet: this.getCashuWallet });
       await this.refreshCouch();
     });
   }
@@ -474,8 +480,10 @@ export class NutWallet {
   async redeemMintQuote(mint: string, amount: number, quote: string | MintQuoteBolt11Response): Promise<void> {
     await this.track("mint", async () => {
       this.log("Redeeming mint quote for %d sats at %s", amount, mint);
+      const wallet = await this.getCashuWallet(mint);
       await this.actions.run(MintTokens, mint, amount, quote, {
         couch: this.couch,
+        wallet,
         getCashuWallet: this.getCashuWallet,
       });
       await this.refreshCouch();
@@ -529,7 +537,7 @@ export class NutWallet {
           response = await cashuWallet.meltProofsBolt11(meltQuote, send);
           return { change: [...keep, ...response.change] };
         },
-        { mint, couch: this.couch, getCashuWallet: this.getCashuWallet },
+        { mint, couch: this.couch, wallet: quoteWallet, getCashuWallet: this.getCashuWallet },
       );
       if (!response) throw new Error("Failed to melt token");
       this.log("Melted token at %s", mint);
@@ -670,7 +678,7 @@ export class NutWallet {
     let wallet = this.wallets.get(key);
     if (!wallet) {
       wallet = (async () => {
-        const instance = new CashuWallet(this.registry.get(mint));
+        const instance = new CashuWallet(this.getMint(mint));
         await instance.loadMint();
         return instance;
       })();
@@ -683,8 +691,40 @@ export class NutWallet {
 
   /** Returns whether the mint at a url supports a given NUT number */
   protected async mintSupports(mint: string, nut: number): Promise<boolean> {
-    const info = await this.registry.get(mint).getLazyMintInfo();
+    const info = await this.getMint(mint).getLazyMintInfo();
     return info.isSupported(nut as Parameters<typeof info.isSupported>[0]).supported;
+  }
+
+  /** Returns the cached {@link Mint} for a url, creating it if it does not exist */
+  protected getMint(url: string): Mint {
+    const key = normalizeURL(url);
+    let mint = this.mints.get(key);
+    if (!mint) {
+      mint = new Mint(key);
+      this.mints.set(key, mint);
+    }
+    return mint;
+  }
+
+  /**
+   * Reconciles the mint cache to a set of urls and returns the matching {@link Mint} instances.
+   * Mints that are no longer in the list have their WebSocket disconnected and are dropped.
+   */
+  protected syncMints(urls: string[]): Mint[] {
+    const keys = new Set(urls.map(normalizeURL));
+    for (const [key, mint] of this.mints) {
+      if (!keys.has(key)) {
+        mint.disconnectWebSocket();
+        this.mints.delete(key);
+      }
+    }
+    return urls.map((url) => this.getMint(url));
+  }
+
+  /** Disconnects every cached mint's WebSocket and clears the mint cache */
+  protected disposeMints(): void {
+    for (const mint of this.mints.values()) mint.disconnectWebSocket();
+    this.mints.clear();
   }
 
   /** Polls a bolt11 mint quote until it is paid (fallback for mints without NIP-17 support) */

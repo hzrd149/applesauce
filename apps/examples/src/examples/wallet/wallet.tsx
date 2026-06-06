@@ -6,9 +6,11 @@
 import {
   getDecodedToken,
   getEncodedToken,
+  Mint,
   MintQuoteBolt11Response,
   MintQuoteState,
   normalizeProofAmounts,
+  Wallet as CashuWallet,
 } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
@@ -23,6 +25,7 @@ import {
   getTagValue,
   kinds,
   NostrEvent,
+  normalizeURL,
   persistEventsToCache,
   relaySet,
 } from "applesauce-core/helpers";
@@ -47,10 +50,8 @@ import {
 } from "applesauce-wallet/actions";
 import { Nutzap, Wallet, WalletHistory, WalletToken } from "applesauce-wallet/casts";
 import {
-  createCashuWallet,
   getWalletRelays,
   IndexedDBCouch,
-  MintRegistry,
   NUTZAP_KIND,
   WALLET_HISTORY_KIND,
   WALLET_KIND,
@@ -79,10 +80,22 @@ const autoUnlock$ = new BehaviorSubject<boolean>(false);
 // Setup IndexedDB couch for storing tokens during nutzap operations
 const couch = new IndexedDBCouch();
 
-// Cache of cashu-ts Mint instances reused across mint/melt operations
-const registry = new MintRegistry();
+// Cache of cashu-ts Mint instances reused across mint/melt operations. A Mint caches the mint's info and
+// owns a single WebSocket connection, so reusing instances avoids re-fetching info and keeps one socket per mint.
+const mints = new Map<string, Mint>();
+const getMint = (url: string) => {
+  const key = normalizeURL(url);
+  let mint = mints.get(key);
+  if (!mint) mints.set(key, (mint = new Mint(key)));
+  return mint;
+};
+
 // Builds a cashu Wallet from a cached Mint (passed to actions and used for quotes)
-const getCashuWallet = (mint: string) => createCashuWallet(registry.get(mint));
+const getCashuWallet = async (mint: string) => {
+  const wallet = new CashuWallet(getMint(mint));
+  await wallet.loadMint();
+  return wallet;
+};
 
 // Setup event store and relay pool
 const eventStore = new EventStore();

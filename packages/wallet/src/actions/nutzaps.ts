@@ -1,4 +1,4 @@
-import { Proof, sumProofs, Token } from "@cashu/cashu-ts";
+import { Proof, sumProofs, Token, Wallet } from "@cashu/cashu-ts";
 import { Action } from "applesauce-actions";
 import { castUser } from "applesauce-common/casts";
 import { bytesToHex, NostrEvent } from "applesauce-core/helpers/event";
@@ -7,13 +7,26 @@ import { WalletHistoryFactory } from "../factories/history.js";
 import { WalletTokenFactory } from "../factories/tokens.js";
 import { NutzapFactory } from "../factories/nutzap.js";
 import { Couch } from "../helpers/couch.js";
-import { CashuWalletProvider, loadCashuWallet } from "../helpers/cashu-wallet.js";
 import { getNutzapInfoMints, verifyProofsLocked } from "../helpers/nutzap-info.js";
 import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
 import { getUnlockedWallet } from "./common.js";
 
 // Make sure the nutzap$ is registered on the user class
 import "../casts/__register__.js";
+
+/** A function that returns a loaded cashu {@link Wallet} for a mint url */
+type CashuWalletProvider = (mint: string) => Promise<Wallet>;
+
+/**
+ * Returns a loaded cashu {@link Wallet} for a mint url. Uses the `getCashuWallet` provider when given
+ * (so a caller can supply a cached, wallet-specific instance), otherwise creates and loads a fresh wallet.
+ */
+async function loadCashuWallet(mint: string, options?: { getCashuWallet?: CashuWalletProvider }): Promise<Wallet> {
+  if (options?.getCashuWallet) return options.getCashuWallet(mint);
+  const wallet = new Wallet(mint);
+  await wallet.loadMint();
+  return wallet;
+}
 
 /** Creates a NIP-61 nutzap event for an event with a token */
 export function NutzapEvent(event: NostrEvent, token: Token, options?: { comment?: string; couch?: Couch }): Action {
@@ -146,7 +159,7 @@ export function ReceiveNutzaps(
         };
 
         // Use cashu-ts to receive/unlock the P2PK-locked token
-        const cashuWallet = await loadCashuWallet(mint, getCashuWallet);
+        const cashuWallet = await loadCashuWallet(mint, { getCashuWallet });
 
         // Receive the token using the new wallet.ops API
         // This will swap P2PK-locked proofs with unlocked proofs

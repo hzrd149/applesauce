@@ -72,6 +72,15 @@ const service$ = new BehaviorSubject<WalletService<NwcMethods> | null>(null);
 /** In-memory lightning transactions, so list_transactions and lookup_invoice have something to return */
 const nwcTransactions$ = new BehaviorSubject<Transaction[]>([]);
 
+/** A simple in-memory request log for the NWC service, so you can see it working */
+const requestLog$ = new BehaviorSubject<string[]>([]);
+
+/** Appends a line to the request log (keeping the last 100) */
+function logRequest(line: string) {
+  const time = new Date().toLocaleTimeString();
+  requestLog$.next([...requestLog$.value, `${time}  ${line}`].slice(-100));
+}
+
 /** Inserts or replaces a transaction (keyed by payment hash, falling back to the invoice) */
 function upsertNwcTransaction(tx: Transaction): Transaction {
   const key = tx.payment_hash || tx.invoice;
@@ -98,7 +107,7 @@ function saveConnectConfig(pubkey: string, config: ConnectConfig | null) {
 
 /** Maps NWC method calls onto the NutWallet */
 function createNwcHandlers(wallet: NutWallet): WalletServiceHandlers<NwcMethods> {
-  return {
+  const handlers: WalletServiceHandlers<NwcMethods> = {
     get_balance: async () => ({ balance: (await firstValueFrom(wallet.totalBalance$)) * 1000 }),
     cashu_list_mints: async () => {
       const balance = (await firstValueFrom(wallet.balance$)) ?? {};
@@ -187,6 +196,24 @@ function createNwcHandlers(wallet: NutWallet): WalletServiceHandlers<NwcMethods>
 
     list_transactions: async () => ({ transactions: nwcTransactions$.value }),
   };
+
+  // Wrap each handler so every request is appended to the request log
+  return Object.fromEntries(
+    Object.entries(handlers).map(([method, handler]) => [
+      method,
+      async (...args: unknown[]) => {
+        logRequest(`→ ${method}`);
+        try {
+          const result = await (handler as (...a: unknown[]) => Promise<unknown>)(...args);
+          logRequest(`✓ ${method}`);
+          return result;
+        } catch (error) {
+          logRequest(`✗ ${method}: ${error instanceof Error ? error.message : String(error)}`);
+          throw error;
+        }
+      },
+    ]),
+  ) as WalletServiceHandlers<NwcMethods>;
 }
 
 /** Starts (or restarts) the NWC service from a config and persists it */
@@ -1065,6 +1092,7 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
 function ConnectSection({ wallet }: { wallet: NutWallet }) {
   const service = use$(service$);
   const walletRelays = use$(wallet.walletRelays$);
+  const log = use$(requestLog$) ?? [];
   const [busy, setBusy] = useState(false);
   const [relays, setRelays] = useState<string[]>([]);
   const seeded = useRef(false);
@@ -1077,7 +1105,7 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
       setRelays(saved);
       seeded.current = true;
     } else if (walletRelays !== undefined) {
-      setRelays(walletRelays.length ? walletRelays : DEFAULT_RELAYS);
+      setRelays(walletRelays.length ? walletRelays : ["wss://relay.getalby.com/v1"]);
       seeded.current = true;
     }
   }, [wallet.pubkey, walletRelays]);
@@ -1150,23 +1178,29 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
         </p>
       </Panel>
 
-      <Panel title="Exposed methods">
-        <div className="flex flex-wrap gap-2">
-          {[
-            "get_balance",
-            "make_invoice",
-            "pay_invoice",
-            "lookup_invoice",
-            "list_transactions",
-            "cashu_list_mints",
-            "cashu_withdraw",
-            "cashu_deposit",
-          ].map((method) => (
-            <span key={method} className="badge badge-lg font-mono">
-              {method}
-            </span>
-          ))}
-        </div>
+      <Panel
+        title="Request log"
+        action={
+          log.length > 0 ? (
+            <button className="btn btn-sm" onClick={() => requestLog$.next([])}>
+              Clear
+            </button>
+          ) : undefined
+        }
+      >
+        {log.length > 0 ? (
+          <div className="h-64 overflow-y-auto border border-base-300 bg-base-200 p-2 font-mono text-xs">
+            {log.map((line, i) => (
+              <div key={i} className="whitespace-pre-wrap break-all">
+                {line}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-base-content/60">
+            No requests yet. Connect an app and the requests it makes to this wallet will appear here.
+          </p>
+        )}
       </Panel>
     </div>
   );

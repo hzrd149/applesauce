@@ -1,4 +1,4 @@
-import { Proof } from "@cashu/cashu-ts";
+import { Proof, Wallet } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
 import { User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, Mock, vi, vitest } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { WalletFactory } from "../../factories/wallet.js";
 import { Couch } from "../../helpers/couch.js";
-import { CashuWalletProvider } from "../../helpers/cashu-wallet.js";
 import { getHistoryContent, unlockHistoryContent, WALLET_HISTORY_KIND } from "../../helpers/history.js";
 import { getTokenContent, unlockTokenContent, WALLET_TOKEN_KIND } from "../../helpers/tokens.js";
 // Import casts to register wallet$ property on User
@@ -16,6 +15,9 @@ import { MintTokens } from "../tokens.js";
 
 const signer = new FakeUser();
 const mint = "https://mint.money.com";
+
+/** A function that returns a loaded cashu Wallet for a mint url */
+type CashuWalletProvider = (mint: string) => Promise<Wallet>;
 
 let events: EventStore;
 let publish: Mock<(...args: any[]) => Promise<void>>;
