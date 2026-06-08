@@ -131,7 +131,7 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.15",
     "vitest-websocket-mock": "^0.5.0",
-    "ws": "^8.18.3"
+    "ws": "^8.20.1"
   },
   "funding": {
     "type": "lightning",
