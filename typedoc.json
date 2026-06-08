@@ -4,7 +4,7 @@
   "entryPoints": ["packages/*"],
   "entryPointStrategy": "packages",
   "packageOptions": {
-    "entryPoints": ["src/index.ts"]
+    "entryPoints": ["src/index.ts", "src/wallet/index.ts"]
   },
   "out": "./docs/typedoc",
   "includeVersion": true

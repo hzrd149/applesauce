@@ -188,6 +188,7 @@ export default defineConfig({
             text: "Wallet",
             link: "/money/wallet/package",
             items: [
+              { text: "NutWallet", link: "/money/wallet/nut-wallet" },
               { text: "Actions", link: "/money/wallet/actions" },
               { text: "Casts", link: "/money/wallet/casts" },
               { text: "Models", link: "/money/wallet/models" },

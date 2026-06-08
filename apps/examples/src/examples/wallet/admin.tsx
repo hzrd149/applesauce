@@ -673,8 +673,8 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
     const ac = new AbortController();
     abortRef.current = ac;
     try {
-      // wallet.mint creates the quote, surfaces the invoice, waits for payment, and redeems the proofs
-      await wallet.mint(target, sats, { onQuote: setQuote, signal: ac.signal });
+      // wallet.deposit creates the quote, surfaces the invoice, waits for payment, and redeems the proofs
+      await wallet.deposit({ method: "bolt11", mint: target, amount: sats, onQuote: setQuote, signal: ac.signal });
       setQuote(null);
       setAmount("");
     } catch (err) {

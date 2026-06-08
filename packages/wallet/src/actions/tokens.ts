@@ -126,18 +126,19 @@ export function ReceiveToken(
 }
 
 /**
- * Mints new proofs from an already-paid bolt11 mint quote and adds them to the wallet
+ * A method-agnostic action that mints new proofs from a paid mint quote and adds them to the wallet.
+ * The `mintProofs` callback performs the payment-method-specific mint call (bolt11, bolt12, onchain, …)
+ * against the loaded cashu {@link Wallet}; everything else (couch safety + token/history bookkeeping) is
+ * shared. {@link MintTokens} is the bolt11 wrapper over this action.
  * @param mint the mint url to mint the proofs from
- * @param amount the amount of the paid mint quote in sats
- * @param quote the paid mint quote id or response
+ * @param mintProofs a callback that mints and returns the new proofs for the paid quote
  * @param options.couch optional couch interface for temporarily storing the minted token
  * @param options.wallet optional pre-loaded cashu Wallet for the mint
  * @param options.getCashuWallet optional provider returning a cached cashu Wallet for a mint
  */
-export function MintTokens(
+export function MintProofs(
   mint: string,
-  amount: number,
-  quote: string | MintQuoteBolt11Response,
+  mintProofs: (cashuWallet: Wallet) => Promise<Proof[]>,
   options?: { couch?: Couch; wallet?: Wallet; getCashuWallet?: CashuWalletProvider },
 ): Action {
   return async ({ run }) => {
@@ -145,7 +146,7 @@ export function MintTokens(
 
     // Mint the new proofs from the paid quote (throws if the quote has not been paid)
     const cashuWallet = await loadCashuWallet(mint, { wallet, getCashuWallet });
-    const proofs = await cashuWallet.mintProofsBolt11(amount, quote);
+    const proofs = await mintProofs(cashuWallet);
 
     const token: Token = { mint, proofs, unit: "sat" };
 
@@ -163,6 +164,25 @@ export function MintTokens(
       throw error;
     }
   };
+}
+
+/**
+ * Mints new proofs from an already-paid bolt11 mint quote and adds them to the wallet.
+ * A thin bolt11 wrapper over {@link MintProofs}.
+ * @param mint the mint url to mint the proofs from
+ * @param amount the amount of the paid mint quote in sats
+ * @param quote the paid mint quote id or response
+ * @param options.couch optional couch interface for temporarily storing the minted token
+ * @param options.wallet optional pre-loaded cashu Wallet for the mint
+ * @param options.getCashuWallet optional provider returning a cached cashu Wallet for a mint
+ */
+export function MintTokens(
+  mint: string,
+  amount: number,
+  quote: string | MintQuoteBolt11Response,
+  options?: { couch?: Couch; wallet?: Wallet; getCashuWallet?: CashuWalletProvider },
+): Action {
+  return MintProofs(mint, (cashuWallet) => cashuWallet.mintProofsBolt11(amount, quote), options);
 }
 
 /**

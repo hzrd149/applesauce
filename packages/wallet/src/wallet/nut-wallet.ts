@@ -2,10 +2,11 @@ import {
   getDecodedToken,
   getEncodedToken,
   type MeltProofsResponse,
-  type MeltQuoteBolt11Response,
+  type MeltQuoteBaseResponse,
   Mint,
   type MintQuoteBolt11Response,
   MintQuoteState,
+  type Proof,
   Token,
   Wallet as CashuWallet,
 } from "@cashu/cashu-ts";
@@ -44,11 +45,14 @@ import { getWalletRelays, lockWallet, WALLET_KIND } from "../helpers/wallet.js";
 import { WalletDeletedTokensModel } from "../models/tokens.js";
 import { loadWalletEvents, WalletLoaderStatus } from "./loading.js";
 import {
+  type Bolt11WithdrawResponse,
   type CreateWalletOptions,
+  type DepositOptions,
   type NutWalletOperation,
   type NutWalletOptions,
   type RelayStatusInfo,
   type TokenRelayCoverage,
+  type WithdrawOptions,
   WalletStatus,
 } from "./types.js";
 
@@ -520,65 +524,61 @@ export class NutWallet {
   }
 
   /**
-   * Deposits `amount` sats into a mint by creating a quote, surfacing the invoice via `onQuote`,
-   * waiting for it to be paid, and redeeming the proofs into the wallet.
-   * @param options.onQuote called with the quote so the caller can display the lightning invoice
+   * Deposits funds into a mint using the given payment method, minting the resulting proofs into the
+   * wallet. This is the method-agnostic entry point; new payment methods are added as additional
+   * {@link DepositOptions} variants without changing this signature.
+   *
+   * For bolt11 it creates a mint quote, surfaces the invoice via `onQuote`, waits for it to be paid,
+   * and redeems the proofs.
    */
-  async mint(
-    mint: string,
-    amount: number,
-    options?: {
-      onQuote?: (quote: MintQuoteBolt11Response) => void;
-      description?: string;
-      signal?: AbortSignal;
-      timeoutMs?: number;
-    },
-  ): Promise<void> {
-    const quote = await this.createMintQuote(mint, amount, options?.description);
-    options?.onQuote?.(quote);
-    await this.waitForMintQuote(mint, quote.quote, { signal: options?.signal, timeoutMs: options?.timeoutMs });
-    await this.redeemMintQuote(mint, amount, quote);
+  async deposit(options: DepositOptions): Promise<void> {
+    const method = options.method ?? "bolt11";
+    switch (method) {
+      case "bolt11": {
+        const { mint, amount, description, onQuote, signal, timeoutMs } = options;
+        const quote = await this.createMintQuote(mint, amount, description);
+        onQuote?.(quote);
+        await this.waitForMintQuote(mint, quote.quote, { signal, timeoutMs });
+        await this.redeemMintQuote(mint, amount, quote);
+        return;
+      }
+      default:
+        throw new Error(`Unsupported deposit method: ${method}`);
+    }
   }
 
   /**
-   * Pays a bolt11 lightning invoice from a specific mint's balance (melts ecash to lightning).
+   * Withdraws funds from a mint's balance using the given payment method (melts ecash). This is the
+   * method-agnostic entry point; {@link payInvoice} is the bolt11 alias. New payment methods are added
+   * as additional {@link WithdrawOptions} variants without changing this signature.
    * @returns the cashu melt response, including any change proofs returned by the mint
    */
-  async payInvoice(mint: string, invoice: string): Promise<MeltProofsResponse<MeltQuoteBolt11Response>> {
-    return this.track("melt", async () => {
-      // Create the melt quote first so we know the exact amount + fee reserve to select
-      const quoteWallet = await this.getCashuWallet(mint);
-      const meltQuote = await quoteWallet.createMeltQuoteBolt11(invoice);
-      const amount = meltQuote.amount.toNumber();
-      const feeReserve = meltQuote.fee_reserve.toNumber();
-      this.log("Melting %d sats (+%d fee reserve) at %s", amount, feeReserve, mint);
-
-      let response: MeltProofsResponse<MeltQuoteBolt11Response> | undefined;
-      await this.actions.run(
-        TokensOperation,
-        amount + feeReserve,
-        async ({ selectedProofs, cashuWallet }) => {
-          // Set aside the amount + fee reserve to melt and keep any remainder as change
-          const { keep, send } = await cashuWallet.ops
-            .send(amount + feeReserve, selectedProofs)
-            .includeFees(true)
-            .run();
-          response = await cashuWallet.meltProofsBolt11(meltQuote, send);
-          return { change: [...keep, ...response.change] };
-        },
-        {
+  async withdraw(options: WithdrawOptions): Promise<Bolt11WithdrawResponse> {
+    const method = options.method ?? "bolt11";
+    switch (method) {
+      case "bolt11": {
+        const { mint, invoice } = options;
+        return this.performMelt(
           mint,
-          couch: this.couch,
-          wallet: quoteWallet,
-          getCashuWallet: this.getCashuWallet,
-          deleteOldTokens: this.deleteOldTokens,
-        },
-      );
-      if (!response) throw new Error("Failed to melt token");
-      this.log("Melted token at %s", mint);
-      await this.refreshCouch();
-      return response;
-    });
+          async (cashuWallet) => {
+            const quote = await cashuWallet.createMeltQuoteBolt11(invoice);
+            return { quote, amount: quote.amount.toNumber(), feeReserve: quote.fee_reserve.toNumber() };
+          },
+          (cashuWallet, quote, send) => cashuWallet.meltProofsBolt11(quote, send),
+        );
+      }
+      default:
+        throw new Error(`Unsupported withdraw method: ${method}`);
+    }
+  }
+
+  /**
+   * Pays a bolt11 lightning invoice from a specific mint's balance (melts ecash to lightning). A thin
+   * alias for {@link withdraw} with `method: "bolt11"`.
+   * @returns the cashu melt response, including any change proofs returned by the mint
+   */
+  async payInvoice(mint: string, invoice: string): Promise<Bolt11WithdrawResponse> {
+    return this.withdraw({ method: "bolt11", mint, invoice });
   }
 
   /** Combines all unlocked token events into a single event per mint */
@@ -821,6 +821,51 @@ export class NutWallet {
     }
   }
 
+  /**
+   * Shared melt orchestration for every payment method. Creates a method-specific melt quote, selects
+   * proofs for the amount + fee reserve (under couch safety), melts them via the method-specific call,
+   * and keeps any remainder plus the mint's change. The two callbacks isolate the only
+   * payment-method-specific steps so new methods (bolt12, onchain) reuse this body.
+   */
+  protected async performMelt<Q extends Pick<MeltQuoteBaseResponse, "quote">>(
+    mint: string,
+    createQuote: (cashuWallet: CashuWallet) => Promise<{ quote: Q; amount: number; feeReserve: number }>,
+    melt: (cashuWallet: CashuWallet, quote: Q, send: Proof[]) => Promise<MeltProofsResponse<Q>>,
+  ): Promise<MeltProofsResponse<Q>> {
+    return this.track("melt", async () => {
+      // Create the melt quote first so we know the exact amount + fee reserve to select
+      const quoteWallet = await this.getCashuWallet(mint);
+      const { quote, amount, feeReserve } = await createQuote(quoteWallet);
+      this.log("Melting %d sats (+%d fee reserve) at %s", amount, feeReserve, mint);
+
+      let response: MeltProofsResponse<Q> | undefined;
+      await this.actions.run(
+        TokensOperation,
+        amount + feeReserve,
+        async ({ selectedProofs, cashuWallet }) => {
+          // Set aside the amount + fee reserve to melt and keep any remainder as change
+          const { keep, send } = await cashuWallet.ops
+            .send(amount + feeReserve, selectedProofs)
+            .includeFees(true)
+            .run();
+          response = await melt(cashuWallet, quote, send);
+          return { change: [...keep, ...response.change] };
+        },
+        {
+          mint,
+          couch: this.couch,
+          wallet: quoteWallet,
+          getCashuWallet: this.getCashuWallet,
+          deleteOldTokens: this.deleteOldTokens,
+        },
+      );
+      if (!response) throw new Error("Failed to melt token");
+      this.log("Melted token at %s", mint);
+      await this.refreshCouch();
+      return response;
+    });
+  }
+
   /** Runs an async operation while tracking its busy state and surfacing any error */
   protected async track<T>(name: NutWalletOperation, fn: () => Promise<T>): Promise<T> {
     this.setOperation(name, true);
@@ -860,12 +905,17 @@ export class NutWallet {
 }
 
 export type {
+  Bolt11DepositOptions,
+  Bolt11WithdrawOptions,
+  Bolt11WithdrawResponse,
   CreateWalletOptions,
+  DepositOptions,
   NutWalletOperation,
   NutWalletOptions,
   RelayStatusInfo,
   TokenCoverage,
   TokenRelayCoverage,
+  WithdrawOptions,
 } from "./types.js";
 export { WalletStatus };
 export type { Wallet, WalletHistory, WalletToken };

@@ -1,3 +1,4 @@
+import type { MeltProofsResponse, MeltQuoteBolt11Response, MintQuoteBolt11Response } from "@cashu/cashu-ts";
 import type { EventStore } from "applesauce-core";
 import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
@@ -46,6 +47,49 @@ export interface CreateWalletOptions {
   /** The relays the wallet should publish its events to */
   relays?: string[];
 }
+
+/** Options for depositing into a mint over bolt11 (a lightning invoice) */
+export interface Bolt11DepositOptions {
+  /** The payment method (defaults to `"bolt11"`) */
+  method?: "bolt11";
+  /** The mint url to deposit into */
+  mint: string;
+  /** The amount to deposit in sats */
+  amount: number;
+  /** An optional description for the generated lightning invoice */
+  description?: string;
+  /** Called with the mint quote so the caller can display the lightning invoice to pay */
+  onQuote?: (quote: MintQuoteBolt11Response) => void;
+  /** Aborts waiting for the quote to be paid */
+  signal?: AbortSignal;
+  /** Rejects if the quote is not paid within this many milliseconds */
+  timeoutMs?: number;
+}
+
+/**
+ * Options for {@link NutWallet.deposit}. A discriminated union keyed by `method`; new payment methods
+ * are added as additional members without changing existing call sites.
+ */
+export type DepositOptions = Bolt11DepositOptions;
+
+/** Options for withdrawing from a mint over bolt11 (paying a lightning invoice) */
+export interface Bolt11WithdrawOptions {
+  /** The payment method (defaults to `"bolt11"`) */
+  method?: "bolt11";
+  /** The mint url to withdraw from */
+  mint: string;
+  /** The bolt11 lightning invoice to pay */
+  invoice: string;
+}
+
+/**
+ * Options for {@link NutWallet.withdraw}. A discriminated union keyed by `method`; new payment methods
+ * are added as additional members without changing existing call sites.
+ */
+export type WithdrawOptions = Bolt11WithdrawOptions;
+
+/** The response from a {@link NutWallet.withdraw} over bolt11 */
+export type Bolt11WithdrawResponse = MeltProofsResponse<MeltQuoteBolt11Response>;
 
 /** The high-level lifecycle status of a {@link NutWallet} */
 export enum WalletStatus {
