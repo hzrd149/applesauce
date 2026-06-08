@@ -106,16 +106,6 @@ await actions.run(
 );
 ```
 
-## RolloverTokens
-
-Deletes old token events and creates a new consolidated token event. Does not add a history entry.
-
-```typescript
-import { RolloverTokens } from "applesauce-wallet/actions";
-
-await actions.run(RolloverTokens, oldTokenEvents, newToken);
-```
-
 ## ConsolidateTokens
 
 Combines unlocked token events into one event per mint, verifying proofs at the mint. Optionally unlock token content first with `{ unlockTokens: true }`.

@@ -10,4 +10,6 @@ export interface Couch {
   clear(): void | Promise<void>;
   /** Get all tokens currently stored in the couch */
   getAll(): Token[] | Promise<Token[]>;
+  /** Remove a specific token from the couch */
+  remove(token: Token): void | Promise<void>;
 }

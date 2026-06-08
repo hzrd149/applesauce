@@ -58,9 +58,8 @@ export class LocalStorageCouch implements Couch {
    * Get all tokens currently stored in the couch.
    */
   getAll(): Token[] {
-    const stored = this.getStoredTokens();
-    return stored
-      .map((item) => {
+    return this.getStoredTokens()
+      .map((item): Token | null => {
         try {
           return getDecodedToken(item.encodedToken, []);
         } catch {
@@ -68,6 +67,18 @@ export class LocalStorageCouch implements Couch {
         }
       })
       .filter((token): token is Token => token !== null);
+  }
+
+  /**
+   * Remove a specific token from the couch.
+   */
+  remove(token: Token): void {
+    const encodedToken = getEncodedToken(token);
+    const stored = this.getStoredTokens();
+    const index = stored.findIndex((item) => item.encodedToken === encodedToken);
+    if (index === -1) return;
+    stored.splice(index, 1);
+    this.saveStoredTokens(stored);
   }
 
   private getStoredTokens(): StoredToken[] {

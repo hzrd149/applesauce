@@ -18,6 +18,7 @@ import { Couch } from "../helpers/couch.js";
 import {
   dumbTokenSelection,
   getTokenContent,
+  getTokenDeletedIds,
   isTokenContentUnlocked,
   UnlockedTokenContent,
   unlockTokenContent,
@@ -165,41 +166,11 @@ export function MintTokens(
 }
 
 /**
- * An action that deletes old tokens and creates a new one but does not add a history event
- * @param options.deleteOldTokens whether to publish a NIP-09 delete event for the old token events
- *   (default true). The new token event always references the old ids in its `del` field, so the
- *   wallet can reconcile its own balance without the delete event; skipping it saves a signing
- *   operation at the cost of leaving the spent token events on relays until {@link CleanupDeletedTokens}.
- */
-export function RolloverTokens(tokens: NostrEvent[], token: Token, options?: { deleteOldTokens?: boolean }): Action {
-  const deleteOldTokens = options?.deleteOldTokens ?? true;
-
-  return async ({ signer, user, publish }) => {
-    if (!signer) throw new Error("Missing signer");
-    const wallet = await getUnlockedWallet(user, signer);
-
-    // create a new token event (the old token ids are recorded in its `del` field)
-    const tokenEvent = await WalletTokenFactory.create(
-      token,
-      tokens.map((e) => e.id),
-    ).sign(signer);
-
-    // optionally create a delete event for old tokens
-    const deleteEvent = deleteOldTokens ? await DeleteFactory.fromEvents(tokens).sign(signer) : undefined;
-
-    // publish events
-    await publish(
-      [tokenEvent, deleteEvent].filter((e) => !!e),
-      wallet.relays,
-    );
-  };
-}
-
-/**
  * An action that deletes old token events and adds a spend history item
  * @param options.deleteOldTokens whether to publish a NIP-09 delete event for the spent token events
- *   (default true). The change token event always references the spent ids in its `del` field, so see
- *   {@link RolloverTokens} for the trade-off of skipping it.
+ *   (default true). The change token event always references the spent ids in its `del` field, so the
+ *   wallet can reconcile its balance without the delete event; skipping it saves a signing operation at
+ *   the cost of leaving the spent token events on relays until {@link CleanupDeletedTokens}.
  */
 export function CompleteSpend(
   spent: NostrEvent[],
@@ -297,8 +268,17 @@ export function ConsolidateTokens(options?: {
       }
     }
 
-    // Collect unlocked tokens
-    const unlockedTokens = tokens.filter(isTokenContentUnlocked);
+    // Collect the ids that other token events have already marked as deleted (public `del` tags merged with
+    // the decrypted content). Those proofs are most likely already spent at the mint, so consolidating them
+    // would fail the state check (or repackage spent proofs); exclude them just like {@link RolloverTokens}.
+    const deleted = new Set<string>();
+    for (const token of tokens) {
+      for (const id of getTokenDeletedIds(token)) deleted.add(id);
+      if (isTokenContentUnlocked(token)) for (const id of getTokenContent(token).del) deleted.add(id);
+    }
+
+    // Collect unlocked, not-yet-deleted tokens
+    const unlockedTokens = tokens.filter(isTokenContentUnlocked).filter((token) => !deleted.has(token.id));
 
     // group tokens by mint
     const byMint = unlockedTokens.reduce((map, token) => {
@@ -366,6 +346,117 @@ export function ConsolidateTokens(options?: {
 }
 
 /**
+ * Rolls every unlocked token over to a fresh cashu token. For each mint the proofs are swapped at the mint
+ * (rotating the secrets) and a single new token event is created whose `del` field references the
+ * rolled-over token events. Token events that another token has already marked as deleted are skipped so a
+ * repeated rollover does not try to swap already-spent proofs.
+ *
+ * To keep signer operations to a minimum, every new token event is published together with a *single*
+ * batched NIP-09 delete event covering the rolled-over token events across *all* mints — never one delete
+ * per mint.
+ *
+ * @param options.deleteOldTokens whether to publish the single batched NIP-09 delete event (default true).
+ *   The new token events always reference the old ids in their `del` field, so the wallet can reconcile its
+ *   balance without the delete event; skipping it leaves the spent token events on relays until
+ *   {@link CleanupDeletedTokens} removes them.
+ * @param options.couch optional couch used to keep each fresh token safe until everything is published
+ */
+export function RolloverTokens(options?: {
+  unlockTokens?: boolean;
+  couch?: Couch;
+  getCashuWallet?: CashuWalletProvider;
+  deleteOldTokens?: boolean;
+}): Action {
+  const deleteOldTokens = options?.deleteOldTokens ?? true;
+
+  return async ({ events, signer, self, user, publish }) => {
+    if (!signer) throw new Error("Missing signer");
+    const wallet = await getUnlockedWallet(user, signer);
+    const tokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
+
+    // Unlock tokens if requested
+    if (options?.unlockTokens) {
+      for (const token of tokens) {
+        if (!isTokenContentUnlocked(token)) {
+          try {
+            await unlockTokenContent(token, signer);
+          } catch {}
+        }
+      }
+    }
+
+    // Collect the ids that other token events have already marked as deleted (public `del` tags merged with
+    // the decrypted content). With delete events disabled the rolled-over token events stay in the store, so
+    // they must be excluded here or a later rollover would try to swap their already-spent proofs.
+    const deleted = new Set<string>();
+    for (const token of tokens) {
+      for (const id of getTokenDeletedIds(token)) deleted.add(id);
+      if (isTokenContentUnlocked(token)) for (const id of getTokenContent(token).del) deleted.add(id);
+    }
+
+    // Group the unlocked, not-yet-deleted token events by mint
+    const byMint = new Map<string, (UnlockedTokenContent & NostrEvent)[]>();
+    for (const token of tokens) {
+      if (!isTokenContentUnlocked(token) || deleted.has(token.id)) continue;
+      const mint = getTokenContent(token).mint;
+      if (!byMint.has(mint)) byMint.set(mint, []);
+      byMint.get(mint)!.push(token);
+    }
+
+    // Collect the new token events and the old tokens to delete across all mints, so the old tokens can be
+    // removed with a single batched delete event instead of one per mint
+    const newTokenEvents: NostrEvent[] = [];
+    const deletedTokens: NostrEvent[] = [];
+    const clearStored: (() => void | Promise<void>)[] = [];
+
+    // loop over each mint and swap its proofs for fresh ones
+    for (const [mint, mintTokens] of byMint) {
+      // gather every proof across the mint's token events, ignoring duplicates
+      const proofs = mintTokens.flatMap((token) => getTokenContent(token).proofs).filter(ignoreDuplicateProofs());
+      if (proofs.length === 0) continue;
+
+      // The unit the tokens are denominated in (cashu-ts rejects a token whose unit does not match the wallet)
+      const unit = getTokenContent(mintTokens[0]).unit ?? "sat";
+
+      // Swap the proofs for fresh ones at the mint (the mint marks the old proofs spent)
+      const cashuWallet = await loadCashuWallet(mint, { getCashuWallet: options?.getCashuWallet });
+      const freshProofs = await cashuWallet.ops.receive({ mint, proofs: normalizeProofAmounts(proofs), unit }).run();
+      const freshToken: Token = { mint, proofs: freshProofs, unit };
+
+      // Keep the fresh token in the couch until everything is published
+      const clear = await options?.couch?.store(freshToken);
+      if (clear) clearStored.push(clear);
+
+      // Create the new token event (the rolled-over token ids are recorded in its `del` field)
+      newTokenEvents.push(
+        await WalletTokenFactory.create(
+          freshToken,
+          mintTokens.map((t) => t.id),
+        ).sign(signer),
+      );
+
+      // Queue the old tokens for the single batched delete
+      deletedTokens.push(...mintTokens);
+    }
+
+    // Nothing to roll over
+    if (newTokenEvents.length === 0) return;
+
+    // Optionally create a SINGLE delete event for all of the rolled-over tokens across every mint
+    const deleteEvent = deleteOldTokens ? await DeleteFactory.fromEvents(deletedTokens).sign(signer) : undefined;
+
+    // Publish the new token events and the single batched delete event together
+    await publish(
+      [...newTokenEvents, deleteEvent].filter((e) => !!e),
+      wallet.relays,
+    );
+
+    // Clear the couch once everything has been published
+    for (const clear of clearStored) await clear();
+  };
+}
+
+/**
  * Detects token events that have been marked as deleted by a newer token event's `del` field but are
  * still present, and publishes a single NIP-09 delete event for them. Use this to clean up the old
  * token events left behind when operations run with `deleteOldTokens: false`, batching what would
@@ -387,9 +478,11 @@ export function CleanupDeletedTokens(): Action {
       }
     }
 
-    // Collect the ids that newer token events have marked as deleted
+    // Collect the ids that newer token events have marked as deleted, merging the public `del` tags
+    // (no decryption needed) with the decrypted content for events that only store the ids there
     const deleted = new Set<string>();
     for (const token of tokens) {
+      for (const id of getTokenDeletedIds(token)) deleted.add(id);
       if (isTokenContentUnlocked(token)) for (const id of getTokenContent(token).del) deleted.add(id);
     }
 
@@ -404,8 +497,10 @@ export function CleanupDeletedTokens(): Action {
 }
 
 /**
- * Recovers tokens from a couch by checking if they exist in the wallet,
- * verifying they are unspent, and creating token events for any recoverable tokens
+ * Recovers tokens from a couch by checking if they exist in the wallet, verifying they are unspent, and
+ * creating token events for any recoverable proofs. Once every token has been processed the couch is
+ * cleared, so tokens that are already in the wallet or have been spent are cleaned out too. Any token
+ * whose recovered token event failed to publish is left in the couch so it can be retried on a later run.
  * @param couch the couch interface to recover tokens from
  * @param options.getCashuWallet optional provider returning a cached cashu Wallet for a mint
  */
@@ -415,8 +510,8 @@ export function RecoverFromCouch(couch: Couch, options?: { getCashuWallet?: Cash
     const wallet = await getUnlockedWallet(user, signer);
 
     // Get all tokens from the couch
-    const couchTokens = await couch.getAll();
-    if (couchTokens.length === 0) return; // No tokens to recover
+    const tokens = await couch.getAll();
+    if (tokens.length === 0) return; // No tokens to recover
 
     // Get all token events from the wallet
     const walletTokens = Array.from(events.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [self] }));
@@ -430,65 +525,51 @@ export function RecoverFromCouch(couch: Couch, options?: { getCashuWallet?: Cash
       }
     }
 
-    // Collect all proofs from wallet tokens
-    const walletProofs = walletTokens
-      .filter(isTokenContentUnlocked)
-      .map((token) => getTokenContent(token).proofs)
-      .flat();
-
-    // Create a set of seen proof UIDs from wallet
+    // Create a set of proof UIDs already held by the wallet so we never recover a duplicate
     const seenProofUIDs = new Set<string>();
-    walletProofs.forEach((proof) => {
-      seenProofUIDs.add(getProofUID(proof));
-    });
+    for (const token of walletTokens.filter(isTokenContentUnlocked))
+      for (const proof of getTokenContent(token).proofs) seenProofUIDs.add(getProofUID(proof));
 
-    // Group couch tokens by mint
-    const couchTokensByMint = new Map<string, Token[]>();
-    for (const token of couchTokens) {
-      if (!couchTokensByMint.has(token.mint)) {
-        couchTokensByMint.set(token.mint, []);
-      }
-      couchTokensByMint.get(token.mint)!.push(token);
-    }
+    // Tokens whose recovered token event failed to publish — kept in the couch for a later retry
+    const failed = new Set<Token>();
 
-    // Process each mint group
-    for (const [mint, tokens] of couchTokensByMint) {
-      // Get all proofs from couch tokens for this mint
-      const couchProofs = tokens.flatMap((token) => token.proofs);
-
-      // Filter out proofs that are already in the wallet
-      const newProofs = couchProofs.filter((proof) => {
+    // Recover every token first, so we don't clear the couch until all recoverable proofs are published
+    for (const token of tokens) {
+      // Skip proofs that are already in the wallet (or were recovered from an earlier token this run)
+      const newProofs = token.proofs.filter((proof) => {
         const uid = getProofUID(proof);
         if (seenProofUIDs.has(uid)) return false;
         seenProofUIDs.add(uid);
         return true;
       });
 
-      if (newProofs.length === 0) continue; // No new proofs to recover
+      // Nothing new to publish — already in the wallet or recovered earlier; cleared at the end
+      if (newProofs.length === 0) continue;
 
-      // Check if proofs are unspent from the mint
-      const cashuWallet = await loadCashuWallet(mint, { getCashuWallet: options?.getCashuWallet });
-
+      // Keep only the proofs the mint reports as unspent
+      const cashuWallet = await loadCashuWallet(token.mint, { getCashuWallet: options?.getCashuWallet });
       const states = await cashuWallet.checkProofsStates(newProofs);
       const unspentProofs: Proof[] = newProofs.filter((_, i) => states[i].state !== CheckStateEnum.SPENT);
 
-      if (unspentProofs.length === 0) continue; // No unspent proofs to recover
+      // No unspent proofs to publish — fully spent leftovers; cleared at the end
+      if (unspentProofs.length === 0) continue;
 
-      // Create a token event with the recovered proofs
-      const recoveredToken: Token = {
-        mint,
-        proofs: unspentProofs,
-        unit: tokens[0]?.unit,
-      };
-
+      // Create and publish a token event for the recovered proofs
+      const recoveredToken: Token = { mint: token.mint, proofs: unspentProofs, unit: token.unit };
       const tokenEvent = await WalletTokenFactory.create(recoveredToken).sign(signer);
 
-      // Publish the token event
-      await publish(tokenEvent, wallet.relays);
-
-      // Clear the token from the couch
-      await couch.clear();
+      try {
+        await publish(tokenEvent, wallet.relays);
+      } catch {
+        // Keep this token so its proofs can be recovered on a later run
+        failed.add(token);
+      }
     }
+
+    // Recovery complete: clear the couch. If every recovery published, clear it all in one call;
+    // otherwise remove each processed token individually and leave the failed ones for a retry.
+    if (failed.size === 0) await couch.clear();
+    else for (const token of tokens) if (!failed.has(token)) await couch.remove(token);
   };
 }
 

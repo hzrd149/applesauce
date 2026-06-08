@@ -115,26 +115,54 @@ export class IndexedDBCouch implements Couch {
    * Get all tokens currently stored in the couch.
    */
   async getAll(): Promise<Token[]> {
+    const stored = await this.getStoredTokens();
+    return stored
+      .map((item): Token | null => {
+        try {
+          return getDecodedToken(item.encodedToken, []);
+        } catch {
+          return null;
+        }
+      })
+      .filter((token): token is Token => token !== null);
+  }
+
+  /**
+   * Remove a specific token from the couch.
+   */
+  async remove(token: Token): Promise<void> {
+    const encodedToken = getEncodedToken(token);
+    const stored = await this.getStoredTokens();
+    const match = stored.find((item) => item.encodedToken === encodedToken);
+    if (!match) return;
+    await this.removeById(match.id);
+  }
+
+  /**
+   * Get all raw stored tokens currently in the couch.
+   */
+  private async getStoredTokens(): Promise<StoredToken[]> {
     const db = await this.init();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([this.storeName], "readonly");
       const store = transaction.objectStore(this.storeName);
       const request = store.getAll();
 
-      request.onsuccess = () => {
-        const results = request.result as StoredToken[];
-        const tokens = results
-          .map((item) => {
-            try {
-              return getDecodedToken(item.encodedToken, []);
-            } catch {
-              return null;
-            }
-          })
-          .filter((token): token is Token => token !== null);
-        resolve(tokens);
-      };
+      request.onsuccess = () => resolve(request.result as StoredToken[]);
+      request.onerror = () => reject(request.error);
+    });
+  }
 
+  /**
+   * Remove a single stored token by its id.
+   */
+  private async removeById(id: string): Promise<void> {
+    const db = await this.init();
+    const transaction = db.transaction([this.storeName], "readwrite");
+    const store = transaction.objectStore(this.storeName);
+    const request = store.delete(id);
+    await new Promise<void>((resolve, reject) => {
+      request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
   }

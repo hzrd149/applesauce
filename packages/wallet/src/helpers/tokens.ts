@@ -21,6 +21,17 @@ export function isValidWalletToken(event: NostrEvent): event is WalletTokenEvent
   return event.kind === WALLET_TOKEN_KIND;
 }
 
+/**
+ * Returns the token event ids this token marked as deleted, read from the public `del` tags. The same
+ * ids are stored inside the encrypted content, but they are not sensitive so they are mirrored to public
+ * tags to let consumers compute deleted tokens without decrypting the event. Note: the public `del` tags
+ * are an applesauce extension and are not part of NIP-60, so other apps may only store these ids in the
+ * encrypted content (see {@link getTokenContent}).
+ */
+export function getTokenDeletedIds(token: NostrEvent): string[] {
+  return token.tags.filter((t) => t[0] === "del" && t[1]).map((t) => t[1]);
+}
+
 // Enable hidden content for wallet token kind
 setHiddenContentEncryptionMethod(WALLET_TOKEN_KIND, "nip44");
 
@@ -31,7 +42,11 @@ export type TokenContent = {
   proofs: StoredProof[];
   /** The cashu unit */
   unit?: string;
-  /** tokens that were destroyed in the creation of this token (helps on wallet state transitions) */
+  /**
+   * An array of nostr event ids of the {@link WALLET_TOKEN_KIND} token events that were destroyed in the
+   * creation of this token (helps on wallet state transitions). These are nostr event ids, never cashu
+   * token/proof ids — cashu tokens have no id outside of an app.
+   */
   del: string[];
 };
 

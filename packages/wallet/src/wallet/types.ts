@@ -70,6 +70,7 @@ export type NutWalletOperation =
   | "mint"
   | "melt"
   | "consolidate"
+  | "rollover"
   | "cleanup"
   | "recover"
   | "sync"

@@ -1,4 +1,4 @@
-import { Proof, Token, Wallet } from "@cashu/cashu-ts";
+import { CheckStateEnum, Proof, Token, Wallet } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
 import { User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
@@ -14,7 +14,13 @@ import { getHistoryContent, unlockHistoryContent, WALLET_HISTORY_KIND } from "..
 import { getTokenContent, unlockTokenContent, WALLET_TOKEN_KIND } from "../../helpers/tokens.js";
 // Import casts to register wallet$ property on User
 import "../../casts/index.js";
-import { CleanupDeletedTokens, CompleteSpend, MintTokens, RolloverTokens } from "../tokens.js";
+import {
+  CleanupDeletedTokens,
+  CompleteSpend,
+  MintTokens,
+  RecoverFromCouch,
+  RolloverTokens,
+} from "../tokens.js";
 
 const signer = new FakeUser();
 const mint = "https://mint.money.com";
@@ -103,32 +109,62 @@ describe("MintTokens", () => {
 });
 
 describe("RolloverTokens", () => {
-  it("publishes a delete event for the old tokens by default", async () => {
-    const old1 = await addTokenEvent(50);
-    const old2 = await addTokenEvent(50);
+  const mintA = "https://mint-a.money.com";
+  const mintB = "https://mint-b.money.com";
 
-    await hub.run(RolloverTokens, [old1, old2], makeToken(100));
+  /** Builds a token event for a specific mint and adds it to the store */
+  async function addTokenForMint(mint: string, amount: number): Promise<NostrEvent> {
+    const token: Token = {
+      mint,
+      proofs: [{ amount, secret: `secret-${proofCounter++}`, C: "C", id: "id" } as unknown as Proof],
+    };
+    const event = await WalletTokenFactory.create(token).sign(signer);
+    await events.add(event);
+    return event;
+  }
 
-    const published = publish.mock.calls.map((call) => call[0]);
-    const deleteEvent = published.find((e: any) => e.kind === kinds.EventDeletion);
-    expect(deleteEvent).toBeDefined();
-    const deletedIds = deleteEvent!.tags.filter((t: string[]) => t[0] === "e").map((t: string[]) => t[1]);
-    expect(deletedIds).toEqual(expect.arrayContaining([old1.id, old2.id]));
+  /** A provider whose cashu wallet swaps proofs for fresh ones (new secrets) */
+  function swappingProvider(): CashuWalletProvider {
+    let counter = 0;
+    return vi.fn().mockResolvedValue({
+      ops: {
+        receive: (token: Token) => ({
+          run: async () => token.proofs.map((p) => ({ ...p, secret: `fresh-${counter++}` })),
+        }),
+      },
+    }) as unknown as CashuWalletProvider;
+  }
+
+  it("publishes a single delete event for the rolled-over tokens across all mints", async () => {
+    const a1 = await addTokenForMint(mintA, 50);
+    const a2 = await addTokenForMint(mintA, 50);
+    const b1 = await addTokenForMint(mintB, 30);
+
+    await hub.run(RolloverTokens, { getCashuWallet: swappingProvider() });
+
+    const published = publish.mock.calls.map(([e]) => e);
+
+    // Exactly one kind:5 delete event covering every rolled-over token across both mints
+    const deleteEvents = published.filter((e: any) => e.kind === kinds.EventDeletion);
+    expect(deleteEvents).toHaveLength(1);
+    const deletedIds = deleteEvents[0].tags.filter((t: string[]) => t[0] === "e").map((t: string[]) => t[1]);
+    expect(deletedIds.sort()).toEqual([a1.id, a2.id, b1.id].sort());
+
+    // One new token event per mint
+    const tokenEvents = published.filter((e: any) => e.kind === WALLET_TOKEN_KIND);
+    expect(tokenEvents).toHaveLength(2);
   });
 
-  it("skips the delete event when deleteOldTokens is false but still records the old ids in `del`", async () => {
-    const old1 = await addTokenEvent(50);
-    const old2 = await addTokenEvent(50);
+  it("publishes no delete event when deleteOldTokens is false", async () => {
+    await addTokenForMint(mintA, 50);
+    await addTokenForMint(mintB, 30);
 
-    await hub.run(RolloverTokens, [old1, old2], makeToken(100), { deleteOldTokens: false });
+    await hub.run(RolloverTokens, { getCashuWallet: swappingProvider(), deleteOldTokens: false });
 
-    const published = publish.mock.calls.map((call) => call[0]);
-    expect(published.find((e: any) => e.kind === kinds.EventDeletion)).toBeUndefined();
-
-    const tokenEvent = published.find((e: any) => e.kind === WALLET_TOKEN_KIND);
-    expect(tokenEvent).toBeDefined();
-    await unlockTokenContent(tokenEvent, signer);
-    expect(getTokenContent(tokenEvent)!.del).toEqual(expect.arrayContaining([old1.id, old2.id]));
+    const published = publish.mock.calls.map(([e]) => e);
+    expect(published.filter((e: any) => e.kind === kinds.EventDeletion)).toHaveLength(0);
+    // The new token events still record the rolled-over ids in their `del` field
+    expect(published.filter((e: any) => e.kind === WALLET_TOKEN_KIND)).toHaveLength(2);
   });
 });
 
@@ -145,6 +181,95 @@ describe("CompleteSpend", () => {
     const tokenEvent = published.find((e: any) => e.kind === WALLET_TOKEN_KIND);
     await unlockTokenContent(tokenEvent, signer);
     expect(getTokenContent(tokenEvent)!.del).toContain(spent.id);
+  });
+});
+
+describe("RecoverFromCouch", () => {
+  /** A minimal in-memory couch seeded with the given tokens */
+  function memoryCouch(initial: Token[] = []): Couch {
+    let tokens = [...initial];
+    const removeToken = (token: Token) => {
+      tokens = tokens.filter((t) => t !== token);
+    };
+    return {
+      store: (token: Token) => {
+        tokens.push(token);
+        return () => removeToken(token);
+      },
+      clear: () => {
+        tokens = [];
+      },
+      getAll: () => tokens,
+      remove: (token: Token) => removeToken(token),
+    };
+  }
+
+  /** A provider whose cashu wallet reports the given secrets as spent and everything else as unspent */
+  function checkingProvider(spentSecrets: Set<string> = new Set()): CashuWalletProvider {
+    return vi.fn().mockResolvedValue({
+      checkProofsStates: vi.fn(async (proofs: Proof[]) =>
+        proofs.map((p) => ({ state: spentSecrets.has(p.secret) ? CheckStateEnum.SPENT : CheckStateEnum.UNSPENT })),
+      ),
+    }) as unknown as CashuWalletProvider;
+  }
+
+  it("recovers an unspent couch token and clears the couch", async () => {
+    const couch = memoryCouch([makeToken(100)]);
+
+    await hub.run(RecoverFromCouch, couch, { getCashuWallet: checkingProvider() });
+
+    const tokenEvent = publish.mock.calls.map(([e]) => e).find((e: any) => e.kind === WALLET_TOKEN_KIND);
+    expect(tokenEvent).toBeDefined();
+    await unlockTokenContent(tokenEvent, signer);
+    expect(getTokenContent(tokenEvent)!.proofs).toHaveLength(1);
+    // the couch is cleared once recovery completes
+    expect(await couch.getAll()).toHaveLength(0);
+  });
+
+  it("clears spent couch tokens without publishing them", async () => {
+    const spent: Token = { mint, proofs: [{ amount: 100, secret: "spent-secret", C: "C", id: "id" } as unknown as Proof] };
+    const couch = memoryCouch([spent]);
+
+    await hub.run(RecoverFromCouch, couch, {
+      getCashuWallet: checkingProvider(new Set(["spent-secret"])),
+    });
+
+    expect(publish.mock.calls.find(([e]: any) => e.kind === WALLET_TOKEN_KIND)).toBeUndefined();
+    // spent leftovers are cleaned out of the couch
+    expect(await couch.getAll()).toHaveLength(0);
+  });
+
+  it("clears couch tokens whose proofs are already in the wallet without republishing them", async () => {
+    const proof = { amount: 100, secret: "dup-secret", C: "C", id: "id" } as unknown as Proof;
+    const token: Token = { mint, proofs: [proof] };
+    // The same proofs already exist as a wallet token event
+    const event = await WalletTokenFactory.create(token).sign(signer);
+    await events.add(event);
+    const couch = memoryCouch([token]);
+
+    await hub.run(RecoverFromCouch, couch, { getCashuWallet: checkingProvider() });
+
+    expect(publish.mock.calls.find(([e]: any) => e.kind === WALLET_TOKEN_KIND)).toBeUndefined();
+    // already-in-wallet tokens are cleaned out of the couch
+    expect(await couch.getAll()).toHaveLength(0);
+  });
+
+  it("keeps only the entry whose recovered token failed to publish", async () => {
+    const recoverable = makeToken(100);
+    const alreadyInWallet: Token = {
+      mint,
+      proofs: [{ amount: 50, secret: "dup-secret", C: "C", id: "id" } as unknown as Proof],
+    };
+    await events.add(await WalletTokenFactory.create(alreadyInWallet).sign(signer));
+    // recoverable is processed first; its publish fails
+    const couch = memoryCouch([recoverable, alreadyInWallet]);
+    publish.mockRejectedValueOnce(new Error("relay down"));
+
+    await hub.run(RecoverFromCouch, couch, { getCashuWallet: checkingProvider() });
+
+    // the failed entry is kept for a retry, the already-in-wallet one is cleaned out
+    const remaining = await couch.getAll();
+    expect(remaining).toEqual([recoverable]);
   });
 });
 

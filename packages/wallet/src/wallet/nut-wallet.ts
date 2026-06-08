@@ -28,6 +28,7 @@ import {
   MintTokens,
   ReceiveToken,
   RecoverFromCouch,
+  RolloverTokens,
   SetWalletMints,
   SetWalletRelays,
   TokensOperation,
@@ -586,6 +587,27 @@ export class NutWallet {
       this.log("Consolidating tokens");
       await this.actions.run(ConsolidateTokens, {
         unlockTokens: true,
+        getCashuWallet: this.getCashuWallet,
+        deleteOldTokens: this.deleteOldTokens,
+      });
+      await this.refreshCouch();
+    });
+  }
+
+  /**
+   * Rolls every unlocked token over to a fresh cashu token. For each mint the proofs are swapped at the mint
+   * (rotating the secrets) and a single new token event is created whose `del` field references the
+   * rolled-over token events. Unlike {@link consolidateTokens}, this swaps the proofs at the mint even when a
+   * mint only has a single token event, so it is a good way to exercise the `del` reconciliation flow end to
+   * end. Every new token event is published together with a single batched delete event covering all mints,
+   * keeping signer operations to a minimum.
+   */
+  async rollover(): Promise<void> {
+    await this.track("rollover", async () => {
+      this.log("Rolling over tokens");
+      await this.actions.run(RolloverTokens, {
+        unlockTokens: true,
+        couch: this.couch,
         getCashuWallet: this.getCashuWallet,
         deleteOldTokens: this.deleteOldTokens,
       });

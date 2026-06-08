@@ -4,9 +4,42 @@ import { EncryptedContentSymbol, isEncryptedContentUnlocked, unixNow } from "app
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { WalletTokenFactory } from "../../factories/tokens.js";
 import { decodeTokenFromEmojiString, encodeTokenToEmoji } from "../cashu.js";
-import { dumbTokenSelection, isTokenContentUnlocked, unlockTokenContent, WALLET_TOKEN_KIND } from "../tokens.js";
+import {
+  dumbTokenSelection,
+  getTokenDeletedIds,
+  isTokenContentUnlocked,
+  unlockTokenContent,
+  WALLET_TOKEN_KIND,
+} from "../tokens.js";
 
 const user = new FakeUser();
+
+describe("getTokenDeletedIds", () => {
+  it("reads deleted ids from the public tags without decrypting", async () => {
+    const token = await WalletTokenFactory.create(
+      { mint: "https://money.com", proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }] },
+      ["deleted-1", "deleted-2"],
+    )
+      .as(user)
+      .sign();
+
+    // Lock the content to prove the ids are read from the public tags, not the encrypted content
+    Reflect.deleteProperty(token, EncryptedContentSymbol);
+    expect(isTokenContentUnlocked(token)).toBe(false);
+    expect(getTokenDeletedIds(token)).toEqual(["deleted-1", "deleted-2"]);
+  });
+
+  it("returns an empty array when no tokens were deleted", async () => {
+    const token = await WalletTokenFactory.create({
+      mint: "https://money.com",
+      proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }],
+    })
+      .as(user)
+      .sign();
+
+    expect(getTokenDeletedIds(token)).toEqual([]);
+  });
+});
 
 describe("isTokenContentUnlocked", () => {
   it("should return true if only EncryptedContentSymbol is set", async () => {

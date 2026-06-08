@@ -9,7 +9,11 @@ import { TokenContent } from "../helpers/tokens.js";
 /** A token whose proofs may have either numeric or {@link Amount} amounts */
 export type TokenInput = { mint: string; proofs: ProofLike[]; unit?: string; memo?: string };
 
-/** Sets the content of a 7375 token event */
+/**
+ * Sets the content of a 7375 token event
+ * @param del nostr event ids of the token events destroyed in the creation of this token (never cashu
+ *   token/proof ids). Written to the encrypted content and mirrored to public `del` tags.
+ */
 export function setToken(
   token: TokenInput,
   del: string[] = [],
@@ -32,6 +36,10 @@ export function setToken(
       del,
     };
 
-    return await setEncryptedContent(pubkey, JSON.stringify(content), signer, method)(draft);
+    // Mirror the deleted ids to public `del` tags so consumers can compute deleted tokens without
+    // decrypting the event. These ids are not sensitive information.
+    const withTags = { ...draft, tags: [...draft.tags, ...del.map((id) => ["del", id])] };
+
+    return await setEncryptedContent(pubkey, JSON.stringify(content), signer, method)(withTags);
   };
 }

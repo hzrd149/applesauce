@@ -21,7 +21,7 @@ import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { generateSecretKey } from "nostr-tools";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, firstValueFrom, Observable } from "rxjs";
+import { BehaviorSubject, firstValueFrom } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
@@ -1015,10 +1015,17 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
           <button className="btn" onClick={() => wallet.consolidateTokens()} disabled={ops.consolidate}>
             {ops.consolidate ? <span className="loading loading-spinner loading-sm" /> : "Consolidate tokens"}
           </button>
+          <button className="btn" onClick={() => wallet.rollover()} disabled={ops.rollover}>
+            {ops.rollover ? <span className="loading loading-spinner loading-sm" /> : "Rollover tokens"}
+          </button>
           <button className="btn" onClick={() => wallet.syncTokens()} disabled={ops.sync}>
             {ops.sync ? <span className="loading loading-spinner loading-sm" /> : "Sync tokens"}
           </button>
         </div>
+        <p className="text-xs text-base-content/60 mt-3">
+          Rollover swaps every token for fresh proofs at its mint, recording the replaced token ids in each new
+          token's <code>del</code> field.
+        </p>
       </Panel>
     </div>
   );

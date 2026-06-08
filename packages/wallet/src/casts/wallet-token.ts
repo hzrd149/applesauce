@@ -7,6 +7,7 @@ import { of } from "rxjs";
 import { map } from "rxjs/operators";
 import {
   getTokenContent,
+  getTokenDeletedIds,
   isTokenContentUnlocked,
   isValidWalletToken,
   unlockTokenContent,
@@ -34,8 +35,9 @@ export class WalletToken extends EventCast<WalletTokenEvent> {
   get amount() {
     return this.proofs && sumProofs(this.proofs).toNumber();
   }
+  /** The token event ids this token marked as deleted, merging the public `del` tags with the encrypted content */
   get deleted() {
-    return this.meta?.del;
+    return Array.from(new Set([...getTokenDeletedIds(this.event), ...(this.meta?.del ?? [])]));
   }
 
   // Unlocking pattern
@@ -67,6 +69,14 @@ export class WalletToken extends EventCast<WalletTokenEvent> {
     return this.$$ref("amount$", () => this.proofs$.pipe(map((proofs) => sumProofs(proofs).toNumber())));
   }
   get deleted$() {
-    return this.$$ref("deleted$", () => this.meta$.pipe(map((meta) => meta?.del)));
+    return this.$$ref("deleted$", () =>
+      of(this.event).pipe(
+        watchEventUpdates(this.store),
+        map((event) => {
+          const content = event && isTokenContentUnlocked(event) ? getTokenContent(event).del : [];
+          return Array.from(new Set([...getTokenDeletedIds(this.event), ...content]));
+        }),
+      ),
+    );
   }
 }

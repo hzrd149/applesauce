@@ -9,6 +9,7 @@ describe("exports", () => {
         "ProfileNutZapzModel",
         "ReceivedNutzapsModel",
         "WalletBalanceModel",
+        "WalletDeletedTokenIdsModel",
         "WalletDeletedTokensModel",
         "WalletHistoryModel",
         "WalletRedeemedModel",

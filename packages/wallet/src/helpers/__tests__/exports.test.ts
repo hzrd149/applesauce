@@ -66,6 +66,7 @@ describe("exports", () => {
         "getRecommendationMintPubkey",
         "getRecommendationURL",
         "getTokenContent",
+        "getTokenDeletedIds",
         "getTokenProofsTotal",
         "getWalletMints",
         "getWalletPrivateKey",
