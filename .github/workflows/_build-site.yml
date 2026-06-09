@@ -14,6 +14,7 @@ jobs:
 
   typedoc:
     name: Build typedoc
+    needs: packages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
@@ -29,6 +30,14 @@ jobs:
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
 
       - name: Build typedoc
         run: pnpm typedoc
