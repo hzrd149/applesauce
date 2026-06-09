@@ -1023,8 +1023,8 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
           </button>
         </div>
         <p className="text-xs text-base-content/60 mt-3">
-          Rollover swaps every token for fresh proofs at its mint, recording the replaced token ids in each new
-          token's <code>del</code> field.
+          Rollover swaps every token for fresh proofs at its mint, recording the replaced token ids in each new token's{" "}
+          <code>del</code> field.
         </p>
       </Panel>
     </div>

@@ -14,13 +14,7 @@ import { getHistoryContent, unlockHistoryContent, WALLET_HISTORY_KIND } from "..
 import { getTokenContent, unlockTokenContent, WALLET_TOKEN_KIND } from "../../helpers/tokens.js";
 // Import casts to register wallet$ property on User
 import "../../casts/index.js";
-import {
-  CleanupDeletedTokens,
-  CompleteSpend,
-  MintTokens,
-  RecoverFromCouch,
-  RolloverTokens,
-} from "../tokens.js";
+import { CleanupDeletedTokens, CompleteSpend, MintTokens, RecoverFromCouch, RolloverTokens } from "../tokens.js";
 
 const signer = new FakeUser();
 const mint = "https://mint.money.com";
@@ -227,7 +221,10 @@ describe("RecoverFromCouch", () => {
   });
 
   it("clears spent couch tokens without publishing them", async () => {
-    const spent: Token = { mint, proofs: [{ amount: 100, secret: "spent-secret", C: "C", id: "id" } as unknown as Proof] };
+    const spent: Token = {
+      mint,
+      proofs: [{ amount: 100, secret: "spent-secret", C: "C", id: "id" } as unknown as Proof],
+    };
     const couch = memoryCouch([spent]);
 
     await hub.run(RecoverFromCouch, couch, {

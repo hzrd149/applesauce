@@ -54,12 +54,7 @@ async function addLockedToken(amount: number, del: string[] = []): Promise<Nostr
  * true the decrypted content is removed to simulate an event that arrived from a relay but has not been
  * decrypted yet (its public `del` tags are still readable).
  */
-async function buildToken(
-  amount: number,
-  created: number,
-  del: string[] = [],
-  locked = false,
-): Promise<NostrEvent> {
+async function buildToken(amount: number, created: number, del: string[] = [], locked = false): Promise<NostrEvent> {
   const event = await WalletTokenFactory.create(makeToken(amount), del).created(created).sign(signer);
   if (locked) Reflect.deleteProperty(event, EncryptedContentSymbol);
   else await unlockTokenContent(event, signer);

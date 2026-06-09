@@ -14,6 +14,7 @@ import {
   fromEvent,
   identity,
   ignoreElements,
+  interval,
   lastValueFrom,
   map,
   merge,
@@ -74,6 +75,7 @@ import {
   MultiPayKeysendMethod,
   PayInvoiceMethod,
   PayKeysendMethod,
+  Transaction,
   TWalletMethod,
 } from "./helpers/methods.js";
 import {
@@ -97,6 +99,13 @@ export type WalletConnectOptions = NostrConnectionMethodsOptions & {
   timeout?: number;
   /** Whether to accept the relay hint from the wallet service */
   acceptRelayHint?: boolean;
+};
+
+export type WaitForPaidInvoice = MakeInvoiceMethod["response"]["result"] | LookupInvoiceMethod["request"]["params"];
+
+export type WaitForPaidOptions = {
+  /** Polling interval in milliseconds when payment_received notifications are not supported */
+  pollInterval?: number;
 };
 
 export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> {
@@ -487,6 +496,55 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
     options?: Omit<MakeInvoiceMethod["request"]["params"], "amount">,
   ): Promise<MakeInvoiceMethod["response"]["result"]> {
     return await this.genericRequest<MakeInvoiceMethod>("make_invoice", { amount, ...options });
+  }
+
+  /** Wait for an invoice to be paid, or reject when it expires */
+  async waitForPaid(invoice: WaitForPaidInvoice, options: WaitForPaidOptions = {}): Promise<Transaction> {
+    const transaction: Transaction =
+      "state" in invoice ? invoice : await this.lookupInvoice(invoice.payment_hash, invoice.invoice);
+
+    if (transaction.state === "settled") return Promise.resolve(transaction);
+    if (!transaction.payment_hash) return Promise.reject(new Error("Invoice is missing payment hash"));
+
+    const expiresAt = transaction.expires_at ? transaction.expires_at * 1000 : undefined;
+    const now = Date.now();
+    if (expiresAt && expiresAt <= now) return Promise.reject(new Error("Invoice expired"));
+
+    const supportsNotifications = await this.supportsNotificationType("payment_received");
+    if (!supportsNotifications) {
+      return await firstValueFrom(
+        interval(options.pollInterval ?? 5000).pipe(
+          switchMap(() => this.lookupInvoice(transaction.payment_hash, transaction.invoice)),
+          mergeMap((result) => {
+            if (result.state === "settled") return of(result);
+            if (result.state === "expired") throw new Error("Invoice expired");
+            return [];
+          }),
+          simpleTimeout(expiresAt ? expiresAt - now : Infinity),
+        ),
+      );
+    }
+
+    return new Promise((resolve, reject) => {
+      const subscription = this.notification("payment_received", (payment) => {
+        if (payment.payment_hash !== transaction.payment_hash) return;
+
+        cleanup();
+        resolve(payment);
+      });
+
+      const timeout = expiresAt
+        ? setTimeout(() => {
+            cleanup();
+            reject(new Error("Invoice expired"));
+          }, expiresAt - now)
+        : undefined;
+
+      function cleanup() {
+        subscription.unsubscribe();
+        if (timeout) clearTimeout(timeout);
+      }
+    });
   }
 
   /** Look up an invoice by payment hash or invoice string */

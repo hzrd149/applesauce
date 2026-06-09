@@ -22,6 +22,9 @@ import type { Debugger } from "debug";
 import { BehaviorSubject, combineLatest, isObservable, Observable, of, Subscription } from "rxjs";
 import { distinctUntilChanged, map, shareReplay, startWith } from "rxjs/operators";
 
+// Ensure the User.wallet$ is setup
+import "../casts/__register__";
+
 import {
   CleanupDeletedTokens,
   ConsolidateTokens,
