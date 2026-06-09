@@ -47,6 +47,8 @@ export interface ProviderAuthorization {
   onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
   /** A method called when a client requests relay switching. Return new relay list or null if no change */
   onSwitchRelays?: (client: string) => string[] | null | Promise<string[] | null>;
+  /** A method called when a client requests to logout (end the session) */
+  onLogout?: (client: string) => void | Promise<void>;
 }
 
 export type NostrConnectProviderOptions = ProviderAuthorization &
@@ -123,6 +125,8 @@ export class NostrConnectProvider implements ProviderAuthorization {
   public onNip44Decrypt?: (pubkey: string, ciphertext: string, client: string) => boolean | Promise<boolean>;
   /** A method called when a client requests relay switching. Return new relay list or null if no change */
   public onSwitchRelays?: (client: string) => string[] | null | Promise<string[] | null>;
+  /** A method called when a client requests to logout (end the session) */
+  public onLogout?: (client: string) => void | Promise<void>;
 
   constructor(options: NostrConnectProviderOptions) {
     this.relays = options.relays;
@@ -149,6 +153,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     if (options.onNip44Encrypt) this.onNip44Encrypt = options.onNip44Encrypt;
     if (options.onNip44Decrypt) this.onNip44Decrypt = options.onNip44Decrypt;
     if (options.onSwitchRelays) this.onSwitchRelays = options.onSwitchRelays;
+    if (options.onLogout) this.onLogout = options.onLogout;
   }
 
   /** The currently active REQ subscription */
@@ -314,12 +319,18 @@ export class NostrConnectProvider implements ProviderAuthorization {
           case NostrConnectMethod.SwitchRelays:
             result = await this.handleSwitchRelays();
             break;
+          case NostrConnectMethod.Logout:
+            result = "ack";
+            break;
           default:
             throw new Error(`Unsupported method: ${request.method}`);
         }
 
         // Send success response
         await this.sendResponse(event, request.id, result);
+
+        // Ack is sent before ending the session, so the client receives confirmation before we tear down
+        if (request.method === NostrConnectMethod.Logout) await this.handleLogout(event.pubkey);
       } catch (error) {
         this.log(`Error processing ${request.method}:`, error);
         await this.sendErrorResponse(event, request.id, error instanceof Error ? error.message : "Unknown error");
@@ -491,6 +502,26 @@ export class NostrConnectProvider implements ProviderAuthorization {
 
     // Default: return current relays (no change)
     return null;
+  }
+
+  /** Handle a logout request by ending the session associated with the client */
+  protected async handleLogout(client: string) {
+    this.log(`Client ${client} logged out`);
+
+    // Notify the logout callback
+    if (this.onLogout) await this.onLogout(client);
+
+    // Notify client disconnect
+    if (this.connected && this.onClientDisconnect) this.onClientDisconnect(client);
+
+    // Forget the client so a new `connect` is required to re-establish a session.
+    // NOTE: do not clear `seen` here, otherwise the relay will replay the old `connect`/`logout`
+    // events on the new subscription and the provider would reconnect then logout in a loop.
+    this.client = undefined;
+    this.connected = false;
+
+    // Reset the subscription to listen for new connections
+    await this.updateSubscription();
   }
 
   /**

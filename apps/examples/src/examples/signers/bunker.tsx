@@ -86,7 +86,7 @@ const QRCodeLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrConne
 
       // Create a new signer for QR code login
       const newSigner = new NostrConnectSigner({
-        relays: ["wss://relay.nsec.app"],
+        relays: ["wss://bucket.coracle.social"],
       });
 
       // Generate QR code URI with metadata
@@ -174,6 +174,7 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
   const [noteText, setNoteText] = useState<string>("");
   const [signedEvent, setSignedEvent] = useState<any>(null);
   const [isSigningNote, setIsSigningNote] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleGetPubkey = async () => {
     try {
@@ -209,9 +210,25 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
     }
   };
 
+  // Close the local connection without telling the remote signer
   const handleDisconnect = () => {
     signer.close();
     onDisconnect();
+  };
+
+  // Notify the remote signer to end the session, then close the local connection
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      setError(null);
+      await signer.logout();
+    } catch (err) {
+      console.error("Failed to logout:", err);
+      setError(err instanceof Error ? err.message : "Failed to logout");
+    } finally {
+      setIsLoggingOut(false);
+      onDisconnect();
+    }
   };
 
   return (
@@ -263,9 +280,14 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
         </div>
       </div>
 
-      <button className="btn btn-outline w-full" onClick={handleDisconnect}>
-        Disconnect
-      </button>
+      <div className="flex gap-2">
+        <button className="btn btn-outline flex-1" onClick={handleDisconnect} disabled={isLoggingOut}>
+          Disconnect
+        </button>
+        <button className="btn btn-error btn-outline flex-1" onClick={handleLogout} disabled={isLoggingOut}>
+          {isLoggingOut ? "Logging out..." : "Logout"}
+        </button>
+      </div>
 
       {error && (
         <div className="alert alert-error mt-4">

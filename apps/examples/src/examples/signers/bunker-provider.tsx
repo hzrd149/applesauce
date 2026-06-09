@@ -223,7 +223,7 @@ const BunkerURISection = ({
 
 // Main component
 export default function BunkerProvider() {
-  const [selectedRelay, setSelectedRelay] = useState("wss://relay.nsec.app/");
+  const [selectedRelay, setSelectedRelay] = useState("wss://bucket.coracle.social/");
   const [selectedSigner, setSelectedSigner] = useState<"extension" | "generated">("extension");
   const [generatedKey, setGeneratedKey] = useState<PrivateKeySigner | null>(null);
   const [provider, setProvider] = useState<NostrConnectProvider | null>(null);
@@ -305,6 +305,9 @@ export default function BunkerProvider() {
           onClientDisconnect: (client) => {
             addLog("disconnect", "Client disconnected", { client });
           },
+          onLogout: (client) => {
+            addLog("disconnect", "Client logged out, session ended", { client });
+          },
           onConnect: (client, permissions) => {
             addLog("request", "Connect request received", { client, permissions });
             return true; // Always accept connections
@@ -364,6 +367,9 @@ export default function BunkerProvider() {
         },
         onClientDisconnect: (client) => {
           addLog("disconnect", "Client disconnected", { client });
+        },
+        onLogout: (client) => {
+          addLog("disconnect", "Client logged out, session ended", { client });
         },
         onConnect: (client, permissions) => {
           addLog("request", "Connect request received", { client, permissions });

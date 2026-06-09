@@ -568,3 +568,72 @@ describe("switch_relays", () => {
     );
   });
 });
+
+describe("logout", () => {
+  it("should ack and end the session", async () => {
+    const client = new FakeUser();
+    const signer = new FakeUser();
+    const onLogout = vi.fn();
+    const onClientDisconnect = vi.fn();
+
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer,
+      relays: ["wss://relay.nsec.app"],
+      onLogout,
+      onClientDisconnect,
+    });
+
+    await provider.start();
+
+    // Connect first
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.Connect,
+            params: [signer.pubkey],
+          } satisfies NostrConnectRequest<NostrConnectMethod.Connect>),
+        ),
+      }),
+    );
+
+    expect(provider.client).toBe(client.pubkey);
+    expect(provider.connected).toBe(true);
+
+    // Send logout request
+    await provider.handleEvent(
+      client.event({
+        kind: kinds.NostrConnect,
+        content: await client.nip44.encrypt(
+          signer.pubkey,
+          JSON.stringify({
+            id: nanoid(),
+            method: NostrConnectMethod.Logout,
+            params: [],
+          } satisfies NostrConnectRequest<NostrConnectMethod.Logout>),
+        ),
+      }),
+    );
+
+    // Should ack before tearing down: 2 calls (connect response + logout response)
+    expect(pool.publish).toHaveBeenCalledTimes(2);
+    expect(pool.publish).toHaveBeenLastCalledWith(
+      ["wss://relay.nsec.app"],
+      expect.objectContaining({
+        kind: kinds.NostrConnect,
+        pubkey: signer.pubkey,
+        tags: [["p", client.pubkey]],
+      }),
+    );
+
+    // Should have ended the session
+    expect(onLogout).toHaveBeenCalledWith(client.pubkey);
+    expect(onClientDisconnect).toHaveBeenCalledWith(client.pubkey);
+    expect(provider.client).toBeUndefined();
+    expect(provider.connected).toBe(false);
+  });
+});

@@ -429,6 +429,24 @@ export class NostrConnectSigner implements ISigner {
     return result;
   }
 
+  /**
+   * Notify the remote signer that the session is ending and close the connection
+   *
+   * The `logout` request is a courtesy hint, so the local connection is always closed even if the
+   * remote signer does not acknowledge it. The consumer is responsible for deleting any persisted
+   * client keypair.
+   */
+  async logout() {
+    try {
+      if (this.isConnected && this.remote) await this.makeRequest(NostrConnectMethod.Logout, []);
+    } catch (error) {
+      this.log("Failed to send logout request", error);
+    } finally {
+      this.isConnected = false;
+      await this.close();
+    }
+  }
+
   /** Returns the nostrconnect:// URI for this signer */
   getNostrConnectURI(metadata?: NostrConnectAppMetadata) {
     return createNostrConnectURI({

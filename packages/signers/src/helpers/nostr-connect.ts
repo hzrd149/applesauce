@@ -31,6 +31,7 @@ export enum NostrConnectMethod {
   Nip44Encrypt = "nip44_encrypt",
   Nip44Decrypt = "nip44_decrypt",
   SwitchRelays = "switch_relays",
+  Logout = "logout",
 }
 
 export type ConnectRequestParams = {
@@ -44,6 +45,7 @@ export type ConnectRequestParams = {
   [NostrConnectMethod.Nip44Encrypt]: [string, string];
   [NostrConnectMethod.Nip44Decrypt]: [string, string];
   [NostrConnectMethod.SwitchRelays]: [];
+  [NostrConnectMethod.Logout]: [];
 };
 
 export type ConnectResponseResults = {
@@ -57,6 +59,7 @@ export type ConnectResponseResults = {
   [NostrConnectMethod.Nip44Encrypt]: string;
   [NostrConnectMethod.Nip44Decrypt]: string;
   [NostrConnectMethod.SwitchRelays]: string[] | null;
+  [NostrConnectMethod.Logout]: "ack";
 };
 
 export type NostrConnectRequest<N extends NostrConnectMethod> = {

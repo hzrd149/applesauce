@@ -249,7 +249,7 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
                 type="text"
                 value={qrRelay}
                 onChange={(event) => handleQrRelayChange(event.target.value)}
-                placeholder="wss://relay.nsec.app"
+                placeholder="wss://bucket.coracle.social"
                 className="input input-bordered w-full"
               />
               <div className="flex justify-center bg-white p-2">
