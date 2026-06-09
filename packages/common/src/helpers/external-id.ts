@@ -5,6 +5,8 @@ export type ExternalIdentifiers = {
   "#": `#${string}`;
   // geohash
   geo: `geo:${string}`;
+  // country / subdivision (ISO 3166-1 alpha-2 or ISO 3166-2)
+  iso3166: `iso3166:${string}`;
   // book
   isbn: `isbn:${string}`;
   // podcast
@@ -69,6 +71,8 @@ export function parseExternalPointer(identifier: string): ParseResult | null {
   // Check explicit prefixes first (these take precedence over URL parsing)
   if (identifier.startsWith("#")) return { kind: "#", identifier: identifier as ExternalIdentifiers["#"] };
   if (identifier.startsWith("geo:")) return { kind: "geo", identifier: identifier as ExternalIdentifiers["geo"] };
+  if (identifier.startsWith("iso3166:"))
+    return { kind: "iso3166", identifier: identifier as ExternalIdentifiers["iso3166"] };
   if (identifier.startsWith("isbn:")) return { kind: "isbn", identifier: identifier as ExternalIdentifiers["isbn"] };
   if (identifier.startsWith("podcast:guid:"))
     return { kind: "podcast:guid", identifier: identifier as ExternalIdentifiers["podcast:guid"] };
@@ -80,35 +84,12 @@ export function parseExternalPointer(identifier: string): ParseResult | null {
   if (identifier.startsWith("doi:")) return { kind: "doi", identifier: identifier as ExternalIdentifiers["doi"] };
 
   // Check for blockchain identifiers
-  // Bitcoin: bitcoin:tx:<txid> or bitcoin:address:<address>
-  if (identifier.startsWith("bitcoin:tx:")) {
-    return { kind: "bitcoin:tx", identifier: identifier as ExternalIdentifiers["bitcoin:tx"] };
-  }
-  if (identifier.startsWith("bitcoin:address:")) {
-    return { kind: "bitcoin:address", identifier: identifier as ExternalIdentifiers["bitcoin:address"] };
-  }
-
-  // Ethereum: ethereum:<chainId>:tx:<txHash> or ethereum:<chainId>:address:<address>
-  const ethereumTxMatch = identifier.match(/^ethereum:(\d+):tx:(.+)$/);
-  if (ethereumTxMatch) {
-    return { kind: "ethereum:tx", identifier: identifier as ExternalIdentifiers["ethereum:tx"] };
-  }
-  const ethereumAddressMatch = identifier.match(/^ethereum:(\d+):address:(.+)$/);
-  if (ethereumAddressMatch) {
-    return { kind: "ethereum:address", identifier: identifier as ExternalIdentifiers["ethereum:address"] };
-  }
-
-  // Other blockchains: <blockchain>:tx:<txid> or <blockchain>:address:<address>
-  // Exclude known prefixes to avoid false matches
-  const blockchainTxMatch = identifier.match(/^([a-z0-9]+):tx:(.+)$/);
-  if (blockchainTxMatch && !identifier.startsWith("bitcoin:") && !identifier.startsWith("ethereum:")) {
-    const blockchain = blockchainTxMatch[1];
-    return { kind: `${blockchain}:tx` as keyof ExternalIdentifiers, identifier: identifier as any };
-  }
-  const blockchainAddressMatch = identifier.match(/^([a-z0-9]+):address:(.+)$/);
-  if (blockchainAddressMatch && !identifier.startsWith("bitcoin:") && !identifier.startsWith("ethereum:")) {
-    const blockchain = blockchainAddressMatch[1];
-    return { kind: `${blockchain}:address` as keyof ExternalIdentifiers, identifier: identifier as any };
+  // Generic format (NIP-73): <blockchain>:[<chainId>:]tx:<txid> or <blockchain>:[<chainId>:]address:<address>
+  // The optional chainId (e.g. ethereum:1:tx:...) is not part of the "k" tag kind
+  const blockchainMatch = identifier.match(/^([a-z0-9]+):(?:\d+:)?(tx|address):.+$/);
+  if (blockchainMatch) {
+    const [, blockchain, type] = blockchainMatch;
+    return { kind: `${blockchain}:${type}` as keyof ExternalIdentifiers, identifier: identifier as any };
   }
 
   // Check for URL (must be a valid URL, normalized, no fragment)

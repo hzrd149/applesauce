@@ -98,6 +98,24 @@ describe("parseExternalPointer", () => {
     });
   });
 
+  describe("Countries (ISO 3166)", () => {
+    it("should parse a country code (ISO 3166-1 alpha-2)", () => {
+      const result = parseExternalPointer("iso3166:VE");
+      expect(result).toEqual({
+        kind: "iso3166",
+        identifier: "iso3166:VE",
+      });
+    });
+
+    it("should parse a subdivision code (ISO 3166-2)", () => {
+      const result = parseExternalPointer("iso3166:US-CA");
+      expect(result).toEqual({
+        kind: "iso3166",
+        identifier: "iso3166:US-CA",
+      });
+    });
+  });
+
   describe("Books (ISBN)", () => {
     it("should parse an ISBN without hyphens", () => {
       const result = parseExternalPointer("isbn:9780765382030");
@@ -252,6 +270,14 @@ describe("parseExternalPointer", () => {
       expect(result).toEqual({
         kind: "solana:address",
         identifier: "solana:address:9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      });
+    });
+
+    it("should parse a non-ethereum chain with a chainId", () => {
+      const result = parseExternalPointer("polygon:137:tx:0xabc123");
+      expect(result).toEqual({
+        kind: "polygon:tx",
+        identifier: "polygon:137:tx:0xabc123",
       });
     });
   });
