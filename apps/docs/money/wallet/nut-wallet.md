@@ -93,6 +93,30 @@ await wallet.deposit({
 await wallet.withdraw({ method: "bolt11", mint: "https://mint.example.com", invoice });
 ```
 
+## Caching decrypted content
+
+NIP-60 wallet, token, and history events are NIP-44 encrypted, so every unlock asks the signer to decrypt them. Pass a `decryptionCache` and the wallet restores already-decrypted content from it before decrypting and persists newly decrypted content back after — so `unlock()` and `autoUnlock` never re-run decryption for content seen in a previous session.
+
+The cache is any object with async `getItem`/`setItem` keyed by event id:
+
+```typescript
+import type { EncryptedContentCache } from "applesauce-common/helpers";
+
+const decryptionCache: EncryptedContentCache = {
+  getItem: async (id) => localStorage.getItem(`wallet-content:${id}`),
+  setItem: async (id, content) => localStorage.setItem(`wallet-content:${id}`, content),
+};
+
+const wallet = new NutWallet({ pubkey, signer, pool, eventStore, couch, autoUnlock: true, decryptionCache });
+await wallet.start();
+```
+
+With a warm cache, the wallet loads and unlocks without a single decryption request to the signer.
+
+:::warning
+The cache stores **decrypted** content — including raw Cashu proofs. Plain `localStorage` is shown for brevity; a real app should encrypt the cache at rest (see the wallet/admin example's `SecureStorage`, which satisfies `EncryptedContentCache` directly).
+:::
+
 ## Tracking status
 
 Beyond the balance, the wallet exposes observables for its lifecycle and activity, useful for loading states and disabling buttons while work is in progress.
