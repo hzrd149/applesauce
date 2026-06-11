@@ -15,7 +15,22 @@ import type { EventSigner } from "applesauce-core";
 import { ChainableObservable, logger as baseLogger, chainable, EventStore } from "applesauce-core";
 import { castUser, User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers";
-import { getOutboxes, kinds, normalizeURL, notifyEventUpdate, relaySet } from "applesauce-core/helpers";
+import {
+  canHaveEncryptedContent,
+  getEncryptedContent,
+  getOutboxes,
+  isEncryptedContentUnlocked,
+  kinds,
+  normalizeURL,
+  notifyEventUpdate,
+  relaySet,
+  setEncryptedContentCache,
+} from "applesauce-core/helpers";
+import {
+  type EncryptedContentCache,
+  isEncryptedContentFromCache,
+  markEncryptedContentFromCache,
+} from "applesauce-common/helpers";
 import type { RelayPool, RelayStatus } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Debugger } from "debug";
@@ -126,6 +141,8 @@ export class NutWallet {
   autoUnlock: boolean;
   /** Whether spend/rollover/consolidate operations publish a NIP-09 delete event for old token events */
   deleteOldTokens: boolean;
+  /** An optional persistent cache of decrypted event content, consulted before decrypting and written to after */
+  protected decryptionCache?: EncryptedContentCache;
 
   protected user: User;
   protected actions: ActionRunner;
@@ -215,6 +232,7 @@ export class NutWallet {
     this.couch = options.couch;
     this.autoUnlock = options.autoUnlock ?? false;
     this.deleteOldTokens = options.deleteOldTokens ?? true;
+    this.decryptionCache = options.decryptionCache;
     this.log = options.logger ?? baseLogger.extend("nut-wallet").extend(this.pubkey.slice(0, 8));
 
     this.user = castUser(this.pubkey, this.eventStore);
@@ -406,10 +424,85 @@ export class NutWallet {
     try {
       await this.track("unlock", async () => {
         this.log("Unlocking wallet, tokens and history");
+
+        // Restore any cached content before decrypting so the action only decrypts cache misses
+        const events = this.getEncryptedEvents();
+        await this.restoreFromCache(events);
+
         await this.actions.run(UnlockWallet, { history: true, tokens: true });
+
+        // Persist any newly decrypted content back to the cache
+        await this.persistToCache(events);
       });
     } finally {
       this.unlocking = false;
+    }
+  }
+
+  /** Collects the wallet, token and history events that can hold encrypted content */
+  protected getEncryptedEvents(): NostrEvent[] {
+    const events: NostrEvent[] = [];
+    const wallet = this.eventStore.getReplaceable(WALLET_KIND, this.pubkey);
+    if (wallet) events.push(wallet);
+    events.push(...this.eventStore.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [this.pubkey] }));
+    events.push(...this.eventStore.getByFilters({ kinds: [WALLET_HISTORY_KIND], authors: [this.pubkey] }));
+    return events;
+  }
+
+  /**
+   * Restores decrypted content from the {@link decryptionCache} onto locked events. Setting the content
+   * cache lets the unlock helpers short-circuit before performing the expensive NIP-44 decryption.
+   */
+  protected async restoreFromCache(events: NostrEvent[]): Promise<void> {
+    const cache = this.decryptionCache;
+    if (!cache) return;
+
+    for (const event of events) {
+      // Skip events that cannot have encrypted content or are already unlocked
+      if (!canHaveEncryptedContent(event.kind) || isEncryptedContentUnlocked(event)) continue;
+
+      try {
+        const content = await cache.getItem(event.id);
+        if (typeof content !== "string") continue;
+
+        // Mark as from cache so it is not persisted again, then restore the content
+        markEncryptedContentFromCache(event);
+        setEncryptedContentCache(event, content);
+        this.log("Restored encrypted content for %s from cache", event.id.slice(0, 8));
+      } catch (error) {
+        this.log(
+          "Failed to restore encrypted content for %s: %s",
+          event.id.slice(0, 8),
+          (error as Error)?.message ?? error,
+        );
+      }
+    }
+  }
+
+  /** Persists the decrypted content of unlocked events to the {@link decryptionCache} */
+  protected async persistToCache(events: NostrEvent[]): Promise<void> {
+    const cache = this.decryptionCache;
+    if (!cache) return;
+
+    for (const event of events) {
+      // Only persist content that is unlocked and did not come from the cache
+      if (!isEncryptedContentUnlocked(event) || isEncryptedContentFromCache(event)) continue;
+
+      const content = getEncryptedContent(event);
+      if (!content) continue;
+
+      try {
+        await cache.setItem(event.id, content);
+        // Mark as from cache so repeated unlock cycles do not persist it again
+        markEncryptedContentFromCache(event);
+        this.log("Persisted encrypted content for %s to cache", event.id.slice(0, 8));
+      } catch (error) {
+        this.log(
+          "Failed to persist encrypted content for %s: %s",
+          event.id.slice(0, 8),
+          (error as Error)?.message ?? error,
+        );
+      }
     }
   }
 

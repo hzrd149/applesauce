@@ -3,7 +3,7 @@
  * @tags wallet, lightning, nwc, webln, nip-60, cashu
  * @related wallet/wallet, wallet/admin
  */
-import { parseBolt11, parseLNURLOrAddress } from "applesauce-common/helpers";
+import { EncryptedContentCache, parseBolt11, parseLNURLOrAddress } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import { relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -26,6 +26,15 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 // IndexedDB couch is the NutWallet's proof safety net; wallet events themselves load in memory from relays
 const couch = new IndexedDBCouch();
+
+// A persistent cache of decrypted token/history/wallet content keyed by event id. Passing it to the
+// NutWallet lets auto-unlock restore content from the cache instead of re-decrypting on every load.
+// NOTE: this stores decrypted content (cashu proofs) in plain localStorage for brevity; a real app
+// should encrypt it at rest — see the wallet/admin example's SecureStorage.
+const decryptionCache: EncryptedContentCache = {
+  getItem: async (key) => localStorage.getItem(`wallet-content:${key}`),
+  setItem: async (key, value) => localStorage.setItem(`wallet-content:${key}`, value),
+};
 
 // In-memory bootstrap loader for the NutWallet's wallet/mailbox events (no local cache)
 createEventLoaderForStore(eventStore, pool, {
@@ -228,7 +237,15 @@ async function createNutWalletBackend(
   signer: ISigner,
   options?: { createIfMissing?: boolean },
 ): Promise<WalletBackend> {
-  const wallet = new NutWallet({ pubkey: stored.pubkey, signer, pool, eventStore, couch, autoUnlock: true });
+  const wallet = new NutWallet({
+    pubkey: stored.pubkey,
+    signer,
+    pool,
+    eventStore,
+    couch,
+    autoUnlock: true,
+    decryptionCache,
+  });
   await wallet.start();
 
   // When adding a new wallet, search hard for an existing one and only create a wallet if none is found.

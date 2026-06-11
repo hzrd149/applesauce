@@ -1,5 +1,6 @@
 import type { MeltProofsResponse, MeltQuoteBolt11Response, MintQuoteBolt11Response } from "@cashu/cashu-ts";
 import type { EventStore } from "applesauce-core";
+import type { EncryptedContentCache } from "applesauce-common/helpers";
 import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
 import type { Debugger } from "debug";
@@ -27,6 +28,12 @@ export interface NutWalletOptions {
   relays?: string[] | Observable<string[]>;
   /** Automatically unlock the wallet, tokens and history as they load */
   autoUnlock?: boolean;
+  /**
+   * An optional persistent cache of decrypted event content keyed by event id. When provided, the wallet
+   * restores encrypted content from the cache before decrypting and persists newly decrypted content back
+   * to it, avoiding repeated expensive NIP-44 decryptions across sessions.
+   */
+  decryptionCache?: EncryptedContentCache;
   /**
    * Whether spend/rollover/consolidate operations publish a NIP-09 delete event for the old token
    * events (default true). When false, the wallet relies on each new token event's `del` field to

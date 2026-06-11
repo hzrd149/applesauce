@@ -1,5 +1,7 @@
 import { Proof, Token, Wallet as CashuWallet } from "@cashu/cashu-ts";
 import { EventStore } from "applesauce-core";
+import { getEncryptedContent, isEncryptedContentUnlocked, type NostrEvent } from "applesauce-core/helpers";
+import type { EncryptedContentCache } from "applesauce-common/helpers";
 import { User } from "applesauce-core/casts";
 import type { RelayPool } from "applesauce-relay";
 import { EMPTY, firstValueFrom, of } from "rxjs";
@@ -7,7 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { WalletTokenFactory } from "../../factories/tokens.js";
+import { WalletFactory } from "../../factories/wallet.js";
 import type { Couch } from "../../helpers/couch.js";
+import { WALLET_TOKEN_KIND } from "../../helpers/tokens.js";
 import { WALLET_KIND } from "../../helpers/wallet.js";
 import { computeTokenRelayCoverage, NutWallet } from "../nut-wallet.js";
 import type { WalletToken } from "../../casts/wallet-token.js";
@@ -274,6 +278,133 @@ describe("rollover", () => {
     expect(fake.receiveCalls).toHaveLength(2);
     expect(fake.receiveCalls[1]).not.toContain("initial-secret");
 
+    wallet.stop();
+  });
+});
+
+describe("decryption cache", () => {
+  const mint = "https://mint.example.com";
+  const relays = ["wss://relay.example.com"];
+
+  /** An in-memory {@link EncryptedContentCache} backed by a Map so tests can inspect what was persisted */
+  function memoryCache() {
+    const map = new Map<string, string>();
+    const cache: EncryptedContentCache = {
+      getItem: async (key) => map.get(key) ?? null,
+      setItem: async (key, value) => {
+        map.set(key, value);
+      },
+    };
+    return { map, cache };
+  }
+
+  /** Strips the in-memory symbol caches so an event looks freshly loaded from a relay (ciphertext only) */
+  const asLoaded = (event: NostrEvent): NostrEvent => JSON.parse(JSON.stringify(event));
+
+  /** Builds a signed (encrypted) wallet event and three token events for a user */
+  async function buildEvents(user: FakeUser): Promise<NostrEvent[]> {
+    const wallet = await WalletFactory.create([mint], undefined, relays).sign(user);
+    const tokens = await Promise.all(
+      [1, 2, 3].map((i) =>
+        WalletTokenFactory.create({
+          mint,
+          proofs: [{ amount: i * 10, secret: `secret-${i}`, C: "C", id: "id" } as unknown as Proof],
+        }).sign(user),
+      ),
+    );
+    return [wallet, ...tokens];
+  }
+
+  /** Returns the wallet + token events currently held in a store */
+  const encryptedEvents = (store: EventStore, pubkey: string): NostrEvent[] => [
+    store.getReplaceable(WALLET_KIND, pubkey)!,
+    ...store.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }),
+  ];
+
+  /** Loads a fresh set of the events into a new store and unlocks them with a NutWallet */
+  async function loadAndUnlock(user: FakeUser, events: NostrEvent[], cache: EncryptedContentCache) {
+    const store = new EventStore();
+    for (const event of events) store.add(asLoaded(event));
+
+    const wallet = new NutWallet({
+      pubkey: user.pubkey,
+      signer: user,
+      pool,
+      eventStore: store,
+      couch,
+      decryptionCache: cache,
+    });
+    await wallet.start();
+    await wallet.unlock();
+    return { store, wallet };
+  }
+
+  it("persists 100% of decrypted content and never re-decrypts on the next load", async () => {
+    const user = new FakeUser();
+    const { map, cache } = memoryCache();
+    const events = await buildEvents(user);
+
+    const decrypt = vi.spyOn(user.nip44, "decrypt");
+
+    // ---- First load: cold cache, every event must be decrypted with the signer ----
+    const first = await loadAndUnlock(user, events, cache);
+    expect(decrypt).toHaveBeenCalled();
+
+    // Every encrypted event (wallet + 3 tokens) is now unlocked and 100% persisted to the cache
+    const encrypted = encryptedEvents(first.store, user.pubkey);
+    expect(encrypted).toHaveLength(4);
+    expect(map.size).toBe(encrypted.length);
+    for (const event of encrypted) {
+      expect(isEncryptedContentUnlocked(event)).toBe(true);
+      expect(map.get(event.id)).toBe(getEncryptedContent(event));
+    }
+    first.wallet.stop();
+
+    // ---- Second load: warm cache, the signer must never be called ----
+    decrypt.mockClear();
+    const second = await loadAndUnlock(user, events, cache);
+
+    expect(decrypt).not.toHaveBeenCalled();
+
+    // The content was restored entirely from the cache, so the events are unlocked without decryption
+    for (const event of encryptedEvents(second.store, user.pubkey))
+      expect(isEncryptedContentUnlocked(event)).toBe(true);
+    second.wallet.stop();
+  });
+
+  it("auto-unlock uses the cache without calling the signer on a warm cache", async () => {
+    const user = new FakeUser();
+    const { cache } = memoryCache();
+    const events = await buildEvents(user);
+
+    // Warm the cache by decrypting once
+    const cold = await loadAndUnlock(user, events, cache);
+    cold.wallet.stop();
+    // castUser caches the User by pubkey, so clear it to bind the next wallet to the fresh store
+    User.cache.clear();
+
+    // ---- Auto-unlock load against the warm cache ----
+    const decrypt = vi.spyOn(user.nip44, "decrypt");
+    const store = new EventStore();
+    for (const event of events) store.add(asLoaded(event));
+
+    const wallet = new NutWallet({
+      pubkey: user.pubkey,
+      signer: user,
+      pool,
+      eventStore: store,
+      couch,
+      autoUnlock: true,
+      decryptionCache: cache,
+    });
+    await wallet.start();
+
+    // Wait for auto-unlock to restore every event from the cache
+    const unlocked = () => encryptedEvents(store, user.pubkey).every((e) => e && isEncryptedContentUnlocked(e));
+    for (let i = 0; i < 200 && !unlocked(); i++) await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(unlocked()).toBe(true);
+    expect(decrypt).not.toHaveBeenCalled();
     wallet.stop();
   });
 });

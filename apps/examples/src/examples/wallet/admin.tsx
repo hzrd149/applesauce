@@ -18,21 +18,30 @@ import { CashuWalletMethods, CommonWalletMethods, Transaction } from "applesauce
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
 import { IndexedDBCouch } from "applesauce-wallet/helpers";
 import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
-import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
+import { NostrIDB } from "nostr-idb";
 import { generateSecretKey } from "nostr-tools";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, firstValueFrom } from "rxjs";
+import {
+  BehaviorSubject,
+  combineLatest,
+  firstValueFrom,
+  Observable,
+  pairwise,
+  ReplaySubject,
+  share,
+  startWith,
+  switchMap,
+} from "rxjs";
 
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 
-// Register the wallet casts so user.wallet$ is available
-import "applesauce-wallet/casts";
-
 // ---- Application infrastructure (owned by the app, not the wallet) ----
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
+const signer$ = new BehaviorSubject<ISigner | null>(null);
+const pubkey$ = new BehaviorSubject<string | null>(null);
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -42,9 +51,9 @@ const couch = new IndexedDBCouch();
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 // Local event cache
-const cache = await openDB();
-const cacheRequest = (filters: Filter[]) => getEventsForFilters(cache, filters);
-persistEventsToCache(eventStore, (events) => addEvents(cache, events));
+const cache = new NostrIDB();
+const cacheRequest = (filters: Filter[]) => cache.filters(filters);
+persistEventsToCache(eventStore, (events) => Promise.all(events.map((event) => cache.add(event))));
 
 // Bootstrap loader for wallet + mailbox events
 createEventLoaderForStore(eventStore, pool, {
@@ -252,6 +261,43 @@ function restoreNwcService(wallet: NutWallet): void {
   const config = loadConnectConfig(wallet.pubkey);
   if (config) startNwcService(wallet, config).catch((error) => console.error("Failed to restore NWC service:", error));
 }
+
+/** NutWallet instance, recreated whenever signer, pubkey, or storage changes */
+const wallet$ = combineLatest([signer$.pipe(defined()), pubkey$.pipe(defined()), storage$.pipe(defined())]).pipe(
+  switchMap(([signer, pubkey, storage]) => {
+    const instance = new NutWallet({
+      pubkey,
+      signer,
+      pool,
+      eventStore,
+      couch,
+      decryptionCache: storage,
+    });
+
+    return new Observable<NutWallet>((subscriber) => {
+      instance.start();
+      subscriber.next(instance);
+      return () => instance.stop();
+    });
+  }),
+  startWith(null),
+  // Keep value in memory
+  share({
+    resetOnComplete: false,
+    resetOnRefCountZero: false,
+    connector: () => new ReplaySubject(1),
+  }),
+);
+
+// Start the persisted NWC service for each wallet and stop it when the wallet changes or goes away
+wallet$.pipe(pairwise()).subscribe(([prev, curr]) => {
+  if (prev === curr) return;
+
+  service$.value?.stop();
+  service$.next(null);
+
+  if (curr) restoreNwcService(curr);
+});
 
 // ---- Small presentational helpers ----
 function StatusBadge({ status }: { status: WalletStatus }) {
@@ -1265,23 +1311,22 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
   );
 }
 
-// ---- Session wiring: build a NutWallet once signed in ----
-function WalletSession({ signer, pubkey }: { signer: ISigner; pubkey: string }) {
-  const [wallet, setWallet] = useState<NutWallet | null>(null);
+export default function WalletAdminExample() {
+  const storage = use$(storage$);
+  const signer = use$(signer$);
+  const pubkey = use$(pubkey$);
+  const wallet = use$(wallet$);
 
-  useEffect(() => {
-    const instance = new NutWallet({ pubkey, signer, pool, eventStore, couch, autoUnlock: true });
-    instance.start();
-    setWallet(instance);
-    // Restore a persisted NWC service (keeps connections alive across reloads)
-    restoreNwcService(instance);
-    return () => {
-      instance.stop();
-      // Stop the running service but keep its persisted config for the next load
-      service$.value?.stop();
-      service$.next(null);
-    };
-  }, [signer, pubkey]);
+  if (!storage) return <UnlockView onUnlock={(s) => storage$.next(s)} />;
+  if (!signer || !pubkey)
+    return (
+      <LoginView
+        onLogin={(s, p) => {
+          signer$.next(s);
+          pubkey$.next(p);
+        }}
+      />
+    );
 
   if (!wallet)
     return (
@@ -1291,14 +1336,4 @@ function WalletSession({ signer, pubkey }: { signer: ISigner; pubkey: string }) 
     );
 
   return <WalletDashboard wallet={wallet} />;
-}
-
-export default function WalletAdminExample() {
-  const storage = use$(storage$);
-  const [session, setSession] = useState<{ signer: ISigner; pubkey: string } | null>(null);
-
-  if (!storage) return <UnlockView onUnlock={(s) => storage$.next(s)} />;
-  if (!session) return <LoginView onLogin={(signer, pubkey) => setSession({ signer, pubkey })} />;
-
-  return <WalletSession signer={session.signer} pubkey={session.pubkey} />;
 }
