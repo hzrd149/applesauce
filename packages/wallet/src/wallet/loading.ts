@@ -97,10 +97,11 @@ export function loadWalletEvents({
     authors: [pubkey],
   };
 
-  // The subscription and request also watch for token deletions
+  // The subscription and request also watch for token and history deletions, since users can delete
+  // history events and some relays do not honor the original delete events
   const subscriptionFilters: Filter[] = [
     negentropyFilter,
-    { kinds: [kinds.EventDeletion], "#k": [String(WALLET_TOKEN_KIND)] },
+    { kinds: [kinds.EventDeletion], "#k": [String(WALLET_TOKEN_KIND), String(WALLET_HISTORY_KIND)] },
   ];
 
   return relays$.pipe(
