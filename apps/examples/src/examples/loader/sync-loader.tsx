@@ -26,15 +26,20 @@ const syncLoader = createSyncLoader({ eventStore, pool });
 // derek
 const DEFAULT_PUBKEY = normalizeToPubkey("npub18ams6ewn5aj2n3wt2qawzglx9mr4nzksxhvrdc4gzrecw7n5tvjqctp424");
 
-// Time ranges to bound the sync so we don't reconcile a user's whole history
-const RANGES: { label: string; days: number }[] = [
-  { label: "Last 24 hours", days: 1 },
-  { label: "Last week", days: 7 },
-  { label: "Last 2 weeks", days: 14 },
-  { label: "Last month", days: 30 },
-  { label: "Last 2 month", days: 60 },
-  { label: "All time", days: 0 },
-];
+const DAY = 24 * 60 * 60 * 1000;
+
+function dateInputValue(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function startOfDay(value: string): number | undefined {
+  return value ? Math.floor(new Date(`${value}T00:00:00`).getTime() / 1000) : undefined;
+}
+
+function endOfDay(value: string): number | undefined {
+  return value ? Math.floor(new Date(`${value}T23:59:59`).getTime() / 1000) : undefined;
+}
 
 /** Strips the protocol and trailing slash from a relay url for display */
 function hostname(url: string): string {
@@ -113,7 +118,8 @@ function EventRow({
 export default function SyncLoaderExample() {
   const [pubkey, setPubkey] = useState(DEFAULT_PUBKEY);
   const [relaysText, setRelaysText] = useState("");
-  const [rangeDays, setRangeDays] = useState(14);
+  const [sinceDate, setSinceDate] = useState(() => dateInputValue(new Date(Date.now() - 14 * DAY)));
+  const [untilDate, setUntilDate] = useState(() => dateInputValue(new Date()));
 
   const [status, setStatus] = useState<SyncLoaderStatus | null>(null);
   const [events, setEvents] = useState<NostrEvent[]>([]);
@@ -129,6 +135,7 @@ export default function SyncLoaderExample() {
   }, [outboxes]);
 
   const relays = useMemo(() => mergeRelaySets(relaysText.split(/\s+/)), [relaysText]);
+  const invalidRange = !!sinceDate && !!untilDate && sinceDate > untilDate;
 
   const stop = useCallback(() => {
     subscriptions.current.forEach((sub) => sub.unsubscribe());
@@ -137,17 +144,25 @@ export default function SyncLoaderExample() {
   }, []);
 
   const sync = useCallback(() => {
+    if (invalidRange) return;
+
     stop();
     setStatus(null);
     setEvents([]);
     setRunning(true);
 
-    // Bound the sync to the selected time range
-    const since = rangeDays > 0 ? Math.floor(Date.now() / 1000) - rangeDays * 24 * 60 * 60 : undefined;
+    // Bound the sync to the selected date range. Empty fields leave that side of the range unbounded.
+    const since = startOfDay(sinceDate);
+    const until = endOfDay(untilDate);
 
     const { status$, events$ } = syncLoader({
       relays,
-      filter: { kinds: [1], authors: [pubkey], ...(since !== undefined && { since }) },
+      filter: {
+        kinds: [1],
+        authors: [pubkey],
+        ...(since !== undefined && { since }),
+        ...(until !== undefined && { until }),
+      },
     });
 
     // Subscribe to both observables so the shared run drives status and events together
@@ -158,7 +173,7 @@ export default function SyncLoaderExample() {
         complete: () => setRunning(false),
       }),
     ];
-  }, [relays, pubkey, rangeDays, stop]);
+  }, [relays, pubkey, sinceDate, untilDate, invalidRange, stop]);
 
   return (
     <div className="container mx-auto my-8 flex flex-col gap-4">
@@ -174,18 +189,28 @@ export default function SyncLoaderExample() {
           placeholder="wss://relay.example.com"
         />
 
-        <label className="text-sm font-bold">Time range</label>
-        <select
-          className="select select-bordered"
-          value={rangeDays}
-          onChange={(e) => setRangeDays(Number(e.target.value))}
-        >
-          {RANGES.map((range) => (
-            <option key={range.days} value={range.days}>
-              {range.label}
-            </option>
-          ))}
-        </select>
+        <label className="text-sm font-bold">Date range</label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-sm">
+            Since
+            <input
+              className="input input-bordered"
+              type="date"
+              value={sinceDate}
+              onChange={(e) => setSinceDate(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Until
+            <input
+              className="input input-bordered"
+              type="date"
+              value={untilDate}
+              onChange={(e) => setUntilDate(e.target.value)}
+            />
+          </label>
+        </div>
+        {invalidRange && <div className="text-error text-sm">Since must be on or before until.</div>}
 
         <div className="flex gap-2">
           {running ? (
@@ -193,7 +218,7 @@ export default function SyncLoaderExample() {
               Stop
             </button>
           ) : (
-            <button className="btn btn-primary" onClick={sync} disabled={relays.length === 0}>
+            <button className="btn btn-primary" onClick={sync} disabled={relays.length === 0 || invalidRange}>
               Sync
             </button>
           )}

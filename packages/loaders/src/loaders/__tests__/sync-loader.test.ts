@@ -21,11 +21,15 @@ function asyncOf(...events: NostrEvent[]): Observable<NostrEvent> {
 }
 
 // Drives the internal paginated REQ path by using a relay that does not support NIP-77
-function requestLoader(request: SyncRequestMethod, limit?: number) {
+function requestLoader(
+  request: SyncRequestMethod,
+  limit?: number,
+  filter: Filter = { kinds: [1], authors: [user.pubkey] },
+) {
   const eventStore = new EventStore();
   const getSupported = vi.fn().mockResolvedValue([1]);
   const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
-  return loader({ relays: ["wss://relay/"], filter: { kinds: [1], authors: [user.pubkey] }, limit });
+  return loader({ relays: ["wss://relay/"], filter, limit });
 }
 
 describe("paginated request", () => {
@@ -34,17 +38,13 @@ describe("paginated request", () => {
     const b = user.note("b", { created_at: 90 });
     const c = user.note("c", { created_at: 80 });
 
-    // First block returns 2 events, second returns 1, third is empty
-    const request: SyncRequestMethod = vi
-      .fn()
-      .mockReturnValueOnce(asyncOf(a, b))
-      .mockReturnValueOnce(asyncOf(c))
-      .mockReturnValueOnce(asyncOf());
+    // First block returns 2 events, second returns a short page and completes
+    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b)).mockReturnValueOnce(asyncOf(c));
 
     const events = await collect(requestLoader(request, 2).events$);
 
     expect(events.map((e) => e.content)).toEqual(["a", "b", "c"]);
-    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenCalledTimes(2);
     // The second call moves past the oldest event of the first block (90 - 1)
     expect((request as any).mock.calls[1][1]).toEqual([{ kinds: [1], authors: [user.pubkey], until: 89, limit: 2 }]);
   });
@@ -59,6 +59,49 @@ describe("paginated request", () => {
     // The out-of-window duplicate in the second block is dropped and pagination stops
     expect(events.map((e) => e.content)).toEqual(["a"]);
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves since while paging backward from until", async () => {
+    const a = user.note("a", { created_at: 100 });
+    const b = user.note("b", { created_at: 90 });
+    const c = user.note("c", { created_at: 80 });
+    const filter: Filter = { kinds: [1], authors: [user.pubkey], since: 75, until: 105 };
+
+    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b)).mockReturnValueOnce(asyncOf(c));
+
+    const events = await collect(requestLoader(request, 2, filter).events$);
+
+    expect(events.map((e) => e.content)).toEqual(["a", "b", "c"]);
+    expect((request as any).mock.calls[0][1]).toEqual([{ ...filter, limit: 2 }]);
+    expect((request as any).mock.calls[1][1]).toEqual([{ ...filter, until: 89, limit: 2 }]);
+  });
+
+  it("stops when the next page would move before since", async () => {
+    const a = user.note("a", { created_at: 100 });
+    const b = user.note("b", { created_at: 90 });
+    const filter: Filter = { kinds: [1], authors: [user.pubkey], since: 90, until: 105 };
+
+    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b));
+
+    const events = await collect(requestLoader(request, 2, filter).events$);
+
+    expect(events.map((e) => e.content)).toEqual(["a", "b"]);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops events outside the requested window", async () => {
+    const newer = user.note("newer", { created_at: 110 });
+    const inRange = user.note("in range", { created_at: 95 });
+    const older = user.note("older", { created_at: 80 });
+    const filter: Filter = { kinds: [1], authors: [user.pubkey], since: 90, until: 100 };
+
+    // The relay ignores since/until, but the filtered in-window page is short and completes
+    const request: SyncRequestMethod = vi.fn().mockReturnValue(asyncOf(newer, inRange, older));
+
+    const events = await collect(requestLoader(request, 3, filter).events$);
+
+    expect(events.map((e) => e.content)).toEqual(["in range"]);
+    expect(request).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -99,6 +142,81 @@ describe("createSyncLoader", () => {
     expect(events).toEqual([a]);
     expect(sync).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalled();
+  });
+
+  it("streams request events before the request completes", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+    const requestSubject = new Subject<NostrEvent>();
+
+    const sync = vi.fn();
+    const request = vi.fn().mockReturnValueOnce(requestSubject).mockReturnValueOnce(of());
+    const getSupported = vi.fn().mockResolvedValue([1]);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({ relays: ["wss://relay/"], filter });
+
+    const events: NostrEvent[] = [];
+    const sub = events$.subscribe((event) => events.push(event));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    requestSubject.next(a);
+    expect(events).toEqual([a]);
+
+    requestSubject.complete();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    sub.unsubscribe();
+  });
+
+  it("streams negentropy sync events before the sync completes", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+    const syncSubject = new Subject<NostrEvent>();
+
+    const sync = vi.fn().mockReturnValue(syncSubject);
+    const request = vi.fn().mockReturnValue(of());
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({ relays: ["wss://relay/"], filter, timeout: false });
+
+    const events: NostrEvent[] = [];
+    const sub = events$.subscribe((event) => events.push(event));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    syncSubject.next(a);
+    expect(events).toEqual([a]);
+
+    syncSubject.complete();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    sub.unsubscribe();
+  });
+
+  it("does not drop events when status subscribes before events", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+    const requestSubject = new Subject<NostrEvent>();
+
+    const sync = vi.fn();
+    const request = vi.fn().mockReturnValueOnce(requestSubject).mockReturnValueOnce(of());
+    const getSupported = vi.fn().mockResolvedValue([1]);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { status$, events$ } = loader({ relays: ["wss://relay/"], filter });
+
+    const statusSub = status$.subscribe();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    requestSubject.next(a);
+
+    const events: NostrEvent[] = [];
+    const eventsSub = events$.subscribe((event) => events.push(event));
+    expect(events).toEqual([a]);
+
+    requestSubject.complete();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    eventsSub.unsubscribe();
+    statusSub.unsubscribe();
   });
 
   it("deduplicates events streamed from multiple relays", async () => {
@@ -264,7 +382,10 @@ describe("createSyncLoader", () => {
 
     // Hold the first relay's support check open so the second cannot start under concurrency 1
     const gate = new Subject<number[]>();
-    const getSupported = vi.fn().mockReturnValueOnce(gate).mockReturnValueOnce(of([1]));
+    const getSupported = vi
+      .fn()
+      .mockReturnValueOnce(gate)
+      .mockReturnValueOnce(of([1]));
     const request = vi.fn().mockReturnValue(of());
     const sync = vi.fn();
 
