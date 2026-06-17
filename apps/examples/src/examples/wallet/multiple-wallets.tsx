@@ -245,6 +245,8 @@ async function createNutWalletBackend(
     couch,
     autoUnlock: true,
     decryptionCache,
+    // Ignore all kind-5 delete events for this example wallet
+    useDeleteEvents: false,
   });
   await wallet.start();
 

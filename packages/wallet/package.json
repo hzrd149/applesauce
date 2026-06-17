@@ -99,6 +99,7 @@
     "applesauce-actions": "^6.1.0",
     "applesauce-common": "^6.1.0",
     "applesauce-core": "^6.1.0",
+    "applesauce-loaders": "^6.1.0",
     "debug": "^4.4.3",
     "rxjs": "^7.8.2"
   },

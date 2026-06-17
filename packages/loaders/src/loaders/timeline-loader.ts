@@ -104,10 +104,16 @@ export function loadBackwardBlocks(
           finalize(() => {
             // NIP-01 defines `until` as inclusive. Move past the oldest event in
             // the block so the next request does not repeat the boundary second.
-            if (minCreatedAt !== undefined) cursor = minCreatedAt - 1;
+            if (minCreatedAt !== undefined) {
+              const next = minCreatedAt - 1;
+
+              // Stop if the relay ignores `until` and stops making backward progress.
+              if (until !== undefined && next >= until) complete = true;
+              else cursor = next;
+            }
 
             loading = false;
-            complete = count === 0;
+            complete = complete || count === 0;
 
             log?.(`Found ${count} events`);
             if (complete) log?.("Complete");
@@ -162,19 +168,26 @@ export function loadForwardBlocks(
 
         // Count returned events so complete set
         let count = 0;
+        let maxCreatedAt: number | undefined;
+        const since = cursor;
 
-        log?.(`Loading block until:${cursor}`);
+        log?.(`Loading block since:${since}`);
 
         // Request the next block of events
-        return request(cursor).pipe(
+        return request(since).pipe(
           tap((event) => {
             count++;
-            // Track the maximum created_at seen from the events
-            cursor = Math.max(event.created_at, cursor ?? -Infinity);
+            maxCreatedAt = Math.max(event.created_at, maxCreatedAt ?? -Infinity);
           }),
           finalize(() => {
+            if (maxCreatedAt !== undefined) {
+              // Stop if the source ignores `since` and stops making forward progress.
+              if (since !== undefined && maxCreatedAt <= since) complete = true;
+              else cursor = maxCreatedAt;
+            }
+
             loading = false;
-            complete = count === 0;
+            complete = complete || count === 0;
 
             log?.(`Found ${count} events`);
             if (complete) log?.("Complete");

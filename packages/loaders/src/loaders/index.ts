@@ -3,6 +3,7 @@ export * from "./dns-identity-loader.js";
 export * from "./event-loader.js";
 export * from "./reactions-loader.js";
 export * from "./social-graph.js";
+export * from "./sync-loader.js";
 export * from "./tag-value-loader.js";
 export * from "./timeline-loader.js";
 export * from "./unified-event-loader.js";

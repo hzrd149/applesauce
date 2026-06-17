@@ -4,16 +4,10 @@
  * @related wallet/mint-discovery, nwc/simple-wallet
  */
 import {
-  getDecodedToken,
   getEncodedToken,
-  Mint,
   MintQuoteBolt11Response,
-  MintQuoteState,
   normalizeProofAmounts,
-  Wallet as CashuWallet,
 } from "@cashu/cashu-ts";
-import { ProxySigner } from "applesauce-accounts";
-import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts";
 import { persistEncryptedContent } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
@@ -23,9 +17,7 @@ import {
   getDisplayName,
   getProfilePicture,
   getTagValue,
-  kinds,
   NostrEvent,
-  normalizeURL,
   persistEventsToCache,
   relaySet,
 } from "applesauce-core/helpers";
@@ -34,32 +26,12 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { ExtensionSigner } from "applesauce-signers/signers/extension-signer";
-import {
-  AddNutzapInfoMint,
-  ConsolidateTokens,
-  CreateWallet,
-  MintTokens,
-  ReceiveNutzaps,
-  ReceiveToken,
-  RecoverFromCouch,
-  RemoveNutzapInfoMint,
-  SetWalletMints,
-  SetWalletRelays,
-  TokensOperation,
-  UnlockWallet,
-} from "applesauce-wallet/actions";
-import { Nutzap, Wallet, WalletHistory, WalletToken } from "applesauce-wallet/casts";
-import {
-  getWalletRelays,
-  IndexedDBCouch,
-  NUTZAP_KIND,
-  WALLET_HISTORY_KIND,
-  WALLET_KIND,
-} from "applesauce-wallet/helpers";
-import { WALLET_TOKEN_KIND } from "applesauce-wallet/helpers/tokens";
+import { Nutzap, WalletHistory, WalletToken } from "applesauce-wallet/casts";
+import { IndexedDBCouch, NUTZAP_KIND } from "applesauce-wallet/helpers";
+import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, firstValueFrom, map, of, timeout } from "rxjs";
+import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
@@ -75,49 +47,13 @@ const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
-const autoUnlock$ = new BehaviorSubject<boolean>(false);
 
 // Setup IndexedDB couch for storing tokens during nutzap operations
 const couch = new IndexedDBCouch();
 
-// Cache of cashu-ts Mint instances reused across mint/melt operations. A Mint caches the mint's info and
-// owns a single WebSocket connection, so reusing instances avoids re-fetching info and keeps one socket per mint.
-const mints = new Map<string, Mint>();
-const getMint = (url: string) => {
-  const key = normalizeURL(url);
-  let mint = mints.get(key);
-  if (!mint) mints.set(key, (mint = new Mint(key)));
-  return mint;
-};
-
-// Builds a cashu Wallet from a cached Mint (passed to actions and used for quotes)
-const getCashuWallet = async (mint: string) => {
-  const wallet = new CashuWallet(getMint(mint));
-  await wallet.loadMint();
-  return wallet;
-};
-
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, targetRelays) => {
-  if (targetRelays?.length) {
-    await pool.publish(targetRelays, event);
-    return;
-  }
-
-  const mailboxes = await firstValueFrom(
-    eventStore.mailboxes(event.pubkey).pipe(defined(), timeout({ first: 5_000, with: () => of(undefined) })),
-  );
-  const wallet = await firstValueFrom(
-    eventStore
-      .replaceable(WALLET_KIND, event.pubkey)
-      .pipe(defined(), timeout({ first: 5_000, with: () => of(undefined) })),
-  );
-  const relays = relaySet(wallet && getWalletRelays(wallet), mailboxes?.outboxes);
-
-  await pool.publish(relays, event);
-});
 
 // Persist encrypted content
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
@@ -290,16 +226,30 @@ function CreateWalletView({ onCreate }: { onCreate: (mints: string[], receiveNut
   );
 }
 
-function OverviewTab({ wallet }: { wallet: Wallet }) {
+function OverviewTab({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
-  const autoUnlock = use$(autoUnlock$);
+  const unlocked = use$(wallet.unlocked$);
+  const ops = use$(wallet.operationsState$) ?? {};
+  const [autoUnlock, setAutoUnlock] = useState(wallet.autoUnlock);
 
-  if (!wallet.unlocked) {
+  if (!unlocked) {
     return (
       <div className="flex flex-col items-center justify-center text-center space-y-4">
         <h2 className="text-2xl font-bold">Wallet Locked</h2>
-        <button className="btn btn-primary" onClick={() => autoUnlock$.next(true)} disabled={autoUnlock}>
-          {autoUnlock ? "Unlocking..." : "Unlock Wallet"}
+        <label className="label cursor-pointer gap-2">
+          <span className="label-text">Auto unlock</span>
+          <input
+            type="checkbox"
+            className="toggle"
+            checked={autoUnlock}
+            onChange={(e) => {
+              wallet.setAutoUnlock(e.target.checked);
+              setAutoUnlock(e.target.checked);
+            }}
+          />
+        </label>
+        <button className="btn btn-primary" onClick={() => wallet.unlock()} disabled={ops.unlock}>
+          {ops.unlock ? "Unlocking..." : "Unlock Wallet"}
         </button>
       </div>
     );
@@ -396,15 +346,8 @@ function TokenEntry({ token }: { token: WalletToken }) {
   );
 }
 
-function NutzapEntry({
-  nutzap,
-  wallet,
-  isReceived,
-}: {
-  nutzap: Nutzap;
-  wallet: Wallet | undefined;
-  isReceived: boolean;
-}) {
+function NutzapEntry({ nutzap, wallet, isReceived }: { nutzap: Nutzap; wallet: NutWallet; isReceived: boolean }) {
+  const unlocked = use$(wallet.unlocked$);
   const amount = nutzap.amount;
   const mint = nutzap.mint;
   const comment = nutzap.comment;
@@ -415,7 +358,7 @@ function NutzapEntry({
   const [error, setError] = useState<string | null>(null);
 
   const handleReceive = useCallback(async () => {
-    if (!wallet || !wallet.unlocked) {
+    if (!unlocked) {
       setError("Wallet must be unlocked to receive nutzaps");
       return;
     }
@@ -424,14 +367,14 @@ function NutzapEntry({
     setError(null);
 
     try {
-      await actions.run(ReceiveNutzaps, nutzap.event, couch);
+      await wallet.receiveNutzaps(nutzap.event);
     } catch (err) {
       console.error("Failed to receive nutzap:", err);
       setError(err instanceof Error ? err.message : "Failed to receive nutzap");
     } finally {
       setReceiving(false);
     }
-  }, [wallet, nutzap]);
+  }, [wallet, nutzap, unlocked]);
 
   return (
     <div className="py-3 border-b border-base-300">
@@ -461,7 +404,7 @@ function NutzapEntry({
               <button
                 className="btn btn-xs btn-primary"
                 onClick={handleReceive}
-                disabled={receiving || !wallet?.unlocked}
+                disabled={receiving || !unlocked}
                 title="Receive this nutzap"
               >
                 {receiving ? <span className="loading loading-spinner loading-xs" /> : "Receive"}
@@ -490,9 +433,10 @@ function NutzapEntry({
   );
 }
 
-function NutzapsTab({ user }: { user: User }) {
-  const wallet = use$(user.wallet$);
-  const received = use$(wallet?.received$);
+function NutzapsTab({ user, wallet }: { user: User; wallet: NutWallet }) {
+  const walletEvent = use$(wallet.wallet$);
+  const unlocked = use$(wallet.unlocked$);
+  const received = use$(walletEvent?.received$);
   const [receiving, setReceiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nutzaps = use$(
@@ -508,7 +452,7 @@ function NutzapsTab({ user }: { user: User }) {
   }, [nutzaps, received]);
 
   const handleReceiveAll = useCallback(async () => {
-    if (!wallet || !wallet.unlocked) return setError("Wallet must be unlocked to receive nutzaps");
+    if (!unlocked) return setError("Wallet must be unlocked to receive nutzaps");
     if (unclaimed.length === 0) return setError("No new nutzaps to receive");
 
     setReceiving(true);
@@ -516,20 +460,20 @@ function NutzapsTab({ user }: { user: User }) {
 
     try {
       const nutzapEvents = unclaimed.map((nutzap) => nutzap.event);
-      await actions.run(ReceiveNutzaps, nutzapEvents, couch);
+      await wallet.receiveNutzaps(nutzapEvents);
     } catch (err) {
       console.error("Failed to receive nutzaps:", err);
       setError(err instanceof Error ? err.message : "Failed to receive nutzaps");
     } finally {
       setReceiving(false);
     }
-  }, [wallet, unclaimed]);
+  }, [wallet, unlocked, unclaimed]);
 
   return (
     <>
       {unclaimed.length > 0 && (
         <div className="mb-4">
-          <button className="btn btn-primary" onClick={handleReceiveAll} disabled={receiving || !wallet?.unlocked}>
+          <button className="btn btn-primary" onClick={handleReceiveAll} disabled={receiving || !unlocked}>
             {receiving ? (
               <>
                 <span className="loading loading-spinner loading-sm" />
@@ -561,41 +505,32 @@ function NutzapsTab({ user }: { user: User }) {
   );
 }
 
-function SyncTokensTool({ wallet }: { wallet: Wallet }) {
+function SyncTokensTool({ wallet }: { wallet: NutWallet }) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tokens = use$(wallet.tokens$);
-  const relays = use$(wallet.relays$);
+  const unlocked = use$(wallet.unlocked$);
+  const ops = use$(wallet.operationsState$) ?? {};
 
   const handleSync = useCallback(async () => {
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to sync tokens");
-    if (!relays || relays.length === 0) return setError("No wallet relays configured");
-    if (!tokens || tokens.length === 0) return setError("No tokens found to sync");
-
     setSyncing(true);
     setError(null);
 
     try {
-      for (const token of tokens) {
-        try {
-          await pool.publish(relays, token.event);
-        } catch (err) {
-          console.error(`Failed to sync token ${token.id}:`, err);
-        }
-      }
+      if (!unlocked) throw new Error("Wallet must be unlocked to sync tokens");
+      await wallet.syncTokens();
     } catch (err) {
       console.error("Failed to sync tokens:", err);
       setError(err instanceof Error ? err.message : "Failed to sync tokens");
     } finally {
       setSyncing(false);
     }
-  }, [wallet.unlocked, tokens, relays]);
+  }, [wallet, unlocked]);
 
   return (
     <div>
       <h3 className="text-lg font-semibold mb-2">Sync Tokens</h3>
-      <button className="btn btn-primary" onClick={handleSync} disabled={syncing}>
+      <button className="btn btn-primary" onClick={handleSync} disabled={syncing || ops.sync}>
         {syncing ? (
           <>
             <span className="loading loading-spinner loading-sm" />
@@ -614,25 +549,23 @@ function SyncTokensTool({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function ConsolidateTool({ wallet }: { wallet: Wallet }) {
+function ConsolidateTool({ wallet }: { wallet: NutWallet }) {
   const [consolidating, setConsolidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleConsolidate = useCallback(async () => {
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to consolidate tokens");
-
     setConsolidating(true);
     setError(null);
 
     try {
-      await actions.run(ConsolidateTokens, { unlockTokens: true, couch });
+      await wallet.consolidateTokens();
     } catch (err) {
       console.error("Failed to consolidate tokens:", err);
       setError(err instanceof Error ? err.message : "Failed to consolidate tokens");
     } finally {
       setConsolidating(false);
     }
-  }, [wallet.unlocked]);
+  }, [wallet]);
 
   return (
     <div>
@@ -656,25 +589,23 @@ function ConsolidateTool({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function RecoverFromCouchTool({ wallet }: { wallet: Wallet }) {
+function RecoverFromCouchTool({ wallet }: { wallet: NutWallet }) {
   const [recovering, setRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleRecover = useCallback(async () => {
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to recover tokens from couch");
-
     setRecovering(true);
     setError(null);
 
     try {
-      await actions.run(RecoverFromCouch, couch);
+      await wallet.recoverFromCouch();
     } catch (err) {
       console.error("Failed to recover tokens from couch:", err);
       setError(err instanceof Error ? err.message : "Failed to recover tokens from couch");
     } finally {
       setRecovering(false);
     }
-  }, [wallet.unlocked]);
+  }, [wallet]);
 
   return (
     <div>
@@ -702,8 +633,8 @@ function RecoverFromCouchTool({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function RelayManagementTool({ wallet }: { wallet: Wallet }) {
-  const relays = use$(wallet.relays$);
+function RelayManagementTool({ wallet }: { wallet: NutWallet }) {
+  const relays = use$(wallet.walletRelays$);
   const tokens = use$(wallet.tokens$);
   const [newRelay, setNewRelay] = useState("");
   const [saving, setSaving] = useState(false);
@@ -732,7 +663,6 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
 
   const handleAddRelay = useCallback(async () => {
     if (!newRelay.trim()) return setError("Please enter a relay URL");
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to manage relays");
 
     const currentRelays = relays || [];
     const relayUrl = newRelay.trim();
@@ -744,7 +674,7 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
     setError(null);
 
     try {
-      await actions.run(SetWalletRelays, [...currentRelays, relayUrl]);
+      await wallet.setRelays([...currentRelays, relayUrl]);
       setNewRelay("");
     } catch (err) {
       console.error("Failed to add relay:", err);
@@ -752,12 +682,10 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
     } finally {
       setSaving(false);
     }
-  }, [newRelay, relays, wallet.unlocked]);
+  }, [newRelay, relays, wallet]);
 
   const handleRemoveRelay = useCallback(
     async (relayToRemove: string) => {
-      if (!wallet.unlocked) return setError("Wallet must be unlocked to manage relays");
-
       const currentRelays = relays || [];
       const updatedRelays = currentRelays.filter((r) => r !== relayToRemove);
 
@@ -765,7 +693,7 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
       setError(null);
 
       try {
-        await actions.run(SetWalletRelays, updatedRelays);
+        await wallet.setRelays(updatedRelays);
       } catch (err) {
         console.error("Failed to remove relay:", err);
         setError(err instanceof Error ? err.message : "Failed to remove relay");
@@ -773,7 +701,7 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
         setSaving(false);
       }
     },
-    [relays, wallet.unlocked],
+    [relays, wallet],
   );
 
   return (
@@ -842,8 +770,8 @@ function RelayManagementTool({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function MintManagementTool({ wallet }: { wallet: Wallet }) {
-  const mints = use$(wallet.mints$);
+function MintManagementTool({ wallet }: { wallet: NutWallet }) {
+  const mints = use$(wallet.mintUrls$);
   const balance = use$(wallet.balance$);
   const [newMint, setNewMint] = useState("");
   const [saving, setSaving] = useState(false);
@@ -851,7 +779,6 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
 
   const handleAddMint = useCallback(async () => {
     if (!newMint.trim()) return setError("Please enter a mint URL");
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to manage mints");
 
     const currentMints = mints || [];
     const mintUrl = newMint.trim();
@@ -863,7 +790,7 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
     setError(null);
 
     try {
-      await actions.run(SetWalletMints, [...currentMints, mintUrl]);
+      await wallet.setMints([...currentMints, mintUrl]);
       setNewMint("");
     } catch (err) {
       console.error("Failed to add mint:", err);
@@ -871,12 +798,10 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
     } finally {
       setSaving(false);
     }
-  }, [newMint, mints, wallet.unlocked]);
+  }, [newMint, mints, wallet]);
 
   const handleRemoveMint = useCallback(
     async (mintToRemove: string) => {
-      if (!wallet.unlocked) return setError("Wallet must be unlocked to manage mints");
-
       // Check if mint has a balance
       const mintBalance = balance?.[mintToRemove] || 0;
       if (mintBalance > 0) {
@@ -895,7 +820,7 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
       setError(null);
 
       try {
-        await actions.run(SetWalletMints, updatedMints);
+        await wallet.setMints(updatedMints);
       } catch (err) {
         console.error("Failed to remove mint:", err);
         setError(err instanceof Error ? err.message : "Failed to remove mint");
@@ -903,7 +828,7 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
         setSaving(false);
       }
     },
-    [mints, balance, wallet.unlocked],
+    [mints, balance, wallet],
   );
 
   return (
@@ -968,116 +893,12 @@ function MintManagementTool({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function NutzapInfoMintManagementTool() {
-  const user = use$(user$);
-  const nutzapInfo = use$(user?.nutzap$);
-  const mints = nutzapInfo?.mints || [];
-  const [newMint, setNewMint] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleAddMint = useCallback(async () => {
-    if (!newMint.trim()) return setError("Please enter a mint URL");
-
-    const mintUrl = newMint.trim();
-
-    // Check if mint already exists
-    if (mints.some((m) => m.mint === mintUrl)) return setError("This mint is already in your list");
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      await actions.run(AddNutzapInfoMint, { url: mintUrl, units: ["sat"] });
-      setNewMint("");
-    } catch (err) {
-      console.error("Failed to add mint:", err);
-      setError(err instanceof Error ? err.message : "Failed to add mint");
-    } finally {
-      setSaving(false);
-    }
-  }, [newMint, mints]);
-
-  const handleRemoveMint = useCallback(async (mintToRemove: string) => {
-    setSaving(true);
-    setError(null);
-
-    try {
-      await actions.run(RemoveNutzapInfoMint, mintToRemove);
-    } catch (err) {
-      console.error("Failed to remove mint:", err);
-      setError(err instanceof Error ? err.message : "Failed to remove mint");
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  return (
-    <div>
-      <h3 className="text-lg font-semibold mb-2">Manage Nutzap Info Mints</h3>
-
-      <div className="space-y-2 mb-4">
-        {mints && mints.length > 0 ? (
-          mints.map((mint, index) => (
-            <div key={index} className="flex items-center justify-between p-2 bg-base-200 rounded">
-              <div className="flex-1 min-w-0">
-                <span className="font-mono text-sm truncate block">{mint.mint}</span>
-              </div>
-              <button
-                className="btn btn-xs btn-error ml-2"
-                onClick={() => handleRemoveMint(mint.mint)}
-                disabled={saving}
-              >
-                Remove
-              </button>
-            </div>
-          ))
-        ) : (
-          <div className="text-sm text-base-content/70">No mints configured</div>
-        )}
-      </div>
-
-      <div className="flex gap-2 mb-4">
-        <input
-          type="text"
-          className="input input-bordered flex-1"
-          placeholder="https://mint.example.com"
-          value={newMint}
-          onChange={(e) => setNewMint(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              handleAddMint();
-            }
-          }}
-          disabled={saving}
-        />
-        <button className="btn btn-primary" onClick={handleAddMint} disabled={saving || !newMint.trim()}>
-          {saving ? (
-            <>
-              <span className="loading loading-spinner loading-sm" />
-              Saving...
-            </>
-          ) : (
-            "Add"
-          )}
-        </button>
-      </div>
-
-      {error && (
-        <div className="alert alert-error">
-          <span>{error}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SettingsTab({ wallet }: { wallet: Wallet }) {
-  if (!wallet.unlocked) return <div className="text-base-content/70">Unlock your wallet to access settings.</div>;
+function SettingsTab({ wallet }: { wallet: NutWallet }) {
+  const unlocked = use$(wallet.unlocked$);
+  if (!unlocked) return <div className="text-base-content/70">Unlock your wallet to access settings.</div>;
 
   return (
     <div className="space-y-6">
-      <NutzapInfoMintManagementTool />
       <MintManagementTool wallet={wallet} />
       <RelayManagementTool wallet={wallet} />
       <SyncTokensTool wallet={wallet} />
@@ -1087,8 +908,9 @@ function SettingsTab({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function SendTab({ wallet }: { wallet: Wallet }) {
+function SendTab({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
+  const unlocked = use$(wallet.unlocked$);
   const [amount, setAmount] = useState("");
   const [selectedMint, setSelectedMint] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
@@ -1103,7 +925,7 @@ function SendTab({ wallet }: { wallet: Wallet }) {
   }, [balance]);
 
   const handleSend = useCallback(async () => {
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to send tokens");
+    if (!unlocked) return setError("Wallet must be unlocked to send tokens");
     if (!amount.trim()) return setError("Please enter an amount");
 
     const sendAmount = parseInt(amount.trim(), 10);
@@ -1122,31 +944,7 @@ function SendTab({ wallet }: { wallet: Wallet }) {
     setCreatedToken(null);
 
     try {
-      await actions.run(
-        TokensOperation,
-        sendAmount,
-        async ({ selectedProofs, mint, cashuWallet }) => {
-          // Use wallet.ops.send() to create the token
-          const { keep, send } = await cashuWallet.ops.send(sendAmount, selectedProofs).run();
-
-          // Create the token to send
-          const sendToken = {
-            mint,
-            proofs: send,
-            unit: "sat" as const,
-          };
-
-          // Store the created token for display
-          const encodedToken = getEncodedToken(sendToken);
-          setCreatedToken(encodedToken);
-
-          // Return change (all selected proofs are considered used)
-          return {
-            change: keep.length > 0 ? keep : undefined,
-          };
-        },
-        { mint: selectedMint, couch },
-      );
+      setCreatedToken(await wallet.sendToken(sendAmount, { mint: selectedMint }));
 
       // Clear amount after successful send
       setAmount("");
@@ -1157,7 +955,7 @@ function SendTab({ wallet }: { wallet: Wallet }) {
     } finally {
       setSending(false);
     }
-  }, [wallet.unlocked, amount, selectedMint, balance]);
+  }, [wallet, unlocked, amount, selectedMint, balance]);
 
   const handleCopy = useCallback(() => {
     if (!createdToken) return;
@@ -1166,7 +964,7 @@ function SendTab({ wallet }: { wallet: Wallet }) {
     setTimeout(() => setCopied(false), 2000);
   }, [createdToken]);
 
-  if (!wallet.unlocked) {
+  if (!unlocked) {
     return (
       <div className="flex flex-col items-center justify-center text-center space-y-4">
         <h2 className="text-2xl font-bold">Wallet Locked</h2>
@@ -1267,7 +1065,7 @@ function SendTab({ wallet }: { wallet: Wallet }) {
           <button
             className="btn btn-primary w-full"
             onClick={handleSend}
-            disabled={sending || !amount.trim() || !wallet.unlocked}
+            disabled={sending || !amount.trim() || !unlocked}
           >
             {sending ? (
               <>
@@ -1290,28 +1088,21 @@ function SendTab({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function ReceiveTab({ wallet }: { wallet: Wallet }) {
+function ReceiveTab({ wallet }: { wallet: NutWallet }) {
+  const unlocked = use$(wallet.unlocked$);
   const [tokenString, setTokenString] = useState("");
   const [receiving, setReceiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleReceive = useCallback(async () => {
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to receive tokens");
+    if (!unlocked) return setError("Wallet must be unlocked to receive tokens");
     if (!tokenString.trim()) return setError("Please paste a cashu token");
 
     setReceiving(true);
     setError(null);
 
     try {
-      // Decode the cashu token
-      const token = getDecodedToken(tokenString.trim(), []);
-
-      if (!token) {
-        throw new Error("Failed to decode token. Please check the token format.");
-      }
-
-      // Receive the token using the ReceiveToken action
-      await actions.run(ReceiveToken, token, { couch });
+      await wallet.receiveToken(tokenString.trim());
 
       setTokenString("");
     } catch (err) {
@@ -1320,9 +1111,9 @@ function ReceiveTab({ wallet }: { wallet: Wallet }) {
     } finally {
       setReceiving(false);
     }
-  }, [wallet.unlocked, tokenString]);
+  }, [wallet, unlocked, tokenString]);
 
-  if (!wallet.unlocked) {
+  if (!unlocked) {
     return (
       <div className="flex flex-col items-center justify-center text-center space-y-4">
         <h2 className="text-2xl font-bold">Wallet Locked</h2>
@@ -1360,7 +1151,7 @@ function ReceiveTab({ wallet }: { wallet: Wallet }) {
       <button
         className="btn btn-primary w-full"
         onClick={handleReceive}
-        disabled={receiving || !tokenString.trim() || !wallet.unlocked}
+        disabled={receiving || !tokenString.trim() || !unlocked}
       >
         {receiving ? (
           <>
@@ -1381,8 +1172,9 @@ function ReceiveTab({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function DepositTab({ wallet }: { wallet: Wallet }) {
-  const mints = use$(wallet.mints$) ?? [];
+function DepositTab({ wallet }: { wallet: NutWallet }) {
+  const mints = use$(wallet.mintUrls$) ?? [];
+  const unlocked = use$(wallet.unlocked$);
   const [amount, setAmount] = useState("");
   const [selectedMint, setSelectedMint] = useState<string>("");
   const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
@@ -1404,7 +1196,7 @@ function DepositTab({ wallet }: { wallet: Wallet }) {
   }, []);
 
   const handleDeposit = useCallback(async () => {
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to deposit");
+    if (!unlocked) return setError("Wallet must be unlocked to deposit");
     const mint = selectedMint || mints[0];
     if (!mint) return setError("Add a mint to your wallet first");
 
@@ -1416,28 +1208,16 @@ function DepositTab({ wallet }: { wallet: Wallet }) {
     abortRef.current = ac;
 
     try {
-      // 1. Create a mint quote (lightning invoice) for the deposit
-      const cashuWallet = await getCashuWallet(mint);
-      const mintQuote = await cashuWallet.createMintQuoteBolt11(sats);
-      setQuote(mintQuote);
-      setStatus("waiting");
-
-      // 2. Wait for the invoice to be paid (NIP-17 websocket when supported, else poll)
-      if (cashuWallet.getMintInfo().isSupported(17).supported) {
-        await cashuWallet.on.onceMintPaid(mintQuote.quote, { signal: ac.signal });
-      } else {
-        while (!ac.signal.aborted) {
-          const check = await cashuWallet.checkMintQuoteBolt11(mintQuote.quote);
-          if (check.state === MintQuoteState.PAID || check.state === MintQuoteState.ISSUED) break;
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-        }
-      }
-      if (ac.signal.aborted) return;
-
-      // 3. Redeem the paid quote, minting proofs into the wallet
-      setStatus("redeeming");
-      await actions.run(MintTokens, mint, sats, mintQuote, { couch, getCashuWallet });
-
+      await wallet.deposit({
+        method: "bolt11",
+        mint,
+        amount: sats,
+        onQuote: (quote) => {
+          setQuote(quote);
+          setStatus("waiting");
+        },
+        signal: ac.signal,
+      });
       setQuote(null);
       setStatus("idle");
       setAmount("");
@@ -1447,7 +1227,7 @@ function DepositTab({ wallet }: { wallet: Wallet }) {
       setError(err instanceof Error ? err.message : "Failed to deposit");
       setStatus("idle");
     }
-  }, [wallet.unlocked, amount, selectedMint, mints]);
+  }, [wallet, unlocked, amount, selectedMint, mints]);
 
   const handleCopy = useCallback(() => {
     if (!quote) return;
@@ -1456,7 +1236,7 @@ function DepositTab({ wallet }: { wallet: Wallet }) {
     setTimeout(() => setCopied(false), 2000);
   }, [quote]);
 
-  if (!wallet.unlocked) {
+  if (!unlocked) {
     return (
       <div className="flex flex-col items-center justify-center text-center space-y-4">
         <h2 className="text-2xl font-bold">Wallet Locked</h2>
@@ -1542,7 +1322,7 @@ function DepositTab({ wallet }: { wallet: Wallet }) {
           <button
             className="btn btn-primary w-full"
             onClick={handleDeposit}
-            disabled={!amount.trim() || !wallet.unlocked}
+            disabled={!amount.trim() || !unlocked}
           >
             Create Invoice
           </button>
@@ -1558,8 +1338,9 @@ function DepositTab({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function WithdrawTab({ wallet }: { wallet: Wallet }) {
+function WithdrawTab({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
+  const unlocked = use$(wallet.unlocked$);
   const [invoice, setInvoice] = useState("");
   const [selectedMint, setSelectedMint] = useState<string>("");
   const [paying, setPaying] = useState(false);
@@ -1577,7 +1358,7 @@ function WithdrawTab({ wallet }: { wallet: Wallet }) {
   }, [availableMints, selectedMint]);
 
   const handlePay = useCallback(async () => {
-    if (!wallet.unlocked) return setError("Wallet must be unlocked to withdraw");
+    if (!unlocked) return setError("Wallet must be unlocked to withdraw");
     const mint = selectedMint || availableMints[0];
     if (!mint) return setError("No mint with a balance to pay from");
     if (!invoice.trim()) return setError("Please paste a lightning invoice");
@@ -1587,32 +1368,9 @@ function WithdrawTab({ wallet }: { wallet: Wallet }) {
     setSuccess(null);
 
     try {
-      // Create the melt quote first so we know the exact amount + fee reserve
-      const cashuWallet = await getCashuWallet(mint);
-      const meltQuote = await cashuWallet.createMeltQuoteBolt11(invoice.trim());
-      const amount = meltQuote.amount.toNumber();
-      const fee = meltQuote.fee_reserve.toNumber();
-
-      const mintBalance = balance?.[mint] || 0;
-      if (mintBalance < amount + fee)
-        throw new Error(`Insufficient balance. Need ${amount + fee} sats, have ${mintBalance}`);
-
-      await actions.run(
-        TokensOperation,
-        amount + fee,
-        async ({ selectedProofs, cashuWallet }) => {
-          // Set aside the amount + fee reserve to melt and keep any remainder as change
-          const { keep, send } = await cashuWallet.ops
-            .send(amount + fee, selectedProofs)
-            .includeFees(true)
-            .run();
-          const response = await cashuWallet.meltProofsBolt11(meltQuote, send);
-          return { change: [...keep, ...response.change] };
-        },
-        { mint, couch, getCashuWallet },
-      );
-
-      setSuccess(`Paid ${amount} sats (+${fee} sat fee reserve) from ${mint}`);
+      const response = await wallet.payInvoice(mint, invoice.trim());
+      const change = response.change.reduce((sum, proof) => sum + proof.amount.toNumber(), 0);
+      setSuccess(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
       setInvoice("");
     } catch (err) {
       console.error("Failed to pay invoice:", err);
@@ -1620,9 +1378,9 @@ function WithdrawTab({ wallet }: { wallet: Wallet }) {
     } finally {
       setPaying(false);
     }
-  }, [wallet.unlocked, invoice, selectedMint, availableMints, balance]);
+  }, [wallet, unlocked, invoice, selectedMint, availableMints]);
 
-  if (!wallet.unlocked) {
+  if (!unlocked) {
     return (
       <div className="flex flex-col items-center justify-center text-center space-y-4">
         <h2 className="text-2xl font-bold">Wallet Locked</h2>
@@ -1680,7 +1438,7 @@ function WithdrawTab({ wallet }: { wallet: Wallet }) {
       <button
         className="btn btn-primary w-full"
         onClick={handlePay}
-        disabled={paying || !invoice.trim() || !wallet.unlocked}
+        disabled={paying || !invoice.trim() || !unlocked}
       >
         {paying ? (
           <>
@@ -1708,35 +1466,15 @@ function WithdrawTab({ wallet }: { wallet: Wallet }) {
 }
 
 // Wallet Manager Component (shown when wallet exists)
-function WalletManager({ user }: { user: User }) {
-  const wallet = use$(user.wallet$);
-  const history = use$(user.wallet$.history$);
-  const tokens = use$(user.wallet$.tokens$);
-  const outboxes = use$(user.outboxes$);
+function WalletManager({ user, wallet }: { user: User; wallet: NutWallet }) {
+  const walletEvent = use$(wallet.wallet$);
+  const history = use$(wallet.history$);
+  const tokens = use$(wallet.tokens$);
   const inboxes = use$(user.inboxes$);
   const nutzapInfo = use$(user.nutzap$);
   const nutzapRelays = nutzapInfo?.relays;
   const nutzapMints = nutzapInfo?.mints.map(({ mint }) => mint);
-  const relays = use$(user.wallet$.relays$);
-  const autoUnlock = use$(autoUnlock$);
-  const unlocking = useRef(false);
-
-  // Subscribe to token and history events
-  use$(() => {
-    const all = relaySet(relays, outboxes);
-    if (all.length === 0) return undefined;
-
-    return pool.subscription(
-      all,
-      [
-        // Wallet events
-        { kinds: [WALLET_KIND, WALLET_TOKEN_KIND, WALLET_HISTORY_KIND], authors: [user.pubkey] },
-        // Wallet delete events
-        { kinds: [kinds.EventDeletion], "#k": [String(WALLET_TOKEN_KIND)] },
-      ],
-      { eventStore },
-    );
-  }, [outboxes?.join(","), relays?.join(","), user.pubkey]);
+  const [autoUnlock, setAutoUnlock] = useState(wallet.autoUnlock);
 
   // Subscribe to incoming nutzap events
   use$(() => {
@@ -1748,32 +1486,7 @@ function WalletManager({ user }: { user: User }) {
     return pool.subscription(all, { kinds: [NUTZAP_KIND], "#p": [user.pubkey], "#u": nutzapMints }, { eventStore });
   }, [inboxes?.join(","), nutzapMints?.join(","), nutzapRelays?.join(","), user.pubkey]);
 
-  // Automatically unlock wallet if autoUnlock$ is enabled
-  useEffect(() => {
-    if (unlocking.current || !autoUnlock) return;
-
-    let needsUnlock = false;
-
-    if (wallet && wallet.unlocked === false) needsUnlock = true;
-    if (tokens && tokens.some((token) => token.unlocked === false)) needsUnlock = true;
-    if (history && history.some((entry) => entry.unlocked === false)) needsUnlock = true;
-
-    // Start unlocking if needed
-    if (needsUnlock) {
-      console.log("Unlocking wallet...");
-      unlocking.current = true;
-      actions
-        .run(UnlockWallet, { history: true, tokens: true })
-        .catch((err) => {
-          console.error("Failed to unlock wallet:", err);
-        })
-        .finally(() => {
-          unlocking.current = false;
-        });
-    }
-  }, [wallet?.unlocked, tokens?.length, history?.length, autoUnlock]);
-
-  if (!wallet) return null;
+  if (!walletEvent) return null;
 
   return (
     <div className="container mx-auto my-8 px-4 max-w-2xl relative">
@@ -1784,7 +1497,10 @@ function WalletManager({ user }: { user: User }) {
             type="checkbox"
             className="toggle"
             checked={autoUnlock}
-            onChange={() => autoUnlock$.next(!autoUnlock)}
+            onChange={(e) => {
+              wallet.setAutoUnlock(e.target.checked);
+              setAutoUnlock(e.target.checked);
+            }}
           />
           Auto unlock
         </label>
@@ -1812,7 +1528,7 @@ function WalletManager({ user }: { user: User }) {
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Nutzaps" />
         <div className="tab-content bg-base-100 border-base-300 p-6">
-          <NutzapsTab user={user} />
+          <NutzapsTab user={user} wallet={wallet} />
         </div>
 
         <input type="radio" name="wallet_tabs" className="tab" aria-label="Send" />
@@ -1844,8 +1560,8 @@ function WalletManager({ user }: { user: User }) {
   );
 }
 
-function WalletView({ user }: { user: User }) {
-  const wallet = use$(user.wallet$);
+function WalletView({ user, wallet }: { user: User; wallet: NutWallet }) {
+  const status = use$(wallet.status$) ?? WalletStatus.Idle;
 
   const handleCreateWallet = useCallback(async (mints: string[], receiveNutzaps: boolean) => {
     // Create wallet with selected mints
@@ -1859,16 +1575,16 @@ function WalletView({ user }: { user: User }) {
       "wss://relay.snort.social",
       "wss://relay.primal.net",
     ];
-    await actions.run(CreateWallet, { mints, privateKey, relays: defaultRelays });
-  }, []);
+    await wallet.createWallet({ mints, privateKey, relays: defaultRelays });
+  }, [wallet]);
 
   // Show create wallet view first when no wallet is found
-  if (!wallet) {
+  if (status === WalletStatus.Missing) {
     return <CreateWalletView onCreate={handleCreateWallet} />;
   }
 
   // Show wallet manager when wallet exists
-  return <WalletManager user={user} />;
+  return <WalletManager user={user} wallet={wallet} />;
 }
 
 export default function WalletExample() {
@@ -1876,6 +1592,19 @@ export default function WalletExample() {
   const signer = use$(signer$);
   const pubkey = use$(pubkey$);
   const user = use$(user$);
+  const [wallet, setWallet] = useState<NutWallet | null>(null);
+
+  useEffect(() => {
+    if (!signer || !pubkey) {
+      setWallet(null);
+      return;
+    }
+
+    const instance = new NutWallet({ pubkey, signer, pool, eventStore, couch, autoUnlock: false });
+    instance.start();
+    setWallet(instance);
+    return () => instance.stop();
+  }, [signer, pubkey]);
 
   const handleUnlock = useCallback(async (storage: SecureStorage) => {
     storage$.next(storage);
@@ -1899,8 +1628,8 @@ export default function WalletExample() {
   if (!storage) return <UnlockView onUnlock={handleUnlock} />;
 
   // Show login view if not logged in
-  if (!signer || !pubkey || !user) return <LoginView onLogin={handleLogin} />;
+  if (!signer || !pubkey || !user || !wallet) return <LoginView onLogin={handleLogin} />;
 
   // Show main wallet view when both storage and login are ready
-  return <WalletView user={user} />;
+  return <WalletView user={user} wallet={wallet} />;
 }

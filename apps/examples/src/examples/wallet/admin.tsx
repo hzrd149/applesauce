@@ -492,7 +492,7 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
   const couchTokens = use$(wallet.couchTokens$) ?? [];
   const staleCount = use$(wallet.staleTokenCount$) ?? 0;
   const ops = use$(wallet.operationsState$) ?? {};
-  const [deleteOldTokens, setDeleteOldTokens] = useState(wallet.deleteOldTokens);
+  const [useDeleteEvents, setUseDeleteEvents] = useState(wallet.useDeleteEvents);
 
   const connected = relays.filter((r) => r.connected).length;
 
@@ -577,17 +577,18 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
           <input
             type="checkbox"
             className="toggle toggle-sm"
-            checked={deleteOldTokens}
+            checked={useDeleteEvents}
             onChange={(e) => {
-              wallet.setDeleteOldTokens(e.target.checked);
-              setDeleteOldTokens(e.target.checked);
+              wallet.setUseDeleteEvents(e.target.checked);
+              setUseDeleteEvents(e.target.checked);
             }}
           />
           <span className="label-text">Publish delete events for spent tokens</span>
         </label>
         <p className="text-xs text-base-content/60 mt-1 mb-4">
           When off, spent token events are only marked deleted via each new token's <code>del</code> field and removed
-          later with cleanup.
+          later with cleanup. This toggle only affects publishing; whether delete events are loaded is set when the
+          wallet starts.
         </p>
         {staleCount > 0 ? (
           <div className="text-base-content/60">
@@ -876,6 +877,7 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
         <table className="table">
           <thead>
             <tr>
+              <th>ID</th>
               <th>Amount</th>
               <th>Mint</th>
               {relays.map((url) => (
@@ -895,6 +897,9 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
                   : null;
               return (
                 <tr key={token.id}>
+                  <td className="font-mono text-xs" title={token.id}>
+                    {token.id.slice(0, 8)}
+                  </td>
                   <td className="font-medium whitespace-nowrap">{token.unlocked ? `${token.amount} sats` : "🔒"}</td>
                   <td className="font-mono">{token.unlocked && token.mint ? new URL(token.mint).hostname : "—"}</td>
                   {relays.map((url) => (
@@ -917,6 +922,7 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
             <tfoot>
               <tr>
                 <th>Coverage</th>
+                <th />
                 <th />
                 {relays.map((url) => {
                   const count = coverage?.perRelay[url] ?? 0;

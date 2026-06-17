@@ -181,6 +181,7 @@ export function TimelineModel(
 
   return (store) => {
     const seen = new Map<string, NostrEvent>();
+    const getTimelineUID = (event: NostrEvent) => (includeOldVersion ? event.id : getEventUID(event));
 
     // get current events
     return defer(() => {
@@ -212,22 +213,24 @@ export function TimelineModel(
 
         // initial timeline array
         if (Array.isArray(event)) {
-          if (!includeOldVersion) {
-            for (const e of event) if (isReplaceable(e.kind)) seen.set(getEventUID(e), e);
-          }
+          seen.clear();
+          for (const e of event) seen.set(getTimelineUID(e), e);
           // Always return a new array instance to ensure UI libraries detect changes
           return [...event];
         }
 
         // create a new timeline and insert the event into it
         let newTimeline = [...timeline];
+        const uid = getTimelineUID(event);
+        const existing = seen.get(uid);
+
+        // Ignore duplicate regular events and older replaceable versions.
+        if (existing && (!isReplaceable(event.kind) || (!includeOldVersion && event.created_at < existing.created_at))) {
+          return [...timeline];
+        }
 
         // remove old replaceable events if enabled
         if (!includeOldVersion && isReplaceable(event.kind)) {
-          const uid = getEventUID(event);
-          const existing = seen.get(uid);
-          // if this is an older replaceable event, return a new array instance
-          if (existing && event.created_at < existing.created_at) return [...timeline];
           // update latest version
           seen.set(uid, event);
           // remove old event from timeline
@@ -235,6 +238,8 @@ export function TimelineModel(
             const index = newTimeline.indexOf(existing);
             if (index !== -1) newTimeline.splice(index, 1);
           }
+        } else {
+          seen.set(uid, event);
         }
 
         // add event into timeline

@@ -16,9 +16,11 @@ import { ChainableObservable, logger as baseLogger, chainable, EventStore } from
 import { castUser, User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers";
 import {
+  addSeenRelay,
   canHaveEncryptedContent,
   getEncryptedContent,
   getOutboxes,
+  getSeenRelays,
   isEncryptedContentUnlocked,
   kinds,
   normalizeURL,
@@ -46,6 +48,7 @@ import {
   CreateWallet,
   MintTokens,
   ReceiveToken,
+  ReceiveNutzaps,
   RecoverFromCouch,
   RolloverTokens,
   SetWalletMints,
@@ -139,8 +142,13 @@ export class NutWallet {
 
   /** Whether to automatically unlock the wallet, tokens and history as they load */
   autoUnlock: boolean;
-  /** Whether spend/rollover/consolidate operations publish a NIP-09 delete event for old token events */
-  deleteOldTokens: boolean;
+  /**
+   * Whether the wallet loads, subscribes to and publishes NIP-09 delete events for its events. When false the
+   * wallet completely ignores kind-5 delete events for its wallet, token and history events (see
+   * {@link NutWalletOptions.useDeleteEvents}). The loading half is fixed when the wallet starts; toggling at
+   * runtime with {@link setUseDeleteEvents} only affects publishing until the next {@link resync}.
+   */
+  useDeleteEvents: boolean;
   /** An optional persistent cache of decrypted event content, consulted before decrypting and written to after */
   protected decryptionCache?: EncryptedContentCache;
 
@@ -223,6 +231,7 @@ export class NutWallet {
   protected loadingSub?: Subscription;
   protected autoUnlockSub?: Subscription;
   protected unlocking = false;
+  protected backupPromise?: Promise<void>;
 
   constructor(options: NutWalletOptions) {
     this.pubkey = options.pubkey;
@@ -231,7 +240,7 @@ export class NutWallet {
     this.eventStore = options.eventStore;
     this.couch = options.couch;
     this.autoUnlock = options.autoUnlock ?? false;
-    this.deleteOldTokens = options.deleteOldTokens ?? true;
+    this.useDeleteEvents = options.useDeleteEvents ?? false;
     this.decryptionCache = options.decryptionCache;
     this.log = options.logger ?? baseLogger.extend("nut-wallet").extend(this.pubkey.slice(0, 8));
 
@@ -411,10 +420,11 @@ export class NutWallet {
   /**
    * Enables or disables publishing NIP-09 delete events for old token events during spend, rollover and
    * consolidate operations. When disabled, spent token events are left on relays until
-   * {@link cleanupDeletedTokens} removes them in a single batched delete.
+   * {@link cleanupDeletedTokens} removes them in a single batched delete. This only affects publishing; to
+   * also change whether the wallet loads and subscribes to delete events, call {@link resync} afterwards.
    */
-  setDeleteOldTokens(enabled: boolean): void {
-    this.deleteOldTokens = enabled;
+  setUseDeleteEvents(enabled: boolean): void {
+    this.useDeleteEvents = enabled;
   }
 
   /** Unlocks the wallet event and all of its token and history events */
@@ -549,7 +559,7 @@ export class NutWallet {
           couch: this.couch,
           wallet,
           getCashuWallet: this.getCashuWallet,
-          deleteOldTokens: this.deleteOldTokens,
+          createDeleteEvents: this.useDeleteEvents,
         },
       );
       if (!encoded) throw new Error("Failed to create token");
@@ -567,6 +577,16 @@ export class NutWallet {
       this.log("Receiving token from mint %s", decoded.mint);
       const wallet = await this.getCashuWallet(decoded.mint);
       await this.actions.run(ReceiveToken, decoded, { couch: this.couch, wallet, getCashuWallet: this.getCashuWallet });
+      await this.refreshCouch();
+    });
+  }
+
+  /** Receives one or more NIP-61 nutzap events into the wallet */
+  async receiveNutzaps(events: NostrEvent | NostrEvent[]): Promise<void> {
+    await this.track("receive", async () => {
+      const count = Array.isArray(events) ? events.length : 1;
+      this.log("Receiving %d nutzap event%s", count, count === 1 ? "" : "s");
+      await this.actions.run(ReceiveNutzaps, events, this.couch);
       await this.refreshCouch();
     });
   }
@@ -684,7 +704,7 @@ export class NutWallet {
       await this.actions.run(ConsolidateTokens, {
         unlockTokens: true,
         getCashuWallet: this.getCashuWallet,
-        deleteOldTokens: this.deleteOldTokens,
+        createDeleteEvents: this.useDeleteEvents,
       });
       await this.refreshCouch();
     });
@@ -705,7 +725,7 @@ export class NutWallet {
         unlockTokens: true,
         couch: this.couch,
         getCashuWallet: this.getCashuWallet,
-        deleteOldTokens: this.deleteOldTokens,
+        createDeleteEvents: this.useDeleteEvents,
       });
       await this.refreshCouch();
     });
@@ -714,7 +734,7 @@ export class NutWallet {
   /**
    * Publishes a single NIP-09 delete event for every token event that a newer token event has marked as
    * deleted but is still present. Cleans up the spent token events left on relays when operations run
-   * with {@link setDeleteOldTokens} disabled.
+   * with {@link setUseDeleteEvents} disabled.
    */
   async cleanupDeletedTokens(): Promise<void> {
     await this.track("cleanup", async () => {
@@ -747,7 +767,8 @@ export class NutWallet {
       this.log("Syncing %d tokens to %d relays", tokens.length, relays.length);
       for (const token of tokens) {
         try {
-          await this.pool.publish(relays, token.event);
+          const responses = await this.pool.publish(relays, token.event);
+          for (const response of responses) if (response.ok) addSeenRelay(token.event, response.from);
         } catch (error) {
           this.log("Failed to sync token %s: %s", token.id.slice(0, 8), (error as Error)?.message ?? error);
         }
@@ -781,6 +802,7 @@ export class NutWallet {
       eventStore: this.eventStore,
       pubkey: this.pubkey,
       relays$: this.relays$,
+      useDeleteEvents: this.useDeleteEvents,
       logger: this.log,
     }).subscribe({
       next: (status) => this.applyStatus(status),
@@ -800,6 +822,7 @@ export class NutWallet {
       case "loaded":
         this.loading$.next(false);
         this.loaded$.next(true);
+        void this.backupWalletEvents();
         break;
       case "syncing":
         this.syncing$.next(true);
@@ -816,6 +839,56 @@ export class NutWallet {
       case "relays":
         break;
     }
+  }
+
+  /** Publishes loaded wallet events only to configured relays that are missing them */
+  protected async backupWalletEvents(): Promise<void> {
+    if (this.backupPromise) return this.backupPromise;
+
+    this.backupPromise = this.track("sync", async () => {
+      const relays = relaySet(await this.relays$.$first(5_000, [] as string[]));
+      if (relays.length === 0) return;
+
+      const events = this.getWalletBackupEvents();
+      let published = 0;
+
+      for (const event of events) {
+        const seen = new Set([...(getSeenRelays(event) ?? [])].map(normalizeURL));
+        const missing = relays.filter((relay) => !seen.has(normalizeURL(relay)));
+        if (missing.length === 0) continue;
+
+        try {
+          const responses = await this.pool.publish(missing, event);
+          for (const response of responses) {
+            if (response.ok) addSeenRelay(event, response.from);
+          }
+          published++;
+        } catch (error) {
+          this.log("Failed to backup event %s: %s", event.id.slice(0, 8), (error as Error)?.message ?? error);
+        }
+      }
+
+      if (published > 0) this.log("Backed up %d wallet events", published);
+    }).finally(() => {
+      this.backupPromise = undefined;
+    });
+
+    return this.backupPromise;
+  }
+
+  /** Returns wallet-owned events that should be backed up to every wallet relay */
+  protected getWalletBackupEvents(): NostrEvent[] {
+    const wallet = this.eventStore.getReplaceable(WALLET_KIND, this.pubkey);
+    return [
+      ...(wallet ? [wallet] : []),
+      ...this.eventStore.getByFilters({ kinds: [WALLET_TOKEN_KIND], authors: [this.pubkey] }),
+      ...this.eventStore.getByFilters({ kinds: [WALLET_HISTORY_KIND], authors: [this.pubkey] }),
+      ...this.eventStore.getByFilters({
+        kinds: [kinds.EventDeletion],
+        authors: [this.pubkey],
+        "#k": [WALLET_KIND, WALLET_TOKEN_KIND, WALLET_HISTORY_KIND].map(String),
+      }),
+    ];
   }
 
   /** Watches for locked wallet, token and history events and unlocks them when auto-unlock is enabled */
@@ -952,7 +1025,7 @@ export class NutWallet {
           couch: this.couch,
           wallet: quoteWallet,
           getCashuWallet: this.getCashuWallet,
-          deleteOldTokens: this.deleteOldTokens,
+          createDeleteEvents: this.useDeleteEvents,
         },
       );
       if (!response) throw new Error("Failed to melt token");
@@ -996,7 +1069,8 @@ export class NutWallet {
     const targets = this.resolvePublishRelays(relays);
     if (targets.length === 0) throw new Error("No relays available to publish event");
     this.log("Publishing event %s (kind %d) to %d relays", event.id.slice(0, 8), event.kind, targets.length);
-    await this.pool.publish(targets, event);
+    const responses = await this.pool.publish(targets, event);
+    for (const response of responses) if (response.ok) addSeenRelay(event, response.from);
   }
 }
 

@@ -129,6 +129,10 @@ describe("RolloverTokens", () => {
     }) as unknown as CashuWalletProvider;
   }
 
+  function publishedEvents() {
+    return publish.mock.calls.flatMap(([events]) => (Array.isArray(events) ? events : [events]));
+  }
+
   it("publishes a single delete event for the rolled-over tokens across all mints", async () => {
     const a1 = await addTokenForMint(mintA, 50);
     const a2 = await addTokenForMint(mintA, 50);
@@ -136,7 +140,7 @@ describe("RolloverTokens", () => {
 
     await hub.run(RolloverTokens, { getCashuWallet: swappingProvider() });
 
-    const published = publish.mock.calls.map(([e]) => e);
+    const published = publishedEvents();
 
     // Exactly one kind:5 delete event covering every rolled-over token across both mints
     const deleteEvents = published.filter((e: any) => e.kind === kinds.EventDeletion);
@@ -149,25 +153,45 @@ describe("RolloverTokens", () => {
     expect(tokenEvents).toHaveLength(2);
   });
 
-  it("publishes no delete event when deleteOldTokens is false", async () => {
+  it("publishes no delete event when createDeleteEvents is false", async () => {
     await addTokenForMint(mintA, 50);
     await addTokenForMint(mintB, 30);
 
-    await hub.run(RolloverTokens, { getCashuWallet: swappingProvider(), deleteOldTokens: false });
+    await hub.run(RolloverTokens, { getCashuWallet: swappingProvider(), createDeleteEvents: false });
 
-    const published = publish.mock.calls.map(([e]) => e);
+    const published = publishedEvents();
     expect(published.filter((e: any) => e.kind === kinds.EventDeletion)).toHaveLength(0);
     // The new token events still record the rolled-over ids in their `del` field
     expect(published.filter((e: any) => e.kind === WALLET_TOKEN_KIND)).toHaveLength(2);
   });
+
+  it("clears each couch token after its mint is published when a later mint fails", async () => {
+    const clearA = vi.fn();
+    const clearB = vi.fn();
+    const couch = {
+      store: vi.fn().mockResolvedValueOnce(clearA).mockResolvedValueOnce(clearB),
+      clear: vi.fn(),
+      getAll: vi.fn(),
+      remove: vi.fn(),
+    } as unknown as Couch;
+
+    await addTokenForMint(mintA, 50);
+    await addTokenForMint(mintB, 30);
+    publish.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("relay down"));
+
+    await expect(hub.run(RolloverTokens, { getCashuWallet: swappingProvider(), couch })).rejects.toThrow("relay down");
+
+    expect(clearA).toHaveBeenCalledOnce();
+    expect(clearB).not.toHaveBeenCalled();
+  });
 });
 
 describe("CompleteSpend", () => {
-  it("skips the delete event when deleteOldTokens is false", async () => {
+  it("skips the delete event when createDeleteEvents is false", async () => {
     const spent = await addTokenEvent(100);
     await unlockTokenContent(spent, signer);
 
-    await hub.run(CompleteSpend, [spent], makeToken(40), undefined, { deleteOldTokens: false });
+    await hub.run(CompleteSpend, [spent], makeToken(40), { createDeleteEvents: false });
 
     const published = publish.mock.calls.map((call) => call[0]);
     expect(published.find((e: any) => e.kind === kinds.EventDeletion)).toBeUndefined();

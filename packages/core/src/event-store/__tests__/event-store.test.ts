@@ -28,6 +28,16 @@ describe("add", () => {
     expect(eventStore.add(c)).toBe(a);
   });
 
+  it("should not emit insert$ for duplicate events", () => {
+    const spy = subscribeSpyTo(eventStore.insert$);
+    const a = { ...note };
+    const b = { ...note };
+
+    expect(eventStore.add(a)).toBe(a);
+    expect(eventStore.add(b)).toBe(a);
+    expect(spy.getValues()).toEqual([a]);
+  });
+
   it("should merge seen relays on duplicate events", () => {
     const a = { ...profile };
     addSeenRelay(a, "wss://relay.a.com");
@@ -423,6 +433,27 @@ describe("timeline", () => {
     expect(spy.getValues()).toEqual([[profile]]);
   });
 
+  it("should replace older replaceable events with newer versions", () => {
+    eventStore.add(profile);
+    const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }));
+    const newer = user.profile({ name: "new-name" }, { created_at: profile.created_at + 1000 });
+
+    eventStore.add(newer);
+
+    expect(spy.getValues()).toEqual([[profile], [newer], [newer]]);
+  });
+
+  it("should keep old replaceable versions when requested", () => {
+    eventStore = new EventStore({ keepOldVersions: true });
+    eventStore.add(profile);
+    const newer = user.profile({ name: "new-name" }, { created_at: profile.created_at + 1000 });
+    const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }, true));
+
+    eventStore.add(newer);
+
+    expect(spy.getValues()).toEqual([[profile], [newer, profile]]);
+  });
+
   it("should return new array for every value", () => {
     const first = user.note("first note");
     const second = user.note("second note");
@@ -436,5 +467,21 @@ describe("timeline", () => {
     };
 
     expect(hasDuplicates(spy.getValues())).toBe(false);
+  });
+
+  it("should not append duplicate event ids from insert notifications", () => {
+    const spy = subscribeSpyTo(eventStore.timeline({ kinds: [1] }));
+    eventStore.add(note);
+    eventStore.insert$.next(note);
+
+    expect(spy.getLastValue()).toEqual([note]);
+  });
+
+  it("should not append duplicate replaceable event ids from insert notifications", () => {
+    const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }));
+    eventStore.add(profile);
+    eventStore.insert$.next(profile);
+
+    expect(spy.getLastValue()).toEqual([profile]);
   });
 });

@@ -102,7 +102,7 @@ export class ActionRunner {
     await builder(...args)(context);
   }
 
-  /** Run an action without publishing the events */
+  /** Run an action without waiting for publishing */
   exec<Args extends Array<any>>(builder: ActionBuilder<Args>, ...args: Args): Observable<NostrEvent> {
     return from(this.getContext()).pipe(
       // Run the action
