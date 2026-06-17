@@ -47,6 +47,16 @@ export class Wallet extends EventCast<WalletEvent> {
     return unlockWallet(this.event, signer);
   }
 
+  /** Emits whether the wallet is unlocked, reacting to in-place unlock/lock updates */
+  get unlocked$() {
+    return this.$$ref("unlocked$", (store) =>
+      of(this.event).pipe(
+        watchEventUpdates(store),
+        map((event) => !!event && isWalletUnlocked(event)),
+      ),
+    );
+  }
+
   // Observable that emits when wallet is unlocked
   get mints$() {
     return this.$$ref("mints$", (store) =>

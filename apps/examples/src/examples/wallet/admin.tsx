@@ -1280,12 +1280,7 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
     <div className="flex flex-col gap-6 p-6 w-full">
       <Header wallet={wallet} />
 
-      {status === WalletStatus.Loading || status === WalletStatus.Idle ? (
-        <div className="flex items-center gap-3 justify-center py-24 text-lg text-base-content/60">
-          <span className="loading loading-spinner loading-lg" />
-          Loading wallet…
-        </div>
-      ) : status === WalletStatus.Missing ? (
+      {status === WalletStatus.Missing ? (
         <CreateSection wallet={wallet} />
       ) : (
         <>

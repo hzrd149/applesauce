@@ -1467,7 +1467,6 @@ function WithdrawTab({ wallet }: { wallet: NutWallet }) {
 
 // Wallet Manager Component (shown when wallet exists)
 function WalletManager({ user, wallet }: { user: User; wallet: NutWallet }) {
-  const walletEvent = use$(wallet.wallet$);
   const history = use$(wallet.history$);
   const tokens = use$(wallet.tokens$);
   const inboxes = use$(user.inboxes$);
@@ -1485,8 +1484,6 @@ function WalletManager({ user, wallet }: { user: User; wallet: NutWallet }) {
 
     return pool.subscription(all, { kinds: [NUTZAP_KIND], "#p": [user.pubkey], "#u": nutzapMints }, { eventStore });
   }, [inboxes?.join(","), nutzapMints?.join(","), nutzapRelays?.join(","), user.pubkey]);
-
-  if (!walletEvent) return null;
 
   return (
     <div className="container mx-auto my-8 px-4 max-w-2xl relative">

@@ -37,7 +37,7 @@ import type { RelayPool, RelayStatus } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Debugger } from "debug";
 import { BehaviorSubject, combineLatest, isObservable, Observable, of, Subscription } from "rxjs";
-import { distinctUntilChanged, map, shareReplay, startWith } from "rxjs/operators";
+import { distinctUntilChanged, map, shareReplay, startWith, switchMap } from "rxjs/operators";
 
 // Ensure the User.wallet$ is setup
 import "../casts/__register__";
@@ -275,7 +275,11 @@ export class NutWallet {
       ),
     );
     this.walletRelays$ = this.wallet$.relays$;
-    this.unlocked$ = this.wallet$.pipe(map((w) => w?.unlocked ?? false));
+    // Switch into the cast's reactive unlocked$ so in-place unlock/lock updates are reflected
+    this.unlocked$ = this.wallet$.pipe(
+      switchMap((w) => (w ? w.unlocked$ : of(false))),
+      distinctUntilChanged(),
+    );
     this.tokenCount$ = this.tokens$.pipe(map((tokens) => tokens?.length ?? 0));
     this.historyCount$ = this.history$.pipe(map((history) => history?.length ?? 0));
 
