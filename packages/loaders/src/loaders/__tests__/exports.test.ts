@@ -20,6 +20,7 @@ describe("exports", () => {
         "createOutboxTimelineLoader",
         "createReactionsLoader",
         "createSocialGraphLoader",
+        "createSyncLoader",
         "createTagValueLoader",
         "createTimelineLoader",
         "createUnifiedEventLoader",

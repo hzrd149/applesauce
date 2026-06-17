@@ -1076,8 +1076,15 @@ export class Relay {
           if (direction & SyncDirection.SEND && have.length > 0) {
             const events = await getEvents(have);
 
-            // Send all events to the relay
-            await Promise.allSettled(events.map((event) => lastValueFrom(this.event(event))));
+            // Send all events to the relay, marking them as seen on this relay once accepted.
+            // The events were not fetched from the relay, but after a successful publish the relay has them.
+            await Promise.allSettled(
+              events.map(async (event) => {
+                const response = await lastValueFrom(this.event(event));
+                if (response.ok) addSeenRelay(event, this.url);
+                return response;
+              }),
+            );
           }
 
           // Fetch missing events from the relay
