@@ -775,6 +775,9 @@ importers:
       applesauce-core:
         specifier: ^6.1.0
         version: link:../core
+      applesauce-loaders:
+        specifier: ^6.1.0
+        version: link:../loaders
       debug:
         specifier: ^4.4.3
         version: 4.4.3

@@ -1,8 +1,10 @@
 import { Proof, Token, Wallet as CashuWallet } from "@cashu/cashu-ts";
 import { EventStore } from "applesauce-core";
 import { User } from "applesauce-core/casts";
+import { addSeenRelay, getSeenRelays } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { EMPTY, firstValueFrom, of } from "rxjs";
+import { filter } from "rxjs/operators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
@@ -36,18 +38,24 @@ function memoryCouch(): Couch {
 
 /** A mock relay pool that records calls and never touches the network */
 function mockPool() {
+  const relay = {
+    getSupported: vi.fn().mockResolvedValue([]),
+    request: vi.fn().mockReturnValue(EMPTY),
+    sync: vi.fn().mockReturnValue(EMPTY),
+  };
   return {
     status$: of({}),
-    publish: vi.fn().mockResolvedValue([]),
+    publish: vi.fn().mockImplementation((relays: string[]) => relays.map((from) => ({ ok: true, from }))),
     request: vi.fn().mockReturnValue(EMPTY),
     sync: vi.fn().mockReturnValue(EMPTY),
     subscription: vi.fn().mockReturnValue(EMPTY),
-    relay: vi.fn().mockReturnValue({ getSupported: vi.fn().mockResolvedValue([]) }),
+    relay: vi.fn().mockReturnValue(relay),
   } as unknown as RelayPool & {
     publish: ReturnType<typeof vi.fn>;
     request: ReturnType<typeof vi.fn>;
     sync: ReturnType<typeof vi.fn>;
     subscription: ReturnType<typeof vi.fn>;
+    relay: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -63,6 +71,12 @@ beforeEach(() => {
 });
 
 describe("NutWallet.create", () => {
+  it("defaults to ignoring delete events", () => {
+    const wallet = new NutWallet({ pubkey: signer.pubkey, signer, pool, eventStore, couch });
+
+    expect(wallet.useDeleteEvents).toBe(false);
+  });
+
   it("publishes a wallet event to the configured relays", async () => {
     const wallet = await NutWallet.create(
       { pubkey: signer.pubkey, signer, pool, eventStore, couch },
@@ -88,7 +102,7 @@ describe("NutWallet.create", () => {
     );
 
     expect(pool.subscription).toHaveBeenCalled();
-    expect(pool.sync).toHaveBeenCalled();
+    expect(pool.relay).toHaveBeenCalledWith("wss://relay.example.com/");
 
     wallet.stop();
   });
@@ -128,13 +142,19 @@ describe("status", () => {
     await wallet.start();
     // With a mock pool the initial request completes immediately, so the wallet is loaded.
     // No wallet event exists in the store, so the status is "missing".
-    expect(await firstValueFrom(wallet.status$)).toBe(WalletStatus.Missing);
+    expect(await firstValueFrom(wallet.status$.pipe(filter((status) => status !== WalletStatus.Loading)))).toBe(
+      WalletStatus.Missing,
+    );
 
     wallet.stop();
   });
 
   it("exposes per-relay status including negentropy support", async () => {
-    pool.relay = vi.fn().mockReturnValue({ getSupported: vi.fn().mockResolvedValue([77]) }) as RelayPool["relay"];
+    pool.relay = vi.fn().mockReturnValue({
+      getSupported: vi.fn().mockResolvedValue([77]),
+      request: vi.fn().mockReturnValue(EMPTY),
+      sync: vi.fn().mockReturnValue(EMPTY),
+    }) as RelayPool["relay"];
 
     const wallet = new NutWallet({
       pubkey: signer.pubkey,
@@ -200,6 +220,60 @@ describe("computeTokenRelayCoverage", () => {
   });
 });
 
+describe("wallet backup", () => {
+  class TestWallet extends NutWallet {
+    backup(): Promise<void> {
+      return this.backupWalletEvents();
+    }
+  }
+
+  it("publishes wallet events only to missing relays", async () => {
+    const event = await WalletTokenFactory.create({
+      mint: "https://mint.example.com",
+      proofs: [{ amount: 1, secret: "secret", C: "C", id: "id" } as unknown as Proof],
+    }).sign(signer);
+    addSeenRelay(event, "wss://a.example.com/");
+    eventStore.add(event);
+
+    const wallet = new TestWallet({
+      pubkey: signer.pubkey,
+      signer,
+      pool,
+      eventStore,
+      couch,
+      relays: ["wss://a.example.com", "wss://b.example.com"],
+    });
+
+    await wallet.backup();
+
+    expect(pool.publish).toHaveBeenCalledTimes(1);
+    expect(pool.publish.mock.calls[0][0]).toEqual(["wss://b.example.com/"]);
+    expect(getSeenRelays(event)?.has("wss://b.example.com/")).toBe(true);
+  });
+
+  it("skips wallet events already seen on every relay", async () => {
+    const event = await WalletTokenFactory.create({
+      mint: "https://mint.example.com",
+      proofs: [{ amount: 1, secret: "secret", C: "C", id: "id" } as unknown as Proof],
+    }).sign(signer);
+    addSeenRelay(event, "wss://a.example.com/");
+    eventStore.add(event);
+
+    const wallet = new TestWallet({
+      pubkey: signer.pubkey,
+      signer,
+      pool,
+      eventStore,
+      couch,
+      relays: ["wss://a.example.com"],
+    });
+
+    await wallet.backup();
+
+    expect(pool.publish).not.toHaveBeenCalled();
+  });
+});
+
 describe("rollover", () => {
   const mint = "https://mint.example.com";
 
@@ -241,7 +315,7 @@ describe("rollover", () => {
       eventStore,
       couch,
       relays: ["wss://relay.example.com"],
-      deleteOldTokens: false,
+      useDeleteEvents: false,
     });
     await wallet.createWallet({ mints: [mint], relays: ["wss://relay.example.com"] });
     await wallet.start();

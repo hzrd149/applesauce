@@ -446,7 +446,7 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
   const couchTokens = use$(wallet.couchTokens$) ?? [];
   const staleCount = use$(wallet.staleTokenCount$) ?? 0;
   const ops = use$(wallet.operationsState$) ?? {};
-  const [deleteOldTokens, setDeleteOldTokens] = useState(wallet.deleteOldTokens);
+  const [useDeleteEvents, setUseDeleteEvents] = useState(wallet.useDeleteEvents);
 
   const connected = relays.filter((r) => r.connected).length;
 
@@ -531,17 +531,18 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
           <input
             type="checkbox"
             className="toggle toggle-sm"
-            checked={deleteOldTokens}
+            checked={useDeleteEvents}
             onChange={(e) => {
-              wallet.setDeleteOldTokens(e.target.checked);
-              setDeleteOldTokens(e.target.checked);
+              wallet.setUseDeleteEvents(e.target.checked);
+              setUseDeleteEvents(e.target.checked);
             }}
           />
           <span className="label-text">Publish delete events for spent tokens</span>
         </label>
         <p className="text-xs text-base-content/60 mt-1 mb-4">
           When off, spent token events are only marked deleted via each new token's <code>del</code> field and removed
-          later with cleanup.
+          later with cleanup. This toggle only affects publishing; whether delete events are loaded is set when the
+          wallet starts.
         </p>
         {staleCount > 0 ? (
           <div className="text-base-content/60">
@@ -830,6 +831,7 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
         <table className="table">
           <thead>
             <tr>
+              <th>ID</th>
               <th>Amount</th>
               <th>Mint</th>
               {relays.map((url) => (
@@ -849,6 +851,9 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
                   : null;
               return (
                 <tr key={token.id}>
+                  <td className="font-mono text-xs" title={token.id}>
+                    {token.id.slice(0, 8)}
+                  </td>
                   <td className="font-medium whitespace-nowrap">{token.unlocked ? `${token.amount} sats` : "🔒"}</td>
                   <td className="font-mono">{token.unlocked && token.mint ? new URL(token.mint).hostname : "—"}</td>
                   {relays.map((url) => (
@@ -871,6 +876,7 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
             <tfoot>
               <tr>
                 <th>Coverage</th>
+                <th />
                 <th />
                 {relays.map((url) => {
                   const count = coverage?.perRelay[url] ?? 0;
@@ -1268,25 +1274,48 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
 // ---- Session wiring: build a NutWallet once signed in ----
 function WalletSession({ signer, pubkey }: { signer: ISigner; pubkey: string }) {
   const [wallet, setWallet] = useState<NutWallet | null>(null);
+  // Chosen before the wallet starts; defaults to ignoring all kind-5 delete events
+  const [useDeleteEvents, setUseDeleteEvents] = useState(false);
 
+  // Tear down the wallet when it is replaced or the session unmounts
   useEffect(() => {
-    const instance = new NutWallet({ pubkey, signer, pool, eventStore, couch, autoUnlock: true });
-    instance.start();
-    setWallet(instance);
-    // Restore a persisted NWC service (keeps connections alive across reloads)
-    restoreNwcService(instance);
+    if (!wallet) return;
     return () => {
-      instance.stop();
+      wallet.stop();
       // Stop the running service but keep its persisted config for the next load
       service$.value?.stop();
       service$.next(null);
     };
-  }, [signer, pubkey]);
+  }, [wallet]);
+
+  const start = () => {
+    const instance = new NutWallet({ pubkey, signer, pool, eventStore, couch, autoUnlock: true, useDeleteEvents });
+    instance.start();
+    // Restore a persisted NWC service (keeps connections alive across reloads)
+    restoreNwcService(instance);
+    setWallet(instance);
+  };
 
   if (!wallet)
     return (
-      <div className="flex justify-center py-24">
-        <span className="loading loading-spinner loading-lg" />
+      <div className="max-w-md mx-auto py-24 space-y-4">
+        <h2 className="text-lg font-semibold">Start wallet</h2>
+        <label className="label cursor-pointer justify-start gap-2">
+          <input
+            type="checkbox"
+            className="toggle toggle-sm"
+            checked={useDeleteEvents}
+            onChange={(e) => setUseDeleteEvents(e.target.checked)}
+          />
+          <span className="label-text">Use delete events</span>
+        </label>
+        <p className="text-xs text-base-content/60">
+          When off, the wallet completely ignores NIP-09 delete events — it never loads, subscribes to or publishes kind
+          5 deletes for its wallet, token and history events.
+        </p>
+        <button className="btn btn-primary" onClick={start}>
+          Start wallet
+        </button>
       </div>
     );
 

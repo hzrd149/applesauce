@@ -2,4 +2,4 @@
 "applesauce-wallet": minor
 ---
 
-Add a `deleteOldTokens` option to the token actions and `NutWallet` (with `setDeleteOldTokens`) to skip publishing NIP-09 delete events for spent token events and rely on each new token event's `del` field instead
+Add a `useDeleteEvents` option to `NutWallet` (with `setUseDeleteEvents`) and a `createDeleteEvents` option to the token actions to control whether the wallet loads, subscribes to and publishes NIP-09 delete events, letting a wallet completely ignore all kind 5 delete events with a single flag

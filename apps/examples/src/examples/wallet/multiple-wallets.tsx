@@ -228,7 +228,16 @@ async function createNutWalletBackend(
   signer: ISigner,
   options?: { createIfMissing?: boolean },
 ): Promise<WalletBackend> {
-  const wallet = new NutWallet({ pubkey: stored.pubkey, signer, pool, eventStore, couch, autoUnlock: true });
+  const wallet = new NutWallet({
+    pubkey: stored.pubkey,
+    signer,
+    pool,
+    eventStore,
+    couch,
+    autoUnlock: true,
+    // Ignore all kind-5 delete events for this example wallet
+    useDeleteEvents: false,
+  });
   await wallet.start();
 
   // When adding a new wallet, search hard for an existing one and only create a wallet if none is found.

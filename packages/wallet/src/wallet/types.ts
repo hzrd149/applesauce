@@ -28,12 +28,15 @@ export interface NutWalletOptions {
   /** Automatically unlock the wallet, tokens and history as they load */
   autoUnlock?: boolean;
   /**
-   * Whether spend/rollover/consolidate operations publish a NIP-09 delete event for the old token
-   * events (default true). When false, the wallet relies on each new token event's `del` field to
-   * reconcile its balance and leaves the spent token events on relays until {@link NutWallet.cleanupDeletedTokens}
-   * removes them in a single batched delete. Can be toggled at runtime with {@link NutWallet.setDeleteOldTokens}.
+   * Whether to load, subscribe to and publish NIP-09 delete events for the wallet's events (default false).
+   * When false the wallet completely ignores kind-5 delete events: the loader never fetches or subscribes to
+   * them (so the event store never applies a delete to a wallet, token or history event), and
+   * spend/rollover/consolidate operations rely on each new token event's `del` field to reconcile the balance
+   * instead of publishing a delete. {@link NutWallet.cleanupDeletedTokens} still publishes a delete event when
+   * called explicitly. The publishing half can be toggled at runtime with {@link NutWallet.setUseDeleteEvents};
+   * the loading half is fixed when the wallet starts and only changes on the next {@link NutWallet.resync}.
    */
-  deleteOldTokens?: boolean;
+  useDeleteEvents?: boolean;
   /** A custom debug logger (defaults to the "applesauce:nut-wallet" namespace) */
   logger?: Debugger;
 }
