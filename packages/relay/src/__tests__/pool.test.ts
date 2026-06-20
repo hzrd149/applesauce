@@ -126,6 +126,32 @@ describe("remove$", () => {
   });
 });
 
+describe("close", () => {
+  it("should close and remove every relay in the pool", () => {
+    const relay1 = pool.relay("wss://relay1.example.com");
+    const relay2 = pool.relay("wss://relay2.example.com");
+    const close1 = vi.spyOn(relay1, "close");
+    const close2 = vi.spyOn(relay2, "close");
+
+    pool.close();
+
+    expect(close1).toHaveBeenCalled();
+    expect(close2).toHaveBeenCalled();
+    expect(pool.relays.size).toBe(0);
+  });
+
+  it("should emit remove$ for every closed relay", () => {
+    const removed: Relay[] = [];
+    pool.remove$.subscribe((r) => removed.push(r));
+
+    pool.relay("wss://relay1.example.com");
+    pool.relay("wss://relay2.example.com");
+    pool.close();
+
+    expect(removed).toHaveLength(2);
+  });
+});
+
 describe("req", () => {
   it("should send subscription to multiple relays", async () => {
     const urls = ["wss://relay1.example.com", "wss://relay2.example.com"];

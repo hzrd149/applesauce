@@ -1246,6 +1246,31 @@ describe("close", () => {
     await server.closed;
     expect(relay.connected).toBe(false);
   });
+
+  it("should cancel a pending reconnect timer so it cannot fire after close", async () => {
+    vi.useFakeTimers();
+    // Long backoff like the real exponential reconnect timer (capped at 5 minutes)
+    relay.reconnectTimer = () => timer(300_000);
+
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }), { expectErrors: true });
+
+    // Simulate an unclean disconnect -> arms the reconnect timer and flips ready false
+    server.error({ reason: "relay crashed", code: 1006, wasClean: false });
+    await Promise.resolve();
+    expect(relay.ready).toBe(false);
+
+    // Full shutdown: unsubscribe consumers and close the relay
+    sub.unsubscribe();
+    relay.close();
+    await Promise.resolve();
+
+    // The reconnect timer must have been cancelled: advancing past the backoff
+    // should NOT flip the relay back to ready (a surviving timer would keep the
+    // event loop alive and reconnect after the consumer asked to shut down).
+    vi.advanceTimersByTime(300_000);
+    await Promise.resolve();
+    expect(relay.ready).toBe(false);
+  });
 });
 
 describe("negentropy", () => {

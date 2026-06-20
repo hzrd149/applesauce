@@ -225,7 +225,10 @@ export function TimelineModel(
         const existing = seen.get(uid);
 
         // Ignore duplicate regular events and older replaceable versions.
-        if (existing && (!isReplaceable(event.kind) || (!includeOldVersion && event.created_at < existing.created_at))) {
+        if (
+          existing &&
+          (!isReplaceable(event.kind) || (!includeOldVersion && event.created_at < existing.created_at))
+        ) {
           return [...timeline];
         }
 

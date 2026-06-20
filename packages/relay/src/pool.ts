@@ -142,6 +142,11 @@ export class RelayPool {
     this.remove$.next(instance);
   }
 
+  /** Closes and removes every relay in the pool, tearing down all of their connections and timers */
+  close(): void {
+    for (const relay of [...this.relays.values()]) this.remove(relay, true);
+  }
+
   /** Make a REQ to multiple relays that does not deduplicate events */
   req(relays: PoolRelayInput, filters: FilterInput, opts?: GroupReqOptions): Observable<GroupReqMessage> {
     return this.group(relays).req(filters, opts);

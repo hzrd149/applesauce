@@ -90,7 +90,6 @@ describe("WalletTokensModel", () => {
     const tokens = await firstValueFrom(events.model(WalletTokensModel, signer.pubkey));
     expect(tokens.map((t) => t.id)).toEqual([current.id]);
   });
-
 });
 
 describe("WalletDeletedTokenIdsModel", () => {

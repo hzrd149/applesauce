@@ -38,6 +38,7 @@ import {
   shareReplay,
   startWith,
   Subject,
+  Subscription,
   switchMap,
   take,
   takeUntil,
@@ -332,6 +333,12 @@ export class Relay {
   /** An internal observable that is responsible for watching all messages and updating state, subscribing to it will trigger a connection to the relay */
   protected watchTower: Observable<never>;
 
+  /** Long-lived state-watcher subscriptions created in the constructor (open/close/auth) */
+  protected internalSubscriptions = new Subscription();
+
+  /** The currently armed reconnect timer subscription, if any */
+  protected reconnectSubscription: Subscription | null = null;
+
   constructor(
     public url: string,
     opts?: RelayOptions,
@@ -364,31 +371,35 @@ export class Relay {
     this.reconnectTimer = Relay.createReconnectTimer(url);
 
     // Subscribe to open and close events
-    this.open$.subscribe(() => {
-      this.log("Connected");
-      this.connected$.next(true);
-      this.attempts$.next(0);
-      this.error$.next(null);
+    this.internalSubscriptions.add(
+      this.open$.subscribe(() => {
+        this.log("Connected");
+        this.connected$.next(true);
+        this.attempts$.next(0);
+        this.error$.next(null);
 
-      // Reset to clean state
-      this.resetState();
-    });
-    this.close$.subscribe((event) => {
-      if (this.connected$.value) this.log("Disconnected");
-      else this.log("Failed to connect");
+        // Reset to clean state
+        this.resetState();
+      }),
+    );
+    this.internalSubscriptions.add(
+      this.close$.subscribe((event) => {
+        if (this.connected$.value) this.log("Disconnected");
+        else this.log("Failed to connect");
 
-      // Changed the connected state to false
-      if (this.connected$.value) this.connected$.next(false);
+        // Changed the connected state to false
+        if (this.connected$.value) this.connected$.next(false);
 
-      // Increment the attempts counter
-      this.attempts$.next(this.attempts$.value + 1);
+        // Increment the attempts counter
+        this.attempts$.next(this.attempts$.value + 1);
 
-      // Reset the state
-      this.resetState();
+        // Reset the state
+        this.resetState();
 
-      // Start the reconnect timer if the connection was not closed cleanly
-      if (!event.wasClean) this.startReconnectTimer(event);
-    });
+        // Start the reconnect timer if the connection was not closed cleanly
+        if (!event.wasClean) this.startReconnectTimer(event);
+      }),
+    );
 
     this.socket = webSocket({
       url,
@@ -425,18 +436,22 @@ export class Relay {
     this.authRequiredForPublish$ = this.receivedAuthRequiredForEvent;
 
     // Log when auth is required
-    this.authRequiredForRead$
-      .pipe(
-        filter((r) => r === true),
-        take(1),
-      )
-      .subscribe(() => this.log("Auth required for REQ"));
-    this.authRequiredForPublish$
-      .pipe(
-        filter((r) => r === true),
-        take(1),
-      )
-      .subscribe(() => this.log("Auth required for EVENT"));
+    this.internalSubscriptions.add(
+      this.authRequiredForRead$
+        .pipe(
+          filter((r) => r === true),
+          take(1),
+        )
+        .subscribe(() => this.log("Auth required for REQ")),
+    );
+    this.internalSubscriptions.add(
+      this.authRequiredForPublish$
+        .pipe(
+          filter((r) => r === true),
+          take(1),
+        )
+        .subscribe(() => this.log("Auth required for EVENT")),
+    );
 
     // Create status$ observable by combining state observables
     this.status$ = combineLatest({
@@ -591,9 +606,13 @@ export class Relay {
 
     this.error$.next(error instanceof Error ? error : new Error("Connection error"));
     this._ready$.next(false);
-    this.reconnectTimer(error, this.attempts$.value)
+
+    // Cancel any previously armed reconnect timer before arming a new one
+    this.reconnectSubscription?.unsubscribe();
+    this.reconnectSubscription = this.reconnectTimer(error, this.attempts$.value)
       .pipe(take(1))
       .subscribe(() => {
+        this.reconnectSubscription = null;
         this._ready$.next(true);
       });
   }
@@ -1126,8 +1145,22 @@ export class Relay {
     );
   }
 
-  /** Force close the connection */
+  /**
+   * Force close the connection and tear down all internal subscriptions and timers.
+   * @note This is a terminal operation; the relay should be discarded after calling it.
+   */
   close() {
+    // Cancel any pending reconnect timer so it cannot fire (or hold the event loop open) after close
+    this.reconnectSubscription?.unsubscribe();
+    this.reconnectSubscription = null;
+
+    // Tear down the constructor state watchers (open/close/auth)
+    this.internalSubscriptions.unsubscribe();
+
+    // Mark as disconnected since the close$ watcher has been torn down
+    if (this.connected$.value) this.connected$.next(false);
+
+    // Finally close the underlying socket
     this.socket.unsubscribe();
   }
 

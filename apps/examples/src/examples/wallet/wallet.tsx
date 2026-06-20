@@ -3,11 +3,7 @@
  * @tags nip-60, nip-61, wallet, cashu, tokens, nutzaps
  * @related wallet/mint-discovery, nwc/simple-wallet
  */
-import {
-  getEncodedToken,
-  MintQuoteBolt11Response,
-  normalizeProofAmounts,
-} from "@cashu/cashu-ts";
+import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
 import { castUser, User } from "applesauce-common/casts";
 import { persistEncryptedContent } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
@@ -1319,11 +1315,7 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
             </div>
           )}
 
-          <button
-            className="btn btn-primary w-full"
-            onClick={handleDeposit}
-            disabled={!amount.trim() || !unlocked}
-          >
+          <button className="btn btn-primary w-full" onClick={handleDeposit} disabled={!amount.trim() || !unlocked}>
             Create Invoice
           </button>
 
@@ -1435,11 +1427,7 @@ function WithdrawTab({ wallet }: { wallet: NutWallet }) {
         </div>
       )}
 
-      <button
-        className="btn btn-primary w-full"
-        onClick={handlePay}
-        disabled={paying || !invoice.trim() || !unlocked}
-      >
+      <button className="btn btn-primary w-full" onClick={handlePay} disabled={paying || !invoice.trim() || !unlocked}>
         {paying ? (
           <>
             <span className="loading loading-spinner loading-sm" />
@@ -1560,20 +1548,23 @@ function WalletManager({ user, wallet }: { user: User; wallet: NutWallet }) {
 function WalletView({ user, wallet }: { user: User; wallet: NutWallet }) {
   const status = use$(wallet.status$) ?? WalletStatus.Idle;
 
-  const handleCreateWallet = useCallback(async (mints: string[], receiveNutzaps: boolean) => {
-    // Create wallet with selected mints
-    // Only generate privateKey if user wants to receive nutzaps
-    const privateKey = receiveNutzaps ? generateSecretKey() : undefined;
+  const handleCreateWallet = useCallback(
+    async (mints: string[], receiveNutzaps: boolean) => {
+      // Create wallet with selected mints
+      // Only generate privateKey if user wants to receive nutzaps
+      const privateKey = receiveNutzaps ? generateSecretKey() : undefined;
 
-    // TODO: allow user to configure relays
-    const defaultRelays = [
-      "wss://relay.damus.io",
-      "wss://nos.lol",
-      "wss://relay.snort.social",
-      "wss://relay.primal.net",
-    ];
-    await wallet.createWallet({ mints, privateKey, relays: defaultRelays });
-  }, [wallet]);
+      // TODO: allow user to configure relays
+      const defaultRelays = [
+        "wss://relay.damus.io",
+        "wss://nos.lol",
+        "wss://relay.snort.social",
+        "wss://relay.primal.net",
+      ];
+      await wallet.createWallet({ mints, privateKey, relays: defaultRelays });
+    },
+    [wallet],
+  );
 
   // Show create wallet view first when no wallet is found
   if (status === WalletStatus.Missing) {
