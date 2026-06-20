@@ -83,4 +83,25 @@ describe("User", () => {
       expect(values.map((event) => event.id)).toEqual([kindOneB.id, kindOneA.id]);
     });
   });
+
+  describe("cache", () => {
+    it("should return the same instance for the same pubkey while it is alive", () => {
+      const signer = new FakeUser();
+      const store = new EventStore();
+
+      expect(castUser(signer.pubkey, store)).toBe(castUser(signer.pubkey, store));
+    });
+
+    it("should hold instances weakly so they can be garbage collected", () => {
+      const signer = new FakeUser();
+      const store = new EventStore();
+
+      const user = castUser(signer.pubkey, store);
+      const ref = User.cache.get(signer.pubkey);
+
+      // The cache stores a WeakRef, not a strong reference to the instance
+      expect(ref).toBeInstanceOf(WeakRef);
+      expect(ref!.deref()).toBe(user);
+    });
+  });
 });

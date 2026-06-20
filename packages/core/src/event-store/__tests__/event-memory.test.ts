@@ -102,6 +102,39 @@ describe("EventMemory - Basic Operations", () => {
       const byAuthorAfter = eventMemory.getByFilters({ authors: [user1.pubkey] });
       expect(byAuthorAfter).not.toContainEqual(note);
     });
+
+    it("should not retain empty index entries after the last event for a key is removed", () => {
+      const note = user1.note("Test", { tags: [["t", "hashtag"]] });
+      eventMemory.add(note);
+
+      // Build the tag index by querying it (tag indexes are lazy)
+      expect(eventMemory.getByFilters({ "#t": ["hashtag"] })).toContainEqual(note);
+
+      const mem = eventMemory as any;
+      expect(mem.authors.has(user1.pubkey)).toBe(true);
+      expect(mem.kindAuthor.has(`${note.kind}:${user1.pubkey}`)).toBe(true);
+      expect(mem.tags.has(`t:hashtag`)).toBe(true);
+
+      eventMemory.remove(note);
+
+      // The now-empty index Sets and their keys must be dropped, not left to accumulate
+      expect(mem.authors.has(user1.pubkey)).toBe(false);
+      expect(mem.kinds.has(note.kind)).toBe(false);
+      expect(mem.kindAuthor.has(`${note.kind}:${user1.pubkey}`)).toBe(false);
+      expect(mem.tags.has(`t:hashtag`)).toBe(false);
+    });
+
+    it("should not retain empty replaceable arrays after removal", () => {
+      const profile = user1.profile({ name: "test" });
+      eventMemory.add(profile);
+
+      const mem = eventMemory as any;
+      expect(mem.replaceable.size).toBe(1);
+
+      eventMemory.remove(profile);
+
+      expect(mem.replaceable.size).toBe(0);
+    });
   });
 
   describe("reset", () => {

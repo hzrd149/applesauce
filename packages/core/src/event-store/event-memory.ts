@@ -120,18 +120,35 @@ export class EventMemory implements IEventMemory {
     // only remove events that are known
     if (!this.events.has(id)) return false;
 
-    this.getAuthorsIndex(event.pubkey).delete(event);
-    this.getKindIndex(event.kind).delete(event);
+    // Remove from author index, dropping the index entry when it becomes empty so
+    // the map does not accumulate empty Sets keyed by every pubkey ever seen
+    const authorIndex = this.authors.get(event.pubkey);
+    if (authorIndex) {
+      authorIndex.delete(event);
+      if (authorIndex.size === 0) this.authors.delete(event.pubkey);
+    }
 
-    // Remove from composite kind+author index
+    // Remove from kind index, dropping the index entry when it becomes empty
+    const kindIndex = this.kinds.get(event.kind);
+    if (kindIndex) {
+      kindIndex.delete(event);
+      if (kindIndex.size === 0) this.kinds.delete(event.kind);
+    }
+
+    // Remove from composite kind+author index, dropping the entry when empty
     const kindAuthorKey = `${event.kind}:${event.pubkey}`;
-    if (this.kindAuthor.has(kindAuthorKey)) {
-      this.kindAuthor.get(kindAuthorKey)!.delete(event);
+    const kindAuthorIndex = this.kindAuthor.get(kindAuthorKey);
+    if (kindAuthorIndex) {
+      kindAuthorIndex.delete(event);
+      if (kindAuthorIndex.size === 0) this.kindAuthor.delete(kindAuthorKey);
     }
 
     for (const tag of getIndexableTags(event)) {
       if (this.tags.has(tag)) {
-        this.getTagIndex(tag).delete(event);
+        const tagIndex = this.getTagIndex(tag);
+        tagIndex.delete(event);
+        // Drop the tag index when empty so it does not retain the key forever
+        if (tagIndex.size === 0) this.tags.delete(tag);
       }
     }
 
@@ -145,7 +162,11 @@ export class EventMemory implements IEventMemory {
       const identifier = event.tags.find((t) => t[0] === "d")?.[1];
       const address = createReplaceableAddress(event.kind, event.pubkey, identifier);
       const array = this.replaceable.get(address);
-      if (array) this.removeFromSortedArray(array, event);
+      if (array) {
+        this.removeFromSortedArray(array, event);
+        // Drop the empty array so the map does not retain an address key forever
+        if (array.length === 0) this.replaceable.delete(address);
+      }
     }
 
     // remove any claims this event has

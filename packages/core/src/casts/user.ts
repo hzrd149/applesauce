@@ -18,8 +18,8 @@ export function castUser(user: string | ProfilePointer | NostrEvent, store: Cast
 
 /** A class representing a Nostr user */
 export class User extends PubkeyCast {
-  /** A global cache of pubkey -> {@link User} */
-  static cache = new Map<string, User>();
+  /** A global cache of pubkey -> weak {@link User} reference */
+  static cache = new Map<string, WeakRef<User>>();
 
   /** Returns the NIP-19 npub for this user */
   get npub() {

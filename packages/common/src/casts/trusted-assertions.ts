@@ -43,8 +43,8 @@ import { castUser } from "./user.js";
 
 /** A cast for a service provider pubkey that publishes NIP-85 assertion events */
 export class AssertionProvider extends PubkeyCast {
-  /** @internal Per-class singleton cache used by castPubkey */
-  static cache: Map<string, AssertionProvider> = new Map();
+  /** @internal Per-class weak singleton cache used by castPubkey */
+  static cache: Map<string, WeakRef<AssertionProvider>> = new Map();
 
   /** Relay hints declared for this provider in the trusted provider list */
   get providerRelays(): string[] {

@@ -209,7 +209,17 @@ export function TimelineModel(
       // build a timeline
       scan((timeline, event) => {
         // filter out removed events from timeline
-        if (typeof event === "string") return timeline.filter((e) => e.id !== event);
+        if (typeof event === "string") {
+          // Forget the removed event so the seen map does not grow unbounded on long-lived
+          // feeds. Only forget when the seen entry is the event being removed (not a newer
+          // replaceable version that happens to share a UID).
+          const removed = timeline.find((e) => e.id === event);
+          if (removed) {
+            const uid = getTimelineUID(removed);
+            if (seen.get(uid)?.id === event) seen.delete(uid);
+          }
+          return timeline.filter((e) => e.id !== event);
+        }
 
         // initial timeline array
         if (Array.isArray(event)) {
