@@ -87,3 +87,45 @@ describe("expired$ stream", () => {
     expect(spy.getValues()).not.toContain(event.id);
   });
 });
+
+describe("dispose", () => {
+  it("cancels the pending timer so no timers leak", () => {
+    const event = user.note("test", { tags: [["expiration", String(unixNow() + 1000)]] });
+    expirationManager.track(event);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    expirationManager.dispose();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("completes the expired$ stream", () => {
+    const spy = subscribeSpyTo(expirationManager.expired$);
+
+    expirationManager.dispose();
+
+    expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("works with the `using` keyword via Symbol.dispose", () => {
+    let completed = false;
+    {
+      using manager = new ExpirationManager();
+      manager.expired$.subscribe({ complete: () => (completed = true) });
+      expect(completed).toBe(false);
+    }
+    // Exiting the block calls manager[Symbol.dispose]() which completes expired$
+    expect(completed).toBe(true);
+  });
+
+  it("does not emit after disposal when a tracked expiration would have fired", async () => {
+    const event = user.note("test", { tags: [["expiration", String(unixNow() + 1)]] });
+    const spy = subscribeSpyTo(expirationManager.expired$);
+    expirationManager.track(event);
+
+    expirationManager.dispose();
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(spy.getValues()).not.toContain(event.id);
+  });
+});

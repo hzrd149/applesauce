@@ -31,6 +31,7 @@ import {
   of,
   repeat,
   RepeatConfig,
+  ReplaySubject,
   retry,
   RetryConfig,
   scan,
@@ -339,6 +340,12 @@ export class Relay {
   /** The currently armed reconnect timer subscription, if any */
   protected reconnectSubscription: Subscription | null = null;
 
+  /**
+   * Fires when the relay is closed. Used to cancel the watchTower's keepAlive reset timer.
+   * A ReplaySubject so a reset timer armed after close() is torn down immediately.
+   */
+  protected destroy$ = new ReplaySubject<void>(1);
+
   constructor(
     public url: string,
     opts?: RelayOptions,
@@ -591,8 +598,8 @@ export class Relay {
             this.startReconnectTimer(error instanceof Error ? error : new Error("Connection error"));
             return NEVER;
           }),
-          // Add keep alive timer to the connection
-          share({ resetOnRefCountZero: () => timer(this.keepAlive) }),
+          // Add keep alive timer to the connection, cancelled when the relay is closed
+          share({ resetOnRefCountZero: () => timer(this.keepAlive).pipe(takeUntil(this.destroy$)) }),
         );
       }),
       // There should only be a single watch tower
@@ -1150,6 +1157,10 @@ export class Relay {
    * @note This is a terminal operation; the relay should be discarded after calling it.
    */
   close() {
+    // Cancel the watchTower's keepAlive reset timer armed at refcount-zero (and any future one)
+    this.destroy$.next();
+    this.destroy$.complete();
+
     // Cancel any pending reconnect timer so it cannot fire (or hold the event loop open) after close
     this.reconnectSubscription?.unsubscribe();
     this.reconnectSubscription = null;

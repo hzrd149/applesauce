@@ -1,5 +1,5 @@
 import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
-import { Observable, Subject } from "rxjs";
+import { Observable, Subject, Subscription } from "rxjs";
 import { EventStoreSymbol, getReplaceableIdentifier, isReplaceable, kinds, NostrEvent } from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { Filter } from "../helpers/filter.js";
@@ -97,6 +97,9 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
   ) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
+  /** Internal subscriptions (delete + expiration managers) torn down on dispose */
+  private internalSubscriptions = new Subscription();
+
   constructor(options: AsyncEventStoreOptions) {
     super();
     this.database = options.database;
@@ -112,21 +115,25 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
     this.deletes = options.deleteManager ?? new AsyncDeleteManager();
 
     // Listen to delete notifications and remove matching events
-    this.deletes.deleted$.subscribe((notification) => {
-      this.handleDeleteNotification(notification).catch((error) => {
-        console.error("[applesauce-core] Error handling delete notification:", error);
-      });
-    });
+    this.internalSubscriptions.add(
+      this.deletes.deleted$.subscribe((notification) => {
+        this.handleDeleteNotification(notification).catch((error) => {
+          console.error("[applesauce-core] Error handling delete notification:", error);
+        });
+      }),
+    );
 
     // Create expiration manager
     this.expiration = options.expirationManager ?? new ExpirationManager();
 
     // Listen to expired events and remove them from the store
-    this.expiration.expired$.subscribe((id) => {
-      this.handleExpiredNotification(id).catch((error) => {
-        console.error("[applesauce-core] Error handling expired notification:", error);
-      });
-    });
+    this.internalSubscriptions.add(
+      this.expiration.expired$.subscribe((id) => {
+        this.handleExpiredNotification(id).catch((error) => {
+          console.error("[applesauce-core] Error handling expired notification:", error);
+        });
+      }),
+    );
   }
 
   /** A method to add all events to memory to ensure there is only ever a single instance of an event */
@@ -411,5 +418,36 @@ export class AsyncEventStore extends EventModels implements IAsyncEventStore {
   /** Removes any event that is not being used by a subscription */
   prune(limit?: number): number {
     return this.memory.prune(limit) ?? 0;
+  }
+
+  /**
+   * Tears down the store: disposes the attached event loader, completes the event streams, releases
+   * model keep-warm timers, unsubscribes internal manager listeners, and cancels any pending expiration timer.
+   * @note This is a terminal operation; the store should be discarded after calling it.
+   */
+  override dispose(): void {
+    // Tear down the attached event loader if it supports disposal
+    const loader = this.eventLoader as { [Symbol.dispose]?: () => void } | undefined;
+    if (loader && typeof loader[Symbol.dispose] === "function") loader[Symbol.dispose]!();
+    this.eventLoader = undefined;
+
+    // Complete all models and release their keep-warm timers
+    super.dispose();
+
+    // Tear down internal manager subscriptions
+    this.internalSubscriptions.unsubscribe();
+
+    // Cancel any pending expiration timer
+    this.expiration.dispose?.();
+
+    // Complete the event streams
+    this.insert$.complete();
+    this.update$.complete();
+    this.remove$.complete();
+  }
+
+  /** Allows the store to be used with the `using` keyword */
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 }

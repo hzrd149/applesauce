@@ -207,6 +207,8 @@ export interface IExpirationManager {
   forget(eventId: string): void;
   /** Check if an event is expired */
   check(event: NostrEvent): boolean;
+  /** Tears down the manager and cancels any pending timers */
+  dispose?(): void;
 }
 
 /** The base interface for a database of events */

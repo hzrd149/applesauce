@@ -76,6 +76,23 @@ export class ExpirationManager implements IExpirationManager {
   }
 
   /**
+   * Tears down the manager: cancels any pending timer and completes the expired$ stream
+   * @note This is a terminal operation; the manager should be discarded after calling it.
+   */
+  dispose(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.nextCheck = null;
+    this.expirations.clear();
+    this.expiredSubject.complete();
+  }
+
+  /** Allows the manager to be used with the `using` keyword */
+  [Symbol.dispose](): void {
+    this.dispose();
+  }
+
+  /**
    * Remove expired events from the store and emit them
    */
   private emitNotifications(): void {

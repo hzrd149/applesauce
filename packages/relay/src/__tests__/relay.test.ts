@@ -1271,6 +1271,47 @@ describe("close", () => {
     await Promise.resolve();
     expect(relay.ready).toBe(false);
   });
+
+  it("should cancel the keepAlive reset timer armed at refcount-zero so it cannot hold the event loop open", async () => {
+    vi.useFakeTimers();
+    relay.keepAlive = 30_000; // override the beforeEach default of 0
+
+    // Track pending timers by their delay so we can isolate the keepAlive timer
+    // from unrelated mock-socket timers (which use small delays). RxJS's `timer()`
+    // schedules through setInterval, so we wrap that (not setTimeout).
+    const faked = globalThis.setInterval;
+    const fakedClear = globalThis.clearInterval;
+    const pending = new Map<any, number>();
+    // @ts-expect-error wrap the faked interval to record delays
+    globalThis.setInterval = (fn: any, ms?: any, ...args: any[]) => {
+      const id = faked(fn, ms, ...args);
+      pending.set(id, ms);
+      return id;
+    };
+    // @ts-expect-error wrap the faked clear to drop tracked timers
+    globalThis.clearInterval = (id: any) => {
+      pending.delete(id);
+      return fakedClear(id);
+    };
+
+    try {
+      const sub = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      // refcount -> 0 arms timer(keepAlive) inside the watchTower's share()
+      sub.unsubscribe();
+      const armed = [...pending.values()].filter((ms) => ms === 30_000).length;
+      expect(armed).toBeGreaterThan(0); // sanity: the keepAlive timer was actually armed
+
+      // close() must cancel it so the process can exit without waiting out keepAlive
+      relay.close();
+      const surviving = [...pending.values()].filter((ms) => ms === 30_000).length;
+      expect(surviving).toBe(0);
+    } finally {
+      globalThis.setInterval = faked;
+      globalThis.clearInterval = fakedClear;
+    }
+  });
 });
 
 describe("negentropy", () => {
@@ -1433,3 +1474,4 @@ describe("sync", () => {
     expect(spy.receivedError()).toBe(true);
   });
 });
+

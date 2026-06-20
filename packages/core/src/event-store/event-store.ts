@@ -470,6 +470,9 @@ export class EventStore extends EventModels implements IEventStore {
     // Tear down internal manager subscriptions
     this.internalSubscriptions.unsubscribe();
 
+    // Cancel any pending expiration timer
+    this.expiration.dispose?.();
+
     // Complete the event streams
     this.insert$.complete();
     this.update$.complete();
