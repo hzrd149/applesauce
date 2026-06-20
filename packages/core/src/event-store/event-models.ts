@@ -1,5 +1,5 @@
 import hash_sum from "hash-sum";
-import { finalize, Observable, ReplaySubject, share, timer } from "rxjs";
+import { finalize, merge, Observable, ReplaySubject, share, takeUntil, timer } from "rxjs";
 import { NostrEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
 import {
@@ -46,6 +46,12 @@ export class EventModels<
   /** How long a model should be kept "warm" while nothing is subscribed to it */
   modelKeepWarm = 60_000;
 
+  /**
+   * Emits when {@link EventModels.dispose} is called to tear down all models.
+   * A {@link ReplaySubject} so reset notifiers subscribed after disposal fire immediately.
+   */
+  protected destroy$ = new ReplaySubject<void>(1);
+
   /** Get or create a model on the event store */
   model<T extends unknown, Args extends Array<any>>(
     constructor: ModelConstructor<T, Args, TStore>,
@@ -73,9 +79,12 @@ export class EventModels<
         // only subscribe to models once for all subscriptions
         share({
           connector: () => new ReplaySubject(1),
-          resetOnComplete: () => timer(this.modelKeepWarm),
-          resetOnRefCountZero: () => timer(this.modelKeepWarm),
+          // Reset after the keep-warm window OR immediately when the store is disposed
+          resetOnComplete: () => merge(timer(this.modelKeepWarm), this.destroy$),
+          resetOnRefCountZero: () => merge(timer(this.modelKeepWarm), this.destroy$),
         }),
+        // Complete any active subscriptions when the store is disposed
+        takeUntil(this.destroy$),
       );
 
       // Add the model to the cache
@@ -146,5 +155,14 @@ export class EventModels<
   mailboxes(user: string | ProfilePointer) {
     if (typeof user === "string") user = { pubkey: user };
     return this.model(MailboxesModel, user);
+  }
+
+  /**
+   * Tears down all models, completing active subscriptions and releasing their keep-warm timers immediately.
+   * @note This is a terminal operation; the instance should be discarded after calling it.
+   */
+  dispose(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 }

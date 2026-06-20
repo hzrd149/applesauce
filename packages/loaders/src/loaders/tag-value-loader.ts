@@ -6,7 +6,7 @@ import { filterDuplicateEvents } from "applesauce-core/observable";
 import { bufferTime, EMPTY, identity, merge, Observable } from "rxjs";
 import { unique } from "../helpers/array.js";
 import { makeCacheRequest } from "../helpers/cache.js";
-import { batchLoader, unwrap } from "../helpers/loaders.js";
+import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
 
@@ -36,9 +36,11 @@ export type TagValueLoaderOptions = {
   extraRelays?: string[] | Observable<string[]>;
   /** An event store used to deduplicate events. Set to null to disable deduplication */
   eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
+  /** An {@link AbortSignal} that tears down the loader when aborted */
+  signal?: AbortSignal;
 };
 
-export type TagValueLoader = (pointer: TagValuePointer) => Observable<NostrEvent>;
+export type TagValueLoader = Loader<TagValuePointer, NostrEvent>;
 
 /** Creates a loader that gets tag values from the cache */
 export function cacheTagValueLoader(
@@ -124,5 +126,7 @@ export function createTagValueLoader(
     (pointer, event) => event.tags.some((tag) => tag[0] === tagName && tag[1] === pointer.value),
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
+    // Forward the abort signal for explicit teardown
+    { signal: opts?.signal },
   );
 }

@@ -495,6 +495,21 @@ const eventStore = new EventStore();
 eventStore.modelKeepWarm = 30000; // Keep models warm for 30 seconds
 ```
 
+## Disposing the Store
+
+Call `dispose()` for a clean shutdown — it completes the `insert$`/`update$`/`remove$` streams, releases all model keep-warm timers immediately, and disposes the attached event loader. This is a terminal operation; discard the store afterwards.
+
+```ts
+eventStore.dispose();
+```
+
+The store also supports the `using` keyword for automatic disposal:
+
+```ts
+using eventStore = new EventStore();
+// disposed automatically when the scope exits
+```
+
 ## Event Management Methods
 
 The event store provides several methods to directly manage events.

@@ -210,3 +210,24 @@ The Unified Event Loader automatically detects the pointer type and routes to th
 - **AddressPointer** (has `kind` and `pubkey` properties) → uses `createAddressLoader` internally
 
 This means you get all the benefits of both loaders (batching, caching, relay hints, etc.) in a single interface.
+
+## Shutdown
+
+Loaders clean up after themselves: the internal batching timer only runs while an observable is subscribed, so an idle loader holds nothing open. For a deterministic shutdown (e.g. exiting a Node/Bun process) tear things down in order — drop in-flight loader requests, dispose the store, then close the pool:
+
+```ts
+const loader = createEventLoaderForStore(eventStore, pool);
+
+// ...later, on shutdown
+loader[Symbol.dispose](); // or loader.stop()
+eventStore.dispose(); // completes streams + releases model timers + disposes the loader
+pool.close();
+```
+
+`eventStore.dispose()` already disposes the loader attached via `createEventLoaderForStore`, so calling both is optional. You can also pass an `AbortSignal` to tear down the loader when the signal fires:
+
+```ts
+const controller = new AbortController();
+createEventLoaderForStore(eventStore, pool, { signal: controller.signal });
+controller.abort(); // stops the loader
+```

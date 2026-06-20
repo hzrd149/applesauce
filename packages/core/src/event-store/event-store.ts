@@ -1,5 +1,5 @@
 import { verifyEvent as coreVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
-import { Observable, Subject } from "rxjs";
+import { Observable, Subject, Subscription } from "rxjs";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import {
   EventStoreSymbol,
@@ -103,6 +103,9 @@ export class EventStore extends EventModels implements IEventStore {
     pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
   ) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
 
+  /** Internal subscriptions (delete + expiration managers) torn down on dispose */
+  private internalSubscriptions = new Subscription();
+
   constructor(options?: EventStoreOptions) {
     super();
     if (options?.database) {
@@ -123,13 +126,13 @@ export class EventStore extends EventModels implements IEventStore {
     this.deletes = options?.deleteManager ?? new DeleteManager();
 
     // Listen to delete notifications and remove matching events
-    this.deletes.deleted$.subscribe(this.handleDeleteNotification.bind(this));
+    this.internalSubscriptions.add(this.deletes.deleted$.subscribe(this.handleDeleteNotification.bind(this)));
 
     // Create expiration manager
     this.expiration = options?.expirationManager ?? new ExpirationManager();
 
     // Listen to expired events and remove them from the store
-    this.expiration.expired$.subscribe(this.handleExpiredNotification.bind(this));
+    this.internalSubscriptions.add(this.expiration.expired$.subscribe(this.handleExpiredNotification.bind(this)));
   }
 
   /** A method to add all events to memory to ensure there is only ever a single instance of an event */
@@ -448,5 +451,33 @@ export class EventStore extends EventModels implements IEventStore {
   /** Removes any event that is not being used by a subscription */
   prune(limit?: number): number {
     return this.memory.prune(limit) ?? 0;
+  }
+
+  /**
+   * Tears down the store: disposes the attached event loader, completes the event streams, releases
+   * model keep-warm timers, and unsubscribes internal manager listeners.
+   * @note This is a terminal operation; the store should be discarded after calling it.
+   */
+  override dispose(): void {
+    // Tear down the attached event loader if it supports disposal
+    const loader = this.eventLoader as { [Symbol.dispose]?: () => void } | undefined;
+    if (loader && typeof loader[Symbol.dispose] === "function") loader[Symbol.dispose]!();
+    this.eventLoader = undefined;
+
+    // Complete all models and release their keep-warm timers
+    super.dispose();
+
+    // Tear down internal manager subscriptions
+    this.internalSubscriptions.unsubscribe();
+
+    // Complete the event streams
+    this.insert$.complete();
+    this.update$.complete();
+    this.remove$.complete();
+  }
+
+  /** Allows the store to be used with the `using` keyword */
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 }

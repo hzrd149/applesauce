@@ -5,7 +5,7 @@ import { filterDuplicateEvents } from "applesauce-core/observable";
 import { bufferTime, catchError, EMPTY, identity, merge, Observable, tap } from "rxjs";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
-import { batchLoader, unwrap } from "../helpers/loaders.js";
+import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
 import { groupByRelay } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
@@ -15,7 +15,7 @@ export type LoadableEventPointer = EventPointer & {
   cache?: boolean;
 };
 
-export type EventPointerLoader = (pointer: LoadableEventPointer) => Observable<NostrEvent>;
+export type EventPointerLoader = Loader<LoadableEventPointer, NostrEvent>;
 export type createEventLoader = (pointers: LoadableEventPointer[]) => Observable<NostrEvent>;
 
 /** Creates a loader that gets a single event from the cache */
@@ -109,6 +109,8 @@ export type EventPointerLoaderOptions = Partial<{
   followRelayHints: boolean;
   /** An array of relays to always fetch from */
   extraRelays: string[] | Observable<string[]>;
+  /** An {@link AbortSignal} that tears down the loader when aborted */
+  signal: AbortSignal;
 }>;
 
 /** Create a pre-built address pointer loader that supports batching, caching, and lookup relays */
@@ -132,5 +134,7 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
     (pointer, event) => event.id === pointer.id,
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
+    // Forward the abort signal for explicit teardown
+    { signal: opts?.signal },
   );
 }

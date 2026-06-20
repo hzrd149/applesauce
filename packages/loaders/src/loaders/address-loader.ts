@@ -11,7 +11,7 @@ import { bufferTime, catchError, EMPTY, identity, Observable } from "rxjs";
 
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";
 import { makeCacheRequest } from "../helpers/cache.js";
-import { batchLoader, unwrap } from "../helpers/loaders.js";
+import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
@@ -29,7 +29,7 @@ export type LoadableAddressPointer = {
 
 /** A method that takes address pointers and returns an observable of events */
 export type AddressPointersLoader = (pointers: LoadableAddressPointer[]) => Observable<NostrEvent>;
-export type AddressPointerLoader = (pointer: LoadableAddressPointer) => Observable<NostrEvent>;
+export type AddressPointerLoader = Loader<LoadableAddressPointer, NostrEvent>;
 
 /**
  * Loads address pointers from an async cache
@@ -154,6 +154,8 @@ export type AddressLoaderOptions = Partial<{
   extraRelays: string[] | Observable<string[]>;
   /** Fallback lookup relays to check when event cant be found */
   lookupRelays: string[] | Observable<string[]>;
+  /** An {@link AbortSignal} that tears down the loader when aborted */
+  signal: AbortSignal;
 }>;
 
 /** Create a pre-built address pointer loader that supports batching, caching, and lookup relays */
@@ -181,5 +183,7 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
       (pointer.identifier !== undefined ? getReplaceableIdentifier(event) === pointer.identifier : true),
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
+    // Forward the abort signal for explicit teardown
+    { signal: opts?.signal },
   );
 }
