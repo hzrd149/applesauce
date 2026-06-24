@@ -40,3 +40,4 @@ export * from "./picture-post.js";
 export * from "./badge.js";
 export * from "./badge-award.js";
 export * from "./profile-badges.js";
+export * from "./nostr-web-token.js";

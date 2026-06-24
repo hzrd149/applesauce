@@ -27,6 +27,7 @@ describe("exports", () => {
         "List",
         "LiveStream",
         "MediaAttachment",
+        "NostrWebToken",
         "Note",
         "PicturePost",
         "Poll",

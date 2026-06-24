@@ -21,6 +21,7 @@ export * as List from "./list.js";
 export * as LiveStream from "./live-stream.js";
 export * as MediaAttachment from "./media-attachment.js";
 export * as Note from "./note.js";
+export * as NostrWebToken from "./nostr-web-token.js";
 export * as PicturePost from "./picture-post.js";
 export * as Poll from "./poll.js";
 export * as PollResponse from "./poll-response.js";
