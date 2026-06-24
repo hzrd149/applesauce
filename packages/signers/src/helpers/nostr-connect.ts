@@ -83,7 +83,10 @@ export type NostrConnectErrorResponse = {
 export type BunkerURI = {
   remote: string;
   relays: string[];
+  /** @deprecated Use bunkerSecret instead */
   secret?: string;
+  /** The secret used to authorize the connection to the bunker (the `secret` in a bunker:// URI) */
+  bunkerSecret?: string;
 };
 
 /** An nbunksec-encoded NIP-46 signer session */
@@ -102,16 +105,17 @@ export function parseBunkerURI(uri: string): BunkerURI {
 
   const relays = url.searchParams.getAll("relay");
   if (relays.length === 0) throw new Error("Invalid bunker URI: missing relays");
-  const secret = url.searchParams.get("secret") ?? undefined;
+  const bunkerSecret = url.searchParams.get("secret") ?? undefined;
 
-  return { remote, relays, secret };
+  return { remote, relays, secret: bunkerSecret, bunkerSecret };
 }
 
 /** Creates a bunker:// URI from a {@link BunkerURI} object */
 export function createBunkerURI(data: BunkerURI): string {
   const url = new URL(`bunker://${data.remote}`);
   data.relays.forEach((relay) => url.searchParams.append("relay", relay));
-  if (data.secret) url.searchParams.set("secret", data.secret);
+  const bunkerSecret = data.bunkerSecret ?? data.secret;
+  if (bunkerSecret) url.searchParams.set("secret", bunkerSecret);
   return url.toString();
 }
 
@@ -128,6 +132,7 @@ export function parseNbunksec(encoded: string): Nbunksec {
     clientKey: info.local_key,
     relays: info.relays,
     secret: info.secret,
+    bunkerSecret: info.secret,
   };
 }
 
@@ -141,7 +146,7 @@ export function createNbunksec(data: Nbunksec): string {
     pubkey: data.remote,
     local_key: data.clientKey,
     relays: data.relays,
-    secret: data.secret,
+    secret: data.bunkerSecret ?? data.secret,
   });
 }
 
@@ -161,8 +166,10 @@ export type NostrConnectAppMetadata = {
 export type NostrConnectURI = {
   /** The pubkey of the client */
   client: string;
-  /** The secret used by the signer to connect to the client */
-  secret: string;
+  /** @deprecated Use connectSecret instead */
+  secret?: string;
+  /** The secret used by the signer to connect to the client (the `secret` in a nostrconnect:// URI) */
+  connectSecret?: string;
   /** The relays used to communicate with the remote signer */
   relays: string[];
   /** The metadata of the client */
@@ -175,9 +182,9 @@ export function parseNostrConnectURI(uri: string): NostrConnectURI {
   const client = url.host || url.pathname.replace("//", "");
   if (!isHexKey(client)) throw new Error("Invalid nostrconnect URI: client is not a valid hex key");
 
-  const secret = url.searchParams.get("secret");
+  const connectSecret = url.searchParams.get("secret");
   const relays = url.searchParams.getAll("relay");
-  if (!secret) throw new Error("Invalid nostrconnect URI: missing secret");
+  if (!connectSecret) throw new Error("Invalid nostrconnect URI: missing secret");
   if (relays.length === 0) throw new Error("Invalid nostrconnect URI: missing relays");
 
   const metadata: NostrConnectAppMetadata = {
@@ -188,15 +195,17 @@ export function parseNostrConnectURI(uri: string): NostrConnectURI {
   };
 
   /** Omit metadata if all values are undefined */
-  if (Object.values(metadata).every((v) => v === undefined)) return { client, secret, relays };
-  else return { client, secret, relays, metadata };
+  if (Object.values(metadata).every((v) => v === undefined))
+    return { client, secret: connectSecret, connectSecret, relays };
+  else return { client, secret: connectSecret, connectSecret, relays, metadata };
 }
 
 /** Create a nostrconnect:// URI from a {@link NostrConnectURI} object */
 export function createNostrConnectURI(data: NostrConnectURI): string {
   const params = new URLSearchParams();
 
-  params.set("secret", data.secret);
+  const connectSecret = data.connectSecret ?? data.secret;
+  if (connectSecret) params.set("secret", connectSecret);
   if (data.metadata?.name) params.set("name", data.metadata.name);
   if (data.metadata?.url) params.set("url", String(data.metadata.url));
   if (data.metadata?.image) params.set("image", data.metadata.image);

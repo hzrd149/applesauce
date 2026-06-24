@@ -17,7 +17,7 @@ function createPoolBackedSigner(account: NostrConnectAccount, pool: RelayPool) {
     relays: signer.relays,
     pubkey: account.pubkey,
     remote: signer.remote,
-    secret: signer.secret,
+    bunkerSecret: signer.bunkerSecret,
     signer: signer.signer,
   });
 }

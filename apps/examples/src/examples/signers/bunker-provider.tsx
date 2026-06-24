@@ -360,7 +360,7 @@ export default function BunkerProvider() {
         upstream: signer,
         // Use a different signer for the provider identity
         signer: new PrivateKeySigner(),
-        secret: nanoid(16), // Generate random secret
+        bunkerSecret: nanoid(16), // Generate random secret clients must present to connect
         onClientConnect: (client) => {
           setShowBunkerURI(false);
           addLog("connect", "Client connected", { client });

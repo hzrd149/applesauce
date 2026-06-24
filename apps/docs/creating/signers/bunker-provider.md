@@ -142,7 +142,7 @@ const provider = new NostrConnectProvider({
   relays: ["wss://relay.signer.com"],
   upstream: user, // Signer for actual operations
   signer: signer, // Provider's identity (optional, will create a new PrivateKeySigner if not provided)
-  secret: "my-secret-key", // Recommended secret for client authentication (optional)
+  bunkerSecret: "my-secret-key", // Recommended secret for client authentication (optional)
   onClientConnect: (client) => {
     console.log("Client connected:", client);
   },

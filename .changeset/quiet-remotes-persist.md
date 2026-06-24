@@ -2,4 +2,4 @@
 "applesauce-accounts": patch
 ---
 
-Persist NIP-46 remote signer connection secrets in serialized accounts.
+Persist the NIP-46 `bunkerSecret` for remote signer sessions in serialized accounts.

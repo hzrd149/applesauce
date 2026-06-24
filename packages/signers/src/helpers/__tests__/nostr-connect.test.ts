@@ -1,7 +1,21 @@
 import { bytesToHex } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { describe, expect, it } from "vitest";
-import { createNbunksec, parseNbunksec } from "../nostr-connect.js";
+import { createBunkerURI, createNbunksec, parseBunkerURI, parseNbunksec } from "../nostr-connect.js";
+
+describe("bunker uri", () => {
+  it("should keep secret as a deprecated alias for bunkerSecret", () => {
+    const remote = getPublicKey(generateSecretKey());
+    const uri = createBunkerURI({ remote, relays: ["wss://relay.example.com"], secret: "test-secret" });
+
+    expect(parseBunkerURI(uri)).toEqual({
+      remote,
+      relays: ["wss://relay.example.com"],
+      secret: "test-secret",
+      bunkerSecret: "test-secret",
+    });
+  });
+});
 
 describe("nbunksec", () => {
   it("should encode and decode a signer session", () => {
@@ -12,7 +26,7 @@ describe("nbunksec", () => {
       remote: getPublicKey(remoteKey),
       clientKey: bytesToHex(clientKey),
       relays: ["wss://relay.example.com"],
-      secret: "test-secret",
+      bunkerSecret: "test-secret",
     });
 
     expect(encoded).toMatch(/^nbunksec1/);
@@ -21,6 +35,7 @@ describe("nbunksec", () => {
       clientKey: bytesToHex(clientKey),
       relays: ["wss://relay.example.com"],
       secret: "test-secret",
+      bunkerSecret: "test-secret",
     });
   });
 

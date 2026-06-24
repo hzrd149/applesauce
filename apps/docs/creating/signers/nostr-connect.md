@@ -87,7 +87,7 @@ const signer = new NostrConnectSigner({
 });
 
 // start the connection process
-await signer.connect(/* optional secret */, /* optional requested permissions */);
+await signer.connect(/* optional bunkerSecret */, /* optional requested permissions */);
 console.log("Connected!");
 
 // get the users pubkey
@@ -154,7 +154,7 @@ const signer = await NostrConnectSigner.fromBunkerURI(
 You can also parse a bunker URI manually using `NostrConnectSigner.parseBunkerURI`:
 
 ```js
-const { remote, relays, secret } = NostrConnectSigner.parseBunkerURI(uri);
+const { remote, relays, bunkerSecret } = NostrConnectSigner.parseBunkerURI(uri);
 ```
 
 ## Handling nbunksec sessions
@@ -191,7 +191,7 @@ const permissions = NostrConnectSigner.buildSigningPermissions([0, 1, 3, 10002])
 
 These permissions can be passed when:
 
-- Connecting to a remote signer via `connect(secret, permissions)`
+- Connecting to a remote signer via `connect(bunkerSecret, permissions)`
 - Creating a nostr connect URI via `getNostrConnectURI({ permissions })`
 - Creating a signer from a bunker URI via `fromBunkerURI(uri, { permissions })`
 

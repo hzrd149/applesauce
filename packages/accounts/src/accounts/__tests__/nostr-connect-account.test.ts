@@ -23,7 +23,7 @@ describe("NostrConnectAccount", () => {
     const signer = new NostrConnectSigner({
       relays: ["wss://relay.example.com"],
       remote,
-      connectSecret: "test-secret",
+      bunkerSecret: "test-secret",
       signer: new PrivateKeySigner(clientKey),
     });
     const account = new NostrConnectAccount("user-pubkey", signer);
@@ -37,7 +37,7 @@ describe("NostrConnectAccount", () => {
         clientKey: bytesToHex(clientKey),
         remote,
         relays: ["wss://relay.example.com"],
-        secret: "test-secret",
+        bunkerSecret: "test-secret",
       },
       metadata: undefined,
     });
@@ -54,7 +54,7 @@ describe("NostrConnectAccount", () => {
         clientKey: bytesToHex(clientKey),
         remote,
         relays: ["wss://relay.example.com"],
-        secret: "test-secret",
+        bunkerSecret: "test-secret",
       },
     };
 
@@ -64,6 +64,6 @@ describe("NostrConnectAccount", () => {
     expect(account.signer.remote).toBe(remote);
     expect(account.signer.relays).toEqual(["wss://relay.example.com"]);
     expect(account.signer.signer.key).toEqual(clientKey);
-    expect(account.signer.connectSecret).toBe("test-secret");
+    expect(account.signer.bunkerSecret).toBe("test-secret");
   });
 });

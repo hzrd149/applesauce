@@ -38,6 +38,22 @@ describe("connection", () => {
   });
 });
 
+describe("deprecated secret alias", () => {
+  it("should map the deprecated secret option to connectSecret", () => {
+    const signer = new NostrConnectSigner({ relays, secret: "client-secret", subscriptionMethod, publishMethod });
+
+    expect(signer.connectSecret).toBe("client-secret");
+    expect(signer.secret).toBe("client-secret");
+  });
+
+  it("should proxy the secret getter/setter to connectSecret", () => {
+    signer.secret = "new-secret";
+
+    expect(signer.connectSecret).toBe("new-secret");
+    expect(signer.secret).toBe("new-secret");
+  });
+});
+
 describe("open", () => {
   it("should call subscription method with filters", async () => {
     signer.open();
@@ -69,13 +85,14 @@ describe("waitForSigner", () => {
 
 describe("nbunksec", () => {
   it("should export the current session", async () => {
-    signer.connectSecret = "test-secret";
+    signer.bunkerSecret = "test-secret";
 
     expect(NostrConnectSigner.parseNbunksec(signer.getNbunksec())).toEqual({
       remote: await remote.getPublicKey(),
       clientKey: bytesToHex(client.key),
       relays,
       secret: "test-secret",
+      bunkerSecret: "test-secret",
     });
   });
 
@@ -84,7 +101,7 @@ describe("nbunksec", () => {
       remote: await remote.getPublicKey(),
       clientKey: bytesToHex(client.key),
       relays,
-      secret: "test-secret",
+      bunkerSecret: "test-secret",
     });
     const connect = vi.spyOn(NostrConnectSigner.prototype, "connect").mockResolvedValue("ack");
 
@@ -97,7 +114,7 @@ describe("nbunksec", () => {
     expect(imported.remote).toBe(await remote.getPublicKey());
     expect(imported.relays).toEqual(relays);
     expect(imported.signer.key).toEqual(client.key);
-    expect(imported.connectSecret).toBe("test-secret");
+    expect(imported.bunkerSecret).toBe("test-secret");
     expect(connect).toHaveBeenCalledWith("test-secret", ["get_public_key"]);
   });
 });
