@@ -22,14 +22,14 @@
     "@changesets/changelog-git": "^0.2.1",
     "@changesets/types": "^6.1.0",
     "@hirez_io/observer-spy": "^2.2.0",
-    "@vitest/browser": "^4.1.9",
-    "@vitest/browser-playwright": "^4.1.9",
-    "@vitest/coverage-v8": "^4.1.9",
-    "playwright": "^1.61.1",
-    "prettier": "^3.8.4",
-    "turbo": "^2.9.18",
+    "@vitest/browser": "^4.1.6",
+    "@vitest/browser-playwright": "^4.1.6",
+    "@vitest/coverage-v8": "^4.1.6",
+    "playwright": "^1.60.0",
+    "prettier": "^3.8.3",
+    "turbo": "^2.9.14",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.9",
+    "vitest": "^4.1.6",
     "vitest-websocket-mock": "^0.5.0"
   },
   "engines": {
@@ -40,5 +40,5 @@
     "glob": ">=11.1.0",
     "tar-fs": ">=2.1.4"
   },
-  "packageManager": "pnpm@11.9.0"
+  "packageManager": "pnpm@10.33.0"
 }
