@@ -146,6 +146,10 @@ export default defineConfig({
             ],
           },
           {
+            text: "Authentication",
+            items: [{ text: "Nostr Web Tokens", link: "/apps/auth/nostr-web-tokens" }],
+          },
+          {
             text: "React",
             link: "/apps/react",
             items: [{ text: "use$", link: "/apps/react/use-observable" }],
