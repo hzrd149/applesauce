@@ -7,7 +7,13 @@ import {
   mergeRelaySets as relaySet,
 } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { PrimalCache, Vertex } from "applesauce-extra";
+import {
+  DEFAULT_OPEN_RANKING_PROVIDER,
+  OpenRanking,
+  OpenRankingAlgorithm,
+  PrimalCache,
+  Vertex,
+} from "applesauce-extra";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -19,6 +25,9 @@ import RelayPicker from "./relay-picker";
 
 // Common relay URLs that support NIP-50 search
 const SEARCH_RELAYS = relaySet(["wss://relay.ditto.pub", "wss://antiprimal.net"]);
+
+// Common Open Ranking providers
+const OPEN_RANKING_PROVIDERS = [DEFAULT_OPEN_RANKING_PROVIDER];
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -33,7 +42,7 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
-type SearchMethod = "primal" | "vertex" | "nip50";
+type SearchMethod = "primal" | "vertex" | "nip50" | "open-ranking";
 
 interface ProfileSearchResult {
   pubkey: string;
@@ -62,6 +71,9 @@ function ProfileSearchModal({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [customRelayUrl, setCustomRelayUrl] = useState("");
   const [extensionAvailable, setExtensionAvailable] = useState(false);
+  const [openRankingProvider, setOpenRankingProvider] = useState(DEFAULT_OPEN_RANKING_PROVIDER);
+  const [openRankingAlgorithm, setOpenRankingAlgorithm] = useState("");
+  const [openRankingAlgorithms, setOpenRankingAlgorithms] = useState<OpenRankingAlgorithm[]>([]);
 
   // Check if extension is available
   useEffect(() => {
@@ -86,6 +98,39 @@ function ProfileSearchModal({
     }
     return null;
   }, [extensionAvailable]);
+
+  // Create an Open Ranking client for the selected provider, passing a signer for Nostr Web Token auth when an extension is available
+  const openRanking = useMemo(() => {
+    const signer = extensionAvailable ? new ExtensionSigner() : undefined;
+    return new OpenRanking(openRankingProvider, { signer });
+  }, [openRankingProvider, extensionAvailable]);
+
+  // Discover the algorithms the selected provider supports for profile search (ORE-01)
+  useEffect(() => {
+    if (searchMethod !== "open-ranking") return;
+
+    let active = true;
+    openRanking
+      .discover()
+      .then((capabilities) => {
+        if (!active) return;
+        const algorithms = capabilities["/search/pubkeys"] ?? [];
+        setOpenRankingAlgorithms(algorithms);
+        // Default to the first (default) algorithm when the current selection is unavailable
+        setOpenRankingAlgorithm((current) =>
+          algorithms.some((a) => a.id === current) ? current : (algorithms[0]?.id ?? ""),
+        );
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error("Failed to discover Open Ranking capabilities:", error);
+        setOpenRankingAlgorithms([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [openRanking, searchMethod]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
@@ -139,6 +184,24 @@ function ProfileSearchModal({
           results.push({ pubkey: pointer.pubkey, relays: pointer.relays });
         }
         setSearchResults(results);
+      } else if (searchMethod === "open-ranking") {
+        // Open Ranking search (ranked by the provider's web of trust)
+        const algorithm = openRankingAlgorithms.find((a) => a.id === openRankingAlgorithm);
+        // Personalized algorithms require a point-of-view pubkey from the signer
+        const pov = algorithm?.pov ? await new ExtensionSigner().getPublicKey() : undefined;
+        const pointers = await openRanking.userSearch(searchQuery.trim(), 20, {
+          algorithm: openRankingAlgorithm || undefined,
+          pov,
+        });
+        // Convert to search results
+        const seenPubkeys = new Set<string>();
+        const results: ProfileSearchResult[] = [];
+        for (const pointer of pointers) {
+          if (seenPubkeys.has(pointer.pubkey)) continue;
+          seenPubkeys.add(pointer.pubkey);
+          results.push({ pubkey: pointer.pubkey });
+        }
+        setSearchResults(results);
       } else {
         // NIP-50 relay search
         const relay = pool.relay(selectedRelay);
@@ -175,7 +238,17 @@ function ProfileSearchModal({
       setSearchError(errorMessage);
       setIsSearching(false);
     }
-  }, [searchQuery, searchMethod, selectedRelay, primal, vertex, extensionAvailable]);
+  }, [
+    searchQuery,
+    searchMethod,
+    selectedRelay,
+    primal,
+    vertex,
+    openRanking,
+    openRankingAlgorithm,
+    openRankingAlgorithms,
+    extensionAvailable,
+  ]);
 
   const handleCustomRelaySubmit = () => {
     if (customRelayUrl) {
@@ -231,6 +304,13 @@ function ProfileSearchModal({
             >
               NIP-50 Relay
             </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${searchMethod === "open-ranking" ? "btn-primary" : "btn-outline"}`}
+              onClick={() => setSearchMethod("open-ranking")}
+            >
+              Open Ranking
+            </button>
           </div>
           {searchMethod === "vertex" && !extensionAvailable && (
             <label className="label">
@@ -265,6 +345,44 @@ function ProfileSearchModal({
           {/* Search relay selection - only show for NIP-50 */}
           {searchMethod === "nip50" && (
             <RelayPicker value={selectedRelay} onChange={setSelectedRelay} common={SEARCH_RELAYS} />
+          )}
+
+          {/* Provider + algorithm selection - only show for Open Ranking */}
+          {searchMethod === "open-ranking" && (
+            <div className="join">
+              <input
+                type="text"
+                list="open-ranking-providers"
+                placeholder="https://provider.example.com"
+                className="input input-bordered join-item"
+                value={openRankingProvider}
+                onChange={(e) => setOpenRankingProvider(e.target.value)}
+              />
+              <datalist id="open-ranking-providers">
+                {OPEN_RANKING_PROVIDERS.map((provider) => (
+                  <option key={provider} value={provider} />
+                ))}
+              </datalist>
+              <select
+                className="select select-bordered join-item"
+                value={openRankingAlgorithm}
+                onChange={(e) => setOpenRankingAlgorithm(e.target.value)}
+                disabled={openRankingAlgorithms.length === 0}
+              >
+                {openRankingAlgorithms.length === 0 && <option value="">Loading…</option>}
+                {openRankingAlgorithms.map((algorithm) => (
+                  <option
+                    key={algorithm.id}
+                    value={algorithm.id}
+                    disabled={algorithm.pov && !extensionAvailable}
+                    title={algorithm.description}
+                  >
+                    {algorithm.name}
+                    {algorithm.pov ? " (point-of-view)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
 

@@ -28,6 +28,7 @@
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
+    "applesauce-common": "^6.0.0",
     "applesauce-relay": "^6.0.0",
     "applesauce-signers": "^6.0.0"
   },

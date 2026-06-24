@@ -549,6 +549,9 @@ importers:
         specifier: ^4.0.15
         version: 4.1.2(@types/node@24.13.2)(@vitest/browser-playwright@4.1.2)(vite@8.0.6(@types/node@24.13.2)(esbuild@0.25.12)(jiti@2.6.1)(terser@5.46.1)(yaml@2.9.0))
     optionalDependencies:
+      applesauce-common:
+        specifier: ^6.0.0
+        version: link:../common
       applesauce-relay:
         specifier: ^6.0.0
         version: link:../relay
