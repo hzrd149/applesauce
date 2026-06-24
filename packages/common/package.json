@@ -89,7 +89,7 @@
     }
   },
   "dependencies": {
-    "@scure/base": "^1.2.4",
+    "@scure/base": "^2.2.0",
     "applesauce-core": "^6.1.0",
     "hash-sum": "^2.0.0",
     "light-bolt11-decoder": "^3.2.0",

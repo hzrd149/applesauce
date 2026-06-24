@@ -1,4 +1,4 @@
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { simpleTimeout } from "applesauce-core";
 import { EncryptionMethod } from "applesauce-core/helpers";
 import { EventSigner } from "applesauce-core";

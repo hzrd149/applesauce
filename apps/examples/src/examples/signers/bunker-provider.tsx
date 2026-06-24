@@ -3,7 +3,7 @@
  * @tags nip-46, signers, bunker, provider, nostr-connect
  * @related signers/bunker, cli/bunker-login
  */
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner, NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";
 import { nanoid } from "nanoid";

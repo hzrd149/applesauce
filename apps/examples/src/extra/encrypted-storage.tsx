@@ -1,7 +1,7 @@
-import { pbkdf2 } from "@noble/hashes/pbkdf2";
-import { sha256 } from "@noble/hashes/sha2";
-import { cbc } from "@noble/ciphers/aes";
-import { hexToBytes, utf8ToBytes, bytesToUtf8 } from "@noble/hashes/utils";
+import { pbkdf2 } from "@noble/hashes/pbkdf2.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { cbc } from "@noble/ciphers/aes.js";
+import { hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 
 // Salt for key derivation (in a real app, you might want to store this securely)
 const SALT = hexToBytes(
@@ -78,7 +78,7 @@ export default class SecureStorage {
     }
 
     // Convert bytes to UTF-8 string
-    const decryptedText = bytesToUtf8(decryptedBytes);
+    const decryptedText = new TextDecoder().decode(decryptedBytes);
 
     return decryptedText;
   }

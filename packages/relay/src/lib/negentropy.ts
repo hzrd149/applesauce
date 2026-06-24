@@ -1,7 +1,7 @@
 // (C) 2023 Doug Hoyte. MIT license
 // Modified by hzrd149 to be TypeScript and work without the window.cyrpto.subtle API
 
-import { sha256 } from "@noble/hashes/sha2";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 const PROTOCOL_VERSION = 0x61; // Version 1
 const ID_SIZE = 32;
@@ -105,7 +105,7 @@ function getBytes(buf: WrappedBuffer, n: number) {
 class Accumulator {
   buf: Uint8Array;
 
-  sha256: (slice: Uint8Array | string) => Promise<Uint8Array>;
+  sha256: (slice: Uint8Array) => Promise<Uint8Array>;
 
   constructor() {
     // Modified: cant call setToZero here since TS wants buf to be assigned
@@ -120,7 +120,7 @@ class Accumulator {
     //   this.sha256 = async (slice: Uint8Array | string) => sha256.create().update(slice).digest();
     // }
 
-    this.sha256 = async (slice: Uint8Array | string) => sha256.create().update(slice).digest();
+    this.sha256 = async (slice: Uint8Array) => sha256.create().update(slice).digest();
   }
 
   setToZero() {

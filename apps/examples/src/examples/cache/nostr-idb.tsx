@@ -25,7 +25,7 @@ const pool = new RelayPool();
 
 // Create cache request function that loads from IndexedDB
 function cacheRequest(filters: Filter[]) {
-  return nostrIDB.filters(filters);
+  return nostrIDB.query(filters);
 }
 
 // Create unified event loader for the store

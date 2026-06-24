@@ -33,7 +33,7 @@
     "vitest-websocket-mock": "^0.5.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19.0"
   },
   "resolutions": {
     "esbuild": "^0.25.0",

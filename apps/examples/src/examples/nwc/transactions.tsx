@@ -3,7 +3,7 @@
  * @tags nip-47, nwc, wallet, transactions
  * @related nwc/simple-wallet, nwc/wallet-info
  */
-import { hexToBytes } from "@noble/hashes/utils";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";

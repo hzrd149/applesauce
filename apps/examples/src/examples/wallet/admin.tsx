@@ -4,7 +4,7 @@
  * @related wallet/wallet
  */
 import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { parseBolt11, persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
 import { Filter, persistEventsToCache, unixNow } from "applesauce-core/helpers";
@@ -52,7 +52,7 @@ persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 // Local event cache
 const cache = new NostrIDB();
-const cacheRequest = (filters: Filter[]) => cache.filters(filters);
+const cacheRequest = (filters: Filter[]) => cache.query(filters);
 persistEventsToCache(eventStore, (events) => Promise.all(events.map((event) => cache.add(event))));
 
 // Bootstrap loader for wallet + mailbox events

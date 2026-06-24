@@ -3,7 +3,7 @@
  * @tags gift-wrap, generator, encryption, nip-59
  * @related gift-wrap/dashboard, gift-wrap/timeline
  */
-import { randomBytes } from "@noble/hashes/utils";
+import { randomBytes } from "@noble/hashes/utils.js";
 import { defined, EventStore } from "applesauce-core";
 import { normalizeToPubkey } from "applesauce-core/helpers";
 import { nip44 } from "applesauce-core/helpers/encryption";

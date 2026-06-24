@@ -19,7 +19,7 @@ import {
   WalletConnectURI,
   WalletConnectEncryptionMethod,
 } from "applesauce-wallet-connect/helpers";
-import { hexToBytes } from "@noble/hashes/utils";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import { useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections

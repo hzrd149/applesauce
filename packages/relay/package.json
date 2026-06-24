@@ -63,7 +63,7 @@
     }
   },
   "dependencies": {
-    "@noble/hashes": "^1.7.1",
+    "@noble/hashes": "^2.2.0",
     "applesauce-core": "^6.0.0",
     "nanoid": "^5.0.9",
     "nostr-tools": "~2.19",

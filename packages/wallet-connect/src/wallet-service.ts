@@ -4,7 +4,7 @@ import { verifyEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription, tap } from "rxjs";
 
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { WalletLegacyNotificationFactory, WalletNotificationFactory } from "./factories/notification.js";
 import { WalletResponseFactory } from "./factories/response.js";
 import { WalletInfoFactory } from "./factories/support.js";
