@@ -188,6 +188,15 @@ const bunkerUri = await provider.getBunkerURI();
 
 This URI can be displayed as a QR code or shared with clients to initiate connections.
 
+### Getting an nbunksec Session
+
+Use `getNbunksec()` to create an importable client session. The encoded value includes a client private key, so only share it through trusted channels.
+
+```typescript
+const nbunksec = await provider.getNbunksec();
+// Returns: nbunksec1...
+```
+
 ## Connect to client (`nostrconnect://` URI)
 
 To create a provider that responds to a client's `nostrconnect://` URI, pass the URI to the `start` method:

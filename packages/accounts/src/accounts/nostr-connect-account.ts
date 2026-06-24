@@ -7,6 +7,7 @@ export type NostrConnectAccountSignerData = {
   clientKey: string;
   remote: string;
   relays: string[];
+  secret?: string;
 };
 
 /** An account type for NIP-46 signers */
@@ -25,6 +26,7 @@ export class NostrConnectAccount<Metadata extends unknown = unknown> extends Bas
         clientKey: bytesToHex(this.signer.signer.key),
         remote: this.signer.remote,
         relays: this.signer.relays,
+        secret: this.signer.connectSecret,
       },
     });
   }
@@ -36,6 +38,7 @@ export class NostrConnectAccount<Metadata extends unknown = unknown> extends Bas
       relays: json.signer.relays,
       pubkey: json.pubkey,
       remote: json.signer.remote,
+      connectSecret: json.signer.secret,
       signer: new PrivateKeySigner(hexToBytes(json.signer.clientKey)),
     });
 

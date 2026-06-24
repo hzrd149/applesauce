@@ -1,4 +1,4 @@
-import { kinds } from "applesauce-core/helpers/event";
+import { bytesToHex, kinds } from "applesauce-core/helpers/event";
 import { nanoid } from "nanoid";
 import { NEVER } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import {
   createNostrConnectURI,
   NostrConnectMethod,
   NostrConnectRequest,
+  parseNbunksec,
 } from "../../helpers/nostr-connect";
 import { NostrPool } from "../../interop";
 import { NostrConnectProvider } from "../nostr-connect-provider";
@@ -55,6 +56,25 @@ describe("getBunkerURI", () => {
     expect(await provider.getBunkerURI()).toBe(
       `bunker://${await provider.signer.getPublicKey()}?relay=${encodeURIComponent(provider.relays[0])}&secret=${encodeURIComponent(provider.secret!)}`,
     );
+  });
+});
+
+describe("getNbunksec", () => {
+  it("should create an nbunksec session", async () => {
+    const clientSigner = new PrivateKeySigner();
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer: new PrivateKeySigner(),
+      relays: ["wss://relay.nsec.app"],
+      secret: "test-secret",
+    });
+
+    expect(parseNbunksec(await provider.getNbunksec(clientSigner))).toEqual({
+      remote: await provider.signer.getPublicKey(),
+      clientKey: bytesToHex(clientSigner.key),
+      relays: provider.relays,
+      secret: "test-secret",
+    });
   });
 });
 

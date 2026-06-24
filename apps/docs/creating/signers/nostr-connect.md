@@ -157,6 +157,17 @@ You can also parse a bunker URI manually using `NostrConnectSigner.parseBunkerUR
 const { remote, relays, secret } = NostrConnectSigner.parseBunkerURI(uri);
 ```
 
+## Handling nbunksec sessions
+
+The `nbunksec` format stores a complete NIP-46 client session, including the local client private key. Treat it like a secret credential.
+
+```js
+const signer = await NostrConnectSigner.fromNbunksec("nbunksec1...");
+
+// Export the current session for later import
+const encoded = signer.getNbunksec();
+```
+
 ## Permissions
 
 The `NostrConnectSigner` uses a set of predefined permissions that can be requested from the remote signer:

@@ -7,7 +7,7 @@ import {
   unixNow,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
-import { EventTemplate, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
+import { bytesToHex, EventTemplate, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
 import { nanoid } from "nanoid";
 import { filter, from, repeat, retry, Subscription } from "rxjs";
@@ -16,6 +16,7 @@ import {
   ConnectRequestParams,
   ConnectResponseResults,
   createBunkerURI,
+  createNbunksec,
   NostrConnectMethod,
   NostrConnectRequest,
   NostrConnectResponse,
@@ -595,6 +596,16 @@ export class NostrConnectProvider implements ProviderAuthorization {
   async getBunkerURI(): Promise<string> {
     return createBunkerURI({
       remote: await this.signer.getPublicKey(),
+      relays: this.relays,
+      secret: this.secret,
+    });
+  }
+
+  /** Get an nbunksec encoded session that clients can import */
+  async getNbunksec(clientSigner = new PrivateKeySigner()): Promise<string> {
+    return createNbunksec({
+      remote: await this.signer.getPublicKey(),
+      clientKey: bytesToHex(clientSigner.key),
       relays: this.relays,
       secret: this.secret,
     });

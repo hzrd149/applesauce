@@ -1,3 +1,4 @@
+import { encodeNbunksec, decodeNbunksec } from "@sandwichfarm/encoded-entities";
 import { setHiddenContentEncryptionMethod } from "applesauce-core/helpers/hidden-content";
 import { isHexKey } from "applesauce-core/helpers/string";
 import { kinds } from "applesauce-core/helpers/event";
@@ -85,6 +86,12 @@ export type BunkerURI = {
   secret?: string;
 };
 
+/** An nbunksec-encoded NIP-46 signer session */
+export type Nbunksec = BunkerURI & {
+  /** The local client private key as hex */
+  clientKey: string;
+};
+
 /** Parse a bunker:// URI */
 export function parseBunkerURI(uri: string): BunkerURI {
   const url = new URL(uri);
@@ -106,6 +113,36 @@ export function createBunkerURI(data: BunkerURI): string {
   data.relays.forEach((relay) => url.searchParams.append("relay", relay));
   if (data.secret) url.searchParams.set("secret", data.secret);
   return url.toString();
+}
+
+/** Parse an nbunksec encoded NIP-46 signer session */
+export function parseNbunksec(encoded: string): Nbunksec {
+  const info = decodeNbunksec(encoded);
+
+  if (!isHexKey(info.pubkey)) throw new Error("Invalid nbunksec: remote is not a valid hex key");
+  if (!isHexKey(info.local_key)) throw new Error("Invalid nbunksec: clientKey is not a valid hex key");
+  if (info.relays.length === 0) throw new Error("Invalid nbunksec: missing relays");
+
+  return {
+    remote: info.pubkey,
+    clientKey: info.local_key,
+    relays: info.relays,
+    secret: info.secret,
+  };
+}
+
+/** Create an nbunksec encoded NIP-46 signer session */
+export function createNbunksec(data: Nbunksec): string {
+  if (!isHexKey(data.remote)) throw new Error("Invalid nbunksec: remote is not a valid hex key");
+  if (!isHexKey(data.clientKey)) throw new Error("Invalid nbunksec: clientKey is not a valid hex key");
+  if (data.relays.length === 0) throw new Error("Invalid nbunksec: missing relays");
+
+  return encodeNbunksec({
+    pubkey: data.remote,
+    local_key: data.clientKey,
+    relays: data.relays,
+    secret: data.secret,
+  });
 }
 
 /** App metadata for a nostrconnect:// URI */

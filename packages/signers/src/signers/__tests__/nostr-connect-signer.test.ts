@@ -1,5 +1,6 @@
+import { bytesToHex } from "applesauce-core/helpers/event";
 import { NEVER } from "rxjs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NostrConnectSigner } from "../nostr-connect-signer.js";
 import { PrivateKeySigner } from "../private-key-signer.js";
 
@@ -23,6 +24,10 @@ beforeEach(async () => {
     subscriptionMethod,
     publishMethod,
   });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("connection", () => {
@@ -59,6 +64,41 @@ describe("waitForSigner", () => {
 
     await expect(p).rejects.toThrow("Aborted");
     expect(signer.listening).toBe(false);
+  });
+});
+
+describe("nbunksec", () => {
+  it("should export the current session", async () => {
+    signer.connectSecret = "test-secret";
+
+    expect(NostrConnectSigner.parseNbunksec(signer.getNbunksec())).toEqual({
+      remote: await remote.getPublicKey(),
+      clientKey: bytesToHex(client.key),
+      relays,
+      secret: "test-secret",
+    });
+  });
+
+  it("should create a signer from an encoded session", async () => {
+    const encoded = NostrConnectSigner.createNbunksec({
+      remote: await remote.getPublicKey(),
+      clientKey: bytesToHex(client.key),
+      relays,
+      secret: "test-secret",
+    });
+    const connect = vi.spyOn(NostrConnectSigner.prototype, "connect").mockResolvedValue("ack");
+
+    const imported = await NostrConnectSigner.fromNbunksec(encoded, {
+      permissions: ["get_public_key"],
+      subscriptionMethod,
+      publishMethod,
+    });
+
+    expect(imported.remote).toBe(await remote.getPublicKey());
+    expect(imported.relays).toEqual(relays);
+    expect(imported.signer.key).toEqual(client.key);
+    expect(imported.connectSecret).toBe("test-secret");
+    expect(connect).toHaveBeenCalledWith("test-secret", ["get_public_key"]);
   });
 });
 

@@ -52,6 +52,7 @@
   },
   "dependencies": {
     "@noble/secp256k1": "^3.1.0",
+    "@sandwichfarm/encoded-entities": "^0.1.1",
     "applesauce-core": "^6.0.0",
     "debug": "^4.4.0",
     "nanoid": "^5.0.9",

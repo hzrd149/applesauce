@@ -1,6 +1,6 @@
 import { logger } from "applesauce-core";
 import { getHiddenContent, isHexKey, unixNow } from "applesauce-core/helpers";
-import { EventTemplate, NostrEvent, kinds, verifyEvent } from "applesauce-core/helpers/event";
+import { bytesToHex, EventTemplate, hexToBytes, NostrEvent, kinds, verifyEvent } from "applesauce-core/helpers/event";
 import { getPublicKey } from "applesauce-core/helpers/keys";
 import { Deferred, createDefer } from "applesauce-core/promise";
 import {
@@ -19,13 +19,16 @@ import {
   BunkerURI,
   ConnectRequestParams,
   ConnectResponseResults,
+  createNbunksec,
   NostrConnectAppMetadata,
   NostrConnectMethod,
   NostrConnectRequest,
   NostrConnectResponse,
+  Nbunksec,
   buildSigningPermissions,
   createNostrConnectURI,
   parseBunkerURI,
+  parseNbunksec,
 } from "../helpers/nostr-connect.js";
 
 async function defaultHandleAuth(url: string) {
@@ -43,6 +46,8 @@ export type NostrConnectSignerOptions = NostrConnectionMethodsOptions & {
   pubkey?: string;
   /** A secret used when initalizing the connection from the client side */
   secret?: string;
+  /** A secret used when connecting to a remote signer */
+  connectSecret?: string;
   /** A method for handling "auth" requests */
   onAuth?: (url: string) => Promise<void>;
 };
@@ -90,6 +95,9 @@ export class NostrConnectSigner implements ISigner {
   /** A secret used when initiating a connection from the client side */
   public secret: string;
 
+  /** A secret used when connecting to a remote signer */
+  public connectSecret?: string;
+
   nip04?:
     | {
         encrypt: (pubkey: string, plaintext: string) => Promise<string>;
@@ -108,6 +116,7 @@ export class NostrConnectSigner implements ISigner {
     this.pubkey = options.pubkey;
     this.remote = options.remote;
     this.secret = options.secret || nanoid(12);
+    this.connectSecret = options.connectSecret;
 
     // Get the subscription and publish methods
     const { subscriptionMethod, publishMethod } = getConnectionMethods(options, NostrConnectSigner);
@@ -286,9 +295,11 @@ export class NostrConnectSigner implements ISigner {
 
     await this.open();
     try {
+      if (secret !== undefined) this.connectSecret = secret;
+
       const result = await this.makeRequest(NostrConnectMethod.Connect, [
         this.remote,
-        secret || "",
+        this.connectSecret || "",
         permissions?.join(",") ?? "",
       ]);
       this.isConnected = true;
@@ -457,9 +468,31 @@ export class NostrConnectSigner implements ISigner {
     });
   }
 
+  /** Returns the nbunksec encoded session for this signer */
+  getNbunksec(): string {
+    if (!this.remote) throw new Error("Cant create nbunksec when remote signer is not set");
+
+    return createNbunksec({
+      remote: this.remote,
+      clientKey: bytesToHex(this.signer.key),
+      relays: this.relays,
+      secret: this.connectSecret,
+    });
+  }
+
   /** Parses a bunker:// URI */
   static parseBunkerURI(uri: string): BunkerURI {
     return parseBunkerURI(uri);
+  }
+
+  /** Parses an nbunksec encoded session */
+  static parseNbunksec(encoded: string): Nbunksec {
+    return parseNbunksec(encoded);
+  }
+
+  /** Creates an nbunksec encoded session */
+  static createNbunksec(data: Nbunksec): string {
+    return createNbunksec(data);
   }
 
   /** Builds an array of signing permissions for event kinds */
@@ -474,7 +507,28 @@ export class NostrConnectSigner implements ISigner {
   ) {
     const { remote, relays, secret } = NostrConnectSigner.parseBunkerURI(uri);
 
-    const client = new NostrConnectSigner({ relays, remote, ...options });
+    const client = new NostrConnectSigner({ relays, remote, connectSecret: secret, ...options });
+    await client.connect(secret, options?.permissions);
+
+    return client;
+  }
+
+  /** Create a {@link NostrConnectSigner} from an nbunksec encoded session */
+  static async fromNbunksec(
+    encoded: string,
+    options?: Omit<NostrConnectSignerOptions, "relays" | "remote" | "signer" | "connectSecret"> & {
+      permissions?: string[];
+    },
+  ) {
+    const { remote, clientKey, relays, secret } = NostrConnectSigner.parseNbunksec(encoded);
+
+    const client = new NostrConnectSigner({
+      relays,
+      remote,
+      signer: new PrivateKeySigner(hexToBytes(clientKey)),
+      connectSecret: secret,
+      ...options,
+    });
     await client.connect(secret, options?.permissions);
 
     return client;

@@ -9,10 +9,12 @@ describe("exports", () => {
         "Permission",
         "buildSigningPermissions",
         "createBunkerURI",
+        "createNbunksec",
         "createNostrConnectURI",
         "isErrorResponse",
         "isNIP04",
         "parseBunkerURI",
+        "parseNbunksec",
         "parseNostrConnectURI",
       ]
     `);
