@@ -2,6 +2,7 @@ import { base64urlnopad, utf8 } from "@scure/base";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { getTagValue, isEvent, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 
+/** @see https://github.com/Open-Ranking/nostr-web-tokens */
 export const NOSTR_WEB_TOKEN_KIND = 27519;
 
 export type NostrWebTokenEvent = KnownEvent<typeof NOSTR_WEB_TOKEN_KIND>;

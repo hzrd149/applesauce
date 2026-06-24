@@ -4,7 +4,7 @@ description: Create and verify Nostr Web Tokens for client and server session au
 
 # Nostr Web Tokens
 
-Nostr Web Tokens are signed Nostr events used as bearer tokens for web authentication and authorization.
+Nostr Web Tokens are signed Nostr events used as bearer tokens for web authentication and authorization. See the [Nostr Web Token specification](https://github.com/Open-Ranking/nostr-web-tokens) for claim definitions, validation rules, and transport encoding.
 
 They use event kind `27519`. Claims are encoded as tags, and HTTP transport uses the `Authorization` header with the `Nostr` scheme.
 

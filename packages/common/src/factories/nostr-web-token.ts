@@ -5,7 +5,7 @@ import * as NostrWebToken from "../operations/nostr-web-token.js";
 
 export type NostrWebTokenTemplate = KnownEventTemplate<typeof NOSTR_WEB_TOKEN_KIND>;
 
-/** Factory for Nostr Web Token events (kind 27519). */
+/** Factory for Nostr Web Token events (kind 27519). @see https://github.com/Open-Ranking/nostr-web-tokens */
 export class NostrWebTokenFactory extends EventFactory<typeof NOSTR_WEB_TOKEN_KIND, NostrWebTokenTemplate> {
   /** Creates a Nostr Web Token factory. */
   static create(claims?: Partial<NostrWebTokenClaims>): NostrWebTokenFactory {
