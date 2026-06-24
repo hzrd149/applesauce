@@ -299,7 +299,11 @@ export class NostrConnectSigner implements ISigner {
     return p;
   }
 
-  /** Connect to remote signer */
+  /**
+   * Connect to a remote signer
+   * @param bunkerSecret - The `secret` from a `bunker://` URI used to authorize this client with the remote signer
+   * @param permissions - The signing permissions to request (see {@link NostrConnectSigner.buildSigningPermissions})
+   */
   async connect(bunkerSecret?: string | undefined, permissions?: string[]) {
     // Attempt to connect to the users pubkey if remote note set
     if (!this.remote && this.pubkey) this.remote = this.pubkey;

@@ -65,6 +65,20 @@ const signer = new NostrConnectSigner({
 });
 ```
 
+## Connection secrets
+
+NIP-46 has two distinct secrets that are both serialized as the `secret=` parameter of their respective URIs, so the signer exposes them under separate names:
+
+- **`connectSecret`** — used by the `nostrconnect://` flow (client initiates). The signer generates it (or you provide one), publishes it in the URI, and treats the remote signer as connected once it echoes the value back. Always set; defaults to a random value.
+- **`bunkerSecret`** — used by the `bunker://` flow (signer initiates). The remote signer puts it in its `bunker://` URI and the client sends it in the `connect` request to authorize itself. Optional.
+
+```ts
+signer.connectSecret; // echoed by the signer in the nostrconnect:// flow
+signer.bunkerSecret; // sent to the signer in the bunker:// flow
+```
+
+The released `secret` field is a deprecated alias for `connectSecret`; use the named fields instead.
+
 ## Connecting to a remote signer
 
 The `NostrConnectSigner` can be created with a remote signer's public key, and will automatically connect to it.
