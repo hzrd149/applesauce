@@ -105,9 +105,10 @@ export class OpenRanking {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // Issue a new token only when there isn't a valid one cached (or in flight)
+    // Issue a new token only when there isn't a valid one cached (or still in flight)
     if (!this.authorizationCache || this.authorizationCache.expiration - now <= this.tokenSkew) {
       const expiration = now + this.tokenExpiration;
+      // Kick off signing — `.sign()` returns the promise synchronously; the actual signer prompt happens later
       const header = NostrWebTokenFactory.create({
         audiences: [this.provider],
         issuedAt: now,
@@ -117,16 +118,19 @@ export class OpenRanking {
         .sign(this.signer)
         .then(createNostrWebTokenAuthorizationHeader);
 
-      // Store the in-flight promise immediately so concurrent requests await the same signature
+      // The cached pending promise IS the lock: caching it here serializes every concurrent caller onto a
+      // single signature. This block MUST stay synchronous up to this assignment — do not add an `await`
+      // before it, or parallel requests would each start their own signer prompt before the cache is set.
       const cache = { expiration, header };
       this.authorizationCache = cache;
 
-      // Don't keep a rejected signature cached — let the next request retry
+      // Don't keep a rejected signature cached (e.g. the user declined) — let the next request retry
       header.catch(() => {
         if (this.authorizationCache === cache) this.authorizationCache = undefined;
       });
     }
 
+    // Concurrent callers all await this same pending promise, so the signer is only ever prompted once
     return { Authorization: await this.authorizationCache.header };
   }
 
