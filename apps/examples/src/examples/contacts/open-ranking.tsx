@@ -136,11 +136,15 @@ function ContactScores({ user }: { user: User }) {
   // Personalized algorithms need a point-of-view pubkey, which in turn requires a signer to authenticate
   const requiresPov = useMemo(() => algorithms?.find((a) => a.id === algorithm)?.pov ?? false, [algorithms, algorithm]);
 
-  // Only attach the signer when the algorithm needs it, so global lookups don't issue a Nostr Web Token per request
-  const openRanking = useMemo(
-    () => new OpenRanking(provider, { signer: requiresPov ? (signer ?? undefined) : undefined }),
-    [provider, signer, requiresPov],
-  );
+  // Keep one client per provider. It MUST NOT depend on the algorithm/requiresPov: the discover effect below resets
+  // `algorithms`, which flips `requiresPov`; if that recreated the client, discovery would re-run in an infinite loop
+  // and every fresh client would prompt the signer for a new token — hundreds of times.
+  const openRanking = useMemo(() => new OpenRanking(provider), [provider]);
+
+  // Authenticate only for point-of-view algorithms. Toggling the signer on the existing client never recreates it.
+  useEffect(() => {
+    openRanking.setSigner(requiresPov ? (signer ?? undefined) : undefined);
+  }, [openRanking, requiresPov, signer]);
 
   // Discover whether the provider supports ORE-02 and which algorithms it offers (ORE-01)
   useEffect(() => {
@@ -170,10 +174,14 @@ function ContactScores({ user }: { user: User }) {
   // Fetch the stats for every contact whenever the contact list or algorithm changes
   const contactKey = contacts?.map((c) => c.pubkey).join(",");
   useEffect(() => {
-    if (!contacts?.length || !algorithm) return;
+    if (!contacts?.length) return;
+    // Wait until discovery has loaded the algorithms and resolved the current selection — this avoids firing
+    // `pov`-less requests for a personalized algorithm (which the provider rejects with a 422) while it reloads.
+    const selected = algorithms?.find((a) => a.id === algorithm);
+    if (!selected) return;
     // Personalized algorithms can't run until we have a point-of-view pubkey
-    const pov = requiresPov ? (pubkey ?? undefined) : undefined;
-    if (requiresPov && !pov) return;
+    const pov = selected.pov ? (pubkey ?? undefined) : undefined;
+    if (selected.pov && !pov) return;
 
     let active = true;
     const pubkeys = contacts.map((c) => c.pubkey);
@@ -192,7 +200,7 @@ function ContactScores({ user }: { user: User }) {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactKey, openRanking, algorithm, requiresPov, pubkey]);
+  }, [contactKey, openRanking, algorithm, algorithms, pubkey]);
 
   // Sort by the selected stats field, always sinking contacts without a value to the bottom
   const sorted = useMemo(() => {
