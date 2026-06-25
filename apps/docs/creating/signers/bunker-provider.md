@@ -142,7 +142,7 @@ const provider = new NostrConnectProvider({
   relays: ["wss://relay.signer.com"],
   upstream: user, // Signer for actual operations
   signer: signer, // Provider's identity (optional, will create a new PrivateKeySigner if not provided)
-  secret: "my-secret-key", // Recommended secret for client authentication (optional)
+  bunkerSecret: "my-secret-key", // Recommended secret for client authentication (optional)
   onClientConnect: (client) => {
     console.log("Client connected:", client);
   },
@@ -187,6 +187,15 @@ const bunkerUri = await provider.getBunkerURI();
 ```
 
 This URI can be displayed as a QR code or shared with clients to initiate connections.
+
+### Getting an nbunksec Session
+
+Use `getNbunksec()` to create an importable client session. The encoded value includes a client private key, so only share it through trusted channels.
+
+```typescript
+const nbunksec = await provider.getNbunksec();
+// Returns: nbunksec1...
+```
 
 ## Connect to client (`nostrconnect://` URI)
 

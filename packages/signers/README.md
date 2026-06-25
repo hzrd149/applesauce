@@ -93,7 +93,13 @@ const uri = signer.getNostrConnectURI({
 const bunkerSigner = await NostrConnectSigner.fromBunkerURI("bunker://...your-uri-here...", {
   permissions: NostrConnectSigner.buildSigningPermissions([0, 1, 3]),
 });
+
+// Import or export a complete NIP-46 client session
+const sessionSigner = await NostrConnectSigner.fromNbunksec("nbunksec1...");
+const encodedSession = sessionSigner.getNbunksec();
 ```
+
+`nbunksec` values include the local client private key and should be handled like secrets.
 
 ### Other Signers
 

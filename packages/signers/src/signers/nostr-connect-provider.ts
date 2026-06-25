@@ -7,7 +7,7 @@ import {
   unixNow,
   unlockHiddenContent,
 } from "applesauce-core/helpers";
-import { EventTemplate, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
+import { bytesToHex, EventTemplate, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
 import { nanoid } from "nanoid";
 import { filter, from, repeat, retry, Subscription } from "rxjs";
@@ -16,6 +16,7 @@ import {
   ConnectRequestParams,
   ConnectResponseResults,
   createBunkerURI,
+  createNbunksec,
   NostrConnectMethod,
   NostrConnectRequest,
   NostrConnectResponse,
@@ -59,8 +60,10 @@ export type NostrConnectProviderOptions = ProviderAuthorization &
     upstream: ISigner;
     /** Optional signer for provider identity */
     signer?: ISigner;
-    /** A random secret used to authorize clients to connect */
+    /** @deprecated Use bunkerSecret instead */
     secret?: string;
+    /** A random secret used to authorize clients to connect (the `secret` in a bunker:// URI) */
+    bunkerSecret?: string;
     /** Callback for when a client connects (receives a `connect` request) */
     onClientConnect?: (client: string) => any;
     /** Callback for when a client disconnects (previously connected and the provider stops) */
@@ -98,8 +101,17 @@ export class NostrConnectProvider implements ProviderAuthorization {
   /** The connected client's public key */
   public client?: string;
 
-  /** The secret used to authorize clients to connect */
-  public secret?: string;
+  /** The secret used to authorize clients to connect (the `secret` in a bunker:// URI) */
+  public bunkerSecret?: string;
+
+  /** @deprecated Use bunkerSecret instead */
+  get secret(): string | undefined {
+    return this.bunkerSecret;
+  }
+
+  set secret(value: string | undefined) {
+    this.bunkerSecret = value;
+  }
 
   /** Relays to communicate over */
   public readonly relays: string[];
@@ -132,7 +144,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     this.relays = options.relays;
     this.upstream = options.upstream;
     this.signer = options.signer ?? new PrivateKeySigner();
-    this.secret = options.secret;
+    this.bunkerSecret = options.bunkerSecret ?? options.secret;
 
     // Get the subscription and publish methods
     const { subscriptionMethod, publishMethod } = getConnectionMethods(options, NostrConnectProvider);
@@ -350,7 +362,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     // Get a response to a fake initial `connect` request
     const response = await this.handleConnect(uri.client, [
       await this.signer.getPublicKey(),
-      uri.secret,
+      uri.connectSecret ?? uri.secret ?? "",
       uri.metadata?.permissions?.join(",") ?? "",
     ]);
 
@@ -361,7 +373,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
   /** Handle connect request */
   protected async handleConnect(
     client: string,
-    [target, secret, permissionsStr]: ConnectRequestParams[NostrConnectMethod.Connect],
+    [target, bunkerSecret, permissionsStr]: ConnectRequestParams[NostrConnectMethod.Connect],
   ): Promise<ConnectResponseResults[NostrConnectMethod.Connect]> {
     const permissions = permissionsStr ? permissionsStr.split(",") : [];
 
@@ -373,7 +385,8 @@ export class NostrConnectProvider implements ProviderAuthorization {
     if (this.client && this.client !== client) throw new Error("Only one client can connect at a time");
 
     // If this is the first `connect` request, check that the secret matches
-    if (this.secret && !this.client && this.secret !== secret) throw new Error("Invalid connection secret");
+    if (this.bunkerSecret && !this.client && this.bunkerSecret !== bunkerSecret)
+      throw new Error("Invalid connection secret");
 
     // Handle authorization if callback is provided
     if (this.onConnect) {
@@ -387,7 +400,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     // Establish connection
     this.client = client;
     this.connected = true;
-    if (!this.secret) this.secret = secret;
+    if (!this.bunkerSecret) this.bunkerSecret = bunkerSecret;
 
     // Update the subscription since we now know the client pubkey
     if (isFirstRequest) await this.updateSubscription();
@@ -402,7 +415,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
     }
 
     // Return ack or the secret if provided
-    return secret || "ack";
+    return bunkerSecret || "ack";
   }
 
   /** Handle sign event request */
@@ -596,7 +609,17 @@ export class NostrConnectProvider implements ProviderAuthorization {
     return createBunkerURI({
       remote: await this.signer.getPublicKey(),
       relays: this.relays,
-      secret: this.secret,
+      bunkerSecret: this.bunkerSecret,
+    });
+  }
+
+  /** Get an nbunksec encoded session that clients can import */
+  async getNbunksec(clientSigner = new PrivateKeySigner()): Promise<string> {
+    return createNbunksec({
+      remote: await this.signer.getPublicKey(),
+      clientKey: bytesToHex(clientSigner.key),
+      relays: this.relays,
+      bunkerSecret: this.bunkerSecret,
     });
   }
 }

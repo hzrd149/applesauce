@@ -1,4 +1,4 @@
-import { kinds } from "applesauce-core/helpers/event";
+import { bytesToHex, kinds } from "applesauce-core/helpers/event";
 import { nanoid } from "nanoid";
 import { NEVER } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import {
   createNostrConnectURI,
   NostrConnectMethod,
   NostrConnectRequest,
+  parseNbunksec,
 } from "../../helpers/nostr-connect";
 import { NostrPool } from "../../interop";
 import { NostrConnectProvider } from "../nostr-connect-provider";
@@ -49,12 +50,45 @@ describe("getBunkerURI", () => {
       upstream: user,
       signer: new PrivateKeySigner(),
       relays: ["wss://relay.nsec.app"],
-      secret: "test-secret",
+      bunkerSecret: "test-secret",
     });
 
     expect(await provider.getBunkerURI()).toBe(
-      `bunker://${await provider.signer.getPublicKey()}?relay=${encodeURIComponent(provider.relays[0])}&secret=${encodeURIComponent(provider.secret!)}`,
+      `bunker://${await provider.signer.getPublicKey()}?relay=${encodeURIComponent(provider.relays[0])}&secret=${encodeURIComponent(provider.bunkerSecret!)}`,
     );
+  });
+
+  it("should support the deprecated secret option", async () => {
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer: new PrivateKeySigner(),
+      relays: ["wss://relay.nsec.app"],
+      secret: "test-secret",
+    });
+
+    expect(provider.secret).toBe("test-secret");
+    expect(provider.bunkerSecret).toBe("test-secret");
+    expect(await provider.getBunkerURI()).toContain("secret=test-secret");
+  });
+});
+
+describe("getNbunksec", () => {
+  it("should create an nbunksec session", async () => {
+    const clientSigner = new PrivateKeySigner();
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer: new PrivateKeySigner(),
+      relays: ["wss://relay.nsec.app"],
+      bunkerSecret: "test-secret",
+    });
+
+    expect(parseNbunksec(await provider.getNbunksec(clientSigner))).toEqual({
+      remote: await provider.signer.getPublicKey(),
+      clientKey: bytesToHex(clientSigner.key),
+      relays: provider.relays,
+      secret: "test-secret",
+      bunkerSecret: "test-secret",
+    });
   });
 });
 
@@ -87,7 +121,7 @@ describe("start", () => {
       upstream: user,
       signer,
       relays: ["wss://relay.nsec.app"],
-      secret: "test-secret",
+      bunkerSecret: "test-secret",
     });
 
     await provider.start();
@@ -133,7 +167,7 @@ describe("waitForClient", () => {
       upstream: user,
       signer,
       relays: ["wss://relay.nsec.app"],
-      secret: "test-secret",
+      bunkerSecret: "test-secret",
       onConnect,
     });
 
@@ -209,7 +243,7 @@ describe("waitForClient", () => {
       upstream: user,
       signer,
       relays: ["wss://relay.nsec.app"],
-      secret: "test-secret",
+      bunkerSecret: "test-secret",
       onConnect,
     });
 
@@ -256,7 +290,7 @@ describe("initiated by client", () => {
 
     const uri = createNostrConnectURI({
       client: client.pubkey,
-      secret: "test-secret",
+      connectSecret: "test-secret",
       relays: ["wss://relay.nsec.app"],
     });
 

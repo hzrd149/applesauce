@@ -9,7 +9,7 @@ All signers in the `applesauce-signers` package are compatible with the [NIP-07]
 ## Features
 
 - All signers follow the [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md) API
-- [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) `bunker://` URI support
+- [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) `bunker://` URI and `nbunksec` session support
 - Support for client initinated NIP-46 connection (`nostrconnect://` URIs)
 - [NIP-49](https://github.com/nostr-protocol/nips/blob/master/49.md) encrypted password signer
 - Support for [nostr-signing-device](https://github.com/lnbits/nostr-signing-device) on chrome based browsers
