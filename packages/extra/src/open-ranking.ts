@@ -73,9 +73,17 @@ export class OpenRanking {
   // Cache search results for 5 minutes
   protected searchCache = new LRU<OpenRankingSearchResult[]>(1000, 5 * 60 * 1000);
 
+  // Cache the issued authorization header (and its in-flight signature) so a single token is reused across requests
+  protected authorizationCache?: { expiration: number; header: Promise<string> };
+
+  // Re-issue the token slightly before it expires so it never lapses mid-request
+  protected tokenSkew = 10;
+
   /** Sets or clears the signer used to issue Nostr Web Tokens */
   setSigner(signer?: ISigner) {
     this.signer = signer;
+    // A new signer issues different tokens, so drop the cached authorization
+    this.authorizationCache = undefined;
   }
 
   /** Fetches the provider's capability document @see ORE-01 */
@@ -88,20 +96,38 @@ export class OpenRanking {
     return this.capabilities;
   }
 
-  /** Creates a Nostr Web Token authorization header for the provider, or an empty object when no signer is set */
+  /**
+   * Creates a Nostr Web Token authorization header for the provider, or an empty object when no signer is set.
+   * The signed token is cached and reused until it expires, so scoring many pubkeys only ever asks the signer once.
+   */
   protected async authorization(): Promise<Record<string, string>> {
     if (!this.signer) return {};
 
     const now = Math.floor(Date.now() / 1000);
-    const token = await NostrWebTokenFactory.create({
-      audiences: [this.provider],
-      issuedAt: now,
-      expiration: now + this.tokenExpiration,
-    })
-      .message("Open Ranking request")
-      .sign(this.signer);
 
-    return { Authorization: createNostrWebTokenAuthorizationHeader(token) };
+    // Issue a new token only when there isn't a valid one cached (or in flight)
+    if (!this.authorizationCache || this.authorizationCache.expiration - now <= this.tokenSkew) {
+      const expiration = now + this.tokenExpiration;
+      const header = NostrWebTokenFactory.create({
+        audiences: [this.provider],
+        issuedAt: now,
+        expiration,
+      })
+        .message("Open Ranking request")
+        .sign(this.signer)
+        .then(createNostrWebTokenAuthorizationHeader);
+
+      // Store the in-flight promise immediately so concurrent requests await the same signature
+      const cache = { expiration, header };
+      this.authorizationCache = cache;
+
+      // Don't keep a rejected signature cached — let the next request retry
+      header.catch(() => {
+        if (this.authorizationCache === cache) this.authorizationCache = undefined;
+      });
+    }
+
+    return { Authorization: await this.authorizationCache.header };
   }
 
   /** Makes a POST request to the provider, signing a Nostr Web Token when a signer is available */
