@@ -1,7 +1,14 @@
 import { bytesToHex } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { describe, expect, it } from "vitest";
-import { createBunkerURI, createNbunksec, parseBunkerURI, parseNbunksec } from "../nostr-connect.js";
+import {
+  createBunkerURI,
+  createNbunksec,
+  createNostrConnectURI,
+  parseBunkerURI,
+  parseNbunksec,
+  parseNostrConnectURI,
+} from "../nostr-connect.js";
 
 describe("bunker uri", () => {
   it("should keep secret as a deprecated alias for bunkerSecret", () => {
@@ -14,6 +21,30 @@ describe("bunker uri", () => {
       secret: "test-secret",
       bunkerSecret: "test-secret",
     });
+  });
+});
+
+describe("nostrconnect uri", () => {
+  it("should keep secret as a deprecated alias for connectSecret", () => {
+    const client = getPublicKey(generateSecretKey());
+    const uri = createNostrConnectURI({ client, relays: ["wss://relay.example.com"], secret: "test-secret" });
+
+    expect(parseNostrConnectURI(uri)).toEqual({
+      client,
+      relays: ["wss://relay.example.com"],
+      secret: "test-secret",
+      connectSecret: "test-secret",
+    });
+  });
+
+  it("should require a secret", () => {
+    const client = getPublicKey(generateSecretKey());
+
+    expect(() =>
+      createNostrConnectURI({ client, relays: ["wss://relay.example.com"] } as Parameters<
+        typeof createNostrConnectURI
+      >[0]),
+    ).toThrow("missing secret");
   });
 });
 
