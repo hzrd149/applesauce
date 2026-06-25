@@ -1,5 +1,20 @@
 # applesauce-signer
 
+## 6.2.0
+
+### Minor Changes
+
+- b08ce94: Add nbunksec import and export helpers for NIP-46 remote signer sessions.
+- 9adfe05: Add support for the NIP-46 `logout` request to `NostrConnectProvider` to end a client session with an optional `onLogout` callback
+- cd13ce5: Rename the NIP-46 `secret` fields to `connectSecret` for the `nostrconnect://` flow and `bunkerSecret` for the `bunker://` flow, keeping `secret` as a deprecated alias.
+- 9adfe05: Add `logout` method to `NostrConnectSigner` to notify the remote signer that the session is ending before closing the connection
+
+### Patch Changes
+
+- e2c7799: Upgrade Noble and Scure crypto dependencies to their latest major versions.
+- Updated dependencies
+  - applesauce-core@6.2.0
+
 ## 6.0.1
 
 ### Patch Changes

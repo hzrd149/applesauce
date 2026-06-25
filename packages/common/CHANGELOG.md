@@ -1,5 +1,19 @@
 # applesauce-common
 
+## 6.2.0
+
+### Minor Changes
+
+- 277c355: Add support for generic blockchain address and tx external pointers
+- 277c355: Add support for ISO country external pointers
+
+### Patch Changes
+
+- 0160979: Add helpers and a factory for creating and validating Nostr Web Tokens.
+- e2c7799: Upgrade Noble and Scure crypto dependencies to their latest major versions.
+- Updated dependencies
+  - applesauce-core@6.2.0
+
 ## 6.1.0
 
 ### Minor Changes

@@ -1,5 +1,17 @@
 # applesauce-extra
 
+## 6.2.0
+
+### Minor Changes
+
+- 054e7c4: Add `OpenRanking` client for searching profiles on an Open Ranking provider with optional Nostr Web Token authentication
+
+### Patch Changes
+
+- 9b5928e: Cache the `OpenRanking` Nostr Web Token so scoring many pubkeys only requests a single signature until the token expires
+- Updated dependencies
+  - applesauce-core@6.2.0
+
 ## 6.0.0
 
 ### Patch Changes

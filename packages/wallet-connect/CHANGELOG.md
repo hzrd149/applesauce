@@ -1,5 +1,19 @@
 # applesauce-wallet-connect
 
+## 6.2.0
+
+### Minor Changes
+
+- 96c0609: Add `WalletConnect.waitForPaid` method to make it easier to wait for an invoice to be paid
+- 96c0609: Add `waitForPaid` to wait for generated invoices to settle or expire
+
+### Patch Changes
+
+- e2c7799: Upgrade Noble and Scure crypto dependencies to their latest major versions.
+- Updated dependencies
+  - applesauce-common@6.2.0
+  - applesauce-core@6.2.0
+
 ## 6.0.0
 
 ### Minor Changes

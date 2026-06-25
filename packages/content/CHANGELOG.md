@@ -1,5 +1,17 @@
 # applesauce-content
 
+## 6.2.0
+
+### Minor Changes
+
+- d11e562: Upgrade `@cashu/cashu-ts` to v4 (proof amounts are now `Amount` value objects; `getDecodedToken` requires keyset ids)
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-common@6.2.0
+  - applesauce-core@6.2.0
+
 ## 6.1.0
 
 ### Minor Changes
