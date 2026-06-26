@@ -1,5 +1,19 @@
 # applesauce-core
 
+## 6.2.0
+
+### Minor Changes
+
+- 4c492ab: Add `AsyncEventStore.dispose()` (with `Symbol.dispose` support) that completes the event streams, releases model keep-warm timers, unsubscribes internal manager listeners, and disposes the attached event loader for a clean shutdown
+- f4f08c2: Add `EventStore.dispose()` (with `Symbol.dispose` support) that completes the event streams, releases model keep-warm timers, and disposes the attached event loader for a clean shutdown
+
+### Patch Changes
+
+- 30ca212: Hold pubkey/user cast instances weakly so unused casts can be garbage collected instead of accumulating one instance per pubkey for the lifetime of the process
+- 30ca212: Drop empty index entries from `EventMemory` when the last event for an author, kind, kind+author, tag, or replaceable address is removed so the indexes no longer accumulate empty containers forever
+- 4c492ab: Cancel the pending `ExpirationManager` timer when an event store is disposed so a far-future expiration no longer keeps the process alive
+- 30ca212: Forget removed events from the `TimelineModel` seen map so a long-lived timeline subscription no longer grows unbounded as events are added and removed
+
 ## 6.1.0
 
 ### Minor Changes

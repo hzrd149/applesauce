@@ -1474,4 +1474,3 @@ describe("sync", () => {
     expect(spy.receivedError()).toBe(true);
   });
 });
-

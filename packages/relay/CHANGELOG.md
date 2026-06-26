@@ -1,5 +1,20 @@
 # applesauce-relay
 
+## 6.2.0
+
+### Minor Changes
+
+- ede2462: Add `RelayPool.close()` to close and remove every relay in the pool for clean shutdown
+
+### Patch Changes
+
+- 4c492ab: Cancel the watchTower's `keepAlive` reset timer in `Relay.close()` so closing a relay no longer leaves a pending timer holding the event loop open for `keepAlive` milliseconds
+- ede2462: Fix `Relay.close()` to cancel the pending reconnect timer and tear down internal state subscriptions so it no longer leaves timers running that keep the process alive
+- 4e7b7c9: Mark events sent to a relay during a negentropy sync as seen on that relay
+- e2c7799: Upgrade Noble and Scure crypto dependencies to their latest major versions.
+- Updated dependencies
+  - applesauce-core@6.2.0
+
 ## 6.0.3
 
 ### Patch Changes

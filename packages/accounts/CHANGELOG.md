@@ -1,5 +1,14 @@
 # applesauce-accounts
 
+## 6.2.0
+
+### Patch Changes
+
+- b08ce94: Persist the NIP-46 `bunkerSecret` for remote signer sessions in serialized accounts.
+- Updated dependencies
+  - applesauce-signers@6.2.0
+  - applesauce-core@6.2.0
+
 ## 6.0.0
 
 ### Patch Changes

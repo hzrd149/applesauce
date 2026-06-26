@@ -1,5 +1,18 @@
 # applesauce-loaders
 
+## 6.2.0
+
+### Minor Changes
+
+- f4f08c2: Add a `signal` option plus `stop()` and `Symbol.dispose` methods to the batched event, address, tag-value, and unified loaders for deterministic teardown of in-flight upstream requests
+- 4e7b7c9: Add `createSyncLoader` for loading a set of events from multiple relays using NIP-77 negentropy sync with a paginated request fallback
+
+### Patch Changes
+
+- f4f08c2: Fix the event, address, and tag-value loaders keeping a `bufferTime` interval alive forever (hanging the process on exit) by reference counting the batch engine so it only runs while a loader observable is subscribed
+- Updated dependencies
+  - applesauce-core@6.2.0
+
 ## 6.1.0
 
 ### Patch Changes

@@ -74,7 +74,9 @@ function ContactRow({ user, assertion, loaded }: { user: User; assertion?: UserA
       <div className="list-col-wrap flex flex-wrap gap-3 text-xs opacity-70">
         {assertion?.followerCount !== undefined && <span>{formatNumber(assertion.followerCount)} followers</span>}
         {assertion?.postCount !== undefined && <span>{formatNumber(assertion.postCount)} posts</span>}
-        {assertion?.zapsReceived.amount !== undefined && <span>{formatNumber(assertion.zapsReceived.amount)} sats recv</span>}
+        {assertion?.zapsReceived.amount !== undefined && (
+          <span>{formatNumber(assertion.zapsReceived.amount)} sats recv</span>
+        )}
       </div>
 
       {/* The normalized 0–100 rank, the headline metric of a user assertion */}
@@ -193,8 +195,8 @@ function ContactAssertions({ user }: { user: User }) {
       {contacts !== undefined && !supported && (
         <div className="alert alert-warning mb-4">
           <span>
-            None of your trusted providers publish <code>30382:rank</code> assertions. Add one to your NIP-85 list
-            (kind 10040) to score your contacts.
+            None of your trusted providers publish <code>30382:rank</code> assertions. Add one to your NIP-85 list (kind
+            10040) to score your contacts.
           </span>
         </div>
       )}

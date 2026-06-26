@@ -1,6 +1,6 @@
 {
   "name": "applesauce-extra",
-  "version": "6.0.0",
+  "version": "6.2.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -24,13 +24,13 @@
     "dist"
   ],
   "dependencies": {
-    "applesauce-core": "^6.0.0",
+    "applesauce-core": "^6.2.0",
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
-    "applesauce-common": "^6.0.0",
-    "applesauce-relay": "^6.0.0",
-    "applesauce-signers": "^6.0.0"
+    "applesauce-common": "^6.2.0",
+    "applesauce-relay": "^6.2.0",
+    "applesauce-signers": "^6.2.0"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",

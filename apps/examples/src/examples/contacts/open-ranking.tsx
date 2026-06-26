@@ -7,12 +7,7 @@
 import { castUser, User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
-import {
-  DEFAULT_OPEN_RANKING_PROVIDER,
-  OpenRanking,
-  OpenRankingAlgorithm,
-  OpenRankingStats,
-} from "applesauce-extra";
+import { DEFAULT_OPEN_RANKING_PROVIDER, OpenRanking, OpenRankingAlgorithm, OpenRankingStats } from "applesauce-extra";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -276,9 +271,7 @@ function ContactScores({ user }: { user: User }) {
       )}
       {algorithms !== undefined && !supportsStats && (
         <div className="alert alert-warning mb-4">
-          <span>
-            {discoverError ?? `This provider does not support the ORE-02 ${STATS_ENDPOINT} endpoint.`}
-          </span>
+          <span>{discoverError ?? `This provider does not support the ORE-02 ${STATS_ENDPOINT} endpoint.`}</span>
         </div>
       )}
       {requiresPov && !signer && supportsStats && (
@@ -325,7 +318,11 @@ function ContactScores({ user }: { user: User }) {
       ) : (
         <ul className="list border border-base-300 rounded-box">
           {sorted.map((contact) => (
-            <ContactRow key={contact.pubkey} user={contact} entry={supportsStats ? statsMap[contact.pubkey] : undefined} />
+            <ContactRow
+              key={contact.pubkey}
+              user={contact}
+              entry={supportsStats ? statsMap[contact.pubkey] : undefined}
+            />
           ))}
         </ul>
       )}

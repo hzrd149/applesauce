@@ -1,5 +1,30 @@
 # applesauce-wallet
 
+## 6.2.0
+
+### Minor Changes
+
+- d11e562: Upgrade `@cashu/cashu-ts` to v4 (proof amounts are now `Amount` value objects; `getDecodedToken` requires keyset ids)
+- 1ef947d: Add `MintTokens` action for minting tokens into the wallet from a paid bolt11 mint quote
+- f9bb8b5: Add `NutWallet` class in `applesauce-wallet/wallet` for loading and managing a NIP-60 Cashu wallet
+- 1ef947d: Add an optional `getCashuWallet` provider option to the token actions so callers can supply a cached cashu `Wallet`
+- fca98fc: Mirror token `del` ids to public tags so deleted token events can be computed without decrypting the content
+- af12b87: Add a `CleanupDeletedTokens` action, `WalletDeletedTokensModel` model, and `NutWallet.cleanupDeletedTokens` method to detect and remove token events that newer token events have marked as deleted
+- fca98fc: Add `WalletDeletedTokenIdsModel` and `getTokenDeletedIds` helper for reading deleted token ids from public tags with a fallback to the decrypted content
+- af12b87: Add a `useDeleteEvents` option to `NutWallet` (with `setUseDeleteEvents`) and a `createDeleteEvents` option to the token actions to control whether the wallet loads, subscribes to and publishes NIP-09 delete events, letting a wallet completely ignore all kind 5 delete events with a single flag
+
+### Patch Changes
+
+- 0a58a0b: Batch the `ConsolidateTokens` action into a single delete event across all mints and skip mints that already have one token
+- 2ed2e13: Make `NutWallet.unlocked$` and `Wallet.unlocked$` react to in-place unlock updates so the unlocked state is reflected after auto-unlock with no events left to decrypt
+- 82550ee: Use the shared sync loader for wallet event backfills and automatically back up loaded wallet events to missing relays.
+- af12b87: Fix `WalletTokensModel` and `WalletBalanceModel` double counting and showing replaced token events by reconciling each token's `del` field independently of timeline order and across delete chains
+- Updated dependencies
+  - applesauce-actions@6.2.0
+  - applesauce-common@6.2.0
+  - applesauce-core@6.2.0
+  - applesauce-loaders@6.2.0
+
 ## 6.1.0
 
 ### Patch Changes

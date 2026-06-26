@@ -1,5 +1,14 @@
 # applesauce-actions
 
+## 6.2.0
+
+### Patch Changes
+
+- 1117028: Update `ActionRunner` to save new events to the store immediately before publish
+- Updated dependencies
+  - applesauce-common@6.2.0
+  - applesauce-core@6.2.0
+
 ## 6.1.0
 
 ### Patch Changes
