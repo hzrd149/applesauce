@@ -8,6 +8,10 @@ import { ignoreBlacklistedRelays, includeMailboxes } from "../observable/relay-s
 export type OutboxModelOptions = SelectOptimalRelaysOptions & {
   type?: "inbox" | "outbox";
   blacklist?: Parameters<typeof ignoreBlacklistedRelays>[0];
+  /** Unique identifier for the score function, used as a cache key discriminator.
+   *  Required when using a custom score function to prevent cache collisions
+   *  (hash-sum cannot distinguish closures with different captured state). */
+  scoreId?: string;
 };
 
 /** A model that returns the users contacts with the relays to connect to */
@@ -25,5 +29,5 @@ export function OutboxModel(user: string | ProfilePointer, opts: OutboxModelOpti
 
 OutboxModel.getKey = (user: string | ProfilePointer, opts: OutboxModelOptions) => {
   const p = typeof user === "string" ? user : user.pubkey;
-  return hash_sum([p, opts.type, opts.maxConnections, opts.maxRelaysPerUser]);
+  return hash_sum([p, opts.type, opts.maxConnections, opts.maxRelaysPerUser, opts.scoreId]);
 };
