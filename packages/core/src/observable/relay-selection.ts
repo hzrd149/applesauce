@@ -5,6 +5,7 @@ import {
   map,
   of,
   pipe,
+  startWith,
   switchMap,
   type MonoTypeOperatorFunction,
   type Observable,
@@ -13,6 +14,7 @@ import {
 import { IEventSubscriptions } from "../event-store/interface.js";
 import { getInboxes, getOutboxes } from "../helpers/mailboxes.js";
 import { addRelayHintsToPointer, ProfilePointer } from "../helpers/pointers.js";
+import { removeDeadRelays, type RelayLivenessFilterOptions } from "../helpers/relay-liveness-filter.js";
 import {
   removeBlacklistedRelays,
   selectOptimalRelays,
@@ -64,6 +66,22 @@ export function ignoreBlacklistedRelays(
     combineLatestWith(isObservable(blacklist) ? blacklist : of(blacklist)),
     // Filter the relays for the user
     map(([users, blacklist]) => removeBlacklistedRelays(users, blacklist)),
+  );
+}
+
+/** Removes dead relays using NIP-66 monitor data with safety guardrails.
+ *  Empty alive set = no-op (spec requirement 1). Observable inputs are
+ *  wrapped with startWith(emptySet) so relay selection is never blocked. */
+export function ignoreDeadRelays(
+  aliveRelays: ReadonlySet<string> | Observable<ReadonlySet<string>>,
+  opts?: RelayLivenessFilterOptions,
+): MonoTypeOperatorFunction<ProfilePointer[]> {
+  const emptySet = new Set<string>() as ReadonlySet<string>;
+  return pipe(
+    combineLatestWith(
+      isObservable(aliveRelays) ? aliveRelays.pipe(startWith(emptySet)) : of(aliveRelays),
+    ),
+    map(([users, alive]) => removeDeadRelays(users, alive, opts)),
   );
 }
 

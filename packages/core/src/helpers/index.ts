@@ -19,6 +19,8 @@ export * from "./pipeline.js";
 export * from "./pointers.js";
 export * from "./profile.js";
 export * from "./regexp.js";
+export { classifyRelays, removeDeadRelays } from "./relay-liveness-filter.js";
+export type { RelayClassification, RelayLivenessFilterOptions } from "./relay-liveness-filter.js";
 export * from "./relay-selection.js";
 export * from "./relays.js";
 export * from "./string.js";
