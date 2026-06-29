@@ -1,5 +1,11 @@
 # applesauce-relay
 
+## 6.2.1
+
+### Patch Changes
+
+- 189c914: Complete the internal `_ready$` source when `Relay.close()` is called so the watchTower cannot re-arm the reconnect timer after a terminal close.
+
 ## 6.2.0
 
 ### Minor Changes
