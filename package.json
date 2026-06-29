@@ -22,7 +22,7 @@
     "@changesets/changelog-git": "^0.2.1",
     "@changesets/types": "^6.1.0",
     "@hirez_io/observer-spy": "^2.2.0",
-    "@vitest/browser": "^4.1.6",
+    "@vitest/browser": "^4.1.8",
     "@vitest/browser-playwright": "^4.1.6",
     "@vitest/coverage-v8": "^4.1.6",
     "playwright": "^1.60.0",
