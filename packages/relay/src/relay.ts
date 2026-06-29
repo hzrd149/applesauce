@@ -1171,6 +1171,11 @@ export class Relay {
     // Mark as disconnected since the close$ watcher has been torn down
     if (this.connected$.value) this.connected$.next(false);
 
+    // Terminate the watchTower source: flip ready to false (trips the startReconnectTimer guard)
+    // and complete it so a subscriber still holding the watchTower can't re-arm reconnect on teardown
+    this._ready$.next(false);
+    this._ready$.complete();
+
     // Finally close the underlying socket
     this.socket.unsubscribe();
   }

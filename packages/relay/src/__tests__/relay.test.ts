@@ -1247,6 +1247,20 @@ describe("close", () => {
     expect(relay.connected).toBe(false);
   });
 
+  it("should complete the internal ready$ source so the watchTower cannot re-arm reconnect", async () => {
+    const sub = subscribeSpyTo(relay.req([{ kinds: [1] }]));
+    await server.connected;
+    expect(relay.ready).toBe(true);
+
+    relay.close();
+    sub.unsubscribe();
+
+    // close() is terminal: ready must be flipped false (trips the startReconnectTimer guard)
+    // and the source completed so nothing can keep it resolvable
+    expect(relay.ready).toBe(false);
+    expect((relay as any)._ready$.isStopped).toBe(true);
+  });
+
   it("should cancel a pending reconnect timer so it cannot fire after close", async () => {
     vi.useFakeTimers();
     // Long backoff like the real exponential reconnect timer (capped at 5 minutes)
