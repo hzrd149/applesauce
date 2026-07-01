@@ -676,9 +676,9 @@ importers:
       '@noble/secp256k1':
         specifier: ^3.1.0
         version: 3.1.0
-      '@sandwichfarm/encoded-entities':
-        specifier: ^0.1.1
-        version: 0.1.1(nostr-tools@2.19.4(typescript@5.9.3))
+      '@scure/base':
+        specifier: ^2.2.0
+        version: 2.2.0
       applesauce-core:
         specifier: ^6.2.0
         version: link:../core
@@ -1820,11 +1820,6 @@ packages:
     resolution: {integrity: sha512-hPt/bgL5cE+Qp+/TPHBqptcAgPzgj46mPcg/16zNUmbQk0j+mOEQV/+Lqu8QRtDV3Ek95Q6FeFITpuhl6OTsAA==}
     cpu: [x64]
     os: [win32]
-
-  '@sandwichfarm/encoded-entities@0.1.1':
-    resolution: {integrity: sha512-6EvrduiLnxRngNLl1TM1bX1bypD6mRjmkszPfSYsBvIk7R9+jGEqTwc+nX6vVUoMIrWZ0tnAleuruDWbJA52gg==}
-    peerDependencies:
-      nostr-tools: ^2.0.0
 
   '@scure/base@1.1.1':
     resolution: {integrity: sha512-ZxOhsSyxYwLJj3pLZCefNitxsj093tb2vq90mp2txoYeBqbcjDjqFhyM8eUjq/uFm6zJ+mUuqxlS2FkuSY1MTA==}
@@ -3024,9 +3019,6 @@ packages:
 
   bcp-47@2.1.0:
     resolution: {integrity: sha512-9IIS3UPrvIa1Ej+lVDdDwO7zLehjqsaByECw0bu2RRGP73jALm6FYbzI5gWbgHLvNdkvfXB5YrSbocZdOS0c0w==}
-
-  bech32@2.0.0:
-    resolution: {integrity: sha512-LcknSilhIGatDAsY1ak2I8VtGaHNhgMSYVxFrGLXv+xLHytaKZKcaUJJUE7qmBr7h33o5YQwP55pMI0xmkpJwg==}
 
   bencode@4.0.0:
     resolution: {integrity: sha512-AERXw18df0pF3ziGOCyUjqKZBVNH8HV3lBxnx5w0qtgMIk4a1wb9BkcCQbkp9Zstfrn/dzRwl7MmUHHocX3sRQ==}
@@ -6809,11 +6801,6 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.3':
     optional: true
 
-  '@sandwichfarm/encoded-entities@0.1.1(nostr-tools@2.19.4(typescript@5.9.3))':
-    dependencies:
-      bech32: 2.0.0
-      nostr-tools: 2.19.4(typescript@5.9.3)
-
   '@scure/base@1.1.1': {}
 
   '@scure/base@2.2.0': {}
@@ -8145,8 +8132,6 @@ snapshots:
       is-alphabetical: 2.0.1
       is-alphanumerical: 2.0.1
       is-decimal: 2.0.1
-
-  bech32@2.0.0: {}
 
   bencode@4.0.0:
     dependencies:

@@ -11,6 +11,8 @@ describe("exports", () => {
         "createBunkerURI",
         "createNbunksec",
         "createNostrConnectURI",
+        "decodeNbunksec",
+        "encodeNbunksec",
         "isErrorResponse",
         "isNIP04",
         "parseBunkerURI",

@@ -1,4 +1,4 @@
-import { encodeNbunksec, decodeNbunksec } from "@sandwichfarm/encoded-entities";
+import { encodeNbunksec, decodeNbunksec } from "./nbunksec.js";
 import { setHiddenContentEncryptionMethod } from "applesauce-core/helpers/hidden-content";
 import { isHexKey } from "applesauce-core/helpers/string";
 import { kinds } from "applesauce-core/helpers/event";
