@@ -1,5 +1,11 @@
 # applesauce-signer
 
+## 6.2.2
+
+### Patch Changes
+
+- d654349: Replace the `@sandwichfarm/encoded-entities` dependency with a built-in nbunksec helper
+
 ## 6.2.0
 
 ### Minor Changes
