@@ -1,0 +1,254 @@
+// CORD-04 Control Plane — folding versioned editions into community state.
+//
+// Every authority action is a kind 3308 edition sealed by the actor's real
+// npub. Clients fold the highest-version edition per entity, refuse downgrades,
+// and drop editions whose signer isn't authorised. Authority is rooted at the
+// owner (proven by community_id) and resolved outward, so the roster is folded
+// owner-first to break the apparent circularity (CORD-04 §1).
+
+import { PERM, VSK } from "../types.js";
+import type {
+  ChannelMetadata,
+  CommunityMetadata,
+  CommunityState,
+  DecodedEvent,
+  Grant,
+  JoinMaterial,
+  Role,
+} from "../types.js";
+import { hasPerm, resolveStanding } from "./permissions.js";
+import { editionHash } from "./crypto.js";
+import { fromHex, utf8 } from "../bytes.js";
+
+const HEX64 = /^[0-9a-f]{64}$/i;
+
+interface Edition {
+  vsk: number;
+  eid: string;
+  version: number;
+  prev?: string;
+  /** edition_hash of THIS edition — what the next edition's `ep` must cite. */
+  selfHash: string;
+  content: string;
+  author: string;
+  rumorId: string;
+  ms: number;
+  /** The decoded stream event this edition arrived in (carries the re-wrappable seal). */
+  source: DecodedEvent;
+}
+
+function parseEdition(d: DecodedEvent): Edition | null {
+  const r = d.rumor;
+  const get = (name: string) => r.tags.find((t) => t[0] === name)?.[1];
+  const vsk = get("vsk");
+  const eid = get("eid");
+  if (vsk === undefined || eid === undefined || !HEX64.test(eid)) return null;
+  const ev = get("ev");
+  const version = ev ? parseInt(ev, 10) : 1;
+  if (!Number.isInteger(version) || version < 1) return null;
+  const prev = get("ep");
+  if (prev !== undefined && !HEX64.test(prev)) return null;
+  return {
+    vsk: parseInt(vsk, 10),
+    eid,
+    version,
+    prev,
+    selfHash: editionHash(fromHex(eid), version, prev ? fromHex(prev) : undefined, utf8(r.content)),
+    content: r.content,
+    author: d.author,
+    rumorId: r.id,
+    ms: d.ms,
+    source: d,
+  };
+}
+
+/**
+ * Per-entity head candidates, matching armada's CORD-04 fold (`version.fold` +
+ * `headCandidates`): the chain-verified head first — the top of the CONTIGUOUS
+ * `prev`-linked chain walked up from the lowest present version, so a dangling
+ * `prev` holds the head at the last linked edition rather than jumping to a
+ * higher-versioned orphan — then the remaining per-version winners descending
+ * as authority-gated bootstrap fallbacks. The caller takes the first candidate
+ * that passes its authority gate.
+ */
+function headCandidates(editions: Edition[]): Edition[] {
+  if (editions.length === 0) return [];
+  // Per-version winner: equal version → lower rumor id (deterministic tiebreak).
+  const byVersion = new Map<number, Edition>();
+  for (const e of editions) {
+    const w = byVersion.get(e.version);
+    if (!w || e.rumorId < w.rumorId) byVersion.set(e.version, e);
+  }
+  const versions = [...byVersion.keys()].sort((a, b) => a - b);
+  // Walk the contiguous chain up from the lowest present version.
+  let headVersion = versions[0];
+  for (let k = 0; k + 1 < versions.length; k++) {
+    const cur = byVersion.get(versions[k])!;
+    const next = byVersion.get(versions[k + 1])!;
+    if (versions[k + 1] === versions[k] + 1 && next.prev === cur.selfHash) headVersion = versions[k + 1];
+    else break;
+  }
+  const ordered: Edition[] = [byVersion.get(headVersion)!];
+  const seen = new Set<number>([headVersion]);
+  for (const v of [...versions].sort((a, b) => b - a)) {
+    if (seen.has(v)) continue;
+    seen.add(v);
+    ordered.push(byVersion.get(v)!);
+  }
+  return ordered;
+}
+
+/** Group editions by eid and return, per eid, the ordered head candidates. */
+function groupByEntity(editions: Edition[]): Map<string, Edition[]> {
+  const byEid = new Map<string, Edition[]>();
+  for (const e of editions) {
+    const arr = byEid.get(e.eid) ?? [];
+    arr.push(e);
+    byEid.set(e.eid, arr);
+  }
+  const out = new Map<string, Edition[]>();
+  for (const [eid, arr] of byEid) out.set(eid, headCandidates(arr));
+  return out;
+}
+
+export function foldControl(events: DecodedEvent[], material: JoinMaterial): CommunityState {
+  const editions = events
+    .map(parseEdition)
+    .filter((e): e is Edition => e !== null);
+
+  const byVsk = (vsk: number) => editions.filter((e) => e.vsk === vsk);
+
+  const roleCandidates = groupByEntity(byVsk(VSK.ROLE));
+  const grantCandidates = groupByEntity(byVsk(VSK.GRANT));
+
+  // ---- Fold the roster owner-first, iterating to a fixpoint (CORD-04 §1). --
+  const roles = new Map<string, Role>();
+  const grants = new Map<string, string[]>();
+  const owner = material.owner;
+  // The winning head edition per entity (by eid), retained for CORD-06
+  // compaction — a Refounding re-wraps each of these plaintext seals.
+  const heads = new Map<string, DecodedEvent>();
+
+  const standing = (member: string) => resolveStanding(member, owner, roles, grants);
+
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+
+    // Roles: signer needs MANAGE_ROLES and may not mint a position at/above self.
+    for (const [eid, cands] of roleCandidates) {
+      for (const cand of cands) {
+        const s = standing(cand.author);
+        if (!s.isOwner && !hasPerm(s.permissions, PERM.MANAGE_ROLES)) continue;
+        let role: Role;
+        try {
+          role = JSON.parse(cand.content) as Role;
+        } catch {
+          continue;
+        }
+        if (!role.role_id) role.role_id = eid;
+        // No edition may claim a position at or above its own signer.
+        if (!s.isOwner && role.position <= s.position) continue;
+        if (role.position <= 0) continue; // position 0 is the owner alone
+        const prev = roles.get(eid);
+        if (!prev || prev.position !== role.position || prev.name !== role.name) changed = true;
+        roles.set(eid, role);
+        heads.set(eid, cand.source);
+        break;
+      }
+    }
+
+    // Grants: signer must outrank every role handed out and hold MANAGE_ROLES.
+    for (const [, cands] of grantCandidates) {
+      for (const cand of cands) {
+        const s = standing(cand.author);
+        let grant: Grant;
+        try {
+          grant = JSON.parse(cand.content) as Grant;
+        } catch {
+          continue;
+        }
+        if (!grant.member) continue;
+        const authorized =
+          s.isOwner ||
+          (hasPerm(s.permissions, PERM.MANAGE_ROLES) &&
+            grant.role_ids.every((rid) => {
+              const r = roles.get(rid);
+              return r ? r.position > s.position : false;
+            }));
+        if (!authorized) continue;
+        const prevRoles = grants.get(grant.member) ?? [];
+        if (prevRoles.join(",") !== grant.role_ids.join(",")) changed = true;
+        grants.set(grant.member, grant.role_ids);
+        heads.set(cand.eid, cand.source);
+        break;
+      }
+    }
+
+    if (!changed) break;
+  }
+
+  // ---- Metadata (MANAGE_METADATA) -----------------------------------------
+  let metadata: CommunityMetadata | undefined;
+  for (const cand of groupByEntity(byVsk(VSK.METADATA)).get(material.community_id) ?? []) {
+    const s = standing(cand.author);
+    if (!s.isOwner && !hasPerm(s.permissions, PERM.MANAGE_METADATA)) continue;
+    try {
+      metadata = JSON.parse(cand.content) as CommunityMetadata;
+      heads.set(material.community_id, cand.source);
+      break;
+    } catch {
+      /* skip */
+    }
+  }
+
+  // ---- Channels (MANAGE_CHANNELS) -----------------------------------------
+  const channels: ChannelMetadata[] = [];
+  for (const [eid, cands] of groupByEntity(byVsk(VSK.CHANNEL))) {
+    for (const cand of cands) {
+      const s = standing(cand.author);
+      if (!s.isOwner && !hasPerm(s.permissions, PERM.MANAGE_CHANNELS)) continue;
+      try {
+        const meta = JSON.parse(cand.content) as ChannelMetadata;
+        meta.channel_id = eid;
+        // Carry any client-known key material for this channel from the invite.
+        const known = material.channels.find((c) => c.id === eid);
+        if (known) {
+          meta.key = known.key;
+          meta.epoch = known.epoch;
+        }
+        heads.set(eid, cand.source); // head retained for compaction even if deleted
+        if (!meta.deleted) channels.push(meta);
+        break;
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
+  // ---- Banlist (BAN) ------------------------------------------------------
+  const banlist = new Set<string>();
+  for (const cand of groupByEntity(byVsk(VSK.BANLIST)).values().next().value ?? []) {
+    const e = cand as Edition;
+    const s = standing(e.author);
+    if (!s.isOwner && !hasPerm(s.permissions, PERM.BAN)) continue;
+    try {
+      for (const pk of JSON.parse(e.content) as string[]) banlist.add(pk);
+      heads.set(e.eid, e.source);
+      break;
+    } catch {
+      /* skip */
+    }
+  }
+
+  return {
+    material,
+    metadata,
+    channels,
+    roles: [...roles.values()].sort((a, b) => a.position - b.position || (a.role_id < b.role_id ? -1 : 1)),
+    grants,
+    banlist,
+    members: new Set(),
+    dissolved: false,
+    heads,
+  };
+}

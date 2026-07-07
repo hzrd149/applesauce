@@ -74,6 +74,14 @@ export interface Rumor {
   created_at: number;
 }
 
+/** An unsigned rumor template — the functional event before it is sealed/wrapped. */
+export interface RumorTemplate {
+  kind: number;
+  content: string;
+  tags: string[][];
+  created_at?: number;
+}
+
 /** A decoded plane event: the rumor plus its verified real author. */
 export interface DecodedEvent {
   rumor: Rumor;

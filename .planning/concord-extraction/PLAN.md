@@ -78,15 +78,27 @@ Unblocks everything. No behavior change.
 - [x] `pnpm --filter applesauce-extra build` green; subpath resolves from dist
       (`import('applesauce-extra/concord')` → `KIND.WRAP=1059`, `toHex` fn).
 
-### Phase 1 — Pure helpers (cleanest wins) — STATUS: TODO
-Move the zero-coupling reducers/derivations into `concord/helpers/`:
-`crypto.ts`, `permissions.ts`, `control.ts` (`foldControl`), `guestbook.ts`
-(`foldMembers`), `community-list.ts`, `rekey.ts`, the pure subset of
-`community.ts` (`deriveKeys`/`channelKeyFor`/`verifyOwner`), and
-`editions.ts computeEditionHash`.
-- [ ] Port `scripts/selftest.ts` as the vitest correctness anchor (derivation +
-      fold parity vs armada).
-- [ ] `pnpm --filter applesauce-extra test` green.
+### Phase 1 — Pure helpers (cleanest wins) — STATUS: DONE (2026-07-07)
+Moved the zero-coupling reducers/derivations into `concord/helpers/`:
+`crypto.ts`, `permissions.ts`, `control.ts`, `guestbook.ts`,
+`community-list.ts`, `rekey.ts`, `community.ts`, `editions.ts`.
+- [x] Imports repointed for NodeNext (`.js` extensions; `../lib/bytes`→`../bytes.js`).
+- [x] `RumorTemplate` type moved into `types.ts` so helpers don't depend on the
+      Phase-2 `stream.ts`. (Deviation: the pure `RumorTemplate` builders —
+      `buildEdition`/`buildSnapshotRumors`/`buildRekeyRumors`/`createCommunity`/
+      `dissolutionRumor` — ride with their helper modules rather than being
+      force-split into `operations/`; they're pure, signer-free, no I/O.
+      `operations/` is reserved for the signer/envelope-coupled builders:
+      `chat.ts`, `invite.ts`, `stream.ts` in Phase 2.)
+- [x] Dropped `control.ts`'s redundant `resolveStanding`/`canActOn` re-export
+      (collided with `permissions.ts` under the flat barrel).
+- [x] `helpers/index.ts` barrel; wired into `concord/index.ts` (76 exports).
+- [x] Correctness anchor: `helpers/__tests__/helpers.test.ts` — 16 tests over
+      derivations, permissions, control/guestbook folds, community-list CRDT
+      (commutativity/idempotency/liveness), rekey codec (round-trip/continuity),
+      and key derivation. Full envelope round-trip (needs `stream.ts`) deferred
+      to Phase 2's `selftest.ts` port.
+- [x] `pnpm --filter applesauce-extra test` green (2 files, 17 tests); build green.
 
 ### Phase 2 — Envelope + operations — STATUS: TODO
 - [ ] Lift `stream.ts`, swap local `Signer` iface → applesauce `ISigner`.
