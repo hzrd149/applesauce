@@ -6,10 +6,12 @@ describe("concord exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "ADMIN_PERMS",
+        "ConcordClient",
         "ConcordRelayAuth",
         "EMPTY_COMMUNITY_LIST",
         "KIND",
         "LIST_MAX_BYTES",
+        "MAX_CHANNEL_CACHE",
         "PERM",
         "REKEY_BLOBS_PER_EVENT",
         "RELAY_DICTIONARY",
@@ -50,6 +52,7 @@ describe("concord exports", () => {
         "decodeStreamEventCached",
         "decodeWrappedKey",
         "decryptBundle",
+        "defaultStorage",
         "deleteRumor",
         "deriveKeys",
         "dissolutionRumor",
@@ -77,6 +80,7 @@ describe("concord exports", () => {
         "isCommunityLive",
         "liveCommunityEntries",
         "lowerKeyWins",
+        "memoryStorage",
         "mergeCommunityLists",
         "messageRumor",
         "newInviteToken",

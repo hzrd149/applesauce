@@ -142,14 +142,32 @@ Moved the zero-coupling reducers/derivations into `concord/helpers/`:
       covered by the Phase 5 puppeteer `drive-auth.mjs`.)
 - [x] `pnpm --filter applesauce-extra test` green (4 files, 18 tests); build green.
 
-### Phase 4 — `ConcordClient` — STATUS: TODO
-- [ ] Lift `client.ts` with constructor DI:
-      `new ConcordClient({ signer, pubkey, eventStore, pool, storage, uploader? })`.
-- [ ] Replace `../nostr` globals with injected deps.
-- [ ] Abstract `localStorage` behind `ConcordStorage` (localStorage-backed default).
-- [ ] Make Blossom media upload an optional injected `uploader` (core client has
-      no Blossom dep).
-- [ ] Keep RxJS `BehaviorSubject` surface + optimistic local-echo intact.
+### Phase 4 — `ConcordClient` — STATUS: DONE (2026-07-07)
+- [x] Lifted `client.ts` with constructor DI:
+      `new ConcordClient({ signer, pubkey, eventStore, pool, storage?, uploader?, relays? })`
+      (`ConcordClientOptions`). Replaced the `../nostr` `eventStore`/`pool`
+      globals with injected `IEventStore` + `RelayPool`; `Signer` → `ISigner`;
+      `DEFAULT_RELAYS` → injected `relays` (defaults to CORD-05 stock set).
+- [x] New `concord/storage.ts`: `ConcordStorage` interface (`memoryStorage()` /
+      `defaultStorage()` picks `localStorage` if present) — the decoded-rumor
+      cache + materials mirror now go through it (the app's `cache.ts` becomes the
+      reference localStorage impl). `ConcordUploader` interface makes Blossom
+      media upload injectable; the core client has zero Blossom/`castUser`
+      dependency and throws a clear error if a file is sent without an uploader.
+- [x] Instantiates its own `ConcordRelayAuth(pool)` (Phase 3) — no module globals.
+- [x] RxJS `BehaviorSubject` surface (`communities$`, `getState$`, `getMessages$`)
+      and optimistic local-echo (`publishToPlane` → `ingest` before background
+      publish) kept intact.
+- [x] **Voice (CORD-07) removed per scope decision:** dropped `getVoicePresence$`,
+      `voiceKeys`, `joinVoice`/`leaveVoice`, presence fold/heartbeat machinery,
+      and the Runtime voice fields; the `ingest` channel branch now drops
+      `VOICE_PRESENCE` events. (The `voice` channel-flag on `createChannel` stays —
+      it's just an edition property, not the LiveKit layer.)
+- [x] Test `__tests__/client.test.ts` — DI over a network-free fake pool + real
+      `EventStore`: genesis fold + chat optimistic echo, the no-uploader guard,
+      and persistence across a client restart through a shared `memoryStorage`.
+- [x] `pnpm --filter applesauce-extra test` green (5 files, 21 tests); build
+      green; barrel 106 exports (`ConcordClient`/`ConcordRelayAuth`/storage).
 
 ### Phase 5 — Prove it + swap the app back — STATUS: TODO
 - [ ] Point `appelsauce-concord-test` at `applesauce-extra/concord`; delete its
