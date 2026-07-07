@@ -100,12 +100,27 @@ Moved the zero-coupling reducers/derivations into `concord/helpers/`:
       to Phase 2's `selftest.ts` port.
 - [x] `pnpm --filter applesauce-extra test` green (2 files, 17 tests); build green.
 
-### Phase 2 — Envelope + operations — STATUS: TODO
-- [ ] Lift `stream.ts`, swap local `Signer` iface → applesauce `ISigner`.
-- [ ] Lift rumor builders into `operations/`: `chat.ts` (already applesauce-idiomatic),
-      `editions.ts`, `invite.ts`, `guestbook buildSnapshotRumors`,
-      `rekey buildRekeyRumors`, `community createCommunity`.
-- [ ] Parameterize app-specific invite `RELAY_DICTIONARY`/`STOCK_RELAYS` as inputs.
+### Phase 2 — Envelope + operations — STATUS: DONE (2026-07-07)
+- [x] Lifted `stream.ts` (top-level envelope); dropped the local `Signer`
+      interface for applesauce `ISigner` (type-only import — verified erased from
+      the built `stream.js`, so no runtime `applesauce-signers` dep). Removed the
+      duplicate `RumorTemplate` def (now sourced from `types.ts`).
+- [x] Lifted the signer/envelope-adjacent builders into `operations/`:
+      `chat.ts` (already built on `applesauce-core/operations`), `invite.ts`
+      (CORD-05 codec + bundle templates), and `imeta.ts` (NIP-92 attachment tags).
+      The `editions`/`guestbook`/`rekey`/`community` builders already shipped
+      with their helper modules in Phase 1 (see Phase 1 deviation note).
+- [x] Dropped redundant barrel-colliding re-exports (`toHex`/`fromHex` from
+      invite, `RumorTemplate` from stream).
+- [x] Full envelope round-trip anchor: `__tests__/roundtrip.test.ts` — ports
+      selftest.ts §1-7 (genesis → wrap/seal → decode → control+guestbook fold →
+      cross-member chat decode → invite link round-trip → tamper detection).
+- [x] `pnpm --filter applesauce-extra test` green (3 files, 17 tests); build
+      green; barrel now 101 exports.
+- **Deferred:** parameterizing the invite `RELAY_DICTIONARY`/`STOCK_RELAYS` —
+      kept as the CORD-05 §3 stock-set defaults for a faithful lift and to
+      preserve interop; making the dictionary injectable is a follow-up that
+      would thread a param through the fragment codec.
 
 ### Phase 3 — Relay-auth — STATUS: TODO
 - [ ] Lift `stream-auth.ts` + `relay-auth.ts`; refactor module-global stream-key

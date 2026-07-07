@@ -6,3 +6,5 @@
 export * from "./bytes.js";
 export * from "./types.js";
 export * from "./helpers/index.js";
+export * from "./stream.js";
+export * from "./operations/index.js";
