@@ -169,12 +169,30 @@ Moved the zero-coupling reducers/derivations into `concord/helpers/`:
 - [x] `pnpm --filter applesauce-extra test` green (5 files, 21 tests); build
       green; barrel 106 exports (`ConcordClient`/`ConcordRelayAuth`/storage).
 
-### Phase 5 — Prove it + swap the app back — STATUS: TODO
-- [ ] Point `appelsauce-concord-test` at `applesauce-extra/concord`; delete its
-      duplicated `src/concord/`, keeping only app-only bits (cache adapter,
-      blossom uploader impl, voice, React UI).
-- [ ] Run the puppeteer drivers (`drive.mjs`/`drive-auth.mjs`) against the
-      extracted package — real end-to-end interop check.
+### Phase 5 — Prove it + swap the app back — STATUS: PARTIAL (2026-07-07)
+Verification done headlessly; the app cutover is a manual integration step
+(separate repo + publish/link + Chrome + live relays).
+- [x] **Compiled-artifact round-trip:** ran a full genesis → wrap/seal → decode →
+      control fold → cross-member chat decode → invite round-trip against the
+      BUILT `dist`, imported exactly as an external consumer would
+      (`import { … } from "applesauce-extra/concord"`). All assertions pass —
+      proves the published subpath + emitted JS/types work, not just the source.
+- [ ] **App cutover (deferred — needs the package published or workspace-linked):**
+      `appelsauce-concord-test` is a *separate git repo* pinned to
+      `applesauce-*@^6.2.0` from npm; the `concord` subpath isn't published yet,
+      so its `src/concord/` can't be deleted/repointed headlessly without breaking
+      it. Cutover steps for when the package ships:
+      1. Bump + publish `applesauce-extra` (or `pnpm link` the workspace build).
+      2. Replace app imports `../concord/*` → `applesauce-extra/concord`; construct
+         `new ConcordClient({ signer, pubkey, eventStore, pool, storage, uploader })`
+         where `storage` wraps the app's `localStorage` cache and `uploader` wraps
+         its Blossom `encryptImageBlob`+`uploadBlob`.
+      3. Keep app-only bits: the voice layer (`src/app/voice/`, `voice.ts`),
+         the Blossom/image libs (now the reference `ConcordUploader`), and the
+         `cache.ts`/`nostr.ts` wiring (now the reference `ConcordStorage`).
+      4. Delete the now-duplicated `src/concord/` core.
+      5. Run the puppeteer drivers (`drive.mjs`/`drive-auth.mjs`) — real
+         end-to-end interop over live relays + Chrome.
 
 ## Deferred by decision (stays in the app)
 - CORD-07 voice (`voice.ts` + `src/app/voice/`, LiveKit/broker-HTTP).
@@ -185,4 +203,14 @@ Moved the zero-coupling reducers/derivations into `concord/helpers/`:
 ## Progress log
 - 2026-07-07 — Investigation complete (3 parallel analyses: protocol core,
   client engine, applesauce conventions). Plan written. Phase 0 started.
+- 2026-07-07 — Phases 0-4 complete + committed on branch `concord-extraction`
+  (one commit each). `applesauce-extra/concord` now ships: `bytes`/`types`,
+  `helpers/` (crypto, permissions, control+guestbook folds, community-list CRDT,
+  rekey codec, community/edition builders), the `stream` envelope,
+  `operations/` (chat, invite, imeta), instance-scoped `ConcordRelayAuth`,
+  `ConcordStorage`/`ConcordUploader`, and the DI'd `ConcordClient`. 106 barrel
+  exports; 5 test files / 21 tests green; `tsc` build green. Phase 5 verified
+  headlessly against the compiled `dist`; app cutover deferred (needs publish +
+  Chrome + live relays in the separate app repo). CORD-07 voice deferred by
+  decision throughout.
 </content>
