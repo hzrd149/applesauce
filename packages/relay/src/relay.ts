@@ -11,6 +11,7 @@ import {
   catchError,
   combineLatest,
   defer,
+  distinctUntilChanged,
   EMPTY,
   endWith,
   filter,
@@ -54,11 +55,13 @@ import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSoc
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import { completeWhen } from "./operators/complete-when.js";
 import {
+  AuthRequirement,
   AuthSigner,
   FilterInput,
   NegentropyReadStore,
   NegentropySyncStore,
   PublishOptions,
+  RelayAuthState,
   PublishResponse,
   RelayCountResponse,
   RelayInformation,
@@ -193,13 +196,26 @@ export class Relay {
   connected$ = new BehaviorSubject(false);
   /** The authentication challenge string from the relay */
   challenge$ = new BehaviorSubject<string | null>(null);
-  /** Boolean authentication state (will be false if auth failed) */
+  /** All AUTH attempts on this connection keyed by pubkey (NIP-42 supports multiple authenticated users per connection) */
+  authentications$ = new BehaviorSubject<Record<string, RelayAuthState>>({});
+  /** The pubkeys that are currently authenticated on the connection, ordered oldest to most recent */
+  authenticatedPubkeys$: Observable<string[]>;
+  /** Boolean authentication state (true if at least one pubkey is authenticated) */
   authenticated$: Observable<boolean>;
-  /** The pubkey of the authenticated user, or null if not authenticated */
+  /**
+   * The pubkey of the most recently authenticated user, or null if not authenticated
+   * @deprecated use {@link authenticatedPubkeys$} instead
+   */
   authenticatedAs$: Observable<string | null>;
-  /** The authentication event sent to the relay */
+  /**
+   * The last authentication event sent to the relay
+   * @deprecated use {@link authentications$} instead
+   */
   authentication$ = new BehaviorSubject<KnownEvent<kinds.ClientAuth> | null>(null);
-  /** The response to the last AUTH message sent to the relay */
+  /**
+   * The response to the last AUTH message sent to the relay
+   * @deprecated use {@link authentications$} instead
+   */
   authenticationResponse$ = new BehaviorSubject<PublishResponse | null>(null);
   /** The notices from the relay */
   notices$ = new BehaviorSubject<string[]>([]);
@@ -266,14 +282,27 @@ export class Relay {
     return this.notices$.value;
   }
   get authenticated() {
-    return this.authenticationResponse?.ok === true;
+    return this.authenticatedPubkeys.length > 0 || this.authenticationResponse?.ok === true;
   }
+  get authentications() {
+    return this.authentications$.value;
+  }
+  get authenticatedPubkeys() {
+    return Object.entries(this.authentications$.value)
+      .filter(([, state]) => state.response?.ok === true)
+      .map(([pubkey]) => pubkey);
+  }
+  /** @deprecated use {@link authentications} instead */
   get authentication() {
     return this.authentication$.value;
   }
+  /** @deprecated use {@link authenticatedPubkeys} instead */
   get authenticatedAs() {
+    const pubkeys = this.authenticatedPubkeys;
+    if (pubkeys.length > 0) return pubkeys[pubkeys.length - 1];
     return this.authenticated ? (this.authentication?.pubkey ?? null) : null;
   }
+  /** @deprecated use {@link authentications} instead */
   get authenticationResponse() {
     return this.authenticationResponse$.value;
   }
@@ -323,6 +352,7 @@ export class Relay {
   protected resetState() {
     // NOTE: only update the values if they need to be changed, otherwise this will cause an infinite loop
     if (this.challenge$.value !== null) this.challenge$.next(null);
+    if (Object.keys(this.authentications$.value).length > 0) this.authentications$.next({});
     if (this.authenticationResponse$.value) this.authenticationResponse$.next(null);
     if (this.authentication$.value !== null) this.authentication$.next(null);
     if (this.notices$.value.length > 0) this.notices$.next([]);
@@ -366,12 +396,28 @@ export class Relay {
     this.requestReconnect = normalizeRetryConfig(opts?.requestReconnect);
     this.publishRetry = { ...DEFAULT_RETRY_CONFIG, ...(opts?.publishRetry ?? {}) };
 
-    // Create an observable that tracks boolean authentication state
-    this.authenticated$ = this.authenticationResponse$.pipe(map((response) => response?.ok === true));
+    // Create an observable of successfully authenticated pubkeys
+    this.authenticatedPubkeys$ = this.authentications$.pipe(
+      map((auths) =>
+        Object.entries(auths)
+          .filter(([, state]) => state.response?.ok === true)
+          .map(([pubkey]) => pubkey),
+      ),
+    );
 
-    // Create an observable that returns the pubkey when authenticated, or null otherwise
-    this.authenticatedAs$ = combineLatest([this.authenticated$, this.authentication$]).pipe(
-      map(([authenticated, authEvent]) => (authenticated && authEvent ? authEvent.pubkey : null)),
+    // Create an observable that tracks boolean authentication state
+    // NOTE: also watch the deprecated authenticationResponse$ subject so writing to it directly keeps working
+    this.authenticated$ = combineLatest([this.authenticatedPubkeys$, this.authenticationResponse$]).pipe(
+      map(([pubkeys, response]) => pubkeys.length > 0 || response?.ok === true),
+      distinctUntilChanged(),
+    );
+
+    // Create an observable that returns the most recently authenticated pubkey, or null otherwise
+    this.authenticatedAs$ = combineLatest([this.authenticatedPubkeys$, this.authenticated$, this.authentication$]).pipe(
+      map(([pubkeys, authenticated, authEvent]) => {
+        if (pubkeys.length > 0) return pubkeys[pubkeys.length - 1];
+        return authenticated && authEvent ? authEvent.pubkey : null;
+      }),
     );
 
     /** Use the static method to create a new reconnect method for this relay */
@@ -466,6 +512,8 @@ export class Relay {
       connected: this.connected$,
       authenticated: this.authenticated$,
       authenticatedAs: this.authenticatedAs$,
+      authenticatedPubkeys: this.authenticatedPubkeys$,
+      authentications: this.authentications$,
       ready: this._ready$,
       authRequiredForRead: this.authRequiredForRead$,
       authRequiredForPublish: this.authRequiredForPublish$,
@@ -584,24 +632,28 @@ export class Relay {
       catchError(() => NEVER),
     );
 
+    // A single shared watcher for the socket. Its created once (outside of the switchMap below) so
+    // that re-subscribing within the keepAlive window rejoins the SAME watcher instead of creating
+    // a duplicate one (which would process every relay message multiple times)
+    const watchers = merge(listenForAllMessages, listenForNotice, ListenForChallenge, pingHealthCheck).pipe(
+      // Never emit any values
+      ignoreElements(),
+      // Start the reconnect timer if the connection has an error.
+      // NOTE: this must be upstream of the share so it still observes the error when all
+      // subscribers have already been torn down by the same error. Completing (instead of
+      // switching to NEVER) resets the share so the next subscription makes a fresh connection
+      catchError((error) => {
+        this.startReconnectTimer(error instanceof Error ? error : new Error("Connection error"));
+        return EMPTY;
+      }),
+      // Keep the connection alive for keepAlive ms after the last subscriber leaves, cancelled when the relay is closed
+      share({ resetOnRefCountZero: () => timer(this.keepAlive).pipe(takeUntil(this.destroy$)) }),
+    );
+
     // Merge all watchers
     this.watchTower = this.ready$.pipe(
-      switchMap((ready) => {
-        if (!ready) return NEVER;
-
-        // Only start the watch tower if the relay is ready
-        return merge(listenForAllMessages, listenForNotice, ListenForChallenge, pingHealthCheck).pipe(
-          // Never emit any values
-          ignoreElements(),
-          // Start the reconnect timer if the connection has an error
-          catchError((error) => {
-            this.startReconnectTimer(error instanceof Error ? error : new Error("Connection error"));
-            return NEVER;
-          }),
-          // Add keep alive timer to the connection, cancelled when the relay is closed
-          share({ resetOnRefCountZero: () => timer(this.keepAlive).pipe(takeUntil(this.destroy$)) }),
-        );
-      }),
+      // Only start the watch tower if the relay is ready
+      switchMap((ready) => (ready ? watchers : NEVER)),
       // There should only be a single watch tower
       share(),
     );
@@ -624,13 +676,35 @@ export class Relay {
       });
   }
 
+  /** Whether a specific pubkey (or all of an array of pubkeys) is authenticated on the connection */
+  isAuthenticated(pubkeys: string | string[]): boolean {
+    const required = Array.isArray(pubkeys) ? pubkeys : [pubkeys];
+    return required.every((pubkey) => this.authentications$.value[pubkey]?.response?.ok === true);
+  }
+
+  /** An observable that emits whether a specific pubkey (or all of an array of pubkeys) is authenticated */
+  authenticatedFor$(pubkeys: string | string[]): Observable<boolean> {
+    const required = Array.isArray(pubkeys) ? pubkeys : [pubkeys];
+    return this.authentications$.pipe(
+      map((auths) => required.every((pubkey) => auths[pubkey]?.response?.ok === true)),
+      distinctUntilChanged(),
+    );
+  }
+
+  /** Convert an auth requirement into an observable of whether it is satisfied */
+  protected authSatisfied$(requirement: AuthRequirement): Observable<boolean> {
+    if (typeof requirement === "boolean") return this.authenticated$;
+    return this.authenticatedFor$(requirement);
+  }
+
   /** Wait for authentication state, make connection and then wait for authentication if required */
   protected waitForAuth<T extends unknown = unknown>(
     // NOTE: require BehaviorSubject or shareReplay so it always has a value
     requireAuth: Observable<boolean>,
     observable: Observable<T>,
+    waitFor: AuthRequirement = true,
   ): Observable<T> {
-    return combineLatest([requireAuth, this.authenticated$]).pipe(
+    return combineLatest([requireAuth, this.authSatisfied$(waitFor)]).pipe(
       // Once the auth state is known, make a connection and watch for auth challenges
       mergeWith(this.watchTower),
       // wait for auth not required or authenticated
@@ -767,7 +841,9 @@ export class Relay {
     );
 
     // Wait for auth only when enabled and make sure to start the watch tower
-    const reqWithAuthStrategy = waitForAuth ? this.waitForAuth(this.authRequiredForRead$, observable) : observable;
+    const reqWithAuthStrategy = waitForAuth
+      ? this.waitForAuth(this.authRequiredForRead$, observable, waitForAuth)
+      : observable;
 
     return defer(() => this.waitForReady(reqWithAuthStrategy)).pipe(
       // Retry only auth-required errors, optionally waiting for authentication first
@@ -780,12 +856,12 @@ export class Relay {
           this.log(`Auth required for REQ`);
           this.receivedAuthRequiredForReq.next(true);
 
-          // If not waiting for auth  , re-throw the error
+          // If not waiting for auth, re-throw the error
           if (!waitForAuth) return throwError(() => error);
 
-          // Wait for authentication before retrying
-          return this.authenticated$.pipe(
-            filter((authenticated) => authenticated),
+          // Wait for authentication (of the required users) before retrying
+          return this.authSatisfied$(waitForAuth).pipe(
+            filter((satisfied) => satisfied),
             take(1),
           );
         },
@@ -800,7 +876,11 @@ export class Relay {
   }
 
   /** Create a COUNT observable that emits a single count response */
-  count(filters: Filter | Filter[], id = nanoid()): Observable<RelayCountResponse> {
+  count(
+    filters: Filter | Filter[],
+    id = nanoid(),
+    opts?: { waitForAuth?: AuthRequirement },
+  ): Observable<RelayCountResponse> {
     // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE
     let relayClosedSub = false;
 
@@ -857,11 +937,20 @@ export class Relay {
     );
 
     // Start the watch tower and wait for auth if required
-    return this.waitForReady(this.waitForAuth(this.authRequiredForRead$, observable)).pipe(share());
+    const waitForAuth = opts?.waitForAuth ?? true;
+    // NOTE: observable already merges the watchTower, so it can be used directly when not waiting for auth
+    const withAuthStrategy = waitForAuth
+      ? this.waitForAuth(this.authRequiredForRead$, observable, waitForAuth)
+      : observable;
+    return this.waitForReady(withAuthStrategy).pipe(share());
   }
 
   /** Send an EVENT or AUTH message and return an observable of PublishResponse that completes or errors */
-  event(event: NostrEvent, verb: "EVENT" | "AUTH" = "EVENT"): Observable<PublishResponse> {
+  event(
+    event: NostrEvent,
+    verb: "EVENT" | "AUTH" = "EVENT",
+    opts?: { waitForAuth?: AuthRequirement },
+  ): Observable<PublishResponse> {
     const messages: Observable<PublishResponse> = defer(() => {
       // Send event when subscription starts
       this.socket.next([verb, event]);
@@ -897,21 +986,39 @@ export class Relay {
       }),
     );
 
-    // skip wait for auth if verb is AUTH
+    // skip wait for auth if verb is AUTH or waitForAuth is false
     // Use share() to prevent multiple subscriptions from creating duplicate EVENT messages
-    if (verb === "AUTH") return this.waitForReady(observable).pipe(share());
-    else return this.waitForReady(this.waitForAuth(this.authRequiredForPublish$, observable)).pipe(share());
+    const waitForAuth = opts?.waitForAuth ?? true;
+    if (verb === "AUTH" || !waitForAuth) return this.waitForReady(observable).pipe(share());
+    else
+      return this.waitForReady(this.waitForAuth(this.authRequiredForPublish$, observable, waitForAuth)).pipe(share());
   }
 
-  /** send and AUTH message */
+  /** Send an AUTH message. Can be called multiple times with events from different pubkeys to authenticate multiple users */
   auth(event: NostrEvent): Promise<PublishResponse> {
-    // Save the authentication event
-    this.authentication$.next(event as KnownEvent<kinds.ClientAuth>);
+    const authEvent = event as KnownEvent<kinds.ClientAuth>;
+
+    // Save the authentication event (deprecated mirror of the most recent AUTH attempt)
+    this.authentication$.next(authEvent);
+
+    // Record the pending AUTH attempt keyed by pubkey (re-insert so key order reflects recency)
+    const { [event.pubkey]: _replaced, ...rest } = this.authentications$.value;
+    this.authentications$.next({ ...rest, [event.pubkey]: { event: authEvent, response: null } });
 
     return lastValueFrom(
       this.event(event, "AUTH").pipe(
-        // update authenticated
-        tap((result) => this.authenticationResponse$.next(result)),
+        tap((result) => {
+          // Update the pubkey's auth state, unless a newer AUTH attempt replaced this one
+          const current = this.authentications$.value[event.pubkey];
+          if (current?.event.id === event.id)
+            this.authentications$.next({
+              ...this.authentications$.value,
+              [event.pubkey]: { event: authEvent, response: result },
+            });
+
+          // Update the deprecated mirror of the last AUTH response
+          this.authenticationResponse$.next(result);
+        }),
       ),
     );
   }
@@ -1053,7 +1160,7 @@ export class Relay {
   /** Publishes an event to the relay and retries when relay errors or responds with auth-required ( default 3 retries ) */
   publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse> {
     return lastValueFrom(
-      this.event(event).pipe(
+      this.event(event, "EVENT", { waitForAuth: opts?.waitForAuth }).pipe(
         mergeMap((result) => {
           // If the relay responds with auth-required, throw an error for the retry operator to handle
           if (result.ok === false && result.message?.startsWith(AUTH_REQUIRED_PREFIX))

@@ -1124,6 +1124,154 @@ describe("authenticate", () => {
   });
 });
 
+describe("multi-user authentication", () => {
+  const userA = new FakeUser();
+  const userB = new FakeUser();
+
+  /** Completes a NIP-42 auth flow for a signer and returns the auth response */
+  async function authenticateUser(user: FakeUser) {
+    const promise = relay.authenticate(user);
+    const message = (await server.nextMessage) as [string, NostrEvent];
+    expect(message[0]).toBe("AUTH");
+    server.send(["OK", message[1].id, true, ""]);
+    return await promise;
+  }
+
+  /** Opens a connection and waits for an AUTH challenge from the relay */
+  async function connectAndReceiveChallenge() {
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+    await server.nextMessage; // REQ
+    server.send(["AUTH", "challenge-string"]);
+    await firstValueFrom(relay.challenge$.pipe(filter((c) => c !== null)));
+  }
+
+  it("should track multiple authenticated users", async () => {
+    await connectAndReceiveChallenge();
+
+    await authenticateUser(userA);
+    await authenticateUser(userB);
+
+    expect(relay.authenticatedPubkeys).toEqual([userA.pubkey, userB.pubkey]);
+    expect(relay.isAuthenticated(userA.pubkey)).toBe(true);
+    expect(relay.isAuthenticated([userA.pubkey, userB.pubkey])).toBe(true);
+    expect(relay.authenticated).toBe(true);
+    expect(relay.authenticatedAs).toBe(userB.pubkey);
+  });
+
+  it("should track failed authentication per pubkey and allow re-authentication", async () => {
+    await connectAndReceiveChallenge();
+
+    await authenticateUser(userA);
+
+    // userB fails to authenticate
+    const failed = relay.authenticate(userB);
+    const message = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", message[1].id, false, "restricted: not allowed"]);
+    await failed;
+
+    expect(relay.isAuthenticated(userA.pubkey)).toBe(true);
+    expect(relay.isAuthenticated(userB.pubkey)).toBe(false);
+    expect(relay.isAuthenticated([userA.pubkey, userB.pubkey])).toBe(false);
+    expect(relay.authenticatedPubkeys).toEqual([userA.pubkey]);
+
+    // userB retries and succeeds
+    await authenticateUser(userB);
+    expect(relay.isAuthenticated(userB.pubkey)).toBe(true);
+  });
+
+  it("should mirror the most recent authentication on deprecated subjects", async () => {
+    await connectAndReceiveChallenge();
+
+    await authenticateUser(userA);
+    await authenticateUser(userB);
+
+    expect(relay.authentication?.pubkey).toBe(userB.pubkey);
+    expect(relay.authenticationResponse?.ok).toBe(true);
+  });
+
+  it("should clear authentication state on disconnect", async () => {
+    await connectAndReceiveChallenge();
+    await authenticateUser(userA);
+    expect(relay.authenticatedPubkeys).toEqual([userA.pubkey]);
+
+    server.close();
+    await server.closed;
+
+    expect(relay.authentications$.value).toEqual({});
+    expect(relay.authenticated).toBe(false);
+    expect(relay.authenticatedPubkeys).toEqual([]);
+  });
+
+  it("should wait for the specified pubkey to authenticate before retrying a REQ", async () => {
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", waitForAuth: userB.pubkey }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-string"]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    // userA authenticates, but the REQ should not be retried for them
+    await authenticateUser(userA);
+
+    // The next client message must be userB's AUTH, not a resent REQ
+    const authB = relay.authenticate(userB);
+    const message = (await server.nextMessage) as [string, NostrEvent];
+    expect(message[0]).toBe("AUTH");
+    server.send(["OK", message[1].id, true, ""]);
+    await authB;
+
+    // Now that userB is authenticated the REQ is resent
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+  });
+
+  it("should wait for all pubkeys in an array to authenticate before retrying a REQ", async () => {
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", waitForAuth: [userA.pubkey, userB.pubkey] }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-string"]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    // Only one of the two required users authenticates
+    await authenticateUser(userA);
+
+    // The next client message must be userB's AUTH, not a resent REQ
+    const authB = relay.authenticate(userB);
+    const message = (await server.nextMessage) as [string, NostrEvent];
+    expect(message[0]).toBe("AUTH");
+    server.send(["OK", message[1].id, true, ""]);
+    await authB;
+
+    // Both users are authenticated so the REQ is resent
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+  });
+
+  it("should wait for the specified pubkey to authenticate before retrying a publish", async () => {
+    const promise = relay.publish(mockEvent, {
+      retries: { count: Infinity, delay: 0 },
+      waitForAuth: userB.pubkey,
+    });
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["AUTH", "challenge-string"]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    // userA authenticates, but the EVENT should not be retried for them
+    await authenticateUser(userA);
+
+    // The next client message must be userB's AUTH, not a resent EVENT
+    const authB = relay.authenticate(userB);
+    const message = (await server.nextMessage) as [string, NostrEvent];
+    expect(message[0]).toBe("AUTH");
+    server.send(["OK", message[1].id, true, ""]);
+    await authB;
+
+    // Now that userB is authenticated the EVENT is resent
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, true, ""]);
+
+    await expect(promise).resolves.toEqual({ ok: true, message: "", from: "wss://test" });
+  });
+});
+
 describe("count", () => {
   it("should trigger connection to relay", async () => {
     subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
@@ -1486,5 +1634,37 @@ describe("sync", () => {
     // Should error the observable
     await spy.onError();
     expect(spy.receivedError()).toBe(true);
+  });
+});
+
+describe("message$", () => {
+  it("should emit each relay message only once when sequential operations reuse the connection", async () => {
+    // Keep the internal watcher alive between operations (the beforeEach sets keepAlive=0)
+    relay.keepAlive = 30_000;
+
+    const seen: any[] = [];
+    relay.message$.subscribe((m) => seen.push(m));
+
+    // First operation: publish an event
+    const pub = relay.publish(mockEvent, { retries: false });
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, true, ""]);
+    await pub;
+
+    // Second operation: a REQ that rejoins the connection within the keepAlive window
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["EOSE", "sub1"]);
+
+    // Third operation: another publish stacking one more potential watcher
+    const pub2 = relay.publish({ ...mockEvent, id: "second-id" }, { retries: false });
+    await expect(server).toReceiveMessage(["EVENT", { ...mockEvent, id: "second-id" }]);
+    server.send(["OK", "second-id", true, ""]);
+    await pub2;
+
+    // Each message should have been processed exactly once
+    expect(seen.filter((m) => m[0] === "EOSE")).toHaveLength(1);
+    expect(seen.filter((m) => m[0] === "OK" && m[1] === mockEvent.id)).toHaveLength(1);
+    expect(seen.filter((m) => m[0] === "OK" && m[1] === "second-id")).toHaveLength(1);
   });
 });

@@ -4,7 +4,7 @@ import type {
   IEventStoreActions,
   IEventStoreRead,
 } from "applesauce-core/event-store";
-import type { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
+import type { EventTemplate, kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import type { Filter } from "applesauce-core/helpers/filter";
 import type { RelayInformation as CoreRelayInformation } from "nostr-tools/nip11";
 import type { Observable, OperatorFunction, repeat, retry } from "rxjs";
@@ -12,16 +12,38 @@ import type { WebSocketSubject } from "rxjs/webSocket";
 import type { NegentropySyncOptions } from "./negentropy.js";
 import type { Relay } from "./relay.js";
 
+/** The authentication state of a single pubkey on a relay connection */
+export type RelayAuthState = {
+  /** The kind 22242 AUTH event sent to the relay */
+  event: KnownEvent<kinds.ClientAuth>;
+  /** The OK response from the relay, or null while waiting for a response */
+  response: PublishResponse | null;
+};
+
+/**
+ * What authentication to wait for before sending a REQ or EVENT.
+ * `true` waits for any authenticated user, a pubkey (or array of pubkeys) waits until all of them are authenticated,
+ * and `false` disables waiting.
+ */
+export type AuthRequirement = boolean | string | string[];
+
 /** Status information for a single relay */
 export interface RelayStatus {
   /** Relay URL */
   url: string;
   /** WebSocket connection state (true = socket is open) */
   connected: boolean;
-  /** Authentication state (true = successfully authenticated) */
+  /** Authentication state (true = at least one pubkey successfully authenticated) */
   authenticated: boolean;
-  /** The pubkey of the authenticated user, or null if not authenticated */
+  /**
+   * The pubkey of the authenticated user, or null if not authenticated
+   * @deprecated use {@link authenticatedPubkeys} instead
+   */
   authenticatedAs: string | null;
+  /** The pubkeys that are currently authenticated on the connection */
+  authenticatedPubkeys: string[];
+  /** All AUTH attempts on the connection keyed by pubkey */
+  authentications: Record<string, RelayAuthState>;
   /** Application-layer ready state (true = safe to use) */
   ready: boolean;
   /** Whether authentication is required for read operations (REQ/COUNT) */
@@ -45,6 +67,11 @@ export type PublishOptions = {
   reconnect?: boolean | number | Parameters<typeof retry>[0];
   /** Timeout for publish in milliseconds (default 30 seconds) */
   timeout?: number | boolean;
+  /**
+   * What authentication to wait for when the relay requires auth for publishing. default is true (any authenticated user)
+   * Pass a pubkey (or array of pubkeys) to wait until those specific users are authenticated.
+   */
+  waitForAuth?: AuthRequirement;
 };
 
 /** The response type when publishing an event to a relay */
@@ -55,9 +82,10 @@ export type RelayReqOptions = {
   /** Custom REQ id for the subscription */
   id?: string;
   /**
-   * Whether to wait for authentication and retry if auth-required is received. default is true
+   * Whether to wait for authentication and retry if auth-required is received. default is true (any authenticated user)
+   * Pass a pubkey (or array of pubkeys) to wait until those specific users are authenticated.
    */
-  waitForAuth?: boolean;
+  waitForAuth?: AuthRequirement;
   /**
    * Whether to resubscribe after a clean CLOSED message from the relay. default is false
    * @see https://rxjs.dev/api/index/function/repeat

@@ -200,8 +200,8 @@ export class RelayGroup {
   }
 
   /** Send an event to all relays */
-  event(event: NostrEvent): Observable<PublishResponse> {
-    return this.internalPublish((relay) => relay.event(event));
+  event(event: NostrEvent, opts?: Parameters<Relay["event"]>[2]): Observable<PublishResponse> {
+    return this.internalPublish((relay) => relay.event(event, "EVENT", opts));
   }
 
   /** Negentropy sync events with the relays and an event store */
@@ -281,10 +281,14 @@ export class RelayGroup {
   }
 
   /** Count events on all relays in the group */
-  count(filters: Filter | Filter[], id = nanoid()): Observable<Record<string, RelayCountResponse>> {
+  count(
+    filters: Filter | Filter[],
+    id = nanoid(),
+    opts?: Parameters<Relay["count"]>[2],
+  ): Observable<Record<string, RelayCountResponse>> {
     return this.relays$.pipe(
       switchMap((relays) =>
-        combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(filters, id)]))),
+        combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(filters, id, opts)]))),
       ),
       // Ensure a single upstream
       share(),

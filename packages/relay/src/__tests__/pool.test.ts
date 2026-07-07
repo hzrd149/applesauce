@@ -205,3 +205,53 @@ describe("event", () => {
     ]);
   });
 });
+
+describe("waitForAuth pass-through", () => {
+  const pubkeys = ["pubkey-a", "pubkey-b"];
+  const urls = ["wss://relay1.example.com"];
+
+  it("should pass waitForAuth pubkeys to relay.req for subscription", () => {
+    const relay = pool.relay(urls[0]);
+    const req = vi.spyOn(relay, "req");
+
+    subscribeSpyTo(pool.subscription(urls, { kinds: [1059] }, { waitForAuth: pubkeys }));
+
+    expect(req).toHaveBeenCalledWith({ kinds: [1059] }, expect.objectContaining({ waitForAuth: pubkeys }));
+  });
+
+  it("should pass waitForAuth pubkeys to relay.req for request", () => {
+    const relay = pool.relay(urls[0]);
+    const req = vi.spyOn(relay, "req");
+
+    subscribeSpyTo(pool.request(urls, { kinds: [1059] }, { waitForAuth: pubkeys }), { expectErrors: true });
+
+    expect(req).toHaveBeenCalledWith({ kinds: [1059] }, expect.objectContaining({ waitForAuth: pubkeys }));
+  });
+
+  it("should pass waitForAuth pubkeys to relay.publish", () => {
+    const relay = pool.relay(urls[0]);
+    const publish = vi.spyOn(relay, "publish");
+
+    pool.publish(urls, mockEvent, { waitForAuth: pubkeys }).catch(() => {});
+
+    expect(publish).toHaveBeenCalledWith(mockEvent, expect.objectContaining({ waitForAuth: pubkeys }));
+  });
+
+  it("should pass waitForAuth pubkeys to relay.event", () => {
+    const relay = pool.relay(urls[0]);
+    const event = vi.spyOn(relay, "event");
+
+    subscribeSpyTo(pool.event(urls, mockEvent, { waitForAuth: pubkeys }));
+
+    expect(event).toHaveBeenCalledWith(mockEvent, "EVENT", expect.objectContaining({ waitForAuth: pubkeys }));
+  });
+
+  it("should pass waitForAuth pubkeys to relay.count", () => {
+    const relay = pool.relay(urls[0]);
+    const count = vi.spyOn(relay, "count");
+
+    subscribeSpyTo(pool.count(urls, { kinds: [1059] }, "count1", { waitForAuth: pubkeys }), { expectErrors: true });
+
+    expect(count).toHaveBeenCalledWith({ kinds: [1059] }, "count1", expect.objectContaining({ waitForAuth: pubkeys }));
+  });
+});

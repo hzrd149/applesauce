@@ -123,7 +123,9 @@ relay
 The `Relay` class supports [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md) authentication and keeps track of the authentication state and challenge.
 
 - `challenge$` - An observable that tracks the authentication challenge from the relay.
-- `authenticated$` - An observable that tracks the authentication state of the relay.
+- `authenticated$` - An observable that emits true when at least one user is authenticated.
+- `authentications$` - An observable of all authentication attempts on the connection, keyed by pubkey.
+- `authenticatedPubkeys$` - An observable of the pubkeys that are currently authenticated.
 - `authenticate` - An async method that can be used to authenticate the relay.
 
 More information about authentication can be found in the [typedocs](https://applesauce.build/typedoc/classes/applesauce-relay.Relay).
@@ -158,16 +160,32 @@ relay.challenge$.subscribe(async (challenge) => {
   const auth = await window.nostr.signEvent(makeAuthEvent(relay.url, challenge));
 
   // Send it to the relay and wait for the response
-  relay.auth(auth).subscribe({
-    next: (response) => {
-      console.log("Authentication response:", response);
-    },
-    error: (err) => {
-      console.error("Authentication failed:", err);
-    },
-  });
+  const response = await relay.auth(auth);
+  console.log("Authentication response:", response);
 });
 ```
+
+### Multiple users
+
+A single connection can authenticate multiple users by calling `authenticate` (or `auth`) once per signer. Each authentication is tracked separately by pubkey.
+
+```typescript
+await relay.authenticate(aliceSigner);
+await relay.authenticate(bobSigner);
+
+relay.isAuthenticated(alice); // true
+relay.isAuthenticated([alice, bob]); // true, all pubkeys authenticated
+```
+
+The `waitForAuth` option on `req`, `subscription`, `request`, and `publish` accepts a pubkey or array of pubkeys to wait for specific users to be authenticated before retrying an `auth-required:` response.
+
+```typescript
+// Only send the REQ once both users are authenticated
+relay.subscription({ kinds: [1059], "#p": [alice, bob] }, { waitForAuth: [alice, bob] });
+```
+
+> [!NOTE]
+> Support for multiple authenticated users on one connection varies between relay implementations; some relays only honor the most recent AUTH.
 
 ## Persistent Subscriptions
 

@@ -153,8 +153,12 @@ export class RelayPool {
   }
 
   /** Send an EVENT message to multiple relays */
-  event(relays: PoolRelayInput, event: NostrEvent): Observable<PublishResponse> {
-    return this.group(relays).event(event);
+  event(
+    relays: PoolRelayInput,
+    event: NostrEvent,
+    opts?: Parameters<RelayGroup["event"]>[1],
+  ): Observable<PublishResponse> {
+    return this.group(relays).event(event, opts);
   }
 
   /** Negentropy sync event ids with the relays and an event store */
@@ -238,9 +242,10 @@ export class RelayPool {
     relays: PoolRelayInput,
     filters: Filter | Filter[],
     id?: string,
+    opts?: Parameters<RelayGroup["count"]>[2],
   ): Observable<Record<string, RelayCountResponse>> {
     // Never filter out offline relays in manual methods
-    return this.group(relays, false).count(filters, id);
+    return this.group(relays, false).count(filters, id, opts);
   }
 
   /** Negentropy sync events with the relays and an event store */
