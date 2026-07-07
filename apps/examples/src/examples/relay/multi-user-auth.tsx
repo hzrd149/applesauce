@@ -8,7 +8,7 @@ import { getPublicKey, NostrEvent, unixNow } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { BehaviorSubject, catchError, EMPTY, filter, map, merge, of, scan, startWith, Subject, tap } from "rxjs";
 
 // Relays that support multiple authenticated users on one connection.
@@ -184,8 +184,8 @@ export default function MultiUserAuthExample() {
         Publishing a kind 1059 gift wrap works without authentication (the sender is an ephemeral key), but{" "}
         <b>subscribing to gift wraps requires every #p user to be authenticated</b> on the connection. Publish a gift
         wrap, start a subscription, then authenticate the users one at a time — the subscription is held open with{" "}
-        <code>waitForAuth: [...pubkeys]</code> and only starts emitting once the last AUTH is accepted, then streams
-        new gift wraps live as they arrive. Add as many signers as you want to test with.
+        <code>waitForAuth: [...pubkeys]</code> and only starts emitting once the last AUTH is accepted, then streams new
+        gift wraps live as they arrive. Add as many signers as you want to test with.
       </p>
 
       <div className="grid md:grid-cols-2 gap-4">
