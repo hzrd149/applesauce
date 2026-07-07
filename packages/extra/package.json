@@ -5,6 +5,23 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./concord": {
+      "import": "./dist/concord/index.js",
+      "require": "./dist/concord/index.js",
+      "types": "./dist/concord/index.d.ts"
+    },
+    "./concord/*": {
+      "import": "./dist/concord/*.js",
+      "require": "./dist/concord/*.js",
+      "types": "./dist/concord/*.d.ts"
+    }
+  },
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "tsc",
@@ -24,7 +41,10 @@
     "dist"
   ],
   "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
     "applesauce-core": "^6.2.0",
+    "nostr-tools": "^2.19",
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
