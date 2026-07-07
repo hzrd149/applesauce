@@ -8,3 +8,4 @@ export * from "./types.js";
 export * from "./helpers/index.js";
 export * from "./stream.js";
 export * from "./operations/index.js";
+export * from "./relay-auth.js";

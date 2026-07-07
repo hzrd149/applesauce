@@ -1,0 +1,154 @@
+// Stream-key NIP-42 authentication for Concord planes.
+//
+// Every Concord plane is kind-1059 traffic addressed to a DERIVED per-stream
+// pubkey (control, guestbook, per-channel, dissolved, rekey) — never the user's
+// identity. Relays that gate kind 1059 behind NIP-42 (e.g. ditto's default
+// `AUTH_KINDS=4,1059`) require that EVERY `authors` entry in a 1059 REQ be an
+// authenticated pubkey on the connection; the user's login can't satisfy that
+// because the stream address isn't their pubkey.
+//
+// The client holds the stream SECRET keys (derived from community_root /
+// channel keys), so it can NIP-42-authenticate AS each stream. This class is an
+// instance-scoped registry of `PrivateKeySigner`s for the stream keys the client
+// currently holds, plus the drivers that hand each one to applesauce's native
+// `relay.authenticate(signer)` on every challenge. Signing is local (raw secret
+// keys) — it never touches the user's signer / bunker.
+//
+// NB: this is NOT part of the frozen Concord spec (CORD-01..06 say nothing about
+// NIP-42) — it is a relay-access convention (shared with armada). It replaces the
+// app's module-global `stream-auth.ts` registry + `relay-auth.ts` drivers with a
+// single instance so multiple clients (or accounts) never share stream keys.
+
+import { PrivateKeySigner } from "applesauce-signers";
+import type { ISigner } from "applesauce-signers";
+import { BehaviorSubject, Subscription, combineLatest } from "rxjs";
+import type { Relay, RelayPool } from "applesauce-relay";
+import type { GroupKey } from "./helpers/crypto.js";
+
+// One shared auth driver per relay URL, reference-counted. Both the control and
+// channel gift-wrap subscriptions target the same relays and the same
+// (whole-registry) stream keys, so a driver per subscription would send
+// duplicate AUTHs; instead they share a single driver that lives as long as any
+// subscription holds a reference.
+interface Driver {
+  sub: Subscription;
+  refs: number;
+}
+
+export class ConcordRelayAuth {
+  /** pubkey (x-only hex) → the signer that NIP-42-authenticates it. */
+  private readonly registry = new Map<string, PrivateKeySigner>();
+
+  /** Bumps whenever new stream keys register, so an already-open per-relay driver
+   *  re-authenticates the newly-held keys (a channel folds in after the control
+   *  plane is already subscribed). */
+  private readonly version$ = new BehaviorSubject(0);
+
+  private readonly drivers = new Map<string, Driver>();
+
+  constructor(private readonly pool: RelayPool) {}
+
+  /** Register stream keys (idempotent). Returns the pubkeys newly added. */
+  registerStreamKeys(keys: GroupKey[]): string[] {
+    const added: string[] = [];
+    for (const k of keys) {
+      if (this.registry.has(k.pk)) continue;
+      this.registry.set(k.pk, new PrivateKeySigner(k.sk));
+      added.push(k.pk);
+    }
+    if (added.length > 0) this.version$.next(this.version$.value + 1);
+    return added;
+  }
+
+  streamPubkeys(): string[] {
+    return [...this.registry.keys()];
+  }
+
+  /** Every registered stream key as a `(pubkey, signer)` pair, for feeding to
+   *  applesauce's native `relay.authenticate(signer)`. */
+  streamSigners(): { pubkey: string; signer: PrivateKeySigner }[] {
+    return [...this.registry.entries()].map(([pubkey, signer]) => ({ pubkey, signer }));
+  }
+
+  /**
+   * Keep `relay` authenticated (NIP-42) as every registered stream key. Native
+   * `relay.authenticate` handles the AUTH event and per-pubkey state; we re-run it
+   * whenever the relay presents a fresh challenge (connect/reconnect) or new stream
+   * keys register. A single-flight guard plus a make-progress loop keeps concurrent
+   * triggers from racing while still picking up keys registered mid-run. Returns a
+   * Subscription that releases this caller's reference; the shared driver stops at
+   * zero refs.
+   */
+  authenticateStreamKeys(relay: Relay): Subscription {
+    let driver = this.drivers.get(relay.url);
+    if (!driver) {
+      let running = false;
+      const run = async (): Promise<void> => {
+        if (running) return;
+        running = true;
+        try {
+          // Loop so keys registered mid-run get authenticated too; stop when a
+          // full pass makes no progress (a persistently-rejecting relay won't spin).
+          for (;;) {
+            const pending = this.streamSigners().filter(({ pubkey }) => !relay.isAuthenticated(pubkey));
+            if (!relay.challenge || pending.length === 0) break;
+            let progressed = false;
+            for (const { pubkey, signer } of pending) {
+              if (relay.isAuthenticated(pubkey)) continue;
+              try {
+                const res = await relay.authenticate(signer);
+                if (res.ok) progressed = true;
+              } catch (err) {
+                console.warn(`stream-key AUTH to ${relay.url} failed`, err);
+              }
+            }
+            if (!progressed) break;
+          }
+        } finally {
+          running = false;
+        }
+      };
+      // `challenge$` re-emits on every (re)connect; `version$` on new keys.
+      const sub = combineLatest([relay.challenge$, this.version$]).subscribe(() => void run());
+      driver = { sub, refs: 0 };
+      this.drivers.set(relay.url, driver);
+    }
+    driver.refs++;
+
+    return new Subscription(() => {
+      const d = this.drivers.get(relay.url);
+      if (!d) return;
+      if (--d.refs <= 0) {
+        d.sub.unsubscribe();
+        this.drivers.delete(relay.url);
+      }
+    });
+  }
+
+  /**
+   * Answer NIP-42 challenges with the USER's key so gating relays accept the
+   * user's own published events (the Community List, invite bundles, …). Stream
+   * reads authenticate per-relay via {@link authenticateStreamKeys}; this covers
+   * only the user-authored write path across the pool's connected relays. Native
+   * per-pubkey auth state (`isAuthenticated`) provides idempotency and resets on
+   * reconnect, so we simply (re-)authenticate whenever a relay requires auth and
+   * the user isn't yet authenticated on it.
+   */
+  autoAuthenticate(signer: ISigner, pubkey: string): Subscription {
+    const inflight = new Set<string>();
+
+    return this.pool.status$.subscribe((statuses) => {
+      for (const [url, status] of Object.entries(statuses)) {
+        if (!status.challenge) continue;
+        if (!status.authRequiredForRead && !status.authRequiredForPublish) continue;
+        const relay = this.pool.relay(url);
+        if (relay.isAuthenticated(pubkey) || inflight.has(url)) continue;
+        inflight.add(url);
+        relay
+          .authenticate(signer)
+          .catch((err) => console.warn(`user AUTH to ${url} failed`, err))
+          .finally(() => inflight.delete(url));
+      }
+    });
+  }
+}

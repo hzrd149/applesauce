@@ -122,11 +122,25 @@ Moved the zero-coupling reducers/derivations into `concord/helpers/`:
       preserve interop; making the dictionary injectable is a follow-up that
       would thread a param through the fragment codec.
 
-### Phase 3 — Relay-auth — STATUS: TODO
-- [ ] Lift `stream-auth.ts` + `relay-auth.ts`; refactor module-global stream-key
-      registry → instance state; take a `RelayPool` param instead of app `pool`.
-- [ ] Model auto-auth after extra's existing `Vertex` class
-      (`combineLatest([challenge$, authenticated$])`).
+### Phase 3 — Relay-auth — STATUS: DONE (2026-07-07)
+- [x] Merged the app's `stream-auth.ts` (module-global registry) + `relay-auth.ts`
+      (module-global drivers + app `pool`) into a single instance-scoped
+      `ConcordRelayAuth` class in `concord/relay-auth.ts`. Registry, version
+      subject, and per-relay driver map are all instance fields; the `RelayPool`
+      is a constructor arg. Two clients/accounts never share stream keys now.
+- [x] `registerStreamKeys`/`streamPubkeys`/`streamSigners` are methods;
+      `authenticateStreamKeys(relay)` and `autoAuthenticate(signer, pubkey)` keep
+      the same driving logic (ref-counted per-relay driver, single-flight
+      make-progress loop, user-key challenge answering) against the workspace
+      `RelayPool.status$` / `Relay` API.
+- [x] Value-imports `PrivateKeySigner`/`RelayPool` from the optional
+      `applesauce-signers`/`applesauce-relay` — matches the existing `vertex.ts`
+      precedent (it value-imports `Relay` from the same optional dep).
+- [x] Test `__tests__/relay-auth.test.ts` — ports selftest §8: registry
+      idempotency, one signer per stream key, and a valid signed kind-22242
+      carrying the challenge AS each stream pubkey. (Live per-relay driver is
+      covered by the Phase 5 puppeteer `drive-auth.mjs`.)
+- [x] `pnpm --filter applesauce-extra test` green (4 files, 18 tests); build green.
 
 ### Phase 4 — `ConcordClient` — STATUS: TODO
 - [ ] Lift `client.ts` with constructor DI:

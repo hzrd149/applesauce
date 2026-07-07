@@ -6,6 +6,7 @@ describe("concord exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "ADMIN_PERMS",
+        "ConcordRelayAuth",
         "EMPTY_COMMUNITY_LIST",
         "KIND",
         "LIST_MAX_BYTES",
