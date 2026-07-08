@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 
-import { INVITE_BUNDLE_KIND } from "../../helpers/invite.js";
+import { INVITE_BUNDLE_KIND } from "../../helpers/invite-bundle.js";
 import type { InviteBundle } from "../../types.js";
-import { InviteBundleFactory } from "../invite.js";
+import { InviteBundleFactory } from "../invite-bundle.js";
 
 const bundle: InviteBundle = {
   community_id: "cid",

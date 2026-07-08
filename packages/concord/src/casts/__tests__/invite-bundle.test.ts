@@ -4,8 +4,8 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
 import { castEvent } from "applesauce-core/casts";
 
-import { ConcordInviteBundle } from "../invite.js";
-import { InviteBundleFactory } from "../../factories/invite.js";
+import { ConcordInviteBundle } from "../invite-bundle.js";
+import { InviteBundleFactory } from "../../factories/invite-bundle.js";
 import type { InviteBundle } from "../../types.js";
 import { material } from "./fixtures.js";
 

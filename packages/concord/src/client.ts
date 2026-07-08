@@ -36,7 +36,7 @@ import { joinCommunity, leaveCommunity, refreshCommunity } from "./operations/co
 import { foldMembers } from "./helpers/guestbook.js";
 import { canActOn, refoundAuthority, resolveStanding } from "./helpers/permissions.js";
 import type { Standing } from "./helpers/permissions.js";
-import { createCommunity, verifyOwner } from "./helpers/community.js";
+import { createCommunity } from "./helpers/community.js";
 import {
   addChannelKey,
   buildRefounding,
@@ -49,6 +49,7 @@ import type { ConcordKeys, PlaneInfo, WrapTarget } from "./helpers/keys.js";
 import { computeEditionHash } from "./helpers/editions.js";
 import { checkChatBinding } from "./helpers/chat.js";
 import {
+  buildInviteBundle,
   buildInviteLink,
   getInviteBundle,
   INVITE_BUNDLE_KIND,
@@ -57,7 +58,8 @@ import {
   newInviteToken,
   parseInviteLink,
   STOCK_RELAYS,
-} from "./helpers/invite.js";
+  validateInviteBundle,
+} from "./helpers/invite-bundle.js";
 import type { Emoji } from "applesauce-core/factories";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
 import { DeleteFactory } from "applesauce-core/factories";
@@ -66,7 +68,7 @@ import { bindToChannel, includeMediaEncryption, type MediaEncryption } from "./o
 import type { EventTemplate } from "applesauce-core/helpers/event";
 import { DissolutionFactory, EditionFactory } from "./factories/control.js";
 import { JoinLeaveFactory, KickFactory } from "./factories/guestbook.js";
-import { InviteBundleFactory } from "./factories/invite.js";
+import { InviteBundleFactory } from "./factories/invite-bundle.js";
 import {
   VSK,
   type BlobPointer,
@@ -75,7 +77,6 @@ import {
   type CommunityState,
   type CommunityTombstone,
   type DecodedEvent,
-  type InviteBundle,
   type JoinMaterial,
   type Role,
 } from "./types.js";
@@ -335,7 +336,11 @@ export class ConcordClient {
       .sort((a, b) => b.created_at - a.created_at)[0];
     if (!live) throw new Error("invite bundle not found or revoked");
 
-    const bundle: InviteBundle = getInviteBundle(live, parsed.token);
+    // Bound and self-certify the attacker-crafted bundle (CORD-05 §1).
+    const bundle = validateInviteBundle(getInviteBundle(live, parsed.token));
+    if (!bundle) throw new Error("invite failed owner verification");
+    if (bundle.expires_at && Date.now() > bundle.expires_at) throw new Error("invite expired");
+
     const material: JoinMaterial = {
       community_id: bundle.community_id,
       owner: bundle.owner,
@@ -343,11 +348,9 @@ export class ConcordClient {
       community_root: bundle.community_root,
       root_epoch: bundle.root_epoch,
       channels: bundle.channels ?? [],
-      relays: bundle.relays ?? relays,
+      relays: bundle.relays.length ? bundle.relays : relays,
       name: bundle.name,
     };
-    if (!verifyOwner(material)) throw new Error("invite failed owner verification");
-    if (bundle.expires_at && Date.now() > bundle.expires_at) throw new Error("invite expired");
 
     if (this.runtimes.has(material.community_id)) return material.community_id;
 
@@ -654,20 +657,11 @@ export class ConcordClient {
 
     const state = rt.state$.value;
     // Include private-channel keys the inviter holds so the joiner can read them.
-    const channels = rt.keys.material.channels.map((c) => ({ id: c.id, key: c.key, epoch: c.epoch, name: c.name }));
-
-    const bundle: InviteBundle = {
-      community_id: rt.keys.material.community_id,
-      owner: rt.keys.material.owner,
-      owner_salt: rt.keys.material.owner_salt,
-      community_root: rt.keys.material.community_root,
-      root_epoch: rt.keys.material.root_epoch,
-      channels,
-      relays: rt.keys.material.relays,
-      name: state.metadata?.name ?? rt.keys.material.name,
+    const bundle = buildInviteBundle(rt.keys.material, {
+      name: state.metadata?.name,
       icon: state.metadata?.icon,
       creator_npub: this.pubkey,
-    };
+    });
 
     const template = await InviteBundleFactory.create(bundle, token);
     const signed = finalizeEvent(template, linkSk);

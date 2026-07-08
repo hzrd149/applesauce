@@ -9,7 +9,7 @@ import { castUser } from "applesauce-core/casts";
 import "../invite-list.js";
 import type { InviteWithBundle } from "../invite-list.js";
 import { INVITE_LIST_KIND, mergeInvites } from "../../helpers/invite-list.js";
-import { InviteBundleFactory } from "../../factories/invite.js";
+import { InviteBundleFactory } from "../../factories/invite-bundle.js";
 import { material } from "./fixtures.js";
 
 describe("invite list cast", () => {

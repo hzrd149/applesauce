@@ -16,7 +16,7 @@ import {
   unlockInviteList,
   type ParsedInviteList,
 } from "../helpers/invite-list.js";
-import { ConcordInviteBundle } from "./invite.js";
+import { ConcordInviteBundle } from "./invite-bundle.js";
 import type { InviteListInvite, InviteListTombstone } from "../types.js";
 
 /** An invite entry paired with its resolved bundle event (kind 33301), if present in the store. */

@@ -15,7 +15,7 @@ import { giftWrap, sealRumor, toRumor, wrapSeal } from "../operations/gift-wrap.
 import { decodeWrap } from "../helpers/gift-wrap.js";
 import { ChatMessageFactory } from "applesauce-common/factories";
 import { bindToChannel } from "../operations/channel.js";
-import { buildInviteLink, decryptBundle, encryptBundle, newInviteToken, parseInviteLink } from "../helpers/invite.js";
+import { buildInviteLink, decryptBundle, encryptBundle, newInviteToken, parseInviteLink } from "../helpers/invite-bundle.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { DecodedEvent, InviteBundle, Role } from "../types.js";
 

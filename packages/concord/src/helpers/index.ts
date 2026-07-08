@@ -20,4 +20,5 @@ export * from "./webxdc.js";
 export * from "./typing.js";
 export * from "./voice.js";
 export * from "./imeta.js";
-export * from "./invite.js";
+export * from "./invite-bundle.js";
+export * from "./direct-invite.js";

@@ -14,7 +14,7 @@ import {
   isValidInviteBundle,
   unlockInviteBundle,
   type InviteBundleEvent,
-} from "../helpers/invite.js";
+} from "../helpers/invite-bundle.js";
 import type { InviteBundle } from "../types.js";
 
 /**

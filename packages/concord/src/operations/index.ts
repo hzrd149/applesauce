@@ -9,6 +9,7 @@ export * from "./gift-wrap.js";
 export * from "./guestbook.js";
 export * from "./control.js";
 export * from "./rekey.js";
-export * from "./invite.js";
+export * from "./invite-bundle.js";
+export * from "./direct-invite.js";
 export * from "./invite-list.js";
 export * from "./community-list.js";

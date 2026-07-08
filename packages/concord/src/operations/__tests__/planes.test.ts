@@ -6,8 +6,8 @@ import { REKEY_KIND } from "../../helpers/rekey.js";
 import { includeInviteAttribution, includeKickTarget, includeSnapshotChunk, setJoinLeave } from "../guestbook.js";
 import { includeEdition, setDissolution } from "../control.js";
 import { includeRekeyChunk } from "../rekey.js";
-import { setInviteBundle, setRevocation } from "../invite.js";
-import { decryptBundle, INVITE_BUNDLE_KIND, newInviteToken } from "../../helpers/invite.js";
+import { setInviteBundle, setRevocation } from "../invite-bundle.js";
+import { decryptBundle, INVITE_BUNDLE_KIND, newInviteToken } from "../../helpers/invite-bundle.js";
 import type { InviteBundle } from "../../types.js";
 
 const blank = (kind: number) => ({ kind, content: "", tags: [] as string[][], created_at: 0 });

@@ -1,11 +1,11 @@
 // CORD-05 Invite-bundle rumor operations: the encrypted bundle event and its
-// revocation. Composed into kind 33301 templates by ../factories/invite.js.
-// The link codec + bundle crypto live in ../helpers/invite.js.
+// revocation. Composed into kind 33301 templates by ../factories/invite-bundle.js.
+// The link codec + bundle crypto live in ../helpers/invite-bundle.js.
 
 import type { EventOperation } from "applesauce-core/factories";
 import { modifyPublicTags } from "applesauce-core/operations";
 import { setSingletonTag } from "applesauce-core/operations/tag/common";
-import { encryptBundle, INVITE_BUNDLE_VSK_LIVE, INVITE_BUNDLE_VSK_REVOKED } from "../helpers/invite.js";
+import { encryptBundle, INVITE_BUNDLE_VSK_LIVE, INVITE_BUNDLE_VSK_REVOKED } from "../helpers/invite-bundle.js";
 import type { InviteBundle } from "../types.js";
 
 /** Set an addressable invite-bundle's encrypted content + `d`/`vsk` tags (vsk 6, live). */

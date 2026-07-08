@@ -25,7 +25,7 @@ import {
 import { getPublicKey } from "applesauce-core/helpers/keys";
 
 import type { InviteListInvite, InviteListTombstone } from "../types.js";
-import { INVITE_BUNDLE_KIND, parseInviteLink } from "./invite.js";
+import { INVITE_BUNDLE_KIND, parseInviteLink } from "./invite-bundle.js";
 
 /** Concord invite list kind (CORD-05 §4). */
 export const INVITE_LIST_KIND = 13303;

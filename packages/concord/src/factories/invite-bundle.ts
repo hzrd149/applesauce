@@ -6,9 +6,9 @@
 
 import { EventFactory, blankEventTemplate, toEventTemplate } from "applesauce-core/factories";
 import { isKind, type NostrEvent } from "applesauce-core/helpers";
-import { INVITE_BUNDLE_KIND } from "../helpers/invite.js";
+import { INVITE_BUNDLE_KIND } from "../helpers/invite-bundle.js";
 import type { InviteBundle } from "../types.js";
-import { setInviteBundle, setRevocation } from "../operations/invite.js";
+import { setInviteBundle, setRevocation } from "../operations/invite-bundle.js";
 
 /** A factory for the addressable kind 33301 invite bundle and its revocation (CORD-05 §1-2). */
 export class InviteBundleFactory extends EventFactory<typeof INVITE_BUNDLE_KIND> {

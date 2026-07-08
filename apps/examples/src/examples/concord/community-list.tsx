@@ -8,19 +8,8 @@ import { BehaviorSubject, EventStore } from "applesauce-core";
 import { castUser } from "applesauce-core/casts";
 import { relaySet } from "applesauce-core/helpers";
 import type { NostrEvent } from "applesauce-core/helpers/event";
-import { Factories, Helpers, type CommunityListCommunity, type JoinMaterial } from "applesauce-concord";
+import { type CommunityListCommunity, type JoinMaterial } from "applesauce-concord";
 
-const {
-  COMMUNITY_LIST_KIND,
-  createCommunity,
-  decryptBundle,
-  INVITE_BUNDLE_KIND,
-  parseInviteLink,
-  STOCK_RELAYS,
-  verifyOwner,
-} = Helpers;
-
-const { CommunityListFactory } = Factories;
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -31,6 +20,16 @@ import { combineLatest, firstValueFrom, map, of, switchMap, timeout, toArray } f
 
 import "applesauce-concord/casts";
 import LoginView from "../../components/login-view";
+import { CommunityListFactory } from "applesauce-concord/factories";
+import {
+  COMMUNITY_LIST_KIND,
+  createCommunity,
+  decryptBundle,
+  INVITE_BUNDLE_KIND,
+  parseInviteLink,
+  STOCK_RELAYS,
+  verifyOwner,
+} from "applesauce-concord/helpers";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -77,7 +76,9 @@ async function redeemInvite(url: string): Promise<JoinMaterial> {
   const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : STOCK_RELAYS;
 
   const events = await firstValueFrom(
-    pool.request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner] }]).pipe(toArray(), timeout(10000)),
+    pool
+      .request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner] }])
+      .pipe(toArray(), timeout(10000)),
   ).catch(() => [] as NostrEvent[]);
 
   // The live bundle is the newest un-revoked edition (vsk 6).
@@ -265,7 +266,10 @@ function ConcordCommunityListManager() {
 
   async function foundDemoCommunity() {
     if (!user) return;
-    const extra = (extraRelays ?? "").split(/\n|,/).map((r) => r.trim()).filter(Boolean);
+    const extra = (extraRelays ?? "")
+      .split(/\n|,/)
+      .map((r) => r.trim())
+      .filter(Boolean);
     const genesis = await createCommunity({
       ownerPubkey: user.pubkey,
       name: `Demo #${(view?.communities.length ?? 0) + 1}`,
@@ -291,7 +295,9 @@ function ConcordCommunityListManager() {
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-bold flex-1">Relays</h2>
           <span className="badge badge-outline">{user ? shortId(user.pubkey) : "…"}</span>
-          <span className="badge badge-outline">{loading ? "loading" : communityList ? "list loaded" : "no list yet"}</span>
+          <span className="badge badge-outline">
+            {loading ? "loading" : communityList ? "list loaded" : "no list yet"}
+          </span>
           <span className="badge badge-outline">
             {unlocking ? "unlocking" : communityList?.unlocked ? "unlocked" : "locked"}
           </span>
@@ -356,7 +362,11 @@ function ConcordCommunityListManager() {
                 community={community}
                 tone="border-base-300"
                 action={
-                  <button className="btn btn-sm btn-outline btn-error" onClick={() => leave(community)} disabled={disabled}>
+                  <button
+                    className="btn btn-sm btn-outline btn-error"
+                    onClick={() => leave(community)}
+                    disabled={disabled}
+                  >
                     Leave
                   </button>
                 }
