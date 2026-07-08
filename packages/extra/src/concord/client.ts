@@ -52,7 +52,8 @@ import { computeEditionHash } from "./helpers/editions.js";
 import { checkChatBinding } from "./helpers/chat.js";
 import { buildInviteLink, decryptBundle, newInviteToken, parseInviteLink, STOCK_RELAYS } from "./helpers/invite.js";
 import type { Emoji } from "applesauce-core/factories";
-import { ChatMessageFactory, ReactionFactory } from "applesauce-common/factories";
+import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
+import { foldThreads, type ChannelThread } from "./helpers/forum-thread.js";
 import { DeleteFactory } from "./factories/chat.js";
 import { EditFactory } from "./factories/edit.js";
 import { bindToChannel, includeMediaEncryption, type MediaEncryption } from "./operations/chat.js";
@@ -137,6 +138,7 @@ interface Runtime {
   channelAuthors: string;
   state$: BehaviorSubject<CommunityState>;
   messages$: Map<string, BehaviorSubject<ChatMessage[]>>;
+  threads$: Map<string, BehaviorSubject<ChannelThread[]>>;
   refoldTimer?: ReturnType<typeof setTimeout>;
   persistTimer?: ReturnType<typeof setTimeout>;
 }
@@ -283,6 +285,18 @@ export class ConcordClient {
     return subj;
   }
 
+  /** A reactive list of NIP-7D threads (kind 11) + their replies posted to a channel. */
+  getThreads$(cid: string, channelId: string): BehaviorSubject<ChannelThread[]> {
+    const rt = this.runtimes.get(cid)!;
+    let subj = rt.threads$.get(channelId);
+    if (!subj) {
+      subj = new BehaviorSubject<ChannelThread[]>([]);
+      rt.threads$.set(channelId, subj);
+      this.recomputeThreads(rt, channelId);
+    }
+    return subj;
+  }
+
   // ---- creating / joining -------------------------------------------------
 
   async createNewCommunity(name: string, description: string, relays: string[]): Promise<string> {
@@ -408,6 +422,31 @@ export class ConcordClient {
 
     let rumor = await bindToChannel(channelId, epoch)(await factory);
     rumor = await includeMediaEncryption(encryption)(rumor);
+    await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
+  }
+
+  /** Post a NIP-7D forum thread (kind 11) to a channel. */
+  async sendThread(cid: string, channelId: string, title: string, body = ""): Promise<void> {
+    const rt = this.runtimes.get(cid)!;
+    const epoch = this.channelEpoch(rt, channelId);
+    const rumor = await bindToChannel(channelId, epoch)(await ForumThreadFactory.create(title, body));
+    await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
+  }
+
+  /**
+   * Reply to a channel thread with a NIP-22 kind 1111 comment to the root
+   * (NIP-7D). `thread` identifies the root kind 11 thread being replied to.
+   */
+  async replyToThread(
+    cid: string,
+    channelId: string,
+    thread: { id: string; author: string },
+    body: string,
+  ): Promise<void> {
+    const rt = this.runtimes.get(cid)!;
+    const epoch = this.channelEpoch(rt, channelId);
+    const pointer = { type: "event" as const, id: thread.id, kind: KIND.THREAD, pubkey: thread.author };
+    const rumor = await bindToChannel(channelId, epoch)(await CommentFactory.create(pointer, body));
     await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
   }
 
@@ -670,6 +709,7 @@ export class ConcordClient {
       channelAuthors: "",
       state$: new BehaviorSubject<CommunityState>(emptyState(material)),
       messages$: new Map(),
+      threads$: new Map(),
     };
     this.runtimes.set(material.community_id, rt);
     // Rehydrate from the local cache first, so channels/members are visible
@@ -813,6 +853,7 @@ export class ConcordClient {
         }
         ch.set(event.id, decoded);
         this.recomputeMessages(rt, channelId);
+        this.recomputeThreads(rt, channelId);
         this.schedulePersist(rt);
         break;
       }
@@ -881,6 +922,7 @@ export class ConcordClient {
     this.reconcileChannelSub(rt); // pick up any newly-revealed channels
     // Recompute any open channel views (channel keys may have changed epoch).
     for (const channelId of rt.messages$.keys()) this.recomputeMessages(rt, channelId);
+    for (const channelId of rt.threads$.keys()) this.recomputeThreads(rt, channelId);
     this.emitCommunities();
   }
 
@@ -1000,6 +1042,13 @@ export class ConcordClient {
   }
 
   // ---- message assembly ---------------------------------------------------
+
+  private recomputeThreads(rt: Runtime, channelId: string): void {
+    const subj = rt.threads$.get(channelId);
+    if (!subj) return;
+    const events = rt.channelEvents.get(channelId);
+    subj.next(foldThreads(events ? events.values() : []));
+  }
 
   private recomputeMessages(rt: Runtime, channelId: string): void {
     const subj = rt.messages$.get(channelId);

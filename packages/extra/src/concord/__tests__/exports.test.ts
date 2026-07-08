@@ -77,6 +77,7 @@ describe("concord exports", () => {
         "findBlob",
         "foldControl",
         "foldMembers",
+        "foldThreads",
         "getDecodedStream",
         "grantLocator",
         "groupKey",

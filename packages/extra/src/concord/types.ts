@@ -1,6 +1,7 @@
 // Concord protocol types.
 
-import type { NostrEvent } from "nostr-tools";
+import type { NostrEvent } from "applesauce-core/helpers/event";
+import type { Rumor } from "applesauce-common/helpers";
 
 // ---- Kinds (CORD-02 Appendix B, frozen) -----------------------------------
 export const KIND = {
@@ -11,6 +12,8 @@ export const KIND = {
   MESSAGE: 9,
   REACTION: 7,
   DELETE: 5,
+  THREAD: 11,
+  COMMENT: 1111,
   EDIT: 3302,
   REKEY: 3303,
   JOIN_LEAVE: 3306,
@@ -65,14 +68,9 @@ export const ADMIN_PERMS =
   PERM.MENTION_EVERYONE;
 
 // ---- Rumor (the innermost, unsigned event) --------------------------------
-export interface Rumor {
-  id: string;
-  kind: number;
-  pubkey: string;
-  content: string;
-  tags: string[][];
-  created_at: number;
-}
+// Re-exported from applesauce-core so concord shares the single canonical
+// rumor type instead of defining its own.
+export type { Rumor };
 
 /** An unsigned rumor template — the functional event before it is sealed/wrapped. */
 export interface RumorTemplate {
@@ -175,6 +173,31 @@ export interface InviteBundle extends JoinMaterial {
   expires_at?: number;
   creator_npub?: string;
   label?: string;
+}
+
+// ---- Invite List (kind 13303 / CORD-05 §4) --------------------------------
+// A creator's private, self-encrypted bookkeeping for the invite links they
+// have minted. One replaceable event per user; the full merged document is
+// (re)published on every change.
+export interface InviteListEntry {
+  /** The link's unlock secret and its merge key. */
+  token: string;
+  /** The `link_signer` secret key hex (CORD-05 §2). */
+  signer_sk: string;
+  community_id: string;
+  /** The full shareable invite URL. */
+  url: string;
+  label?: string;
+  /** Unix seconds the link was minted. */
+  created_at: number;
+  /** Optional unix-second expiry. */
+  expires_at?: number;
+  [k: string]: unknown;
+}
+export interface InviteListTombstone {
+  token: string;
+  community_id: string;
+  [k: string]: unknown;
 }
 
 // ---- A folded, in-memory Community ----------------------------------------

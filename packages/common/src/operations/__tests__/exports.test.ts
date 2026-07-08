@@ -17,6 +17,7 @@ describe("exports", () => {
         "CodeSnippet",
         "Comment",
         "FileMetadata",
+        "ForumThread",
         "Geohash",
         "GiftWrap",
         "GitGraspList",

@@ -1,5 +1,6 @@
 export * from "./app-handler.js";
 export * from "./article.js";
+export * from "./forum-thread.js";
 export * from "./badge-award.js";
 export * from "./badge.js";
 export * from "./blossom.js";

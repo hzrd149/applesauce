@@ -7,6 +7,7 @@ export * as CalendarEvent from "./calendar-event.js";
 export * as CalendarRsvp from "./calendar-rsvp.js";
 export * as Channel from "./channel.js";
 export * as ChatMessage from "./chat-message.js";
+export * as ForumThread from "./forum-thread.js";
 export * as Client from "./client.js";
 export * as Comment from "./comment.js";
 export * as FileMetadata from "./file-metadata.js";

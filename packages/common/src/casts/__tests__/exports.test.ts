@@ -22,6 +22,7 @@ describe("exports", () => {
         "FavoriteGitRepos",
         "FavoriteRelays",
         "FileMetadata",
+        "ForumThread",
         "GitAuthors",
         "GitGraspList",
         "GitRepository",
