@@ -1,4 +1,5 @@
 export * from "./note.js";
+export * from "./chat-message.js";
 export * from "./reaction.js";
 export * from "./comment.js";
 export * from "./share.js";

@@ -2,22 +2,16 @@
 // channel_id and epoch it was written for; a receiver checks both against the
 // key that opened the wrap and drops a mismatch (see helpers/chat.js).
 //
-// These are composable EventOperations that mutate a draft's public tags via
-// applesauce's tag operations; the factories in ../factories/chat.js chain them
-// onto a blank rumor template.
+// The generic chat-message machinery (content, `q` replies, NIP-92 attachments,
+// NIP-25 reaction targets) is reused from applesauce-common; this module only
+// holds the Concord-specific bits: the channel/epoch binding, the `ms` ordering
+// remainder, the client-media encryption decorator, and the delete target.
 
 import type { EventOperation } from "applesauce-core/factories";
-import { modifyPublicTags, TagOperations } from "applesauce-core/operations";
-import { buildImetaTag, type MediaAttachment } from "../helpers/imeta.js";
-
-const { addEventPointerTag, addNameValueTag, addProfilePointerTag, setSingletonTag } = TagOperations;
-
-/** A message this rumor replies to / reacts to / targets. */
-export interface ChatTarget {
-  id: string;
-  author: string;
-  kind: number;
-}
+import { eventPipe } from "applesauce-core/helpers";
+import { modifyPublicTags } from "applesauce-core/operations";
+import { addEventPointerTag, addNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
+import type { AttachmentEncryption } from "../helpers/imeta.js";
 
 /** Bind a chat rumor to its channel + epoch (CORD-03 §3). */
 export function includeChannelBinding(channelId: string, epoch: number): EventOperation {
@@ -29,33 +23,49 @@ export function includeMs(ms: number = Date.now()): EventOperation {
   return modifyPublicTags(setSingletonTag(["ms", String(ms % 1000)]));
 }
 
-/** Add a NIP-C7 `q` quote tag pointing at the message being replied to. */
-export function includeReplyPointer(replyTo: { id: string; author: string }): EventOperation {
-  return modifyPublicTags(addNameValueTag(["q", replyTo.id, "", replyTo.author], false));
+/**
+ * Bind ANY event to a Concord channel (CORD-03 §3) as a single composable
+ * operation: appends the channel/epoch binding plus the CORD-02 `ms` ordering
+ * remainder. Because it is a plain `EventOperation`, it chains onto any
+ * applesauce factory (e.g. `ChatMessageFactory.create(text).chain(bindToChannel(...))`)
+ * or applies to a resolved template, and it preserves the original kind so any
+ * nostr kind can ride a channel.
+ */
+export function bindToChannel(channelId: string, epoch: number, ms?: number) {
+  const channel = includeChannelBinding(channelId, epoch);
+  const remainder = includeMs(ms);
+  return eventPipe(channel, remainder);
 }
 
-/** Add one NIP-92 `imeta` tag per attachment, carrying its per-file key. */
-export function includeAttachments(attachments: MediaAttachment[] = []): EventOperation {
-  return modifyPublicTags(
-    ...attachments.map((a) => addNameValueTag(buildImetaTag(a) as [string, string, ...string[]], false)),
-  );
-}
+/** A client-encryption entry keyed to the attachment's `url`. */
+export type MediaEncryption = { url: string } & AttachmentEncryption;
 
-/** Add the NIP-25 `e`/`p`/`k` tags pointing a reaction at its target. */
-export function setReactionTarget(target: ChatTarget): EventOperation {
-  return modifyPublicTags(
-    addEventPointerTag(target.id, undefined, false),
-    addProfilePointerTag(target.author, undefined, false),
-    addNameValueTag(["k", String(target.kind)]),
+/**
+ * Decorate the NIP-92 `imeta` tags built by applesauce-common's
+ * `addMediaAttachments` with Concord's client-encryption fields
+ * (`encryption-algorithm` / `decryption-key` / `decryption-nonce`). Each entry
+ * is matched to its `imeta` tag by `url`, so the base attachment tags must
+ * already be present on the draft.
+ */
+export function includeMediaEncryption(entries: MediaEncryption[] = []): EventOperation {
+  if (entries.length === 0) return (draft) => draft;
+  return modifyPublicTags((tags) =>
+    tags.map((tag) => {
+      if (tag[0] !== "imeta") return tag;
+      const url = tag.find((part, i) => i > 0 && part.startsWith("url "))?.slice(4);
+      const enc = entries.find((e) => e.url === url);
+      if (!enc) return tag;
+      return [
+        ...tag,
+        `encryption-algorithm ${enc.algorithm}`,
+        `decryption-key ${enc.key}`,
+        `decryption-nonce ${enc.nonce}`,
+      ];
+    }),
   );
 }
 
 /** Add the `e`/`k` tags pointing a delete at its target (CORD-03 §3). */
 export function includeDeleteTarget(id: string, kind = 9): EventOperation {
   return modifyPublicTags(addEventPointerTag(id, undefined, false), addNameValueTag(["k", String(kind)]));
-}
-
-/** Add the `e` tag pointing an edit at the message it replaces. */
-export function includeEditTarget(id: string): EventOperation {
-  return modifyPublicTags(addEventPointerTag(id, undefined, false));
 }

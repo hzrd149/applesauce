@@ -4,7 +4,7 @@
 // are covered later / deferred with their phases.
 
 import { describe, expect, it } from "vitest";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 
 import { createCommunity, deriveKeys, verifyOwner } from "../helpers/community.js";
@@ -12,9 +12,10 @@ import { foldControl } from "../helpers/control.js";
 import { foldMembers } from "../helpers/guestbook.js";
 import { resolveStanding } from "../helpers/permissions.js";
 import { createStreamEvent, decodeStreamEvent } from "../stream.js";
-import { messageRumor } from "../operations/chat.js";
-import { buildInviteLink, decryptBundle, encryptBundle, newInviteToken, parseInviteLink } from "../operations/invite.js";
-import { toHex } from "../bytes.js";
+import { ChatMessageFactory } from "applesauce-common/factories";
+import { bindToChannel } from "../operations/chat.js";
+import { buildInviteLink, decryptBundle, encryptBundle, newInviteToken, parseInviteLink } from "../helpers/invite.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import type { DecodedEvent, InviteBundle, Role } from "../types.js";
 
 describe("concord envelope round-trip", () => {
@@ -23,7 +24,7 @@ describe("concord envelope round-trip", () => {
     const ownerPub = await owner.getPublicKey();
 
     // 1. Create community + owner proof.
-    const genesis = createCommunity({ ownerPubkey: ownerPub, name: "Test", description: "hi", relays: ["wss://x"] });
+    const genesis = await createCommunity({ ownerPubkey: ownerPub, name: "Test", description: "hi", relays: ["wss://x"] });
     expect(verifyOwner(genesis.material)).toBe(true);
     const keys = deriveKeys(genesis.material, []);
 
@@ -80,7 +81,7 @@ describe("concord envelope round-trip", () => {
       streamSk: chKey.sk,
       convKey: chKey.convKey,
       author: member,
-      rumor: messageRumor(chId, 0, "Hey chat!"),
+      rumor: await bindToChannel(chId, 0)(await ChatMessageFactory.create("Hey chat!")),
     });
     const memberChKey = deriveKeys(genesis.material, state.channels).channels.get(chId)!;
     expect(memberChKey.pk).toBe(chKey.pk); // both derive the same channel address
@@ -108,10 +109,10 @@ describe("concord envelope round-trip", () => {
     const link = buildInviteLink("https://app.example", linkPub, token, ["wss://jskitty.com/nostr"]);
     const parsed = parseInviteLink(link);
     expect(parsed.linkSigner).toBe(linkPub);
-    expect(toHex(parsed.token)).toBe(toHex(token));
+    expect(bytesToHex(parsed.token)).toBe(bytesToHex(token));
 
     // 7. Tamper detection: a wrong conv key sees only noise.
-    const wrongKey = deriveKeys({ ...genesis.material, community_root: toHex(generateSecretKey()) }, []).control.convKey;
+    const wrongKey = deriveKeys({ ...genesis.material, community_root: bytesToHex(generateSecretKey()) }, []).control.convKey;
     expect(decodeStreamEvent(msgWrap, wrongKey)).toBeNull();
   });
 });

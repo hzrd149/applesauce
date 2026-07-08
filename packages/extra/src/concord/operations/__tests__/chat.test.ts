@@ -1,15 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { KIND } from "../../types.js";
-import {
-  includeAttachments,
-  includeChannelBinding,
-  includeDeleteTarget,
-  includeEditTarget,
-  includeMs,
-  includeReplyPointer,
-  setReactionTarget,
-} from "../chat.js";
+import { includeChannelBinding, includeDeleteTarget, includeMediaEncryption, includeMs } from "../chat.js";
 
 const blank = (kind: number) => ({ kind, content: "", tags: [] as string[][], created_at: 0 });
 
@@ -26,30 +18,39 @@ describe("chat operations", () => {
     expect(Number(ms)).toBe(345);
   });
 
-  it("includeReplyPointer adds a q tag with author", async () => {
-    const draft = await includeReplyPointer({ id: "abc", author: "pk" })(blank(KIND.MESSAGE));
-    expect(draft.tags).toContainEqual(["q", "abc", "", "pk"]);
-  });
-
-  it("includeAttachments adds one imeta tag per attachment", async () => {
-    const draft = await includeAttachments([{ url: "https://x/1", mime: "image/png" }])(blank(KIND.MESSAGE));
-    const imeta = draft.tags.find((t) => t[0] === "imeta")!;
-    expect(imeta).toContain("url https://x/1");
-    expect(imeta).toContain("m image/png");
-  });
-
-  it("setReactionTarget adds e/p/k tags", async () => {
-    const draft = await setReactionTarget({ id: "e1", author: "a1", kind: 9 })(blank(KIND.REACTION));
-    expect(draft.tags).toContainEqual(["e", "e1"]);
-    expect(draft.tags).toContainEqual(["p", "a1"]);
-    expect(draft.tags).toContainEqual(["k", "9"]);
-  });
-
-  it("includeDeleteTarget and includeEditTarget point at their target", async () => {
+  it("includeDeleteTarget points at its target", async () => {
     const del = await includeDeleteTarget("e1", 9)(blank(KIND.DELETE));
     expect(del.tags).toContainEqual(["e", "e1"]);
     expect(del.tags).toContainEqual(["k", "9"]);
-    const edit = await includeEditTarget("e2")(blank(KIND.EDIT));
-    expect(edit.tags).toContainEqual(["e", "e2"]);
+  });
+
+  describe("includeMediaEncryption", () => {
+    const withImeta = (url: string) => ({ kind: KIND.MESSAGE, content: "", created_at: 0, tags: [["imeta", `url ${url}`, "m image/png"]] });
+
+    it("appends encryption fields to the matching imeta tag", async () => {
+      const draft = await includeMediaEncryption([
+        { url: "https://x/1", algorithm: "aes-gcm", key: "a".repeat(64), nonce: "b".repeat(32) },
+      ])(withImeta("https://x/1"));
+
+      const imeta = draft.tags.find((t) => t[0] === "imeta")!;
+      expect(imeta).toContain(`decryption-key ${"a".repeat(64)}`);
+      expect(imeta).toContain(`decryption-nonce ${"b".repeat(32)}`);
+      expect(imeta).toContain("encryption-algorithm aes-gcm");
+    });
+
+    it("leaves non-matching imeta tags untouched", async () => {
+      const draft = await includeMediaEncryption([
+        { url: "https://other", algorithm: "aes-gcm", key: "a".repeat(64), nonce: "b".repeat(32) },
+      ])(withImeta("https://x/1"));
+
+      const imeta = draft.tags.find((t) => t[0] === "imeta")!;
+      expect(imeta.some((p) => p.startsWith("decryption-key"))).toBe(false);
+    });
+
+    it("is a no-op with no entries", async () => {
+      const input = withImeta("https://x/1");
+      const draft = await includeMediaEncryption()(input);
+      expect(draft.tags).toEqual(input.tags);
+    });
   });
 });

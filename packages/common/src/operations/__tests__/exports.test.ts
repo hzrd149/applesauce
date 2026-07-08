@@ -12,6 +12,7 @@ describe("exports", () => {
         "CalendarEvent",
         "CalendarRsvp",
         "Channel",
+        "ChatMessage",
         "Client",
         "CodeSnippet",
         "Comment",

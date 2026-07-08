@@ -5,7 +5,7 @@
 // a separate localStorage-shaped interface while it awaits a database-backed
 // design.
 
-import type { MediaAttachment } from "./operations/imeta.js";
+import type { MediaAttachment } from "./helpers/imeta.js";
 
 /** Async key/value storage for Concord membership/key material. */
 export interface ConcordKeyStorage {
@@ -62,7 +62,7 @@ export function defaultStorage(): ConcordStorage {
 
 /**
  * Encrypts and uploads chat/community media, returning the NIP-92 attachment
- * (url + per-file `encryption` + `originalHash`) that rides in the message's
+ * (url + per-file `encryption` + `originalSha256`) that rides in the message's
  * imeta tag / a community `BlobPointer`. Injected so the core client carries no
  * Blossom dependency; the app supplies a Blossom-backed implementation.
  */
