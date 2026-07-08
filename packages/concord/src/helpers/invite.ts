@@ -9,13 +9,22 @@
 
 import { randomBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
+import { getCachedValue, getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { nip44 } from "applesauce-core/helpers/encryption";
+import { getAddressPointerForEvent } from "applesauce-core/helpers/pointers";
 import { decodePointer, naddrEncode } from "applesauce-core/helpers/pointers";
+import { notifyEventUpdate } from "applesauce-core/helpers";
+import type { AddressPointer, KnownEvent, NostrEvent } from "applesauce-core/helpers";
 import { inviteBundleKey } from "./crypto.js";
 import type { InviteBundle } from "../types.js";
 
 /** Concord invite bundle kind (CORD-05 §1). */
 export const INVITE_BUNDLE_KIND = 33301;
+
+/** The `vsk` tag value of a live invite bundle (CORD-05 §1). */
+export const INVITE_BUNDLE_VSK_LIVE = 6;
+/** The `vsk` tag value of a revoked invite bundle tombstone (CORD-05 §2). */
+export const INVITE_BUNDLE_VSK_REVOKED = 9;
 
 const FRAGMENT_VERSION = 4;
 const FLAG_STOCK_SET = 0x01;
@@ -124,4 +133,63 @@ export function encryptBundle(bundle: InviteBundle, token: Uint8Array): string {
 
 export function decryptBundle(content: string, token: Uint8Array): InviteBundle {
   return JSON.parse(nip44.decrypt(content, inviteBundleKey(token))) as InviteBundle;
+}
+
+// ── Event-level helpers (addressable kind 33301, authored by the link_signer) ─
+
+/** A validated Concord invite bundle event (kind 33301). */
+export type InviteBundleEvent = KnownEvent<typeof INVITE_BUNDLE_KIND>;
+
+/** Validates that an event is a Concord invite bundle (kind 33301). */
+export function isValidInviteBundle(event: NostrEvent): event is InviteBundleEvent {
+  return event.kind === INVITE_BUNDLE_KIND;
+}
+
+/** The bundle's `vsk` edition tag (defaults to live, CORD-05 §1). */
+export function getInviteBundleVsk(event: NostrEvent): number {
+  const raw = event.tags.find((t) => t[0] === "vsk")?.[1];
+  return raw === undefined ? INVITE_BUNDLE_VSK_LIVE : Number(raw);
+}
+
+/** Whether the bundle is a revocation tombstone (vsk 9, CORD-05 §2). */
+export function isInviteBundleRevoked(event: NostrEvent): boolean {
+  return getInviteBundleVsk(event) === INVITE_BUNDLE_VSK_REVOKED;
+}
+
+/** The addressable pointer (kind 33301, link_signer, `""`) locating this bundle. */
+export function getInviteBundlePointer(event: NostrEvent): AddressPointer {
+  return getAddressPointerForEvent(event)!;
+}
+
+/** Symbol for caching the decrypted invite bundle on an event. */
+export const InviteBundleSymbol = Symbol.for("concord-invite-bundle");
+
+/** Decrypts the invite bundle with the link's unlock token, caching the result on the event. */
+export function getInviteBundle(event: NostrEvent, token: Uint8Array): InviteBundle {
+  return getOrComputeCachedValue(event, InviteBundleSymbol, () => decryptBundle(event.content, token));
+}
+
+/**
+ * Whether the decrypted invite bundle plaintext is cached (unlocked) on the event. Mirrors
+ * {@link isInviteListUnlocked} for the token-encrypted bundle family.
+ */
+export function isInviteBundleUnlocked(event: NostrEvent): boolean {
+  return getCachedValue(event, InviteBundleSymbol) !== undefined;
+}
+
+/** The decrypted invite bundle if the event has been unlocked, otherwise undefined. */
+export function getInviteBundleContent(event: NostrEvent): InviteBundle | undefined {
+  return getCachedValue(event, InviteBundleSymbol);
+}
+
+/**
+ * Decrypts the invite bundle with the link's unlock token, caches it on the event, and notifies
+ * subscribers so reactive readers re-emit — mirroring {@link unlockInviteList}. A no-op that returns
+ * the cached bundle if already unlocked.
+ */
+export function unlockInviteBundle(event: NostrEvent, token: Uint8Array): InviteBundle {
+  if (isInviteBundleUnlocked(event)) return getInviteBundleContent(event)!;
+  const bundle = getInviteBundle(event, token);
+  notifyEventUpdate(event);
+  return bundle;
 }

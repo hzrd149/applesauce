@@ -1,7 +1,9 @@
 /**
- * Watch a Concord community's cryptographic state (ConcordKeys) evolve across its whole lifecycle — genesis, a private channel, an invite, a member join, a wrapped message, and two Refoundings that roll the root through epochs 0 → 1 → 2 — computed entirely with the functional crypto core, no ConcordClient.
+ * Watch a Concord community's ConcordKeys evolve across its lifecycle — genesis, a private channel, an
+ * invite, a join, a wrapped message, and two Refoundings rolling the root through epochs 0 → 1 → 2 —
+ * using only the functional crypto core.
  * @tags concord, encryption, crypto, epochs, rekey, nip-44
- * @related concord/community-list
+ * @related concord/community-list, concord/crypto-history
  */
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { NostrEvent } from "applesauce-core/helpers/event";
@@ -361,15 +363,6 @@ export default function ConcordCryptoLifecycle() {
 
   return (
     <div className="w-full p-4 flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-bold">Concord crypto lifecycle</h1>
-        <p className="opacity-70">
-          Every address a community uses derives from one secret — the <code>community_root</code> — at a given epoch.
-          Step through a community's life and watch the <code>ConcordKeys</code> state change. All computed with the
-          functional crypto core (no ConcordClient, no relays).
-        </p>
-      </div>
-
       {error && <div className="alert alert-error py-2">{error}</div>}
       {!steps && !error && <div className="opacity-70">Deriving keys…</div>}
 

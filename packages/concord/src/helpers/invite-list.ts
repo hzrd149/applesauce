@@ -10,6 +10,7 @@
 // There is no combined "document" type: invites and tombstones are two separate
 // arrays that the cast/factory manage independently.
 
+import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   getHiddenContent,
   getOrComputeCachedValue,
@@ -17,11 +18,14 @@ import {
   KnownEvent,
   notifyEventUpdate,
   unlockHiddenContent,
+  type AddressPointer,
   type HiddenContentSigner,
   type NostrEvent,
 } from "applesauce-core/helpers";
+import { getPublicKey } from "applesauce-core/helpers/keys";
 
 import type { InviteListInvite, InviteListTombstone } from "../types.js";
+import { INVITE_BUNDLE_KIND, parseInviteLink } from "./invite.js";
 
 /** Concord invite list kind (CORD-05 §4). */
 export const INVITE_LIST_KIND = 13303;
@@ -131,6 +135,27 @@ export function getInviteList(event: NostrEvent): ParsedInviteList | undefined {
 export function getLiveInvites(event: NostrEvent): InviteListInvite[] | undefined {
   const parsed = getInviteList(event);
   return parsed && liveInviteEntries(parsed.invites, parsed.tombstones);
+}
+
+/**
+ * The address pointer locating an invite entry's bundle event (kind 33301,
+ * `link_signer`, `""`). The author is derived from the entry's stored
+ * `signer_sk`; the link's bootstrap relays are attached as loader hints when the
+ * stored `url` parses.
+ */
+export function getInviteBundleLocator(invite: InviteListInvite): AddressPointer {
+  let relays: string[] | undefined;
+  try {
+    relays = parseInviteLink(invite.url).bootstrapRelays;
+  } catch {
+    relays = undefined;
+  }
+  return {
+    kind: INVITE_BUNDLE_KIND,
+    pubkey: getPublicKey(hexToBytes(invite.signer_sk)),
+    identifier: "",
+    relays,
+  };
 }
 
 /** Unlocks and parses the self-encrypted invite list using the owning user's signer. */

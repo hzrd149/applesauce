@@ -1,5 +1,7 @@
 /**
- * Walk a REAL Concord community's cryptographic history epoch by epoch from an invite link — log in, paste a link, and step from genesis to the current tip, deriving each epoch's ConcordKeys and fetching that epoch's plane events live (authenticating to relays as the derived stream keys). Past the invite's tip, the logged-in user's signer folds the rekey blobs addressed to it to follow further Refoundings.
+ * Walk a real Concord community's cryptographic history epoch by epoch from an invite link, deriving each
+ * epoch's ConcordKeys and fetching its plane events live; past the invite's tip, your signer folds the
+ * rekey blobs addressed to you to follow further Refoundings.
  * @tags concord, encryption, crypto, epochs, rekey, relays, nip-42
  * @related concord/crypto-lifecycle, concord/community-list
  */
@@ -426,15 +428,8 @@ function Walker({
 
   return (
     <div className="w-full p-4 flex flex-col gap-5">
-      <div className="flex flex-wrap items-start gap-2">
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">{material.name || "Community"} — crypto history</h1>
-          <p className="opacity-70">
-            Each epoch's addresses are derived from that epoch's <code>community_root</code>, then its plane events are
-            fetched live (authenticating to relays as the derived stream keys). Step forward to watch every address roll
-            on each Refounding; past the invite's tip, your signer folds the rekey blobs addressed to you.
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-bold text-lg flex-1">{material.name || "Community"}</h2>
         <button className="btn btn-sm btn-ghost" onClick={onReset}>
           ← New invite
         </button>
@@ -506,15 +501,6 @@ function InviteEntry({ signer, self }: { signer: ISigner; self: string }) {
 
   return (
     <div className="w-full p-4 flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-bold">Concord crypto history</h1>
-        <p className="opacity-70">
-          Paste an invite link to walk its community's cryptographic state from genesis to the current tip — one epoch
-          at a time, fetched from live relays. The invite carries every key up to its tip; your logged-in signer folds
-          any rekey blobs addressed to you to follow Refoundings beyond it.
-        </p>
-      </div>
-
       {error && <div className="alert alert-error py-2">{error}</div>}
 
       <section className="border border-base-300 rounded-box p-4 flex flex-col gap-3">

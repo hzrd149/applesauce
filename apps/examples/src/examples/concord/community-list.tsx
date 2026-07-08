@@ -1,9 +1,8 @@
 /**
- * A complete manager for the logged-in user's Concord community list (kind 13302): load and
- * auto-unlock the self-encrypted membership document, then join, leave, and re-join communities —
- * each mutation re-published as a NIP-44 self-encrypted replaceable event, all without a ConcordClient.
- * @tags concord, communities, casts, factories, encryption, nip-44
- * @related concord/crypto-lifecycle, concord/getting-started
+ * Load and auto-unlock your self-encrypted Concord community list (kind 13302), then join, leave, and
+ * re-join communities — rendered off the reactive concordCommunityList$ chain, no ConcordClient.
+ * @tags concord, communities, casts, factories, encryption, nip-44, reactive
+ * @related concord/invite-manager, concord/crypto-lifecycle
  */
 import { BehaviorSubject, EventStore } from "applesauce-core";
 import { castUser } from "applesauce-core/casts";
@@ -163,8 +162,6 @@ function ConcordCommunityListManager() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState("");
-  // Bumped after an in-place unlock so the derived view recomputes off the mutated event.
-  const [revision, setRevision] = useState(0);
 
   // Fetch the replaceable list event into the store from outbox + extra relays.
   useEffect(() => {
@@ -184,7 +181,9 @@ function ConcordCommunityListManager() {
     return () => subscription.unsubscribe();
   }, [user?.pubkey, relays]);
 
-  // Auto-unlock the self-encrypted list whenever a locked one arrives (including after each republish).
+  // Auto-unlock the self-encrypted list whenever a locked one arrives. Once unlocked, the reactive
+  // communities$/liveCommunities$/tombstones$ observables below re-emit on their own — including after
+  // every republish — so there is nothing to manually re-derive here.
   useEffect(() => {
     if (!communityList || communityList.unlocked || !signer?.nip44) return;
 
@@ -192,7 +191,6 @@ function ConcordCommunityListManager() {
     setUnlocking(true);
     communityList
       .unlock(signer)
-      .then(() => alive && setRevision((n) => n + 1))
       .catch((err) => alive && setError(err instanceof Error ? err.message : "Failed to unlock community list"))
       .finally(() => alive && setUnlocking(false));
 
@@ -201,17 +199,19 @@ function ConcordCommunityListManager() {
     };
   }, [communityList, signer]);
 
+  // The reactive chain: user → concordCommunityList$ → communities$ / liveCommunities$ / tombstones$.
+  // Each emits `undefined` while locked, then the decrypted arrays once unlock() notifies the event.
+  const communities = use$(() => communityList?.communities$, [communityList]);
+  const liveCommunities = use$(() => communityList?.liveCommunities$, [communityList]);
+  const tombstones = use$(() => communityList?.tombstones$, [communityList]);
+
   const view = useMemo(() => {
-    if (!communityList?.unlocked) return null;
-    const communities = communityList.communities ?? [];
-    const tombstones = communityList.tombstones ?? [];
-    const live = communityList.liveCommunities ?? [];
-    const liveIds = new Set(live.map((c) => c.community_id));
+    if (!communities || !liveCommunities || !tombstones) return null;
+    const liveIds = new Set(liveCommunities.map((c) => c.community_id));
     // Communities we still hold material for but have left — re-joinable in place.
     const left = communities.filter((c) => !liveIds.has(c.community_id));
-    return { communities, tombstones, live, left };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [communityList, revision]);
+    return { communities, tombstones, live: liveCommunities, left };
+  }, [communities, liveCommunities, tombstones]);
 
   // Start a factory that either amends the existing list or creates the user's first one.
   function listFactory() {
@@ -277,15 +277,6 @@ function ConcordCommunityListManager() {
 
   return (
     <div className="w-full p-4 flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-bold">Concord community list manager</h1>
-        <p className="opacity-70">
-          Load your self-encrypted kind {COMMUNITY_LIST_KIND} membership list, join a community by redeeming an invite
-          link, then leave and re-join memberships. Every change re-publishes the whole document; liveness is derived,
-          so a leave tombstones an entry and a later join resurrects it.
-        </p>
-      </div>
-
       {error && (
         <div className="alert alert-error py-2">
           <span>{error}</span>

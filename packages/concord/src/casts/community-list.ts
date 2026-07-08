@@ -1,9 +1,10 @@
 import { EventCast, User } from "applesauce-core/casts";
 import { type HiddenContentSigner, type NostrEvent } from "applesauce-core/helpers";
 import { castEventStream } from "applesauce-core/observable/cast-stream";
+import { watchEventUpdates } from "applesauce-core/observable";
 import type { ChainableObservable } from "applesauce-core/observable";
 import "applesauce-common/casts";
-import { switchMap } from "rxjs";
+import { map, of, switchMap } from "rxjs";
 
 import "../helpers/register.js";
 import {
@@ -41,6 +42,36 @@ export class ConcordCommunityList extends EventCast {
   /** The live community memberships derived from the unlocked communities and tombstones. */
   get liveCommunities(): CommunityListCommunity[] | undefined {
     return getLiveCommunities(this.event);
+  }
+
+  /** The decrypted memberships as an observable — emits `undefined` until unlocked, then re-emits on unlock. */
+  get communities$(): ChainableObservable<CommunityListCommunity[] | undefined> {
+    return this.$$ref("communities$", (store) =>
+      of(this.event).pipe(
+        watchEventUpdates(store),
+        map((event) => event && getCommunityList(event)?.communities),
+      ),
+    );
+  }
+
+  /** The live memberships as an observable — emits `undefined` until unlocked, then re-emits on unlock. */
+  get liveCommunities$(): ChainableObservable<CommunityListCommunity[] | undefined> {
+    return this.$$ref("liveCommunities$", (store) =>
+      of(this.event).pipe(
+        watchEventUpdates(store),
+        map((event) => event && getLiveCommunities(event)),
+      ),
+    );
+  }
+
+  /** The decrypted tombstones (left communities) as an observable — emits `undefined` until unlocked. */
+  get tombstones$(): ChainableObservable<CommunityTombstone[] | undefined> {
+    return this.$$ref("tombstones$", (store) =>
+      of(this.event).pipe(
+        watchEventUpdates(store),
+        map((event) => event && getCommunityList(event)?.tombstones),
+      ),
+    );
   }
 
   /** Unlock and parse the self-encrypted community list using the owning user's signer. */

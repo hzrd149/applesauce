@@ -50,8 +50,10 @@ import { computeEditionHash } from "./helpers/editions.js";
 import { checkChatBinding } from "./helpers/chat.js";
 import {
   buildInviteLink,
-  decryptBundle,
+  getInviteBundle,
   INVITE_BUNDLE_KIND,
+  isInviteBundleRevoked,
+  isValidInviteBundle,
   newInviteToken,
   parseInviteLink,
   STOCK_RELAYS,
@@ -328,11 +330,11 @@ export class ConcordClient {
     ).catch(() => [] as NostrEvent[]);
 
     const live = events
-      .filter((e) => (e.tags.find((t) => t[0] === "vsk")?.[1] ?? "6") === "6")
+      .filter((e) => isValidInviteBundle(e) && !isInviteBundleRevoked(e))
       .sort((a, b) => b.created_at - a.created_at)[0];
     if (!live) throw new Error("invite bundle not found or revoked");
 
-    const bundle: InviteBundle = decryptBundle(live.content, parsed.token);
+    const bundle: InviteBundle = getInviteBundle(live, parsed.token);
     const material: JoinMaterial = {
       community_id: bundle.community_id,
       owner: bundle.owner,
