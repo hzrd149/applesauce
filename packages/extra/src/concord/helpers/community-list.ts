@@ -6,37 +6,32 @@
 // legitimately resurrects a tombstoned id, while a stale device can never
 // re-add one it never re-joined. This mirrors armada `concord-v2/lib/
 // communityList.ts` (`isLive`) so both clients agree on which memberships show.
+//
+// There is no combined "document" type: communities and tombstones are two
+// separate arrays that the cast/factory/operation manage independently (mirroring the
+// Invite List, CORD-05 §4). Consumers mutate the list with atomic operations
+// (add/leave/refresh) instead of handing the whole object back and forth.
 
-import type { JoinMaterial } from "../types.js";
+import {
+  getHiddenContent,
+  getOrComputeCachedValue,
+  isHiddenContentUnlocked,
+  KnownEvent,
+  notifyEventUpdate,
+  unlockHiddenContent,
+  type HiddenContentSigner,
+  type NostrEvent,
+} from "applesauce-core/helpers";
 
-export interface CommunityListEntry {
-  community_id: string;
-  /** Earliest epoch held — the backfill anchor (only ever moves backward on merge). */
-  seed: JoinMaterial;
-  /** Freshest snapshot — replaced on every Refounding or rename. */
-  current: JoinMaterial;
-  /** ms; tiebreaks against a tombstone's removed_at. */
-  added_at: number;
-  [k: string]: unknown;
-}
+import type { CommunityListCommunity, CommunityTombstone, JoinMaterial } from "../types.js";
 
-export interface CommunityTombstone {
-  community_id: string;
-  /** ms. Permanent — pruning would let a long-offline device resurrect a leave. */
-  removed_at: number;
-  [k: string]: unknown;
-}
+/** Concord community list kind (CORD-02 §8). */
+export const COMMUNITY_LIST_KIND = 13302;
 
-export interface CommunityList {
-  entries: CommunityListEntry[];
-  tombstones: CommunityTombstone[];
-  [k: string]: unknown;
-}
-
-/** The newest `added_at` for a community across (possibly un-merged) entries, or undefined if absent. */
-function newestAdd(list: CommunityList, communityId: string): number | undefined {
+/** The newest `added_at` for a community across (possibly un-merged) communities, or undefined if absent. */
+function newestAdd(communities: CommunityListCommunity[], communityId: string): number | undefined {
   let added: number | undefined;
-  for (const e of list.entries ?? []) {
+  for (const e of communities ?? []) {
     if (e?.community_id !== communityId) continue;
     const at = typeof e.added_at === "number" ? e.added_at : 0;
     added = added === undefined ? at : Math.max(added, at);
@@ -45,9 +40,9 @@ function newestAdd(list: CommunityList, communityId: string): number | undefined
 }
 
 /** The newest removal; a tombstone lacking a valid `removed_at` is treated as terminal (+∞). */
-function newestRemoval(list: CommunityList, communityId: string): number | undefined {
+function newestRemoval(tombstones: CommunityTombstone[], communityId: string): number | undefined {
   let removed: number | undefined;
-  for (const t of list.tombstones ?? []) {
+  for (const t of tombstones ?? []) {
     if (t?.community_id !== communityId) continue;
     const at = typeof t.removed_at === "number" ? t.removed_at : Infinity;
     removed = removed === undefined ? at : Math.max(removed, at);
@@ -56,22 +51,29 @@ function newestRemoval(list: CommunityList, communityId: string): number | undef
 }
 
 /**
- * Whether a membership is live: it has an entry, and either no tombstone or its
- * newest add postdates the newest removal (CORD-02 §8). A re-join resurrects; a
- * pure leave stays dead.
+ * Whether a membership is live: it has a community, and either no tombstone or
+ * its newest add postdates the newest removal (CORD-02 §8). A re-join
+ * resurrects; a pure leave stays dead.
  */
-export function isCommunityLive(list: CommunityList, communityId: string): boolean {
-  const added = newestAdd(list, communityId);
+export function isCommunityLive(
+  communities: CommunityListCommunity[],
+  tombstones: CommunityTombstone[],
+  communityId: string,
+): boolean {
+  const added = newestAdd(communities, communityId);
   if (added === undefined) return false;
-  const removed = newestRemoval(list, communityId);
+  const removed = newestRemoval(tombstones, communityId);
   return removed === undefined || added > removed;
 }
 
 /** The live memberships, derived (deduped by community_id, newest-add snapshot). */
-export function liveCommunityEntries(list: CommunityList): CommunityListEntry[] {
-  const live = new Map<string, CommunityListEntry>();
-  for (const e of list.entries ?? []) {
-    if (!e?.community_id || !isCommunityLive(list, e.community_id)) continue;
+export function liveCommunities(
+  communities: CommunityListCommunity[],
+  tombstones: CommunityTombstone[],
+): CommunityListCommunity[] {
+  const live = new Map<string, CommunityListCommunity>();
+  for (const e of communities ?? []) {
+    if (!e?.community_id || !isCommunityLive(communities, tombstones, e.community_id)) continue;
     const prev = live.get(e.community_id);
     if (!prev || (e.added_at ?? 0) >= (prev.added_at ?? 0)) live.set(e.community_id, e);
   }
@@ -79,8 +81,6 @@ export function liveCommunityEntries(list: CommunityList): CommunityListEntry[] 
 }
 
 // ── Merge + mutation (CORD-02 §8, mirrors armada communityList.ts) ───────────
-
-export const EMPTY_COMMUNITY_LIST: CommunityList = { entries: [], tombstones: [] };
 
 /** The NIP-44 plaintext cap the serialized list must fit under (CORD-02 §8). */
 export const LIST_MAX_BYTES = 65_535;
@@ -112,7 +112,7 @@ function earliest(a: JoinMaterial, b: JoinMaterial): JoinMaterial {
   return canonicalJson(a) <= canonicalJson(b) ? a : b;
 }
 
-function mergeEntry(x: CommunityListEntry, y: CommunityListEntry): CommunityListEntry {
+function mergeCommunity(x: CommunityListCommunity, y: CommunityListCommunity): CommunityListCommunity {
   return {
     ...x,
     ...y,
@@ -124,56 +124,109 @@ function mergeEntry(x: CommunityListEntry, y: CommunityListEntry): CommunityList
 }
 
 /**
- * Deterministically merge two Community Lists — commutative, idempotent, nothing
- * deleted (liveness is derived). The token here is the community_id; a tombstone
- * always stays in the document, and the newest add vs newest removal decides
- * liveness (CORD-02 §8).
+ * Deterministically merge two arrays of communities — commutative, idempotent,
+ * nothing deleted. The community_id is the merge key: `current` keeps the
+ * freshest snapshot, `seed` the earliest, and `added_at` the newest add
+ * (CORD-02 §8).
  */
-export function mergeCommunityLists(a: CommunityList, b: CommunityList): CommunityList {
-  const entries = new Map<string, CommunityListEntry>();
-  for (const e of [...(a.entries ?? []), ...(b.entries ?? [])]) {
+export function mergeCommunities(a: CommunityListCommunity[], b: CommunityListCommunity[]): CommunityListCommunity[] {
+  const communities = new Map<string, CommunityListCommunity>();
+  for (const e of [...(a ?? []), ...(b ?? [])]) {
     if (!e || typeof e.community_id !== "string") continue;
-    const prev = entries.get(e.community_id);
-    entries.set(e.community_id, prev ? mergeEntry(prev, e) : e);
+    const prev = communities.get(e.community_id);
+    communities.set(e.community_id, prev ? mergeCommunity(prev, e) : e);
   }
+  return [...communities.values()].sort((x, y) => x.community_id.localeCompare(y.community_id));
+}
+
+/**
+ * Deterministically union two arrays of tombstones by community_id, keeping the
+ * newest removal (commutative, idempotent). A tombstone always stays in the
+ * document — liveness is derived from the newest add vs newest removal
+ * (CORD-02 §8).
+ */
+export function mergeCommunityTombstones(a: CommunityTombstone[], b: CommunityTombstone[]): CommunityTombstone[] {
   const tombstones = new Map<string, CommunityTombstone>();
-  for (const t of [...(a.tombstones ?? []), ...(b.tombstones ?? [])]) {
+  for (const t of [...(a ?? []), ...(b ?? [])]) {
     if (!t || typeof t.community_id !== "string") continue;
     const prev = tombstones.get(t.community_id);
     if (!prev || t.removed_at > prev.removed_at) tombstones.set(t.community_id, t);
   }
-  return {
-    ...a,
-    ...b,
-    entries: [...entries.values()].sort((x, y) => x.community_id.localeCompare(y.community_id)),
-    tombstones: [...tombstones.values()].sort((x, y) => x.community_id.localeCompare(y.community_id)),
-  };
-}
-
-/** Add/refresh a membership (pure). */
-export function addToList(list: CommunityList, entry: CommunityListEntry): CommunityList {
-  return mergeCommunityLists(list, { entries: [entry], tombstones: [] });
-}
-
-/** Tombstone a membership on leave/removal (pure). */
-export function removeFromList(list: CommunityList, communityId: string, removedAt: number): CommunityList {
-  return mergeCommunityLists(list, { entries: [], tombstones: [{ community_id: communityId, removed_at: removedAt }] });
+  return [...tombstones.values()].sort((x, y) => x.community_id.localeCompare(y.community_id));
 }
 
 /**
- * Replace a membership's `current` snapshot in place (an authoritative local
- * refresh — a caught-up rename or a channel-key addition). Bypasses the
- * epoch-keyed `freshest` so a same-epoch update can't lose the canonical-bytes
- * tiebreak (pure).
+ * The atomic membership mutations (join/leave/refresh) live as composable
+ * `CommunityListOperation`s in ../operations/community-list.js; they are built on
+ * the `mergeCommunities`/`mergeCommunityTombstones` primitives above.
  */
-export function refreshCurrent(list: CommunityList, current: JoinMaterial): CommunityList {
-  const idx = (list.entries ?? []).findIndex((e) => e.community_id === current.community_id);
-  if (idx === -1) return list;
-  const entries = list.entries.map((e, i) => (i === idx ? { ...e, current } : e));
-  return { ...list, entries };
-}
 
 /** Whether the serialized (JSON) list fits under the NIP-44 plaintext cap. */
-export function withinByteCap(list: CommunityList): boolean {
-  return new TextEncoder().encode(JSON.stringify(list)).length <= LIST_MAX_BYTES;
+export function communityListWithinByteCap(
+  communities: CommunityListCommunity[],
+  tombstones: CommunityTombstone[],
+): boolean {
+  // The wire document keys the array as `entries` (armada-compatible).
+  const bytes = new TextEncoder().encode(JSON.stringify({ entries: communities, tombstones }));
+  return bytes.length <= LIST_MAX_BYTES;
+}
+
+// ── Event-level helpers (self-encrypted list; hidden-content family) ─────────
+
+/** A validated Concord Community List event (kind 13302). */
+export type CommunityListEvent = KnownEvent<typeof COMMUNITY_LIST_KIND>;
+
+/** Validates that an event is a Concord community list (kind 13302). */
+export function isValidCommunityList(event: NostrEvent): event is CommunityListEvent {
+  return event.kind === COMMUNITY_LIST_KIND;
+}
+
+/** Symbol for caching the parsed (decrypted) community list on an event. */
+export const CommunityListSymbol = Symbol.for("concord-community-list");
+
+/** The decrypted community list split into its two independent arrays. */
+export interface ParsedCommunityList {
+  communities: CommunityListCommunity[];
+  tombstones: CommunityTombstone[];
+}
+
+/**
+ * Parse the self-encrypted community list JSON into its two arrays (empty on
+ * absent/blank). The stored document keys the array as `entries`; the parsed
+ * object exposes it as `communities`.
+ */
+export function parseCommunityList(json: string | undefined): ParsedCommunityList {
+  if (!json) return { communities: [], tombstones: [] };
+  const doc = JSON.parse(json) as { entries?: CommunityListCommunity[]; tombstones?: CommunityTombstone[] };
+  return { communities: doc.entries ?? [], tombstones: doc.tombstones ?? [] };
+}
+
+/** Whether the self-encrypted community list plaintext is unlocked on the event. */
+export function isCommunityListUnlocked(event: NostrEvent): boolean {
+  return isHiddenContentUnlocked(event);
+}
+
+/** Returns the parsed community list if the event has been unlocked, otherwise undefined. */
+export function getCommunityList(event: NostrEvent): ParsedCommunityList | undefined {
+  const json = getHiddenContent(event);
+  if (json === undefined) return undefined;
+  return getOrComputeCachedValue(event, CommunityListSymbol, () => parseCommunityList(json));
+}
+
+/** The live community memberships derived from the unlocked list, or undefined if locked. */
+export function getLiveCommunities(event: NostrEvent): CommunityListCommunity[] | undefined {
+  const parsed = getCommunityList(event);
+  return parsed && liveCommunities(parsed.communities, parsed.tombstones);
+}
+
+/** Unlocks and parses the self-encrypted community list using the owning user's signer. */
+export async function unlockCommunityList(
+  event: NostrEvent,
+  signer: HiddenContentSigner,
+): Promise<ParsedCommunityList> {
+  if (!isCommunityListUnlocked(event)) {
+    await unlockHiddenContent(event, signer);
+    notifyEventUpdate(event);
+  }
+  return getCommunityList(event) ?? { communities: [], tombstones: [] };
 }
