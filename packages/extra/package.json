@@ -10,16 +10,6 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./concord": {
-      "import": "./dist/concord/index.js",
-      "require": "./dist/concord/index.js",
-      "types": "./dist/concord/index.d.ts"
-    },
-    "./concord/*": {
-      "import": "./dist/concord/*.js",
-      "require": "./dist/concord/*.js",
-      "types": "./dist/concord/*.d.ts"
     }
   },
   "scripts": {
@@ -41,9 +31,6 @@
     "dist"
   ],
   "dependencies": {
-    "@noble/curves": "^2.2.0",
-    "@noble/hashes": "^2.2.0",
-    "@scure/base": "^2.2.0",
     "applesauce-core": "^6.2.0",
     "rxjs": "^7.8.2"
   },

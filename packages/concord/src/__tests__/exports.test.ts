@@ -99,7 +99,7 @@ describe("concord exports", () => {
         "getEditText",
         "getInviteList",
         "getLiveCommunities",
-        "getLiveInviteEntries",
+        "getLiveInvites",
         "getSealRumor",
         "getWrapRumor",
         "getWrapSeal",

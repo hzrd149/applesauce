@@ -1,0 +1,96 @@
+{
+  "name": "applesauce-concord",
+  "version": "6.2.0",
+  "description": "Concord protocol (CORD) helpers, operations, factories, and client for applesauce",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prebuild": "rimraf dist",
+    "build": "tsc",
+    "watch:build": "tsc --watch > /dev/null",
+    "test": "vitest run --passWithNoTests",
+    "watch:test": "vitest"
+  },
+  "keywords": [
+    "nostr",
+    "applesauce",
+    "concord"
+  ],
+  "author": "hzrd149",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./helpers": {
+      "import": "./dist/helpers/index.js",
+      "require": "./dist/helpers/index.js",
+      "types": "./dist/helpers/index.d.ts"
+    },
+    "./helpers/*": {
+      "import": "./dist/helpers/*.js",
+      "require": "./dist/helpers/*.js",
+      "types": "./dist/helpers/*.d.ts"
+    },
+    "./operations": {
+      "import": "./dist/operations/index.js",
+      "require": "./dist/operations/index.js",
+      "types": "./dist/operations/index.d.ts"
+    },
+    "./operations/*": {
+      "import": "./dist/operations/*.js",
+      "require": "./dist/operations/*.js",
+      "types": "./dist/operations/*.d.ts"
+    },
+    "./factories": {
+      "import": "./dist/factories/index.js",
+      "require": "./dist/factories/index.js",
+      "types": "./dist/factories/index.d.ts"
+    },
+    "./factories/*": {
+      "import": "./dist/factories/*.js",
+      "require": "./dist/factories/*.js",
+      "types": "./dist/factories/*.d.ts"
+    },
+    "./casts": {
+      "import": "./dist/casts/index.js",
+      "require": "./dist/casts/index.js",
+      "types": "./dist/casts/index.d.ts"
+    },
+    "./casts/*": {
+      "import": "./dist/casts/*.js",
+      "require": "./dist/casts/*.js",
+      "types": "./dist/casts/*.d.ts"
+    }
+  },
+  "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "@scure/base": "^2.2.0",
+    "applesauce-common": "^6.2.0",
+    "applesauce-core": "^6.2.0",
+    "rxjs": "^7.8.2"
+  },
+  "optionalDependencies": {
+    "applesauce-relay": "^6.2.0",
+    "applesauce-signers": "^6.2.0"
+  },
+  "devDependencies": {
+    "@hirez_io/observer-spy": "^2.2.0",
+    "applesauce-relay": "^6.2.0",
+    "applesauce-signers": "^6.2.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.15"
+  },
+  "funding": {
+    "type": "lightning",
+    "url": "lightning:nostrudel@geyser.fund"
+  }
+}
