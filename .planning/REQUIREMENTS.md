@@ -58,27 +58,27 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | TBD | Pending |
-| CORE-02 | TBD | Pending |
-| CORE-03 | TBD | Pending |
-| CORE-04 | TBD | Pending |
-| CORE-05 | TBD | Pending |
-| CORE-06 | TBD | Pending |
-| CORE-07 | TBD | Pending |
-| RUMOR-01 | TBD | Pending |
-| RUMOR-02 | TBD | Pending |
-| RUMOR-03 | TBD | Pending |
-| RUMOR-04 | TBD | Pending |
-| RUMOR-05 | TBD | Pending |
-| RUMOR-06 | TBD | Pending |
-| COMMON-01 | TBD | Pending |
-| COMMON-02 | TBD | Pending |
-| COMMON-03 | TBD | Pending |
+| CORE-01 | Phase 1 | Pending |
+| CORE-02 | Phase 1 | Pending |
+| CORE-03 | Phase 1 | Pending |
+| CORE-04 | Phase 1 | Pending |
+| CORE-05 | Phase 1 | Pending |
+| CORE-06 | Phase 2 | Pending |
+| CORE-07 | Phase 2 | Pending |
+| RUMOR-01 | Phase 1 | Pending |
+| RUMOR-02 | Phase 1 | Pending |
+| RUMOR-03 | Phase 3 | Pending |
+| RUMOR-04 | Phase 3 | Pending |
+| RUMOR-05 | Phase 3 | Pending |
+| RUMOR-06 | Phase 3 | Pending |
+| COMMON-01 | Phase 4 | Pending |
+| COMMON-02 | Phase 4 | Pending |
+| COMMON-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 16 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-08*
