@@ -26,7 +26,7 @@ import {
   type InviteBundle,
   type JoinMaterial,
   type Role,
-} from "applesauce-extra/concord";
+} from "applesauce-concord";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";

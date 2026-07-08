@@ -1,26 +1,35 @@
 /**
- * Load and unlock the logged-in user's saved Concord community list without creating a ConcordClient.
- * @tags concord, communities, casts, encryption, nip-44
- * @related concord/getting-started, concord/chat, concord/admin
+ * A complete manager for the logged-in user's Concord community list (kind 13302): load and
+ * auto-unlock the self-encrypted membership document, then join, leave, and re-join communities —
+ * each mutation re-published as a NIP-44 self-encrypted replaceable event, all without a ConcordClient.
+ * @tags concord, communities, casts, factories, encryption, nip-44
+ * @related concord/crypto-lifecycle, concord/getting-started
  */
 import { BehaviorSubject, EventStore } from "applesauce-core";
 import { castUser } from "applesauce-core/casts";
 import { relaySet } from "applesauce-core/helpers";
+import type { NostrEvent } from "applesauce-core/helpers/event";
 import {
   COMMUNITY_LIST_KIND,
+  CommunityListFactory,
+  createCommunity,
+  decryptBundle,
+  INVITE_BUNDLE_KIND,
+  parseInviteLink,
   STOCK_RELAYS,
+  verifyOwner,
   type CommunityListCommunity,
-  type CommunityTombstone,
-} from "applesauce-extra/concord";
+  type JoinMaterial,
+} from "applesauce-concord";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { nip19 } from "nostr-tools";
-import { useEffect, useState } from "react";
-import { combineLatest, map, of, switchMap } from "rxjs";
+import { useEffect, useMemo, useState } from "react";
+import { combineLatest, firstValueFrom, map, of, switchMap, timeout, toArray } from "rxjs";
 
-import "applesauce-extra/concord/casts/index";
+import "applesauce-concord/casts";
 import LoginView from "../../components/login-view";
 
 const eventStore = new EventStore();
@@ -43,7 +52,8 @@ const extraRelayList$ = extraRelays$.pipe(
 
 const outboxes$ = user$.pipe(switchMap((user) => user?.outboxes$ ?? of(undefined)));
 
-const loadRelays$ = combineLatest([outboxes$, extraRelayList$]).pipe(
+// The relays we both load the list from and re-publish every mutation to.
+const relays$ = combineLatest([outboxes$, extraRelayList$]).pipe(
   map(([outboxes, extraRelayList]) => relaySet(outboxes, extraRelayList)),
 );
 
@@ -53,74 +63,117 @@ const loader = createEventLoaderForStore(eventStore, pool, {
 });
 
 function shortId(id: string) {
-  return id.slice(0, 8) + "..." + id.slice(-8);
+  return id.slice(0, 8) + "…" + id.slice(-8);
 }
 
-function CommunityCard({ community }: { community: CommunityListCommunity }) {
+/** Build a fresh membership entry from join material (seed == current on a brand new join). */
+function entryFromMaterial(material: JoinMaterial): CommunityListCommunity {
+  return { community_id: material.community_id, seed: material, current: material, added_at: Date.now() };
+}
+
+/** Fetch and decrypt an invite bundle into join material (mirrors ConcordClient.joinByLink). */
+async function redeemInvite(url: string): Promise<JoinMaterial> {
+  const parsed = parseInviteLink(url.trim());
+  const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : STOCK_RELAYS;
+
+  const events = await firstValueFrom(
+    pool.request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner] }]).pipe(toArray(), timeout(10000)),
+  ).catch(() => [] as NostrEvent[]);
+
+  // The live bundle is the newest un-revoked edition (vsk 6).
+  const live = events
+    .filter((e) => (e.tags.find((t) => t[0] === "vsk")?.[1] ?? "6") === "6")
+    .sort((a, b) => b.created_at - a.created_at)[0];
+  if (!live) throw new Error("Invite bundle not found or revoked.");
+
+  const bundle = decryptBundle(live.content, parsed.token);
+  const material: JoinMaterial = {
+    community_id: bundle.community_id,
+    owner: bundle.owner,
+    owner_salt: bundle.owner_salt,
+    community_root: bundle.community_root,
+    root_epoch: bundle.root_epoch,
+    channels: bundle.channels ?? [],
+    relays: bundle.relays ?? relays,
+    name: bundle.name,
+  };
+  if (!verifyOwner(material)) throw new Error("Invite failed owner verification.");
+  if (bundle.expires_at && Date.now() > bundle.expires_at) throw new Error("This invite has expired.");
+  return material;
+}
+
+function CommunityCard({
+  community,
+  tone,
+  action,
+}: {
+  community: CommunityListCommunity;
+  tone: string;
+  action: React.ReactNode;
+}) {
   const relays = community.current.relays.length ? community.current.relays : ["No relays saved"];
 
   return (
-    <div className="border border-base-300 rounded-box p-4 flex flex-col gap-3">
-      <div className="flex flex-wrap items-start gap-2">
-        <div className="flex-1 min-w-64">
-          <h3 className="font-semibold text-lg">{community.current.name || "Unnamed community"}</h3>
-          <code className="text-xs opacity-70 break-all">{community.community_id}</code>
-        </div>
-        <span className="badge badge-outline">epoch {community.current.root_epoch}</span>
-        <span className="badge badge-outline">{community.current.channels.length} channel keys</span>
+    <div className={`border rounded-box p-4 flex flex-col gap-3 h-full ${tone}`}>
+      <div className="flex items-start gap-2">
+        <h3 className="font-semibold text-lg flex-1 min-w-0 break-words">
+          {community.current.name || "Unnamed community"}
+        </h3>
+        <span className="badge badge-outline whitespace-nowrap">epoch {community.current.root_epoch}</span>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-3 text-sm">
-        <div>
-          <div className="font-medium">Owner</div>
-          <code className="break-all opacity-70">{nip19.npubEncode(community.current.owner)}</code>
-        </div>
-        <div>
-          <div className="font-medium">Added</div>
-          <span className="opacity-70">{new Date(community.added_at).toLocaleString()}</span>
-        </div>
+      <code className="text-xs opacity-60 break-all">{shortId(community.community_id)}</code>
+
+      <div className="text-sm">
+        <div className="font-medium">Owner</div>
+        <code className="break-all opacity-70">{shortId(nip19.npubEncode(community.current.owner))}</code>
       </div>
 
-      <div>
-        <div className="font-medium text-sm mb-1">Relays</div>
-        <div className="flex flex-wrap gap-2">
+      <div className="text-sm">
+        <div className="font-medium">
+          Relays <span className="opacity-60">· {community.current.channels.length} channel keys</span>
+        </div>
+        <div className="flex flex-wrap gap-1 mt-1">
           {relays.map((relay) => (
-            <span key={relay} className="badge badge-ghost font-mono">
+            <span key={relay} className="badge badge-ghost badge-sm font-mono">
               {relay}
             </span>
           ))}
         </div>
       </div>
+
+      <div className="text-xs opacity-60">Added {new Date(community.added_at).toLocaleString()}</div>
+
+      <div className="mt-auto pt-1 flex justify-end">{action}</div>
     </div>
   );
 }
 
-function ConcordCommunityList() {
+function ConcordCommunityListManager() {
   const signer = use$(signer$);
   const user = use$(user$);
   const extraRelays = use$(extraRelays$);
-  const loadRelays = use$(loadRelays$);
+  const relays = use$(relays$);
   const outboxes = use$(outboxes$);
 
   const communityList = use$(() => user?.concordCommunityList$, [user]);
-  const [unlocked, setUnlocked] = useState<{
-    communities: CommunityListCommunity[];
-    tombstones: CommunityTombstone[];
-  } | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState("");
+  // Bumped after an in-place unlock so the derived view recomputes off the mutated event.
+  const [revision, setRevision] = useState(0);
 
-  const liveCommunities = communityList?.liveCommunities ?? [];
-
+  // Fetch the replaceable list event into the store from outbox + extra relays.
   useEffect(() => {
-    if (!user || !loadRelays) return;
+    if (!user || !relays) return;
 
     setLoading(true);
     setError(null);
-    setUnlocked(null);
 
-    const subscription = loader({ kind: COMMUNITY_LIST_KIND, pubkey: user.pubkey, relays: loadRelays }).subscribe({
+    const subscription = loader({ kind: COMMUNITY_LIST_KIND, pubkey: user.pubkey, relays }).subscribe({
       error: (err: unknown) => {
         setError(err instanceof Error ? err.message : "Failed to load community list");
         setLoading(false);
@@ -129,88 +182,224 @@ function ConcordCommunityList() {
     });
 
     return () => subscription.unsubscribe();
-  }, [user?.pubkey, loadRelays]);
+  }, [user?.pubkey, relays]);
 
-  async function unlockList() {
-    if (!communityList || !signer) return;
-    if (!signer.nip44) {
-      setError("This signer does not support NIP-44 decryption.");
-      return;
-    }
+  // Auto-unlock the self-encrypted list whenever a locked one arrives (including after each republish).
+  useEffect(() => {
+    if (!communityList || communityList.unlocked || !signer?.nip44) return;
 
+    let alive = true;
     setUnlocking(true);
-    setError(null);
+    communityList
+      .unlock(signer)
+      .then(() => alive && setRevision((n) => n + 1))
+      .catch((err) => alive && setError(err instanceof Error ? err.message : "Failed to unlock community list"))
+      .finally(() => alive && setUnlocking(false));
 
+    return () => {
+      alive = false;
+    };
+  }, [communityList, signer]);
+
+  const view = useMemo(() => {
+    if (!communityList?.unlocked) return null;
+    const communities = communityList.communities ?? [];
+    const tombstones = communityList.tombstones ?? [];
+    const live = communityList.liveCommunities ?? [];
+    const liveIds = new Set(live.map((c) => c.community_id));
+    // Communities we still hold material for but have left — re-joinable in place.
+    const left = communities.filter((c) => !liveIds.has(c.community_id));
+    return { communities, tombstones, live, left };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [communityList, revision]);
+
+  // Start a factory that either amends the existing list or creates the user's first one.
+  function listFactory() {
+    const event = communityList?.event;
+    return event ? CommunityListFactory.modify(event) : CommunityListFactory.create();
+  }
+
+  // Sign the mutated list, store it, and re-publish the replaceable event to every relay.
+  async function publish(build: () => CommunityListFactory, label: string) {
+    if (!signer) return;
+    if (!signer.nip44) return setError("This signer does not support NIP-44 encryption.");
+
+    setBusy(label);
+    setError(null);
     try {
-      setUnlocked(await communityList.unlock(signer));
+      const signed = await build().sign(signer);
+      await eventStore.add(signed);
+      if (relays?.length) await pool.publish(relays, signed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to unlock community list");
+      setError(err instanceof Error ? err.message : "Failed to publish community list");
     } finally {
-      setUnlocking(false);
+      setBusy(null);
     }
   }
 
+  function leave(community: CommunityListCommunity) {
+    const name = community.current.name || "community";
+    publish(() => CommunityListFactory.modify(communityList!.event).leave(community.community_id), `Leaving ${name}…`);
+  }
+
+  function rejoin(community: CommunityListCommunity) {
+    const name = community.current.name || "community";
+    // A join with a fresh added_at post-dates the tombstone and resurrects the membership.
+    publish(() => listFactory().join(entryFromMaterial(community.current)), `Re-joining ${name}…`);
+  }
+
+  async function joinViaInvite() {
+    setBusy("Fetching invite…");
+    setError(null);
+    let material: JoinMaterial;
+    try {
+      material = await redeemInvite(inviteLink);
+    } catch (err) {
+      setBusy(null);
+      return setError(err instanceof Error ? err.message : "Failed to redeem invite link");
+    }
+    await publish(() => listFactory().join(entryFromMaterial(material)), `Joining ${material.name}…`);
+    setInviteLink("");
+  }
+
+  async function foundDemoCommunity() {
+    if (!user) return;
+    const extra = (extraRelays ?? "").split(/\n|,/).map((r) => r.trim()).filter(Boolean);
+    const genesis = await createCommunity({
+      ownerPubkey: user.pubkey,
+      name: `Demo #${(view?.communities.length ?? 0) + 1}`,
+      relays: extra.length ? extra : STOCK_RELAYS,
+    });
+    await publish(() => listFactory().join(entryFromMaterial(genesis.material)), "Founding demo community…");
+  }
+
+  const disabled = busy !== null || unlocking;
+
   return (
-    <div className="container mx-auto max-w-5xl p-4 flex flex-col gap-5">
+    <div className="w-full p-4 flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-bold">Concord community list</h1>
+        <h1 className="text-2xl font-bold">Concord community list manager</h1>
         <p className="opacity-70">
-          Subscribe to the User cast while the EventStore loader fetches the encrypted kind {COMMUNITY_LIST_KIND} list
-          from outbox and extra relays.
+          Load your self-encrypted kind {COMMUNITY_LIST_KIND} membership list, join a community by redeeming an invite
+          link, then leave and re-join memberships. Every change re-publishes the whole document; liveness is derived,
+          so a leave tombstones an entry and a later join resurrects it.
         </p>
       </div>
 
-      {error && <div className="alert alert-error py-2">{error}</div>}
+      {error && (
+        <div className="alert alert-error py-2">
+          <span>{error}</span>
+          <button className="btn btn-xs btn-ghost" onClick={() => setError(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <section className="border border-base-300 rounded-box p-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-bold flex-1">Extra relays</h2>
-          <span className="badge badge-outline">{user ? shortId(user.pubkey) : "..."}</span>
+          <h2 className="font-bold flex-1">Relays</h2>
+          <span className="badge badge-outline">{user ? shortId(user.pubkey) : "…"}</span>
+          <span className="badge badge-outline">{loading ? "loading" : communityList ? "list loaded" : "no list yet"}</span>
+          <span className="badge badge-outline">
+            {unlocking ? "unlocking" : communityList?.unlocked ? "unlocked" : "locked"}
+          </span>
         </div>
         <textarea
           className="textarea textarea-bordered font-mono text-sm"
-          rows={5}
+          rows={4}
           value={extraRelays ?? ""}
           onChange={(e) => extraRelays$.next(e.target.value)}
         />
         <div className="text-sm opacity-70">
-          The loader also uses {outboxes?.length ?? 0} outbox relay{outboxes?.length === 1 ? "" : "s"} from the user's
-          NIP-65 mailbox list.
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button className="btn btn-primary" disabled>
-            {loading ? "Loading list event..." : communityList ? "List event loaded" : "Waiting for list event"}
-          </button>
-          <button className="btn btn-secondary" onClick={unlockList} disabled={!communityList || unlocking}>
-            {unlocking ? "Unlocking..." : communityList?.unlocked ? "Read unlocked list" : "Unlock list"}
-          </button>
+          Loading from and publishing to {relays?.length ?? 0} relay{relays?.length === 1 ? "" : "s"} — your{" "}
+          {outboxes?.length ?? 0} NIP-65 outbox relay{outboxes?.length === 1 ? "" : "s"} plus the extras above.
         </div>
       </section>
 
-      <section className="border border-base-300 rounded-box p-4 flex flex-col gap-2">
-        <h2 className="font-bold">List status</h2>
+      <section className="border border-base-300 rounded-box p-4 flex flex-col gap-3">
+        <h2 className="font-bold">Join a community</h2>
+        <p className="text-sm opacity-70">
+          Paste a Concord invite link to fetch its bundle, verify the owner proof, and add the membership.
+        </p>
         <div className="flex flex-wrap gap-2">
-          <span className="badge badge-outline">event {communityList ? "loaded" : "missing"}</span>
-          <span className="badge badge-outline">content {communityList?.unlocked ? "unlocked" : "locked"}</span>
-          {unlocked && <span className="badge badge-outline">{unlocked.communities.length} saved communities</span>}
-          {unlocked && <span className="badge badge-outline">{unlocked.tombstones.length} tombstones</span>}
+          <input
+            type="text"
+            className="input input-bordered font-mono text-sm flex-1 min-w-64"
+            placeholder="https://…/invite/naddr1…#…"
+            value={inviteLink}
+            onChange={(e) => setInviteLink(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={joinViaInvite} disabled={disabled || !inviteLink.trim()}>
+            Join via invite
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={foundDemoCommunity}
+            disabled={disabled}
+            title="Found a throwaway community to try the leave / re-join flow"
+          >
+            Found demo community
+          </button>
         </div>
-        {communityList && <code className="text-xs break-all opacity-70">{communityList.id}</code>}
+        {busy && <span className="text-sm opacity-70">{busy}</span>}
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-bold">Live communities</h2>
-        {!communityList && <p className="opacity-70">Load your list event first.</p>}
-        {communityList && !communityList.unlocked && (
-          <p className="opacity-70">Unlock the list to derive live memberships.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-bold flex-1">Joined communities</h2>
+          {view && <span className="badge badge-outline">{view.live.length} live</span>}
+          {view && <span className="badge badge-outline">{view.tombstones.length} tombstones</span>}
+        </div>
+
+        {!communityList && <p className="opacity-70">Loading your list event…</p>}
+        {communityList && !communityList.unlocked && <p className="opacity-70">Unlocking the encrypted list…</p>}
+        {view && view.live.length === 0 && (
+          <p className="opacity-70">No live memberships. Redeem an invite link above to get started.</p>
         )}
-        {communityList?.unlocked && liveCommunities.length === 0 && (
-          <p className="opacity-70">No live Concord communities are saved in this list.</p>
+        {view && view.live.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {view.live.map((community) => (
+              <CommunityCard
+                key={community.community_id}
+                community={community}
+                tone="border-base-300"
+                action={
+                  <button className="btn btn-sm btn-outline btn-error" onClick={() => leave(community)} disabled={disabled}>
+                    Leave
+                  </button>
+                }
+              />
+            ))}
+          </div>
         )}
-        {liveCommunities.map((community) => (
-          <CommunityCard key={community.community_id} community={community} />
-        ))}
       </section>
+
+      {view && view.left.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-bold">Left communities</h2>
+          <p className="text-sm opacity-70">
+            Tombstoned memberships you still hold material for — re-joining resurrects them in the list.
+          </p>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {view.left.map((community) => (
+              <CommunityCard
+                key={community.community_id}
+                community={community}
+                tone="border-base-300 opacity-70"
+                action={
+                  <button
+                    className="btn btn-sm btn-outline btn-success"
+                    onClick={() => rejoin(community)}
+                    disabled={disabled}
+                  >
+                    Re-join
+                  </button>
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -230,5 +419,5 @@ export default function ConcordCommunityListExample() {
     );
   }
 
-  return <ConcordCommunityList />;
+  return <ConcordCommunityListManager />;
 }

@@ -21,7 +21,7 @@ import {
   type ChannelMetadata,
   type ConcordKeys,
   type InviteBundle,
-} from "applesauce-extra/concord";
+} from "applesauce-concord";
 import { PrivateKeySigner } from "applesauce-signers";
 import { useEffect, useMemo, useState } from "react";
 
