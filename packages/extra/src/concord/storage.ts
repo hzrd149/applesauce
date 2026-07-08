@@ -1,14 +1,41 @@
 // Pluggable persistence + media upload for ConcordClient.
 //
-// The app version hardwired `localStorage` (materials mirror + decoded-rumor
-// cache) and Blossom image upload. The upstream client dependency-injects both
-// so it runs anywhere (Node, tests, a non-Blossom host). The reference
-// implementations of these interfaces live in the app: its localStorage cache
-// and its Blossom uploader.
+// Key material uses an async key/value interface so apps can provide IndexedDB,
+// localForage, SQLite, or another durable store. Decoded-rumor caching is still
+// a separate localStorage-shaped interface while it awaits a database-backed
+// design.
 
 import type { MediaAttachment } from "./operations/imeta.js";
 
-/** The synchronous key/value surface ConcordClient persists to. A browser's
+/** Async key/value storage for Concord membership/key material. */
+export interface ConcordKeyStorage {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+}
+
+/** An in-memory {@link ConcordKeyStorage}. Not durable — real clients should pass one. */
+export function memoryKeyStorage(): ConcordKeyStorage {
+  const map = new Map<string, string>();
+  return {
+    getItem: async (k) => map.get(k) ?? null,
+    setItem: async (k, v) => void map.set(k, v),
+    removeItem: async (k) => void map.delete(k),
+  };
+}
+
+/** The best default key storage: wrapped `localStorage` if present, else memory. */
+export function defaultKeyStorage(): ConcordKeyStorage {
+  const ls = (globalThis as { localStorage?: ConcordStorage }).localStorage;
+  if (!ls) return memoryKeyStorage();
+  return {
+    getItem: async (k) => ls.getItem(k),
+    setItem: async (k, v) => void ls.setItem(k, v),
+    removeItem: async (k) => void ls.removeItem(k),
+  };
+}
+
+/** The synchronous key/value surface used for the decoded-rumor cache. A browser's
  *  `localStorage` satisfies it directly; {@link memoryStorage} is the default. */
 export interface ConcordStorage {
   getItem(key: string): string | null;

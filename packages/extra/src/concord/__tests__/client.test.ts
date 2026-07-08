@@ -11,7 +11,7 @@ import { EventStore } from "applesauce-core";
 import type { RelayPool } from "applesauce-relay";
 
 import { ConcordClient } from "../client.js";
-import { memoryStorage } from "../storage.js";
+import { memoryKeyStorage, memoryStorage } from "../storage.js";
 
 // The control fold is debounced (~60ms); let it run before asserting state.
 const settle = () => new Promise((r) => setTimeout(r, 150));
@@ -34,7 +34,7 @@ function fakePool(): RelayPool {
   } as unknown as RelayPool;
 }
 
-async function makeClient(storage = memoryStorage()) {
+async function makeClient(storage = memoryKeyStorage(), cacheStorage = memoryStorage()) {
   const signer = new PrivateKeySigner(generateSecretKey());
   const pubkey = await signer.getPublicKey();
   const client = new ConcordClient({
@@ -43,9 +43,10 @@ async function makeClient(storage = memoryStorage()) {
     eventStore: new EventStore(),
     pool: fakePool(),
     storage,
+    cacheStorage,
     relays: ["wss://fake"],
   });
-  return { client, pubkey, storage };
+  return { client, pubkey, storage, cacheStorage };
 }
 
 describe("ConcordClient (DI, no network)", () => {
@@ -78,8 +79,9 @@ describe("ConcordClient (DI, no network)", () => {
   });
 
   it("persists memberships + decoded rumors across a restart via injected storage", async () => {
-    const storage = memoryStorage();
-    const { client, pubkey } = await makeClient(storage);
+    const storage = memoryKeyStorage();
+    const cacheStorage = memoryStorage();
+    const { client, pubkey } = await makeClient(storage, cacheStorage);
     const cid = await client.createNewCommunity("Persisted", "d", ["wss://fake"]);
     await settle();
     client.stop(); // flushes the pending cache write
@@ -92,6 +94,7 @@ describe("ConcordClient (DI, no network)", () => {
       eventStore: new EventStore(),
       pool: fakePool(),
       storage,
+      cacheStorage,
       relays: ["wss://fake"],
     });
     await client2.start();

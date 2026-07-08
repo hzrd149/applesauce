@@ -45,8 +45,8 @@ import {
   ROOT_SCOPE_HEX,
 } from "./helpers/rekey.js";
 import { createStreamEvent, decodeStreamEventCached, rewrapSeal } from "./stream.js";
-import { MAX_CHANNEL_CACHE, defaultStorage } from "./storage.js";
-import type { CachedEntry, ConcordStorage, ConcordUploader } from "./storage.js";
+import { MAX_CHANNEL_CACHE, defaultKeyStorage, memoryStorage } from "./storage.js";
+import type { CachedEntry, ConcordKeyStorage, ConcordStorage, ConcordUploader } from "./storage.js";
 import { ConcordRelayAuth } from "./relay-auth.js";
 import { foldControl } from "./helpers/control.js";
 import {
@@ -105,9 +105,11 @@ export interface ConcordClientOptions {
   eventStore: IEventStore;
   /** The applesauce RelayPool used for all subscriptions/publishes. */
   pool: RelayPool;
-  /** Persistence for the materials mirror + decoded-rumor cache. Defaults to
-   *  `localStorage` if present, else an in-memory store (non-durable). */
-  storage?: ConcordStorage;
+  /** Persistence for the membership/key material mirror. The key is the user's
+   *  pubkey, so consuming apps can namespace/prefix externally if needed. */
+  storage?: ConcordKeyStorage;
+  /** Temporary persistence for the decoded-rumor cache. Defaults to memory. */
+  cacheStorage?: ConcordStorage;
   /** Media uploader (encrypt + upload). Required to send files or set community
    *  images; omit if the client never uploads media. */
   uploader?: ConcordUploader;
@@ -186,7 +188,8 @@ export class ConcordClient {
   readonly status$ = new BehaviorSubject<string>("");
   private readonly eventStore: IEventStore;
   private readonly pool: RelayPool;
-  private readonly storage: ConcordStorage;
+  private readonly storage: ConcordKeyStorage;
+  private readonly cacheStorage: ConcordStorage;
   private readonly uploader?: ConcordUploader;
   private readonly defaultRelays: string[];
   private readonly relayAuth: ConcordRelayAuth;
@@ -199,7 +202,8 @@ export class ConcordClient {
     this.pubkey = options.pubkey;
     this.eventStore = options.eventStore;
     this.pool = options.pool;
-    this.storage = options.storage ?? defaultStorage();
+    this.storage = options.storage ?? defaultKeyStorage();
+    this.cacheStorage = options.cacheStorage ?? memoryStorage();
     this.uploader = options.uploader;
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
     this.relayAuth = new ConcordRelayAuth(options.pool);
@@ -217,29 +221,29 @@ export class ConcordClient {
     this.authSub = this.relayAuth.autoAuthenticate(this.signer, this.pubkey);
     // Restore memberships from the local mirror first (instant, offline-safe),
     // then reconcile with the relay-published Community List (kind 13302).
-    for (const m of this.loadMaterialsLocal()) {
+    for (const m of await this.loadMaterials()) {
       if (!this.runtimes.has(m.community_id)) this.addRuntime(m);
     }
     await this.loadCommunityList();
   }
 
   private materialsKey(): string {
-    return `concord:communities:${this.pubkey}`;
+    return this.pubkey;
   }
 
-  private loadMaterialsLocal(): JoinMaterial[] {
+  private async loadMaterials(): Promise<JoinMaterial[]> {
     try {
-      const raw = this.storage.getItem(this.materialsKey());
+      const raw = await this.storage.getItem(this.materialsKey());
       return raw ? (JSON.parse(raw) as JoinMaterial[]) : [];
     } catch {
       return [];
     }
   }
 
-  private saveMaterialsLocal(): void {
+  private async saveMaterials(): Promise<void> {
     try {
       const mats = [...this.runtimes.values()].map((r) => r.material);
-      this.storage.setItem(this.materialsKey(), JSON.stringify(mats));
+      await this.storage.setItem(this.materialsKey(), JSON.stringify(mats));
     } catch (err) {
       console.warn("failed to mirror communities locally", err);
     }
@@ -253,7 +257,7 @@ export class ConcordClient {
 
   private loadCache(cid: string): CachedEntry[] {
     try {
-      const raw = this.storage.getItem(this.cacheKey(cid));
+      const raw = this.cacheStorage.getItem(this.cacheKey(cid));
       if (!raw) return [];
       const parsed = JSON.parse(raw) as { events?: CachedEntry[] };
       return Array.isArray(parsed.events) ? parsed.events : [];
@@ -264,7 +268,7 @@ export class ConcordClient {
 
   private saveCache(cid: string, entries: CachedEntry[]): void {
     try {
-      this.storage.setItem(this.cacheKey(cid), JSON.stringify({ v: 1, events: entries }));
+      this.cacheStorage.setItem(this.cacheKey(cid), JSON.stringify({ v: 1, events: entries }));
     } catch (err) {
       console.warn("concord cache write failed", err);
     }
@@ -272,7 +276,7 @@ export class ConcordClient {
 
   private clearCache(cid: string): void {
     try {
-      this.storage.removeItem(this.cacheKey(cid));
+      this.cacheStorage.removeItem(this.cacheKey(cid));
     } catch {
       /* ignore */
     }
@@ -317,6 +321,7 @@ export class ConcordClient {
       relays: relays.length ? relays : this.defaultRelays,
     });
     const rt = this.addRuntime(genesis.material);
+    await this.saveMaterials();
     // Publish genesis control editions (plaintext seal) + owner Join.
     for (const rumor of genesis.controlRumors) {
       await this.publishToPlane(rt, rt.keys.control, rumor, { plaintext: true });
@@ -360,6 +365,7 @@ export class ConcordClient {
     if (this.runtimes.has(material.community_id)) return material.community_id;
 
     const rt = this.addRuntime(material);
+    await this.saveMaterials();
     // Publish our Join (with attribution, CORD-05).
     const joinTags: string[][] = [["ms", String(Date.now() % 1000)]];
     if (bundle.creator_npub) joinTags.push(["invite", bundle.creator_npub, bundle.label ?? ""]);
@@ -513,7 +519,7 @@ export class ConcordClient {
       rt.material.channels.push({ id: channelId, key, epoch: 1, name });
       // Persist the key both locally and into our Community List (13302), or it
       // is lost on reload.
-      this.saveMaterialsLocal();
+      await this.saveMaterials();
       await this.saveCommunityList();
     }
     const content: Record<string, unknown> = { name, private: isPrivate };
@@ -606,7 +612,7 @@ export class ConcordClient {
     // Tombstone the membership so the leave propagates across devices/clients
     // (a bare omission would merge back as still-joined — CORD-02 §8).
     this.communityList = removeFromList(this.communityList, cid, Date.now());
-    this.saveMaterialsLocal();
+    await this.saveMaterials();
     this.emitCommunities();
     await this.saveCommunityList();
   }
@@ -680,7 +686,6 @@ export class ConcordClient {
     this.refold(rt);
     this.openControlSub(rt);
     this.reconcileChannelSub(rt);
-    this.saveMaterialsLocal();
     this.emitCommunities();
     return rt;
   }
@@ -993,7 +998,7 @@ export class ConcordClient {
     this.openControlSub(rt); // re-subscribe control/guestbook/dissolved + next rekey at the new epoch
     this.reconcileChannelSub(rt);
     this.refold(rt);
-    this.saveMaterialsLocal();
+    void this.saveMaterials();
     void this.saveCommunityList();
   }
 
@@ -1076,7 +1081,7 @@ export class ConcordClient {
     this.clearCache(cid);
     this.runtimes.delete(cid);
     this.communityList = removeFromList(this.communityList, cid, Date.now());
-    this.saveMaterialsLocal();
+    void this.saveMaterials();
     this.emitCommunities();
     void this.saveCommunityList();
   }
@@ -1216,11 +1221,16 @@ export class ConcordClient {
       // Liveness is DERIVED, not "present in tombstones": a leave-then-rejoin
       // (added_at > removed_at) legitimately resurrects, so a blanket tombstone
       // drop would wrongly hide re-joined communities and diverge from armada.
+      let added = false;
       for (const entry of this.communityList.entries) {
         const m = entry.current;
         if (!m?.community_id || !isCommunityLive(this.communityList, m.community_id)) continue;
-        if (!this.runtimes.has(m.community_id)) this.addRuntime(m);
+        if (!this.runtimes.has(m.community_id)) {
+          this.addRuntime(m);
+          added = true;
+        }
       }
+      if (added) await this.saveMaterials();
     } catch (err) {
       console.warn("failed to load community list", err);
     }
