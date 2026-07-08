@@ -19,10 +19,13 @@ import type {
 import { hasPerm, resolveStanding } from "./permissions.js";
 import { isHexKey } from "applesauce-core/helpers/string";
 import { hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { editionHash } from "./crypto.js";
+import { editionHash, inviteLinksLocator } from "./crypto.js";
 
 /** Concord control-plane edition kind (CORD-04). */
 export const CONTROL_KIND = 3308;
+
+/** A Community folds only the 100 lowest `role_id`s, ignoring the rest (CORD-04 §2). */
+export const MAX_ROLES = 100;
 
 interface Edition {
   vsk: number;
@@ -113,12 +116,21 @@ function groupByEntity(editions: Edition[]): Map<string, Edition[]> {
   return out;
 }
 
+/** Keep only the {@link MAX_ROLES} lowest role_ids (the eid *is* the role_id). */
+function capRoles(candidates: Map<string, Edition[]>): Map<string, Edition[]> {
+  if (candidates.size <= MAX_ROLES) return candidates;
+  const lowest = [...candidates.keys()].sort().slice(0, MAX_ROLES);
+  return new Map(lowest.map((eid) => [eid, candidates.get(eid)!]));
+}
+
 export function foldControl(events: DecodedEvent[], material: JoinMaterial): CommunityState {
   const editions = events.map(parseEdition).filter((e): e is Edition => e !== null);
 
   const byVsk = (vsk: number) => editions.filter((e) => e.vsk === vsk);
 
-  const roleCandidates = groupByEntity(byVsk(VSK.ROLE));
+  // Fold only the 100 lowest role_ids so every client converges on the same set
+  // regardless of how many extra roles a relay serves (CORD-04 §2).
+  const roleCandidates = capRoles(groupByEntity(byVsk(VSK.ROLE)));
   const grantCandidates = groupByEntity(byVsk(VSK.GRANT));
 
   // ---- Fold the roster owner-first, iterating to a fixpoint (CORD-04 §1). --
@@ -240,6 +252,29 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
     }
   }
 
+  // ---- Invite Registry (CREATE_INVITE), CORD-05 §5 ------------------------
+  // Every creator publishes their own registry at a coordinate bound to them, so
+  // its eid must reproduce inviteLinksLocator(community_id, author) or it's a
+  // forged entry into someone else's list. The aggregate live-link set is the
+  // Public/Private source of truth: non-empty = Public.
+  const inviteLinks = new Set<string>();
+  const cidBytes = hexToBytes(material.community_id);
+  for (const [eid, cands] of groupByEntity(byVsk(VSK.INVITE_REGISTRY))) {
+    for (const cand of cands) {
+      const s = standing(cand.author);
+      if (!s.isOwner && !hasPerm(s.permissions, PERM.CREATE_INVITE)) continue;
+      if (eid !== inviteLinksLocator(cidBytes, cand.author)) continue;
+      try {
+        const coords = JSON.parse(cand.content) as string[];
+        for (const coord of coords) inviteLinks.add(coord);
+        heads.set(eid, cand.source);
+        break;
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
   return {
     material,
     metadata,
@@ -247,6 +282,7 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
     roles: [...roles.values()].sort((a, b) => a.position - b.position || (a.role_id < b.role_id ? -1 : 1)),
     grants,
     banlist,
+    inviteLinks,
     members: new Set(),
     dissolved: false,
     heads,

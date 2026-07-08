@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ReactionFactory } from "applesauce-common/factories";
 
 import { kinds } from "applesauce-core/helpers/event";
-import { bindToChannel } from "../../operations/chat.js";
+import { bindToChannel } from "../../operations/channel.js";
 
 const target = { id: "e", pubkey: "a", kind: kinds.ChatMessage };
 

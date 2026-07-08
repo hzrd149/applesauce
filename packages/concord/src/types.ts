@@ -213,6 +213,10 @@ export interface CommunityState {
   roles: Role[];
   grants: Map<string, string[]>; // member -> role_ids
   banlist: Set<string>;
+  /** Aggregate live invite-link coordinates (link_signer pubkeys) folded from
+   *  every authorized creator's Registry; non-empty ⇒ the Community is Public
+   *  (CORD-05 §5). */
+  inviteLinks: Set<string>;
   members: Set<string>;
   dissolved: boolean;
   /** Winning head edition per entity (eid → decoded), for CORD-06 compaction. */

@@ -12,19 +12,26 @@ import { relaySet } from "applesauce-core/helpers";
 import { finalizeEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import {
-  buildInviteLink,
-  COMMUNITY_LIST_KIND,
-  INVITE_LIST_KIND,
-  InviteBundleFactory,
-  InviteListFactory,
-  newInviteToken,
-  parseInviteLink,
-  STOCK_RELAYS,
+  Casts,
+  Factories,
+  Helpers,
   type CommunityListCommunity,
   type InviteBundle,
   type InviteListInvite,
-  type InviteWithBundle,
 } from "applesauce-concord";
+
+const {
+  buildInviteLink,
+  COMMUNITY_LIST_KIND,
+  INVITE_LIST_KIND,
+  newInviteToken,
+  parseInviteLink,
+  STOCK_RELAYS,
+} = Helpers;
+
+const { InviteBundleFactory, InviteListFactory } = Factories;
+
+type InviteWithBundle = Casts.InviteWithBundle;
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

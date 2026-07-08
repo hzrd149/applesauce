@@ -8,18 +8,19 @@ import { BehaviorSubject, EventStore } from "applesauce-core";
 import { castUser } from "applesauce-core/casts";
 import { relaySet } from "applesauce-core/helpers";
 import type { NostrEvent } from "applesauce-core/helpers/event";
-import {
+import { Factories, Helpers, type CommunityListCommunity, type JoinMaterial } from "applesauce-concord";
+
+const {
   COMMUNITY_LIST_KIND,
-  CommunityListFactory,
   createCommunity,
   decryptBundle,
   INVITE_BUNDLE_KIND,
   parseInviteLink,
   STOCK_RELAYS,
   verifyOwner,
-  type CommunityListCommunity,
-  type JoinMaterial,
-} from "applesauce-concord";
+} = Helpers;
+
+const { CommunityListFactory } = Factories;
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

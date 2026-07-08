@@ -8,7 +8,6 @@
 // convenience constructor, `static modify()` for events that are re-issued, and
 // fluent instance helpers, mirroring the applesauce-common factories.
 
-export * from "./chat.js";
 export * from "./edit.js";
 export * from "./guestbook.js";
 export * from "./control.js";

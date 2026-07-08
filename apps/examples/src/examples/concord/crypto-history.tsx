@@ -8,6 +8,15 @@
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import {
   ConcordRelayAuth,
+  Helpers,
+  type CommunityState,
+  type DecodedEvent,
+  type InviteBundle,
+  type JoinMaterial,
+  type Role,
+} from "applesauce-concord";
+
+const {
   decodeWrap,
   decryptBundle,
   deriveConcordKeys,
@@ -22,13 +31,9 @@ import {
   resolveStanding,
   STOCK_RELAYS,
   verifyOwner,
-  type CommunityState,
-  type ConcordKeys,
-  type DecodedEvent,
-  type InviteBundle,
-  type JoinMaterial,
-  type Role,
-} from "applesauce-concord";
+} = Helpers;
+
+type ConcordKeys = Helpers.ConcordKeys;
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";

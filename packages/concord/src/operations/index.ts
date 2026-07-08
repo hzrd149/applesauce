@@ -3,7 +3,7 @@
 // The factories in ../factories chain these onto blank rumor templates; the
 // envelope (../stream.js) seals and wraps the finished rumor.
 
-export * from "./chat.js";
+export * from "./channel.js";
 export * from "./edit.js";
 export * from "./gift-wrap.js";
 export * from "./guestbook.js";

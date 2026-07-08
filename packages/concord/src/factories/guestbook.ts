@@ -5,7 +5,7 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { JOIN_LEAVE_KIND, KICK_KIND, SNAPSHOT_KIND } from "../helpers/guestbook.js";
 import { SNAPSHOT_CHUNK } from "../helpers/guestbook.js";
-import { includeMs } from "../operations/chat.js";
+import { includeMs } from "../operations/channel.js";
 import {
   includeInviteAttribution,
   includeKickTarget,

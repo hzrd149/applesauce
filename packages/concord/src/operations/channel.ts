@@ -5,12 +5,12 @@
 // The generic chat-message machinery (content, `q` replies, NIP-92 attachments,
 // NIP-25 reaction targets) is reused from applesauce-common; this module only
 // holds the Concord-specific bits: the channel/epoch binding, the `ms` ordering
-// remainder, the client-media encryption decorator, and the delete target.
+// remainder, and the client-media encryption decorator.
 
 import type { EventOperation } from "applesauce-core/factories";
-import { eventPipe, kinds } from "applesauce-core/helpers";
+import { eventPipe } from "applesauce-core/helpers";
 import { modifyPublicTags } from "applesauce-core/operations";
-import { addEventPointerTag, addNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
+import { setSingletonTag } from "applesauce-core/operations/tag/common";
 import type { AttachmentEncryption } from "../helpers/imeta.js";
 
 /** Bind a chat rumor to its channel + epoch (CORD-03 §3). */
@@ -65,7 +65,3 @@ export function includeMediaEncryption(entries: MediaEncryption[] = []): EventOp
   );
 }
 
-/** Add the `e`/`k` tags pointing a delete at its target (CORD-03 §3). */
-export function includeDeleteTarget(id: string, kind: number = kinds.ChatMessage): EventOperation {
-  return modifyPublicTags(addEventPointerTag(id, undefined, false), addNameValueTag(["k", String(kind)]));
-}

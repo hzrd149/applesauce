@@ -5,12 +5,13 @@
 
 import "./helpers/register.js";
 
+export * as Helpers from "./helpers/index.js";
+export * as Operations from "./operations/index.js";
+export * as Factories from "./factories/index.js";
+export * as Casts from "./casts/index.js";
+
 export * from "./types.js";
-export * from "./helpers/index.js";
 export * from "./stream.js";
-export * from "./operations/index.js";
-export * from "./factories/index.js";
+export * as Storage from "./storage.js";
 export * from "./relay-auth.js";
-export * from "./storage.js";
 export * from "./client.js";
-export * from "./casts/index.js";

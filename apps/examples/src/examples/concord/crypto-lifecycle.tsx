@@ -8,7 +8,9 @@
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
-import {
+import { Helpers, type ChannelMetadata, type InviteBundle } from "applesauce-concord";
+
+const {
   addChannelKey,
   buildRefounding,
   createCommunity,
@@ -20,10 +22,9 @@ import {
   readRekey,
   verifyOwner,
   wrapForTarget,
-  type ChannelMetadata,
-  type ConcordKeys,
-  type InviteBundle,
-} from "applesauce-concord";
+} = Helpers;
+
+type ConcordKeys = Helpers.ConcordKeys;
 import { PrivateKeySigner } from "applesauce-signers";
 import { useEffect, useMemo, useState } from "react";
 

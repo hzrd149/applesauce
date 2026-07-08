@@ -10,7 +10,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { hexToBytes } from "@noble/hashes/utils.js";
 
 import { kinds } from "applesauce-core/helpers/event";
-import { bindToChannel, includeMediaEncryption } from "../../operations/chat.js";
+import { bindToChannel, includeMediaEncryption } from "../../operations/channel.js";
 import { checkChatBinding } from "../../helpers/chat.js";
 import { controlGroupKey } from "../../helpers/crypto.js";
 import { sealRumor, toRumor, wrapSeal } from "../../operations/gift-wrap.js";

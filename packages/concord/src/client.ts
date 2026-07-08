@@ -60,9 +60,9 @@ import {
 } from "./helpers/invite.js";
 import type { Emoji } from "applesauce-core/factories";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
-import { DeleteFactory } from "./factories/chat.js";
+import { DeleteFactory } from "applesauce-core/factories";
 import { EditFactory } from "./factories/edit.js";
-import { bindToChannel, includeMediaEncryption, type MediaEncryption } from "./operations/chat.js";
+import { bindToChannel, includeMediaEncryption, type MediaEncryption } from "./operations/channel.js";
 import type { EventTemplate } from "applesauce-core/helpers/event";
 import { DissolutionFactory, EditionFactory } from "./factories/control.js";
 import { JoinLeaveFactory, KickFactory } from "./factories/guestbook.js";
@@ -160,6 +160,7 @@ function emptyState(material: JoinMaterial): CommunityState {
     roles: [],
     grants: new Map(),
     banlist: new Set(),
+    inviteLinks: new Set(),
     members: new Set(),
     dissolved: false,
   };
@@ -470,23 +471,15 @@ export class ConcordClient {
   async editMessage(cid: string, channelId: string, targetId: string, text: string): Promise<void> {
     const rt = this.runtimes.get(cid)!;
     const epoch = this.channelEpoch(rt, channelId);
-    await this.publishToPlane(
-      rt,
-      { plane: "channel", channelId },
-      await EditFactory.create(channelId, epoch, targetId, text),
-      {},
-    );
+    const rumor = await bindToChannel(channelId, epoch)(await EditFactory.create(targetId, text));
+    await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
   }
 
   async deleteMessage(cid: string, channelId: string, targetId: string): Promise<void> {
     const rt = this.runtimes.get(cid)!;
     const epoch = this.channelEpoch(rt, channelId);
-    await this.publishToPlane(
-      rt,
-      { plane: "channel", channelId },
-      await DeleteFactory.create(channelId, epoch, targetId),
-      {},
-    );
+    const rumor = await bindToChannel(channelId, epoch)(await DeleteFactory.fromEvents([targetId]));
+    await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
   }
 
   // ---- admin actions ------------------------------------------------------
@@ -924,7 +917,14 @@ export class ConcordClient {
 
     const rolesMap = new Map<string, Role>(state.roles.map((r) => [r.role_id, r]));
     const standing = (m: string): Standing => resolveStanding(m, rt.keys.material.owner, rolesMap, state.grants);
-    state.members = foldMembers([...rt.guestbookEvents.values()], rt.observed, state.banlist, standing);
+    state.members = foldMembers(
+      [...rt.guestbookEvents.values()],
+      rt.observed,
+      state.banlist,
+      standing,
+      Date.now(),
+      rt.keys.material.refounder,
+    );
     state.dissolved = rt.dissolved;
 
     rt.state$.next(state);
@@ -1184,8 +1184,7 @@ export class ConcordClient {
       let added = false;
       for (const community of this.communities) {
         const m = community.current;
-        if (!m?.community_id || !isCommunityLive(this.communities, this.communityTombstones, m.community_id))
-          continue;
+        if (!m?.community_id || !isCommunityLive(this.communities, this.communityTombstones, m.community_id)) continue;
         if (!this.runtimes.has(m.community_id)) {
           this.addRuntime(m);
           added = true;

@@ -44,6 +44,7 @@ describe("permissions", () => {
         ["bob", ["mod"]],
       ]),
       banlist: new Set<string>(),
+      inviteLinks: new Set<string>(),
       members: new Set<string>(),
       dissolved: false,
     } satisfies CommunityState;

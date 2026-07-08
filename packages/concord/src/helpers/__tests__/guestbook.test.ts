@@ -24,4 +24,39 @@ describe("guestbook fold", () => {
     expect(members.has("bob")).toBe(false); // left
     expect(members.has("carol")).toBe(false); // banned
   });
+
+  const owner = "owner";
+  const standing = (m: string) => resolveStanding(m, owner, new Map<string, Role>(), new Map<string, string[]>());
+
+  it("honors a snapshot only from the epoch's refounder", () => {
+    const snap = (author: string, members: string[], ms: number) =>
+      decoded({ kind: 3312, content: JSON.stringify(members), tags: [["snap", "s1", "1", "1"], ["ms", String(ms % 1000)]] }, author, ms);
+
+    // From an arbitrary member: ignored.
+    const forged = foldMembers([snap("mallory", ["victim"], 1_000)], new Map(), new Set(), standing, 10_000, "refounder");
+    expect(forged.has("victim")).toBe(false);
+
+    // From the refounder: seeds present members.
+    const honored = foldMembers([snap("refounder", ["dave"], 1_000)], new Map(), new Set(), standing, 10_000, "refounder");
+    expect(honored.has("dave")).toBe(true);
+  });
+
+  it("drops a snapshot's seed once its subject self-signs a newer leave", () => {
+    const snap = decoded(
+      { kind: 3312, content: JSON.stringify(["dave"]), tags: [["snap", "s1", "1", "1"], ["ms", "0"]] },
+      "refounder",
+      1_000,
+    );
+    const leave = decoded({ kind: 3306, content: "leave", tags: [["ms", "5"]] }, "dave", 2_000);
+    const members = foldMembers([snap, leave], new Map(), new Set(), standing, 10_000, "refounder");
+    expect(members.has("dave")).toBe(false);
+  });
+
+  it("drops an entry whose ms tag is out of range (malformed)", () => {
+    const badJoin = decoded({ kind: 3306, content: "join", tags: [["ms", "5000"]] }, "eve", 1_000);
+    const members = foldMembers([badJoin], new Map(), new Set(), standing, 10_000);
+    // Observation still counts eve forward if she's seen elsewhere, so assert the
+    // malformed guestbook entry alone didn't admit her.
+    expect(members.has("eve")).toBe(false);
+  });
 });

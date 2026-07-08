@@ -24,3 +24,17 @@ export function rumorMs(rumor: Rumor): number {
   const remainder = Number.isFinite(ms) && ms >= 0 && ms <= 999 ? ms : 0;
   return rumor.created_at * 1000 + remainder;
 }
+
+/**
+ * Whether a rumor carries an `ms` tag outside the valid `0..999` range (CORD-02
+ * §5). Such an entry is *malformed* and must be dropped, not interpreted — the
+ * display-ordering clamp in {@link rumorMs} keeps the value sane, but a fold that
+ * decides membership must discard the event outright. An absent `ms` tag is not
+ * malformed (it simply orders at the second boundary).
+ */
+export function hasMalformedMs(rumor: Rumor): boolean {
+  const tag = rumor.tags.find((t) => t[0] === "ms");
+  if (!tag) return false;
+  const ms = Number(tag[1]);
+  return !Number.isInteger(ms) || ms < 0 || ms > 999;
+}

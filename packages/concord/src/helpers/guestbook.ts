@@ -9,6 +9,7 @@ import { PERM } from "../types.js";
 import type { DecodedEvent } from "../types.js";
 import { hasPerm } from "./permissions.js";
 import type { Standing } from "./permissions.js";
+import { hasMalformedMs } from "../stream.js";
 
 /** Concord self-signed join/leave kind (CORD-02 §5). */
 export const JOIN_LEAVE_KIND = 3306;
@@ -26,6 +27,9 @@ interface Coalesced {
   present: boolean;
   ms: number;
   rumorId: string;
+  /** True when this state came from a secondhand snapshot (CORD-02 §5): any
+   *  self-signed entry or authorized Kick at ≥ its time supersedes it. */
+  snapshot: boolean;
 }
 
 /**
@@ -33,6 +37,8 @@ interface Coalesced {
  *
  * @param observed  author npub -> latest ms seen publishing anywhere in the community
  * @param resolveStanding  roster lookup used to authorise Kicks
+ * @param refounder  the npub whose Refounding minted the current epoch; only its
+ *   snapshots (kind 3312) are honored (CORD-02 §5). Omit to honor none.
  */
 export function foldMembers(
   guestbook: DecodedEvent[],
@@ -40,15 +46,23 @@ export function foldMembers(
   banlist: Set<string>,
   resolveStanding: (member: string) => Standing,
   nowMs: number = Date.now(),
+  refounder?: string,
 ): Set<string> {
   const state = new Map<string, Coalesced>();
 
   const consider = (subject: string, present: boolean, d: DecodedEvent) => {
-    // Drop entries dated more than an hour ahead of our clock (anti-squat).
+    // Drop malformed entries (an ms tag outside 0..999) and ones dated more than
+    // an hour ahead of our clock (anti-squat), rather than interpreting them.
+    if (hasMalformedMs(d.rumor)) return;
     if (d.ms > nowMs + ONE_HOUR_MS) return;
     const prev = state.get(subject);
-    const wins = !prev || d.ms > prev.ms || (d.ms === prev.ms && d.rumor.id < prev.rumorId);
-    if (wins) state.set(subject, { present, ms: d.ms, rumorId: d.rumor.id });
+    // A firsthand entry (self-signed join/leave, or authorized kick) supersedes a
+    // secondhand snapshot at equal time; two firsthand entries tie on lower rumor id.
+    const wins =
+      !prev ||
+      d.ms > prev.ms ||
+      (d.ms === prev.ms && (prev.snapshot || d.rumor.id < prev.rumorId));
+    if (wins) state.set(subject, { present, ms: d.ms, rumorId: d.rumor.id, snapshot: false });
   };
 
   for (const d of guestbook) {
@@ -67,11 +81,16 @@ export function foldMembers(
         consider(target, false, d);
       }
     } else if (r.kind === 3312) {
-      // Snapshot: secondhand seed for present members at the snapshot's time.
+      // Snapshot: secondhand seed, honored ONLY from the epoch's refounder and
+      // only when well-formed, held to the same clock/ms guards as any entry.
+      if (refounder === undefined || d.author !== refounder) continue;
+      if (hasMalformedMs(r)) continue;
+      if (d.ms > nowMs + ONE_HOUR_MS) continue;
       try {
         for (const pk of JSON.parse(r.content) as string[]) {
           const prev = state.get(pk);
-          if (!prev || d.ms > prev.ms) state.set(pk, { present: true, ms: d.ms, rumorId: r.id });
+          // Seeds present-state; any firsthand entry at ≥ its time overrides it.
+          if (!prev || d.ms > prev.ms) state.set(pk, { present: true, ms: d.ms, rumorId: r.id, snapshot: true });
         }
       } catch {
         /* skip malformed snapshot */

@@ -9,7 +9,7 @@
 // The base imeta fields (url/m/x/ox/…) are the applesauce-common
 // {@link FileMetadataFields}; only the client-encryption fields are Concord's,
 // applied on top of the common `imeta` tag by `includeMediaEncryption`
-// (../operations/chat.js) and read back here by `parseImeta`.
+// (../operations/channel.js) and read back here by `parseImeta`.
 
 import { getFileMetadataFromImetaTag, type FileMetadataFields } from "applesauce-common/helpers";
 
