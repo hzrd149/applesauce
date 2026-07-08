@@ -1,14 +1,14 @@
 import { map, OperatorFunction } from "rxjs";
 import type { CastConstructor, CastRefEventStore } from "../casts/cast.js";
 import { castEvent, EventCast } from "../casts/index.js";
-import { NostrEvent } from "../helpers/event.js";
+import { StoreEvent } from "../helpers/event.js";
 import { defined } from "./defined.js";
 
 /** Casts an event to a specific type */
-export function castEventStream<C extends EventCast>(
+export function castEventStream<C extends EventCast<StoreEvent>>(
   cls: CastConstructor<C>,
   store?: CastRefEventStore,
-): OperatorFunction<NostrEvent | undefined, C | undefined> {
+): OperatorFunction<StoreEvent | undefined, C | undefined> {
   return (source) =>
     source.pipe(
       map((event) => {
@@ -22,10 +22,10 @@ export function castEventStream<C extends EventCast>(
 }
 
 /** Casts and array of events to an array of casted events and filters out undefined values */
-export function castTimelineStream<C extends EventCast>(
+export function castTimelineStream<C extends EventCast<StoreEvent>>(
   cls: CastConstructor<C>,
   store?: CastRefEventStore,
-): OperatorFunction<NostrEvent[], C[]> {
+): OperatorFunction<StoreEvent[], C[]> {
   return (source) =>
     source.pipe(
       map((events) => {

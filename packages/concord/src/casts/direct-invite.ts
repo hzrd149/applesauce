@@ -4,28 +4,23 @@
 // Unlike the other concord casts, this one wraps the *inner rumor* of a standard
 // NIP-59 gift wrap: unwrapping a Direct Invite with applesauce-common's
 // `unlockGiftWrap`/`getGiftWrapRumor` yields the kind 3313 rumor, and that rumor
-// is what we cast. A rumor is unsigned (`Rumor = UnsignedEvent & { id }`, no
-// `sig`), so it isn't structurally a `NostrEvent` and the `EventCast<T extends
-// NostrEvent>` bound rejects it at the type level — but `EventCast` never reads
-// `sig` at runtime, so a single localized assertion lets a rumor ride the normal
-// cast machinery. In exchange we inherit `author: User` (the inviter, resolvable
-// to a profile from the store), `id`/`kind`/`uid`/`createdAt`/`pointer`, and
-// core's per-event dedupe cache — hence a mandatory `store`, exactly as `author`
-// needs.
+// is what we cast. `EventCast` is bounded by `StoreEvent`, so it casts an unsigned
+// `Rumor` natively — no assertion needed. We inherit `author: User` (the inviter,
+// resolvable to a profile from the store), `id`/`kind`/`uid`/`createdAt`/`pointer`,
+// and core's per-event dedupe cache — hence a mandatory `store`, exactly as
+// `author` needs.
 //
 // The gift-wrap decode already verified the seal signature and the author binding
 // (`rumor.pubkey === seal.pubkey`) before returning the rumor, so `event.pubkey`
 // IS the cryptographically-proven inviter.
 
 import type { CastRefEventStore } from "applesauce-core/casts";
-import { EventCast, castEvent } from "applesauce-core/casts";
+import { EventCast } from "applesauce-core/casts";
 import type { DirectInviteRumor } from "../helpers/direct-invite.js";
 import { getDirectInviteBundle, isValidDirectInviteRumor } from "../helpers/direct-invite.js";
 import type { InviteBundle, Rumor } from "../types.js";
 
 /** A cast for a CORD-05 §6 Direct Invite (an unwrapped kind 3313 rumor). */
-
-// @ts-ignore Tmp fix for the rumor type
 export class ConcordDirectInvite extends EventCast<DirectInviteRumor> {
   constructor(event: Rumor, store: CastRefEventStore) {
     if (!isValidDirectInviteRumor(event)) throw new Error("Invalid Concord direct invite rumor (expected kind 3313)");
@@ -34,7 +29,7 @@ export class ConcordDirectInvite extends EventCast<DirectInviteRumor> {
 
   /** The unwrapped rumor (an alias for `event`, narrowed to a Direct Invite rumor). */
   get rumor(): DirectInviteRumor {
-    return this.event as unknown as DirectInviteRumor;
+    return this.event;
   }
 
   /**
@@ -77,13 +72,7 @@ export class ConcordDirectInvite extends EventCast<DirectInviteRumor> {
   }
 }
 
-/**
- * Cast an unwrapped gift-wrap rumor (kind 3313) into a {@link ConcordDirectInvite},
- * reusing core's per-event dedupe cache. Throws if the rumor is not a Direct Invite
- * — guard with {@link isValidDirectInviteRumor} when scanning a mixed giftwrap inbox.
- * The `store` powers the inherited `author` accessor (the inviter's profile).
- */
-export function castDirectInvite(rumor: Rumor, store: CastRefEventStore): ConcordDirectInvite {
-  // @ts-ignore Tmp fix for the rumor type
-  return castEvent(rumor, ConcordDirectInvite, store);
-}
+// No dedicated cast helper: cast an unwrapped gift-wrap rumor (kind 3313) with core's generic
+// `castEvent(rumor, ConcordDirectInvite, store)`. It throws if the rumor is not a Direct Invite
+// (guard with `isValidDirectInviteRumor` when scanning a mixed giftwrap inbox); the `store`
+// powers the inherited `author` accessor.

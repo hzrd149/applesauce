@@ -1,5 +1,5 @@
 import { EventModels, IEventStoreStreams, IEventSubscriptions } from "../event-store/index.js";
-import { getParentEventStore, NostrEvent } from "../helpers/event.js";
+import { getParentEventStore, NostrEvent, StoreEvent } from "../helpers/event.js";
 import { EventCast } from "./event.js";
 
 /** The type of event store that is passed to cast references */
@@ -11,12 +11,17 @@ export const CAST_REF_SYMBOL = Symbol.for("cast-ref");
 /** A symbol used to store all the casts for an event */
 export const CASTS_SYMBOL = Symbol.for("casts");
 
-/** A class that can be used to cast a Nostr event */
-export type CastConstructor<C extends EventCast<NostrEvent>> = new (event: NostrEvent, store: CastRefEventStore) => C;
+// The constructor parameter stays `NostrEvent` (the narrow type) so existing signed-event cast
+// constructors match exactly, while a rumor cast whose constructor accepts the wider `Rumor`
+// (⊇ NostrEvent) stays contravariantly compatible. Only the constraint and `castEvent`'s input
+// widen to `StoreEvent`, so a rumor can be cast even though the constructor is typed `NostrEvent`.
 
-/** Cast a Nostr event to a specific class */
-export function castEvent<C extends EventCast<NostrEvent>>(
-  event: NostrEvent,
+/** A class that can be used to cast a Nostr event (or an unsigned {@link StoreEvent}/rumor) */
+export type CastConstructor<C extends EventCast<StoreEvent>> = new (event: NostrEvent, store: CastRefEventStore) => C;
+
+/** Cast a Nostr event (or an unsigned {@link StoreEvent}/rumor) to a specific class */
+export function castEvent<C extends EventCast<StoreEvent>>(
+  event: StoreEvent,
   cls: CastConstructor<C>,
   store?: CastRefEventStore,
 ): C {
@@ -31,8 +36,8 @@ export function castEvent<C extends EventCast<NostrEvent>>(
     if (!store) throw new Error("Event is not attached to an event store, an event store must be provided");
   }
 
-  // Create a new instance of the class
-  const cast = new cls(event, store);
+  // Create a new instance of the class (the constructor reads only StoreEvent fields).
+  const cast = new cls(event as NostrEvent, store);
   if (!casts) Reflect.set(event, CASTS_SYMBOL, new Map([[cls, cast]]));
   else casts.set(cls, cast);
 

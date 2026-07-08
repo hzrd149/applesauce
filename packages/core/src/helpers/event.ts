@@ -38,6 +38,20 @@ export type KnownUnsignedEvent<K extends number> = Omit<UnsignedEvent, "kind"> &
 /** The innermost unsigned event that has a computed id but no signature (e.g. a NIP-59 rumor) */
 export type Rumor = UnsignedEvent & { id: string };
 
+/**
+ * The structural fields common to any event that can live in a store or be cast — a signed
+ * {@link NostrEvent}, a {@link Rumor}, and everything in between — deliberately excluding `sig`.
+ * Used as the generic bound for the cast subsystem (and, in future, the generic event store).
+ */
+export type StoreEvent = {
+  id: string;
+  kind: number;
+  pubkey: string;
+  created_at: number;
+  content: string;
+  tags: string[][];
+};
+
 /** A symbol on an event that marks which event store its part of */
 export const EventStoreSymbol = Symbol.for("event-store");
 export const EventUIDSymbol = Symbol.for("event-uid");

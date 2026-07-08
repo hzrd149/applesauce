@@ -15,7 +15,7 @@
 
 import { EncryptedContentSigner, getExpirationTimestamp, safeParse } from "applesauce-core/helpers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { getTagValue, isKind, kinds, KnownEvent, type NostrEvent } from "applesauce-core/helpers/event";
+import { getTagValue, kinds, KnownEvent, type NostrEvent } from "applesauce-core/helpers/event";
 import type { InviteBundle, Rumor } from "../types.js";
 import { validateInviteBundle } from "./invite-bundle.js";
 import { isGiftWrapUnlocked, lockGiftWrap, unlockGiftWrap } from "applesauce-common/helpers";
@@ -54,7 +54,7 @@ export function directInviteFilter(recipient: string): {
  * indexed `k:3313` tag and a recipient `p` tag (CORD-05 §6).
  */
 export function isValidDirectInvite(event?: NostrEvent): event is DirectInviteEvent {
-  if (!event || isKind(event, kinds.GiftWrap)) return false;
+  if (!event || event.kind !== kinds.GiftWrap) return false;
   if (!event.tags.some((t) => t[0] === "k" && t[1] === DIRECT_INVITE_INDEX)) return false;
   const recipient = getTagValue(event, "p");
   return !!recipient && /^[a-f0-9]{64}$/.test(recipient);
