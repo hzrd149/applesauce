@@ -6,16 +6,13 @@
 
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, concatBytes, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { secp256k1, schnorr } from "@noble/curves/secp256k1.js";
-import { nip44 } from "nostr-tools";
-import {
-  concatBytes,
-  fromHex,
-  toHex,
-  u64be,
-  utf8,
-  ZERO_32,
-} from "../bytes.js";
+import { numberToBytesBE } from "@noble/curves/utils.js";
+import { nip44 } from "applesauce-core/helpers/encryption";
+
+/** A 32-byte all-zero id, used where a derivation label has no meaningful id. */
+const ZERO_32 = new Uint8Array(32);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SECP_ORDER: bigint = (secp256k1 as any).Point.Fn.ORDER;
@@ -46,8 +43,8 @@ export function concordHkdf(
   extraInfo?: Uint8Array,
 ): Uint8Array {
   if (id.length !== 32) throw new Error("hkdf id must be 32 bytes");
-  const parts: Uint8Array[] = [utf8(label), new Uint8Array([0x00]), id];
-  if (epoch !== undefined) parts.push(u64be(epoch));
+  const parts: Uint8Array[] = [utf8ToBytes(label), new Uint8Array([0x00]), id];
+  if (epoch !== undefined) parts.push(numberToBytesBE(epoch, 8));
   if (extraInfo) parts.push(extraInfo);
   const info = concatBytes(...parts);
   return hkdf(sha256, secret, new Uint8Array(0), info, 32);
@@ -94,7 +91,7 @@ export function groupKey(
 ): GroupKey {
   const seed = concordHkdf(secret, label, id, epoch);
   const sk = scalarNormalize(secret, label, id, epoch, seed);
-  const pk = toHex(schnorr.getPublicKey(sk));
+  const pk = bytesToHex(schnorr.getPublicKey(sk));
   const convKey = nip44.getConversationKey(sk, pk);
   return { sk, pk, convKey };
 }
@@ -104,7 +101,7 @@ export function groupKey(
  *   sha256( utf8("concord/community") || owner_xonly[32] || owner_salt[32] )
  */
 export function communityId(ownerXonlyHex: string, ownerSalt: Uint8Array): Uint8Array {
-  return sha256(concatBytes(utf8("concord/community"), fromHex(ownerXonlyHex), ownerSalt));
+  return sha256(concatBytes(utf8ToBytes("concord/community"), hexToBytes(ownerXonlyHex), ownerSalt));
 }
 
 /**
@@ -112,7 +109,7 @@ export function communityId(ownerXonlyHex: string, ownerSalt: Uint8Array): Uint8
  *   sha256( utf8("concord/epoch-key-commitment") || prev_epoch_be[8] || prev_key[32] )
  */
 export function epochKeyCommitment(prevEpoch: number | bigint, prevKey: Uint8Array): Uint8Array {
-  return sha256(concatBytes(utf8("concord/epoch-key-commitment"), u64be(prevEpoch), prevKey));
+  return sha256(concatBytes(utf8ToBytes("concord/epoch-key-commitment"), numberToBytesBE(prevEpoch, 8), prevKey));
 }
 
 // ---- Frozen labels (A.6) ---------------------------------------------------
@@ -178,24 +175,24 @@ export function voiceMediaKey(secret: Uint8Array, channelId: Uint8Array, epoch: 
  * sender's key from the identity the SFU presents, no in-band exchange.
  */
 export function voiceSenderKey(mediaKey: Uint8Array, identity: string): Uint8Array {
-  return concordHkdf(mediaKey, "concord/voice-sender", sha256(utf8(identity)));
+  return concordHkdf(mediaKey, "concord/voice-sender", sha256(utf8ToBytes(identity)));
 }
 
 // ---- Coordinate (eid) derivations — hkdf output used as a 32-byte id -------
 
 /** A member's Grant coordinate. secret = community_id, id = member_xonly. */
 export function grantLocator(communityId: Uint8Array, memberXonlyHex: string): string {
-  return toHex(concordHkdf(communityId, "concord/grant", fromHex(memberXonlyHex)));
+  return bytesToHex(concordHkdf(communityId, "concord/grant", hexToBytes(memberXonlyHex)));
 }
 
 /** The Banlist coordinate. secret = community_id, id = 0..0. */
 export function banlistLocator(communityId: Uint8Array): string {
-  return toHex(concordHkdf(communityId, "concord/banlist", ZERO_32));
+  return bytesToHex(concordHkdf(communityId, "concord/banlist", ZERO_32));
 }
 
 /** A creator's invite Registry coordinate. secret = community_id, id = creator_xonly. */
 export function inviteLinksLocator(communityId: Uint8Array, creatorXonlyHex: string): string {
-  return toHex(concordHkdf(communityId, "concord/invite-links", fromHex(creatorXonlyHex)));
+  return bytesToHex(concordHkdf(communityId, "concord/invite-links", hexToBytes(creatorXonlyHex)));
 }
 
 /** Public-invite decrypt key. secret = token, id = 0..0. */
@@ -210,8 +207,8 @@ export function recipientLocator(
   scopeId: Uint8Array,
   epoch: number,
 ): string {
-  const secret = concatBytes(fromHex(rotatorXonlyHex), fromHex(recipientXonlyHex));
-  return toHex(concordHkdf(secret, "concord/recipient-pseudonym", scopeId, epoch));
+  const secret = concatBytes(hexToBytes(rotatorXonlyHex), hexToBytes(recipientXonlyHex));
+  return bytesToHex(concordHkdf(secret, "concord/recipient-pseudonym", scopeId, epoch));
 }
 
 // ---- Edition hash (CORD-04 §1) --------------------------------------------
@@ -229,22 +226,22 @@ export function editionHash(
   prev: Uint8Array | undefined,
   contentBytes: Uint8Array,
 ): string {
-  const labelBytes = utf8(EDITION_LABEL);
+  const labelBytes = utf8ToBytes(EDITION_LABEL);
   const prevPart = prev
     ? concatBytes(new Uint8Array([0x01]), prev)
     : concatBytes(new Uint8Array([0x00]), ZERO_32);
   const preimage = concatBytes(
-    u64be(labelBytes.length),
+    numberToBytesBE(labelBytes.length, 8),
     labelBytes,
     entityId,
-    u64be(version),
+    numberToBytesBE(version, 8),
     prevPart,
-    u64be(contentBytes.length),
+    numberToBytesBE(contentBytes.length, 8),
     contentBytes,
   );
-  return toHex(sha256(preimage));
+  return bytesToHex(sha256(preimage));
 }
 
 export function sha256Hex(bytes: Uint8Array): string {
-  return toHex(sha256(bytes));
+  return bytesToHex(sha256(bytes));
 }

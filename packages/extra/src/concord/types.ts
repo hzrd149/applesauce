@@ -1,35 +1,16 @@
 // Concord protocol types.
 
-import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { Rumor } from "applesauce-common/helpers";
+import type { NostrEvent } from "applesauce-core/helpers/event";
 
 // ---- Kinds (CORD-02 Appendix B, frozen) -----------------------------------
 //
-// Only Concord-specific protocol kinds live here. Standard Nostr content kinds
-// that ride a channel (chat message 9, reaction 7, deletion 5, forum thread 11,
-// NIP-22 comment 1111, …) are referenced from their canonical source
-// (applesauce-core `kinds` / applesauce-common `COMMENT_KIND`), so any common
-// event kind can be sent in a Concord community/channel without Concord
-// re-declaring its number.
-export const KIND = {
-  WRAP: 1059,
-  WRAP_EPHEMERAL: 21059,
-  SEAL_ENCRYPTED: 20013,
-  SEAL_PLAINTEXT: 20014,
-  EDIT: 3302,
-  REKEY: 3303,
-  JOIN_LEAVE: 3306,
-  CONTROL: 3308,
-  KICK: 3309,
-  WEBXDC: 3310,
-  SNAPSHOT: 3312,
-  TYPING: 23311,
-  VOICE_PRESENCE: 23313,
-  HTTP_AUTH: 27235,
-  INVITE_BUNDLE: 33301,
-  COMMUNITY_LIST: 13302,
-  INVITE_LIST: 13303,
-} as const;
+// Concord-specific protocol kinds live next to their domain helpers (e.g.
+// GIFT_WRAP_KIND in helpers/gift-wrap.ts, CONTROL_KIND in helpers/control.ts),
+// so each kind ships alongside the code that folds it. Standard Nostr content
+// kinds that ride a channel (chat message 9, reaction 7, deletion 5, forum
+// thread 11, NIP-22 comment 1111, …) are referenced from their canonical source
+// (applesauce-core `kinds` / applesauce-common `COMMENT_KIND`).
 
 // ---- Control-plane entity sub-kinds (vsk) ---------------------------------
 export const VSK = {
@@ -177,11 +158,33 @@ export interface InviteBundle extends JoinMaterial {
   label?: string;
 }
 
+// ---- Community List (kind 13302 / CORD-02 §8) -----------------------------
+// A member's private, self-encrypted membership document. One replaceable event
+// per user; nothing is ever deleted and liveness is derived (a re-join
+// resurrects a tombstoned id). The wire document keys the array as `entries`,
+// but the in-memory API exposes it as `communities`.
+export interface CommunityListCommunity {
+  community_id: string;
+  /** Earliest epoch held — the backfill anchor (only ever moves backward on merge). */
+  seed: JoinMaterial;
+  /** Freshest snapshot — replaced on every Refounding or rename. */
+  current: JoinMaterial;
+  /** ms; tiebreaks against a tombstone's removed_at. */
+  added_at: number;
+  [k: string]: unknown;
+}
+export interface CommunityTombstone {
+  community_id: string;
+  /** ms. Permanent — pruning would let a long-offline device resurrect a leave. */
+  removed_at: number;
+  [k: string]: unknown;
+}
+
 // ---- Invite List (kind 13303 / CORD-05 §4) --------------------------------
 // A creator's private, self-encrypted bookkeeping for the invite links they
 // have minted. One replaceable event per user; the full merged document is
 // (re)published on every change.
-export interface InviteListEntry {
+export interface InviteListInvite {
   /** The link's unlock secret and its merge key. */
   token: string;
   /** The `link_signer` secret key hex (CORD-05 §2). */

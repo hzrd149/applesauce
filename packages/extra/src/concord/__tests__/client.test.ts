@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject } from "rxjs";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
 import type { RelayPool } from "applesauce-relay";

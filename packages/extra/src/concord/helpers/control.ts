@@ -17,10 +17,12 @@ import type {
   Role,
 } from "../types.js";
 import { hasPerm, resolveStanding } from "./permissions.js";
+import { isHexKey } from "applesauce-core/helpers/string";
+import { hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { editionHash } from "./crypto.js";
-import { fromHex, utf8 } from "../bytes.js";
 
-const HEX64 = /^[0-9a-f]{64}$/i;
+/** Concord control-plane edition kind (CORD-04). */
+export const CONTROL_KIND = 3308;
 
 interface Edition {
   vsk: number;
@@ -42,18 +44,18 @@ function parseEdition(d: DecodedEvent): Edition | null {
   const get = (name: string) => r.tags.find((t) => t[0] === name)?.[1];
   const vsk = get("vsk");
   const eid = get("eid");
-  if (vsk === undefined || eid === undefined || !HEX64.test(eid)) return null;
+  if (vsk === undefined || eid === undefined || !isHexKey(eid)) return null;
   const ev = get("ev");
   const version = ev ? parseInt(ev, 10) : 1;
   if (!Number.isInteger(version) || version < 1) return null;
   const prev = get("ep");
-  if (prev !== undefined && !HEX64.test(prev)) return null;
+  if (prev !== undefined && !isHexKey(prev)) return null;
   return {
     vsk: parseInt(vsk, 10),
     eid,
     version,
     prev,
-    selfHash: editionHash(fromHex(eid), version, prev ? fromHex(prev) : undefined, utf8(r.content)),
+    selfHash: editionHash(hexToBytes(eid), version, prev ? hexToBytes(prev) : undefined, utf8ToBytes(r.content)),
     content: r.content,
     author: d.author,
     rumorId: r.id,
@@ -112,9 +114,7 @@ function groupByEntity(editions: Edition[]): Map<string, Edition[]> {
 }
 
 export function foldControl(events: DecodedEvent[], material: JoinMaterial): CommunityState {
-  const editions = events
-    .map(parseEdition)
-    .filter((e): e is Edition => e !== null);
+  const editions = events.map(parseEdition).filter((e): e is Edition => e !== null);
 
   const byVsk = (vsk: number) => editions.filter((e) => e.vsk === vsk);
 

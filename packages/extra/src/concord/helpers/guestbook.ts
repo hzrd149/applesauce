@@ -5,36 +5,22 @@
 // merged with observed authors (anyone seen publishing is present) and minus
 // the Banlist, yields the Complete Memberlist.
 
-import { KIND, PERM } from "../types.js";
+import { PERM } from "../types.js";
 import type { DecodedEvent } from "../types.js";
-import type { RumorTemplate } from "../types.js";
 import { hasPerm } from "./permissions.js";
 import type { Standing } from "./permissions.js";
+
+/** Concord self-signed join/leave kind (CORD-02 §5). */
+export const JOIN_LEAVE_KIND = 3306;
+/** Concord authorised kick kind (CORD-02 §5). */
+export const KICK_KIND = 3309;
+/** Concord memberlist snapshot kind (CORD-02 §5). */
+export const SNAPSHOT_KIND = 3312;
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 /** Snapshot chunk size: 400 present members per event (CORD-02 §5). */
 export const SNAPSHOT_CHUNK = 400;
-
-/**
- * Refounder-signed snapshot rumors seeding a new epoch's Guestbook: present
- * members only, chunked at {@link SNAPSHOT_CHUNK}, all chunks sharing one
- * snapshot id and one timestamp (CORD-02 §5). Mirrors armada guestbook.ts.
- */
-export function buildSnapshotRumors(members: string[], snapshotIdHex: string, ms: number = Date.now()): RumorTemplate[] {
-  const chunks: string[][] = [];
-  for (let i = 0; i < members.length; i += SNAPSHOT_CHUNK) chunks.push(members.slice(i, i + SNAPSHOT_CHUNK));
-  if (chunks.length === 0) chunks.push([]);
-  const n = chunks.length;
-  return chunks.map((chunk, i) => ({
-    kind: KIND.SNAPSHOT,
-    content: JSON.stringify(chunk),
-    tags: [
-      ["snap", snapshotIdHex, (i + 1).toString(), n.toString()],
-      ["ms", String(ms % 1000)],
-    ],
-  }));
-}
 
 interface Coalesced {
   present: boolean;
@@ -61,10 +47,7 @@ export function foldMembers(
     // Drop entries dated more than an hour ahead of our clock (anti-squat).
     if (d.ms > nowMs + ONE_HOUR_MS) return;
     const prev = state.get(subject);
-    const wins =
-      !prev ||
-      d.ms > prev.ms ||
-      (d.ms === prev.ms && d.rumor.id < prev.rumorId);
+    const wins = !prev || d.ms > prev.ms || (d.ms === prev.ms && d.rumor.id < prev.rumorId);
     if (wins) state.set(subject, { present, ms: d.ms, rumorId: d.rumor.id });
   };
 

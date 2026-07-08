@@ -35,6 +35,9 @@ export type KnownEventTemplate<K extends number> = Omit<EventTemplate, "kind"> &
 /** An unsigned event with a known kind. used in event factories */
 export type KnownUnsignedEvent<K extends number> = Omit<UnsignedEvent, "kind"> & { kind: K };
 
+/** The innermost unsigned event that has a computed id but no signature (e.g. a NIP-59 rumor) */
+export type Rumor = UnsignedEvent & { id: string };
+
 /** A symbol on an event that marks which event store its part of */
 export const EventStoreSymbol = Symbol.for("event-store");
 export const EventUIDSymbol = Symbol.for("event-uid");
@@ -164,15 +167,12 @@ export function isProtectedEvent(event: NostrEvent): boolean {
 /**
  * Returns the second index ( tag[1] ) of the first tag that matches the name
  */
-export function getTagValue<T extends { kind: number; tags: string[][]; content: string }>(
-  event: T,
-  name: string,
-): string | undefined {
+export function getTagValue<T extends { kind: number; tags: string[][] }>(event: T, name: string): string | undefined {
   return event.tags.find((t) => t[0] === name)?.[1];
 }
 
 /** Checks if an event has a public name / value tag*/
-export function hasNameValueTag<T extends { kind: number; tags: string[][]; content: string }>(
+export function hasNameValueTag<T extends { kind: number; tags: string[][] }>(
   event: T,
   name: string,
   value: string,

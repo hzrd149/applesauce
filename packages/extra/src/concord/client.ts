@@ -12,29 +12,27 @@ import type { IEventStore } from "applesauce-core";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import {
-  getEncryptedContent,
-  isEncryptedContentUnlocked,
-  setEncryptedContentCache,
-  unlockEncryptedContent,
+  getHiddenContent,
+  isHiddenContentUnlocked,
+  setHiddenContentCache,
+  unlockHiddenContent,
 } from "applesauce-core/helpers";
 import { getReactionEmoji } from "applesauce-common/helpers";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { parseImeta, type AttachmentEncryption, type MediaAttachment } from "./helpers/imeta.js";
 import { banlistLocator, grantLocator, inviteLinksLocator } from "./helpers/crypto.js";
-import { decodeStreamEventCached } from "./stream.js";
+import { decodeWrapCached } from "./helpers/gift-wrap.js";
 import { MAX_CHANNEL_CACHE, defaultKeyStorage, memoryStorage } from "./storage.js";
 import type { CachedEntry, ConcordKeyStorage, ConcordStorage, ConcordUploader } from "./storage.js";
 import { ConcordRelayAuth } from "./relay-auth.js";
 import { foldControl } from "./helpers/control.js";
 import {
-  addToList,
+  communityListWithinByteCap,
   isCommunityLive,
-  mergeCommunityLists,
-  refreshCurrent,
-  removeFromList,
-  withinByteCap,
+  mergeCommunities,
+  mergeCommunityTombstones,
 } from "./helpers/community-list.js";
-import type { CommunityList } from "./helpers/community-list.js";
+import { joinCommunity, leaveCommunity, refreshCommunity } from "./operations/community-list.js";
 import { foldMembers } from "./helpers/guestbook.js";
 import { canActOn, refoundAuthority, resolveStanding } from "./helpers/permissions.js";
 import type { Standing } from "./helpers/permissions.js";
@@ -50,10 +48,16 @@ import {
 import type { ConcordKeys, PlaneInfo, WrapTarget } from "./helpers/keys.js";
 import { computeEditionHash } from "./helpers/editions.js";
 import { checkChatBinding } from "./helpers/chat.js";
-import { buildInviteLink, decryptBundle, newInviteToken, parseInviteLink, STOCK_RELAYS } from "./helpers/invite.js";
+import {
+  buildInviteLink,
+  decryptBundle,
+  INVITE_BUNDLE_KIND,
+  newInviteToken,
+  parseInviteLink,
+  STOCK_RELAYS,
+} from "./helpers/invite.js";
 import type { Emoji } from "applesauce-core/factories";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
-import { foldThreads, type ChannelThread } from "./helpers/forum-thread.js";
 import { DeleteFactory } from "./factories/chat.js";
 import { EditFactory } from "./factories/edit.js";
 import { bindToChannel, includeMediaEncryption, type MediaEncryption } from "./operations/chat.js";
@@ -62,16 +66,21 @@ import { DissolutionFactory, EditionFactory } from "./factories/control.js";
 import { JoinLeaveFactory, KickFactory } from "./factories/guestbook.js";
 import { InviteBundleFactory } from "./factories/invite.js";
 import {
-  KIND,
   VSK,
   type BlobPointer,
+  type CommunityListCommunity,
   type CommunityMetadata,
   type CommunityState,
+  type CommunityTombstone,
   type DecodedEvent,
   type InviteBundle,
   type JoinMaterial,
   type Role,
 } from "./types.js";
+import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "./helpers/gift-wrap.js";
+import { EDIT_KIND } from "./helpers/edit.js";
+import { VOICE_PRESENCE_KIND } from "./helpers/voice.js";
+import { COMMUNITY_LIST_KIND } from "./helpers/community-list.js";
 
 /** Options for constructing a {@link ConcordClient}. One instance per account. */
 export interface ConcordClientOptions {
@@ -138,7 +147,6 @@ interface Runtime {
   channelAuthors: string;
   state$: BehaviorSubject<CommunityState>;
   messages$: Map<string, BehaviorSubject<ChatMessage[]>>;
-  threads$: Map<string, BehaviorSubject<ChannelThread[]>>;
   refoldTimer?: ReturnType<typeof setTimeout>;
   persistTimer?: ReturnType<typeof setTimeout>;
 }
@@ -168,8 +176,10 @@ export class ConcordClient {
   private readonly defaultRelays: string[];
   private readonly relayAuth: ConcordRelayAuth;
   private runtimes = new Map<string, Runtime>();
-  /** The authoritative 13302 document (CORD-02 §8): merged, never clobbered. */
-  private communityList: CommunityList = { entries: [], tombstones: [] };
+  /** The authoritative 13302 document (CORD-02 §8): two merged, never-clobbered
+   *  arrays kept independently, exactly as the encrypted list is serialized. */
+  private communities: CommunityListCommunity[] = [];
+  private communityTombstones: CommunityTombstone[] = [];
 
   constructor(options: ConcordClientOptions) {
     this.signer = options.signer;
@@ -285,18 +295,6 @@ export class ConcordClient {
     return subj;
   }
 
-  /** A reactive list of NIP-7D threads (kind 11) + their replies posted to a channel. */
-  getThreads$(cid: string, channelId: string): BehaviorSubject<ChannelThread[]> {
-    const rt = this.runtimes.get(cid)!;
-    let subj = rt.threads$.get(channelId);
-    if (!subj) {
-      subj = new BehaviorSubject<ChannelThread[]>([]);
-      rt.threads$.set(channelId, subj);
-      this.recomputeThreads(rt, channelId);
-    }
-    return subj;
-  }
-
   // ---- creating / joining -------------------------------------------------
 
   async createNewCommunity(name: string, description: string, relays: string[]): Promise<string> {
@@ -325,7 +323,7 @@ export class ConcordClient {
     const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : this.defaultRelays;
     const events = await firstValueFrom(
       this.pool
-        .request(relays, [{ kinds: [KIND.INVITE_BUNDLE], authors: [parsed.linkSigner] }])
+        .request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner] }])
         .pipe(toArray(), timeout(10000)),
     ).catch(() => [] as NostrEvent[]);
 
@@ -417,7 +415,9 @@ export class ConcordClient {
     if (replyTo) factory = factory.replyTo({ id: replyTo.id, author: replyTo.author });
     if (attachments?.length) factory = factory.attachments(attachments);
     const encryption: MediaEncryption[] = (attachments ?? [])
-      .filter((a): a is MediaAttachment & { url: string; encryption: AttachmentEncryption } => !!a.url && !!a.encryption)
+      .filter(
+        (a): a is MediaAttachment & { url: string; encryption: AttachmentEncryption } => !!a.url && !!a.encryption,
+      )
       .map((a) => ({ url: a.url, ...a.encryption }));
 
     let rumor = await bindToChannel(channelId, epoch)(await factory);
@@ -458,9 +458,10 @@ export class ConcordClient {
   ): Promise<void> {
     const rt = this.runtimes.get(cid)!;
     const epoch = this.channelEpoch(rt, channelId);
-    const rumor = await bindToChannel(channelId, epoch)(
-      await ReactionFactory.create({ id: target.id, pubkey: target.author, kind: kinds.ChatMessage }, reaction),
-    );
+    const rumor = await bindToChannel(
+      channelId,
+      epoch,
+    )(await ReactionFactory.create({ id: target.id, pubkey: target.author, kind: kinds.ChatMessage }, reaction));
     await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
   }
 
@@ -642,7 +643,7 @@ export class ConcordClient {
     this.runtimes.delete(cid);
     // Tombstone the membership so the leave propagates across devices/clients
     // (a bare omission would merge back as still-joined — CORD-02 §8).
-    this.communityList = removeFromList(this.communityList, cid, Date.now());
+    this.communityTombstones = leaveCommunity(cid, Date.now())(this.communities, this.communityTombstones).tombstones;
     await this.saveMaterials();
     this.emitCommunities();
     await this.saveCommunityList();
@@ -691,7 +692,12 @@ export class ConcordClient {
     if (!links.includes(linkPub)) links.push(linkPub);
     await this.publishEdition(rt, VSK.INVITE_REGISTRY, registryEid, JSON.stringify(links));
 
-    return buildInviteLink(base, linkPub, token, rt.keys.material.relays.length ? rt.keys.material.relays : this.defaultRelays);
+    return buildInviteLink(
+      base,
+      linkPub,
+      token,
+      rt.keys.material.relays.length ? rt.keys.material.relays : this.defaultRelays,
+    );
   }
 
   // ---- internal: runtime & subscriptions ----------------------------------
@@ -709,7 +715,6 @@ export class ConcordClient {
       channelAuthors: "",
       state$: new BehaviorSubject<CommunityState>(emptyState(material)),
       messages$: new Map(),
-      threads$: new Map(),
     };
     this.runtimes.set(material.community_id, rt);
     // Rehydrate from the local cache first, so channels/members are visible
@@ -736,7 +741,7 @@ export class ConcordClient {
    */
   private subscribeWraps(rt: Runtime, authors: string[]): Subscription {
     const relays = this.relaysFor(rt);
-    const filters = [{ kinds: [KIND.WRAP, KIND.WRAP_EPHEMERAL], authors }];
+    const filters = [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }];
     const sub = new Subscription();
     for (const url of relays) sub.add(this.relayAuth.authenticateStreamKeys(this.pool.relay(url)));
     sub.add(
@@ -801,12 +806,12 @@ export class ConcordClient {
     if (!info) return;
     // Cross-plane dedup (previously only control/guestbook were guarded, so
     // channel wraps were re-decrypted on every reload and every relay echo).
-    if (event.kind !== KIND.WRAP_EPHEMERAL && this.haveWrap(rt, info, event.id)) return;
+    if (event.kind !== EPHEMERAL_GIFT_WRAP_KIND && this.haveWrap(rt, info, event.id)) return;
     // Add to the applesauce EventStore first: it dedups by id and hands back the
-    // canonical instance, and decodeStreamEventCached memoises the decode on that
+    // canonical instance, and decodeWrapCached memoises the decode on that
     // instance's symbol — so even paths that slip past haveWrap decrypt only once.
     const canonical = (this.eventStore.add(event) as NostrEvent | null) ?? event;
-    const decoded = decodeStreamEventCached(canonical, info.convKey);
+    const decoded = decodeWrapCached(canonical, info.convKey);
     if (!decoded) return;
 
     const prev = rt.observed.get(decoded.author) ?? 0;
@@ -824,7 +829,10 @@ export class ConcordClient {
         this.schedulePersist(rt);
         break;
       case "dissolved":
-        if (decoded.author === rt.keys.material.owner && decoded.rumor.tags.some((t) => t[0] === "vsk" && t[1] === "10")) {
+        if (
+          decoded.author === rt.keys.material.owner &&
+          decoded.rumor.tags.some((t) => t[0] === "vsk" && t[1] === "10")
+        ) {
           rt.dissolved = true;
           this.scheduleRefold(rt);
         }
@@ -845,7 +853,7 @@ export class ConcordClient {
         // Voice presence (CORD-07 §4) rides the Channel's own address but is not
         // chat and voice is not handled by this client — drop it (never into the
         // message store or the persisted cache).
-        if (decoded.rumor.kind === KIND.VOICE_PRESENCE) return;
+        if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;
         let ch = rt.channelEvents.get(channelId);
         if (!ch) {
           ch = new Map();
@@ -853,7 +861,6 @@ export class ConcordClient {
         }
         ch.set(event.id, decoded);
         this.recomputeMessages(rt, channelId);
-        this.recomputeThreads(rt, channelId);
         this.schedulePersist(rt);
         break;
       }
@@ -922,7 +929,6 @@ export class ConcordClient {
     this.reconcileChannelSub(rt); // pick up any newly-revealed channels
     // Recompute any open channel views (channel keys may have changed epoch).
     for (const channelId of rt.messages$.keys()) this.recomputeMessages(rt, channelId);
-    for (const channelId of rt.threads$.keys()) this.recomputeThreads(rt, channelId);
     this.emitCommunities();
   }
 
@@ -1035,20 +1041,13 @@ export class ConcordClient {
     if (rt.rekeyTimer) clearTimeout(rt.rekeyTimer);
     this.clearCache(cid);
     this.runtimes.delete(cid);
-    this.communityList = removeFromList(this.communityList, cid, Date.now());
+    this.communityTombstones = leaveCommunity(cid, Date.now())(this.communities, this.communityTombstones).tombstones;
     void this.saveMaterials();
     this.emitCommunities();
     void this.saveCommunityList();
   }
 
   // ---- message assembly ---------------------------------------------------
-
-  private recomputeThreads(rt: Runtime, channelId: string): void {
-    const subj = rt.threads$.get(channelId);
-    if (!subj) return;
-    const events = rt.channelEvents.get(channelId);
-    subj.next(foldThreads(events ? events.values() : []));
-  }
 
   private recomputeMessages(rt: Runtime, channelId: string): void {
     const subj = rt.messages$.get(channelId);
@@ -1079,7 +1078,7 @@ export class ConcordClient {
             emojiTags: r.tags.filter((t) => t[0] === "emoji"),
             raw: d,
           });
-        } else if (r.kind === KIND.EDIT) {
+        } else if (r.kind === EDIT_KIND) {
           edits.push(d);
         } else if (r.kind === kinds.EventDeletion) {
           deletes.push(d);
@@ -1156,32 +1155,35 @@ export class ConcordClient {
     try {
       const events = await firstValueFrom(
         this.pool
-          .request(this.defaultRelays, [{ kinds: [KIND.COMMUNITY_LIST], authors: [this.pubkey] }])
+          .request(this.defaultRelays, [{ kinds: [COMMUNITY_LIST_KIND], authors: [this.pubkey] }])
           .pipe(toArray(), timeout(8000)),
       ).catch(() => [] as NostrEvent[]);
       const newest = events.sort((a, b) => b.created_at - a.created_at)[0];
       if (!newest || !this.signer.nip44) return;
-      // Decrypt through applesauce's encrypted-content cache: the plaintext is
+      // Decrypt through applesauce's hidden-content cache: the plaintext is
       // memoised on the (deduped) stored event, so a re-fold, StrictMode double
       // mount, or another client instance won't re-prompt the signer.
       this.eventStore.add(newest);
-      const latest = this.eventStore.getReplaceable(KIND.COMMUNITY_LIST, this.pubkey) ?? newest;
-      if (!isEncryptedContentUnlocked(latest)) {
-        await unlockEncryptedContent(latest, this.pubkey, this.signer);
+      const latest = this.eventStore.getReplaceable(COMMUNITY_LIST_KIND, this.pubkey) ?? newest;
+      if (!isHiddenContentUnlocked(latest)) {
+        await unlockHiddenContent(latest, this.signer);
       }
-      const json = getEncryptedContent(latest);
+      const json = getHiddenContent(latest);
       if (!json) return;
-      const remote = JSON.parse(json) as CommunityList;
-      // Merge into our document rather than replace — preserves tombstones,
-      // other-device entries, and lowest-epoch seeds (CORD-02 §8).
-      this.communityList = mergeCommunityLists(this.communityList, remote);
+      // The wire document keys the array as `entries` (armada-compatible).
+      const remote = JSON.parse(json) as { entries?: CommunityListCommunity[]; tombstones?: CommunityTombstone[] };
+      // Merge into our arrays rather than replace — preserves tombstones,
+      // other-device communities, and lowest-epoch seeds (CORD-02 §8).
+      this.communities = mergeCommunities(this.communities, remote.entries ?? []);
+      this.communityTombstones = mergeCommunityTombstones(this.communityTombstones, remote.tombstones ?? []);
       // Liveness is DERIVED, not "present in tombstones": a leave-then-rejoin
       // (added_at > removed_at) legitimately resurrects, so a blanket tombstone
       // drop would wrongly hide re-joined communities and diverge from armada.
       let added = false;
-      for (const entry of this.communityList.entries) {
-        const m = entry.current;
-        if (!m?.community_id || !isCommunityLive(this.communityList, m.community_id)) continue;
+      for (const community of this.communities) {
+        const m = community.current;
+        if (!m?.community_id || !isCommunityLive(this.communities, this.communityTombstones, m.community_id))
+          continue;
         if (!this.runtimes.has(m.community_id)) {
           this.addRuntime(m);
           added = true;
@@ -1202,38 +1204,48 @@ export class ConcordClient {
       // by bumping its add past the removal. Tombstones + other-device entries
       // are preserved (CORD-02 §8), never clobbered.
       const nowMs = Date.now();
-      let list = this.communityList;
+      let communities = this.communities;
+      const tombstones = this.communityTombstones;
       for (const rt of this.runtimes.values()) {
         const cid = rt.keys.material.community_id;
-        const existing = list.entries.find((e) => e.community_id === cid);
+        const existing = communities.find((e) => e.community_id === cid);
         if (!existing) {
-          list = addToList(list, { community_id: cid, seed: rt.keys.material, current: rt.keys.material, added_at: nowMs });
+          communities = joinCommunity({
+            community_id: cid,
+            seed: rt.keys.material,
+            current: rt.keys.material,
+            added_at: nowMs,
+          })(communities, tombstones).communities;
           continue;
         }
-        list = refreshCurrent(list, rt.keys.material);
-        const tomb = list.tombstones.find((t) => t.community_id === cid);
+        communities = refreshCommunity(rt.keys.material)(communities, tombstones).communities;
+        const tomb = tombstones.find((t) => t.community_id === cid);
         if (tomb && existing.added_at <= tomb.removed_at) {
-          list = addToList(list, { ...existing, current: rt.keys.material, added_at: nowMs });
+          communities = joinCommunity({ ...existing, current: rt.keys.material, added_at: nowMs })(
+            communities,
+            tombstones,
+          ).communities;
         }
       }
-      this.communityList = list;
-      if (!withinByteCap(list)) {
+      this.communities = communities;
+      if (!communityListWithinByteCap(communities, tombstones)) {
         console.warn("community list exceeds the NIP-44 byte cap; not publishing");
         return;
       }
-      const plaintext = JSON.stringify(list);
+      // The wire document keys the array as `entries` (armada-compatible).
+      const plaintext = JSON.stringify({ entries: communities, tombstones });
       const content = await this.signer.nip44.encrypt(this.pubkey, plaintext);
       const signed = await this.signer.signEvent({
-        kind: KIND.COMMUNITY_LIST,
+        kind: COMMUNITY_LIST_KIND,
         content,
         tags: [],
         created_at: Math.floor(Date.now() / 1000),
       });
       this.eventStore.add(signed);
-      const stored = this.eventStore.getReplaceable(KIND.COMMUNITY_LIST, this.pubkey) ?? signed;
+      const stored = this.eventStore.getReplaceable(COMMUNITY_LIST_KIND, this.pubkey) ?? signed;
       // Seed the decryption cache with what we just encrypted, so re-reading our
       // own freshly-published list never round-trips the signer again.
-      setEncryptedContentCache(stored, plaintext);
+      setHiddenContentCache(stored, plaintext);
       this.pool.publish(this.defaultRelays, signed).catch((err) => console.warn("list publish failed", err));
     } catch (err) {
       console.warn("failed to save community list", err);

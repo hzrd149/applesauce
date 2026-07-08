@@ -43,8 +43,8 @@
   "dependencies": {
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
+    "@scure/base": "^2.2.0",
     "applesauce-core": "^6.2.0",
-    "nostr-tools": "^2.19",
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {

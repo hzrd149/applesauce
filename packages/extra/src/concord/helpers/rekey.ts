@@ -13,11 +13,12 @@
 // plaintext, because signer nip44 interfaces carry strings. Mirrors armada
 // concord-v2/lib/rekey.ts byte-for-byte (interop-verified in scripts/interop.ts).
 
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { epochKeyCommitment, recipientLocator } from "./crypto.js";
-import { fromHex, toHex } from "../bytes.js";
-import { KIND } from "../types.js";
-import type { RumorTemplate } from "../types.js";
 import type { DecodedEvent } from "../types.js";
+
+/** Concord rekey blob kind (CORD-06). */
+export const REKEY_KIND = 3303;
 
 /** Per-recipient blobs per rekey event (CORD-06 §1). */
 export const REKEY_BLOBS_PER_EVENT = 120;
@@ -57,7 +58,7 @@ export function decodeWrappedKey(plain: Uint8Array, expectedScopeId: Uint8Array,
   if (plain.length !== 72) throw new Error(`wrapped key must be 72 bytes, got ${plain.length}`);
   const scopeId = plain.slice(0, 32);
   const epoch = new DataView(plain.buffer, plain.byteOffset).getBigUint64(32, false);
-  if (toHex(scopeId) !== toHex(expectedScopeId)) throw new Error("wrapped key scope mismatch");
+  if (bytesToHex(scopeId) !== bytesToHex(expectedScopeId)) throw new Error("wrapped key scope mismatch");
   if (epoch !== expectedEpoch) throw new Error("wrapped key epoch mismatch");
   return plain.slice(40, 72);
 }
@@ -94,27 +95,6 @@ export interface RekeyRotation {
   prevCommit: string;
 }
 
-/** Build the chunked 3303 rumor templates for one rotation (seal + wrap at the rekey address). */
-export function buildRekeyRumors(rotation: RekeyRotation, blobs: RekeyBlob[], ms: number = Date.now()): RumorTemplate[] {
-  const chunks: RekeyBlob[][] = [];
-  for (let i = 0; i < blobs.length; i += REKEY_BLOBS_PER_EVENT) chunks.push(blobs.slice(i, i + REKEY_BLOBS_PER_EVENT));
-  if (chunks.length === 0) chunks.push([]);
-  const n = chunks.length;
-  const scopeHex = toHex(rekeyScopeId(rotation.scope));
-  return chunks.map((chunk, i) => ({
-    kind: KIND.REKEY,
-    content: JSON.stringify(chunk),
-    tags: [
-      ["scope", scopeHex],
-      ["newepoch", rotation.newEpoch.toString()],
-      ["prevepoch", rotation.prevEpoch.toString()],
-      ["prevcommit", rotation.prevCommit],
-      ["chunk", (i + 1).toString(), n.toString()],
-      ["ms", String(ms % 1000)],
-    ],
-  }));
-}
-
 export interface ParsedRekey {
   /** The rotator's real pubkey (the seal's signer). */
   rotator: string;
@@ -132,7 +112,7 @@ export interface ParsedRekey {
 /** Parse a decoded rekey stream event into its rotation fields (returns null on malformed). */
 export function parseRekey(d: DecodedEvent): ParsedRekey | null {
   const r = d.rumor;
-  if (r.kind !== KIND.REKEY) return null;
+  if (r.kind !== REKEY_KIND) return null;
   const get = (name: string) => r.tags.find((t) => t[0] === name);
   const scope = get("scope")?.[1];
   const newEpoch = get("newepoch")?.[1];
@@ -145,13 +125,21 @@ export function parseRekey(d: DecodedEvent): ParsedRekey | null {
   if (!prevCommit || !HEX64.test(prevCommit)) return null;
   const chunkIndex = chunk ? Number(chunk[1]) : 1;
   const chunkCount = chunk ? Number(chunk[2]) : 1;
-  if (!Number.isInteger(chunkIndex) || !Number.isInteger(chunkCount) || chunkIndex < 1 || chunkCount < 1 || chunkIndex > chunkCount) {
+  if (
+    !Number.isInteger(chunkIndex) ||
+    !Number.isInteger(chunkCount) ||
+    chunkIndex < 1 ||
+    chunkCount < 1 ||
+    chunkIndex > chunkCount
+  ) {
     return null;
   }
   let blobs: RekeyBlob[];
   try {
     const parsed = JSON.parse(r.content) as RekeyBlob[];
-    blobs = Array.isArray(parsed) ? parsed.filter((b) => b && typeof b.locator === "string" && typeof b.wrapped === "string") : [];
+    blobs = Array.isArray(parsed)
+      ? parsed.filter((b) => b && typeof b.locator === "string" && typeof b.wrapped === "string")
+      : [];
   } catch {
     return null;
   }
@@ -225,7 +213,7 @@ export function checkContinuity(
   heldKey: Uint8Array,
 ): { ok: true } | { ok: false; reason: "gap" | "fork" } {
   if (set.prevEpoch === heldEpoch) {
-    const commit = toHex(epochKeyCommitment(heldEpoch, heldKey));
+    const commit = bytesToHex(epochKeyCommitment(heldEpoch, heldKey));
     return commit === set.prevCommit ? { ok: true } : { ok: false, reason: "fork" };
   }
   return { ok: false, reason: set.prevEpoch > heldEpoch ? "gap" : "fork" };
@@ -245,10 +233,10 @@ export function findBlob(set: RekeyRotationSet, locatorHex: string): RekeyBlob |
  * continuity point, the lexicographically lowest NEW KEY wins.
  */
 export function lowerKeyWins(a: Uint8Array, b: Uint8Array): Uint8Array {
-  return toHex(a) <= toHex(b) ? a : b;
+  return bytesToHex(a) <= bytesToHex(b) ? a : b;
 }
 
 /** Compute a rotation locator from PUBLIC inputs only (bunker-friendly). */
 export function rekeyLocator(rotatorHex: string, recipientHex: string, scopeIdHex: string, newEpoch: bigint): string {
-  return recipientLocator(rotatorHex, recipientHex, fromHex(scopeIdHex), Number(newEpoch));
+  return recipientLocator(rotatorHex, recipientHex, hexToBytes(scopeIdHex), Number(newEpoch));
 }

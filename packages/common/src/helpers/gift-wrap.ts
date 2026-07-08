@@ -12,7 +12,7 @@ import {
   KnownEvent,
   NostrEvent,
   notifyEventUpdate,
-  UnsignedEvent,
+  Rumor,
   verifyWrappedEvent,
 } from "applesauce-core/helpers/event";
 
@@ -22,9 +22,7 @@ import {
  */
 export const internalGiftWrapEvents = new EventMemory();
 
-export type Rumor = UnsignedEvent & {
-  id: string;
-};
+export type { Rumor };
 
 /** Used to store a reference to the seal event on gift wraps (downstream) or the seal event on rumors (upstream[]) */
 export const SealSymbol = Symbol.for("seal");

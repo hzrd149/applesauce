@@ -1,6 +1,6 @@
 // High-level community model: key derivation, owner verification, genesis.
 
-import { fromHex, randomBytes, toHex } from "../bytes.js";
+import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils.js";
 import {
   channelGroupKey,
   communityId,
@@ -10,14 +10,11 @@ import {
   voiceMediaKey,
 } from "./crypto.js";
 import type { GroupKey } from "./crypto.js";
-import { buildEdition } from "./editions.js";
+import { EditionFactory } from "../factories/control.js";
+import { JoinLeaveFactory } from "../factories/guestbook.js";
 import type { RumorTemplate } from "../types.js";
 import { VSK } from "../types.js";
-import type {
-  ChannelMetadata,
-  CommunityMetadata,
-  JoinMaterial,
-} from "../types.js";
+import type { ChannelMetadata, CommunityMetadata, JoinMaterial } from "../types.js";
 
 /** The set of stream keys a member holds for a community at its current epoch. */
 export interface CommunityKeys {
@@ -35,14 +32,14 @@ export interface CommunityKeys {
  */
 function channelSecret(material: JoinMaterial, channel: ChannelMetadata): { secret: Uint8Array; epoch: number } {
   if (channel.private && channel.key) {
-    return { secret: fromHex(channel.key), epoch: channel.epoch ?? 1 };
+    return { secret: hexToBytes(channel.key), epoch: channel.epoch ?? 1 };
   }
-  return { secret: fromHex(material.community_root), epoch: material.root_epoch };
+  return { secret: hexToBytes(material.community_root), epoch: material.root_epoch };
 }
 
 export function channelKeyFor(material: JoinMaterial, channel: ChannelMetadata): GroupKey {
   const { secret, epoch } = channelSecret(material, channel);
-  return channelGroupKey(secret, fromHex(channel.channel_id), epoch);
+  return channelGroupKey(secret, hexToBytes(channel.channel_id), epoch);
 }
 
 /** A voice Channel's derived keys (CORD-07 §1): the SFU room signer + media root. */
@@ -55,7 +52,7 @@ export interface VoiceKeys {
 
 export function voiceKeysFor(material: JoinMaterial, channel: ChannelMetadata): VoiceKeys {
   const { secret, epoch } = channelSecret(material, channel);
-  const channelId = fromHex(channel.channel_id);
+  const channelId = hexToBytes(channel.channel_id);
   return {
     room: voiceGroupKey(secret, channelId, epoch),
     mediaKey: voiceMediaKey(secret, channelId, epoch),
@@ -63,8 +60,8 @@ export function voiceKeysFor(material: JoinMaterial, channel: ChannelMetadata): 
 }
 
 export function deriveKeys(material: JoinMaterial, channels: ChannelMetadata[]): CommunityKeys {
-  const cid = fromHex(material.community_id);
-  const root = fromHex(material.community_root);
+  const cid = hexToBytes(material.community_id);
+  const root = hexToBytes(material.community_root);
   const channelKeys = new Map<string, GroupKey>();
   for (const ch of channels) channelKeys.set(ch.channel_id, channelKeyFor(material, ch));
   return {
@@ -76,7 +73,7 @@ export function deriveKeys(material: JoinMaterial, channels: ChannelMetadata[]):
 
 /** Verify a community's owner proof: community_id == sha256(owner || salt). */
 export function verifyOwner(material: JoinMaterial): boolean {
-  const expected = toHex(communityId(material.owner, fromHex(material.owner_salt)));
+  const expected = bytesToHex(communityId(material.owner, hexToBytes(material.owner_salt)));
   return expected === material.community_id;
 }
 
@@ -94,22 +91,22 @@ export interface Genesis {
  * genesis editions (metadata + a public #general channel), plus the owner's
  * own Join (CORD-02 §1).
  */
-export function createCommunity(opts: {
+export async function createCommunity(opts: {
   ownerPubkey: string;
   name: string;
   description?: string;
   relays: string[];
-}): Genesis {
+}): Promise<Genesis> {
   const ownerSalt = randomBytes(32);
   const communityRoot = randomBytes(32);
-  const cid = toHex(communityId(opts.ownerPubkey, ownerSalt));
-  const generalChannelId = toHex(randomBytes(32));
+  const cid = bytesToHex(communityId(opts.ownerPubkey, ownerSalt));
+  const generalChannelId = bytesToHex(randomBytes(32));
 
   const material: JoinMaterial = {
     community_id: cid,
     owner: opts.ownerPubkey,
-    owner_salt: toHex(ownerSalt),
-    community_root: toHex(communityRoot),
+    owner_salt: bytesToHex(ownerSalt),
+    community_root: bytesToHex(communityRoot),
     root_epoch: 0,
     channels: [],
     relays: opts.relays,
@@ -123,8 +120,8 @@ export function createCommunity(opts: {
   };
 
   const controlRumors: RumorTemplate[] = [
-    buildEdition({ vsk: VSK.METADATA, eid: cid, version: 1, content: JSON.stringify(metadata) }),
-    buildEdition({
+    await EditionFactory.create({ vsk: VSK.METADATA, eid: cid, version: 1, content: JSON.stringify(metadata) }),
+    await EditionFactory.create({
       vsk: VSK.CHANNEL,
       eid: generalChannelId,
       version: 1,
@@ -132,9 +129,7 @@ export function createCommunity(opts: {
     }),
   ];
 
-  const guestbookRumors: RumorTemplate[] = [
-    { kind: 3306, content: "join", tags: [["ms", String(Date.now() % 1000)]] },
-  ];
+  const guestbookRumors: RumorTemplate[] = [await JoinLeaveFactory.create("join")];
 
   return { material, generalChannelId, controlRumors, guestbookRumors };
 }

@@ -4,6 +4,7 @@
 // no client state.
 
 export * from "./crypto.js";
+export * from "./gift-wrap.js";
 export * from "./permissions.js";
 export * from "./control.js";
 export * from "./guestbook.js";
@@ -14,6 +15,9 @@ export * from "./community.js";
 export * from "./keys.js";
 export * from "./editions.js";
 export * from "./chat.js";
-export * from "./forum-thread.js";
+export * from "./edit.js";
+export * from "./webxdc.js";
+export * from "./typing.js";
+export * from "./voice.js";
 export * from "./imeta.js";
 export * from "./invite.js";

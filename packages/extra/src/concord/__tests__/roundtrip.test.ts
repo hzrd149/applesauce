@@ -11,7 +11,8 @@ import { createCommunity, deriveKeys, verifyOwner } from "../helpers/community.j
 import { foldControl } from "../helpers/control.js";
 import { foldMembers } from "../helpers/guestbook.js";
 import { resolveStanding } from "../helpers/permissions.js";
-import { createStreamEvent, decodeStreamEvent } from "../stream.js";
+import { giftWrap, sealRumor, toRumor, wrapSeal } from "../operations/gift-wrap.js";
+import { decodeWrap } from "../helpers/gift-wrap.js";
 import { ChatMessageFactory } from "applesauce-common/factories";
 import { bindToChannel } from "../operations/chat.js";
 import { buildInviteLink, decryptBundle, encryptBundle, newInviteToken, parseInviteLink } from "../helpers/invite.js";
@@ -31,16 +32,10 @@ describe("concord envelope round-trip", () => {
     // 2. Publish genesis control editions (plaintext seal) and round-trip decode.
     const controlDecoded: DecodedEvent[] = [];
     for (const rumor of genesis.controlRumors) {
-      const { wrap } = await createStreamEvent({
-        streamSk: keys.control.sk,
-        convKey: keys.control.convKey,
-        author: owner,
-        rumor,
-        plaintextSeal: true,
-      });
+      const wrap = await giftWrap(keys.control.sk, keys.control.convKey, owner, { plaintext: true })(rumor);
       expect(wrap.kind).toBe(1059);
       expect(wrap.pubkey).toBe(keys.control.pk);
-      const dec = decodeStreamEvent(wrap, keys.control.convKey);
+      const dec = decodeWrap(wrap, keys.control.convKey);
       expect(dec).not.toBeNull();
       expect(dec!.author).toBe(ownerPub);
       expect(dec!.sealKind).toBe(20014); // plaintext seal
@@ -56,13 +51,8 @@ describe("concord envelope round-trip", () => {
     // 4. Guestbook: owner join, encrypted seal.
     const gbDecoded: DecodedEvent[] = [];
     for (const rumor of genesis.guestbookRumors) {
-      const { wrap } = await createStreamEvent({
-        streamSk: keys.guestbook.sk,
-        convKey: keys.guestbook.convKey,
-        author: owner,
-        rumor,
-      });
-      const dec = decodeStreamEvent(wrap, keys.guestbook.convKey);
+      const wrap = await giftWrap(keys.guestbook.sk, keys.guestbook.convKey, owner)(rumor);
+      const dec = decodeWrap(wrap, keys.guestbook.convKey);
       expect(dec!.sealKind).toBe(20013); // encrypted seal
       gbDecoded.push(dec!);
     }
@@ -77,19 +67,15 @@ describe("concord envelope round-trip", () => {
     const chKey = deriveKeys(genesis.material, state.channels).channels.get(chId)!;
     const member = new PrivateKeySigner(generateSecretKey());
     const memberPub = await member.getPublicKey();
-    const { wrap: msgWrap, rumorId } = await createStreamEvent({
-      streamSk: chKey.sk,
-      convKey: chKey.convKey,
-      author: member,
-      rumor: await bindToChannel(chId, 0)(await ChatMessageFactory.create("Hey chat!")),
-    });
+    const msgRumor = await toRumor(member)(await bindToChannel(chId, 0)(await ChatMessageFactory.create("Hey chat!")));
+    const msgWrap = await wrapSeal(chKey.sk, chKey.convKey)(await sealRumor(chKey.convKey, member)(msgRumor));
     const memberChKey = deriveKeys(genesis.material, state.channels).channels.get(chId)!;
     expect(memberChKey.pk).toBe(chKey.pk); // both derive the same channel address
-    const msgDec = decodeStreamEvent(msgWrap, memberChKey.convKey);
+    const msgDec = decodeWrap(msgWrap, memberChKey.convKey);
     expect(msgDec).not.toBeNull();
     expect(msgDec!.rumor.content).toBe("Hey chat!");
     expect(msgDec!.author).toBe(memberPub);
-    expect(msgDec!.rumor.id).toBe(rumorId);
+    expect(msgDec!.rumor.id).toBe(msgRumor.id);
 
     // 6. Invite link round-trip.
     const token = newInviteToken();
@@ -113,6 +99,6 @@ describe("concord envelope round-trip", () => {
 
     // 7. Tamper detection: a wrong conv key sees only noise.
     const wrongKey = deriveKeys({ ...genesis.material, community_root: bytesToHex(generateSecretKey()) }, []).control.convKey;
-    expect(decodeStreamEvent(msgWrap, wrongKey)).toBeNull();
+    expect(decodeWrap(msgWrap, wrongKey)).toBeNull();
   });
 });

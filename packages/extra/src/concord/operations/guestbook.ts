@@ -3,9 +3,8 @@
 // ../factories/guestbook.js.
 
 import type { EventOperation } from "applesauce-core/factories";
-import { modifyPublicTags, TagOperations } from "applesauce-core/operations";
-
-const { addNameValueTag, addProfilePointerTag, setSingletonTag } = TagOperations;
+import { modifyPublicTags } from "applesauce-core/operations";
+import { addNameValueTag, addProfilePointerTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 
 /** Guard the 1-based `snap`/`chunk` index contract (CORD-02 §5, CORD-06 §1). */
 function assertChunkIndex(index: number, count: number): void {

@@ -1,13 +1,12 @@
-// CORD-04 Control-Plane edition builders.
+// CORD-04 Control-Plane edition hashing.
 //
-// An edition is a kind 3308 rumor carrying the edition machinery in tags. It
-// rides a PLAINTEXT seal (kind 20014) so a Refounding can re-wrap the signed
-// edition into a new epoch with its signature intact.
+// An edition is a kind 3308 rumor carrying the edition machinery in tags (built
+// by ../operations/control.js + ../factories/control.js). It rides a PLAINTEXT
+// seal (kind 20014) so a Refounding can re-wrap the signed edition into a new
+// epoch with its signature intact.
 
+import { hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { editionHash } from "./crypto.js";
-import { fromHex, utf8 } from "../bytes.js";
-import type { RumorTemplate } from "../types.js";
-import { KIND } from "../types.js";
 
 export interface EditionInput {
   vsk: number;
@@ -18,32 +17,12 @@ export interface EditionInput {
   vac?: [string, string, string]; // grant eid, version, edition hash — omitted for owner
 }
 
-export function buildEdition(input: EditionInput): RumorTemplate {
-  const tags: string[][] = [
-    ["vsk", String(input.vsk)],
-    ["eid", input.eid],
-    ["ev", String(input.version)],
-  ];
-  if (input.prevHash) tags.push(["ep", input.prevHash]);
-  if (input.vac) tags.push(["vac", ...input.vac]);
-  return { kind: KIND.CONTROL, content: input.content, tags };
-}
-
 /** Compute an edition's hash — what the next edition's `ep` will cite. */
 export function computeEditionHash(input: Omit<EditionInput, "vac">): string {
   return editionHash(
-    fromHex(input.eid),
+    hexToBytes(input.eid),
     input.version,
-    input.prevHash ? fromHex(input.prevHash) : undefined,
-    utf8(input.content),
+    input.prevHash ? hexToBytes(input.prevHash) : undefined,
+    utf8ToBytes(input.content),
   );
-}
-
-/** The chainless dissolution tombstone rumor (vsk 10), published at dissolved_pk. */
-export function dissolutionRumor(): RumorTemplate {
-  return {
-    kind: KIND.CONTROL,
-    content: "",
-    tags: [["vsk", "10"], ["eid", "00".repeat(32)]],
-  };
 }

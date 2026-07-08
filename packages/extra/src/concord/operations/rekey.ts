@@ -2,12 +2,11 @@
 // Composed into kind 3303 rumor templates by ../factories/rekey.js.
 
 import type { EventOperation } from "applesauce-core/factories";
-import { modifyPublicTags, TagOperations } from "applesauce-core/operations";
-import { toHex } from "../bytes.js";
-import { rekeyScopeId } from "../helpers/rekey.js";
+import { modifyPublicTags } from "applesauce-core/operations";
+import { addNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import type { RekeyBlob, RekeyRotation } from "../helpers/rekey.js";
-
-const { addNameValueTag, setSingletonTag } = TagOperations;
+import { rekeyScopeId } from "../helpers/rekey.js";
 
 /** Guard the 1-based `chunk` index contract (CORD-06 §1). */
 function assertChunkIndex(index: number, count: number): void {
@@ -24,7 +23,7 @@ export function includeRekeyChunk(
   ms: number = Date.now(),
 ): EventOperation {
   assertChunkIndex(index, count);
-  const scopeHex = toHex(rekeyScopeId(rotation.scope));
+  const scopeHex = bytesToHex(rekeyScopeId(rotation.scope));
   const tags = modifyPublicTags(
     setSingletonTag(["scope", scopeHex]),
     setSingletonTag(["newepoch", rotation.newEpoch.toString()]),

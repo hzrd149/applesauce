@@ -13,7 +13,8 @@ import { kinds } from "applesauce-core/helpers/event";
 import { bindToChannel, includeMediaEncryption } from "../../operations/chat.js";
 import { checkChatBinding } from "../../helpers/chat.js";
 import { controlGroupKey } from "../../helpers/crypto.js";
-import { createStreamEvent, decodeStreamEvent } from "../../stream.js";
+import { sealRumor, toRumor, wrapSeal } from "../../operations/gift-wrap.js";
+import { decodeWrap } from "../../helpers/gift-wrap.js";
 
 describe("channel message composition", () => {
   it("binds channel/epoch, p-tags mentions, emoji-tags shortcodes", async () => {
@@ -46,16 +47,15 @@ describe("channel message composition", () => {
     const author = new PrivateKeySigner(generateSecretKey());
     const authorPub = await author.getPublicKey();
     const key = controlGroupKey(hexToBytes("11".repeat(32)), hexToBytes("22".repeat(32)), 0);
-    const { wrap, rumorId } = await createStreamEvent({
-      streamSk: key.sk,
-      convKey: key.convKey,
-      author,
-      rumor: await bindToChannel("chan", 0)(await ChatMessageFactory.create("hello")),
-    });
-    const dec = decodeStreamEvent(wrap, key.convKey);
+    const template = await bindToChannel("chan", 0)(await ChatMessageFactory.create("hello"));
+    // Build the rumor, then seal + wrap it onto the plane via the composable ops.
+    const rumor = await toRumor(author)(template);
+    const wrap = await wrapSeal(key.sk, key.convKey)(await sealRumor(key.convKey, author)(rumor));
+    const dec = decodeWrap(wrap, key.convKey);
     expect(dec).not.toBeNull();
     expect(dec!.author).toBe(authorPub);
-    expect(dec!.rumor.id).toBe(rumorId);
+    expect(dec!.rumor.id).toBe(rumor.id);
+    expect(dec!.rumor.content).toBe("hello");
     expect(dec!.rumor.content).toBe("hello");
     expect(checkChatBinding(dec!.rumor.tags, "chan", 0)).toBe(true);
   });

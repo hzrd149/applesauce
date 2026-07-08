@@ -4,8 +4,8 @@
 // (drive-auth.mjs) rather than here.
 
 import { describe, expect, it } from "vitest";
-import { generateSecretKey } from "nostr-tools";
-import { verifyEvent } from "nostr-tools";
+import { verifyEvent } from "applesauce-core/helpers/event";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 import { RelayPool } from "applesauce-relay";
 
@@ -15,7 +15,7 @@ import { createCommunity, deriveKeys } from "../helpers/community.js";
 describe("ConcordRelayAuth stream-key registry", () => {
   it("registers derived stream keys and signs kind-22242 AS each", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
-    const genesis = createCommunity({ ownerPubkey: await owner.getPublicKey(), name: "T", relays: ["wss://x"] });
+    const genesis = await createCommunity({ ownerPubkey: await owner.getPublicKey(), name: "T", relays: ["wss://x"] });
     const keys = deriveKeys(genesis.material, []);
 
     const auth = new ConcordRelayAuth(new RelayPool());

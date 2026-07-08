@@ -2,10 +2,9 @@
 // tombstone. Composed into kind 3308 rumor templates by ../factories/control.js.
 
 import type { EventOperation } from "applesauce-core/factories";
-import { modifyPublicTags, TagOperations } from "applesauce-core/operations";
+import { modifyPublicTags } from "applesauce-core/operations";
+import { addNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 import type { EditionInput } from "../helpers/editions.js";
-
-const { addNameValueTag, setSingletonTag } = TagOperations;
 
 /** Fill an edition rumor's content + edition-machinery tags (CORD-04). */
 export function includeEdition(input: EditionInput): EventOperation {
