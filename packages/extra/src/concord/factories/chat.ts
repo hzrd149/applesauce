@@ -7,7 +7,7 @@
 // ../stream.js, so these factories never sign.
 
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
-import { KIND } from "../types.js";
+import { kinds } from "applesauce-core/helpers/event";
 import { includeChannelBinding, includeDeleteTarget, includeMs } from "../operations/chat.js";
 
 /**
@@ -28,9 +28,9 @@ export class ChatRumorFactory<K extends number = number> extends EventFactory<K>
 }
 
 /** A factory for kind 5 chat deletes (CORD-03 §3). */
-export class DeleteFactory extends ChatRumorFactory<typeof KIND.DELETE> {
-  static create(channelId: string, epoch: number, targetId: string, targetKind = 9): DeleteFactory {
-    return new DeleteFactory((res) => res(blankEventTemplate(KIND.DELETE)))
+export class DeleteFactory extends ChatRumorFactory<kinds.EventDeletion> {
+  static create(channelId: string, epoch: number, targetId: string, targetKind = kinds.ChatMessage): DeleteFactory {
+    return new DeleteFactory((res) => res(blankEventTemplate(kinds.EventDeletion)))
       .channel(channelId, epoch)
       .ms()
       .target(targetId, targetKind);

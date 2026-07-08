@@ -9,7 +9,7 @@ import { ChatMessageFactory } from "applesauce-common/factories";
 import { PrivateKeySigner } from "applesauce-signers";
 import { hexToBytes } from "@noble/hashes/utils.js";
 
-import { KIND } from "../../types.js";
+import { kinds } from "applesauce-core/helpers/event";
 import { bindToChannel, includeMediaEncryption } from "../../operations/chat.js";
 import { checkChatBinding } from "../../helpers/chat.js";
 import { controlGroupKey } from "../../helpers/crypto.js";
@@ -21,7 +21,7 @@ describe("channel message composition", () => {
     const message = await ChatMessageFactory.create(`hi nostr:${npub()} :cat:`, { emojis: [emoji] });
     const t = await bindToChannel("chan", 2)(message);
 
-    expect(t.kind).toBe(KIND.MESSAGE);
+    expect(t.kind).toBe(kinds.ChatMessage);
     expect(checkChatBinding(t.tags, "chan", 2)).toBe(true);
     expect(t.tags.some((tag) => tag[0] === "p")).toBe(true);
     expect(t.tags).toContainEqual(["emoji", "cat", "https://x/cat.png"]);

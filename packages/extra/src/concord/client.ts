@@ -5,7 +5,7 @@
 // into reactive community state. One instance per logged-in user.
 
 import { BehaviorSubject, Subscription, firstValueFrom, timeout, toArray } from "rxjs";
-import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
+import { finalizeEvent, kinds, type NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 
 import type { IEventStore } from "applesauce-core";
@@ -445,7 +445,7 @@ export class ConcordClient {
   ): Promise<void> {
     const rt = this.runtimes.get(cid)!;
     const epoch = this.channelEpoch(rt, channelId);
-    const pointer = { type: "event" as const, id: thread.id, kind: KIND.THREAD, pubkey: thread.author };
+    const pointer = { type: "event" as const, id: thread.id, kind: kinds.ForumThread, pubkey: thread.author };
     const rumor = await bindToChannel(channelId, epoch)(await CommentFactory.create(pointer, body));
     await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
   }
@@ -459,7 +459,7 @@ export class ConcordClient {
     const rt = this.runtimes.get(cid)!;
     const epoch = this.channelEpoch(rt, channelId);
     const rumor = await bindToChannel(channelId, epoch)(
-      await ReactionFactory.create({ id: target.id, pubkey: target.author, kind: KIND.MESSAGE }, reaction),
+      await ReactionFactory.create({ id: target.id, pubkey: target.author, kind: kinds.ChatMessage }, reaction),
     );
     await this.publishToPlane(rt, { plane: "channel", channelId }, rumor, {});
   }
@@ -1065,7 +1065,7 @@ export class ConcordClient {
       const sorted = [...events.values()].sort((a, b) => a.ms - b.ms);
       for (const d of sorted) {
         const r = d.rumor;
-        if (r.kind === KIND.MESSAGE) {
+        if (r.kind === kinds.ChatMessage) {
           const q = r.tags.find((t) => t[0] === "q");
           byId.set(r.id, {
             id: r.id,
@@ -1081,9 +1081,9 @@ export class ConcordClient {
           });
         } else if (r.kind === KIND.EDIT) {
           edits.push(d);
-        } else if (r.kind === KIND.DELETE) {
+        } else if (r.kind === kinds.EventDeletion) {
           deletes.push(d);
-        } else if (r.kind === KIND.REACTION) {
+        } else if (r.kind === kinds.Reaction) {
           const target = r.tags.find((t) => t[0] === "e")?.[1];
           if (!target) continue;
           let emap = reactions.get(target);

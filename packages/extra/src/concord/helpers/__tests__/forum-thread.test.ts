@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { kinds } from "applesauce-core/helpers/event";
 import { ForumThreadFactory, CommentFactory } from "applesauce-common/factories";
 
-import { KIND } from "../../types.js";
 import type { DecodedEvent } from "../../types.js";
 import { foldThreads } from "../forum-thread.js";
 
@@ -13,7 +13,7 @@ describe("foldThreads", () => {
   it("folds kind 11 threads and attaches their kind 1111 replies to the root", async () => {
     const thread = await ForumThreadFactory.create("GM", "Good morning");
     const reply = await CommentFactory.create(
-      { type: "event", id: "thread-1", kind: KIND.THREAD, pubkey: "alice" },
+      { type: "event", id: "thread-1", kind: kinds.ForumThread, pubkey: "alice" },
       "Cool beans",
     );
 
@@ -30,7 +30,7 @@ describe("foldThreads", () => {
 
   it("ignores replies whose root thread is absent", async () => {
     const reply = await CommentFactory.create(
-      { type: "event", id: "missing", kind: KIND.THREAD, pubkey: "alice" },
+      { type: "event", id: "missing", kind: kinds.ForumThread, pubkey: "alice" },
       "orphan",
     );
     expect(foldThreads([decoded(reply, "reply-1", "bob", 1)])).toEqual([]);

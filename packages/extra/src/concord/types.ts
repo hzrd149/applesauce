@@ -4,16 +4,18 @@ import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { Rumor } from "applesauce-common/helpers";
 
 // ---- Kinds (CORD-02 Appendix B, frozen) -----------------------------------
+//
+// Only Concord-specific protocol kinds live here. Standard Nostr content kinds
+// that ride a channel (chat message 9, reaction 7, deletion 5, forum thread 11,
+// NIP-22 comment 1111, …) are referenced from their canonical source
+// (applesauce-core `kinds` / applesauce-common `COMMENT_KIND`), so any common
+// event kind can be sent in a Concord community/channel without Concord
+// re-declaring its number.
 export const KIND = {
   WRAP: 1059,
   WRAP_EPHEMERAL: 21059,
   SEAL_ENCRYPTED: 20013,
   SEAL_PLAINTEXT: 20014,
-  MESSAGE: 9,
-  REACTION: 7,
-  DELETE: 5,
-  THREAD: 11,
-  COMMENT: 1111,
   EDIT: 3302,
   REKEY: 3303,
   JOIN_LEAVE: 3306,

@@ -8,7 +8,7 @@
 // remainder, the client-media encryption decorator, and the delete target.
 
 import type { EventOperation } from "applesauce-core/factories";
-import { eventPipe } from "applesauce-core/helpers";
+import { eventPipe, kinds } from "applesauce-core/helpers";
 import { modifyPublicTags } from "applesauce-core/operations";
 import { addEventPointerTag, addNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 import type { AttachmentEncryption } from "../helpers/imeta.js";
@@ -66,6 +66,6 @@ export function includeMediaEncryption(entries: MediaEncryption[] = []): EventOp
 }
 
 /** Add the `e`/`k` tags pointing a delete at its target (CORD-03 §3). */
-export function includeDeleteTarget(id: string, kind = 9): EventOperation {
+export function includeDeleteTarget(id: string, kind: number = kinds.ChatMessage): EventOperation {
   return modifyPublicTags(addEventPointerTag(id, undefined, false), addNameValueTag(["k", String(kind)]));
 }

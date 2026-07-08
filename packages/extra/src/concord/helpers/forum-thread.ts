@@ -4,9 +4,8 @@
 // bound to the channel. `foldThreads` collapses a channel's decoded rumors into
 // threads with their replies, mirroring `recomputeMessages` for chat.
 
-import type { NostrEvent } from "applesauce-core/helpers/event";
-import { getForumThreadTitle } from "applesauce-common/helpers";
-import { KIND } from "../types.js";
+import { kinds, type NostrEvent } from "applesauce-core/helpers/event";
+import { COMMENT_KIND, getForumThreadTitle } from "applesauce-common/helpers";
 import type { DecodedEvent } from "../types.js";
 
 /** A NIP-22 kind 1111 reply to a channel thread. */
@@ -37,7 +36,7 @@ export function foldThreads(events: Iterable<DecodedEvent>): ChannelThread[] {
   const sorted = [...events].sort((a, b) => a.ms - b.ms);
   for (const d of sorted) {
     const r = d.rumor;
-    if (r.kind === KIND.THREAD) {
+    if (r.kind === kinds.ForumThread) {
       byId.set(r.id, {
         id: r.id,
         author: d.author,
@@ -47,7 +46,7 @@ export function foldThreads(events: Iterable<DecodedEvent>): ChannelThread[] {
         replies: [],
         raw: d,
       });
-    } else if (r.kind === KIND.COMMENT) {
+    } else if (r.kind === COMMENT_KIND) {
       replies.push(d);
     }
   }
