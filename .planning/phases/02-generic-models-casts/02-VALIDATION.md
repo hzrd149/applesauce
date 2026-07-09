@@ -1,9 +1,9 @@
 ---
 phase: 2
 slug: generic-models-casts
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-08
 ---
 
@@ -38,8 +38,8 @@ created: 2026-07-08
 
 | Requirement | Behavior | Test Type | Automated Command | Status |
 |-------------|----------|-----------|-------------------|--------|
-| CORE-06 | Core models generic, return `E`-typed observables; existing signed-event model tests pass unchanged | unit | `pnpm --filter applesauce-core test` | ⬜ pending |
-| CORE-07 | Cast infrastructure generic with `NostrEvent` defaults; existing cast tests pass unchanged | unit | `pnpm --filter applesauce-core test` | ⬜ pending |
+| CORE-06 | Core models generic, return `E`-typed observables; existing signed-event model tests pass unchanged | unit + type-check | `pnpm --filter applesauce-core test` (592/592) + verifier type probe (`EventStore<Rumor>.event()` → `Observable<Rumor>`) | ✅ green |
+| CORE-07 | Cast infrastructure generic with `NostrEvent` defaults; existing cast tests pass unchanged | unit + type-check | `pnpm --filter applesauce-core test` + `rumor-cast.test.ts`/`user.test.ts` unmodified (`git diff --exit-code`) | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -59,9 +59,9 @@ All phase behaviors have automated verification (unit tests + type-check build).
 
 ## Validation Sign-Off
 
-- [ ] All requirements have automated verification
-- [ ] Existing model/cast tests pass unchanged
-- [ ] `pnpm -r build` exit 0 (full workspace, downstream-inference gate)
-- [ ] `nyquist_compliant: true` set in frontmatter (at validate-phase)
+- [x] All requirements have automated verification (existing unit tests + type-check build; CORE-06/07 COVERED, no gaps)
+- [x] Existing model/cast tests pass unchanged (592/592; `rumor-cast.test.ts`/`user.test.ts` unmodified)
+- [x] `pnpm -r build` exit 0 (full workspace, 18 packages/apps — downstream-inference gate)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending (finalized by /gsd-validate-phase after execution)
+**Approval:** approved 2026-07-08 (autonomous — no coverage gaps; zero-behavior-change genericization validated by unchanged existing tests + type-check + verifier type probe)
