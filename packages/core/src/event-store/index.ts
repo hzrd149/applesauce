@@ -6,3 +6,4 @@ export * from "./event-models.js";
 export * from "./delete-manager.js";
 export * from "./async-delete-manager.js";
 export * from "./expiration-manager.js";
+export * from "./rumor-store.js";
