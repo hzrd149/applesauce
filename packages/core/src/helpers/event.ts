@@ -105,7 +105,7 @@ export function isReplaceable(kind: number) {
  * For replaceable events this is ( event.kind + ":" + event.pubkey + ":" )
  * For parametrized replaceable events this is ( event.kind + ":" + event.pubkey + ":" + event.tags.d )
  */
-export function getEventUID(event: NostrEvent) {
+export function getEventUID<E extends StoreEvent = NostrEvent>(event: E) {
   let uid = Reflect.get(event, EventUIDSymbol) as string | undefined;
 
   if (!uid) {
@@ -118,7 +118,7 @@ export function getEventUID(event: NostrEvent) {
 }
 
 /** Returns the replaceable event address for an addressable event */
-export function getReplaceableAddress(event: NostrEvent): string | null {
+export function getReplaceableAddress<E extends StoreEvent = NostrEvent>(event: E): string | null {
   if (!isReplaceable(event.kind)) return null;
 
   return getOrComputeCachedValue(event, ReplaceableAddressSymbol, () => {
@@ -180,7 +180,7 @@ export function notifyEventUpdate(event: any) {
 }
 
 /** Returns the replaceable identifier for a replaceable event */
-export function getReplaceableIdentifier(event: NostrEvent): string {
+export function getReplaceableIdentifier<E extends StoreEvent = NostrEvent>(event: E): string {
   return getOrComputeCachedValue(event, ReplaceableIdentifierSymbol, () => {
     return event.tags.find((t) => t[0] === "d")?.[1] ?? "";
   });
