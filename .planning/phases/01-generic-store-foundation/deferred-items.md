@@ -6,6 +6,15 @@ Discoveries made during plan execution that are out of scope for the plan that f
 
 **Resolution (post-merge integration fix, autonomous orchestrator):** The break was wider than relay — it also hit `applesauce-loaders` (`address-loader.ts`, `event-loader.ts`, `tag-value-loader.ts`, `timeline-loader.ts`). Applied the suggested fix: explicit `new EventMemory<NostrEvent>()` at all six `filterDuplicateEvents(... ?? new EventMemory())` call sites across `packages/relay/src/group.ts` (×2) and the four loaders. Full workspace build and `applesauce-core` tests (592/592) green afterward. Changeset `event-memory-nostrevent-callsites.md` (loaders + relay, patch). `common/gift-wrap.ts`'s bare `new EventMemory()` was left untouched — it resolves to the `NostrEvent` default correctly and is rumor-typing territory for Phase 4.
 
+## 2. Code-review carry-forward items (01-REVIEW.md) — owned by later phases, NOT Phase 1 defects
+
+The Phase 1 code review (`01-REVIEW.md`) found no blockers. Its two WARNINGs are intentional scope boundaries whose real resolution belongs to downstream phases. They are recorded here so the discuss/plan steps of those phases address them explicitly.
+
+- **WR-01 → OWNED BY PHASE 3 (RumorStore & verification).** `EventStore`/`AsyncEventStore` default verifier is `coreVerifyEvent as unknown as (event: E) => boolean`. Correct for `E = NostrEvent`, but an `EventStore<Rumor>()` with no explicit `verifyEvent` would run nostr-tools' signature check against unsigned rumors and silently drop every event. `EventStore` cannot know `E` at runtime, so the correct fix is for `RumorStore` (Phase 3) to supply `verifyEvent: verifyRumor` as its default. **Phase 3 must wire `verifyRumor` as RumorStore's default verifier and cover it with a test proving rumors are NOT dropped.**
+- **WR-02 → OWNED BY PHASE 2 (Generic models & casts).** `IEventStore<E>`/`IAsyncEventStore<E>` currently extend the un-parameterized `IEventSubscriptions` and `IEventModelMixin<IEventStore>` (the deliberate D-02 seam with the still-non-generic `EventModels`), so `E` is dropped from subscription return types (`timeline()`, `event()`, `filters()` return `NostrEvent`, not `E`). **Phase 2 genericizes the model framework and should thread `E` through `IEventSubscriptions<E>`/`IEventModelMixin` so the currently-dead type parameter becomes live.**
+- **IN-01 (migration notes):** the `verifyEvent: undefined` semantic flip (verification ON-by-default → OFF with a `console.warn`) is intended but security-relevant for that specific input; ensure milestone migration notes call it out.
+- **IN-02 (informational):** the `as unknown as NostrEvent` bridges in `event-memory.ts`/`delete-manager.ts` are safe today (call sites read only `StoreEvent` fields) but fragile against future upstream `nostr-tools` changes.
+
 
 - **Found during:** Plan 01-04, Task 2 downstream-build sanity check (`pnpm --filter applesauce-relay build`).
 - **Symptom:** `packages/relay/src/group.ts:260` and `:277` — `filterDuplicateEvents(opts?.eventStore ?? new EventMemory())` fails to type-check with:
