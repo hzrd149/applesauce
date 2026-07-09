@@ -14,7 +14,7 @@ Requirements for this milestone. Each maps to a roadmap phase. Part A (CORE + RU
 - [x] **CORE-03**: The store constructor honors an explicit `verifyEvent: undefined` to disable verification
 - [x] **CORE-04**: Structural core helpers (`getEventUID`, `getReplaceableAddress`, `getReplaceableIdentifier`, `getIndexableTags`, `matchFilter`/`matchFilters`, `getExpirationTimestamp`, `eventMatchesPointer`, `addSeenRelay`/`getSeenRelays`/`isFromRelay`) accept any `E extends StoreEvent`
 - [x] **CORE-05**: Store interfaces and managers (`DeleteManager`, `AsyncDeleteManager`, `ExpirationManager`, `EventMemory`, and the `IEventStore*`/`IEventDatabase*`/`IDeleteManager`/`IExpirationManager` interfaces) are generic over `E extends StoreEvent`
-- [ ] **CORE-06**: Core models (`EventModels`, `EventModel`, `ReplaceableModel`, `TimelineModel`, `FiltersModel`) return `E`-typed observables
+- [x] **CORE-06**: Core models (`EventModels`, `EventModel`, `ReplaceableModel`, `TimelineModel`, `FiltersModel`) return `E`-typed observables
 - [ ] **CORE-07**: Core cast infrastructure (`CastRefEventStore<E>`, `EventCast<E>`, `CastConstructor`, `castEvent`, `castEventStream`, `castTimelineStream`) is generic
 
 ### Rumor Store
@@ -63,7 +63,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CORE-03 | Phase 1 | Complete |
 | CORE-04 | Phase 1 | Complete |
 | CORE-05 | Phase 1 | Complete |
-| CORE-06 | Phase 2 | Pending |
+| CORE-06 | Phase 2 | Complete |
 | CORE-07 | Phase 2 | Pending |
 | RUMOR-01 | Phase 1 | Complete |
 | RUMOR-02 | Phase 1 | Complete |
