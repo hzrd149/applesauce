@@ -35,9 +35,9 @@ import {
   parseRekey,
   rekeyLocator,
   ROOT_SCOPE_HEX,
+  buildRekeyRumors,
 } from "./rekey.js";
 import { giftWrap, rewrapSeal, sealRumor, toRumor, wrapSeal } from "../operations/gift-wrap.js";
-import { buildRekeyFactories } from "../factories/rekey.js";
 import { buildSnapshotFactories } from "../factories/guestbook.js";
 import { PLAINTEXT_SEAL_KIND } from "./gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent, JoinMaterial, RumorTemplate } from "../types.js";
@@ -268,11 +268,11 @@ export async function buildRefounding(
   }
   const rekeyAddr = baseRekeyGroupKey(oldRoot, cidBytes, newEpoch);
   const rekeyWraps: NostrEvent[] = [];
-  for (const factory of buildRekeyFactories(
+  for (const rumor of buildRekeyRumors(
     { scope: { kind: "root" }, newEpoch: BigInt(newEpoch), prevEpoch: BigInt(oldEpoch), prevCommit },
     blobs,
   )) {
-    const wrap = await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await factory);
+    const wrap = await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await rumor);
     rekeyWraps.push(wrap);
   }
 
@@ -542,11 +542,11 @@ export async function buildChannelRekey(
 
   const rekeyAddr = channelRekeyGroupKey(hexToBytes(opts.priorRoot ?? material.community_root), channelId, newEpoch);
   const rekeyWraps: NostrEvent[] = [];
-  for (const factory of buildRekeyFactories(
+  for (const rumor of buildRekeyRumors(
     { scope: { kind: "channel", channelId }, newEpoch: BigInt(newEpoch), prevEpoch: BigInt(oldEpoch), prevCommit },
     blobs,
   )) {
-    rekeyWraps.push(await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await factory));
+    rekeyWraps.push(await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await rumor));
   }
 
   return { rekeyWraps, next: rollForwardChannel(channel, bytesToHex(newKey), newEpoch), newEpoch };

@@ -1,5 +1,5 @@
 // Concord factories — EventFactory subclasses for each plane. The rumor
-// factories (chat/guestbook/control/rekey) build unsigned rumor templates by
+// factories (chat/guestbook/control) build unsigned rumor templates by
 // chaining ../operations onto blank templates; the envelope (../stream.js)
 // seals and wraps the finished rumor, so those factories never sign. The
 // outside-the-wrap factories build ordinary signed events: the addressable
@@ -11,7 +11,6 @@
 export * from "./edit.js";
 export * from "./guestbook.js";
 export * from "./control.js";
-export * from "./rekey.js";
 export * from "./invite-bundle.js";
 export * from "./direct-invite.js";
 export * from "./community-list.js";

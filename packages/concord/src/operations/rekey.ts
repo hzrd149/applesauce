@@ -1,5 +1,5 @@
 // CORD-06 Rekey rumor operations: one chunk of per-recipient rekey blobs.
-// Composed into kind 3303 rumor templates by ../factories/rekey.js.
+// Composed into kind 3303 rumor templates by buildRekeyRumors in ../helpers/rekey.js.
 
 import type { EventOperation } from "applesauce-core/factories";
 import { modifyPublicTags } from "applesauce-core/operations";

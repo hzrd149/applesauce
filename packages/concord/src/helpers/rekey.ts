@@ -14,7 +14,10 @@
 // concord-v2/lib/rekey.ts byte-for-byte (interop-verified in scripts/interop.ts).
 
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { blankEventTemplate } from "applesauce-core/factories";
+import type { EventTemplate } from "applesauce-core/helpers/event";
 import { epochKeyCommitment, recipientLocator } from "./crypto.js";
+import { includeRekeyChunk } from "../operations/rekey.js";
 import type { DecodedEvent } from "../types.js";
 
 /** Concord rekey blob kind (CORD-06). */
@@ -93,6 +96,29 @@ export interface RekeyRotation {
   prevEpoch: bigint;
   /** The epoch-key commitment over the key being replaced (continuity check). */
   prevCommit: string;
+}
+
+/**
+ * Build the chunked kind 3303 rekey rumors for one rotation (CORD-06 §1): the
+ * blobs are split into events of at most {@link REKEY_BLOBS_PER_EVENT}, each
+ * stamped with the rotation-machinery tags via {@link includeRekeyChunk}. An
+ * empty blob set still yields one (empty) chunk so a COMPLETE rotation is always
+ * publishable. Returns unsigned rumor templates for the caller to seal + wrap at
+ * the rekey address (../operations/gift-wrap.js) — building rekey events is
+ * plane-agnostic, so it is a plain helper rather than an exposed factory.
+ */
+export function buildRekeyRumors(
+  rotation: RekeyRotation,
+  blobs: RekeyBlob[],
+  ms: number = Date.now(),
+): Promise<EventTemplate>[] {
+  const chunks: RekeyBlob[][] = [];
+  for (let i = 0; i < blobs.length; i += REKEY_BLOBS_PER_EVENT) chunks.push(blobs.slice(i, i + REKEY_BLOBS_PER_EVENT));
+  if (chunks.length === 0) chunks.push([]);
+  const n = chunks.length;
+  return chunks.map((chunk, i) =>
+    Promise.resolve(includeRekeyChunk(rotation, chunk, i + 1, n, ms)(blankEventTemplate(REKEY_KIND))),
+  );
 }
 
 export interface ParsedRekey {

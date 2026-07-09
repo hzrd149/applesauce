@@ -4,11 +4,13 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import type { RumorTemplate } from "../../types.js";
 import { epochKeyCommitment } from "../crypto.js";
 import {
+  buildRekeyRumors,
   checkContinuity,
   decodeWrappedKey,
   encodeWrappedKey,
   groupRotations,
   parseRekey,
+  REKEY_KIND,
   rekeyScopeId,
 } from "../rekey.js";
 import { decoded } from "./test-utils.js";
@@ -50,5 +52,27 @@ describe("rekey codec", () => {
     const sets = groupRotations([parsed!]);
     expect(sets).toHaveLength(1);
     expect(sets[0].complete).toBe(true);
+  });
+
+  it("buildRekeyRumors chunks blobs into complete 3303 rumors", async () => {
+    const blobs = Array.from({ length: 121 }, (_, i) => ({ locator: String(i), wrapped: "w" }));
+    const rumors = await Promise.all(
+      buildRekeyRumors({ scope: { kind: "root" }, newEpoch: 1n, prevEpoch: 0n, prevCommit: "cc" }, blobs),
+    );
+    expect(rumors).toHaveLength(2);
+    expect(rumors[0].kind).toBe(REKEY_KIND);
+    expect(rumors[0].tags).toContainEqual(["chunk", "1", "2"]);
+    expect(rumors[1].tags).toContainEqual(["chunk", "2", "2"]);
+    expect(JSON.parse(rumors[0].content)).toHaveLength(120);
+    expect(JSON.parse(rumors[1].content)).toHaveLength(1);
+  });
+
+  it("buildRekeyRumors emits one empty chunk for an empty blob set", async () => {
+    const rumors = await Promise.all(
+      buildRekeyRumors({ scope: { kind: "root" }, newEpoch: 1n, prevEpoch: 0n, prevCommit: "cc" }, []),
+    );
+    expect(rumors).toHaveLength(1);
+    expect(rumors[0].tags).toContainEqual(["chunk", "1", "1"]);
+    expect(JSON.parse(rumors[0].content)).toEqual([]);
   });
 });
