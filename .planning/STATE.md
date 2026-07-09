@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: event-store-supports-rumors
 current_phase: 03
 current_phase_name: rumorstore-verification
-status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-07-09T04:53:02.558Z"
+status: verifying
+stopped_at: Completed 03-03-PLAN.md (Phase 3 complete)
+last_updated: "2026-07-09T05:02:36.660Z"
 last_activity: 2026-07-09
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 9
-  percent: 50
+  completed_plans: 10
+  percent: 75
 ---
 
 # Project State
@@ -23,13 +23,13 @@ progress:
 
 Phase: 03 (rumorstore-verification) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-09 — Phase 03 execution started
 
 ## Session
 
-**Last session:** 2026-07-09T04:53:02.550Z
-**Stopped at:** Completed 03-02-PLAN.md
+**Last session:** 2026-07-09T05:02:36.653Z
+**Stopped at:** Completed 03-03-PLAN.md (Phase 3 complete)
 **Resume file:** None
 
 ## Performance Metrics
@@ -45,6 +45,7 @@ Last activity: 2026-07-09 — Phase 03 execution started
 | Phase 02-generic-models-casts P03 | 12min | 2 tasks | 3 files |
 | Phase 03 P01 | 20min | 2 tasks | 5 files |
 | Phase 03 P02 | 15min | 2 tasks | 2 files |
+| Phase 03 P03 | 12min | 2 tasks | 2 files |
 
 ## Decisions
 
@@ -65,3 +66,5 @@ Last activity: 2026-07-09 — Phase 03 execution started
 - [Phase 03]: Test rumors constructed as plain object literals with getEventHash-computed ids rather than via FakeUser, to directly demonstrate unsigned rumor-shaped input
 - [Phase 03 Plan 02]: Used sig-gated CastEventInput<T> = T extends { sig: string } ? NostrEvent : StoreEvent (not the naive exact-T conditional) for castEvent's public input, since the exact-T form was empirically proven in RESEARCH to over-tighten concord's ConcordDirectInvite narrowed-kind rumor cast
 - [Phase 03 Plan 02]: cast-stream.ts imports EventCast from ../casts/event.js and performCast from ../casts/cast.js separately, since cast.ts imports EventCast locally without re-exporting it
+- [Phase 03 Plan 03]: Used a minimal local SignedOnlyCast probe class (reads this.event.sig) rather than reusing a production cast, keeping the WR-01 regression guard self-contained
+- [Phase 03 Plan 03]: RumorStore was already present in the exports snapshot from plan 01; this plan's regeneration only needed to absorb performCast

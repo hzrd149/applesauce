@@ -13,7 +13,7 @@ Genericize the applesauce event layer so it can operate over unsigned NIP-59 `Ru
 
 - [x] **Phase 1: Generic store foundation** - Genericize `EventStore`/`AsyncEventStore`, structural helpers, store interfaces & managers; add rumor types & verifier (completed 2026-07-09)
 - [x] **Phase 2: Generic models & casts** - Genericize core models and cast infrastructure over `E extends StoreEvent` (completed 2026-07-09)
-- [ ] **Phase 3: RumorStore & verification** - Add `RumorStore`, kind-5 delete handling, and rumor/cast test coverage (Part A gate)
+- [x] **Phase 3: RumorStore & verification** - Add `RumorStore`, kind-5 delete handling, and rumor/cast test coverage (Part A gate) (completed 2026-07-09)
 - [ ] **Phase 4: Common package rumor support** - Genericize `applesauce-common` helpers and casts (gated on Phase 3)
 
 ## Phase Details
@@ -73,13 +73,13 @@ Plans:
   4. A custom `EventCast<Rumor>` works with `castEvent` against a rumor store
   5. New rumor tests pass and `pnpm --filter applesauce-core test` + `build` are green (Part A proven)
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 
 - [x] 03-01-PLAN.md — RumorStore class + accept/reject/streams/kind-5-delete tests (wave 1)
 - [x] 03-02-PLAN.md — Sig-gated castEvent WR-01 fix (CastEventInput/performCast split) (wave 1)
-- [ ] 03-03-PLAN.md — RUMOR-06 test vs real RumorStore + exports snapshot + Part A gate (wave 2)
+- [x] 03-03-PLAN.md — RUMOR-06 test vs real RumorStore + exports snapshot + Part A gate (wave 2)
 
 ### Phase 4: Common package rumor support
 
@@ -109,5 +109,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Generic store foundation | 4/4 | Complete    | 2026-07-09 |
 | 2. Generic models & casts | 3/3 | Complete    | 2026-07-09 |
-| 3. RumorStore & verification | 2/3 | In Progress|  |
+| 3. RumorStore & verification | 3/3 | Complete   | 2026-07-09 |
 | 4. Common package rumor support | 0/TBD | Not started | - |
