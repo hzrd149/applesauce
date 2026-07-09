@@ -27,10 +27,13 @@ Genericize the applesauce event layer so it can operate over unsigned NIP-59 `Ru
   3. `StoreEvent` and `Rumor` types plus `verifyRumor` are exported from `packages/core/src/helpers/event.ts`, and `verifyRumor` returns true only when `getEventHash(rumor) === rumor.id`
   4. Structural helpers and store interfaces/managers (`DeleteManager`, `ExpirationManager`, `EventMemory`) accept any `E extends StoreEvent`
   5. `pnpm --filter applesauce-core test` and `pnpm --filter applesauce-core build` pass unchanged
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md — Rumor verifier + genericize CORE-04 structural helpers (wave 1)
+- [ ] 01-02-PLAN.md — Genericize event-store interfaces over E extends StoreEvent (wave 1)
+- [ ] 01-03-PLAN.md — Genericize managers (DeleteManager/AsyncDeleteManager/ExpirationManager/EventMemory) (wave 2)
+- [ ] 01-04-PLAN.md — Genericize EventStore/AsyncEventStore + CORE-03 verifyEvent:undefined fix (wave 3)
 
 ### Phase 2: Generic models & casts
 **Goal**: Genericize the reactive model framework and cast infrastructure so `EventStore<E>` returns `E`-typed observables and casts compose over any store event.
@@ -83,7 +86,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Generic store foundation | 0/TBD | Not started | - |
+| 1. Generic store foundation | 0/4 | Not started | - |
 | 2. Generic models & casts | 0/TBD | Not started | - |
 | 3. RumorStore & verification | 0/TBD | Not started | - |
 | 4. Common package rumor support | 0/TBD | Not started | - |
