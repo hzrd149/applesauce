@@ -167,3 +167,7 @@ None - no external service configuration required.
 ---
 *Phase: 02-generic-models-casts*
 *Completed: 2026-07-09*
+
+## Self-Check: PASSED
+
+All created/modified files and all three task/summary commit hashes (`42b820d8`, `7e206a70`, `ea3fc6ed`) were verified present on disk and in git history.
