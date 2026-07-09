@@ -1,14 +1,15 @@
-import { NostrEvent } from "../helpers/event.js";
+import { NostrEvent, StoreEvent } from "../helpers/event.js";
 import { finalize, MonoTypeOperatorFunction, tap } from "rxjs";
 
 import { IEventClaims } from "../event-store/interface.js";
 
 /** keep a claim on any event that goes through this observable, claims are removed when the observable is unsubscribed or completes */
-export function claimEvents<T extends NostrEvent[] | NostrEvent | undefined>(
-  claims: IEventClaims,
-): MonoTypeOperatorFunction<T> {
+export function claimEvents<
+  E extends StoreEvent = NostrEvent,
+  T extends E[] | E | undefined = E[] | E | undefined,
+>(claims: IEventClaims<E>): MonoTypeOperatorFunction<T> {
   return (source) => {
-    const seen = new Set<NostrEvent>();
+    const seen = new Set<E>();
 
     return source.pipe(
       // claim all events
@@ -21,9 +22,9 @@ export function claimEvents<T extends NostrEvent[] | NostrEvent | undefined>(
             seen.add(event);
             claims.claim(event);
           }
-        } else if (!seen.has(message)) {
-          seen.add(message);
-          claims.claim(message);
+        } else if (!seen.has(message as E)) {
+          seen.add(message as E);
+          claims.claim(message as E);
         }
       }),
       // remove claims on cleanup

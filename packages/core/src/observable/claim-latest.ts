@@ -1,12 +1,14 @@
-import { NostrEvent } from "../helpers/event.js";
+import { NostrEvent, StoreEvent } from "../helpers/event.js";
 import { finalize, MonoTypeOperatorFunction, tap } from "rxjs";
 
 import { IEventClaims } from "../event-store/interface.js";
 
 /** An operator that claims the latest event with the database */
-export function claimLatest<T extends NostrEvent | undefined>(claims: IEventClaims): MonoTypeOperatorFunction<T> {
+export function claimLatest<E extends StoreEvent = NostrEvent, T extends E | undefined = E | undefined>(
+  claims: IEventClaims<E>,
+): MonoTypeOperatorFunction<T> {
   return (source) => {
-    let latest: NostrEvent | undefined = undefined;
+    let latest: E | undefined = undefined;
 
     return source.pipe(
       tap((event) => {
