@@ -3,7 +3,7 @@
 // ../stream.js.
 
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
-import { JOIN_LEAVE_KIND, KICK_KIND, SNAPSHOT_KIND } from "../helpers/guestbook.js";
+import { JOIN_LEAVE_KIND, KICK_KIND, SNAPSHOT_KIND, type JoinLeaveVerb } from "../helpers/guestbook.js";
 import { SNAPSHOT_CHUNK } from "../helpers/guestbook.js";
 import { includeMs } from "../operations/channel.js";
 import {
@@ -23,7 +23,7 @@ export interface JoinLeaveOptions {
 
 /** A factory for kind 3306 join/leave rumors (CORD-02 §5). */
 export class JoinLeaveFactory extends EventFactory<typeof JOIN_LEAVE_KIND> {
-  static create(verb: "join" | "leave", opts?: JoinLeaveOptions): JoinLeaveFactory {
+  static create(verb: JoinLeaveVerb, opts?: JoinLeaveOptions): JoinLeaveFactory {
     let factory = new JoinLeaveFactory((res) => res(blankEventTemplate(JOIN_LEAVE_KIND)));
     factory = factory.verb(verb).ms(opts?.ms);
     if (opts?.invite) factory = factory.invite(opts.invite.creator, opts.invite.label);
@@ -31,7 +31,7 @@ export class JoinLeaveFactory extends EventFactory<typeof JOIN_LEAVE_KIND> {
   }
 
   /** Sets the join/leave verb as this rumor's content (CORD-02 §5) */
-  verb(verb: "join" | "leave") {
+  verb(verb: JoinLeaveVerb) {
     return this.chain(setJoinLeave(verb));
   }
 

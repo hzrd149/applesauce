@@ -1,7 +1,7 @@
 /**
  * Browse and manage Nostr groups with metadata and member information
  * @tags nip-29, nip-42, group, groups
- * @related group/communikeys, group/relay-chat
+ * @related group/relay-chat
  */
 import { encodeGroupPointer, getGroupPointerFromMetadata } from "applesauce-common/helpers";
 import { mapEventsToTimeline } from "applesauce-core";

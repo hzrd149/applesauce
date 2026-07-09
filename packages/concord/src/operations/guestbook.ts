@@ -6,6 +6,8 @@ import type { EventOperation } from "applesauce-core/factories";
 import { modifyPublicTags } from "applesauce-core/operations";
 import { addNameValueTag, addProfilePointerTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 
+import type { JoinLeaveVerb } from "../helpers/guestbook.js";
+
 /** Guard the 1-based `snap`/`chunk` index contract (CORD-02 §5, CORD-06 §1). */
 function assertChunkIndex(index: number, count: number): void {
   if (!Number.isInteger(index) || !Number.isInteger(count) || count < 1 || index < 1 || index > count)
@@ -13,7 +15,7 @@ function assertChunkIndex(index: number, count: number): void {
 }
 
 /** Set a join/leave rumor's verb as its content (CORD-02 §5). */
-export function setJoinLeave(verb: "join" | "leave"): EventOperation {
+export function setJoinLeave(verb: JoinLeaveVerb): EventOperation {
   return (draft) => ({ ...draft, content: verb });
 }
 

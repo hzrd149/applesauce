@@ -67,6 +67,16 @@
       "import": "./dist/casts/*.js",
       "require": "./dist/casts/*.js",
       "types": "./dist/casts/*.d.ts"
+    },
+    "./models": {
+      "import": "./dist/models/index.js",
+      "require": "./dist/models/index.js",
+      "types": "./dist/models/index.d.ts"
+    },
+    "./models/*": {
+      "import": "./dist/models/*.js",
+      "require": "./dist/models/*.js",
+      "types": "./dist/models/*.d.ts"
     }
   },
   "dependencies": {
@@ -78,11 +88,13 @@
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
+    "applesauce-loaders": "^6.2.0",
     "applesauce-relay": "^6.2.0",
     "applesauce-signers": "^6.2.0"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
+    "applesauce-loaders": "^6.2.0",
     "applesauce-relay": "^6.2.0",
     "applesauce-signers": "^6.2.0",
     "rimraf": "^6.0.1",

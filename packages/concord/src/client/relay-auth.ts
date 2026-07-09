@@ -23,7 +23,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import type { ISigner } from "applesauce-signers";
 import { BehaviorSubject, Subscription, combineLatest } from "rxjs";
 import type { Relay, RelayPool } from "applesauce-relay";
-import type { GroupKey } from "./helpers/crypto.js";
+import type { GroupKey } from "../helpers/crypto.js";
 
 // One shared auth driver per relay URL, reference-counted. Both the control and
 // channel gift-wrap subscriptions target the same relays and the same

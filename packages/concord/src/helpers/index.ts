@@ -3,6 +3,7 @@
 // edition/genesis builders. All framework-agnostic — no EventStore, no relay,
 // no client state.
 
+export * from "./stream.js";
 export * from "./crypto.js";
 export * from "./gift-wrap.js";
 export * from "./permissions.js";

@@ -5,7 +5,7 @@
  * so each plane's history renders live via `rumorStore.timeline`. Author avatars and names are pulled
  * from a separate global EventStore that lazily loads kind-0 profiles from public indexer relays.
  * @tags concord, encryption, rumor-store, timeline, epochs, rekey, relays, profiles
- * @related concord/crypto-history, concord/crypto-lifecycle
+ * @related concord/crypto-history, concord/models
  */
 import { EventStore, RumorStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
@@ -18,6 +18,7 @@ import {
   type InviteBundle,
   type JoinMaterial,
 } from "applesauce-concord";
+import { ConcordCommunityStateModel } from "applesauce-concord/models";
 
 const {
   decodeWrap,
@@ -30,8 +31,6 @@ const {
   parseInviteLink,
   readRekey,
   refoundAuthority,
-  resolveStanding,
-  foldMembers,
   STOCK_RELAYS,
   verifyOwner,
 } = Helpers;
@@ -154,16 +153,14 @@ async function loadEpoch(
   const authorsA = [keys.control.pk, keys.guestbook.pk, keys.dissolved.pk, keys.nextBaseRekey.key.pk];
   const control: DecodedEvent[] = [];
   const rekey: DecodedEvent[] = [];
-  const guestbook: DecodedEvent[] = [];
-  const dissolved: DecodedEvent[] = [];
   for (const ev of await fetchWraps(relays, authorsA)) {
     const info = keys.planes.get(ev.pubkey);
     if (!info) continue;
     const d = decodeWrap(ev, info.convKey);
     if (!d) continue;
     if (info.type === "control") (control.push(d), emit("control", d));
-    else if (info.type === "guestbook") (guestbook.push(d), emit("guestbook", d));
-    else if (info.type === "dissolved") (dissolved.push(d), emit("dissolved", d));
+    else if (info.type === "guestbook") emit("guestbook", d);
+    else if (info.type === "dissolved") emit("dissolved", d);
     else if (info.type === "rekey") (rekey.push(d), emit("rekey", d));
   }
 
@@ -173,7 +170,6 @@ async function loadEpoch(
   const channelName = new Map(state0.channels.map((c) => [c.channel_id, c.name] as const));
   keys = deriveConcordKeys(epochMaterial, state0.channels, prior);
   relayAuth.registerStreamKeys([...keys.channels.values()]);
-  const channelDecoded: DecodedEvent[] = [];
   for (const ev of await fetchWraps(
     relays,
     [...keys.channels.values()].map((k) => k.pk),
@@ -182,20 +178,11 @@ async function loadEpoch(
     if (!info || info.type !== "channel" || !info.channelId) continue;
     const d = decodeWrap(ev, info.convKey);
     if (!d) continue;
-    channelDecoded.push(d);
     emit("channel", d, info.channelId, channelName.get(info.channelId));
   }
 
-  // 4. Decide the transition exactly as crypto-history does (fold members for standing/authority).
-  const observed = new Map<string, number>();
-  for (const d of [...control, ...guestbook, ...channelDecoded, ...dissolved])
-    if (d.ms > (observed.get(d.author) ?? 0)) observed.set(d.author, d.ms);
-  const rolesMap = new Map(state0.roles.map((r) => [r.role_id, r]));
-  const members = foldMembers(guestbook, observed, state0.banlist, (m) =>
-    resolveStanding(m, epochMaterial.owner, rolesMap, state0.grants),
-  );
-  const state = { ...state0, members };
-
+  // 4. Decide the transition exactly as crypto-history does. The reactive UI folds members with
+  //    ConcordCommunityStateModel once the decoded rumors are in their RumorStores.
   let transition: Transition = "tip";
   let adoptedMaterial: JoinMaterial | undefined;
   if (chainHasNext) {
@@ -203,7 +190,7 @@ async function loadEpoch(
   } else if (!signer.nip44) {
     transition = "cannot-follow";
   } else {
-    const outcome = await readRekey(keys, rekey, refoundAuthority(state), self, signer, state.channels);
+    const outcome = await readRekey(keys, rekey, refoundAuthority(state0), self, signer, state0.channels);
     if (outcome.kind === "adopt") {
       transition = "adopt";
       adoptedMaterial = outcome.next.material;
@@ -429,6 +416,15 @@ function Walker({
   const channels = planes.filter((p) => p.kind === "channel");
   const system = planes.filter((p) => p.kind !== "channel");
   const activeStore = selected ? storesRef.current.get(selected) : undefined;
+  const communityState = use$(() => {
+    const control = storesRef.current.get("control");
+    const guestbook = storesRef.current.get("guestbook");
+    if (!control || !guestbook) return undefined;
+    return control.model(ConcordCommunityStateModel, material, {
+      guestbook,
+      observed: [...storesRef.current.values()],
+    });
+  }, [material, planes.length]);
 
   return (
     <div className="w-full p-4 flex flex-col gap-4">
@@ -446,6 +442,11 @@ function Walker({
         <span className="badge badge-outline">{epochs.length} epochs</span>
         <span className="badge badge-outline">{planes.length} planes</span>
         <span className="badge badge-outline">{total} rumors</span>
+        <span className="badge badge-outline">{communityState?.members.size ?? 0} members</span>
+        <span className="badge badge-outline">{communityState?.banlist.size ?? 0} banned</span>
+        {communityState && (
+          <span className="badge badge-outline">{communityState.inviteLinks.size > 0 ? "public" : "private"}</span>
+        )}
       </div>
 
       {epochs.length > 0 && (

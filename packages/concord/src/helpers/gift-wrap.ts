@@ -16,7 +16,7 @@
 import { safeParse } from "applesauce-core/helpers";
 import { kinds, type NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { nip44 } from "applesauce-core/helpers/encryption";
-import { rumorMs } from "../stream.js";
+import { rumorMs } from "./stream.js";
 import type { DecodedEvent, RawEvent, Rumor } from "../types.js";
 
 /** NIP-59 gift wrap kind (1059), sourced from applesauce-core. */

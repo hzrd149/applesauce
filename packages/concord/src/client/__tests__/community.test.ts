@@ -1,0 +1,199 @@
+// ConcordCommunity over a dependency-injected EventStore/RelayPool — no network.
+// A fake pool (inert request/subscription/sync streams) exercises the epoch-atomic
+// sync (which completes against empty relays and opens a live subscription at the
+// tip) plus the fold-via-models + optimistic local-echo path. Live relay behaviour
+// is covered by the puppeteer drivers.
+
+import { describe, expect, it } from "vitest";
+import { BehaviorSubject, EMPTY, NEVER, Subject } from "rxjs";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { PrivateKeySigner } from "applesauce-signers";
+import { EventStore } from "applesauce-core";
+import type { RelayPool } from "applesauce-relay";
+
+import { kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
+import { hexToBytes } from "@noble/hashes/utils.js";
+
+import { ConcordRelayAuth } from "../relay-auth.js";
+import { createCommunity } from "../../helpers/community.js";
+import { channelRekeyGroupKey, controlGroupKey } from "../../helpers/crypto.js";
+import { ConcordCommunity } from "../community.js";
+
+// The control fold + sync are debounced/async; let them run before asserting.
+const settle = () => new Promise((r) => setTimeout(r, 200));
+
+// A RelayPool stand-in whose per-relay methods are inert (no sockets). The sync
+// loader probes `getSupported` (→ no NIP-77) and pages `request` (→ no events).
+function fakePool(): RelayPool {
+  const relay = {
+    url: "wss://fake",
+    challenge: null,
+    challenge$: new BehaviorSubject<string | null>(null),
+    isAuthenticated: () => false,
+    authenticate: async () => ({ ok: true }),
+    getSupported: async () => null,
+    request: () => EMPTY,
+    sync: () => EMPTY,
+  };
+  return {
+    status$: new Subject(),
+    relay: () => relay,
+    subscription: () => NEVER,
+    request: () => EMPTY,
+    publish: async () => [],
+  } as unknown as RelayPool;
+}
+
+describe("ConcordCommunity (DI, no network)", () => {
+  it("reflects genesis + chat via optimistic local echo", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Test",
+      description: "hi",
+      relays: ["wss://fake"],
+    });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+
+    // Sync walks every epoch against the empty relays, then opens live at the tip.
+    await community.start();
+
+    // Seed genesis control editions (plaintext) + owner Join via optimistic echo.
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    expect(community.state$.value.metadata?.name).toBe("Test");
+    const general = community.state$.value.channels.find((c) => c.name === "general");
+    expect(general).toBeDefined();
+    expect(community.state$.value.members.has(pubkey)).toBe(true); // owner is a member
+
+    // Consumers read the channel store directly with the standard timeline API.
+    let messages: Rumor[] = [];
+    const sub = community.channelStore(general!.channel_id).timeline([{ kinds: [kinds.ChatMessage] }]).subscribe((m) => (messages = m));
+    await community.sendMessage(general!.channel_id, "hello world");
+    await settle();
+    expect(messages.some((m) => m.content === "hello world" && m.pubkey === pubkey)).toBe(true);
+
+    sub.unsubscribe();
+    community.dispose();
+  });
+
+  it("spawns a sub-engine for a private channel and rotates its key", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Create a private channel — mints its key + publishes the CHANNEL edition;
+    // once it folds, the community spawns a ConcordPrivateChannel sub-engine.
+    const channelId = await community.createChannel("secret", true);
+    await settle();
+    expect(community.state$.value.channels.find((c) => c.channel_id === channelId)?.private).toBe(true);
+
+    // A message to the private channel lands in its (sub-engine-owned) store.
+    let messages: Rumor[] = [];
+    const sub = community
+      .channelStore(channelId)
+      .timeline([{ kinds: [kinds.ChatMessage] }])
+      .subscribe((m) => (messages = m));
+    await community.sendMessage(channelId, "secret hello");
+    await settle();
+    expect(messages.some((m) => m.content === "secret hello")).toBe(true);
+
+    // Rotate the channel key (its own epoch 1 → 2, independent of the community root).
+    await community.rotateChannel(channelId, { keep: [pubkey] });
+    await settle();
+    await settle();
+    const rotated = community.material.channels.find((c) => c.id === channelId);
+    expect(rotated?.epoch).toBe(2);
+    expect(rotated?.held?.[0]?.epoch).toBe(1);
+
+    sub.unsubscribe();
+    community.dispose();
+  });
+
+  it("refound compacts control heads (seals recovered) and does not leak private-channel keys", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return [];
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+    const channelId = await community.createChannel("secret", true);
+    await settle();
+    await community.sendMessage(channelId, "secret hello");
+    await settle();
+
+    const cid = hexToBytes(community.material.community_id);
+    const priorRoot = hexToBytes(community.material.community_root);
+    const channel = community.material.channels.find((c) => c.id === channelId)!;
+    const channelRekeyAddr = channelRekeyGroupKey(priorRoot, hexToBytes(channelId), channel.epoch + 1).pk;
+
+    // Refound WITHOUT naming the private channel: no rekey blob should be published
+    // to its address — a kept member who was never in it must not receive its key.
+    published.length = 0;
+    await community.refound({ keep: [pubkey] });
+    await settle();
+    expect(published.some((e) => e.pubkey === channelRekeyAddr)).toBe(false);
+
+    // Compaction re-wrapped the folded control heads into the NEW epoch's control
+    // plane — proving the plaintext seals were recovered from the wrap store (they
+    // are stripped from the RumorStore fold).
+    const newControlPk = controlGroupKey(hexToBytes(community.material.community_root), cid, community.material.root_epoch).pk;
+    expect(published.some((e) => e.pubkey === newControlPk)).toBe(true);
+
+    // A refound that DOES name the channel rotates it (delivered to its keep set).
+    const priorRoot2 = hexToBytes(community.material.community_root);
+    const channel2 = community.material.channels.find((c) => c.id === channelId)!;
+    const channelRekeyAddr2 = channelRekeyGroupKey(priorRoot2, hexToBytes(channelId), channel2.epoch + 1).pk;
+    published.length = 0;
+    await community.refound({ keep: [pubkey], channelRekeys: [{ channelId, keep: [pubkey] }] });
+    await settle();
+    expect(published.some((e) => e.pubkey === channelRekeyAddr2)).toBe(true);
+
+    community.dispose();
+  });
+});

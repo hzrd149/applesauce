@@ -14,6 +14,8 @@ import type { ISigner } from "applesauce-signers";
 
 import {
   baseRekeyGroupKey,
+  channelGroupKey,
+  channelRekeyGroupKey,
   controlGroupKey,
   dissolvedGroupKey,
   epochKeyCommitment,
@@ -38,7 +40,7 @@ import { giftWrap, rewrapSeal, sealRumor, toRumor, wrapSeal } from "../operation
 import { buildRekeyFactories } from "../factories/rekey.js";
 import { buildSnapshotFactories } from "../factories/guestbook.js";
 import { PLAINTEXT_SEAL_KIND } from "./gift-wrap.js";
-import type { ChannelMetadata, DecodedEvent, JoinMaterial, RumorTemplate } from "../types.js";
+import type { ChannelKey, ChannelMetadata, DecodedEvent, JoinMaterial, RumorTemplate } from "../types.js";
 
 /** A decrypt-side descriptor: which plane a stream pubkey addresses, and the
  *  NIP-44 conversation key that opens its wraps. */
@@ -207,6 +209,10 @@ export function rollForward(
 export interface RefoundingPlan {
   /** Per-recipient rekey blobs at the base-rekey address — publish (await) first. */
   rekeyWraps: NostrEvent[];
+  /** Channel-scoped rekey blobs for the bundled private channels (CORD-06 §94),
+   *  sealed under the PRIOR root — publish (await) alongside `rekeyWraps`. Empty
+   *  unless `channelRekeys` was passed. */
+  channelRekeyWraps: NostrEvent[];
   /** Control-plane heads re-wrapped into the new epoch (best-effort). */
   compactionWraps: NostrEvent[];
   /** New-guestbook snapshot rumors (best-effort, non-gating). */
@@ -236,6 +242,9 @@ export async function buildRefounding(
     heads: Iterable<DecodedEvent>;
     /** The current folded channels, for re-deriving the rolled key state. */
     channels: ChannelMetadata[];
+    /** Private channels to ALSO rekey (CORD-06 §94), each to its own recipients —
+     *  sealed under the prior root so the blob is openable on either base fork. */
+    channelRekeys?: Array<{ channel: ChannelKey; recipients: string[] }>;
     /** Injectable new root (tests); defaults to a fresh random key. */
     newRoot?: Uint8Array;
   },
@@ -267,6 +276,17 @@ export async function buildRefounding(
     rekeyWraps.push(wrap);
   }
 
+  // 1b. Channel rekeys (CORD-06 §94): rotate each named Private Channel, delivering
+  //     its new key only to that channel's kept members. Sealed under the PRIOR
+  //     root (buildChannelRekey's default) so the blob stays openable on either
+  //     base fork under a racing Refounding. The rolled channel keys are NOT baked
+  //     into `next` — each channel's sub-engine reads its own rekey and persists.
+  const channelRekeyWraps: NostrEvent[] = [];
+  for (const { channel, recipients } of opts.channelRekeys ?? []) {
+    const cr = await buildChannelRekey(material, channel, signer, { recipients, self: opts.self });
+    channelRekeyWraps.push(...cr.rekeyWraps);
+  }
+
   // 2. Compaction: re-wrap each Control-Plane head's plaintext seal into the new
   //    epoch so members read current state without re-syncing from genesis.
   const newControl = controlGroupKey(newRoot, cidBytes, newEpoch);
@@ -289,7 +309,7 @@ export async function buildRefounding(
   }
 
   const next = rollForward(keys, newRoot, newEpoch, opts.self, opts.channels);
-  return { rekeyWraps, compactionWraps, snapshotWraps, next, newEpoch };
+  return { rekeyWraps, channelRekeyWraps, compactionWraps, snapshotWraps, next, newEpoch };
 }
 
 /** The outcome of folding the rekey blobs at the next-epoch base-rekey address. */
@@ -315,44 +335,259 @@ export async function readRekey(
   channels: ChannelMetadata[],
 ): Promise<RekeyOutcome> {
   if (!signer.nip44) return { kind: "none" };
-  const heldEpoch = BigInt(keys.material.root_epoch);
-  const heldKey = hexToBytes(keys.material.community_root);
+  const scoped = await readRekeyScoped(
+    {
+      scopeIdHex: ROOT_SCOPE_HEX,
+      scopeId: new Uint8Array(32),
+      heldEpoch: keys.material.root_epoch,
+      heldKey: hexToBytes(keys.material.community_root),
+    },
+    rekeyEvents,
+    isAuthorized,
+    self,
+    signer,
+  );
+  if (scoped.kind === "adopt")
+    return {
+      kind: "adopt",
+      next: rollForward(keys, scoped.newKey, scoped.epoch, scoped.rotator, channels),
+      rotator: scoped.rotator,
+      epoch: scoped.epoch,
+    };
+  if (scoped.kind === "removed") return { kind: "removed", epoch: scoped.epoch };
+  return { kind: "none" };
+}
 
+// ---- channel-scoped rekey (CORD-06) ----------------------------------------
+//
+// A Private Channel is a sub-community: independently keyed (unrelated to the
+// community_root, CORD-03) at its OWN epoch, so it can be rekeyed alone. The
+// scope-generic wire codec + convergence machinery (rekey.ts) are shared with
+// the root Refounding via `readRekeyScoped`; only the held key/epoch and the
+// listen address differ.
+
+/** The held key + scope a rekey read is evaluated against. */
+interface ScopedHeld {
+  /** Lowercased 32-byte scope id hex: `ROOT_SCOPE_HEX` or the channel id. */
+  scopeIdHex: string;
+  /** The scope id bytes (zeros for root, channel id for a channel). */
+  scopeId: Uint8Array;
+  /** The epoch of the key we currently hold for this scope. */
+  heldEpoch: number;
+  /** The key we currently hold for this scope. */
+  heldKey: Uint8Array;
+  /**
+   * Whether `rotator` is authorized to remove US specifically (CORD-04: holds the
+   * bit AND strictly outranks us). Gates ONLY the `removed` outcome, never
+   * adoption — so a lower-ranked manager can't sever a higher-ranked member by
+   * rotating them out, but legitimate convergence among peers is unaffected. When
+   * omitted (the root path), any authorized complete rotation may remove us.
+   */
+  canRemoveSelf?: (rotator: string) => boolean;
+}
+
+type ScopedRekeyOutcome =
+  | { kind: "adopt"; newKey: Uint8Array; rotator: string; epoch: number }
+  | { kind: "removed"; epoch: number }
+  | { kind: "none" };
+
+/**
+ * The scope-generic core of the rekey read (CORD-06 §2/§3): among AUTHORIZED,
+ * continuity-checked rotations to `heldEpoch + 1` for this scope, decrypt our
+ * blob (lowest-key-wins convergence) and adopt; a COMPLETE rotation with no blob
+ * for us means we were removed. `signer.nip44` must be present (callers guard).
+ */
+async function readRekeyScoped(
+  held: ScopedHeld,
+  rekeyEvents: Iterable<DecodedEvent>,
+  isAuthorized: (rotator: string) => boolean,
+  self: string,
+  signer: ISigner,
+): Promise<ScopedRekeyOutcome> {
+  const heldEpoch = BigInt(held.heldEpoch);
   const parsed = [...rekeyEvents].map((d) => parseRekey(d)).filter((p): p is NonNullable<typeof p> => p !== null);
   const rotations = groupRotations(parsed).filter(
     (set) =>
-      set.scopeIdHex === ROOT_SCOPE_HEX &&
+      set.scopeIdHex === held.scopeIdHex &&
       set.newEpoch === heldEpoch + 1n &&
       isAuthorized(set.rotator) &&
-      checkContinuity(set, heldEpoch, heldKey).ok,
+      checkContinuity(set, heldEpoch, held.heldKey).ok,
   );
   if (rotations.length === 0) return { kind: "none" };
 
-  const targetEpoch = keys.material.root_epoch + 1;
+  const targetEpoch = held.heldEpoch + 1;
   let adopted: { key: Uint8Array; rotator: string } | undefined;
-  let sawComplete = false;
+  let removed = false;
   for (const set of rotations) {
     if (!set.complete) continue;
-    sawComplete = true;
-    const blob = findBlob(set, rekeyLocator(set.rotator, self, ROOT_SCOPE_HEX, set.newEpoch));
-    if (!blob) continue;
-    try {
-      const plain = await signer.nip44.decrypt(set.rotator, blob.wrapped);
-      const newKey = decodeWrappedKey(base64ToBytes(plain), new Uint8Array(32), set.newEpoch);
-      if (!adopted || lowerKeyWins(adopted.key, newKey) === newKey) adopted = { key: newKey, rotator: set.rotator };
-    } catch {
-      // undecryptable blob at our locator — treat as absent
+    const blob = findBlob(set, rekeyLocator(set.rotator, self, held.scopeIdHex, set.newEpoch));
+    let adoptedHere = false;
+    if (blob) {
+      try {
+        const plain = await signer.nip44!.decrypt(set.rotator, blob.wrapped);
+        const newKey = decodeWrappedKey(base64ToBytes(plain), held.scopeId, set.newEpoch);
+        if (!adopted || lowerKeyWins(adopted.key, newKey) === newKey) adopted = { key: newKey, rotator: set.rotator };
+        adoptedHere = true;
+      } catch {
+        // undecryptable blob at our locator — treat as absent
+      }
     }
+    // A complete rotation that handed us no usable key removes us — but only honor
+    // the removal if this rotator is authorized to remove US (CORD-04). An
+    // under-ranked rotator's removal is ignored: we keep our current key.
+    if (!adoptedHere && (!held.canRemoveSelf || held.canRemoveSelf(set.rotator))) removed = true;
   }
 
-  if (adopted) {
+  if (adopted) return { kind: "adopt", newKey: adopted.key, rotator: adopted.rotator, epoch: targetEpoch };
+  if (removed) return { kind: "removed", epoch: targetEpoch };
+  return { kind: "none" };
+}
+
+/** The outcome of folding a channel's rekey blobs at its next-epoch address. */
+export type ChannelRekeyOutcome =
+  | { kind: "adopt"; next: ChannelKey; rotator: string; epoch: number }
+  | { kind: "removed"; epoch: number }
+  | { kind: "none" };
+
+/**
+ * Roll a single {@link ChannelKey} forward to a new key/epoch, retaining the
+ * prior key in `held` (newest-first) so messages under prior channel epochs
+ * still decode. Pure; the input is unchanged. Analog of {@link rollForward}.
+ */
+export function rollForwardChannel(channel: ChannelKey, newKey: string, newEpoch: number): ChannelKey {
+  return {
+    ...channel,
+    key: newKey,
+    epoch: newEpoch,
+    held: [{ epoch: channel.epoch, key: channel.key }, ...(channel.held ?? [])],
+  };
+}
+
+/** Every stream address a Private Channel holder listens on: its message plane at
+ *  the current + held epochs, plus the next-epoch channel-rekey address(es). */
+export interface ChannelKeys {
+  channelId: string;
+  epoch: number;
+  /** Current-epoch channel message-plane key. */
+  current: GroupKey;
+  /** Prior-epoch message-plane keys (held), so old messages still decode. */
+  held: Array<{ epoch: number; key: GroupKey }>;
+  /** The next channel-epoch's rekey listen address, derived once per community
+   *  root we hold — the current root (a standalone Rekey) and each held root (a
+   *  Refounding-bundled channel rekey is sealed under the PRIOR root, CORD-06 §94). */
+  nextRekey: Array<{ key: GroupKey; epoch: number }>;
+  /** Decrypt-side lookup: stream pubkey → plane info (message planes + rekey addresses). */
+  planes: Map<string, PlaneInfo>;
+}
+
+/**
+ * Derive every stream address a holder of `channel` listens on, given the
+ * community `material` (for the root(s) the channel-rekey address keys on). The
+ * message plane derives from the channel's OWN secret/epoch — independent of the
+ * community root — so it is stable across Refoundings.
+ */
+export function deriveChannelKeys(material: JoinMaterial, channel: ChannelKey): ChannelKeys {
+  const channelId = hexToBytes(channel.id);
+  const current = channelGroupKey(hexToBytes(channel.key), channelId, channel.epoch);
+  const held = (channel.held ?? []).map((h) => ({
+    epoch: h.epoch,
+    key: channelGroupKey(hexToBytes(h.key), channelId, h.epoch),
+  }));
+
+  const newEpoch = channel.epoch + 1;
+  const roots = [material.community_root, ...(material.held_roots ?? []).map((r) => r.key)];
+  const seenRoot = new Set<string>();
+  const nextRekey = roots
+    .filter((r) => (seenRoot.has(r) ? false : (seenRoot.add(r), true)))
+    .map((r) => ({ key: channelRekeyGroupKey(hexToBytes(r), channelId, newEpoch), epoch: newEpoch }));
+
+  const planes = new Map<string, PlaneInfo>();
+  planes.set(current.pk, { type: "channel", convKey: current.convKey, channelId: channel.id, epoch: channel.epoch });
+  for (const h of held)
+    planes.set(h.key.pk, { type: "channel", convKey: h.key.convKey, channelId: channel.id, epoch: h.epoch });
+  for (const rk of nextRekey)
+    planes.set(rk.key.pk, { type: "rekey", convKey: rk.key.convKey, channelId: channel.id, epoch: newEpoch });
+
+  return { channelId: channel.id, epoch: channel.epoch, current, held, nextRekey, planes };
+}
+
+/**
+ * Build a channel-scoped Rekey (CORD-06): mint a fresh channel key at the next
+ * channel epoch and deliver it to `recipients` as per-recipient channel-scoped
+ * blobs at the channel-rekey address. Sealed under `priorRoot` (default: the
+ * current community_root — a standalone Rekey; a Refounding passes the prior root
+ * so the blob is openable on either base fork, CORD-06 §94). No compaction: a
+ * channel is just chat, so prior messages stay readable under the held key.
+ * Returns the wraps + the rolled-forward channel key. Requires a NIP-44 signer.
+ */
+export async function buildChannelRekey(
+  material: JoinMaterial,
+  channel: ChannelKey,
+  signer: ISigner,
+  opts: { recipients: string[]; self: string; newKey?: Uint8Array; priorRoot?: string },
+): Promise<{ rekeyWraps: NostrEvent[]; next: ChannelKey; newEpoch: number }> {
+  if (!signer.nip44) throw new Error("this signer can't rotate keys (NIP-44 unsupported)");
+  const channelId = hexToBytes(channel.id);
+  const oldEpoch = channel.epoch;
+  const newEpoch = oldEpoch + 1;
+  const newKey = opts.newKey ?? generateSecretKey();
+  const prevCommit = bytesToHex(epochKeyCommitment(oldEpoch, hexToBytes(channel.key)));
+
+  const plain = bytesToBase64(encodeWrappedKey(channelId, BigInt(newEpoch), newKey));
+  const blobs = [];
+  for (const pk of opts.recipients) {
+    const wrapped = await signer.nip44.encrypt(pk, plain);
+    blobs.push({ locator: rekeyLocator(opts.self, pk, channel.id, BigInt(newEpoch)), wrapped });
+  }
+
+  const rekeyAddr = channelRekeyGroupKey(hexToBytes(opts.priorRoot ?? material.community_root), channelId, newEpoch);
+  const rekeyWraps: NostrEvent[] = [];
+  for (const factory of buildRekeyFactories(
+    { scope: { kind: "channel", channelId }, newEpoch: BigInt(newEpoch), prevEpoch: BigInt(oldEpoch), prevCommit },
+    blobs,
+  )) {
+    rekeyWraps.push(await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await factory));
+  }
+
+  return { rekeyWraps, next: rollForwardChannel(channel, bytesToHex(newKey), newEpoch), newEpoch };
+}
+
+/**
+ * Fold a channel's rekey blobs (CORD-06): a complete, AUTHORIZED,
+ * continuity-checked channel rotation carrying our blob means adopt the new
+ * channel key; a complete rotation with no blob for us means we've been removed
+ * from the channel. Authority is `MANAGE_CHANNELS` + outranking the targets (the
+ * caller's predicate), never key possession. Requires a NIP-44 signer.
+ */
+export async function readChannelRekey(
+  channel: ChannelKey,
+  rekeyEvents: Iterable<DecodedEvent>,
+  isAuthorized: (rotator: string) => boolean,
+  self: string,
+  signer: ISigner,
+  canRemoveSelf?: (rotator: string) => boolean,
+): Promise<ChannelRekeyOutcome> {
+  if (!signer.nip44) return { kind: "none" };
+  const scoped = await readRekeyScoped(
+    {
+      scopeIdHex: channel.id.toLowerCase(),
+      scopeId: hexToBytes(channel.id),
+      heldEpoch: channel.epoch,
+      heldKey: hexToBytes(channel.key),
+      canRemoveSelf,
+    },
+    rekeyEvents,
+    isAuthorized,
+    self,
+    signer,
+  );
+  if (scoped.kind === "adopt")
     return {
       kind: "adopt",
-      next: rollForward(keys, adopted.key, targetEpoch, adopted.rotator, channels),
-      rotator: adopted.rotator,
-      epoch: targetEpoch,
+      next: rollForwardChannel(channel, bytesToHex(scoped.newKey), scoped.epoch),
+      rotator: scoped.rotator,
+      epoch: scoped.epoch,
     };
-  }
-  if (sawComplete) return { kind: "removed", epoch: targetEpoch };
+  if (scoped.kind === "removed") return { kind: "removed", epoch: scoped.epoch };
   return { kind: "none" };
 }

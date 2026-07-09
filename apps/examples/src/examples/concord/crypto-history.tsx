@@ -3,7 +3,7 @@
  * epoch's ConcordKeys and fetching its plane events live; past the invite's tip, your signer folds the
  * rekey blobs addressed to you to follow further Refoundings.
  * @tags concord, encryption, crypto, epochs, rekey, relays, nip-42
- * @related concord/crypto-lifecycle, concord/community-list
+ * @related concord/rumor-stores, concord/community-list
  */
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import {

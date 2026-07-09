@@ -9,9 +9,7 @@ export * as Helpers from "./helpers/index.js";
 export * as Operations from "./operations/index.js";
 export * as Factories from "./factories/index.js";
 export * as Casts from "./casts/index.js";
+export * as Models from "./models/index.js";
 
 export * from "./types.js";
-export * from "./stream.js";
-export * as Storage from "./storage.js";
-export * from "./relay-auth.js";
-export * from "./client.js";
+export * from "./client/index.js";

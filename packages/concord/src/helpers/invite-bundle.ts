@@ -168,7 +168,15 @@ export function buildInviteBundle(material: JoinMaterial, opts: BuildInviteBundl
     owner_salt: material.owner_salt,
     community_root: material.community_root,
     root_epoch: material.root_epoch,
-    channels: material.channels.map((c) => ({ id: c.id, key: c.key, epoch: c.epoch, name: c.name })),
+    channels: material.channels.map((c) => ({
+      id: c.id,
+      key: c.key,
+      epoch: c.epoch,
+      name: c.name,
+      // Carry prior channel keys so a joiner decodes messages under earlier channel
+      // epochs (a channel that was rekeyed before they joined — CORD-06).
+      ...(c.held ? { held: c.held } : {}),
+    })),
     relays: material.relays,
     name: opts.name ?? material.name,
     icon: opts.icon,

@@ -9,7 +9,7 @@ import { PERM } from "../types.js";
 import type { DecodedEvent } from "../types.js";
 import { hasPerm } from "./permissions.js";
 import type { Standing } from "./permissions.js";
-import { hasMalformedMs } from "../stream.js";
+import { hasMalformedMs } from "./stream.js";
 
 /** Concord self-signed join/leave kind (CORD-02 §5). */
 export const JOIN_LEAVE_KIND = 3306;
@@ -17,6 +17,12 @@ export const JOIN_LEAVE_KIND = 3306;
 export const KICK_KIND = 3309;
 /** Concord memberlist snapshot kind (CORD-02 §5). */
 export const SNAPSHOT_KIND = 3312;
+
+/** Concord self-signed join verb (CORD-02 §5). */
+export const JOIN_VERB = "join";
+/** Concord self-signed leave verb (CORD-02 §5). */
+export const LEAVE_VERB = "leave";
+export type JoinLeaveVerb = typeof JOIN_VERB | typeof LEAVE_VERB;
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -67,11 +73,11 @@ export function foldMembers(
 
   for (const d of guestbook) {
     const r = d.rumor;
-    if (r.kind === 3306) {
+    if (r.kind === JOIN_LEAVE_KIND) {
       const verb = r.content.trim();
-      if (verb === "join") consider(d.author, true, d);
-      else if (verb === "leave") consider(d.author, false, d);
-    } else if (r.kind === 3309) {
+      if (verb === JOIN_VERB) consider(d.author, true, d);
+      else if (verb === LEAVE_VERB) consider(d.author, false, d);
+    } else if (r.kind === KICK_KIND) {
       // Kick: honoured only if signer holds KICK and outranks the target.
       const target = r.tags.find((t) => t[0] === "p")?.[1];
       if (!target) continue;
@@ -80,7 +86,7 @@ export function foldMembers(
       if (hasPerm(actor.permissions, PERM.KICK) && actor.position < victim.position) {
         consider(target, false, d);
       }
-    } else if (r.kind === 3312) {
+    } else if (r.kind === SNAPSHOT_KIND) {
       // Snapshot: secondhand seed, honored ONLY from the epoch's refounder and
       // only when well-formed, held to the same clock/ms guards as any entry.
       if (refounder === undefined || d.author !== refounder) continue;

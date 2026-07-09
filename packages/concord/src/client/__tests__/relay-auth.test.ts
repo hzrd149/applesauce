@@ -10,7 +10,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { RelayPool } from "applesauce-relay";
 
 import { ConcordRelayAuth } from "../relay-auth.js";
-import { createCommunity, deriveKeys } from "../helpers/community.js";
+import { createCommunity, deriveKeys } from "../../helpers/community.js";
 
 describe("ConcordRelayAuth stream-key registry", () => {
   it("registers derived stream keys and signs kind-22242 AS each", async () => {

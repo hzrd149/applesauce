@@ -5,7 +5,7 @@
 // a separate localStorage-shaped interface while it awaits a database-backed
 // design.
 
-import type { MediaAttachment } from "./helpers/imeta.js";
+import type { MediaAttachment } from "../helpers/imeta.js";
 
 /** Async key/value storage for Concord membership/key material. */
 export interface ConcordKeyStorage {
@@ -78,7 +78,7 @@ export interface CachedEntry {
   plane: CachePlane;
   channelId?: string;
   // The decoded rumor + verified author — never a raw kind-1059 wrap.
-  decoded: import("./types.js").DecodedEvent;
+  decoded: import("../types.js").DecodedEvent;
 }
 
 /** Cap cached chat per channel; control/guestbook are small and kept whole. */

@@ -134,6 +134,10 @@ export interface ChannelKey {
   key: string; // hex
   epoch: number;
   name: string;
+  /** Retained prior channel keys `[{epoch, key}]` after a channel-scoped Rekey
+   *  (CORD-06), newest-first — so messages under prior channel epochs still
+   *  decode. Mirrors {@link JoinMaterial.held_roots} for the community root. */
+  held?: Array<{ epoch: number; key: string }>;
 }
 export interface JoinMaterial {
   community_id: string;
