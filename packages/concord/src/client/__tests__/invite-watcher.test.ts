@@ -1,0 +1,117 @@
+import { describe, expect, it } from "vitest";
+import { RelayPool } from "applesauce-relay";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { PrivateKeySigner } from "applesauce-signers";
+
+import { createCommunity } from "../../helpers/community.js";
+import { buildInviteBundle } from "../../helpers/invite-bundle.js";
+import { DirectInviteFactory } from "../../factories/direct-invite.js";
+import type { InviteBundle } from "../../types.js";
+import { InviteWatcher } from "../invite-watcher.js";
+
+async function makeInvite(bundle?: InviteBundle, recipient = new PrivateKeySigner(generateSecretKey())) {
+  const inviterSk = generateSecretKey();
+  const inviter = new PrivateKeySigner(inviterSk);
+  const inviterPub = getPublicKey(inviterSk);
+  const recipientPub = await recipient.getPublicKey();
+  const material =
+    bundle ??
+    buildInviteBundle(
+      (await createCommunity({ ownerPubkey: inviterPub, name: "T", relays: ["wss://r"] })).material,
+      { creator_npub: inviterPub },
+    );
+  const wrap = await DirectInviteFactory.create(material, recipientPub, inviter);
+  return { wrap, bundle: material, recipient, recipientPub, inviterPub };
+}
+
+function watcher(signer: PrivateKeySigner, opts?: Partial<ConstructorParameters<typeof InviteWatcher>[0]>) {
+  return new InviteWatcher({ signer, pool: new RelayPool(), relays: ["wss://relay.example"], ...opts });
+}
+
+describe("InviteWatcher", () => {
+  it("tracks indexed wraps as pending until decrypted", async () => {
+    const { wrap, recipient } = await makeInvite();
+    const w = watcher(recipient);
+
+    await w.ingest(wrap);
+
+    expect(w.wraps$.value).toEqual([wrap]);
+    expect(w.pending$.value).toEqual([wrap]);
+    expect(w.invites$.value).toEqual([]);
+  });
+
+  it("decrypts a pending wrap into a ConcordDirectInvite cast", async () => {
+    const { wrap, recipient, inviterPub, bundle } = await makeInvite();
+    const w = watcher(recipient);
+    await w.ingest(wrap);
+
+    const invite = await w.decrypt(wrap);
+
+    expect(invite?.inviter).toBe(inviterPub);
+    expect(invite?.communityId).toBe(bundle.community_id);
+    expect(w.pending$.value).toEqual([]);
+    expect(w.invites$.value).toEqual([invite]);
+    expect(w.allInvites$.value).toEqual([invite]);
+  });
+
+  it("auto-decrypts when configured", async () => {
+    const { wrap, recipient, bundle } = await makeInvite();
+    const w = watcher(recipient, { autoDecrypt: true });
+
+    await w.ingest(wrap);
+
+    expect(w.pending$.value).toEqual([]);
+    expect(w.invites$.value[0]?.communityId).toBe(bundle.community_id);
+  });
+
+  it("hides dismissed locked invites from pending", async () => {
+    const { wrap, recipient } = await makeInvite();
+    const w = watcher(recipient);
+    await w.ingest(wrap);
+
+    await w.dismiss(wrap);
+
+    expect(w.isDismissed(wrap)).toBe(true);
+    expect(w.pending$.value).toEqual([]);
+    expect(w.wraps$.value).toEqual([wrap]);
+  });
+
+  it("hides dismissed decrypted invites but keeps them in allInvites", async () => {
+    const { wrap, recipient } = await makeInvite();
+    const w = watcher(recipient);
+    await w.ingest(wrap);
+    const invite = await w.decrypt(wrap);
+
+    await w.dismiss(wrap);
+
+    expect(w.invites$.value).toEqual([]);
+    expect(w.allInvites$.value).toEqual([invite]);
+  });
+
+  it("restores a dismissed invite", async () => {
+    const { wrap, recipient } = await makeInvite();
+    const w = watcher(recipient);
+    await w.ingest(wrap);
+    const invite = await w.decrypt(wrap);
+    await w.dismiss(wrap);
+
+    await w.restore(wrap);
+
+    expect(w.isDismissed(wrap)).toBe(false);
+    expect(w.invites$.value).toEqual([invite]);
+  });
+
+  it("dismissal is per wrap, not per community", async () => {
+    const first = await makeInvite();
+    const second = await makeInvite(first.bundle, first.recipient);
+    const w = watcher(first.recipient, { autoDecrypt: true });
+    await w.ingest(first.wrap);
+
+    await w.dismiss(first.wrap);
+    await w.ingest(second.wrap);
+
+    expect(w.invites$.value).toHaveLength(1);
+    expect(w.invites$.value[0]?.communityId).toBe(first.bundle.community_id);
+    expect(w.wraps$.value).toHaveLength(2);
+  });
+});

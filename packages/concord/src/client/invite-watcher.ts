@@ -1,0 +1,371 @@
+// InviteWatcher — user-inbox reader for CORD-05 §6 Direct Invites.
+//
+// Direct Invites are standard NIP-59 gift wraps addressed to the user's real
+// pubkey, carrying a kind-3313 rumor. This class owns the client-side receive
+// loop: discover inbox relays, authenticate as the user when relays challenge,
+// fetch/live-subscribe gift wraps, optionally decrypt them, and keep local
+// dismissal state so apps can hide invites without deleting relay data.
+
+import { BehaviorSubject, Subscription, firstValueFrom, timeout, toArray } from "rxjs";
+import { EventStore } from "applesauce-core";
+import { castEvent } from "applesauce-core/casts";
+import { kinds, type NostrEvent } from "applesauce-core/helpers";
+import { getGiftWrapRumor } from "applesauce-common/helpers/gift-wrap";
+import { castUser } from "applesauce-common/casts";
+import type { RelayPool } from "applesauce-relay";
+import type { ISigner } from "applesauce-signers";
+
+import { ConcordDirectInvite } from "../casts/direct-invite.js";
+import {
+  directInviteFilter,
+  isValidDirectInvite,
+  lockDirectInvite,
+  unlockDirectInvite,
+} from "../helpers/direct-invite.js";
+import { ConcordRelayAuth } from "./relay-auth.js";
+import { defaultStorage, type ConcordStorage } from "./storage.js";
+
+interface DirectInviteRecord {
+  wrap: NostrEvent;
+  invite?: ConcordDirectInvite;
+  error?: unknown;
+}
+
+/** Options for constructing a {@link InviteWatcher}. */
+export interface InviteWatcherOptions {
+  /** The logged-in user's signer. Must support NIP-44 decryption for unwraps. */
+  signer: ISigner;
+  /** The applesauce RelayPool used for inbox requests/subscriptions. */
+  pool: RelayPool;
+  /** Shared wrap-level store. Defaults to a fresh {@link EventStore}. */
+  eventStore?: EventStore;
+  /** Persistence for cursors and locally dismissed invite ids. */
+  storage?: ConcordStorage;
+  /** Fallback inbox relays when no 10050/NIP-65 inboxes are known. */
+  relays?: string[];
+  /** Explicit inbox relays to read from instead of discovering 10050/NIP-65 relays. */
+  inboxRelays?: string[];
+  /** Override the storage namespace for cursors/dismissals. */
+  cursorKey?: string;
+  /** Decrypt invites as they arrive instead of exposing them via `pending$`. */
+  autoDecrypt?: boolean;
+  /** Also scan all `#p=me` gift wraps to catch unindexed kind-3313 rumors. */
+  scanUntagged?: boolean;
+  /** Seconds to overlap cursor-based fetches. Defaults to two hours for NIP-59 timestamp randomization. */
+  overlapSeconds?: number;
+  /** Timeout for one-shot relay requests. Defaults to 10 seconds. */
+  requestTimeout?: number;
+}
+
+/** Watches the user's gift-wrap inbox for Concord Direct Invites. */
+export class InviteWatcher {
+  readonly signer: ISigner;
+  readonly pubkey$ = new BehaviorSubject<string | undefined>(undefined);
+  readonly relays$ = new BehaviorSubject<string[]>([]);
+  /** All discovered candidate wrap events. */
+  readonly wraps$ = new BehaviorSubject<NostrEvent[]>([]);
+  /** Locked, indexed direct-invite wraps that have not been dismissed. */
+  readonly pending$ = new BehaviorSubject<NostrEvent[]>([]);
+  /** Decrypted valid invites, including dismissed and expired invites. */
+  readonly allInvites$ = new BehaviorSubject<ConcordDirectInvite[]>([]);
+  /** Decrypted valid invites visible to the app. Dismissed and expired invites are hidden. */
+  readonly invites$ = new BehaviorSubject<ConcordDirectInvite[]>([]);
+  readonly dismissed$ = new BehaviorSubject<Set<string>>(new Set());
+  readonly status$ = new BehaviorSubject<string>("");
+
+  private readonly pool: RelayPool;
+  private readonly eventStore: EventStore;
+  private readonly storage: ConcordStorage;
+  private readonly fallbackRelays: string[];
+  private readonly inboxRelays?: string[];
+  private readonly relayAuth: ConcordRelayAuth;
+  private readonly autoDecrypt: boolean;
+  private readonly scanUntagged: boolean;
+  private readonly overlapSeconds: number;
+  private readonly requestTimeout: number;
+  private readonly cursorKey?: string;
+
+  private readonly records = new Map<string, DirectInviteRecord>();
+  private authSub?: Subscription;
+  private liveSub?: Subscription;
+  private started = false;
+  private pubkey?: string;
+  private cursor = 0;
+
+  constructor(options: InviteWatcherOptions) {
+    this.signer = options.signer;
+    this.pool = options.pool;
+    this.eventStore = options.eventStore ?? new EventStore();
+    this.storage = options.storage ?? defaultStorage();
+    this.fallbackRelays = options.relays ?? [];
+    this.inboxRelays = options.inboxRelays;
+    this.relayAuth = new ConcordRelayAuth(options.pool);
+    this.autoDecrypt = options.autoDecrypt ?? false;
+    this.scanUntagged = options.scanUntagged ?? false;
+    this.overlapSeconds = options.overlapSeconds ?? 2 * 60 * 60;
+    this.requestTimeout = options.requestTimeout ?? 10_000;
+    this.cursorKey = options.cursorKey;
+  }
+
+  get eventStoreRef(): EventStore {
+    return this.eventStore;
+  }
+
+  // ---- lifecycle ----------------------------------------------------------
+
+  async start(): Promise<void> {
+    if (this.started) return;
+    this.started = true;
+    this.pubkey = await this.signer.getPublicKey();
+    this.pubkey$.next(this.pubkey);
+    await this.loadDismissed();
+    await this.loadCursor();
+    this.ingestLocalEvents();
+    const relays = await this.resolveRelays();
+    this.relays$.next(relays);
+    this.authSub = this.relayAuth.autoAuthenticate(this.signer, this.pubkey);
+    await this.refresh();
+    this.openLive();
+  }
+
+  stop(): void {
+    this.started = false;
+    this.authSub?.unsubscribe();
+    this.authSub = undefined;
+    this.liveSub?.unsubscribe();
+    this.liveSub = undefined;
+    this.status$.next("");
+  }
+
+  /** Fetches historical Direct Invite wraps from the current inbox relays. */
+  async refresh(): Promise<void> {
+    if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
+    const relays = this.relays$.value.length ? this.relays$.value : await this.resolveRelays();
+    if (relays.length === 0) return;
+    this.relays$.next(relays);
+    const filters = this.filters();
+    const since = this.cursor > 0 ? Math.max(0, this.cursor - this.overlapSeconds) : undefined;
+    const requestFilters = since === undefined ? filters : filters.map((filter) => ({ ...filter, since }));
+
+    this.status$.next("Fetching direct invites...");
+    const events = await firstValueFrom(
+      this.pool.request(relays, requestFilters).pipe(toArray(), timeout(this.requestTimeout)),
+    ).catch(() => [] as NostrEvent[]);
+
+    for (const event of events) await this.ingest(event);
+    await this.saveCursorFromEvents(events);
+    this.status$.next("");
+  }
+
+  /** Adds a raw gift wrap from any source and optionally decrypts it. */
+  async ingest(event: NostrEvent): Promise<void> {
+    if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
+    if (!this.acceptWrap(event)) return;
+    const canonical = (this.eventStore.add(event) as NostrEvent | null) ?? event;
+    if (!this.records.has(canonical.id)) this.records.set(canonical.id, { wrap: canonical });
+    else this.records.get(canonical.id)!.wrap = canonical;
+    this.recompute();
+    if (this.autoDecrypt) await this.decrypt(canonical);
+  }
+
+  async ingestMany(events: Iterable<NostrEvent>): Promise<void> {
+    for (const event of events) await this.ingest(event);
+  }
+
+  /** Decrypts a pending wrap and returns its cast Direct Invite when valid. */
+  async decrypt(event: NostrEvent | string): Promise<ConcordDirectInvite | undefined> {
+    const wrap = this.resolveWrap(event);
+    if (!wrap) return undefined;
+    let record = this.records.get(wrap.id);
+    if (!record) {
+      record = { wrap };
+      this.records.set(wrap.id, record);
+    }
+    if (record.invite) return record.invite;
+    try {
+      const bundle = await unlockDirectInvite(wrap, this.signer);
+      const rumor = bundle ? getGiftWrapRumor(wrap) : undefined;
+      if (!rumor) return undefined;
+      const invite = castEvent(rumor, ConcordDirectInvite, this.eventStore);
+      if (!invite.valid) return undefined;
+      record.invite = invite;
+      record.error = undefined;
+      this.recompute();
+      return invite;
+    } catch (err) {
+      record.error = err;
+      this.recompute();
+      return undefined;
+    }
+  }
+
+  async decryptAll(): Promise<ConcordDirectInvite[]> {
+    const invites: ConcordDirectInvite[] = [];
+    for (const record of this.sortedRecords()) {
+      const invite = await this.decrypt(record.wrap);
+      if (invite) invites.push(invite);
+    }
+    return invites;
+  }
+
+  lock(event: NostrEvent | string): void {
+    const wrap = this.resolveWrap(event);
+    if (!wrap) return;
+    lockDirectInvite(wrap);
+    const record = this.records.get(wrap.id);
+    if (record) delete record.invite;
+    this.recompute();
+  }
+
+  async dismiss(event: NostrEvent | string): Promise<void> {
+    const wrap = this.resolveWrap(event);
+    if (!wrap) return;
+    const dismissed = new Set(this.dismissed$.value);
+    dismissed.add(wrap.id);
+    this.dismissed$.next(dismissed);
+    this.recompute();
+    await this.saveDismissed();
+  }
+
+  async restore(event: NostrEvent | string): Promise<void> {
+    const wrap = this.resolveWrap(event);
+    if (!wrap) return;
+    const dismissed = new Set(this.dismissed$.value);
+    dismissed.delete(wrap.id);
+    this.dismissed$.next(dismissed);
+    this.recompute();
+    await this.saveDismissed();
+  }
+
+  async clearDismissed(): Promise<void> {
+    this.dismissed$.next(new Set());
+    this.recompute();
+    await this.saveDismissed();
+  }
+
+  isDismissed(event: NostrEvent | string): boolean {
+    const wrap = this.resolveWrap(event);
+    return !!wrap && this.dismissed$.value.has(wrap.id);
+  }
+
+  // ---- relay setup --------------------------------------------------------
+
+  private async resolveRelays(): Promise<string[]> {
+    if (this.inboxRelays) return this.uniqueRelays(this.inboxRelays);
+    if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
+    const user = castUser(this.pubkey, this.eventStore);
+    const [dmRelays, inboxes] = await Promise.all([
+      user.directMessageRelays$.$first(1_000, undefined),
+      user.inboxes$.$first(1_000, undefined),
+    ]);
+    return this.uniqueRelays(dmRelays?.length ? dmRelays : inboxes?.length ? inboxes : this.fallbackRelays);
+  }
+
+  private openLive(): void {
+    const relays = this.relays$.value;
+    if (!this.pubkey || relays.length === 0) return;
+    this.liveSub?.unsubscribe();
+    this.liveSub = this.pool.subscription(relays, this.filters()).subscribe((event) => void this.ingest(event));
+  }
+
+  private filters(): Array<{ kinds: number[]; "#p": string[]; "#k"?: string[]; since?: number }> {
+    if (!this.pubkey) return [];
+    return this.scanUntagged ? [{ kinds: [kinds.GiftWrap], "#p": [this.pubkey] }] : [directInviteFilter(this.pubkey)];
+  }
+
+  // ---- persistence --------------------------------------------------------
+
+  private storagePrefix(): string {
+    return this.cursorKey ?? `concord:direct-invites:${this.pubkey}`;
+  }
+
+  private async loadDismissed(): Promise<void> {
+    try {
+      const raw = await this.storage.getItem(`${this.storagePrefix()}:dismissed`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { ids?: string[] };
+      this.dismissed$.next(new Set((parsed.ids ?? []).filter((id) => typeof id === "string")));
+    } catch {
+      this.dismissed$.next(new Set());
+    }
+  }
+
+  private async saveDismissed(): Promise<void> {
+    try {
+      await this.storage.setItem(
+        `${this.storagePrefix()}:dismissed`,
+        JSON.stringify({ version: 1, ids: [...this.dismissed$.value] }),
+      );
+    } catch (err) {
+      console.warn("failed to persist dismissed direct invites", err);
+    }
+  }
+
+  private async loadCursor(): Promise<void> {
+    try {
+      const raw = await this.storage.getItem(`${this.storagePrefix()}:cursor`);
+      this.cursor = raw ? Number(raw) || 0 : 0;
+    } catch {
+      this.cursor = 0;
+    }
+  }
+
+  private async saveCursorFromEvents(events: NostrEvent[]): Promise<void> {
+    const max = events.reduce((latest, event) => Math.max(latest, event.created_at), this.cursor);
+    if (max <= this.cursor) return;
+    this.cursor = max;
+    try {
+      await this.storage.setItem(`${this.storagePrefix()}:cursor`, String(max));
+    } catch (err) {
+      console.warn("failed to persist direct invite cursor", err);
+    }
+  }
+
+  // ---- state --------------------------------------------------------------
+
+  private ingestLocalEvents(): void {
+    if (!this.pubkey) return;
+    for (const event of this.eventStore.getByFilters(this.filters())) {
+      if (this.acceptWrap(event)) this.records.set(event.id, { wrap: event });
+    }
+    this.recompute();
+  }
+
+  private acceptWrap(event: NostrEvent): boolean {
+    if (!this.pubkey || event.kind !== kinds.GiftWrap) return false;
+    if (!event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey)) return false;
+    return this.scanUntagged || isValidDirectInvite(event);
+  }
+
+  private resolveWrap(event: NostrEvent | string): NostrEvent | undefined {
+    if (typeof event !== "string") return event;
+    return this.records.get(event)?.wrap ?? this.eventStore.getEvent(event);
+  }
+
+  private sortedRecords(): DirectInviteRecord[] {
+    return [...this.records.values()].sort((a, b) => b.wrap.created_at - a.wrap.created_at || a.wrap.id.localeCompare(b.wrap.id));
+  }
+
+  private recompute(): void {
+    const records = this.sortedRecords();
+    const dismissed = this.dismissed$.value;
+    const wraps = records.map((record) => record.wrap);
+    const pending = records
+      .filter((record) => !dismissed.has(record.wrap.id) && !record.invite && isValidDirectInvite(record.wrap))
+      .map((record) => record.wrap);
+    const allInvites = records.flatMap((record) => (record.invite ? [record.invite] : []));
+    const invites = records.flatMap((record) => {
+      if (!record.invite || dismissed.has(record.wrap.id) || record.invite.expired()) return [];
+      return [record.invite];
+    });
+
+    this.wraps$.next(wraps);
+    this.pending$.next(pending);
+    this.allInvites$.next(allInvites);
+    this.invites$.next(invites);
+  }
+
+  private uniqueRelays(relays: string[] | undefined): string[] {
+    return [...new Set((relays ?? []).filter(Boolean))];
+  }
+}
