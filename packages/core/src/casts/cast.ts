@@ -24,8 +24,18 @@ export type CastConstructor<C extends EventCast<StoreEvent>, E extends StoreEven
   store: CastRefEventStore<E>,
 ) => C;
 
-/** Cast a Nostr event (or an unsigned {@link StoreEvent}/rumor) to a specific class */
-export function castEvent<C extends EventCast<StoreEvent>, E extends StoreEvent = NostrEvent>(
+/**
+ * Gates {@link castEvent}'s accepted input type on whether a cast's own declared event type `T`
+ * requires a signature. If `T` carries a `sig: string` field (a `NostrEvent`-shaped cast), the
+ * input is pinned to `NostrEvent` — this rejects an unsigned rumor at compile time. Otherwise (a
+ * rumor-shaped/sig-less `T`) the input stays a loose {@link StoreEvent} — deliberately not
+ * narrowed to the cast's exact `T` (e.g. a literal `kind`), so a generic `Rumor` still satisfies
+ * a narrowed-kind rumor cast; the cast's own constructor validates the narrower shape at runtime.
+ */
+export type CastEventInput<T extends StoreEvent> = T extends { sig: string } ? NostrEvent : StoreEvent;
+
+/** @internal loose, runtime-guarded — used only by castEventStream/castTimelineStream */
+export function performCast<C extends EventCast<StoreEvent>, E extends StoreEvent = NostrEvent>(
   event: StoreEvent,
   cls: CastConstructor<C, E>,
   store?: CastRefEventStore<E>,
@@ -47,4 +57,13 @@ export function castEvent<C extends EventCast<StoreEvent>, E extends StoreEvent 
   else casts.set(cls, cast);
 
   return cast;
+}
+
+/** Cast a Nostr event (or an unsigned StoreEvent/rumor) to a specific class */
+export function castEvent<C extends EventCast<StoreEvent>, E extends StoreEvent = NostrEvent>(
+  event: C extends EventCast<infer T> ? CastEventInput<T> : never,
+  cls: CastConstructor<C, E>,
+  store?: CastRefEventStore<E>,
+): C {
+  return performCast(event as StoreEvent, cls, store);
 }
