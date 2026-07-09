@@ -19,7 +19,7 @@ import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
 import { ConcordRelayAuth } from "./relay-auth.js";
-import { defaultKeyStorage, type ConcordKeyStorage, type ConcordUploader } from "./storage.js";
+import { defaultStorage, type ConcordStorage, type ConcordUploader } from "./storage.js";
 import { createCommunity } from "../helpers/community.js";
 import {
   COMMUNITY_LIST_KIND,
@@ -57,7 +57,7 @@ export class ConcordClient {
 
   private readonly pool: RelayPool;
   private readonly eventStore: EventStore;
-  private readonly storage: ConcordKeyStorage;
+  private readonly storage: ConcordStorage;
   private readonly uploader?: ConcordUploader;
   private readonly defaultRelays: string[];
   private readonly storeFactory?: ConcordStoreFactory;
@@ -76,7 +76,7 @@ export class ConcordClient {
     this.pubkey = options.pubkey;
     this.pool = options.pool;
     this.eventStore = options.eventStore ?? new EventStore();
-    this.storage = options.storage ?? defaultKeyStorage();
+    this.storage = options.storage ?? defaultStorage();
     this.uploader = options.uploader;
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
     this.storeFactory = options.storeFactory;

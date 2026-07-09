@@ -5,7 +5,7 @@ import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
 import type { ConcordRelayAuth } from "./relay-auth.js";
-import type { ConcordKeyStorage, ConcordUploader } from "./storage.js";
+import type { ConcordStorage, ConcordUploader } from "./storage.js";
 import type { JoinMaterial } from "../types.js";
 
 /** Creates the per-plane {@link RumorStore} for a community — the persistent cache
@@ -53,7 +53,7 @@ export interface ConcordClientOptions {
   /** Shared wrap-level store. Defaults to a fresh {@link EventStore}. */
   eventStore?: EventStore;
   /** Persistence for the membership/key material mirror + sync cursors. */
-  storage?: ConcordKeyStorage;
+  storage?: ConcordStorage;
   /** Media uploader, passed through to every community. */
   uploader?: ConcordUploader;
   /** Fallback relays when a community defines none. */

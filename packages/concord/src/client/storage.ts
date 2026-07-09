@@ -1,21 +1,16 @@
 // Pluggable persistence + media upload for ConcordClient.
-//
-// Key material uses an async key/value interface so apps can provide IndexedDB,
-// localForage, SQLite, or another durable store. Decoded-rumor caching is still
-// a separate localStorage-shaped interface while it awaits a database-backed
-// design.
 
 import type { MediaAttachment } from "../helpers/imeta.js";
 
-/** Async key/value storage for Concord membership/key material. */
-export interface ConcordKeyStorage {
+/** Async key/value storage for Concord membership/key material and sync cursors. */
+export interface ConcordStorage {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
   removeItem(key: string): Promise<void>;
 }
 
-/** An in-memory {@link ConcordKeyStorage}. Not durable — real clients should pass one. */
-export function memoryKeyStorage(): ConcordKeyStorage {
+/** An in-memory {@link ConcordStorage}. Not durable — real clients should pass one. */
+export function memoryStorage(): ConcordStorage {
   const map = new Map<string, string>();
   return {
     getItem: async (k) => map.get(k) ?? null,
@@ -24,40 +19,21 @@ export function memoryKeyStorage(): ConcordKeyStorage {
   };
 }
 
-/** The best default key storage: wrapped `localStorage` if present, else memory. */
-export function defaultKeyStorage(): ConcordKeyStorage {
-  const ls = (globalThis as { localStorage?: ConcordStorage }).localStorage;
-  if (!ls) return memoryKeyStorage();
-  return {
-    getItem: async (k) => ls.getItem(k),
-    setItem: async (k, v) => void ls.setItem(k, v),
-    removeItem: async (k) => void ls.removeItem(k),
-  };
-}
-
-/** The synchronous key/value surface used for the decoded-rumor cache. A browser's
- *  `localStorage` satisfies it directly; {@link memoryStorage} is the default. */
-export interface ConcordStorage {
+interface SyncStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 }
 
-/** An in-memory {@link ConcordStorage} (the default when none is provided and no
- *  `localStorage` global exists). Not durable — a real client should pass one. */
-export function memoryStorage(): ConcordStorage {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => void map.set(k, v),
-    removeItem: (k) => void map.delete(k),
-  };
-}
-
-/** The best default storage: the `localStorage` global if present, else memory. */
+/** The best default storage: wrapped `localStorage` if present, else memory. */
 export function defaultStorage(): ConcordStorage {
-  const ls = (globalThis as { localStorage?: ConcordStorage }).localStorage;
-  return ls ?? memoryStorage();
+  const ls = (globalThis as { localStorage?: SyncStorage }).localStorage;
+  if (!ls) return memoryStorage();
+  return {
+    getItem: async (k) => ls.getItem(k),
+    setItem: async (k, v) => void ls.setItem(k, v),
+    removeItem: async (k) => void ls.removeItem(k),
+  };
 }
 
 /**
