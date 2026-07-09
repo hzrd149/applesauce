@@ -372,7 +372,7 @@ function wrapTimelineLoader(
 ): TimelineLoader {
   const singleton$ = loader$.pipe(
     // Pass all events through the store if provided
-    eventStore === null ? identity : filterDuplicateEvents(eventStore || new EventMemory()),
+    eventStore === null ? identity : filterDuplicateEvents(eventStore || new EventMemory<NostrEvent>()),
     // Ensure a single subscription to the requests
     share(),
   );

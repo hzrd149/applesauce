@@ -2,7 +2,10 @@
 
 Discoveries made during plan execution that are out of scope for the plan that found them (per the executor's Scope Boundary rule) are logged here rather than fixed inline.
 
-## 1. `applesauce-relay` fails to build against genericized `EventMemory<E>` (found during 01-04)
+## 1. `applesauce-relay` fails to build against genericized `EventMemory<E>` (found during 01-04) — ✅ RESOLVED
+
+**Resolution (post-merge integration fix, autonomous orchestrator):** The break was wider than relay — it also hit `applesauce-loaders` (`address-loader.ts`, `event-loader.ts`, `tag-value-loader.ts`, `timeline-loader.ts`). Applied the suggested fix: explicit `new EventMemory<NostrEvent>()` at all six `filterDuplicateEvents(... ?? new EventMemory())` call sites across `packages/relay/src/group.ts` (×2) and the four loaders. Full workspace build and `applesauce-core` tests (592/592) green afterward. Changeset `event-memory-nostrevent-callsites.md` (loaders + relay, patch). `common/gift-wrap.ts`'s bare `new EventMemory()` was left untouched — it resolves to the `NostrEvent` default correctly and is rumor-typing territory for Phase 4.
+
 
 - **Found during:** Plan 01-04, Task 2 downstream-build sanity check (`pnpm --filter applesauce-relay build`).
 - **Symptom:** `packages/relay/src/group.ts:260` and `:277` — `filterDuplicateEvents(opts?.eventStore ?? new EventMemory())` fails to type-check with:

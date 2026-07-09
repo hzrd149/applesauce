@@ -182,7 +182,7 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
       event.pubkey === pointer.pubkey &&
       (pointer.identifier !== undefined ? getReplaceableIdentifier(event) === pointer.identifier : true),
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
-    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
+    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
     // Forward the abort signal for explicit teardown
     { signal: opts?.signal },
   );
