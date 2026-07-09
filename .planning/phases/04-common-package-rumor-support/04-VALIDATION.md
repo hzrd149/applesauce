@@ -1,9 +1,9 @@
 ---
 phase: 4
 slug: common-package-rumor-support
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-09
 ---
 
@@ -37,9 +37,9 @@ created: 2026-07-09
 
 | Requirement | Behavior | Test Type | Automated Command | Status |
 |-------------|----------|-----------|-------------------|--------|
-| COMMON-01 | The 4 structural-only helpers (`getNip10References`, `getReactionEmoji`, `getHashtagTag`, `getContentWarning`) accept `E extends StoreEvent` with `NostrEvent` default; existing helper tests pass unchanged | unit + type-check | `pnpm --filter applesauce-common test` | ⬜ pending |
-| COMMON-02 | Targeted common casts operate over rumors while keeping `NostrEvent` defaults — audited empty this phase (no common cast has a current rumor use case; generic cast infra from Phase 2/3 already supports rumor casts; remaining casts are COMMON-F1/future). Verified by: no cast default changed + full build green | audit + type-check | `pnpm run build` (full workspace exit 0) | ⬜ pending |
-| COMMON-03 | Default signed-`NostrEvent` behavior in `applesauce-common` unchanged — existing tests AND export/helper snapshots pass unchanged (signature-only genericization) | unit + snapshot | `pnpm --filter applesauce-common test` (snapshots unchanged) | ⬜ pending |
+| COMMON-01 | The 4 structural-only helpers (`getNip10References`, `getReactionEmoji`, `getHashtagTag`, `getContentWarning`) accept `E extends StoreEvent` with `NostrEvent` default; existing helper tests pass unchanged | unit + type-check | `pnpm --filter applesauce-common test` | ✅ green |
+| COMMON-02 | Targeted common casts operate over rumors while keeping `NostrEvent` defaults — audited empty this phase (no common cast has a current rumor use case; generic cast infra from Phase 2/3 already supports rumor casts; remaining casts are COMMON-F1/future). Verified by: no cast default changed + full build green | audit + type-check | `pnpm run build` (full workspace exit 0) | ✅ green |
+| COMMON-03 | Default signed-`NostrEvent` behavior in `applesauce-common` unchanged — existing tests AND export/helper snapshots pass unchanged (signature-only genericization) | unit + snapshot | `pnpm --filter applesauce-common test` (snapshots unchanged) | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -59,10 +59,10 @@ All phase behaviors have automated verification.
 
 ## Validation Sign-Off
 
-- [ ] COMMON-01: 4 helpers generic, existing helper tests pass unchanged
-- [ ] COMMON-02: targeted-cast set audited (empty this phase, COMMON-F1 owns the rest), no cast default changed, full build green
-- [ ] COMMON-03: existing common tests + export/helper snapshots pass unchanged
-- [ ] `pnpm run build` exit 0 (full workspace)
-- [ ] `nyquist_compliant: true` set in frontmatter (at validate-phase)
+- [x] COMMON-01: 4 helpers generic, existing helper tests pass unchanged
+- [x] COMMON-02: targeted-cast set audited (empty this phase, COMMON-F1 owns the rest), no cast default changed, full build green
+- [x] COMMON-03: existing common tests + export/helper snapshots pass unchanged
+- [x] `pnpm run build` exit 0 (full workspace)
+- [x] `nyquist_compliant: true` set in frontmatter (at validate-phase)
 
-**Approval:** pending (finalized by /gsd-validate-phase after execution)
+**Approval:** approved 2026-07-09 (autonomous — COMMON-01 4 helpers generic + runtime-verified over rumor shapes, COMMON-02 empty-set audited, COMMON-03 snapshots byte-identical; 500/500 tests, full build exit 0; no gaps)
