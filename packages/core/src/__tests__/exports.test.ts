@@ -55,6 +55,7 @@ describe("exports", () => {
         "mapEventsToStore",
         "mapEventsToTimeline",
         "merge",
+        "performCast",
         "simpleTimeout",
         "timeoutWithIgnore",
         "toEventTemplate",
