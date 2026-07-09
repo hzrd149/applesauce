@@ -109,5 +109,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Generic store foundation | 4/4 | Complete    | 2026-07-09 |
 | 2. Generic models & casts | 3/3 | Complete    | 2026-07-09 |
-| 3. RumorStore & verification | 3/3 | Complete   | 2026-07-09 |
+| 3. RumorStore & verification | 3/3 | Complete    | 2026-07-09 |
 | 4. Common package rumor support | 0/TBD | Not started | - |
