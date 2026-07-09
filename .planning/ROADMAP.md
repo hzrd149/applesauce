@@ -31,12 +31,12 @@ Genericize the applesauce event layer so it can operate over unsigned NIP-59 `Ru
   4. Structural helpers and store interfaces/managers (`DeleteManager`, `ExpirationManager`, `EventMemory`) accept any `E extends StoreEvent`
   5. `pnpm --filter applesauce-core test` and `pnpm --filter applesauce-core build` pass unchanged
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 Plans:
 
 - [x] 01-01-PLAN.md — Rumor verifier + genericize CORE-04 structural helpers (wave 1)
-- [ ] 01-02-PLAN.md — Genericize event-store interfaces over E extends StoreEvent (wave 1)
+- [x] 01-02-PLAN.md — Genericize event-store interfaces over E extends StoreEvent (wave 1)
 - [ ] 01-03-PLAN.md — Genericize managers (DeleteManager/AsyncDeleteManager/ExpirationManager/EventMemory) (wave 2)
 - [ ] 01-04-PLAN.md — Genericize EventStore/AsyncEventStore + CORE-03 verifyEvent:undefined fix (wave 3)
 
@@ -103,7 +103,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Generic store foundation | 1/4 | In Progress|  |
+| 1. Generic store foundation | 2/4 | In Progress|  |
 | 2. Generic models & casts | 0/TBD | Not started | - |
 | 3. RumorStore & verification | 0/TBD | Not started | - |
 | 4. Common package rumor support | 0/TBD | Not started | - |
