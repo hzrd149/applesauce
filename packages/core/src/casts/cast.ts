@@ -34,7 +34,7 @@ export type CastConstructor<C extends EventCast<StoreEvent>, E extends StoreEven
  */
 export type CastEventInput<T extends StoreEvent> = T extends { sig: string } ? NostrEvent : StoreEvent;
 
-/** @internal loose, runtime-guarded — used only by castEventStream/castTimelineStream */
+/** @internal loose, runtime-guarded shared implementation — used by castEvent, castEventStream, and castTimelineStream */
 export function performCast<C extends EventCast<StoreEvent>, E extends StoreEvent = NostrEvent>(
   event: StoreEvent,
   cls: CastConstructor<C, E>,
