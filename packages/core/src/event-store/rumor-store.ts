@@ -1,4 +1,4 @@
-import { Rumor, verifyRumor } from "../helpers/event.js";
+import { isRumor, Rumor, verifyRumor } from "../helpers/event.js";
 import { EventStore, EventStoreOptions } from "./event-store.js";
 
 /**
@@ -15,6 +15,6 @@ import { EventStore, EventStoreOptions } from "./event-store.js";
  */
 export class RumorStore extends EventStore<Rumor> {
   constructor(options?: Omit<EventStoreOptions<Rumor>, "verifyEvent">) {
-    super({ ...options, verifyEvent: verifyRumor });
+    super({ ...options, verifyEvent: (e) => isRumor(e) && verifyRumor(e) });
   }
 }

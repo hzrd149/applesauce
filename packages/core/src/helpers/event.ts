@@ -72,6 +72,20 @@ export const ReplaceableAddressSymbol = Symbol.for("replaceable-address");
 export const FromCacheSymbol = Symbol.for("from-cache");
 export const ReplaceableIdentifierSymbol = Symbol.for("replaceable-identifier");
 
+/** Checks if an object is a Rumor ( unsigned event with a known id ) */
+export function isRumor(event: any): event is Rumor {
+  return (
+    event.id?.length === 64 &&
+    event.sig === undefined && // Missing signature ( unsigned )
+    typeof event.pubkey === "string" &&
+    event.pubkey.length === 64 &&
+    typeof event.content === "string" &&
+    Array.isArray(event.tags) &&
+    typeof event.created_at === "number" &&
+    event.created_at > 0
+  );
+}
+
 /**
  * Checks if an object is a nostr event
  * NOTE: does not validate the signature on the event

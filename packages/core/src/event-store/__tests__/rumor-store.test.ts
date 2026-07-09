@@ -7,7 +7,7 @@ function makeRumor(overrides?: Partial<Omit<Rumor, "id">>): Rumor {
   const rumor: Rumor = {
     kind: overrides?.kind ?? kinds.ShortTextNote,
     pubkey: overrides?.pubkey ?? "a".repeat(64),
-    created_at: overrides?.created_at ?? 0,
+    created_at: overrides?.created_at ?? 1,
     content: overrides?.content ?? "hello rumor",
     tags: overrides?.tags ?? [],
     id: "",

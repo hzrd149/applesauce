@@ -169,6 +169,7 @@ describe("exports", () => {
         "isRegularKind",
         "isReplaceable",
         "isReplaceableKind",
+        "isRumor",
         "isSafeRelayURL",
         "isSameURL",
         "isStreamURL",
