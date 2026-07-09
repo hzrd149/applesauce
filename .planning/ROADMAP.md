@@ -94,11 +94,11 @@ Plans:
   4. Existing `applesauce-common` tests and export/helper snapshots pass unchanged
   5. `pnpm --filter applesauce-common test` and `pnpm run build` pass
 
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
 
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Genericize the four structural-only common helpers (getNip10References/getReactionEmoji/getHashtagTag/getContentWarning) + COMMON-02 empty-cast audit + full-workspace build gate (wave 1)
 
 ## Progress
 
@@ -110,4 +110,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Generic store foundation | 4/4 | Complete    | 2026-07-09 |
 | 2. Generic models & casts | 3/3 | Complete    | 2026-07-09 |
 | 3. RumorStore & verification | 3/3 | Complete    | 2026-07-09 |
-| 4. Common package rumor support | 0/TBD | Not started | - |
+| 4. Common package rumor support | 0/1 | Not started | - |
