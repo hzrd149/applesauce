@@ -1,110 +1,194 @@
 # Technology Stack
 
-**Analysis Date:** 2026-07-08
+**Analysis Date:** 2026-07-09
 
 ## Languages
 
 **Primary:**
-- TypeScript 5.8-5.9 - package source, tests, React examples, VitePress config, and build configs under `packages/*/src`, `apps/examples/src`, `apps/docs/.vitepress/config.ts`, and `vitest.config.ts`.
-- JavaScript ES modules - Node build scripts and reference app lint config under `apps/agent-skills/src/build.mjs` and `refs/accordian/eslint.config.js`.
+- TypeScript 5.8-5.9.3 - All packages and applications
+- JavaScript - Build and configuration scripts
 
 **Secondary:**
-- Markdown - documentation content under `docs/`, `apps/docs/`, and package documentation generated with `typedoc.json`.
+- Bash - Build and utility scripts
+- Vue 3.5.25 - Documentation site (VitePress)
 
 ## Runtime
 
 **Environment:**
-- Node.js >=20.19.0 - enforced by `package.json` `engines.node`; package scripts use Node APIs, `node:sqlite`, and `node dist/relay.js` in `packages/sqlite/package.json`.
-- Browser ES2022 - examples app targets `es2022` in `apps/examples/vite.config.ts` and uses browser APIs such as WebSocket, IndexedDB, localStorage, Web Serial, and `window.nostr`-style signers under `packages/*/src`.
-- Bun and Deno-compatible SQLite adapters - package export aliases and implementations exist in `packages/sqlite/package.json`, `packages/sqlite/src/bun/*`, and `packages/sqlite/src/native/*`.
+- Node.js >= 20.19.0
 
 **Package Manager:**
-- pnpm 11.10.0 - declared in `package.json` `packageManager`.
-- Lockfile: present at `pnpm-lock.yaml`.
-- Workspace: `pnpm-workspace.yaml` includes `packages/*` and `apps/*` with `linkWorkspacePackages: true`.
+- pnpm 11.10.0
+- Lockfile: `pnpm-lock.yaml` (present)
 
 ## Frameworks
 
-**Core:**
-- RxJS ^7.8.x - reactive foundation for stores, loaders, relays, wallets, and React hooks in packages including `packages/core/package.json`, `packages/relay/package.json`, `packages/loaders/package.json`, and `packages/wallet/package.json`.
-- nostr-tools ~2.19 - Nostr protocol helpers for event verification, NIP-19, NIP-42, NIP-44, NIP-49, and NIP-98 in `packages/core/package.json`, `packages/relay/src/relay.ts`, and `packages/relay/src/management.ts`.
-- React 18/19 peer support - library hooks in `packages/react/package.json`; example app uses React 18.3.1 in `apps/examples/package.json`.
-- Vite 8 + React SWC - examples development/build pipeline configured in `apps/examples/package.json` and `apps/examples/vite.config.ts`.
-- VitePress 1.6 - documentation site configured in `apps/docs/package.json` and `apps/docs/.vitepress/config.ts`.
-
-**Testing:**
-- Vitest 4.1.x - root test runner configured in `package.json`, `vitest.config.ts`, and `vitest.workspace.ts`.
-- Vitest browser + Playwright - browser test dependencies in `package.json` with `@vitest/browser`, `@vitest/browser-playwright`, and `playwright`.
-- V8 coverage - configured in `vitest.config.ts` with reporters `text`, `json`, `html`, and `lcov`.
-- vitest-websocket-mock - relay/WebSocket tests dependency in `package.json` and package dev dependencies such as `packages/relay/package.json`.
+**Core SDK:**
+- RxJS 7.8.1-7.8.2 - Reactive data streams across all packages
+- nostr-tools ~2.19 - Nostr protocol utilities
 
 **Build/Dev:**
-- TypeScript `tsc` - every library package builds with `tsc` via `packages/*/package.json` scripts.
-- Turborepo 2.9 - orchestrates monorepo builds/tests in `package.json` and `turbo.json`.
-- Changesets 2.31 - release/version management in `package.json` scripts `version-packages`, `release`, and `release-next`.
-- Prettier 3.8 - formatting configured in `.prettierrc` and run through `package.json` script `format`.
-- TypeDoc 0.28 - API docs dependency in `package.json` and config in `typedoc.json`.
-- Tailwind CSS 4 + DaisyUI 5 - examples styling dependencies in `apps/examples/package.json`; Tailwind Vite plugin configured in `apps/examples/vite.config.ts`.
+- Turbo 2.9.14 - Monorepo build orchestration (`turbo.json`)
+- TypeScript 5.8.3-5.9.3 - Type checking and compilation
+
+**Testing:**
+- Vitest 4.0.15-4.1.8 - Unit and integration testing
+- @vitest/browser 4.1.6 - Browser testing
+- @vitest/browser-playwright 4.1.6 - Playwright browser driver
+- @vitest/coverage-v8 4.1.6 - Code coverage
+- Playwright 1.60.0 - Browser automation
+- vitest-websocket-mock 0.5.0 - WebSocket mocking
+
+**Frontend (Examples App):**
+- React 18.3.1 - UI framework
+- React Router 7.13.0 - Client-side routing
+- React Hook Form 7.69.0 - Form state management
+- TailwindCSS 4.1.18 - Utility-first CSS framework
+- Vite 8.0.6 - Frontend build tool
+- @vitejs/plugin-react-swc 3.11.0 - SWC React compiler
+
+**UI Components & Styling:**
+- DaisyUI 5.5.14 - Tailwind CSS component library
+- Emotion 11.14.0-11.14.1 - CSS-in-JS styling
+- Lucide React 0.562.0 - Icon library
+
+**Documentation:**
+- VitePress 1.6.4 - Documentation site generator
+- Vue 3.5.25 - Documentation UI
 
 ## Key Dependencies
 
-**Critical:**
-- `applesauce-core` 6.2.0 - central event store, helpers, models, operations, factories, and casts exposed by `packages/core/package.json`.
-- `applesauce-relay` 6.2.1 - Nostr relay client/pool, NIP-42 auth, NIP-86 relay management, and negentropy support in `packages/relay/package.json` and `packages/relay/src/relay.ts`.
-- `applesauce-loaders` 6.2.0 - observable event loaders built on relay pools in `packages/loaders/package.json`.
-- `applesauce-common` 6.2.0 - NIP-specific helpers, casts, operations, factories, and validation in `packages/common/package.json`.
-- `applesauce-actions` 6.2.0 - reusable Nostr actions in `packages/actions/package.json`.
-- `applesauce-signers` 6.2.2 - browser, serial, Amber/Android, and Nostr Connect signing abstractions in `packages/signers/package.json`.
-- `applesauce-accounts` 6.2.0 - account management with optional Capacitor signer support in `packages/accounts/package.json`.
-- `applesauce-react` 6.0.0 - React providers and hooks over RxJS observables in `packages/react/package.json`.
-- `applesauce-wallet` 6.2.0 - NIP-60/Cashu wallet, token actions, and wallet state observables in `packages/wallet/package.json` and `packages/wallet/src/wallet/nut-wallet.ts`.
-- `applesauce-wallet-connect` 6.2.0 - Nostr Wallet Connect client/service helpers in `packages/wallet-connect/package.json`.
-- `applesauce-sqlite` 6.0.0 - SQLite-backed event databases and local relay server in `packages/sqlite/package.json` and `packages/sqlite/src/relay.ts`.
-- `applesauce-content` 6.2.0 - text/Markdown/NAST processing through Unified/Remark in `packages/content/package.json`.
-- `applesauce-concord` 6.2.0 - Concord protocol helpers, client, casts, factories, and storage interfaces in `packages/concord/package.json` and `packages/concord/src/storage.ts`.
+**Critical Core:**
+- nostr-tools ~2.19 - Nostr protocol message handling, NIP implementations
+- rxjs 7.8.1-7.8.2 - Reactive streams foundation for all async operations
+- nanoid 5.0.9-5.1.6 - Unique ID generation
+- debug 4.4.0-4.4.3 - Debug logging utility
 
-**Infrastructure:**
-- `@cashu/cashu-ts` ^4.5.1 - Cashu mint/wallet/token protocol client in `packages/wallet/package.json`, `packages/wallet/src/wallet/nut-wallet.ts`, and optional content parsing in `packages/content/package.json`.
-- `@libsql/client` ^0.15.15 - libSQL database backend for `packages/sqlite/src/libsql/*`.
-- `better-sqlite3` ^12.8.0 - synchronous SQLite backend and local relay storage in `packages/sqlite/src/better-sqlite3/*` and `packages/sqlite/src/relay.ts`.
-- `@tursodatabase/database` and `@tursodatabase/database-wasm` ^0.2.2 - Turso/native and Turso WASM backends in `packages/sqlite/src/turso/*` and `packages/sqlite/src/turso-wasm/*`.
-- `ws` ^8.18.3 - Node WebSocket server for the SQLite relay in `packages/sqlite/src/relay.ts`.
-- `debug` ^4.4.x - package-scoped debug logging in `packages/core/package.json`, `packages/signers/package.json`, and `packages/wallet/package.json`.
-- `@noble/*` and `@scure/base` - cryptography and encoding primitives in `packages/signers/package.json`, `packages/concord/package.json`, and `packages/relay/package.json`.
-- `unified`, `remark`, `remark-parse`, and `mdast-util-find-and-replace` - content parsing pipeline in `packages/content/package.json`.
+**Cryptography & Security:**
+- @noble/secp256k1 3.1.0 - Elliptic curve cryptography
+- @noble/hashes 2.2.0 - Cryptographic hashing
+- @noble/curves 2.2.0 - Advanced curve operations
+- @noble/ciphers 2.2.0 - Symmetric encryption
+- @scure/base 2.2.0 - Base encoding/decoding (base64, bech32, etc.)
+
+**Data Structures & Utilities:**
+- fast-deep-equal 3.1.3 - Deep equality checks
+- hash-sum 2.0.0 - Object hashing
+- light-bolt11-decoder 3.2.0 - BOLT11 lightning invoice parsing
+
+**Content Processing:**
+- remark 15.0.1 - Markdown processor
+- remark-parse 11.0.0 - Markdown parser
+- unified 11.0.5 - Text processing ecosystem
+- mdast-util-find-and-replace 3.0.2 - Markdown AST transformation
+- unist-util-visit-parents 6.0.1 - AST tree traversal
+- @types/hast, @types/mdast, @types/unist - AST type definitions
+
+**Bitcoin & Lightning:**
+- @cashu/cashu-ts 4.5.1 - Cashu ecash token support (peer dependency)
+- light-bolt11-decoder 3.2.0 - BOLT11 invoice decoding
+
+**External Services:**
+- @gandlaf21/bc-ur 1.1.12 - BC-UR encoding for hardware wallets
+- blossom-client-sdk 5.0.0 - File storage (NIP-96)
+
+**Frontend Libraries (Examples App):**
+- Chart.js 4.5.1 - Charts and graphs
+- react-chartjs-2 5.3.1 - React Chart.js bindings
+- chartjs-chart-wordcloud 4.4.5 - Word cloud charts
+- react-player 3.4.0 - Media player
+- hls.js 1.6.16 - HLS streaming
+- Leaflet 1.9.4 - Maps
+- react-leaflet 4.2.1 - React Leaflet bindings
+- ngeohash 0.6.3 - Geohash utilities
+- react-force-graph-2d 1.29.1 - Force-directed graphs
+- react-blurhash 0.3.0 - Blurhash image placeholders
+- react-markdown 10.1.0 - Markdown rendering
+- remark-gfm 4.0.1 - GitHub Flavored Markdown
+- Tiptap 3.22.1 - Rich text editor
+- @tiptap/react 3.22.1 - React integration
+- @tiptap/starter-kit 3.22.1 - Common Tiptap extensions
+- tiptap-markdown 0.9.0 - Markdown for Tiptap
+- nostr-editor 1.2.0 - Nostr-specific editor
+
+**Validation & Form Handling:**
+- Zod 4.3.5 - TypeScript-first schema validation
+- @hookform/resolvers 3.9.1 - React Hook Form validation resolvers
+
+**Storage & Caching:**
+- localforage 1.10.0 - LocalStorage/IndexedDB abstraction
+- nostr-idb 5.0.0 - IndexedDB event storage
+
+**Network & Data:**
+- @nostrify/nostrify jsr:0.46.5 - Nostr protocol abstraction
+- @snort/worker-relay 1.5.0 - Worker-based relay
+- nostr-social-graph 1.0.36 - Social graph computation
+- window.nostrdb.js 0.7.0 - JavaScript NostrDB binding
+
+**Utilities:**
+- chalk 5.6.2 - Terminal colors
+- clsx 2.1.1 - Classname utility
+- localforage 1.10.0 - Cross-browser storage
+- react-use 17.6.0 - React hooks collection
+- react-error-boundary 6.0.1 - Error boundary component
+- observable-hooks 4.2.4 - RxJS React integration
+
+**Audio/Visual:**
+- @fontsource/roboto 5.2.9 - Roboto font
+- pastellify 0.1.4 - Pastel color generation
+
+**QR Codes:**
+- @libs/qrcode jsr:3.0.1 - QR code generation
+
+**Torrent Support:**
+- create-torrent 6.1.0 - Torrent file creation
+- parse-torrent 11.0.19 - Torrent file parsing
+
+**Development Tools:**
+- Prettier 3.8.3 - Code formatter
+- @changesets/cli 2.31.0 - Release changesets
+- @changesets/changelog-git 0.2.1 - Git changelog generation
+- @changesets/types 6.1.0 - Types for changesets
+- TypeDoc 0.28.19 - API documentation generation
+- @hirez_io/observer-spy 2.2.0 - RxJS testing utilities
+- rimraf 6.0.1-6.1.3 - Cross-platform file deletion
 
 ## Configuration
 
 **Environment:**
-- Root runtime requires Node >=20.19.0 via `package.json`.
-- Build base paths are configured with `VITE_BASE` in `apps/examples/vite.config.ts` and `apps/docs/.vitepress/config.ts`.
-- SQLite relay runtime uses `DATABASE_PATH` and `PORT` in `packages/sqlite/src/relay.ts`; defaults are `:memory:` and `8080`.
-- Accordian reference app supports `VITE_NOSTR_CONNECT_RELAYS`, `VITE_LOOKUP_RELAYS`, and `VITE_CONCORD_AV_SERVERS` in `refs/accordian/src/nostr.ts` and `refs/accordian/src/app/voice/brokers.ts`.
-- No `.env*` files detected at repository root; do not commit secrets into repo configuration.
+- Configured via environment variables (no `.env` file template documented in codebase)
+- Each package managed independently via workspace
 
 **Build:**
-- Monorepo packages and apps are declared in `pnpm-workspace.yaml`.
-- Build graph is declared in `turbo.json`; `build` depends on `^build` and outputs `dist/**` and `.vitepress/dist/**`.
-- Test configuration is in `vitest.config.ts`; workspace discovery is in `vitest.workspace.ts`.
-- Example app build config is `apps/examples/vite.config.ts`.
-- Documentation site config is `apps/docs/.vitepress/config.ts`.
-- Formatting config is `.prettierrc` with 2-space indentation, no tabs, and `printWidth: 120`.
-- API docs config is `typedoc.json`.
+- `turbo.json` - Task orchestration and caching configuration
+- `.turbo/` - Turbo cache directory
+- Root `tsconfig.json` inherited by packages
+- Each package has own `tsconfig.json` or uses inherited config
+
+**Code Style:**
+- `.prettierrc` - Prettier configuration (2-space indent, 120 char line width)
+- `.prettierignore` - Files to skip formatting
 
 ## Platform Requirements
 
 **Development:**
-- Use Node.js >=20.19.0 with pnpm 11.10.0 from `package.json`.
-- Run `pnpm install` against `pnpm-lock.yaml`; workspace packages are linked through `pnpm-workspace.yaml`.
-- Native SQLite development may require build tooling for `better-sqlite3`, which is explicitly allowed in `pnpm-workspace.yaml` `allowBuilds`.
-- Browser relay and example work requires WebSocket support; tests use `vitest-websocket-mock` and Playwright from `package.json`.
+- Node.js >= 20.19.0
+- pnpm 11.10.0
+- TypeScript support
 
 **Production:**
-- Library packages publish ESM/CJS-compatible entrypoints from `dist/` as declared in each `packages/*/package.json` `exports` map.
-- Docs deploy as a VitePress static site from `apps/docs`.
-- Examples deploy as a Vite static React app from `apps/examples`.
-- Optional local relay runs as a Node process from `packages/sqlite` using `node dist/relay.js` and stores events in `DATABASE_PATH` or memory.
+- Deployment targets vary by package:
+  - Core packages: Node.js environment, browser via bundling
+  - SQLite: Node.js (better-sqlite3), Deno, Bun, Wasm
+  - React packages: Browser bundled with Vite or similar
+  - Docs: Static HTML via VitePress
+
+**Optional Runtimes:**
+- Deno via `./native` exports in applesauce-sqlite
+- Bun via `./bun` exports in applesauce-sqlite
+- Turso/LibSQL for cloud SQLite
+- Browser WebSocket for Nostr relay communication
 
 ---
 
-*Stack analysis: 2026-07-08*
+*Stack analysis: 2026-07-09*

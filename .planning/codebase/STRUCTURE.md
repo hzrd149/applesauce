@@ -1,251 +1,318 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-07-08
+**Analysis Date:** 2026-07-09
 
 ## Directory Layout
 
 ```
 applesauce/
-├── packages/           # Publishable TypeScript SDK packages
-│   ├── core/           # EventStore, helpers, models, operations, factories
-│   ├── common/         # Common NIP-specific helpers/models/factories/casts
-│   ├── actions/        # High-level Nostr actions built on core/common
-│   ├── relay/          # Relay, relay group, relay pool, negentropy support
-│   ├── loaders/        # Observable loaders and helper operators
-│   ├── react/          # React hooks, providers, rendering helpers
-│   ├── accounts/       # Account manager and account implementations
-│   ├── signers/        # Signer implementations and signer helpers
-│   ├── sqlite/         # SQLite event database adapters and relay wrapper
-│   ├── content/        # Text, markdown, and NAST parsing utilities
-│   ├── wallet/         # NIP-60/Cashu wallet helpers, models, actions
-│   ├── wallet-connect/ # Nostr Wallet Connect helpers and services
-│   ├── concord/        # Concord/community domain helpers and casts
-│   └── extra/          # Extra optional integrations/helpers
-├── apps/               # Non-published apps and generated assets
-│   ├── examples/       # Vite React examples app
-│   ├── docs/           # VitePress documentation app
-│   ├── agent-skills/   # Generated Applesauce agent skill package
-│   ├── llms/           # LLM documentation build package
-│   └── snippets/       # Documentation/example snippets
-├── docs/typedoc/       # Generated TypeDoc output
-├── scripts/            # Repository automation scripts
-├── refs/               # Reference/experimental code not part of core packages
-├── .changeset/         # Changeset release notes
-├── .planning/codebase/ # GSD codebase maps
-├── package.json        # Workspace scripts and root dev dependencies
-├── pnpm-workspace.yaml # Workspace package membership
-├── turbo.json          # Turbo build pipeline
-├── typedoc.json        # TypeDoc configuration
-└── vitest.config.ts    # Shared Vitest configuration
+├── packages/                  # Core library packages (pnpm workspace)
+│   ├── core/                 # Main EventStore, factories, operations, models
+│   ├── common/               # NIP-specific helpers, casts, models (depends on core)
+│   ├── relay/                # WebSocket relay communication and pooling
+│   ├── loaders/              # Event loaders for fetching from relays
+│   ├── signers/              # Event signing implementations
+│   ├── accounts/             # Account management and signer selection
+│   ├── actions/              # High-level user actions (follow, reply, like)
+│   ├── content/              # Text and markdown parsing/rendering
+│   ├── react/                # React hooks for observable subscription
+│   ├── wallet/               # Lightning/payment wallet integration
+│   ├── wallet-connect/       # WalletConnect (Cosmos) signer
+│   ├── sqlite/               # SQLite event database backend
+│   ├── extra/                # Experimental features
+│   └── concord/              # Concord protocol (CORD) client
+│
+├── apps/                      # Applications and documentation
+│   ├── docs/                 # VitePress documentation site
+│   ├── examples/             # Example applications and code samples
+│   ├── snippets/             # Standalone code snippets
+│   ├── agent-skills/         # Claude agent skills for code generation
+│   └── llms/                 # LLM context and prompt management
+│
+├── .planning/                 # Project planning documents
+│   ├── codebase/             # This directory
+│   ├── milestones/           # Milestone tracking
+│   └── phases/               # Phase execution plans
+│
+├── .claude/                   # Claude Code configuration
+│   └── skills/               # Project-specific Claude skills
+│
+├── .agents/                   # Agent workflow definitions
+│   └── skills/               # Agent skill definitions
+│
+├── .github/                   # GitHub Actions workflows
+│   └── workflows/            # CI/CD pipeline definitions
+│
+├── .changeset/                # Changesets for versioning (via changesets)
+├── pnpm-workspace.yaml        # pnpm monorepo configuration
+├── tsconfig.json              # TypeScript base configuration
+├── turbo.json                 # Turbo build cache configuration
+└── package.json               # Root workspace package
 ```
 
 ## Directory Purposes
 
-**`packages/core/`:**
-- Purpose: Keep the minimal reusable kernel for Nostr events and reactive stores.
-- Contains: `src/event-store/`, `src/helpers/`, `src/models/`, `src/factories/`, `src/operations/`, `src/observable/`, `src/promise/`, `src/casts/`
-- Key files: `packages/core/src/index.ts`, `packages/core/src/event-store/event-store.ts`, `packages/core/src/event-store/interface.ts`, `packages/core/src/factories/event.ts`, `packages/core/src/factories/types.ts`
+**packages/core:**
+- Purpose: Foundation of applesauce — EventStore, helpers, models, factories, operations
+- Contains: TypeScript source in `src/`, compiled output in `dist/`
+- Key files: 
+  - `src/event-store/event-store.ts` — Main store implementation
+  - `src/event-store/interface.ts` — Type definitions for store and models
+  - `src/helpers/event.ts` — Core event types (NostrEvent, Rumor, StoreEvent)
+  - `src/factories/event.ts` — EventFactory for building events
+  - `src/operations/` — Pure mutation functions
+  - `src/models/` — Observable computed views
+  - `src/casts/` — Typed event wrappers
 
-**`packages/common/`:**
-- Purpose: House common NIP-specific behavior that is framework-agnostic.
-- Contains: helpers, models, operations, factories, observable operators, casts, registration side effects.
-- Key files: `packages/common/src/index.ts`, `packages/common/src/helpers/index.ts`, `packages/common/src/models/__register__.ts`, `packages/common/src/models/thread.ts`, `packages/common/src/factories/note.ts`, `packages/common/src/operations/note.ts`
+**packages/common:**
+- Purpose: NIP-specific helpers, casts, factories, and models
+- Contains: Code for specific Nostr Improvement Proposals (badges, kind mappings, etc.)
+- Exports: Via `packages/common/src/helpers/index.ts`, `packages/common/src/casts/index.ts`, etc.
+- Depends on: `applesauce-core`
 
-**`packages/actions/`:**
-- Purpose: Provide high-level user actions over core/common primitives.
-- Contains: `src/actions/` action modules and package entry points.
-- Key files: `packages/actions/src/index.ts`, `packages/actions/src/actions/index.ts`
+**packages/relay:**
+- Purpose: Nostr relay communication via WebSocket
+- Contains: `Relay` (single connection), `RelayPool` (multi-relay), `RelayGroup` (management)
+- Key files:
+  - `src/relay.ts` — Single relay connection
+  - `src/pool.ts` — Relay pool for redundancy
+  - `src/group.ts` — Relay grouping and batching
+  - `src/operators/` — RxJS operators for relay queries
 
-**`packages/relay/`:**
-- Purpose: Manage relay connections, grouped relay operations, subscriptions, publishing, and negentropy sync.
-- Contains: pool/group/relay classes, operators, types, negentropy support.
-- Key files: `packages/relay/src/pool.ts`, `packages/relay/src/group.ts`, `packages/relay/src/relay.ts`, `packages/relay/src/types.ts`
+**packages/loaders:**
+- Purpose: Load events from relays into EventStore
+- Contains: EventLoader, ProfileLoader, FilterLoader implementations
+- Key files:
+  - `src/loaders/event-loader.ts` — Generic event loader
+  - `src/loaders/profile-loader.ts` — Specialized loader for profiles
+  - `src/loaders/filter-loader.ts` — Load by Nostr filter
 
-**`packages/loaders/`:**
-- Purpose: Turn relay/upstream APIs into reusable Observable loaders.
-- Contains: `src/loaders/`, `src/operators/`, `src/helpers/`, `src/types.ts`.
-- Key files: `packages/loaders/src/loaders/event-loader.ts`, `packages/loaders/src/loaders/address-loader.ts`, `packages/loaders/src/loaders/timeline-loader.ts`, `packages/loaders/src/loaders/sync-loader.ts`
+**packages/signers:**
+- Purpose: Sign events (PrivateKey, NIP-46, WalletConnect, etc.)
+- Contains: Signer implementations and helpers
+- Key files:
+  - `src/signers/` — Various signer classes
+  - `src/helpers/` — Signing utilities
 
-**`packages/react/`:**
-- Purpose: Integrate Applesauce Observable APIs with React applications.
-- Contains: `src/hooks/`, `src/providers/`, `src/helpers/`.
-- Key files: `packages/react/src/index.ts`, `packages/react/src/hooks/index.ts`, `packages/react/src/providers/index.ts`
+**packages/accounts:**
+- Purpose: Manage multiple accounts and signers
+- Contains: AccountManager for active account state, account type registration
+- Key files:
+  - `src/accounts/account-manager.ts` — Core account management
+  - `src/accounts/` — Account type implementations
 
-**`packages/accounts/` and `packages/signers/`:**
-- Purpose: Keep identity/account orchestration separate from event creation.
-- Contains: account classes, account manager, signer implementations, signer helpers.
-- Key files: `packages/accounts/src/manager.ts`, `packages/accounts/src/account.ts`, `packages/accounts/src/accounts/private-key-account.ts`, `packages/signers/src/signers/index.ts`
+**packages/actions:**
+- Purpose: High-level actions (follow, reply, like, etc.)
+- Contains: ActionRunner, action builders
+- Key files:
+  - `src/actions/` — Individual action builders (follow.ts, reply.ts, etc.)
+  - Follows pattern: `action(runner, ...args): Observable<Event>`
 
-**`packages/sqlite/`:**
-- Purpose: Implement durable event databases that satisfy core store interfaces.
-- Contains: SQLite variants for `better-sqlite3`, `libsql`, native/Deno/Bun/Turso/WASM, SQL helpers, optional relay server.
-- Key files: `packages/sqlite/src/better-sqlite3/event-database.ts`, `packages/sqlite/src/libsql/event-database.ts`, `packages/sqlite/src/helpers/sql.ts`, `packages/sqlite/src/relay.ts`
+**packages/content:**
+- Purpose: Parse and render event content
+- Contains: Text parsing (NAST), markdown rendering, component mapping
+- Key files:
+  - `src/text/` — Text parsing and NAST trees
+  - `src/markdown/` — Markdown rendering via remark
+  - `src/helpers/` — Content helpers
 
-**`packages/content/`:**
-- Purpose: Parse and transform note/article content independently of UI frameworks.
-- Contains: `src/text/`, `src/markdown/`, `src/nast/`, `src/helpers/`.
-- Key files: `packages/content/src/text/parser.ts`, `packages/content/src/text/index.ts`, `packages/content/src/markdown/index.ts`, `packages/content/src/nast/types.ts`
+**packages/react:**
+- Purpose: React hooks for observable subscription
+- Contains: Hooks to bridge RxJS Observables and React lifecycle
+- Key files:
+  - `src/hooks/` — `useObservable`, `useModel`, `useModelValue`, etc.
+  - `src/providers/` — Context providers for store/accounts
+  - Peer dependencies: React 18+
 
-**`packages/wallet/` and `packages/wallet-connect/`:**
-- Purpose: Isolate wallet-specific NIP/Cashu/NWC features from core/common.
-- Contains: wallet helpers, models, factories, operations, casts, actions, wallet service/connect URI helpers.
-- Key files: `packages/wallet/src/wallet/nut-wallet.ts`, `packages/wallet/src/helpers/tokens.ts`, `packages/wallet/src/actions/wallet.ts`, `packages/wallet-connect/src/wallet-connect.ts`, `packages/wallet-connect/src/wallet-service.ts`
+**packages/wallet, packages/wallet-connect:**
+- Purpose: Payment and account signature integration
+- wallet: Lightning wallet, Cashu tokens
+- wallet-connect: Cosmos ecosystem signer support
 
-**`apps/examples/`:**
-- Purpose: Run integration examples for SDK packages.
-- Contains: React routes, components, per-topic examples, metadata, Vite config.
-- Key files: `apps/examples/src/index.tsx`, `apps/examples/src/App.tsx`, `apps/examples/src/examples.ts`, `apps/examples/src/components/nav.tsx`
+**packages/sqlite:**
+- Purpose: SQLite backend for persistent event storage (alternative to in-memory)
+- Contains: SQLite database implementation of IEventDatabase interface
 
-**`apps/docs/`:**
-- Purpose: Build and serve documentation through VitePress.
-- Contains: docs app package, VitePress config/content, postbuild scripts.
-- Key files: `apps/docs/package.json`, `apps/docs/scripts/copy-markdown-sources.sh`
+**packages/extra:**
+- Purpose: Experimental or optional features
+- Contains: Unstable APIs, POCs, optional integrations
 
-**`.claude/skills/` and `.agents/skills/`:**
-- Purpose: Project-local agent skills. Current local skill is `skill-creator` for authoring and evaluating skills.
-- Contains: `skill-creator/SKILL.md`, bundled references/scripts/assets.
-- Key files: `.claude/skills/skill-creator/SKILL.md`, `.agents/skills/skill-creator/SKILL.md`
+**packages/concord:**
+- Purpose: Concord protocol (CORD) for encrypted group communications
+- Contains: Helpers, operations, factories, casts, and client
+- Structure mirrors core: `helpers/`, `operations/`, `factories/`, `casts/`, `models/`, `client/`
+- Key files:
+  - `src/client/` — Concord group client
+  - `src/helpers/` — CORD event parsing
+  - `src/factories/` — Build CORD events
+  - `src/casts/` — Type-safe CORD event wrappers
+
+**apps/docs:**
+- Purpose: VitePress documentation site
+- Contains: Markdown docs, typedoc API reference, example code snippets
+- Build: `pnpm build` → static site in `dist/`
+
+**apps/examples:**
+- Purpose: Runnable example applications
+- Contains: Small focused examples (CLI, React, Node.js)
+- Structure: Each subdirectory is a self-contained example
+- Run: `pnpm --filter applesauce-examples dev`
+
+**apps/snippets:**
+- Purpose: Standalone code snippets for documentation
+- Contains: Small focused examples used in docs
+
+**apps/agent-skills:**
+- Purpose: Claude agent skills for code generation and refactoring
+- Contains: Skill definitions for the Claude agent harness
+- Structure: Aligns with skill definition format
+
+**apps/llms:**
+- Purpose: LLM context and prompt management
+- Contains: Context files and prompts for Claude/GPT integration
+
+**.planning/codebase:**
+- Purpose: Architecture and structure documentation
+- Contains: This directory; ARCHITECTURE.md, STRUCTURE.md, etc.
+- Used by: `/gsd-plan-phase`, `/gsd-execute-phase` to understand codebase
+
+**.claude/skills/ and .agents/skills/:**
+- Purpose: Project-specific Claude skills
+- Used by: Claude Code agent for specialized behaviors
 
 ## Key File Locations
 
 **Entry Points:**
-- `packages/core/src/index.ts`: Core package public API and namespaces.
-- `packages/common/src/index.ts`: Common package public API plus model registration side effect.
-- `packages/*/src/index.ts`: Package-level public API entry points.
-- `apps/examples/src/index.tsx`: Vite React example app mount point.
-- `apps/examples/src/examples.ts`: Example registry for routes/navigation.
-- `packages/sqlite/src/relay.ts`: Runnable SQLite-backed relay implementation.
+- `packages/core/src/index.ts` → Main export (EventStore, helpers, factories)
+- `packages/relay/src/index.ts` → Relay and pool exports
+- `packages/accounts/src/index.ts` → AccountManager export
+- `packages/actions/src/index.ts` → ActionRunner export
+- `packages/react/src/index.ts` → React hooks export
 
 **Configuration:**
-- `package.json`: Root scripts, package manager, Node engine, shared dev dependencies.
-- `pnpm-workspace.yaml`: Workspace membership for `packages/*` and `apps/*`.
-- `turbo.json`: Monorepo build/test task graph.
-- `vitest.config.ts`: Shared Vitest and coverage configuration.
-- `vitest.workspace.ts`: Vitest workspace project list.
-- `typedoc.json`: API documentation generation configuration.
-- `packages/*/tsconfig.json`: Per-package TypeScript builds.
-- `apps/examples/vite.config.ts`: Example app Vite configuration.
+- `pnpm-workspace.yaml` → Monorepo workspace configuration
+- `tsconfig.json` → Base TypeScript configuration (root level and per-package)
+- `turbo.json` → Turbo build cache and task definitions
+- `package.json` → Root workspace package name and scripts
 
 **Core Logic:**
-- `packages/core/src/event-store/event-store.ts`: Main store implementation.
-- `packages/core/src/event-store/interface.ts`: Store/model/database contracts.
-- `packages/core/src/event-store/event-models.ts`: Model cache and subscription helpers.
-- `packages/core/src/factories/event.ts`: Fluent event factory base.
-- `packages/core/src/factories/types.ts`: `EventSigner`, `EventOperation`, `TagOperation`, and factory service types.
-- `packages/core/src/operations/`: Core reusable event/tag/content operations.
-
-**Feature Logic:**
-- `packages/common/src/helpers/`: NIP-specific parsers, type guards, pointer extractors.
-- `packages/common/src/operations/`: Low-level draft/tag mutations for common NIPs.
-- `packages/common/src/factories/`: Fluent event builders wrapping common operations.
-- `packages/common/src/models/`: Reactive NIP/domain models.
-- `packages/common/src/casts/`: Typed event wrappers.
-- `packages/wallet/src/`: Wallet-specific helpers, models, actions, factories, casts, wallet classes.
-- `packages/concord/src/`: Concord/community-specific helpers, operations, factories, casts.
+- `packages/core/src/event-store/event-store.ts` → EventStore<E> implementation
+- `packages/core/src/event-store/interface.ts` → IEventStore, IModel, type definitions
+- `packages/core/src/factories/event.ts` → EventFactory builder
+- `packages/core/src/operations/` → Composable event mutations
+- `packages/common/src/helpers/` → NIP-specific parsers and type guards
 
 **Testing:**
-- `packages/*/src/**/__tests__/*.test.ts`: Co-located package tests.
-- `packages/*/src/**/__tests__/exports.test.ts`: Export snapshot/contract tests.
-- `vitest.config.ts`: Shared runner config and coverage include/exclude rules.
+- `packages/*/src/**/*.test.ts` or `*.spec.ts` → Vitest test files (co-located)
+- `vitest.config.ts` (per-package or root) → Vitest configuration
+- `.changeset/` → Changesets for versioning (one file per change)
 
 ## Naming Conventions
 
 **Files:**
-- Use lowercase kebab-case for source modules: `packages/core/src/event-store/event-store.ts`, `packages/common/src/factories/zap-request.ts`.
-- Use `index.ts` barrel files for public subdirectories: `packages/common/src/helpers/index.ts`, `packages/loaders/src/loaders/index.ts`.
-- Use `__tests__/*.test.ts` for tests: `packages/common/src/helpers/__tests__/exports.test.ts`.
-- Use `__register__.ts` for side-effect model/cast registrations: `packages/common/src/models/__register__.ts`, `packages/wallet/src/casts/__register__.ts`.
+- PascalCase for classes: `EventStore.ts`, `EventFactory.ts`, `RelayPool.ts`
+- camelCase for utilities/helpers: `event.ts`, `filter.ts`, `helpers.ts`
+- Directories: kebab-case: `event-store/`, `relay-pool/`, `event-models/`
+- Index files: `index.ts` to export public API
 
 **Directories:**
-- Mirror architectural roles under package `src/`: `helpers/`, `models/`, `operations/`, `factories/`, `casts/`, `actions/`, `observable/`, `operators/`.
-- Keep runtime package code under `packages/<name>/src/`; keep consumer-facing demos under `apps/examples/src/examples/<topic>/`.
-- Place generated output in `dist/` for packages and `docs/typedoc/` for TypeDoc; do not add source logic there.
+- `src/` → TypeScript source files
+- `dist/` → Compiled JavaScript output (generated)
+- `__tests__/` → Test files (co-located with source)
+- `helpers/` → Utility functions and type guards
+- `operations/` → Tag/content mutation functions
+- `factories/` → Event builders and factories
+- `casts/` → Typed event wrappers
+- `models/` → Observable computed views
+- `hooks/` → React hooks (in react package)
 
 ## Where to Add New Code
 
-**New Core Primitive:**
-- Primary code: `packages/core/src/helpers/`, `packages/core/src/event-store/`, `packages/core/src/operations/`, or `packages/core/src/factories/`
-- Tests: matching `packages/core/src/**/__tests__/*.test.ts`
-- Exports: update the closest `packages/core/src/**/index.ts` and `packages/core/package.json` only when exposing a new public subpath.
+**New Feature (e.g., new action):**
+- Primary code: `packages/actions/src/actions/[feature-name].ts`
+- Tests: `packages/actions/src/actions/__tests__/[feature-name].test.ts`
+- Export: Add to `packages/actions/src/actions/index.ts`
+- Pattern: `export function actionName(runner, ...args): Observable<Event> { ... }`
 
-**New NIP/Common Feature:**
-- Primary code: `packages/common/src/helpers/<feature>.ts`
-- Operations: `packages/common/src/operations/<feature>.ts`
-- Factories: `packages/common/src/factories/<feature>.ts`
-- Models/casts: `packages/common/src/models/<feature>.ts` or `packages/common/src/casts/<feature>.ts` only when the feature needs reactive views or typed event wrappers.
-- Tests: `packages/common/src/helpers/__tests__/`, `packages/common/src/operations/__tests__/`, `packages/common/src/factories/__tests__/`
-- Exports: update `packages/common/src/helpers/index.ts`, `packages/common/src/operations/index.ts`, `packages/common/src/factories/index.ts`, and export tests.
+**New Component/Module (e.g., new signer type):**
+- Implementation: `packages/signers/src/signers/[signer-name].ts`
+- Tests: `packages/signers/src/signers/__tests__/[signer-name].test.ts`
+- Export: Add to `packages/signers/src/signers/index.ts`
+- Pattern: Implement `EventSigner` interface
 
-**New High-Level Action:**
-- Primary code: `packages/actions/src/actions/<action>.ts` for general Nostr actions or `packages/wallet/src/actions/<action>.ts` for wallet actions.
-- Tests: colocated `src/actions/__tests__/<action>.test.ts`.
-- Exports: update `src/actions/index.ts` and package `src/index.ts` if needed.
+**New NIP Support (e.g., new badge type):**
+- Helpers: `packages/common/src/helpers/[nip-name].ts` → Type guards
+- Casts: `packages/common/src/casts/[nip-name].ts` → Typed wrappers
+- Operations: `packages/common/src/operations/[nip-name].ts` → Mutations
+- Factories: `packages/common/src/factories/[nip-name].ts` → Builders
+- Models: `packages/common/src/models/[nip-name].ts` → Observables
+- Export: Update corresponding `index.ts` files
+- Follow: [Checklist in CLAUDE.md](../../CLAUDE.md#adding-support-for-a-new-nip)
 
-**New Relay/Loader Behavior:**
-- Relay connection behavior: `packages/relay/src/`.
-- Event loading behavior: `packages/loaders/src/loaders/<loader>.ts`.
-- RxJS loader helpers/operators: `packages/loaders/src/helpers/` or `packages/loaders/src/operators/`.
-- Tests: matching `packages/loaders/src/**/__tests__/*.test.ts` or `packages/relay/src/**/__tests__/*.test.ts`.
+**New Utility/Helper:**
+- Framework-agnostic: `packages/core/src/helpers/[name].ts`
+- NIP-specific: `packages/common/src/helpers/[name].ts`
+- Test: `packages/*/src/helpers/__tests__/[name].test.ts`
+- Export: Add to helpers `index.ts`
 
-**New React Integration:**
-- Hooks: `packages/react/src/hooks/<hook>.ts`.
-- Providers: `packages/react/src/providers/<provider>.tsx` or existing provider modules.
-- Helpers: `packages/react/src/helpers/<helper>.ts`.
-- Examples: `apps/examples/src/examples/<topic>/<example>.tsx`.
+**New React Hook:**
+- Implementation: `packages/react/src/hooks/[hook-name].ts`
+- Tests: `packages/react/src/hooks/__tests__/[hook-name].test.ts`
+- Export: Add to `packages/react/src/hooks/index.ts`
+- Pattern: Wrap RxJS observable subscription via `observable-hooks`
 
-**New Persistence Adapter:**
-- Primary code: `packages/sqlite/src/<adapter>/event-database.ts` plus `packages/sqlite/src/<adapter>/index.ts`.
-- Shared SQL/search helpers: `packages/sqlite/src/helpers/`.
-- Tests: `packages/sqlite/src/<adapter>/__tests__/event-database.test.ts`.
-- Exports: update `packages/sqlite/package.json` export map for new adapter subpaths.
-
-**Documentation or Examples:**
-- Docs app/content: `apps/docs/` following existing VitePress organization.
-- Generated API docs: `docs/typedoc/` through TypeDoc scripts, not by hand.
-- Examples: `apps/examples/src/examples/<topic>/` and register in `apps/examples/src/examples.ts`.
-
-**Utilities:**
-- Package-specific helpers: `packages/<package>/src/helpers/`.
-- Cross-package utilities belong in `packages/core/src/helpers/` only when they are protocol-kernel level; otherwise prefer `packages/common/src/helpers/`.
-- Test-only helpers stay in `packages/<package>/src/__tests__/` or the closest `__tests__/` directory, such as `packages/loaders/src/__tests__/fake-user.ts`.
+**Breaking Change or Major Refactor:**
+- Create `.changeset/[unique-id].md` file describing change
+- Format: Frontmatter with affected packages, then single-sentence body
+- Example:
+  ```
+  ---
+  "applesauce-core": minor
+  "applesauce-common": patch
+  ---
+  Refactor EventStore to use generic E extends StoreEvent for unsigned rumors
+  ```
 
 ## Special Directories
 
-**`dist/`:**
-- Purpose: Built package output referenced by `package.json` `main`, `types`, and `exports`.
-- Generated: Yes
-- Committed: Present in working tree; treat as generated output and prefer editing `src/`.
+**packages/*/src/__tests__/:**
+- Purpose: Top-level test files for package exports
+- Contains: Integration tests, export snapshot tests
+- Generated: No (checked in)
 
-**`coverage/`:**
-- Purpose: Vitest coverage reports configured by `vitest.config.ts`.
-- Generated: Yes
-- Committed: No source code should be added here.
-
-**`docs/typedoc/`:**
-- Purpose: Generated API reference from TypeDoc.
-- Generated: Yes
-- Committed: Present documentation output; source API changes belong under `packages/*/src/`.
-
-**`.changeset/`:**
-- Purpose: Release notes and package version bump metadata.
+**packages/core/src/event-store/__tests__/:**
+- Purpose: EventStore integration tests
+- Contains: Tests for indexing, subscriptions, deletion, expiration
 - Generated: No
-- Committed: Yes
 
-**`.planning/codebase/`:**
-- Purpose: GSD mapping documents consumed by planning/execution agents.
-- Generated: Yes
-- Committed: Project workflow dependent.
-
-**`refs/`:**
-- Purpose: Reference or experimental code used for comparison.
+**packages/core/src/helpers/__tests__/:**
+- Purpose: Helper and utility tests
+- Contains: Tests for guards, parsers, type utilities
 - Generated: No
-- Committed: Yes; do not place production package code here.
 
-**`.claude/skills/` and `.agents/skills/`:**
-- Purpose: Project-local agent skill definitions and resources.
-- Generated: No
-- Committed: Yes; edit with skill-creator conventions when working on skills.
+**packages/*/dist/:**
+- Purpose: Compiled JavaScript output
+- Generated: Yes (via `tsc` during build)
+- Committed: No (gitignored)
+- Includes: `.js` files and `.d.ts` type definitions
+
+**coverage/:**
+- Purpose: Code coverage reports
+- Generated: Yes (via `pnpm test`)
+- Committed: No (gitignored)
+
+**node_modules/:**
+- Purpose: Installed dependencies
+- Generated: Yes (via `pnpm install`)
+- Committed: No (gitignored)
+- Workspace: pnpm manages shared instance + hoisting
+
+**docs/typedoc/:**
+- Purpose: Generated API documentation
+- Generated: Yes (via `pnpm run typedoc`)
+- Committed: No (gitignored)
+- Replaces: Older static docs; now use `apps/docs`
 
 ---
 
-*Structure analysis: 2026-07-08*
+*Structure analysis: 2026-07-09*

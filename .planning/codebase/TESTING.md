@@ -1,183 +1,478 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-07-08
+**Analysis Date:** 2026-07-09
 
 ## Test Framework
 
 **Runner:**
-- Vitest 4.x (`vitest` `^4.1.6` at repo root, package dev deps around `^4.0.15`).
-- Config: `vitest.config.ts`.
-- Browser-related test tooling is installed at root (`@vitest/browser`, `@vitest/browser-playwright`, `playwright`), but package tests are normal Vitest unit/integration tests under `packages/*/src/**/__tests__`.
+- Vitest 4.1.6 (`vitest run` for CLI, `vitest` for watch mode)
+- Config: `vitest.config.ts` at root and workspace config in `vitest.workspace.ts`
 
 **Assertion Library:**
-- Vitest `expect` with built-in matchers: `toEqual`, `toBe`, `toMatchObject`, `toHaveBeenCalled`, `rejects.toThrow`, `toMatchInlineSnapshot`.
-- Observable assertions use `@hirez_io/observer-spy` in relay tests: `packages/relay/src/__tests__/relay.test.ts`.
-- WebSocket protocol assertions use `vitest-websocket-mock`: `packages/relay/src/__tests__/relay.test.ts`.
+- Vitest's built-in `expect()` function (compatible with Jasmine)
 
 **Run Commands:**
 ```bash
-pnpm test              # Build packages, then run all tests with vitest run
-pnpm test:browser      # Run vitest in interactive/browser-capable mode
-pnpm coverage          # Build packages, then run vitest with v8 coverage
-pnpm --filter applesauce-core test       # Run one package's tests
-pnpm --filter applesauce-core watch:test # Watch one package's tests
+pnpm test                # Build packages, then run all tests once
+pnpm coverage            # Build packages, then run tests with coverage report
+pnpm test:browser        # Run in watch mode for browser environment
+vitest run               # Run once (from within workspace)
+vitest                   # Watch mode
 ```
+
+**Coverage Configuration:**
+- Provider: v8
+- Reporters: text, json, html, lcov
+- Include: `packages/**/src/**/*`
+- Exclude: test files and `apps/examples/**/*`
+- Output: `coverage/` directory in repo root
 
 ## Test File Organization
 
 **Location:**
-- Tests are co-located in `__tests__` directories under each package source tree: `packages/core/src/helpers/__tests__`, `packages/wallet/src/actions/__tests__`, `packages/concord/src/factories/__tests__`.
-- Submodule tests live beside the submodule they verify: `packages/core/src/operations/__tests__/tags.test.ts`, `packages/content/src/markdown/__tests__/blossom.test.ts`.
-- Package-level export tests live directly under `src/__tests__`: `packages/core/src/__tests__/exports.test.ts`, `packages/react/src/__tests__/exports.test.ts`.
-- App-level tests are not detected under `apps/`; coverage config excludes `apps/examples/**/*` in `vitest.config.ts`.
+- Co-located: tests live in `__tests__/` subdirectory within `src/` (preferred pattern)
+- Example: `src/helpers/__tests__/badges.test.ts` tests `src/helpers/badge.ts`
 
 **Naming:**
-- Use `*.test.ts` for all detected tests; no `*.spec.ts` files are detected.
-- Name tests after the unit under test: `events.test.ts`, `action-runner.test.ts`, `nut-wallet.test.ts`, `catch-error-inline.test.ts`.
-- Use `exports.test.ts` for snapshot tests that lock public exports.
+- Feature tests: `{feature}.test.ts` (e.g., `badges.test.ts`)
+- Export tests: `exports.test.ts` (snapshot of public API)
+- Utilities: `{helper}.ts` (e.g., `fixtures.ts`, `fake-user.js`)
 
 **Structure:**
-```text
-packages/<package>/src/<area>/__tests__/<unit>.test.ts
-packages/<package>/src/__tests__/exports.test.ts
-packages/<package>/src/__tests__/fixtures.ts
-packages/<package>/src/__tests__/fake-user.ts
+```
+packages/{name}/src/
+├── helpers/
+│   ├── badge.ts
+│   ├── badge-award.ts
+│   └── __tests__/
+│       ├── badges.test.ts
+│       └── exports.test.ts
+├── operations/
+│   ├── badge.ts
+│   └── __tests__/
+│       └── badge.test.ts
+├── factories/
+│   ├── badge.ts
+│   └── __tests__/
+│       └── badge.test.ts
+└── casts/
+    ├── badge.ts
+    └── __tests__/
+        └── badge.test.ts
 ```
 
 ## Test Structure
 
 **Suite Organization:**
 ```typescript
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-let eventStore: EventStore;
+describe("badge helpers", () => {
+  it("reads badge definition tags", () => {
+    const event = createEvent({ kind: kinds.BadgeDefinition, tags: [...] });
+    expect(getBadgeIdentifier(event)).toBe("bravery");
+  });
 
-beforeEach(() => {
-  eventStore = new EventStore();
-  User.cache.clear();
-});
-
-describe("FeatureName", () => {
-  it("does the observable behavior", async () => {
-    await expect(runFeature()).resolves.toBeUndefined();
+  it("parses profile badge slots", () => {
+    const slots = getProfileBadgeSlots(event);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].badge.identifier).toBe("courage");
   });
 });
 ```
 
 **Patterns:**
-- Group by exported symbol or behavior, not by implementation detail: `describe("MintTokens")`, `describe("RolloverTokens")`, and `describe("RecoverFromCouch")` in `packages/wallet/src/actions/__tests__/tokens.test.ts`.
-- Use top-level `beforeEach` for fresh stores, mocks, and caches: `packages/wallet/src/actions/__tests__/tokens.test.ts`, `packages/relay/src/__tests__/relay.test.ts`.
-- Clear singleton/static caches between tests when models or casts cache by event/user: `User.cache.clear()` in `packages/wallet/src/actions/__tests__/tokens.test.ts` and `packages/wallet/src/wallet/__tests__/nut-wallet.test.ts`.
-- Prefer asserting externally visible outputs: published events, relay messages, event-store state, Observable values, and exported keys.
-- Keep tests short enough to show a single behavior; use local helper functions for setup-heavy protocol data.
+- One `describe()` per module/feature
+- One `it()` per specific behavior being tested
+- Descriptive test names that read as sentences: "reads badge definition tags"
+- Setup helpers created as module-level functions
 
-## Mocking
+## Test Setup & Fixtures
 
-**Framework:** Vitest `vi` mocks/spies plus explicit in-memory fakes.
-
-**Patterns:**
+**Test Event Creation:**
 ```typescript
-function mockPool() {
-  const relay = { getSupported: vi.fn().mockResolvedValue([]), request: vi.fn().mockReturnValue(EMPTY) };
+function createEvent(
+  partial: Partial<NostrEvent>,
+): NostrEvent {
   return {
-    publish: vi.fn().mockImplementation((relays: string[]) => relays.map((from) => ({ ok: true, from }))),
-    subscription: vi.fn().mockReturnValue(EMPTY),
-    relay: vi.fn().mockReturnValue(relay),
-  } as unknown as RelayPool;
+    id: partial.id ?? "id",
+    pubkey: partial.pubkey ?? "pubkey".padStart(64, "0"),
+    sig: partial.sig ?? "sig".padStart(128, "0"),
+    created_at: partial.created_at ?? 1,
+    kind: partial.kind ?? 1,
+    content: partial.content ?? "",
+    tags: partial.tags ?? [],
+  };
 }
 ```
 
-**What to Mock:**
-- Mock relay pools and network boundaries with inert Observables (`EMPTY`, `NEVER`, `Subject`) rather than live sockets, as in `packages/wallet/src/wallet/__tests__/nut-wallet.test.ts` and `packages/concord/src/__tests__/client.test.ts`.
-- Mock WebSocket relays only when testing relay protocol behavior, using `WS` from `vitest-websocket-mock` in `packages/relay/src/__tests__/relay.test.ts`.
-- Mock Cashu wallet providers and couch storage for wallet actions: `mintingProvider`, `swappingProvider`, and `memoryCouch` in `packages/wallet/src/actions/__tests__/tokens.test.ts`.
-- Use `vi.spyOn` for specific method interception and restore/clear in teardown: `Relay.fetchInformationDocument` in `packages/relay/src/__tests__/relay.test.ts`, signer decrypt methods in `packages/wallet/src/wallet/__tests__/nut-wallet.test.ts`.
-
-**What NOT to Mock:**
-- Do not mock pure helper logic under test; construct real signed events with `FakeUser` from `packages/core/src/__tests__/fixtures.ts`.
-- Do not mock `EventStore` for model/action tests; create a real `new EventStore()` so cache, replaceable-event, and subscription behavior is exercised.
-- Do not use live relays in unit tests; Concord client tests inject fake pools in `packages/concord/src/__tests__/client.test.ts`.
-
-## Fixtures and Factories
-
-**Test Data:**
+**FakeUser Fixture (`packages/common/src/__tests__/fixtures.ts`):**
 ```typescript
 export class FakeUser implements EncryptedContentSigner, EventSigner {
   key = generateSecretKey();
   pubkey = getPublicKey(this.key);
+  
   signEvent(draft: EventTemplate | UnsignedEvent) {
     return finalizeEvent(draft, this.key);
+  }
+  
+  note(content = "Hello World", extra?: Partial<NostrEvent>) {
+    return this.event({ kind: kinds.ShortTextNote, content, ...extra });
   }
 }
 ```
 
-**Location:**
-- Shared Nostr signer/event fixtures live in `packages/core/src/__tests__/fixtures.ts`.
-- Several packages maintain local `FakeUser` copies for package-specific dependency boundaries: `packages/wallet/src/__tests__/fake-user.ts`, `packages/actions/src/__tests__/fake-user.ts`, `packages/relay/src/__tests__/fake-user.ts`.
-- Test-only data builders live inside the test file when scoped to one behavior: `makeToken` and `addTokenEvent` in `packages/wallet/src/actions/__tests__/tokens.test.ts`, `mockPool` in `packages/wallet/src/wallet/__tests__/nut-wallet.test.ts`.
-- Use real factories to create signed Nostr events in tests: `WalletFactory` and `WalletTokenFactory` in `packages/wallet/src/actions/__tests__/tokens.test.ts`.
-
-## Coverage
-
-**Requirements:** No numeric coverage threshold is enforced.
-
-**View Coverage:**
-```bash
-pnpm coverage
+**Usage:**
+```typescript
+const issuer = new FakeUser();
+const recipientA = new FakeUser();
+const event = issuer.event({ kind: kinds.BadgeAward, tags: [...] });
 ```
 
-- Coverage provider is V8 in `vitest.config.ts`.
-- Coverage includes `packages/**/src/**/*`.
-- Coverage excludes `**/src/**/*.test.ts`, `**/src/**/__tests__/**/*`, and `apps/examples/**/*`.
-- Reporters are `text`, `json`, `html`, and `lcov`.
+**Setup & Teardown:**
+```typescript
+import { beforeEach, afterEach, vi } from "vitest";
 
-## Test Types
+beforeEach(async () => {
+  // Mock external dependencies
+  vi.spyOn(Relay, "fetchInformationDocument").mockImplementation(() => of(null));
+  server = new WS("wss://test", { jsonProtocol: true });
+});
 
-**Unit Tests:**
-- Pure helpers and operations are tested directly with small inputs and exact outputs: `packages/core/src/helpers/__tests__/events.test.ts`, `packages/core/src/operations/__tests__/tags.test.ts`, `packages/content/src/markdown/__tests__/blossom.test.ts`.
-- Export barrels are tested with inline snapshots: `packages/core/src/__tests__/exports.test.ts`, `packages/wallet/src/models/__tests__/exports.test.ts`.
+afterEach(async () => {
+  await WS.clean();
+  if (vi.isFakeTimers()) vi.clearAllTimers();
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
+```
 
-**Integration Tests:**
-- Package-level integration tests compose real stores, factories, actions, signers, and mocked boundary services: `packages/wallet/src/actions/__tests__/tokens.test.ts`, `packages/wallet/src/wallet/__tests__/nut-wallet.test.ts`.
-- Relay integration tests exercise WebSocket protocol flows against `vitest-websocket-mock`: `packages/relay/src/__tests__/relay.test.ts`.
-- Concord client tests exercise dependency-injected storage, relay pools, and optimistic local echo without network: `packages/concord/src/__tests__/client.test.ts`.
+## Testing Helpers
 
-**E2E Tests:**
-- No Vitest E2E suite is detected.
-- Reference app `refs/accordian/AGENTS.md` documents Puppeteer driver scripts under `refs/accordian/scripts/*.mjs` for browser/protocol checks outside the package test suite.
+**Type Guards & Getters:**
+```typescript
+describe("badge helpers", () => {
+  it("validates badge events", () => {
+    const event = createEvent({ kind: kinds.BadgeDefinition, tags: [["d", "bravery"]] });
+    expect(isValidBadge(event)).toBe(true);
+    expect(getBadgeIdentifier(event)).toBe("bravery");
+    expect(getBadgeName(event)).toBeUndefined();
+  });
+});
+```
 
-## Common Patterns
+**Pattern:**
+- Create event with minimal required tags
+- Assert each getter/type guard returns expected value
+- Test edge cases: missing tags, wrong kind, empty identifier
+
+## Testing Operations
+
+**Operation Testing Pattern:**
+```typescript
+const badgePointer = { kind: kinds.BadgeDefinition, pubkey: issuer.pubkey, identifier: "alpha" };
+
+function createAwardDraft(tags: string[][] = []): EventTemplate {
+  return {
+    kind: kinds.BadgeAward,
+    content: "",
+    tags,
+    created_at: unixNow(),
+  };
+}
+
+describe("badge award operations", () => {
+  it("sets and replaces badge pointers", async () => {
+    const result = await setBadgePointer(badgePointer)(createAwardDraft());
+    expect(result.tags).toEqual([["a", `${badgePointer.kind}:${issuer.pubkey}:${badgePointer.identifier}`]]);
+
+    const updated = await setBadgePointer(secondBadgePointer)(result);
+    expect(updated.tags).toEqual([["a", `${secondBadgePointer.kind}:${issuer.pubkey}:${secondBadgePointer.identifier}`]]);
+  });
+
+  it("adds and removes recipients", async () => {
+    const withRecipient = await addRecipient(recipientA)(createAwardDraft());
+    expect(withRecipient.tags).toEqual([["p", recipientA.pubkey]]);
+
+    const withBoth = await addRecipient(recipientB)(withRecipient);
+    expect(withBoth.tags).toEqual([
+      ["p", recipientA.pubkey],
+      ["p", recipientB.pubkey],
+    ]);
+
+    const withoutA = await removeRecipient(recipientA)(withBoth);
+    expect(withoutA.tags).toEqual([["p", recipientB.pubkey]]);
+  });
+});
+```
+
+**Pattern:**
+- Create blank draft with `createAwardDraft()`
+- Pass through operation as function: `await operation(draft)`
+- Assert tags are correctly added/replaced/removed
+- Test chaining: apply multiple operations to same draft
+- Verify both creation and modification flows
+
+## Testing Factories
+
+**Factory Testing Pattern:**
+```typescript
+describe("BadgeAwardFactory", () => {
+  it("builds a badge award event", async () => {
+    const event = await BadgeAwardFactory.create()
+      .badge(badgeAddress)
+      .recipients([recipientA, recipientB]);
+
+    expect(event.kind).toBe(kinds.BadgeAward);
+    expect(event.tags).toEqual([
+      ["a", `${badgeAddress.kind}:${badgeAddress.pubkey}:${badgeAddress.identifier}`],
+      ["p", recipientA.pubkey],
+      ["p", recipientB],
+    ]);
+  });
+
+  it("modifies an existing badge award", async () => {
+    const existing: NostrEvent = {
+      kind: kinds.BadgeAward,
+      id: HEX("f"),
+      pubkey: HEX("e"),
+      sig: HEX("c", 128),
+      created_at: 1,
+      content: "",
+      tags: [["a", `...`], ["p", recipientA.pubkey]],
+    };
+
+    const result = await BadgeAwardFactory.modify(existing)
+      .clearBadge()
+      .clearRecipients();
+    
+    expect(result.tags).toEqual([]);
+  });
+});
+```
+
+**Pattern:**
+- `BadgeFactory.create()` builds from scratch
+- `BadgeFactory.modify(event)` starts from existing event
+- Chain methods (fluent builder pattern)
+- Await final call to resolve EventTemplate Promise
+- Test both creation and modification scenarios
+
+## Testing Casts
+
+**Cast Testing Pattern:**
+```typescript
+import { EventStore } from "applesauce-core";
+
+describe("Badge cast", () => {
+  it("creates cast from valid event", () => {
+    const store = new EventStore();
+    const event = createEvent({ kind: kinds.BadgeDefinition, tags: [["d", "bravery"]] });
+    store.add(event);
+
+    const badge = castEvent(event, Badge, store);
+    expect(badge.identifier).toBe("bravery");
+    expect(badge.name).toBeUndefined();
+    expect(badge.pointer).toEqual({
+      kind: kinds.BadgeDefinition,
+      pubkey: event.pubkey,
+      identifier: "bravery",
+    });
+  });
+
+  it("throws on invalid event", () => {
+    const store = new EventStore();
+    const event = createEvent({ kind: 1 }); // Wrong kind
+    
+    expect(() => castEvent(event, Badge, store)).toThrow("Invalid badge definition event");
+  });
+});
+```
+
+**Pattern:**
+- Create EventStore and add event to it
+- Call `castEvent()` with event, cast class, and store
+- Assert getters return expected values
+- Test error cases: invalid kind, missing required tags
+
+## Snapshot Testing
+
+**Export Snapshot Tests:**
+```typescript
+import { describe, expect, it } from "vitest";
+import * as exports from "../index.js";
+
+describe("exports", () => {
+  it("should export the expected functions", () => {
+    expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
+      [
+        "Casts",
+        "Factories",
+        "Helpers",
+        "Models",
+        "Observable",
+        "Operations",
+      ]
+    `);
+  });
+});
+```
+
+**Pattern:**
+- One test per module's `index.ts`
+- Snapshot all exported names using `Object.keys(exports).sort()`
+- Uses `toMatchInlineSnapshot()` for inline snapshot
+- Update snapshot with `vitest --update` when API changes intentionally
+- File: `packages/{name}/src/__tests__/exports.test.ts`
+
+**Helper Snapshot Tests:**
+- Extend `helpers/__tests__/badges.test.ts` with new helper tests
+- Update `helpers/__tests__/exports.test.ts` snapshot when adding helpers
+- Run `pnpm --filter applesauce-common test` to verify snapshot integrity
+
+## Mocking
+
+**Framework:**
+- Vitest's built-in `vi` spy/mock system
+- `vitest-websocket-mock` for WebSocket testing
+- `@hirez_io/observer-spy` for RxJS observable spying
+
+**Mocking External Dependencies:**
+```typescript
+import { vi } from "vitest";
+
+beforeEach(() => {
+  vi.spyOn(Relay, "fetchInformationDocument")
+    .mockImplementation(() => of(null));
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
+```
+
+**WebSocket Mocking:**
+```typescript
+import { WS } from "vitest-websocket-mock";
+
+let server: WS;
+
+beforeEach(async () => {
+  server = new WS("wss://test", { jsonProtocol: true });
+  relay = new Relay("wss://test");
+});
+
+afterEach(async () => {
+  await WS.clean();
+});
+
+it("sends REQ message", async () => {
+  subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+  await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+});
+```
+
+**RxJS Observable Spying:**
+```typescript
+import { subscribeSpyTo } from "@hirez_io/observer-spy";
+
+const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+await server.connected;
+
+server.send(["EVENT", "sub1", mockEvent]);
+server.send(["EOSE", "sub1"]);
+
+expect(spy.getValues()).toEqual([
+  expect.objectContaining({ type: "OPEN" }),
+  expect.objectContaining({ type: "EVENT", event: expect.objectContaining(mockEvent) }),
+  expect.objectContaining({ type: "EOSE" }),
+]);
+```
+
+**What to Mock:**
+- External WebSocket servers
+- Relay information documents
+- Static async functions that make HTTP requests
+- Timers for time-dependent tests
+
+**What NOT to Mock:**
+- Event creation/signing (use FakeUser)
+- EventStore operations (test with real store)
+- Tag operations (test actual behavior)
+- RxJS operators (use them as-is)
+
+## Common Test Patterns
 
 **Async Testing:**
 ```typescript
-await hub.run(MintTokens, mint, 100, "quote-id", { getCashuWallet: mintingProvider(proofs) });
-expect(publish).toHaveBeenCalled();
+it("handles async operations", async () => {
+  const result = await someAsyncFunction();
+  expect(result).toEqual(expected);
+});
+
+it("uses firstValueFrom for observables", async () => {
+  const value = await firstValueFrom(observable$);
+  expect(value).toBe(expected);
+});
 ```
 
 **Error Testing:**
 ```typescript
-publish.mockRejectedValueOnce(new Error("relay down"));
-await expect(hub.run(MintTokens, mint, 100, "quote-id", { couch })).rejects.toThrow();
+it("throws on invalid input", () => {
+  expect(() => {
+    isValidBadge(event); // type guard throws
+  }).toThrow("Invalid badge definition event");
+});
+
+it("rejects invalid promises", async () => {
+  await expect(factory.sign()).rejects.toThrow("Signer required");
+});
 ```
 
 **Observable Testing:**
 ```typescript
-const states: boolean[] = [];
-const sub = wallet.busy$.subscribe((busy) => states.push(busy));
-await wallet.setMints(["https://mint.example.com"]);
-sub.unsubscribe();
-expect(states).toContain(true);
+it("emits events in order", async () => {
+  const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+  
+  server.send(["EVENT", "sub1", event1]);
+  server.send(["EVENT", "sub1", event2]);
+  server.send(["EOSE", "sub1"]);
+  
+  expect(spy.getValues()).toHaveLength(4); // OPEN, EVENT, EVENT, EOSE
+});
 ```
 
-**Snapshot Testing:**
+**Type Narrowing:**
 ```typescript
-import * as exports from "../index.js";
-
-expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`[
-  "EventStore",
-]`);
+it("narrows type with type guard", () => {
+  const event: NostrEvent = createEvent({ kind: kinds.BadgeDefinition, tags: [...] });
+  
+  if (isValidBadge(event)) {
+    // TypeScript now knows event is BadgeEvent
+    const id: string = getBadgeIdentifier(event);
+    expect(id).toBe("bravery");
+  }
+});
 ```
+
+## Coverage Requirements
+
+**Target:**
+- No explicit minimum enforced; coverage reports generated
+- Coverage data at `coverage/` directory (git-ignored)
+
+**View Coverage:**
+```bash
+pnpm coverage                 # Generate and view in terminal
+open coverage/index.html      # Open HTML report in browser
+cat coverage/coverage-final.json  # Raw JSON data
+```
+
+**Coverage Scope:**
+- Includes: `packages/**/src/**/*`
+- Excludes: test files (`*.test.ts`), `__tests__/` directories, `apps/examples/**/*`
 
 ---
 
-*Testing analysis: 2026-07-08*
+*Testing analysis: 2026-07-09*

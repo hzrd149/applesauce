@@ -1,35 +1,53 @@
-<!-- refreshed: 2026-07-08 -->
+<!-- refreshed: 2026-07-09 -->
 # Architecture
 
-**Analysis Date:** 2026-07-08
+**Analysis Date:** 2026-07-09
 
 ## System Overview
 
+Applesauce is a reactive Nostr SDK for TypeScript/JavaScript built on RxJS and a single in-memory EventStore. The architecture follows a layered, functional approach where events flow through helpers, models, factories, operations, and casts. The core principle is reactive composition: all data access is observable, enabling real-time updates across multiple consumers.
+
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│              Apps, docs, examples, and consumers             │
-├──────────────────┬──────────────────┬───────────────────────┤
-│  React examples  │   VitePress docs │  generated assets      │
-│ `apps/examples`  │   `apps/docs`    │ `apps/llms`,`skills`   │
-└────────┬─────────┴────────┬─────────┴──────────┬────────────┘
-         │                  │                     │
-         ▼                  ▼                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Feature packages and adapters                │
-│ `packages/common`, `actions`, `wallet`, `concord`, `react`   │
-│ `packages/loaders`, `relay`, `sqlite`, `accounts`, `signers` │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       Core event layer                       │
-│ `packages/core/src/event-store`, `helpers`, `models`         │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│            Nostr events, relays, signers, and databases      │
-│ `packages/relay`, `packages/signers`, `packages/sqlite`      │
+│          Applications & UI                                  │
+│  (React Hooks / CLI / Smart Contracts)                      │
+│  `apps/examples/`, `packages/react/`                        │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│   Actions & Commands Layer                                  │
+│   Create/sign events, perform user actions                  │
+│   `packages/actions/`, `packages/signers/`                  │
+│   `packages/accounts/`, `packages/concord/`                 │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│   Content & Model Layer                                     │
+│   Parse/render events, create computed views                │
+│   `packages/content/`, `packages/core/models/`              │
+│   `packages/core/factories/`, `packages/core/casts/`        │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│   EventStore & In-Memory Database                           │
+│   Stores events, manages subscriptions, indexes             │
+│   `packages/core/event-store/`                              │
+│   - EventStore<E> (generic over StoreEvent)                 │
+│   - RumorStore (unsigned NIP-59 rumor events)               │
+│   - EventMemory (in-memory index)                           │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│   Relay & Transport Layer                                   │
+│   WebSocket relay connections, subscriptions                │
+│   `packages/relay/`, `packages/loaders/`                    │
+│   Negentropy sync, EventLoaders                             │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│   Helper Layer                                              │
+│   Guards, parsers, utilities (framework-agnostic)           │
+│   `packages/core/helpers/`, `packages/common/helpers/`      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -37,205 +55,293 @@
 
 | Component | Responsibility | File |
 |-----------|----------------|------|
-| Core event store | Own in-memory event identity, insert/update/remove streams, delete/expiration handling, model subscriptions | `packages/core/src/event-store/event-store.ts` |
-| Event model cache | Deduplicate and keep reactive computed models warm with `share`/`ReplaySubject` | `packages/core/src/event-store/event-models.ts` |
-| Event factory base | Build fluent, promise-like event drafts and sign/stamp them with an `EventSigner` | `packages/core/src/factories/event.ts` |
-| Event operations | Provide immutable draft/tag transformations consumed by factories | `packages/core/src/operations/event.ts`, `packages/core/src/operations/tags.ts` |
-| NIP helpers/models | Add NIP-specific guards, parsers, operations, factories, casts, and model prototype extensions | `packages/common/src/helpers/badge.ts`, `packages/common/src/models/thread.ts` |
-| Relay pool | Own relay connection instances and expose grouped request/publish/subscription APIs | `packages/relay/src/pool.ts` |
-| Loaders | Convert relay/upstream APIs into Observable loaders for events, addresses, timelines, social graph, and sync | `packages/loaders/src/loaders/index.ts` |
-| React bindings | Provide hooks, helpers, and providers for using RxJS/event-store APIs in React | `packages/react/src/index.ts` |
-| SQLite adapters | Implement event database persistence backends and an optional relay server | `packages/sqlite/src/better-sqlite3/event-database.ts`, `packages/sqlite/src/libsql/event-database.ts`, `packages/sqlite/src/relay.ts` |
-| Example app | Demonstrate package integration through routed React examples | `apps/examples/src/index.tsx`, `apps/examples/src/examples.ts` |
+| EventStore | Core in-memory store for events, subscriptions, streaming | `packages/core/src/event-store/event-store.ts` |
+| EventMemory | Indexing and LRU caching for fast lookups | `packages/core/src/event-store/event-memory.ts` |
+| RumorStore | Specialized store for unsigned NIP-59 rumor events | `packages/core/src/event-store/rumor-store.ts` |
+| Models | Observable-based computed views (profiles, contacts, etc.) | `packages/core/src/models/` |
+| Factories | Fluent builders for creating and signing events | `packages/core/src/factories/` |
+| Operations | Composable tag/content mutations on event drafts | `packages/core/src/operations/` |
+| Casts | Typed wrappers around events (NIP-specific) | `packages/core/src/casts/` |
+| Helpers | Type guards, parsers, utilities (NIP-agnostic) | `packages/core/src/helpers/`, `packages/common/src/helpers/` |
+| Relay Pool | Multi-relay communication and management | `packages/relay/src/pool.ts` |
+| EventLoaders | Fetch events from relays into store | `packages/loaders/src/loaders/` |
+| ActionRunner | Execute composable actions (replies, follows, etc.) | `packages/actions/src/` |
+| AccountManager | Manage signers and active account state | `packages/accounts/src/` |
+| React Hooks | Subscribe to observables in React components | `packages/react/src/hooks/` |
+| Content Parser | Parse and render event content (text, markdown) | `packages/content/src/` |
 
 ## Pattern Overview
 
-**Overall:** Reactive monorepo SDK with a core event-store kernel, feature packages layered on top, and adapter packages at the edges.
+**Overall:** Reactive Observable Architecture
 
 **Key Characteristics:**
-- Use `EventStore` as the central normalized event cache; add events via `EventStore.add()` and read through direct queries or Observable models in `packages/core/src/event-store/event-store.ts`.
-- Represent derived state as `Model<T>` functions that receive a store and return `Observable<T>`; add domain models under package `src/models/` and register convenience methods through `EventModels.prototype` when needed, as in `packages/common/src/models/thread.ts`.
-- Build events by composing immutable `EventOperation`s; expose low-level operations from `src/operations/` and fluent domain factories from `src/factories/`, as in `packages/common/src/operations/note.ts` and `packages/common/src/factories/note.ts`.
-- Keep package public surfaces explicit through `src/index.ts` and submodule `index.ts` barrel files matching `package.json` export maps, such as `packages/core/src/index.ts` and `packages/wallet/package.json`.
+- **Event-driven:** All data flows through RxJS Observables
+- **Generic EventStore:** Core store is generic over `E extends StoreEvent = NostrEvent` to support unsigned rumors
+- **Functional composition:** Operations, models, and casts are pure functions returning Observables
+- **Single in-memory database:** EventStore holds all events; no distributed state
+- **Lazy loading:** Events can be loaded from relays on-demand via `eventLoader` callback
+- **Claim tracking:** Events are reference-counted; unclaimed events can be evicted (LRU)
 
 ## Layers
 
-**Core primitives:**
-- Purpose: Define Nostr event types, filters, pointers, cache symbols, store interfaces, operations, factories, observables, and core models.
-- Location: `packages/core/src`
-- Contains: `event-store/`, `helpers/`, `models/`, `factories/`, `operations/`, `observable/`, `promise/`, `casts/`
-- Depends on: `nostr-tools`, `rxjs`, `debug`, small utility packages declared in `packages/core/package.json`
-- Used by: All SDK packages including `packages/common`, `packages/actions`, `packages/loaders`, `packages/relay`, `packages/signers`, `packages/sqlite`, `packages/wallet`
+**EventStore & In-Memory Database:**
+- Purpose: Central event repository, subscriptions, indexing
+- Location: `packages/core/src/event-store/`
+- Contains: `EventStore<E>`, `EventMemory<E>`, `RumorStore`, `DeleteManager`, `ExpirationManager`
+- Depends on: Helpers (event guards, filters, pointers)
+- Used by: Models, loaders, React hooks, all consumers
 
-**Protocol feature packages:**
-- Purpose: Add NIP/domain-specific behavior without bloating core.
-- Location: `packages/common/src`, `packages/wallet/src`, `packages/wallet-connect/src`, `packages/concord/src`, `packages/content/src`
-- Contains: guarded helpers, casts, reactive models, operations, fluent factories, action helpers, content parsers
-- Depends on: `applesauce-core` plus package-specific SDKs such as `@cashu/cashu-ts` in `packages/wallet/package.json`
-- Used by: `packages/actions`, `packages/react`, `apps/examples`, downstream consumers
+**Model Layer:**
+- Purpose: Create observable computed views from raw events
+- Location: `packages/core/src/models/`
+- Contains: `ProfileModel`, `ContactsModel`, `OutboxModel`, etc.
+- Pattern: `Model<T, E>(events: ModelEventStore<E>) => Observable<T>`
+- Example: `ProfileModel(pubkey)` subscribes to kind-0 events and parses profile content
+- Depends on: EventStore subscriptions, helpers for parsing
+- Used by: React hooks, actions, other models
 
-**Network and loading:**
-- Purpose: Connect to relays, group relay operations, publish events, and load missing/remote events into stores.
-- Location: `packages/relay/src`, `packages/loaders/src`
-- Contains: `RelayPool`, `RelayGroup`, `Relay`, loaders, helper operators, upstream adapters
-- Depends on: `applesauce-core`, `rxjs`, WebSocket-capable runtimes
-- Used by: apps and packages that need relay IO, including `packages/wallet` peer dependencies and `apps/examples`
+**Factory & Operations Layer:**
+- Purpose: Build events fluently and apply composable mutations
+- Location: `packages/core/src/factories/`, `packages/core/src/operations/`
+- Factories: `EventFactory<K>` — Promise-like builder for creating and signing events
+- Operations: Pure functions like `setMetaTags()`, `modifyPublicTags()` that return mutations
+- Pattern: Chain factories to build, modify, and sign events: `EventFactory.fromKind(1).content("hello").sign(signer)`
+- Depends on: Event helpers, signers
+- Used by: Actions, manual event creation
 
-**Identity and signing:**
-- Purpose: Abstract Nostr account types and signer implementations.
-- Location: `packages/accounts/src`, `packages/signers/src`
-- Contains: account classes, `AccountManager`, private key/password/extension/Nostr Connect signers, signer helpers
-- Depends on: `applesauce-core`, `@noble/secp256k1`, `@scure/base`, optional native signer plugins
-- Used by: event factories, actions, wallet flows, and examples
+**Casts & NIP-Specific Types:**
+- Purpose: Typed wrappers for NIP-specific events with observable properties
+- Location: `packages/core/src/casts/`, `packages/common/src/casts/`
+- Pattern: Cast wraps an event and adds type-safe property accessors and observables
+- Example: `BadgeAward` cast on kind-8 parses recipient and badge pointers
+- Depends on: Core helpers, operations
+- Used by: Models, factories, actions
 
-**Persistence adapters:**
-- Purpose: Persist/query events outside the default memory database.
-- Location: `packages/sqlite/src`
-- Contains: `better-sqlite3/`, `libsql/`, `native/`, `bun/`, `turso/`, `turso-wasm/`, SQL/search helpers, relay wrapper
-- Depends on: `applesauce-core` interfaces and peer SQLite clients from `packages/sqlite/package.json`
-- Used by: consumers needing durable stores and examples under `apps/examples/src/examples/database/`
+**Helpers Layer:**
+- Purpose: Type guards, parsers, utilities (NIP-agnostic)
+- Location: `packages/core/src/helpers/`, `packages/common/src/helpers/`
+- Contains: Event types, Nostr filters, pointers, profile parsing, encryption, etc.
+- Exports: Type guards (`isValidProfile`), parsers (`getProfileContent`), utilities (`createReplaceableAddress`)
+- No dependencies on: Models, factories, operations
+- Used by: Everything
 
-**UI and documentation:**
-- Purpose: Show and document integration patterns.
-- Location: `packages/react/src`, `apps/examples/src`, `apps/docs`, `docs/typedoc`
-- Contains: hooks/providers, Vite React examples, VitePress docs, generated TypeDoc output
-- Depends on: React, Vite/VitePress, workspace packages
-- Used by: maintainers and downstream developers
+**Relay & Loader Layer:**
+- Purpose: Fetch events from Nostr relays into the store
+- Location: `packages/relay/src/`, `packages/loaders/src/loaders/`
+- Components: `Relay` (single connection), `RelayPool` (multi-relay), `RelayGroup` (management)
+- EventLoaders: Emit events matching filters to populate store
+- Pattern: Observable<Event> emitted → captured by `eventStore.add()` → triggers subscriptions
+- Used by: Applications, tests
+
+**Account & Signer Layer:**
+- Purpose: Manage active account and sign events
+- Location: `packages/accounts/src/`, `packages/signers/src/signers/`
+- AccountManager: Holds active account state, propagates to factories
+- Signers: Various implementations (PrivateKeySigner, NIP-46, etc.)
+- Pattern: Factory reads `manager.signer` to sign events
+- Depends on: Core (EventFactory, helpers)
+- Used by: Actions, applications
+
+**Action & Command Layer:**
+- Purpose: Execute common Nostr actions (reply, follow, like)
+- Location: `packages/actions/src/actions/`
+- ActionRunner: Composes factories with user input and signer
+- Pattern: `followUser(runner, pubkey)` — returns Observable<Event> when complete
+- Depends on: Factories, AccountManager, EventStore
+- Used by: React hooks, applications
+
+**React Integration:**
+- Purpose: Subscribe to Observables in React components
+- Location: `packages/react/src/hooks/`
+- Hooks: `useObservable`, `useEventStoreObservable`, `useModel`, `useModelValue`
+- Pattern: Wrap Observable subscription in React lifecycle
+- Depends on: Core models, accounts, actions (all optional peer deps)
+- Used by: React applications
+
+**Content Parsing & Rendering:**
+- Purpose: Parse and render event content
+- Location: `packages/content/src/`
+- Modules: Text parsing (NAST), Markdown rendering, component mapping
+- Pattern: `renderContent(text, components)` → NAST tree → React components
+- Depends on: Core helpers, unified/remark for parsing
+- Used by: React applications, examples
 
 ## Data Flow
 
-### Primary Event Ingestion Path
+### Primary Request Path (Publish New Event)
 
-1. A relay request/subscription emits `NostrEvent` values through `RelayPool.request()` or `RelayPool.subscription()` (`packages/relay/src/pool.ts:184`, `packages/relay/src/pool.ts:193`).
-2. Loaders or app code pass events into `EventStore.add(event, relay)` (`packages/core/src/event-store/event-store.ts:216`).
-3. `EventStore.add()` verifies delete/expiration/replaceable rules, records seen relay metadata, stores the canonical event instance, and emits `insert$`/`update$` streams (`packages/core/src/event-store/event-store.ts:92`, `packages/core/src/event-store/event-store.ts:95`).
-4. Models subscribed through `events.filters()`, `events.timeline()`, or `events.model()` recompute from store streams (`packages/core/src/event-store/event-models.ts:56`, `packages/core/src/event-store/event-models.ts:102`, `packages/core/src/event-store/event-models.ts:138`).
-5. React hooks or direct RxJS subscribers render/use derived data from package models such as `ThreadModel` (`packages/common/src/models/thread.ts:45`).
+1. **User initiates action** → `followUser(runner, pubkey)` in `packages/actions/src/actions/follow.ts`
+2. **Factory builds event** → `EventFactory.fromKind(3).modifyPublicTags(...).sign(signer)` in `packages/core/src/factories/event.ts`
+3. **Sign event** → `sign()` operation calls `signer.sign()` in `packages/core/src/operations/event.ts`
+4. **Publish to relay** → `relay.publish(event)` in `packages/relay/src/relay.ts`
+5. **Relay broadcasts** → WebSocket frame sent to Nostr relay
+6. **Relay echoes back** → `EVENT` message received (or from other relays)
+7. **EventStore receives** → `store.add(event)` in `packages/core/src/event-store/event-store.ts`
+8. **Indexing** → `EventMemory` indexes by kind, author, tags, created_at in `packages/core/src/event-store/event-memory.ts`
+9. **Subscriptions triggered** → All matching `store.filters()`, `store.timeline()` emit new event in `packages/core/src/event-store/event-store.ts`
+10. **Models recompute** → `ProfileModel.subscribe()` re-runs if profile event matches in `packages/core/src/models/profile.ts`
+11. **React re-renders** → Hook receives new model value → component updates
 
-### Event Creation and Publishing Path
+### Load Events from Relay
 
-1. Feature factories start from `blankEventTemplate()` or an existing event (`packages/core/src/factories/event.ts:23`, `packages/common/src/factories/note.ts:23`).
-2. Factory methods compose `EventOperation`s through `chain()` without mutating prior drafts (`packages/core/src/factories/event.ts:69`, `packages/common/src/factories/note.ts:48`).
-3. Operations clone and return updated drafts/tags, as in `setThreadParent()` and `includePubkeyNotificationTags()` (`packages/common/src/operations/note.ts:14`, `packages/common/src/operations/note.ts:46`).
-4. `EventFactory.sign()` stamps and signs with an `EventSigner`, validating that signer output keeps pubkey and kind stable (`packages/core/src/factories/event.ts:126`).
-5. Relay adapters publish signed events with `RelayPool.publish()`/`RelayGroup.publish()` (`packages/relay/src/pool.ts:175`).
+1. **Application starts** → Create `RelayPool`, add relay URLs in `packages/relay/src/pool.ts`
+2. **Create loader** → `EventLoader(relay, filters)` in `packages/loaders/src/loaders/event-loader.ts`
+3. **Subscribe to loader** → `loader.subscribe()` opens REQ on relay in `packages/loaders/src/loaders/event-loader.ts`
+4. **Relay sends events** → WebSocket `EVENT` messages streamed from relay
+5. **Loader emits** → `Observable<Event>` emits each received event
+6. **EventStore receives** → `.subscribe().pipe(...).subscribe(e => store.add(e))` in `packages/core/src/event-store/event-store.ts`
+7. **Models subscribe** → `store.replaceable(kind, pubkey)` / `store.timeline(filters)` emits in `packages/core/src/event-store/event-store.ts`
+8. **React components receive** → `useModel(ProfileModel(pubkey))` receives updated profile in `packages/react/src/hooks/use-observable.ts`
 
-### Package Extension Flow
+### Create & Cast Event (Type-Safe Wrapper)
 
-1. Domain packages implement models as `Model<T>` constructors (`packages/common/src/models/thread.ts:45`).
-2. Domain packages register convenience methods by mutating `EventModels.prototype` and declaring module augmentation (`packages/common/src/models/thread.ts:168`).
-3. Package `src/index.ts` imports registration side effects where needed, such as `packages/common/src/index.ts` importing `packages/common/src/models/__register__.ts`.
+1. **Raw event received** → From relay, cache, or application
+2. **Guard check** → `isValidBadgeAward(event)` in `packages/common/src/helpers/badge-award.ts`
+3. **Create cast** → `new BadgeAward(event)` in `packages/common/src/casts/badge-award.ts`
+4. **Access properties** → `cast.issuer$` (Observable), `cast.recipient` (string), `cast.badge$` (Observable)
+5. **Subscribe to observables** → Related events loaded on-demand via `eventLoader` callback in `packages/core/src/event-store/event-store.ts`
+6. **React hook receives** → `useModel(BadgeAwardModel(event))` in React application
 
 **State Management:**
-- Use RxJS `Observable`, `Subject`, `BehaviorSubject`, and `ReplaySubject` for state propagation. Core global-ish state is held per class instance (`EventStore`, `RelayPool`, `AccountManager`), not in process-wide stores. Model cache state lives on an `EventStore`/`EventModels` instance in `packages/core/src/event-store/event-models.ts`.
+- **In-memory:** EventStore is the single source of truth; no Redux/Zustand
+- **Subscriptions:** All data access via Observables; consumers subscribe and unsubscribe
+- **Reference counting:** Events tracked via claims; unclaimed events eligible for LRU eviction in `packages/core/src/event-store/event-memory.ts`
+- **Lazy loading:** Events can be loaded on-demand via `eventLoader` callback when missing in `packages/core/src/event-store/interface.ts`
+- **Claim tracking:** `store.claim(event)` / `store.removeClaim(event)` in `packages/core/src/event-store/event-store.ts`
 
 ## Key Abstractions
 
-**EventStore:**
-- Purpose: Canonical event cache and reactive subscription source.
-- Examples: `packages/core/src/event-store/event-store.ts`, `packages/core/src/event-store/interface.ts`, `packages/core/src/event-store/event-memory.ts`
-- Pattern: Interface-driven store with sync/async variants and optional database injection.
+**StoreEvent:**
+- Purpose: Structural type for events that can live in the store
+- Definition: `{ id, kind, pubkey, created_at, content, tags }`
+- Includes: Signed `NostrEvent`, unsigned `Rumor`, and intermediate states
+- Used as: Generic bound for `EventStore<E extends StoreEvent = NostrEvent>`
+- Location: `packages/core/src/helpers/event.ts`
 
-**Model<T>:**
-- Purpose: Computed reactive view over a store/event set.
-- Examples: `packages/core/src/event-store/interface.ts`, `packages/core/src/models/base.ts`, `packages/common/src/models/thread.ts`
-- Pattern: Function constructor returning `(events) => Observable<T>` plus optional `getKey` for cache identity.
+**IEventStore<E>:**
+- Purpose: Complete event store interface combining read, write, subscription, and model methods
+- Methods: `add()`, `remove()`, `getEvent()`, `getByFilters()`, `filters()`, `timeline()`, `model()`
+- Observables: `insert$`, `update$`, `remove$`
+- Generic: Over event type E; defaults to NostrEvent
+- Location: `packages/core/src/event-store/interface.ts`
 
-**EventOperation and TagOperation:**
-- Purpose: Reusable immutable transformations for event drafts and tags.
-- Examples: `packages/core/src/factories/types.ts`, `packages/core/src/operations/event.ts`, `packages/common/src/operations/note.ts`
-- Pattern: Small pure or async functions composed by factories and `eventPipe`.
+**Model<T, E>:**
+- Purpose: Function that creates an Observable computed view from events
+- Signature: `(events: ModelEventStore<E>) => Observable<T>`
+- Pattern: Pure function, no side effects; rebuilds on event changes
+- Example: `ProfileModel(pubkey): Model<ProfileContent>` → `events => events.replaceable(...).pipe(filter(...), map(...))`
+- Location: `packages/core/src/event-store/interface.ts`
 
-**EventFactory:**
-- Purpose: Fluent, promise-like builder for event drafts and signed events.
-- Examples: `packages/core/src/factories/event.ts`, `packages/common/src/factories/note.ts`, `packages/wallet/src/factories/wallet.ts`
-- Pattern: Subclass `EventFactory` per NIP/domain and expose static `create()`/`modify()`/semantic methods.
+**EventFactory<K>:**
+- Purpose: Promise-like builder for creating, modifying, and signing events
+- Pattern: Chainable methods return new factory instance; `.then()` executes chain
+- Flow: `EventFactory.fromKind(1).content(...).modifyPublicTags(...).sign(signer).then(e => ...)`
+- Location: `packages/core/src/factories/event.ts`
 
-**RelayPool / RelayGroup / Relay:**
-- Purpose: Manage relay connection lifecycle and multiplex requests/publishes.
-- Examples: `packages/relay/src/pool.ts`, `packages/relay/src/group.ts`, `packages/relay/src/relay.ts`
-- Pattern: Pool owns normalized relay singletons; groups execute Observable-based network calls.
+**EventOperation<T>:**
+- Purpose: Pure async function that transforms event draft
+- Signature: `(draft: T) => Promise<T>`
+- Pattern: Operations compose via factory chain; each returns new draft
+- Examples: `setMetaTags()`, `modifyPublicTags()`, `sign()`
+- Location: `packages/core/src/factories/types.ts`
 
-**Casts:**
-- Purpose: Event-centric wrappers that validate events and expose typed relationships/properties.
-- Examples: `packages/common/src/casts/index.ts`, `packages/wallet/src/casts/wallet.ts`, `packages/concord/src/casts/index.ts`
-- Pattern: Keep parsing/validation in helpers and use casts for richer event UX.
+**Rumor:**
+- Purpose: Unsigned event with computed id (NIP-59)
+- Type: `UnsignedEvent & { id: string }`
+- Use case: Events from encrypted group protocols that don't have signatures
+- Verification: `verifyRumor(rumor)` recomputes hash and compares to `rumor.id`
+- Store: `RumorStore` extends `EventStore<Rumor>` with rumor verification
+- Location: `packages/core/src/helpers/event.ts`, `packages/core/src/event-store/rumor-store.ts`
+
+**Cast:**
+- Purpose: Typed wrapper around NIP-specific event with property accessors
+- Pattern: `new SomeEventCast(event)` exposes type-safe properties and observables
+- Example: `BadgeAward` cast on kind-8 event provides `issuer$`, `badge$`, `recipient`
+- Depends on: Operations for mutable variants (e.g., `BadgeAwardDraft`)
+- Location: `packages/core/src/casts/`, `packages/common/src/casts/`
 
 ## Entry Points
 
-**Workspace scripts:**
-- Location: `package.json`
-- Triggers: `pnpm build`, `pnpm test`, `pnpm coverage`, `pnpm docs`, `pnpm dev`
-- Responsibilities: Run Turbo builds/tests, Vitest, Vite example app, and VitePress docs.
+**EventStore Creation:**
+- Location: `packages/core/src/event-store/event-store.ts`
+- Usage: `const store = new EventStore()` or `new EventStore({ keepDeleted: true, database: custom })`
+- Creates: Single in-memory database, subscriptions, managers
 
-**Package public APIs:**
-- Location: `packages/*/src/index.ts`
-- Triggers: TypeScript builds from each package `package.json` `build` script
-- Responsibilities: Export public modules and side-effect registrations matching `exports` maps.
+**EventFactory Creation:**
+- Location: `packages/core/src/factories/event.ts`
+- Usage: `EventFactory.fromKind(1)` or `EventFactory.fromEvent(existing)`
+- Flow: Build → modify → sign → publish
 
-**Core SDK entry:**
-- Location: `packages/core/src/index.ts`
-- Triggers: Importing `applesauce-core`
-- Responsibilities: Export factories, casts, event-store, logger, observable helpers, and namespaces for helpers/models/operations/factories.
+**Relay Pool Creation:**
+- Location: `packages/relay/src/pool.ts`
+- Usage: `const pool = new RelayPool()` → `.addRelay(url)` → `.query(filters)` emits events
+- Flow: Connect → authenticate (if needed) → broadcast/subscribe
 
-**Example app entry:**
-- Location: `apps/examples/src/index.tsx`
-- Triggers: `pnpm dev` or `apps/examples` Vite build
-- Responsibilities: Mount the React example application and routes.
+**React Application:**
+- Location: `packages/react/src/hooks/use-observable.ts` (entry)
+- Usage: `const value = useObservable(observable)` in React component
+- Flow: Hook subscribes to observable → component receives value → re-renders on change
 
-**Docs app entry:**
-- Location: `apps/docs/package.json`
-- Triggers: `pnpm docs`, `vitepress dev`, `vitepress build`
-- Responsibilities: Serve and build VitePress documentation.
-
-**SQLite relay entry:**
-- Location: `packages/sqlite/src/relay.ts`
-- Triggers: `pnpm --filter applesauce-sqlite relay` after build
-- Responsibilities: Run a WebSocket/HTTP relay backed by SQLite event database adapters.
+**Concord Client (Encrypted Group):**
+- Location: `packages/concord/src/client/`
+- Purpose: Manage encrypted group protocols (CORD)
+- Usage: `new ConcordClient(store, signers)` → `.createGroup()` → manage members
 
 ## Architectural Constraints
 
-- **Threading:** Runtime code is single-threaded JavaScript/TypeScript with RxJS async streams. The example app may demonstrate workers (`apps/examples/src/examples/database/worker-relay.tsx`, `apps/examples/src/examples/cache/worker-relay.tsx`), but packages primarily assume event-loop concurrency.
-- **Global state:** Avoid module-level mutable application state in packages. Approved shared registries are prototype registrations from model modules (`packages/common/src/models/thread.ts`) and symbol-based per-event caches (`packages/common/src/helpers/badge.ts`).
-- **Circular imports:** Not detected during static sampling. Keep package dependency direction pointed toward `applesauce-core`; feature packages should not import from apps or generated docs.
-- **ES modules:** All packages use `type: module` in `packages/*/package.json`; internal relative imports include `.js` extensions in TypeScript source, as in `packages/core/src/index.ts`.
-- **Public API stability:** Add exports to both `src/*/index.ts` barrel files and package `exports` maps when exposing new subpaths, following `packages/wallet/package.json`.
+- **Threading:** Single-threaded event loop (JavaScript/Node.js model)
+- **Global state:** EventStore is the single source of truth; all subscribers read from same instance
+- **Circular imports:** Avoided by keeping helpers framework-agnostic; dependencies flow down the layer stack
+- **Event immutability:** Events immutable once added to store; modifications create new events
+- **Memory bounds:** LRU cache + claim tracking prevent unbounded growth; unclaimed events evicted
+- **Replaceable event ordering:** Stored in reverse time order; always latest first in `EventMemory.replaceable`
+- **Event deduplication:** Duplicate IDs silently ignored; existing event returned by `store.add()`
 
 ## Anti-Patterns
 
-### Mutating event drafts directly
+### Global Signer State
 
-**What happens:** A factory or operation changes `draft.tags`/`draft.content` in place.
-**Why it's wrong:** Factory chains in `packages/core/src/factories/event.ts` rely on immutable operation return values and symbol cleanup between chain steps.
-**Do this instead:** Return cloned drafts/tags from `EventOperation`s, as in `packages/common/src/operations/note.ts`.
+**What happens:** Using a global variable for the active signer instead of passing through AccountManager
+**Why it's wrong:** Makes testing hard, breaks account switching, violates single-responsibility principle
+**Do this instead:** Use `AccountManager` in `packages/accounts/src/` to manage active signer; factories read via `manager.signer`
 
-### Putting NIP-specific logic in core
+### Modifying Events In-Place
 
-**What happens:** New protocol helpers/models are added under `packages/core/src` instead of a feature package.
-**Why it's wrong:** `packages/core/src` is the reusable kernel; NIP/domain growth belongs in `packages/common/src`, `packages/wallet/src`, `packages/wallet-connect/src`, or another focused package.
-**Do this instead:** Add guarded helpers under `packages/common/src/helpers/`, operations under `packages/common/src/operations/`, factories under `packages/common/src/factories/`, and models/casts only when needed.
+**What happens:** Directly mutating event.tags or event.content after adding to store
+**Why it's wrong:** Breaks reactive subscriptions; observers see stale data; breaks equality checks
+**Do this instead:** Use operations like `modifyPublicTags()`, `setContent()` in `packages/core/src/operations/` to create new draft; add result as new event
 
-### Reading from relays inside models
+### Directly Reading Model Streams Without Subscribe
 
-**What happens:** A `Model<T>` directly opens relay subscriptions or performs network IO.
-**Why it's wrong:** Models are derived views over a store; IO belongs in `packages/loaders/src` or `packages/relay/src` so stores remain testable and cache-driven.
-**Do this instead:** Load events through loaders/relay subscriptions, add them to `EventStore`, then derive views with `events.filters()`/`events.timeline()` as in `packages/common/src/models/thread.ts`.
+**What happens:** Calling `getEvent()` once instead of subscribing to `filters()` or `timeline()`
+**Why it's wrong:** Misses updates; ignores reactive architecture; doesn't see events added later
+**Do this instead:** Subscribe to `store.filters(filters)` or `store.timeline(filters)` to observe all matching events over time
+
+### Bypassing EventStore for Direct EventMemory Access
+
+**What happens:** Creating `EventMemory` directly instead of using `EventStore`
+**Why it's wrong:** Skips delete handling, expiration, replaceable event logic, subscriptions
+**Do this instead:** Use `EventStore` in `packages/core/src/event-store/event-store.ts`; if need raw memory access, read via `store.memory` property
 
 ## Error Handling
 
-**Strategy:** Throw synchronously/asynchronously for invalid factory inputs and signer failures; use Observable errors/completion for network streams; return `null`/`undefined` for rejected or missing events in store helpers.
+**Strategy:** Fail silently on invalid events; optionally verify before adding
 
 **Patterns:**
-- Validate factory preconditions and throw early, e.g. `NoteFactory.reply()` in `packages/common/src/factories/note.ts`.
-- Validate signer behavior and throw if signer mutates pubkey/kind in `packages/core/src/factories/event.ts` and `packages/core/src/operations/event.ts`.
-- Store APIs return `NostrEvent | null` on add and `undefined` for misses in `packages/core/src/event-store/interface.ts`.
+- Invalid events: `store.add(event)` returns `null` if verification fails (when `verifyEvent` is set)
+- Missing fields: Type guards like `isValidProfile(event)` check structure before parsing
+- Relay errors: `RelayPool` emits connection state; consumers handle disconnects
+- Async operations: Factories and loaders return Promises/Observables that can error
+- Filters and models: Model functions catch errors in `.pipe(...)`; bad models don't crash
 
 ## Cross-Cutting Concerns
 
-**Logging:** Use package-local `debug`/logger utilities where present, with core export from `packages/core/src/logger.ts`; relay/store adapters import `logger` from core in files such as `packages/sqlite/src/better-sqlite3/event-database.ts`.
-**Validation:** Use type guards and helper checks in `src/helpers/`, such as `isValidBadge()` in `packages/common/src/helpers/badge.ts`, plus Nostr signature verification in `EventStore.verifyEvent` (`packages/core/src/event-store/event-store.ts`).
-**Authentication:** Use signer/account abstractions from `packages/core/src/factories/types.ts`, `packages/signers/src`, and `packages/accounts/src`; do not embed private key handling in feature packages.
+**Logging:** Debug module in `packages/core/src/logger.ts`; enable via `DEBUG=applesauce:*`
+
+**Validation:** Type guards in helpers (`isValidProfile`, `isRumor`, etc.) check before parsing in `packages/core/src/helpers/`, `packages/common/src/helpers/`
+
+**Authentication:** Relay authentication via NIP-42 in `packages/relay/src/relay.ts`; account signers in `packages/accounts/src/`
 
 ---
 
-*Architecture analysis: 2026-07-08*
+*Architecture analysis: 2026-07-09*
