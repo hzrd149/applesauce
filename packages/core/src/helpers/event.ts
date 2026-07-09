@@ -1,7 +1,15 @@
 import { kinds } from "nostr-tools";
 import { isKind } from "nostr-tools/kinds";
 import { isAddressableKind, isEphemeralKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
-import { EventTemplate, NostrEvent, UnsignedEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
+import {
+  EventTemplate,
+  getEventHash,
+  NostrEvent,
+  UnsignedEvent,
+  VerifiedEvent,
+  verifiedSymbol,
+  verifyEvent,
+} from "nostr-tools/pure";
 import { IAsyncEventStore, IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";
 
@@ -51,6 +59,11 @@ export type StoreEvent = {
   content: string;
   tags: string[][];
 };
+
+/** Verifies a NIP-59 rumor by recomputing its event hash and comparing it to `rumor.id` */
+export function verifyRumor(rumor: Rumor): boolean {
+  return getEventHash(rumor) === rumor.id;
+}
 
 /** A symbol on an event that marks which event store its part of */
 export const EventStoreSymbol = Symbol.for("event-store");

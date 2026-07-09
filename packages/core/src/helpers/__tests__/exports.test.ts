@@ -232,6 +232,7 @@ describe("exports", () => {
         "unlockHiddenTags",
         "verifiedSymbol",
         "verifyEvent",
+        "verifyRumor",
         "verifyWrappedEvent",
       ]
     `);
