@@ -4,10 +4,9 @@ import { finalize, MonoTypeOperatorFunction, tap } from "rxjs";
 import { IEventClaims } from "../event-store/interface.js";
 
 /** keep a claim on any event that goes through this observable, claims are removed when the observable is unsubscribed or completes */
-export function claimEvents<
-  E extends StoreEvent = NostrEvent,
-  T extends E[] | E | undefined = E[] | E | undefined,
->(claims: IEventClaims<E>): MonoTypeOperatorFunction<T> {
+export function claimEvents<E extends StoreEvent = NostrEvent, T extends E[] | E | undefined = E[] | E | undefined>(
+  claims: IEventClaims<E>,
+): MonoTypeOperatorFunction<T> {
   return (source) => {
     const seen = new Set<E>();
 

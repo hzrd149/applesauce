@@ -101,12 +101,15 @@ export class EventModels<
    */
   filters(filters: Filter | Filter[], onlyNew = false): Observable<NostrEvent> {
     if (!Array.isArray(filters)) filters = [filters];
-    return this.model(FiltersModel, filters, onlyNew);
+    // Explicit type argument pins FiltersModel's E to NostrEvent — without it, a bare generic
+    // function reference passed here infers E from its constraint (StoreEvent) rather than its
+    // default (NostrEvent) (Phase 1 WR-02/deferred-items Pitfall 3).
+    return this.model(FiltersModel<NostrEvent>, filters, onlyNew);
   }
 
   /** Subscribe to an event by pointer */
   event(pointer: string | EventPointer | AddressPointer | AddressPointerWithoutD): Observable<NostrEvent | undefined> {
-    if (typeof pointer === "string" || isEventPointer(pointer)) return this.model(EventModel, pointer);
+    if (typeof pointer === "string" || isEventPointer(pointer)) return this.model(EventModel<NostrEvent>, pointer);
     else return this.replaceable(pointer);
   }
 
@@ -126,7 +129,7 @@ export class EventModels<
 
     if (!pointer) throw new Error("Invalid arguments, expected address pointer or kind, pubkey, identifier");
 
-    return this.model(ReplaceableModel, pointer);
+    return this.model(ReplaceableModel<NostrEvent>, pointer);
   }
 
   /** Subscribe to an addressable event by pointer */
@@ -136,7 +139,7 @@ export class EventModels<
 
   /** Creates a {@link TimelineModel} */
   timeline(filters: Filter | Filter[], includeOldVersion = false): Observable<NostrEvent[]> {
-    return this.model(TimelineModel, filters, includeOldVersion);
+    return this.model(TimelineModel<NostrEvent>, filters, includeOldVersion);
   }
 
   /** Subscribe to a users profile */
