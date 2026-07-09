@@ -27,6 +27,7 @@ describe("exports", () => {
         "ProfileFactory",
         "PubkeyCast",
         "ReplaySubject",
+        "RumorStore",
         "Subject",
         "TimeoutError",
         "User",
