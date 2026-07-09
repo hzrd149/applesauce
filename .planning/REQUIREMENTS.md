@@ -12,15 +12,15 @@ Requirements for this milestone. Each maps to a roadmap phase. Part A (CORE + RU
 - [ ] **CORE-01**: `EventStore<E extends StoreEvent = NostrEvent>` is generic while `new EventStore()` still defaults to a signed `NostrEvent` store with unchanged behavior
 - [ ] **CORE-02**: `AsyncEventStore<E extends StoreEvent = NostrEvent>` is generic with the same `NostrEvent` default
 - [ ] **CORE-03**: The store constructor honors an explicit `verifyEvent: undefined` to disable verification
-- [ ] **CORE-04**: Structural core helpers (`getEventUID`, `getReplaceableAddress`, `getReplaceableIdentifier`, `getIndexableTags`, `matchFilter`/`matchFilters`, `getExpirationTimestamp`, `eventMatchesPointer`, `addSeenRelay`/`getSeenRelays`/`isFromRelay`) accept any `E extends StoreEvent`
+- [x] **CORE-04**: Structural core helpers (`getEventUID`, `getReplaceableAddress`, `getReplaceableIdentifier`, `getIndexableTags`, `matchFilter`/`matchFilters`, `getExpirationTimestamp`, `eventMatchesPointer`, `addSeenRelay`/`getSeenRelays`/`isFromRelay`) accept any `E extends StoreEvent`
 - [ ] **CORE-05**: Store interfaces and managers (`DeleteManager`, `AsyncDeleteManager`, `ExpirationManager`, `EventMemory`, and the `IEventStore*`/`IEventDatabase*`/`IDeleteManager`/`IExpirationManager` interfaces) are generic over `E extends StoreEvent`
 - [ ] **CORE-06**: Core models (`EventModels`, `EventModel`, `ReplaceableModel`, `TimelineModel`, `FiltersModel`) return `E`-typed observables
 - [ ] **CORE-07**: Core cast infrastructure (`CastRefEventStore<E>`, `EventCast<E>`, `CastConstructor`, `castEvent`, `castEventStream`, `castTimelineStream`) is generic
 
 ### Rumor Store
 
-- [ ] **RUMOR-01**: `StoreEvent` and `Rumor` types are exported from `packages/core/src/helpers/event.ts`
-- [ ] **RUMOR-02**: `verifyRumor` recomputes the event hash and validates it equals `rumor.id`
+- [x] **RUMOR-01**: `StoreEvent` and `Rumor` types are exported from `packages/core/src/helpers/event.ts`
+- [x] **RUMOR-02**: `verifyRumor` recomputes the event hash and validates it equals `rumor.id`
 - [ ] **RUMOR-03**: `RumorStore` accepts a rumor with a correct `id` and rejects a rumor with an incorrect `id`
 - [ ] **RUMOR-04**: `RumorStore` streams rumors via `filters()`, returns `Rumor[]` from `timeline()`, and the latest replaceable rumor from `replaceable()`
 - [ ] **RUMOR-05**: `RumorStore` processes kind-5 delete rumors, removing matching stored rumors
@@ -61,12 +61,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CORE-01 | Phase 1 | Pending |
 | CORE-02 | Phase 1 | Pending |
 | CORE-03 | Phase 1 | Pending |
-| CORE-04 | Phase 1 | Pending |
+| CORE-04 | Phase 1 | Complete |
 | CORE-05 | Phase 1 | Pending |
 | CORE-06 | Phase 2 | Pending |
 | CORE-07 | Phase 2 | Pending |
-| RUMOR-01 | Phase 1 | Pending |
-| RUMOR-02 | Phase 1 | Pending |
+| RUMOR-01 | Phase 1 | Complete |
+| RUMOR-02 | Phase 1 | Complete |
 | RUMOR-03 | Phase 3 | Pending |
 | RUMOR-04 | Phase 3 | Pending |
 | RUMOR-05 | Phase 3 | Pending |
@@ -76,6 +76,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | COMMON-03 | Phase 4 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 16 total
 - Mapped to phases: 16
 - Unmapped: 0 ✓
