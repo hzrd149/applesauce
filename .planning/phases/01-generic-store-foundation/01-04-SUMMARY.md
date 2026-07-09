@@ -157,3 +157,7 @@ None - no external service configuration required.
 ---
 *Phase: 01-generic-store-foundation*
 *Completed: 2026-07-09*
+
+## Self-Check: PASSED
+
+All 7 created/modified files (2 store classes, 1 test, 2 changesets, 1 summary, 1 deferred-items log) verified present on disk; all three commit hashes (c4a90c8e, 937e4d30, 40732f27) verified present in git log.
