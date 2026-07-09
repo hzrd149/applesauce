@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: event-store-supports-rumors
 current_phase: 01
 current_phase_name: generic-store-foundation
-status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-07-09T01:20:25.214Z"
+status: verifying
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-07-09T01:34:50.700Z"
 last_activity: 2026-07-09
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 0
+  completed_plans: 4
+  percent: 25
 ---
 
 # Project State
@@ -23,13 +23,13 @@ progress:
 
 Phase: 01 (generic-store-foundation) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-09 — Phase 01 execution started
 
 ## Session
 
-**Last session:** 2026-07-09T01:20:25.207Z
-**Stopped at:** Completed 01-03-PLAN.md
+**Last session:** 2026-07-09T01:34:50.693Z
+**Stopped at:** Completed 01-04-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -39,6 +39,7 @@ Last activity: 2026-07-09 — Phase 01 execution started
 | Phase 01 P01 | 10min | 3 tasks | 9 files |
 | Phase 01 P02 | 8min | 2 tasks | 2 files |
 | Phase 01-generic-store-foundation P03 | 12min | 2 tasks | 5 files |
+| Phase 01-generic-store-foundation P04 | 15min | 2 tasks | 6 files |
 
 ## Decisions
 
@@ -46,3 +47,5 @@ Last activity: 2026-07-09 — Phase 01 execution started
 - [Phase 01]: Cast Reflect.get(event, SeenRelaysSymbol) explicitly to Set<string> | undefined in relays.ts to satisfy tsc generic inference
 - [Phase 01]: IEventStore<E>/IAsyncEventStore<E> extend IEventSubscriptions and IEventModelMixin bare (NostrEvent default) since those methods come from the non-generic EventModels superclass deferred to Phase 2 (D-02 seam)
 - [Phase 01]: EventMemory's claims WeakMap<E, number> compiles directly without an E-extends-object conditional guard
+- [Phase 01]: D-01 kept: EventStore/AsyncEventStore verifyEvent setter console.warn preserved verbatim even for intentional undefined
+- [Phase 01]: Deferred applesauce-relay EventMemory<StoreEvent> inference break to deferred-items.md (out of scope for Plan 04)

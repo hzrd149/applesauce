@@ -11,7 +11,7 @@ Genericize the applesauce event layer so it can operate over unsigned NIP-59 `Ru
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Generic store foundation** - Genericize `EventStore`/`AsyncEventStore`, structural helpers, store interfaces & managers; add rumor types & verifier
+- [x] **Phase 1: Generic store foundation** - Genericize `EventStore`/`AsyncEventStore`, structural helpers, store interfaces & managers; add rumor types & verifier (completed 2026-07-09)
 - [ ] **Phase 2: Generic models & casts** - Genericize core models and cast infrastructure over `E extends StoreEvent`
 - [ ] **Phase 3: RumorStore & verification** - Add `RumorStore`, kind-5 delete handling, and rumor/cast test coverage (Part A gate)
 - [ ] **Phase 4: Common package rumor support** - Genericize `applesauce-common` helpers and casts (gated on Phase 3)
@@ -31,14 +31,14 @@ Genericize the applesauce event layer so it can operate over unsigned NIP-59 `Ru
   4. Structural helpers and store interfaces/managers (`DeleteManager`, `ExpirationManager`, `EventMemory`) accept any `E extends StoreEvent`
   5. `pnpm --filter applesauce-core test` and `pnpm --filter applesauce-core build` pass unchanged
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 
 - [x] 01-01-PLAN.md — Rumor verifier + genericize CORE-04 structural helpers (wave 1)
 - [x] 01-02-PLAN.md — Genericize event-store interfaces over E extends StoreEvent (wave 1)
 - [x] 01-03-PLAN.md — Genericize managers (DeleteManager/AsyncDeleteManager/ExpirationManager/EventMemory) (wave 2)
-- [ ] 01-04-PLAN.md — Genericize EventStore/AsyncEventStore + CORE-03 verifyEvent:undefined fix (wave 3)
+- [x] 01-04-PLAN.md — Genericize EventStore/AsyncEventStore + CORE-03 verifyEvent:undefined fix (wave 3)
 
 ### Phase 2: Generic models & casts
 
@@ -103,7 +103,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Generic store foundation | 3/4 | In Progress|  |
+| 1. Generic store foundation | 4/4 | Complete   | 2026-07-09 |
 | 2. Generic models & casts | 0/TBD | Not started | - |
 | 3. RumorStore & verification | 0/TBD | Not started | - |
 | 4. Common package rumor support | 0/TBD | Not started | - |
