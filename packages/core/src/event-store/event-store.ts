@@ -53,7 +53,10 @@ export type EventStoreOptions<E extends StoreEvent = NostrEvent> = {
 };
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
-export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels implements IEventStore<E> {
+export class EventStore<E extends StoreEvent = NostrEvent>
+  extends EventModels<E, IEventStore<E>>
+  implements IEventStore<E>
+{
   database: IEventDatabase<E>;
 
   /** Optional memory database for ensuring single event instances */

@@ -90,7 +90,9 @@ function loadEventUsingFallback<E extends StoreEvent = NostrEvent>(
 }
 
 /** A model that returns a single event or undefined when its removed */
-export function EventModel<E extends StoreEvent = NostrEvent>(pointer: string | EventPointer): Model<E | undefined> {
+export function EventModel<E extends StoreEvent = NostrEvent>(
+  pointer: string | EventPointer,
+): Model<E | undefined, E> {
   if (typeof pointer === "string") pointer = { id: pointer };
 
   return (store) => {
@@ -127,7 +129,7 @@ export function EventModel<E extends StoreEvent = NostrEvent>(pointer: string | 
 /** A model that returns the latest version of a replaceable event or undefined if its removed */
 export function ReplaceableModel<E extends StoreEvent = NostrEvent>(
   pointer: AddressPointer | AddressPointerWithoutD,
-): Model<E | undefined> {
+): Model<E | undefined, E> {
   return (store) => {
     // Bridge cast: see EventModel's comment above.
     const s = store as unknown as IEventStore<E> | IAsyncEventStore<E>;
@@ -184,7 +186,7 @@ export function ReplaceableModel<E extends StoreEvent = NostrEvent>(
 export function TimelineModel<E extends StoreEvent = NostrEvent>(
   filters: Filter | Filter[],
   includeOldVersion?: boolean,
-): Model<E[]> {
+): Model<E[], E> {
   filters = Array.isArray(filters) ? filters : [filters];
 
   return (store) => {
@@ -282,7 +284,10 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
 }
 
 /** A model that streams all events that match the filters */
-export function FiltersModel<E extends StoreEvent = NostrEvent>(filters: Filter | Filter[], onlyNew = false): Model<E> {
+export function FiltersModel<E extends StoreEvent = NostrEvent>(
+  filters: Filter | Filter[],
+  onlyNew = false,
+): Model<E, E> {
   filters = Array.isArray(filters) ? filters : [filters];
 
   return (store) => {

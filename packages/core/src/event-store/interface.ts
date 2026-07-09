@@ -132,32 +132,39 @@ export interface IEventSubscriptions<E extends StoreEvent = NostrEvent> {
 }
 
 /** Methods for creating common models */
-export interface IEventModelMixin<TStore extends IEventStore | IAsyncEventStore> {
+// NOTE: an explicit <E> param is required here (rather than filling ModelConstructor's E slot
+// with StoreEvent alone, RESEARCH Open Question 1's simpler first attempt) because TStore's
+// constraint (`IEventStore | IAsyncEventStore`, bare = NostrEvent default) does not accept an
+// abstract `IEventStore<E>`/`IAsyncEventStore<E>` for a generic E — tsc reported exactly this
+// inference gap, so both IEventStore<E>/IAsyncEventStore<E> extends clauses thread E through here.
+export interface IEventModelMixin<E extends StoreEvent, TStore extends IEventStore<E> | IAsyncEventStore<E>> {
   // Core model method
   model<T extends unknown, Args extends Array<any>>(
-    constructor: ModelConstructor<T, Args, TStore>,
+    constructor: ModelConstructor<T, Args, E, TStore>,
     ...args: Args
   ): Observable<T>;
 }
 
 /** The interface that is passed to the model for creating subscriptions */
-export type ModelEventStore<TStore extends IEventStore | IAsyncEventStore> = IEventStoreStreams &
-  IEventSubscriptions &
-  IEventModelMixin<TStore> &
-  IMissingEventLoader &
-  TStore;
+export type ModelEventStore<
+  E extends StoreEvent = NostrEvent,
+  TStore extends IEventStore<E> | IAsyncEventStore<E> = IEventStore<E> | IAsyncEventStore<E>,
+> = IEventStoreStreams<E> & IEventSubscriptions<E> & IEventModelMixin<E, TStore> & IMissingEventLoader<E> & TStore;
 
 /** A computed view of an event set or event store */
-export type Model<T extends unknown, TStore extends IEventStore | IAsyncEventStore = IEventStore | IAsyncEventStore> = (
-  events: ModelEventStore<TStore>,
-) => Observable<T>;
+export type Model<
+  T extends unknown,
+  E extends StoreEvent = NostrEvent,
+  TStore extends IEventStore<E> | IAsyncEventStore<E> = IEventStore<E> | IAsyncEventStore<E>,
+> = (events: ModelEventStore<E, TStore>) => Observable<T>;
 
 /** A constructor for a {@link Model} */
 export type ModelConstructor<
   T extends unknown,
   Args extends Array<any>,
-  TStore extends IEventStore | IAsyncEventStore = IEventStore,
-> = ((...args: Args) => Model<T, TStore>) & {
+  E extends StoreEvent = NostrEvent,
+  TStore extends IEventStore<E> | IAsyncEventStore<E> = IEventStore<E>,
+> = ((...args: Args) => Model<T, E, TStore>) & {
   getKey?: (...args: Args) => string;
 };
 
@@ -258,9 +265,9 @@ export interface IAsyncEventStore<E extends StoreEvent = NostrEvent>
   extends
     IAsyncEventStoreReadAdvanced<E>,
     IEventStoreStreams<E>,
-    IEventSubscriptions,
+    IEventSubscriptions<E>,
     IAsyncEventStoreActions<E>,
-    IEventModelMixin<IAsyncEventStore>,
+    IEventModelMixin<E, IAsyncEventStore<E>>,
     IEventClaims<E>,
     IMissingEventLoader<E> {}
 
@@ -269,8 +276,8 @@ export interface IEventStore<E extends StoreEvent = NostrEvent>
   extends
     IEventStoreReadAdvanced<E>,
     IEventStoreStreams<E>,
-    IEventSubscriptions,
+    IEventSubscriptions<E>,
     IEventStoreActions<E>,
-    IEventModelMixin<IEventStore>,
+    IEventModelMixin<E, IEventStore<E>>,
     IEventClaims<E>,
     IMissingEventLoader<E> {}

@@ -1,6 +1,6 @@
 import hash_sum from "hash-sum";
 import { finalize, merge, Observable, ReplaySubject, share, takeUntil, timer } from "rxjs";
-import { NostrEvent } from "../helpers/event.js";
+import { NostrEvent, StoreEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
 import {
   AddressPointer,
@@ -9,6 +9,7 @@ import {
   isEventPointer,
   ProfilePointer,
 } from "../helpers/pointers.js";
+import { ProfileContent } from "../helpers/profile.js";
 import { EventModel, FiltersModel, ReplaceableModel, TimelineModel } from "../models/base.js";
 import { ContactsModel } from "../models/contacts.js";
 import { MailboxesModel } from "../models/mailboxes.js";
@@ -38,10 +39,11 @@ import { IAsyncEventStore, IEventStore, IEventSubscriptions, ModelConstructor } 
  * ```
  */
 export class EventModels<
-  TStore extends IEventStore | IAsyncEventStore = IEventStore | IAsyncEventStore,
-> implements IEventSubscriptions {
+  E extends StoreEvent = NostrEvent,
+  TStore extends IEventStore<E> | IAsyncEventStore<E> = IEventStore<E> | IAsyncEventStore<E>,
+> implements IEventSubscriptions<E> {
   /** A directory of all active models */
-  models = new Map<ModelConstructor<any, any[], TStore>, Map<string, Observable<any>>>();
+  models = new Map<ModelConstructor<any, any[], E, TStore>, Map<string, Observable<any>>>();
 
   /** How long a model should be kept "warm" while nothing is subscribed to it */
   modelKeepWarm = 60_000;
@@ -54,7 +56,7 @@ export class EventModels<
 
   /** Get or create a model on the event store */
   model<T extends unknown, Args extends Array<any>>(
-    constructor: ModelConstructor<T, Args, TStore>,
+    constructor: ModelConstructor<T, Args, E, TStore>,
     ...args: Args
   ): Observable<T> {
     let models = this.models.get(constructor);
@@ -99,24 +101,24 @@ export class EventModels<
    * @param filters
    * @param [onlyNew=false] Only subscribe to new events
    */
-  filters(filters: Filter | Filter[], onlyNew = false): Observable<NostrEvent> {
+  filters(filters: Filter | Filter[], onlyNew = false): Observable<E> {
     if (!Array.isArray(filters)) filters = [filters];
-    // Explicit type argument pins FiltersModel's E to NostrEvent — without it, a bare generic
-    // function reference passed here infers E from its constraint (StoreEvent) rather than its
-    // default (NostrEvent) (Phase 1 WR-02/deferred-items Pitfall 3).
-    return this.model(FiltersModel<NostrEvent>, filters, onlyNew);
+    // Explicit type argument pins FiltersModel's E to the class's own E — without it, a bare
+    // generic function reference passed here infers E from its constraint (StoreEvent) rather
+    // than its default (NostrEvent) (Phase 1 WR-02/deferred-items Pitfall 3).
+    return this.model(FiltersModel<E>, filters, onlyNew);
   }
 
   /** Subscribe to an event by pointer */
-  event(pointer: string | EventPointer | AddressPointer | AddressPointerWithoutD): Observable<NostrEvent | undefined> {
-    if (typeof pointer === "string" || isEventPointer(pointer)) return this.model(EventModel<NostrEvent>, pointer);
+  event(pointer: string | EventPointer | AddressPointer | AddressPointerWithoutD): Observable<E | undefined> {
+    if (typeof pointer === "string" || isEventPointer(pointer)) return this.model(EventModel<E>, pointer);
     else return this.replaceable(pointer);
   }
 
   /** Subscribe to a replaceable event by pointer */
-  replaceable(pointer: AddressPointer | AddressPointerWithoutD): Observable<NostrEvent | undefined>;
-  replaceable(kind: number, pubkey: string, identifier?: string): Observable<NostrEvent | undefined>;
-  replaceable(...args: any[]): Observable<NostrEvent | undefined> {
+  replaceable(pointer: AddressPointer | AddressPointerWithoutD): Observable<E | undefined>;
+  replaceable(kind: number, pubkey: string, identifier?: string): Observable<E | undefined>;
+  replaceable(...args: any[]): Observable<E | undefined> {
     let pointer: AddressPointer | AddressPointerWithoutD | undefined;
 
     // Parse arguments
@@ -129,35 +131,55 @@ export class EventModels<
 
     if (!pointer) throw new Error("Invalid arguments, expected address pointer or kind, pubkey, identifier");
 
-    return this.model(ReplaceableModel<NostrEvent>, pointer);
+    return this.model(ReplaceableModel<E>, pointer);
   }
 
   /** Subscribe to an addressable event by pointer */
-  addressable(pointer: AddressPointer): Observable<NostrEvent | undefined> {
+  addressable(pointer: AddressPointer): Observable<E | undefined> {
     return this.replaceable(pointer);
   }
 
   /** Creates a {@link TimelineModel} */
-  timeline(filters: Filter | Filter[], includeOldVersion = false): Observable<NostrEvent[]> {
-    return this.model(TimelineModel<NostrEvent>, filters, includeOldVersion);
+  timeline(filters: Filter | Filter[], includeOldVersion = false): Observable<E[]> {
+    return this.model(TimelineModel<E>, filters, includeOldVersion);
   }
 
   /** Subscribe to a users profile */
   profile(user: string | ProfilePointer) {
     typeof user === "string" ? { pubkey: user } : user;
-    return this.model(ProfileModel, user);
+    // Bridge cast: ProfileModel is intentionally NostrEvent-only (out of CORE-06 scope) and its
+    // Model<T> return type resolves E to the NostrEvent default; casting it to this class's
+    // abstract E here is a no-op for the default case and mirrors the localized bridge-cast
+    // pattern used throughout this phase.
+    return this.model(
+      ProfileModel as unknown as ModelConstructor<ProfileContent | undefined, [string | ProfilePointer], E, TStore>,
+      user,
+    );
   }
 
   /** Subscribe to a users contacts */
   contacts(user: string | ProfilePointer) {
     if (typeof user === "string") user = { pubkey: user };
-    return this.model(ContactsModel, user);
+    // Bridge cast: see profile()'s comment above (ContactsModel is out of CORE-06 scope).
+    return this.model(
+      ContactsModel as unknown as ModelConstructor<ProfilePointer[], [ProfilePointer], E, TStore>,
+      user,
+    );
   }
 
   /** Subscribe to a users mailboxes */
   mailboxes(user: string | ProfilePointer) {
     if (typeof user === "string") user = { pubkey: user };
-    return this.model(MailboxesModel, user);
+    // Bridge cast: see profile()'s comment above (MailboxesModel is out of CORE-06 scope).
+    return this.model(
+      MailboxesModel as unknown as ModelConstructor<
+        { inboxes: string[]; outboxes: string[] } | undefined,
+        [ProfilePointer],
+        E,
+        TStore
+      >,
+      user,
+    );
   }
 
   /**

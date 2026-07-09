@@ -51,7 +51,10 @@ export type AsyncEventStoreOptions<E extends StoreEvent = NostrEvent> = {
 };
 
 /** An async wrapper around an async event database that handles replaceable events, deletes, and models */
-export class AsyncEventStore<E extends StoreEvent = NostrEvent> extends EventModels implements IAsyncEventStore<E> {
+export class AsyncEventStore<E extends StoreEvent = NostrEvent>
+  extends EventModels<E, IAsyncEventStore<E>>
+  implements IAsyncEventStore<E>
+{
   database: IAsyncEventDatabase<E>;
 
   /** Optional memory database for ensuring single event instances */
