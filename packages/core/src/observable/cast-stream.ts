@@ -1,6 +1,7 @@
 import { map, OperatorFunction } from "rxjs";
 import type { CastConstructor, CastRefEventStore } from "../casts/cast.js";
-import { castEvent, EventCast } from "../casts/index.js";
+import { performCast } from "../casts/cast.js";
+import { EventCast } from "../casts/event.js";
 import { NostrEvent, StoreEvent } from "../helpers/event.js";
 import { defined } from "./defined.js";
 
@@ -14,7 +15,7 @@ export function castEventStream<C extends EventCast<StoreEvent>, E extends Store
       map((event) => {
         if (!event) return undefined;
         try {
-          return castEvent(event, cls, store);
+          return performCast(event, cls, store);
         } catch {}
         return undefined;
       }),
@@ -32,7 +33,7 @@ export function castTimelineStream<C extends EventCast<StoreEvent>, E extends St
         const castedEvents: C[] = [];
         for (const event of events) {
           try {
-            const casted = castEvent(event, cls, store);
+            const casted = performCast(event, cls, store);
             castedEvents.push(casted);
           } catch {}
         }
