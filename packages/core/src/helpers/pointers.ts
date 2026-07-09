@@ -32,7 +32,7 @@ export {
 export type { NAddr, NEvent, NProfile, NPub } from "nostr-tools/nip19";
 
 import { getPublicKey } from "nostr-tools/pure";
-import { getReplaceableIdentifier, isAddressableKind, isReplaceableKind, kinds, NostrEvent } from "./event.js";
+import { getReplaceableIdentifier, isAddressableKind, isReplaceableKind, kinds, NostrEvent, StoreEvent } from "./event.js";
 import { Tokens } from "./regexp.js";
 import { isSafeRelayURL, relaySet } from "./relays.js";
 import { isHexKey } from "./string.js";
@@ -431,8 +431,8 @@ export function isEventPointerSame(a: EventPointer, b: EventPointer): boolean {
 }
 
 /** Checks if an event matches a pointer */
-export function eventMatchesPointer(
-  event: NostrEvent,
+export function eventMatchesPointer<E extends StoreEvent = NostrEvent>(
+  event: E,
   pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
 ): boolean {
   if (isEventPointer(pointer)) {
