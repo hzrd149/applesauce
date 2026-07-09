@@ -1,10 +1,17 @@
 import { Observable, Subject } from "rxjs";
 import { getDeleteAddressPointers, getDeleteEventPointers } from "../helpers/delete.js";
-import { getReplaceableIdentifier, isAddressableKind, isReplaceableKind, kinds, NostrEvent } from "../helpers/event.js";
+import {
+  getReplaceableIdentifier,
+  isAddressableKind,
+  isReplaceableKind,
+  kinds,
+  NostrEvent,
+  StoreEvent,
+} from "../helpers/event.js";
 import { DeleteEventNotification, IDeleteManager } from "./interface.js";
 
 /** Manages deletion state for events, ensuring users can only delete their own events */
-export class DeleteManager implements IDeleteManager {
+export class DeleteManager<E extends StoreEvent = NostrEvent> implements IDeleteManager<E> {
   /** A stream of pointers that may have been deleted */
   public readonly deleted$: Observable<DeleteEventNotification>;
 
@@ -26,7 +33,7 @@ export class DeleteManager implements IDeleteManager {
    * Extracts event pointers and address pointers from the delete event
    * Enforces that users can only delete their own events
    */
-  add(deleteEvent: NostrEvent): DeleteEventNotification[] {
+  add(deleteEvent: E): DeleteEventNotification[] {
     // SKip non-delete events
     if (deleteEvent.kind !== kinds.EventDeletion) return [];
 
@@ -34,7 +41,9 @@ export class DeleteManager implements IDeleteManager {
     const notifications: DeleteEventNotification[] = [];
 
     // Extract event pointers from "e" tags (already filtered and author set by helper)
-    const eventPointers = getDeleteEventPointers(deleteEvent);
+    // NOTE: getDeleteEventPointers is not in the CORE-04 list and stays NostrEvent-typed;
+    // bridge with a localized cast, mirroring casts/event.ts's signedView pattern.
+    const eventPointers = getDeleteEventPointers(deleteEvent as unknown as NostrEvent);
     if (eventPointers.length > 0) {
       let ids = this.deletedIds.get(author);
       if (!ids) {
@@ -55,7 +64,9 @@ export class DeleteManager implements IDeleteManager {
     }
 
     // Add address pointers to memory
-    const addressPointers = getDeleteAddressPointers(deleteEvent);
+    // NOTE: getDeleteAddressPointers is not in the CORE-04 list and stays NostrEvent-typed;
+    // bridge with a localized cast, mirroring casts/event.ts's signedView pattern.
+    const addressPointers = getDeleteAddressPointers(deleteEvent as unknown as NostrEvent);
     if (addressPointers.length > 0) {
       let identifiers = this.deletedIdentifiers.get(author);
       if (!identifiers) {
@@ -83,7 +94,7 @@ export class DeleteManager implements IDeleteManager {
    * Check if an event is deleted
    * Verifies the event was deleted by its own author
    */
-  check(event: NostrEvent): boolean {
+  check(event: E): boolean {
     const author = event.pubkey;
 
     if (isReplaceableKind(event.kind) || isAddressableKind(event.kind)) {
@@ -108,7 +119,7 @@ export class DeleteManager implements IDeleteManager {
   /**
    * Filter out all deleted events from an array of events
    */
-  filter(events: NostrEvent[]): NostrEvent[] {
+  filter(events: E[]): E[] {
     return events.filter((event) => this.check(event) === false);
   }
 }
