@@ -12,7 +12,7 @@ Genericize the applesauce event layer so it can operate over unsigned NIP-59 `Ru
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Generic store foundation** - Genericize `EventStore`/`AsyncEventStore`, structural helpers, store interfaces & managers; add rumor types & verifier (completed 2026-07-09)
-- [ ] **Phase 2: Generic models & casts** - Genericize core models and cast infrastructure over `E extends StoreEvent`
+- [x] **Phase 2: Generic models & casts** - Genericize core models and cast infrastructure over `E extends StoreEvent` (completed 2026-07-09)
 - [ ] **Phase 3: RumorStore & verification** - Add `RumorStore`, kind-5 delete handling, and rumor/cast test coverage (Part A gate)
 - [ ] **Phase 4: Common package rumor support** - Genericize `applesauce-common` helpers and casts (gated on Phase 3)
 
@@ -52,13 +52,13 @@ Plans:
   3. Existing signed-event model and cast tests pass without changes
   4. `pnpm --filter applesauce-core build` type-checks the generic model/cast surface
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 
 - [x] 02-01-PLAN.md — Genericize leaf claim operators (claimEvents/claimLatest) + base models (EventModel/ReplaceableModel/TimelineModel/FiltersModel) over E extends StoreEvent (wave 1)
 - [x] 02-02-PLAN.md — Close the D-02/WR-02 seam: IEventSubscriptions<E>/Model/ModelConstructor/EventModels<E> + store extends clauses + full-workspace build gate (wave 2)
-- [ ] 02-03-PLAN.md — Genericize cast infrastructure (CastRefEventStore<E>/castEvent/castEventStream/castTimelineStream) + final phase-gate build (wave 3)
+- [x] 02-03-PLAN.md — Genericize cast infrastructure (CastRefEventStore<E>/castEvent/castEventStream/castTimelineStream) + final phase-gate build (wave 3)
 
 ### Phase 3: RumorStore & verification
 
@@ -106,6 +106,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Generic store foundation | 4/4 | Complete    | 2026-07-09 |
-| 2. Generic models & casts | 2/3 | In Progress|  |
+| 2. Generic models & casts | 3/3 | Complete   | 2026-07-09 |
 | 3. RumorStore & verification | 0/TBD | Not started | - |
 | 4. Common package rumor support | 0/TBD | Not started | - |

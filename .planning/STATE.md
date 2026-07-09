@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: event-store-supports-rumors
 current_phase: 02
 current_phase_name: generic-models-casts
-status: executing
+status: verifying
 stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-07-09T03:23:18.548Z"
+last_updated: "2026-07-09T03:35:35.237Z"
 last_activity: 2026-07-09
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 25
+  completed_plans: 7
+  percent: 50
 ---
 
 # Project State
@@ -23,12 +23,12 @@ progress:
 
 Phase: 02 (generic-models-casts) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-09 — Phase 02 execution started
 
 ## Session
 
-**Last session:** 2026-07-09T03:23:18.541Z
+**Last session:** 2026-07-09T03:34:54.528Z
 **Stopped at:** Completed 02-02-PLAN.md
 **Resume file:** None
 
@@ -42,6 +42,7 @@ Last activity: 2026-07-09 — Phase 02 execution started
 | Phase 01-generic-store-foundation P04 | 15min | 2 tasks | 6 files |
 | Phase 02 P01 | 25min | 2 tasks | 5 files |
 | Phase 02 P02 | 25min | 2 tasks | 6 files |
+| Phase 02-generic-models-casts P03 | 12min | 2 tasks | 3 files |
 
 ## Decisions
 
@@ -56,3 +57,5 @@ Last activity: 2026-07-09 — Phase 02 execution started
 - [Phase 02 Plan 01]: event-models.ts call sites needed explicit <NostrEvent> type arguments (FiltersModel<NostrEvent> etc.) since a bare generic function reference infers E from its constraint, not its default
 - [Phase 02 Plan 02]: IEventModelMixin gained an explicit <E, TStore> parameter (not just TStore alone) because TStore's bare constraint could not absorb an abstract IEventStore<E>/IAsyncEventStore<E>
 - [Phase 02 Plan 02]: EventStore<E>/AsyncEventStore<E> extend bare EventModels<E>, letting TStore default to the union, rather than the plan's literal EventModels<E, IEventStore<E>> -- pinning a narrower TStore broke applesauce-wallet's castUser/ActionRunner call sites
+- [Phase 02 Plan 03]: CastConstructor/castEvent/castEventStream/castTimelineStream gained a defaulted E extends StoreEvent = NostrEvent parameter with zero deviation from the RESEARCH/PATTERNS target shape; the contravariance trick (constructor event param stays NostrEvent) was preserved verbatim
+- [Phase 02 Plan 03]: full-workspace pnpm -r build gate was green on first run with no downstream fixes required -- castUser/User/castPubkey/PubkeyCast continued resolving bare CastRefEventStore to the NostrEvent default with zero edits
