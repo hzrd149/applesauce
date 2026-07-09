@@ -1,6 +1,13 @@
 // Pluggable persistence + media upload for ConcordClient.
 
+import type { RumorStore } from "applesauce-core";
+
 import type { MediaAttachment } from "../helpers/imeta.js";
+
+/** Creates the per-plane {@link RumorStore} for a community — the persistent cache
+ *  seam. Return a store backed by an async event database to persist decrypted
+ *  rumors across reloads; the default is a fresh in-memory {@link RumorStore}. */
+export type ConcordStoreFactory = (communityId: string, planeKey: string) => RumorStore;
 
 /** Async key/value storage for Concord membership/key material and sync cursors. */
 export interface ConcordStorage {

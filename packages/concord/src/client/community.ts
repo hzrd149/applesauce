@@ -60,7 +60,36 @@ import {
 } from "../types.js";
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
-import type { ConcordCommunityOptions, ConcordStoreFactory } from "./types.js";
+import type { ConcordStoreFactory, ConcordUploader } from "./storage.js";
+
+/** Options for constructing a single-community {@link ConcordCommunity} engine. */
+export interface ConcordCommunityOptions {
+  /** The membership/key material for this community (from an invite or the list). */
+  material: JoinMaterial;
+  /** The logged-in user's signer (NIP-44 required to follow Refoundings). */
+  signer: ISigner;
+  /** The logged-in user's hex pubkey. */
+  pubkey: string;
+  /** The applesauce RelayPool used for all subscriptions/publishes. */
+  pool: RelayPool;
+  /** NIP-42 stream-key authenticator (shared across communities by the manager). */
+  relayAuth: ConcordRelayAuth;
+  /** Wrap-level store for kind-1059 dedup + the NIP-77 negentropy local store.
+   *  Defaults to a fresh {@link EventStore}. */
+  eventStore?: EventStore;
+  /** Media uploader (encrypt + upload). Required to send files or set images. */
+  uploader?: ConcordUploader;
+  /** Fallback relays when the community defines none. */
+  relays?: string[];
+  /** Per-plane store factory (persistent cache). Defaults to in-memory stores. */
+  storeFactory?: ConcordStoreFactory;
+  /** Called whenever `material` changes (a fresh private-channel key, a Refounding)
+   *  so the manager can persist it and refresh the Community List. */
+  onMaterialChange?: (material: JoinMaterial) => void;
+  /** Called when a Refounding excludes us (CORD-06): the manager tombstones the
+   *  membership and drops the community. */
+  onRemoved?: (communityId: string) => void;
+}
 
 function emptyState(material: JoinMaterial): CommunityState {
   return {

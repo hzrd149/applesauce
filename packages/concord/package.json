@@ -77,6 +77,16 @@
       "import": "./dist/models/*.js",
       "require": "./dist/models/*.js",
       "types": "./dist/models/*.d.ts"
+    },
+    "./client": {
+      "import": "./dist/client/index.js",
+      "require": "./dist/client/index.js",
+      "types": "./dist/client/index.d.ts"
+    },
+    "./client/*": {
+      "import": "./dist/client/*.js",
+      "require": "./dist/client/*.js",
+      "types": "./dist/client/*.d.ts"
     }
   },
   "dependencies": {

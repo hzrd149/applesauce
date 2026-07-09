@@ -4,7 +4,6 @@
 
 export * from "./relay-auth.js";
 export * as Storage from "./storage.js";
-export * from "./types.js";
 export * from "./sync.js";
 export * from "./channel-sync.js";
 export * from "./invite-watcher.js";
