@@ -53,8 +53,15 @@ export type EventStoreOptions<E extends StoreEvent = NostrEvent> = {
 };
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
+// Gate-driven fix (Task 2, full-workspace build): EventModels' own TStore default (the
+// IEventStore<E> | IAsyncEventStore<E> union) is deliberately kept here — pinning TStore to the
+// narrower IEventStore<E> alone breaks every downstream consumer that references bare
+// EventModels<E>/CastRefEventStore<E> (e.g. applesauce-wallet's castUser/ActionRunner call
+// sites), since those compose against EventModels' own union default. Letting TStore default
+// (rather than narrowing it) preserves that pre-existing compatibility while still closing the
+// D-02 seam (EventStore<E>'s subscription methods are E-typed regardless of TStore's shape).
 export class EventStore<E extends StoreEvent = NostrEvent>
-  extends EventModels<E, IEventStore<E>>
+  extends EventModels<E>
   implements IEventStore<E>
 {
   database: IEventDatabase<E>;

@@ -51,8 +51,11 @@ export type AsyncEventStoreOptions<E extends StoreEvent = NostrEvent> = {
 };
 
 /** An async wrapper around an async event database that handles replaceable events, deletes, and models */
+// Gate-driven fix (Task 2, full-workspace build): see EventStore's identical comment — keep
+// EventModels' own TStore union default here too, rather than narrowing to IAsyncEventStore<E>
+// alone, to preserve compatibility with downstream consumers of bare EventModels<E>.
 export class AsyncEventStore<E extends StoreEvent = NostrEvent>
-  extends EventModels<E, IAsyncEventStore<E>>
+  extends EventModels<E>
   implements IAsyncEventStore<E>
 {
   database: IAsyncEventDatabase<E>;
