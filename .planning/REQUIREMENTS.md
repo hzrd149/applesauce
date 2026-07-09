@@ -30,9 +30,9 @@ Requirements for this milestone. Each maps to a roadmap phase. Part A (CORE + RU
 
 <!-- Gated: begins only after Core Store + Rumor Store are proven (tests green, applesauce-core builds clean). -->
 
-- [ ] **COMMON-01**: `applesauce-common` helpers that use only structural fields accept `E extends StoreEvent`
-- [ ] **COMMON-02**: `applesauce-common` casts (plus their models/factories where needed) operate over rumors while keeping `NostrEvent` defaults
-- [ ] **COMMON-03**: Default signed-`NostrEvent` behavior in `applesauce-common` is unchanged (existing tests and snapshots pass)
+- [x] **COMMON-01**: `applesauce-common` helpers that use only structural fields accept `E extends StoreEvent`
+- [x] **COMMON-02**: `applesauce-common` casts (plus their models/factories where needed) operate over rumors while keeping `NostrEvent` defaults
+- [x] **COMMON-03**: Default signed-`NostrEvent` behavior in `applesauce-common` is unchanged (existing tests and snapshots pass)
 
 ## Future Requirements
 
@@ -71,9 +71,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RUMOR-04 | Phase 3 | Complete |
 | RUMOR-05 | Phase 3 | Complete |
 | RUMOR-06 | Phase 3 | Complete |
-| COMMON-01 | Phase 4 | Pending |
-| COMMON-02 | Phase 4 | Pending |
-| COMMON-03 | Phase 4 | Pending |
+| COMMON-01 | Phase 4 | Complete |
+| COMMON-02 | Phase 4 | Complete |
+| COMMON-03 | Phase 4 | Complete |
 
 **Coverage:**
 

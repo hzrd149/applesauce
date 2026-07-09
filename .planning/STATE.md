@@ -2,34 +2,34 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: event-store-supports-rumors
-current_phase: 4
-current_phase_name: Common package rumor support
+current_phase: 04
+current_phase_name: common-package-rumor-support
 status: verifying
-stopped_at: Completed 03-03-PLAN.md (Phase 3 complete)
-last_updated: "2026-07-09T05:16:17.857Z"
+stopped_at: Completed 04-01-PLAN.md (Phase 4 complete, milestone v1.0 ready for verify-work)
+last_updated: "2026-07-09T05:46:33.682Z"
 last_activity: 2026-07-09
-last_activity_desc: Phase 03 complete, transitioned to Phase 4
+last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
-  percent: 75
+  completed_phases: 4
+  total_plans: 11
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 4 — Common package rumor support
-Plan: Not started
+Phase: 04 (common-package-rumor-support) — EXECUTING
+Plan: 1 of 1
 Status: Phase complete — ready for verification
-Last activity: 2026-07-09 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-07-09 — Phase 04 execution started
 
 ## Session
 
-**Last session:** 2026-07-09T05:02:36.653Z
-**Stopped at:** Completed 03-03-PLAN.md (Phase 3 complete)
+**Last session:** 2026-07-09T05:46:19.703Z
+**Stopped at:** Completed 04-01-PLAN.md (Phase 4 complete, milestone v1.0 ready for verify-work)
 **Resume file:** None
 
 ## Performance Metrics
@@ -46,6 +46,7 @@ Last activity: 2026-07-09 — Phase 03 complete, transitioned to Phase 4
 | Phase 03 P01 | 20min | 2 tasks | 5 files |
 | Phase 03 P02 | 15min | 2 tasks | 2 files |
 | Phase 03 P03 | 12min | 2 tasks | 2 files |
+| Phase 04 P01 | 10min | 2 tasks | 6 files |
 
 ## Decisions
 
@@ -68,3 +69,5 @@ Last activity: 2026-07-09 — Phase 03 complete, transitioned to Phase 4
 - [Phase 03 Plan 02]: cast-stream.ts imports EventCast from ../casts/event.js and performCast from ../casts/cast.js separately, since cast.ts imports EventCast locally without re-exporting it
 - [Phase 03 Plan 03]: Used a minimal local SignedOnlyCast probe class (reads this.event.sig) rather than reusing a production cast, keeping the WR-01 regression guard self-contained
 - [Phase 03 Plan 03]: RumorStore was already present in the exports snapshot from plan 01; this plan's regeneration only needed to absorb performCast
+- [Phase 04]: Used narrow { tags: string[][] } inline bound for tag-only helpers and full StoreEvent bound only for getReactionEmoji (reads content + tags)
+- [Phase 04]: COMMON-02 targeted-cast set audited empty -- no applesauce-common cast/model/factory changed; documented in 04-COMMON-02-AUDIT.md
