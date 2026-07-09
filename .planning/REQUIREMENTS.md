@@ -24,7 +24,7 @@ Requirements for this milestone. Each maps to a roadmap phase. Part A (CORE + RU
 - [x] **RUMOR-03**: `RumorStore` accepts a rumor with a correct `id` and rejects a rumor with an incorrect `id`
 - [x] **RUMOR-04**: `RumorStore` streams rumors via `filters()`, returns `Rumor[]` from `timeline()`, and the latest replaceable rumor from `replaceable()`
 - [x] **RUMOR-05**: `RumorStore` processes kind-5 delete rumors, removing matching stored rumors
-- [ ] **RUMOR-06**: A custom `EventCast<Rumor>` works with `castEvent` against a rumor store
+- [x] **RUMOR-06**: A custom `EventCast<Rumor>` works with `castEvent` against a rumor store
 
 ### Common Package
 
@@ -70,7 +70,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RUMOR-03 | Phase 3 | Complete |
 | RUMOR-04 | Phase 3 | Complete |
 | RUMOR-05 | Phase 3 | Complete |
-| RUMOR-06 | Phase 3 | Pending |
+| RUMOR-06 | Phase 3 | Complete |
 | COMMON-01 | Phase 4 | Pending |
 | COMMON-02 | Phase 4 | Pending |
 | COMMON-03 | Phase 4 | Pending |

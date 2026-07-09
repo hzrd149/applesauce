@@ -5,15 +5,15 @@ milestone_name: event-store-supports-rumors
 current_phase: 03
 current_phase_name: rumorstore-verification
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-07-09T04:43:43.633Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-07-09T04:53:02.558Z"
 last_activity: 2026-07-09
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
   percent: 50
 ---
 
@@ -22,14 +22,14 @@ progress:
 ## Current Position
 
 Phase: 03 (rumorstore-verification) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-09 — Phase 03 execution started
 
 ## Session
 
-**Last session:** 2026-07-09T04:42:23.292Z
-**Stopped at:** Completed 02-02-PLAN.md
+**Last session:** 2026-07-09T04:53:02.550Z
+**Stopped at:** Completed 03-02-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -44,6 +44,7 @@ Last activity: 2026-07-09 — Phase 03 execution started
 | Phase 02 P02 | 25min | 2 tasks | 6 files |
 | Phase 02-generic-models-casts P03 | 12min | 2 tasks | 3 files |
 | Phase 03 P01 | 20min | 2 tasks | 5 files |
+| Phase 03 P02 | 15min | 2 tasks | 2 files |
 
 ## Decisions
 
@@ -62,3 +63,5 @@ Last activity: 2026-07-09 — Phase 03 execution started
 - [Phase 02 Plan 03]: full-workspace pnpm -r build gate was green on first run with no downstream fixes required -- castUser/User/castPubkey/PubkeyCast continued resolving bare CastRefEventStore to the NostrEvent default with zero edits
 - [Phase 03]: No AsyncRumorStore added -- AsyncEventStore<Rumor> already covers the async case with no concrete consumer requiring a dedicated class
 - [Phase 03]: Test rumors constructed as plain object literals with getEventHash-computed ids rather than via FakeUser, to directly demonstrate unsigned rumor-shaped input
+- [Phase 03 Plan 02]: Used sig-gated CastEventInput<T> = T extends { sig: string } ? NostrEvent : StoreEvent (not the naive exact-T conditional) for castEvent's public input, since the exact-T form was empirically proven in RESEARCH to over-tighten concord's ConcordDirectInvite narrowed-kind rumor cast
+- [Phase 03 Plan 02]: cast-stream.ts imports EventCast from ../casts/event.js and performCast from ../casts/cast.js separately, since cast.ts imports EventCast locally without re-exporting it
