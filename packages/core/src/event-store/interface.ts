@@ -254,23 +254,23 @@ export interface IMissingEventLoader<E extends StoreEvent = NostrEvent> {
 }
 
 /** Generic async event store interface */
-export interface IAsyncEventStore
+export interface IAsyncEventStore<E extends StoreEvent = NostrEvent>
   extends
-    IAsyncEventStoreReadAdvanced,
-    IEventStoreStreams,
+    IAsyncEventStoreReadAdvanced<E>,
+    IEventStoreStreams<E>,
     IEventSubscriptions,
-    IAsyncEventStoreActions,
+    IAsyncEventStoreActions<E>,
     IEventModelMixin<IAsyncEventStore>,
-    IEventClaims,
-    IMissingEventLoader {}
+    IEventClaims<E>,
+    IMissingEventLoader<E> {}
 
 /** Generic sync event store interface */
-export interface IEventStore
+export interface IEventStore<E extends StoreEvent = NostrEvent>
   extends
-    IEventStoreReadAdvanced,
-    IEventStoreStreams,
+    IEventStoreReadAdvanced<E>,
+    IEventStoreStreams<E>,
     IEventSubscriptions,
-    IEventStoreActions,
+    IEventStoreActions<E>,
     IEventModelMixin<IEventStore>,
-    IEventClaims,
-    IMissingEventLoader {}
+    IEventClaims<E>,
+    IMissingEventLoader<E> {}
