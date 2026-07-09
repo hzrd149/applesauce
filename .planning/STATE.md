@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: event-store-supports-rumors
-current_phase: 04
-status: verifying
+current_phase: 0
+status: Awaiting next milestone
 stopped_at: Completed 04-01-PLAN.md (Phase 4 complete, milestone v1.0 ready for verify-work)
-last_updated: "2026-07-09T05:55:47.179Z"
+last_updated: "2026-07-09T06:04:09.946Z"
 last_activity: 2026-07-09
-last_activity_desc: Phase 04 complete
+last_activity_desc: Milestone v1.0 completed and archived
 progress:
   total_phases: 4
   completed_phases: 4
@@ -21,10 +21,10 @@ current_phase_name: common-package-rumor-support
 
 ## Current Position
 
-Phase: 04
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-09 — Phase 04 complete
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-09 — Milestone v1.0 completed and archived
 
 ## Session
 
@@ -71,3 +71,7 @@ Last activity: 2026-07-09 — Phase 04 complete
 - [Phase 03 Plan 03]: RumorStore was already present in the exports snapshot from plan 01; this plan's regeneration only needed to absorb performCast
 - [Phase 04]: Used narrow { tags: string[][] } inline bound for tag-only helpers and full StoreEvent bound only for getReactionEmoji (reads content + tags)
 - [Phase 04]: COMMON-02 targeted-cast set audited empty -- no applesauce-common cast/model/factory changed; documented in 04-COMMON-02-AUDIT.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
