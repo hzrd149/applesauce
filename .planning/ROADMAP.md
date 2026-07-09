@@ -73,11 +73,11 @@ Plans:
   4. A custom `EventCast<Rumor>` works with `castEvent` against a rumor store
   5. New rumor tests pass and `pnpm --filter applesauce-core test` + `build` are green (Part A proven)
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 
-- [ ] 03-01-PLAN.md — RumorStore class + accept/reject/streams/kind-5-delete tests (wave 1)
+- [x] 03-01-PLAN.md — RumorStore class + accept/reject/streams/kind-5-delete tests (wave 1)
 - [ ] 03-02-PLAN.md — Sig-gated castEvent WR-01 fix (CastEventInput/performCast split) (wave 1)
 - [ ] 03-03-PLAN.md — RUMOR-06 test vs real RumorStore + exports snapshot + Part A gate (wave 2)
 
@@ -109,5 +109,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Generic store foundation | 4/4 | Complete    | 2026-07-09 |
 | 2. Generic models & casts | 3/3 | Complete    | 2026-07-09 |
-| 3. RumorStore & verification | 0/3 | Not started | - |
+| 3. RumorStore & verification | 1/3 | In Progress|  |
 | 4. Common package rumor support | 0/TBD | Not started | - |

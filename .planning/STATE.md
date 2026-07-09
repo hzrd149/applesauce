@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: event-store-supports-rumors
-current_phase: 3
-current_phase_name: RumorStore & verification
-status: verifying
+current_phase: 03
+current_phase_name: rumorstore-verification
+status: executing
 stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-07-09T03:58:36.531Z"
+last_updated: "2026-07-09T04:43:43.633Z"
 last_activity: 2026-07-09
-last_activity_desc: Phase 02 complete, transitioned to Phase 3
+last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 10
+  completed_plans: 8
   percent: 50
 ---
 
@@ -21,14 +21,14 @@ progress:
 
 ## Current Position
 
-Phase: 3 — RumorStore & verification
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-09 — Phase 02 complete, transitioned to Phase 3
+Phase: 03 (rumorstore-verification) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-09 — Phase 03 execution started
 
 ## Session
 
-**Last session:** 2026-07-09T03:34:54.528Z
+**Last session:** 2026-07-09T04:42:23.292Z
 **Stopped at:** Completed 02-02-PLAN.md
 **Resume file:** None
 
@@ -43,6 +43,7 @@ Last activity: 2026-07-09 — Phase 02 complete, transitioned to Phase 3
 | Phase 02 P01 | 25min | 2 tasks | 5 files |
 | Phase 02 P02 | 25min | 2 tasks | 6 files |
 | Phase 02-generic-models-casts P03 | 12min | 2 tasks | 3 files |
+| Phase 03 P01 | 20min | 2 tasks | 5 files |
 
 ## Decisions
 
@@ -59,3 +60,5 @@ Last activity: 2026-07-09 — Phase 02 complete, transitioned to Phase 3
 - [Phase 02 Plan 02]: EventStore<E>/AsyncEventStore<E> extend bare EventModels<E>, letting TStore default to the union, rather than the plan's literal EventModels<E, IEventStore<E>> -- pinning a narrower TStore broke applesauce-wallet's castUser/ActionRunner call sites
 - [Phase 02 Plan 03]: CastConstructor/castEvent/castEventStream/castTimelineStream gained a defaulted E extends StoreEvent = NostrEvent parameter with zero deviation from the RESEARCH/PATTERNS target shape; the contravariance trick (constructor event param stays NostrEvent) was preserved verbatim
 - [Phase 02 Plan 03]: full-workspace pnpm -r build gate was green on first run with no downstream fixes required -- castUser/User/castPubkey/PubkeyCast continued resolving bare CastRefEventStore to the NostrEvent default with zero edits
+- [Phase 03]: No AsyncRumorStore added -- AsyncEventStore<Rumor> already covers the async case with no concrete consumer requiring a dedicated class
+- [Phase 03]: Test rumors constructed as plain object literals with getEventHash-computed ids rather than via FakeUser, to directly demonstrate unsigned rumor-shaped input
