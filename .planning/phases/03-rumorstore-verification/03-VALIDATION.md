@@ -1,9 +1,9 @@
 ---
 phase: 3
 slug: rumorstore-verification
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-07-08
 ---
 
@@ -38,10 +38,10 @@ created: 2026-07-08
 
 | Requirement | Behavior | Test Type | Automated Command | Test File | Status |
 |-------------|----------|-----------|-------------------|-----------|--------|
-| RUMOR-03 | `RumorStore` accepts a correct-`id` rumor, rejects an incorrect-`id` rumor (verifyRumor default verifier) | unit | `pnpm --filter applesauce-core test` | `event-store/__tests__/rumor-store.test.ts` (new) | ⬜ pending |
-| RUMOR-04 | `RumorStore.filters()` streams rumors; `timeline()` returns `Rumor[]`; `replaceable()` returns latest replaceable rumor; `getEvent()` returns a `Rumor` | unit | `pnpm --filter applesauce-core test` | `event-store/__tests__/rumor-store.test.ts` (new) | ⬜ pending |
-| RUMOR-05 | Kind-5 delete rumors remove matching stored rumors | unit | `pnpm --filter applesauce-core test` | `event-store/__tests__/rumor-store.test.ts` (new) | ⬜ pending |
-| RUMOR-06 | A custom `EventCast<Rumor>` works with `castEvent` against a rumor store; signed-only cast rejects a rumor at compile time | unit + type-check | `pnpm --filter applesauce-core test` | `casts/__tests__/rumor-cast.test.ts` (extended) | ⬜ pending |
+| RUMOR-03 | `RumorStore` accepts a correct-`id` rumor, rejects an incorrect-`id` rumor (verifyRumor default verifier) | unit | `pnpm --filter applesauce-core test` | `event-store/__tests__/rumor-store.test.ts` (new) | ✅ green |
+| RUMOR-04 | `RumorStore.filters()` streams rumors; `timeline()` returns `Rumor[]`; `replaceable()` returns latest replaceable rumor; `getEvent()` returns a `Rumor` | unit | `pnpm --filter applesauce-core test` | `event-store/__tests__/rumor-store.test.ts` (new) | ✅ green |
+| RUMOR-05 | Kind-5 delete rumors remove matching stored rumors | unit | `pnpm --filter applesauce-core test` | `event-store/__tests__/rumor-store.test.ts` (new) | ✅ green |
+| RUMOR-06 | A custom `EventCast<Rumor>` works with `castEvent` against a rumor store; signed-only cast rejects a rumor at compile time | unit + type-check | `pnpm --filter applesauce-core test` | `casts/__tests__/rumor-cast.test.ts` (extended) | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -61,8 +61,8 @@ All phase behaviors have automated verification.
 
 ## Validation Sign-Off
 
-- [ ] All requirements have automated verification (new rumor tests + type-check)
-- [ ] Part A gate: core test + build green, full `pnpm -r build` exit 0
-- [ ] `nyquist_compliant: true` set in frontmatter (at validate-phase)
+- [x] All requirements have automated verification (new rumor tests + type-check)
+- [x] Part A gate: core test + build green, full `pnpm -r build` exit 0
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending (finalized by /gsd-validate-phase after execution)
+**Approval:** approved 2026-07-09 (autonomous — RUMOR-03/04/05/06 all covered by new rumor tests, 601/601 green, Part A gate passed; no gaps)
