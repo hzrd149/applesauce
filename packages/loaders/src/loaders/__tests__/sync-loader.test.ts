@@ -122,8 +122,41 @@ describe("createSyncLoader", () => {
     const events = await collect(events$);
 
     expect(events).toEqual([a]);
-    expect(sync).toHaveBeenCalledWith("wss://relay/", filter);
+    expect(sync).toHaveBeenCalledWith("wss://relay/", filter, { waitForAuth: undefined });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("threads waitForAuth into the negentropy sync", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    const sync = vi.fn().mockReturnValue(of(a));
+    const request = vi.fn();
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({ relays: ["wss://relay/"], filter, waitForAuth: user.pubkey });
+
+    await collect(events$);
+
+    expect(sync).toHaveBeenCalledWith("wss://relay/", filter, { waitForAuth: user.pubkey });
+  });
+
+  it("threads waitForAuth into the paginated request", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    const sync = vi.fn();
+    const request = vi.fn().mockReturnValue(of(a));
+    const getSupported = vi.fn().mockResolvedValue([1]);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({ relays: ["wss://relay/"], filter, waitForAuth: user.pubkey });
+
+    await collect(events$);
+
+    expect(request).toHaveBeenCalledWith("wss://relay/", [expect.any(Object)], { waitForAuth: user.pubkey });
+    expect(sync).not.toHaveBeenCalled();
   });
 
   it("uses a paginated request when the relay does not support NIP-77", async () => {
@@ -313,7 +346,7 @@ describe("createSyncLoader", () => {
 
     expect(events).toEqual([a]);
     expect(pool.relay).toHaveBeenCalledWith("wss://relay/");
-    expect(relay.sync).toHaveBeenCalledWith(eventStore, filter);
+    expect(relay.sync).toHaveBeenCalledWith(eventStore, filter, undefined, { waitForAuth: undefined });
   });
 
   it("surfaces a relay error as an error status without failing the loader", async () => {
