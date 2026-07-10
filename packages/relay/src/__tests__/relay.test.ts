@@ -5,7 +5,7 @@ import { filter, repeat, retry } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
-import { AuthRequiredError, Relay } from "../relay.js";
+import { AuthRequiredError, Relay, SyncDirection } from "../relay.js";
 import { RelayInformation } from "../types";
 import { FakeUser } from "./fake-user.js";
 
@@ -704,6 +704,47 @@ describe("message$", () => {
       ["EVENT", "sub1", mockEvent],
       ["EOSE", "sub1"],
     ]);
+  });
+});
+
+describe("sync", () => {
+  it("should wait for authentication if relay responds with NEG-ERR auth-required", async () => {
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }), { expectErrors: true });
+
+    // Relay should receive a NEG-OPEN message
+    const open = (await server.nextMessage) as any[];
+    expect(open[0]).toBe("NEG-OPEN");
+
+    // Reject the negotiation with auth-required
+    server.send(["NEG-ERR", open[1], "auth-required: need to authenticate"]);
+
+    // Should be waiting for auth, not errored or completed
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(spy.receivedComplete()).toBe(false);
+    expect(spy.receivedError()).toBe(false);
+
+    // Simulate successful authentication
+    relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
+
+    // Sync should retry the negotiation after auth (draining the NEG-CLOSE teardown from the first attempt)
+    let retried = false;
+    for (let i = 0; i < 3 && !retried; i++) {
+      const message = (await server.nextMessage) as any[];
+      if (message[0] === "NEG-OPEN") retried = true;
+    }
+    expect(retried).toBe(true);
+  });
+
+  it("should throw AuthRequiredError when waitForAuth=false and relay sends NEG-ERR auth-required", async () => {
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { waitForAuth: false }), {
+      expectErrors: true,
+    });
+
+    const open = (await server.nextMessage) as any[];
+    server.send(["NEG-ERR", open[1], "auth-required: need to authenticate"]);
+
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
   });
 });
 

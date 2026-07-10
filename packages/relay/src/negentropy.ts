@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { firstValueFrom, map, Observable, race, share } from "rxjs";
 
 import { Negentropy, NegentropyStorageVector } from "./lib/negentropy.js";
-import { MultiplexWebSocket } from "./types.js";
+import { AuthRequirement, MultiplexWebSocket } from "./types.js";
 
 /**
  * A function that reconciles the storage vectors with a remote relay
@@ -18,9 +18,26 @@ export type ReconcileFunction = (have: string[], need: string[]) => Promise<void
 export type NegentropySyncOptions = {
   frameSizeLimit?: number;
   signal?: AbortSignal;
+  /**
+   * Whether to wait for NIP-42 authentication when the relay rejects the sync with `auth-required`.
+   * Defaults to `true`. Handled by the relay layer, not `negentropySync` itself.
+   */
+  waitForAuth?: AuthRequirement;
 };
 
 const log = logger.extend("negentropy");
+
+/**
+ * Thrown when the relay responds to a negentropy negotiation with a NEG-ERR message.
+ * The `reason` follows the NIP-01 machine-readable prefix format (e.g. `auth-required: ...`),
+ * allowing the relay layer to map it to a typed error and drive the auth-retry flow.
+ */
+export class NegentropyError extends Error {
+  constructor(public readonly reason: string) {
+    super(reason);
+    this.name = "NegentropyError";
+  }
+}
 
 /** Creates a NegentropyStorageVector from an event store and filter */
 export async function buildStorageFromFilter(
@@ -79,7 +96,7 @@ export async function negentropySync(
     .pipe(
       // If error, throw
       map((msg) => {
-        if (msg[0] === "NEG-ERR") throw new Error(msg[2]);
+        if (msg[0] === "NEG-ERR") throw new NegentropyError(msg[2]);
         return msg[2] as string;
       }),
       share(),
