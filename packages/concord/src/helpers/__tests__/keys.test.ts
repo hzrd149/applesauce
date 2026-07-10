@@ -12,13 +12,14 @@ import {
   addChannelKey,
   buildRefounding,
   channelEpochOf,
+  deriveChannelKeys,
   deriveConcordKeys,
   planeKeyFor,
   readRekey,
   wrapForTarget,
 } from "../keys.js";
 import { decodeWrap } from "../gift-wrap.js";
-import type { DecodedEvent } from "../../types.js";
+import type { ChannelKey, ChannelMetadata, DecodedEvent } from "../../types.js";
 
 async function genesis(name = "Test") {
   const owner = new PrivateKeySigner(generateSecretKey());
@@ -185,5 +186,69 @@ describe("ConcordKeys", () => {
       [],
     );
     expect(outcome.kind).toBe("none");
+  });
+});
+
+describe("group-key memoization", () => {
+  it("reuses the base keys across derivations that share the same material object", async () => {
+    const { material } = await genesis();
+    const a = deriveConcordKeys(material, []);
+    const b = deriveConcordKeys(material, []);
+    // Same material object → the expensive group keys are the SAME instances (memo hit).
+    expect(b.control).toBe(a.control);
+    expect(b.guestbook).toBe(a.guestbook);
+    expect(b.dissolved).toBe(a.dissolved);
+    expect(b.nextBaseRekey.key).toBe(a.nextBaseRekey.key);
+  });
+
+  it("re-derives byte-identical keys for a different material object (correctness, not identity)", async () => {
+    const { material } = await genesis();
+    const a = deriveConcordKeys(material, []);
+    // A structurally-identical but distinct object must miss the memo and recompute.
+    const clone = JSON.parse(JSON.stringify(material)) as typeof material;
+    const b = deriveConcordKeys(clone, []);
+    expect(b.control).not.toBe(a.control); // distinct instance (recomputed)
+    expect(b.control.pk).toBe(a.control.pk); // …but identical derivation
+    expect(b.control.sk).toEqual(a.control.sk);
+    expect(b.control.convKey).toEqual(a.control.convKey);
+  });
+
+  it("reuses prior channels' keys and derives only the newly added one", async () => {
+    const { material } = await genesis();
+    const chA: ChannelMetadata = { channel_id: "ab".repeat(32), name: "a", private: false };
+    const chB: ChannelMetadata = { channel_id: "cd".repeat(32), name: "b", private: false };
+
+    const first = deriveConcordKeys(material, [chA]);
+    const second = deriveConcordKeys(material, [chA, chB]);
+    // chA's key is served from the material's memo; chB is freshly derived.
+    expect(second.channels.get(chA.channel_id)).toBe(first.channels.get(chA.channel_id));
+    expect(second.channels.get(chB.channel_id)).toBeDefined();
+    expect(second.channels.get(chB.channel_id)).not.toBe(second.channels.get(chA.channel_id));
+  });
+
+  it("memoizes a private channel's message-plane keys on its ChannelKey object", async () => {
+    const { material } = await genesis();
+    const channel: ChannelKey = {
+      id: "ef".repeat(32),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 1,
+      name: "room",
+    };
+    const a = deriveChannelKeys(material, channel);
+    const b = deriveChannelKeys(material, channel);
+    expect(b.current).toBe(a.current); // same channel object → memo hit
+
+    // A distinct clone recomputes an identical current key.
+    const clone = JSON.parse(JSON.stringify(channel)) as ChannelKey;
+    const c = deriveChannelKeys(material, clone);
+    expect(c.current).not.toBe(a.current);
+    expect(c.current.pk).toBe(a.current.pk);
+  });
+
+  it("does not serialize derived secret keys onto the material", async () => {
+    const { material } = await genesis();
+    const keys = deriveConcordKeys(material, []);
+    // Symbol-keyed memo props are skipped by JSON.stringify — no sk leaks to storage.
+    expect(JSON.stringify(material)).not.toContain(bytesToHex(keys.control.sk));
   });
 });

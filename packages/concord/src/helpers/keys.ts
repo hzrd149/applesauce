@@ -8,6 +8,7 @@
 
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { unixNow } from "applesauce-core/helpers/time";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { ISigner } from "applesauce-signers";
@@ -81,6 +82,62 @@ export function channelEpochOf(keys: ConcordKeys, channelId: string): number {
   return keys.channelEpochs.get(channelId) ?? keys.material.root_epoch;
 }
 
+/** The base (channel-independent) group keys, a pure function of `material`.
+ *  Memoized on the material object (see {@link baseKeysFor}). */
+interface BaseKeys {
+  control: GroupKey;
+  guestbook: GroupKey;
+  dissolved: GroupKey;
+  nextBaseRekey: { key: GroupKey; epoch: number };
+}
+
+/**
+ * Every group key derives from `material` (community_root / root_epoch /
+ * community_id / channels), which is a STABLE object on the hot path —
+ * `deriveConcordKeys` returns the same `material` it was handed, and
+ * `reconcileLive` threads that one object through every state emission. So we
+ * memoize the expensive secp256k1 derivations directly on it (the repo's
+ * `getOrComputeCachedValue` symbol pattern), computed once and reused until a
+ * rekey/Refounding mints a fresh `material` — exactly when the keys must change.
+ * Symbol-keyed props are skipped by `JSON.stringify`, so the cached secret keys
+ * never leak into persisted material.
+ */
+const BaseKeysSymbol = Symbol.for("concord-base-keys");
+const ChannelKeysSymbol = Symbol.for("concord-channel-keys");
+/** Memoizes a Private Channel's current + held message-plane keys on its
+ *  {@link ChannelKey} object (see {@link deriveChannelKeys}). */
+const ChannelPlaneKeysSymbol = Symbol.for("concord-channel-plane-keys");
+
+/** The base keys for `material`, derived once and memoized on it. */
+function baseKeysFor(material: JoinMaterial): BaseKeys {
+  return getOrComputeCachedValue(material, BaseKeysSymbol, () => {
+    const cid = hexToBytes(material.community_id);
+    const root = hexToBytes(material.community_root);
+    const nextEpoch = material.root_epoch + 1;
+    return {
+      control: controlGroupKey(root, cid, material.root_epoch),
+      guestbook: guestbookGroupKey(root, cid, material.root_epoch),
+      dissolved: dissolvedGroupKey(cid),
+      nextBaseRekey: { key: baseRekeyGroupKey(root, cid, nextEpoch), epoch: nextEpoch },
+    };
+  });
+}
+
+/** A channel's Chat-Plane group key for `material`, memoized on `material` keyed
+ *  by a per-channel signature (public keys derive from the material's root/epoch,
+ *  so `channel_id` disambiguates within a material; the private key/epoch are
+ *  folded in for safety since a private channel derives from its own secret). */
+function channelKeyMemo(material: JoinMaterial, channel: ChannelMetadata): GroupKey {
+  const cache = getOrComputeCachedValue(material, ChannelKeysSymbol, () => new Map<string, GroupKey>());
+  const sig =
+    channel.private && channel.key
+      ? `p|${channel.channel_id}|${channel.key}|${channel.epoch ?? 1}`
+      : `c|${channel.channel_id}`;
+  let gk = cache.get(sig);
+  if (!gk) cache.set(sig, (gk = channelKeyFor(material, channel)));
+  return gk;
+}
+
 /**
  * Derive the full key state for `material` at its current epoch. Pass `prior` to
  * retain its (prior-epoch) plane addresses in the returned `planes` map — a
@@ -92,19 +149,13 @@ export function deriveConcordKeys(
   channels: ChannelMetadata[],
   prior?: ConcordKeys,
 ): ConcordKeys {
-  const cid = hexToBytes(material.community_id);
-  const root = hexToBytes(material.community_root);
-
-  const control = controlGroupKey(root, cid, material.root_epoch);
-  const guestbook = guestbookGroupKey(root, cid, material.root_epoch);
-  const dissolved = dissolvedGroupKey(cid);
-  const nextEpoch = material.root_epoch + 1;
-  const nextBaseRekey = { key: baseRekeyGroupKey(root, cid, nextEpoch), epoch: nextEpoch };
+  const { control, guestbook, dissolved, nextBaseRekey } = baseKeysFor(material);
+  const nextEpoch = nextBaseRekey.epoch;
 
   const channelKeys = new Map<string, GroupKey>();
   const channelEpochs = new Map<string, number>();
   for (const ch of channels) {
-    channelKeys.set(ch.channel_id, channelKeyFor(material, ch));
+    channelKeys.set(ch.channel_id, channelKeyMemo(material, ch));
     channelEpochs.set(ch.channel_id, ch.private ? (ch.epoch ?? 1) : material.root_epoch);
   }
 
@@ -488,10 +539,17 @@ export interface ChannelKeys {
  */
 export function deriveChannelKeys(material: JoinMaterial, channel: ChannelKey): ChannelKeys {
   const channelId = hexToBytes(channel.id);
-  const current = channelGroupKey(hexToBytes(channel.key), channelId, channel.epoch);
-  const held = (channel.held ?? []).map((h) => ({
-    epoch: h.epoch,
-    key: channelGroupKey(hexToBytes(h.key), channelId, h.epoch),
+  // The current + held message-plane keys derive purely from `channel` (its own
+  // secret/epoch, independent of the community root), and `channel` is a stable
+  // object across `openLive`/sync-walk steps — replaced only when it rolls forward
+  // — so memoize this (dominant) derivation on it. The rekey addresses below key
+  // on `material`'s roots, so they stay per-call.
+  const { current, held } = getOrComputeCachedValue(channel, ChannelPlaneKeysSymbol, () => ({
+    current: channelGroupKey(hexToBytes(channel.key), channelId, channel.epoch),
+    held: (channel.held ?? []).map((h) => ({
+      epoch: h.epoch,
+      key: channelGroupKey(hexToBytes(h.key), channelId, h.epoch),
+    })),
   }));
 
   const newEpoch = channel.epoch + 1;
