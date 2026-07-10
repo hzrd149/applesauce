@@ -16,6 +16,7 @@ import {
   endWith,
   filter,
   finalize,
+  first,
   firstValueFrom,
   from,
   identity,
@@ -1034,10 +1035,72 @@ export class Relay {
     if ((await this.getSupported())?.includes(77) === false) throw new Error("Relay does not support NIP-77");
 
     // Import negentropy functions dynamically
-    const { buildStorageVector, buildStorageFromFilter, negentropySync } = await import("./negentropy.js");
+    const { buildStorageVector, buildStorageFromFilter, negentropySync, NegentropyError } =
+      await import("./negentropy.js");
 
-    const storage = Array.isArray(store) ? buildStorageVector(store) : await buildStorageFromFilter(store, filter);
-    return negentropySync(storage, this.socket, filter, reconcile, opts);
+    const waitForAuth = opts?.waitForAuth ?? true;
+
+    // Build the storage vector fresh for each negotiation attempt (so an auth retry re-negotiates cleanly)
+    const buildStorage = async () =>
+      Array.isArray(store) ? buildStorageVector(store) : await buildStorageFromFilter(store, filter);
+
+    // Run a single negentropy negotiation, mapping NEG-ERR reasons to typed relay errors
+    const runSync = defer(() =>
+      from(buildStorage().then((storage) => negentropySync(storage, this.socket, filter, reconcile, opts))),
+    ).pipe(
+      catchError((err) => {
+        // Map negentropy NEG-ERR reasons (e.g. `auth-required:`) to typed relay errors so the retry below can react
+        if (err instanceof NegentropyError) {
+          const parsed = parseClosedError(err.reason);
+          if (parsed) return throwError(() => parsed);
+        }
+        return throwError(() => err);
+      }),
+    );
+
+    // Wait for auth before sending when a previous request already required it, then retry after authenticating.
+    // Mirrors the auth strategy used by req().
+    const withAuthStrategy = waitForAuth ? this.waitForAuth(this.authRequiredForRead$, runSync, waitForAuth) : runSync;
+
+    const observable = withAuthStrategy.pipe(
+      retry({
+        delay: (error) => {
+          // Re-throw non-auth-required errors
+          if (!(error instanceof AuthRequiredError)) return throwError(() => error);
+
+          // Flip the flag to indicate that auth is required for reads
+          this.log(`Auth required for sync`);
+          this.receivedAuthRequiredForReq.next(true);
+
+          // If not waiting for auth, re-throw the error
+          if (!waitForAuth) return throwError(() => error);
+
+          // Wait for authentication (of the required users) before retrying the negotiation
+          // NOTE: use `first` instead of the `filter` operator, which is shadowed by the `filter` parameter here
+          return this.authSatisfied$(waitForAuth).pipe(first((satisfied) => satisfied));
+        },
+      }),
+    );
+
+    // Resolve to false if aborted while waiting for auth (before negentropySync starts handling the signal itself)
+    const signal = opts?.signal;
+    if (!signal) return firstValueFrom(observable);
+
+    const abort$ = new Observable<boolean>((observer) => {
+      if (signal.aborted) {
+        observer.next(false);
+        observer.complete();
+        return;
+      }
+      const onAbort = () => {
+        observer.next(false);
+        observer.complete();
+      };
+      signal.addEventListener("abort", onAbort);
+      return () => signal.removeEventListener("abort", onAbort);
+    });
+
+    return firstValueFrom(merge(observable, abort$).pipe(take(1)));
   }
 
   /** Authenticate with the relay using a signer */
@@ -1181,6 +1244,7 @@ export class Relay {
     store: NegentropySyncStore,
     filters: Filter,
     direction: SyncDirection = SyncDirection.RECEIVE,
+    opts?: { waitForAuth?: AuthRequirement },
   ): Observable<NostrEvent> {
     const getEvents = async (ids: string[]) => {
       if (Array.isArray(store)) return store.filter((event) => ids.includes(event.id));
@@ -1240,7 +1304,7 @@ export class Relay {
             );
           }
         },
-        { signal: controller.signal },
+        { signal: controller.signal, waitForAuth: opts?.waitForAuth },
       )
         // Complete the observable when the sync is complete
         .then(() => {

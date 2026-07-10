@@ -28,6 +28,13 @@ import {
   timeout as rxTimeout,
 } from "rxjs";
 
+/**
+ * What authentication to wait for when a relay requires NIP-42 auth for reading. `true` waits for any authenticated
+ * user, a pubkey (or array of pubkeys) waits until those specific users are authenticated, `false` disables waiting.
+ * Structurally matches applesauce-relay's `AuthRequirement`.
+ */
+export type SyncAuthRequirement = boolean | string | string[];
+
 /** The method a relay was loaded with */
 export type SyncRelayMethod = "negentropy" | "request";
 
@@ -66,21 +73,24 @@ export type SyncLoaderResult = {
   events$: Observable<NostrEvent>;
 };
 
+/** Per-relay options threaded through the request and sync methods */
+export type SyncMethodOptions = { waitForAuth?: SyncAuthRequirement };
+
 /** A method that makes a one-shot REQ to a single relay and completes on EOSE */
-export type SyncRequestMethod = (relay: string, filters: Filter[]) => Observable<NostrEvent>;
+export type SyncRequestMethod = (relay: string, filters: Filter[], opts?: SyncMethodOptions) => Observable<NostrEvent>;
 
 /** A method that returns the list of NIPs a single relay supports (used to detect NIP-77) */
 export type SyncSupportedMethod = (relay: string) => Promise<number[] | null> | Observable<number[] | null>;
 
 /** A method that runs a NIP-77 negentropy sync against a single relay, receiving missing events, and completes
  * when the sync is done */
-export type SyncSyncMethod = (relay: string, filter: Filter) => Observable<NostrEvent>;
+export type SyncSyncMethod = (relay: string, filter: Filter, opts?: SyncMethodOptions) => Observable<NostrEvent>;
 
 /** The minimal relay interface the sync loader needs (structurally satisfied by applesauce-relay's `Relay`) */
 export interface SyncLoaderRelay {
-  request(filters: Filter | Filter[]): Observable<NostrEvent>;
+  request(filters: Filter | Filter[], opts?: SyncMethodOptions): Observable<NostrEvent>;
   getSupported(): Promise<number[] | null>;
-  sync(store: unknown, filter: Filter): Observable<NostrEvent>;
+  sync(store: unknown, filter: Filter, direction?: unknown, opts?: SyncMethodOptions): Observable<NostrEvent>;
 }
 
 /** The minimal pool interface the sync loader needs (structurally satisfied by applesauce-relay's `RelayPool`) */
@@ -122,6 +132,14 @@ export type SyncLoadRequest = {
   timeout?: number | false;
   /** The max number of relays to load from concurrently (default 10) */
   concurrency?: number;
+  /**
+   * What authentication to wait for when a relay requires NIP-42 auth for reading. A relay that responds with
+   * `auth-required` waits for authentication and retries both the negentropy sync and the paginated request. `true`
+   * (the default) waits for any authenticated user, a pubkey (or array of pubkeys) waits until those specific users
+   * are authenticated, and `false` disables waiting so an auth-required relay errors instead.
+   * @default true
+   */
+  waitForAuth?: SyncAuthRequirement;
 };
 
 /** A loader that loads a set of events from multiple relays using NIP-77 sync or paginated requests */
@@ -148,6 +166,7 @@ function paginatedRequest(
   filter: Filter,
   limit = 500,
   logger?: debug.Debugger,
+  opts?: SyncMethodOptions,
 ): Observable<NostrEvent> {
   const log = logger?.extend("backward").extend(nanoid(8));
   const since = filter.since;
@@ -161,7 +180,7 @@ function paginatedRequest(
 
     log?.(`Loading block until:${until}`);
 
-    const events$ = request(relay, [block]).pipe(
+    const events$ = request(relay, [block], opts).pipe(
       mergeMap((event) => {
         if (until !== undefined && event.created_at > until) return EMPTY;
         if (since !== undefined && event.created_at < since) return EMPTY;
@@ -201,11 +220,11 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
   if ("pool" in options) {
     const { pool, eventStore } = options;
     return {
-      request: (relay, filters) => pool.relay(relay).request(filters),
+      request: (relay, filters, opts) => pool.relay(relay).request(filters, opts),
       getSupported: (relay) => pool.relay(relay).getSupported(),
       // The event store doubles as the local store the relay reconciles against. The relay defaults to
       // receiving missing events; sending is intentionally left to a higher layer
-      sync: (relay, filter) => pool.relay(relay).sync(eventStore, filter),
+      sync: (relay, filter, opts) => pool.relay(relay).sync(eventStore, filter, undefined, opts),
     };
   }
 
@@ -236,8 +255,19 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
   const eventStore = options.eventStore;
   const baseLog = (options.logger ?? baseLogger).extend("sync-loader");
 
-  return ({ relays, filter, limit = 500, timeout = 30_000, concurrency = 10 }: SyncLoadRequest): SyncLoaderResult => {
+  return ({
+    relays,
+    filter,
+    limit = 500,
+    timeout = 30_000,
+    concurrency = 10,
+    waitForAuth,
+  }: SyncLoadRequest): SyncLoaderResult => {
     const log = baseLog.extend(nanoid(4));
+
+    // Per-relay options threaded into both the negentropy sync and the paginated request so an auth-required
+    // relay waits for authentication and retries instead of failing
+    const methodOptions: SyncMethodOptions = { waitForAuth };
 
     // Normalize, de-duplicate, and drop invalid relay urls
     const urls = relaySet(relays);
@@ -316,7 +346,11 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
 
             // Part 1: paginated REQ
             const request$ = () =>
-              toMessages(withTimeout(paginatedRequest(request, url, filter, limit, log.extend(url).extend("request"))));
+              toMessages(
+                withTimeout(
+                  paginatedRequest(request, url, filter, limit, log.extend(url).extend("request"), methodOptions),
+                ),
+              );
 
             // A relay without NIP-77 just pages through a REQ
             if (!negentropy) return concat(status(), request$());
@@ -324,7 +358,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             // Part 2: negentropy sync, falling back to a paginated request if it fails or times out
             return concat(
               status(),
-              toMessages(withTimeout(sync(url, filter))).pipe(
+              toMessages(withTimeout(sync(url, filter, methodOptions))).pipe(
                 catchError((error) => {
                   log("Negentropy sync failed for %s, falling back to request: %s", url, error?.message ?? error);
                   // Surface the fallback as its own status change before streaming the request's events

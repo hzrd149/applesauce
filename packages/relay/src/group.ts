@@ -37,6 +37,7 @@ import {
   GroupNegentropySyncOptions,
   GroupRelayInput,
   GroupReqErrorMessage,
+  AuthRequirement,
   GroupReqMessage,
   GroupReqOptions,
   GroupRequestCompleteOperator,
@@ -296,7 +297,12 @@ export class RelayGroup {
   }
 
   /** Negentropy sync events with the relays and an event store */
-  sync(store: NegentropySyncStore | NostrEvent[], filter: Filter, direction?: SyncDirection): Observable<NostrEvent> {
+  sync(
+    store: NegentropySyncStore | NostrEvent[],
+    filter: Filter,
+    direction?: SyncDirection,
+    opts?: { waitForAuth?: AuthRequirement },
+  ): Observable<NostrEvent> {
     // Get an array of relays that support NIP-77 negentropy sync
     return defer(async () => {
       const supported = await Promise.all(
@@ -307,7 +313,7 @@ export class RelayGroup {
       return relays;
     }).pipe(
       // Once relays are selected, sync all the relays in parallel
-      switchMap((relays) => merge(...relays.map((relay) => relay.sync(store, filter, direction)))),
+      switchMap((relays) => merge(...relays.map((relay) => relay.sync(store, filter, direction, opts)))),
       // Only create one upstream subscription
       share(),
     );
