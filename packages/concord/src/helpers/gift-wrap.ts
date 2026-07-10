@@ -14,7 +14,7 @@
 // decoded under its plane's one convKey, so caching the result there is safe.
 
 import { safeParse } from "applesauce-core/helpers";
-import { kinds, type NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
+import { kinds, type NostrEvent, verifyWrappedEvent } from "applesauce-core/helpers/event";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import { rumorMs } from "./stream.js";
 import type { DecodedEvent, RawEvent, Rumor } from "../types.js";
@@ -39,8 +39,11 @@ export function getWrapSeal(wrap: RawEvent, convKey: Uint8Array): NostrEvent | n
     const seal = safeParse<NostrEvent>(nip44.decrypt(wrap.content, convKey));
     if (!seal) return null;
     if (seal.kind !== ENCRYPTED_SEAL_KIND && seal.kind !== PLAINTEXT_SEAL_KIND) return null;
-    // The seal must be a valid, author-signed event.
-    if (!verifyEvent(seal)) return null;
+    // The seal must be a valid, author-signed event. Verify through the swappable
+    // wrapped-event method (like applesauce-core's own gift-wrap/zap helpers) so a
+    // client can route it to a faster verifier (e.g. nostr-wasm) — this runs on
+    // every wrap decode across every plane, so it dominates a Concord client's CPU.
+    if (!verifyWrappedEvent(seal)) return null;
     return seal;
   } catch {
     return null;
