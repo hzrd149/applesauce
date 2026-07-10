@@ -44,6 +44,7 @@ import { EditFactory } from "../factories/edit.js";
 import { DissolutionFactory, EditionFactory } from "../factories/control.js";
 import { JoinLeaveFactory, KickFactory } from "../factories/guestbook.js";
 import { InviteBundleFactory } from "../factories/invite-bundle.js";
+import { DirectInviteFactory } from "../factories/direct-invite.js";
 import { bindToChannel, includeMediaEncryption, type MediaEncryption } from "../operations/channel.js";
 import { ConcordCommunityStateModel } from "../models/community.js";
 import { decodedFromRumor } from "../models/utils.js";
@@ -55,8 +56,10 @@ import {
   type CommunityMetadata,
   type CommunityState,
   type DecodedEvent,
+  type InviteBundle,
   type JoinMaterial,
   type Role,
+  type RoleScope,
 } from "../types.js";
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
@@ -405,6 +408,25 @@ export class ConcordCommunity {
     }
   }
 
+  /**
+   * Merge channel keys delivered out-of-band — a Direct Invite / channel grant
+   * (CORD-05 §6, see {@link grantChannelAccess}) — into our held material, then
+   * spawn a sub-engine for each newly-granted private channel. Idempotent: keys we
+   * already hold (by id) are ignored, so a redelivered grant is a no-op. A channel
+   * whose metadata edition hasn't folded yet is picked up later by the next
+   * {@link reconcileLive}. Returns true if anything new was merged.
+   */
+  receiveChannelKeys(keys: ChannelKey[]): boolean {
+    const held = new Set(this.material.channels.map((c) => c.id));
+    const fresh = keys.filter((k) => !held.has(k.id));
+    if (fresh.length === 0) return false;
+    const channels = [...this.material.channels, ...fresh];
+    this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
+    this.onMaterialChange?.(this.keys.material);
+    this.reconcilePrivateChannels(this.state$.value.channels);
+    return true;
+  }
+
   private spawnPrivateChannel(channelKey: ChannelKey): void {
     const engine = new ConcordPrivateChannel({
       channelKey,
@@ -437,10 +459,34 @@ export class ConcordCommunity {
   /** A channel Rekey excluded us: drop the sub-engine and our now-stale key (so we
    *  don't respawn an engine that just re-detects removal). Synced messages remain. */
   private onPrivateChannelRemoved(channelId: string): void {
-    this.privateChannels.delete(channelId);
+    this.dropChannelKey(channelId);
+  }
+
+  /** Forget a private channel's key and dispose its sub-engine (idempotent). The
+   *  shared teardown behind both an involuntary Rekey removal
+   *  ({@link onPrivateChannelRemoved}) and a voluntary {@link leaveChannel}. */
+  private dropChannelKey(channelId: string): void {
+    const engine = this.privateChannels.get(channelId);
+    if (engine) {
+      engine.dispose();
+      this.privateChannels.delete(channelId);
+    }
+    if (!this.material.channels.some((c) => c.id === channelId)) return;
     const channels = this.material.channels.filter((c) => c.id !== channelId);
     this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
     this.onMaterialChange?.(this.keys.material);
+  }
+
+  /**
+   * Voluntarily leave a private channel (CORD-03): drop our copy of the channel
+   * key and dispose its sub-engine, then persist. Purely local — no rotation, so
+   * the remaining members are undisturbed. Self-exclude via {@link rotateChannel}
+   * is impossible (you can never strictly outrank yourself), so a local key-drop
+   * is the only self-leave. Messages already synced to cache stay readable; new
+   * channel traffic no longer decodes.
+   */
+  async leaveChannel(channelId: string): Promise<void> {
+    this.dropChannelKey(channelId);
   }
 
   // ---- CORD-06 rekey read path (live adoption / removal) ------------------
@@ -665,14 +711,27 @@ export class ConcordCommunity {
     );
   }
 
-  async createRole(name: string, position: number, permissions: bigint): Promise<string> {
+  /**
+   * Mint a Role (CORD-04 §2). A server-scoped role (the default) grants rank
+   * community-wide; a channel-scoped role (`{kind:"channel", channel_id}`) is the
+   * spec's private-channel membership marker — its grant-holders are the intended
+   * readership of that channel, kept in sync with key possession by the caller
+   * (deliver on grant via {@link grantChannelAccess}, rekey on removal via
+   * {@link rotateChannel}). A role mints no key, so this only records entitlement.
+   */
+  async createRole(
+    name: string,
+    position: number,
+    permissions: bigint,
+    scope: RoleScope = { kind: "server" },
+  ): Promise<string> {
     const roleId = bytesToHex(generateSecretKey());
     const role: Role = {
       role_id: roleId,
       name,
       position,
       permissions: permissions.toString(),
-      scope: { kind: "server" },
+      scope,
       color: 0,
     };
     await this.publishEdition(VSK.ROLE, roleId, JSON.stringify(role));
@@ -785,6 +844,47 @@ export class ConcordCommunity {
     await this.publishEdition(VSK.INVITE_REGISTRY, registryEid, JSON.stringify(links));
 
     return buildInviteLink(base, linkPub, token, inviteRelays);
+  }
+
+  /**
+   * Grant a specific member access to ONE private channel we hold (CORD-05 §6 /
+   * CORD-03: "delivered on grant"). Hands over the channel's CURRENT `(key, epoch)`
+   * — plus any held prior keys, so they read recent history — via a Direct Invite
+   * gift-wrapped to `member`. This is the spec-correct way to ADD someone: no
+   * rotation and no epoch bump (rotations sever, and a {@link rotateChannel} can
+   * never onboard a new holder — its continuity check requires the prior key).
+   * The bundle carries only this one channel key (never the caller's other private
+   * channels). Requires `MANAGE_CHANNELS`. Publish is best-effort to the community
+   * relays, where the recipient's Direct-Invite watcher also listens.
+   */
+  async grantChannelAccess(channelId: string, member: string): Promise<void> {
+    const channelKey = this.material.channels.find((c) => c.id === channelId);
+    if (!channelKey) throw new Error("not a private channel we hold a key for");
+    if (!this.canDo(PERM.MANAGE_CHANNELS)) throw new Error("need MANAGE_CHANNELS to grant channel access");
+
+    const state = this.state$.value;
+    const bundle: InviteBundle = {
+      ...buildInviteBundle(this.material, {
+        name: state.metadata?.name,
+        icon: state.metadata?.icon,
+        creator_npub: this.pubkey,
+      }),
+      // Only THIS channel travels — buildInviteBundle would otherwise carry every
+      // private channel we hold, over-granting the recipient.
+      channels: [
+        {
+          id: channelKey.id,
+          key: channelKey.key,
+          epoch: channelKey.epoch,
+          name: channelKey.name,
+          ...(channelKey.held ? { held: channelKey.held } : {}),
+        },
+      ],
+    };
+
+    const wrap = await DirectInviteFactory.create(bundle, member, this.signer);
+    this.eventStore.add(wrap);
+    await this.pool.publish(this.relays(), wrap).catch((err) => console.warn("channel grant publish failed", err));
   }
 
   // ---- CORD-06 refounding (rekey) -----------------------------------------

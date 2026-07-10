@@ -17,6 +17,8 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { channelRekeyGroupKey, controlGroupKey } from "../../helpers/crypto.js";
+import { unlockDirectInvite } from "../../helpers/direct-invite.js";
+import { PERM } from "../../types.js";
 import { ConcordCommunity } from "../community.js";
 
 // The control fold + sync are debounced/async; let them run before asserting.
@@ -136,6 +138,87 @@ describe("ConcordCommunity (DI, no network)", () => {
 
     sub.unsubscribe();
     community.dispose();
+  });
+
+  it("grants a private channel via a Direct Invite carrying only that channel key, and merges/leaves it", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const member = new PrivateKeySigner(generateSecretKey());
+    const memberPub = await member.getPublicKey();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return [];
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Two private channels — the grant must carry ONLY the named one, never the other.
+    const secret = await community.createChannel("secret", true);
+    const other = await community.createChannel("other", true);
+    await settle();
+
+    // A channel-scoped membership role folds with its channel_id intact (CORD-04 §2).
+    const roleId = await community.createRole("#secret", 1, 0n, { kind: "channel", channel_id: secret });
+    await settle();
+    const role = community.state$.value.roles.find((r) => r.role_id === roleId);
+    expect(role?.scope).toEqual({ kind: "channel", channel_id: secret });
+
+    // Deliver-on-grant: a Direct Invite (kind 1059, indexed k:3313, p=member).
+    published.length = 0;
+    await community.grantChannelAccess(secret, memberPub);
+    const wrap = published.find(
+      (e) =>
+        e.kind === kinds.GiftWrap &&
+        e.tags.some((t) => t[0] === "p" && t[1] === memberPub) &&
+        e.tags.some((t) => t[0] === "k" && t[1] === "3313"),
+    );
+    expect(wrap).toBeDefined();
+
+    // The bundle self-certifies and carries exactly the one granted channel key.
+    const bundle = await unlockDirectInvite(wrap!, member);
+    expect(bundle?.community_id).toBe(community.material.community_id);
+    expect(bundle?.channels.map((c) => c.id)).toEqual([secret]);
+    expect(bundle?.channels.some((c) => c.id === other)).toBe(false);
+
+    // The member (who holds none of the community's channel keys yet) merges it.
+    const memberEngine = new ConcordCommunity({
+      material: { ...bundle!, channels: [] },
+      signer: member,
+      pubkey: memberPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await memberEngine.start();
+    expect(memberEngine.receiveChannelKeys(bundle!.channels)).toBe(true);
+    expect(memberEngine.material.channels.map((c) => c.id)).toContain(secret);
+    // Idempotent: a redelivered grant merges nothing new.
+    expect(memberEngine.receiveChannelKeys(bundle!.channels)).toBe(false);
+
+    // Leaving drops the key locally with no rotation.
+    await memberEngine.leaveChannel(secret);
+    expect(memberEngine.material.channels.some((c) => c.id === secret)).toBe(false);
+
+    // grantChannelAccess needs MANAGE_CHANNELS — an unprivileged member cannot grant.
+    expect(community.canDo(PERM.MANAGE_CHANNELS)).toBe(true); // owner can
+    community.dispose();
+    memberEngine.dispose();
   });
 
   it("refound compacts control heads (seals recovered) and does not leak private-channel keys", async () => {

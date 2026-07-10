@@ -41,6 +41,8 @@ import {
 } from "../helpers/invite-bundle.js";
 import { joinCommunity, leaveCommunity, refreshCommunity } from "../operations/community-list.js";
 import { JoinLeaveFactory } from "../factories/guestbook.js";
+import { InviteWatcher } from "./invite-watcher.js";
+import type { ConcordDirectInvite } from "../casts/direct-invite.js";
 import type { CommunityListCommunity, CommunityState, CommunityTombstone, JoinMaterial } from "../types.js";
 import { ConcordCommunity } from "./community.js";
 
@@ -114,6 +116,13 @@ export class ConcordClient {
   private authSub?: Subscription;
   private listSub?: Subscription;
   private inviteSub?: Subscription;
+  /** Watches the user's gift-wrap inbox for CORD-05 §6 Direct Invites — the delivery
+   *  channel for private-channel grants ({@link ConcordCommunity.grantChannelAccess}). */
+  private inviteWatcher?: InviteWatcher;
+  private directInviteSub?: Subscription;
+  /** Direct-invite rumor ids already folded into a community, so a re-emit (the
+   *  watcher republishes its full list on every change) doesn't re-merge. */
+  private readonly handledInvites = new Set<string>();
   /** List event ids we've already auto-unlocked — the cast re-emits several times per event
    *  (outbox/replaceable churn), so we prompt the user's signer at most once per event id. */
   private readonly autoUnlocked = new Set<string>();
@@ -170,6 +179,7 @@ export class ConcordClient {
     }
     this.listHydrated = true; // reconciled, confirmed absent, or timed out — the flush may proceed
     void this.fetchList(INVITE_LIST_KIND);
+    this.startInviteWatcher();
     // Dirty-checked flush: a no-op unless startup surfaced a genuine local/remote divergence.
     await this.saveCommunityList();
   }
@@ -178,11 +188,50 @@ export class ConcordClient {
     this.authSub?.unsubscribe();
     this.listSub?.unsubscribe();
     this.inviteSub?.unsubscribe();
+    this.directInviteSub?.unsubscribe();
+    this.inviteWatcher?.stop();
+    this.inviteWatcher = undefined;
     for (const sub of this.stateSubs.values()) sub.unsubscribe();
     this.stateSubs.clear();
     for (const community of this.communities.values()) community.dispose();
     this.communities.clear();
     this.communities$.next([]);
+  }
+
+  /**
+   * Start watching the user's gift-wrap inbox for CORD-05 §6 Direct Invites and
+   * fold any private-channel grants ({@link ConcordCommunity.grantChannelAccess})
+   * into the matching community. Shares the client's pool/store/auth; listens on
+   * the user's NIP-17 inboxes plus the shared community relays (the fallback),
+   * where a co-member's grant lands. Idempotent (guards against double-start).
+   */
+  private startInviteWatcher(): void {
+    if (this.inviteWatcher) return;
+    this.inviteWatcher = new InviteWatcher({
+      signer: this.signer,
+      pool: this.pool,
+      eventStore: this.eventStore,
+      storage: this.storage,
+      relays: this.defaultRelays,
+      autoDecrypt: true,
+    });
+    this.directInviteSub = this.inviteWatcher.invites$.subscribe((invites) => {
+      for (const invite of invites) this.onDirectInvite(invite);
+    });
+    void this.inviteWatcher.start().catch((err) => console.warn("invite watcher failed to start", err));
+  }
+
+  /** Fold a decoded Direct Invite's channel keys into the granting community. Only
+   *  communities we're already in are touched — a direct invite to a NEW community
+   *  is a full-join flow left to the app, not an auto-join here. */
+  private onDirectInvite(invite: ConcordDirectInvite): void {
+    if (this.handledInvites.has(invite.id) || invite.expired()) return;
+    const bundle = invite.bundle;
+    if (!bundle) return;
+    this.handledInvites.add(invite.id);
+    const community = this.communities.get(bundle.community_id);
+    if (!community || !bundle.channels?.length) return;
+    community.receiveChannelKeys(bundle.channels);
   }
 
   /** The single-community engine for `cid`, or undefined if not joined. */

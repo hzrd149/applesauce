@@ -258,7 +258,11 @@ export class InviteWatcher {
       user.directMessageRelays$.$first(1_000, undefined),
       user.inboxes$.$first(1_000, undefined),
     ]);
-    return this.uniqueRelays(dmRelays?.length ? dmRelays : inboxes?.length ? inboxes : this.fallbackRelays);
+    // Always union the fallback relays with the discovered NIP-17/NIP-65 inboxes:
+    // a Direct Invite can arrive on the user's DM relays OR — a channel grant from
+    // a co-member (CORD-05 §6) — on the shared community relays the app passes as
+    // fallback. Listening only on discovered inboxes would miss the latter.
+    return this.uniqueRelays([...(dmRelays ?? []), ...(inboxes ?? []), ...this.fallbackRelays]);
   }
 
   private openLive(): void {
