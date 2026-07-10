@@ -10,7 +10,7 @@
     "version-packages": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
     "release": "pnpm run -r build && changeset publish",
     "prerelease-next": "turbo build --filter='./packages/*' && vitest run",
-    "release-snapshot": "node scripts/snapshot-version.mjs && changeset publish --tag next --no-git-tag && git reset --hard HEAD && git clean -fd",
+    "release-snapshot": "node scripts/snapshot-release.mjs",
     "test:browser": "vitest",
     "docs": "cd apps/docs && pnpm dev"
   },
