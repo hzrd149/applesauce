@@ -8,7 +8,7 @@
 // consumers read its `store` with the standard timeline/model API.
 
 import { BehaviorSubject, Subscription } from "rxjs";
-import type { EventStore, RumorStore } from "applesauce-core";
+import type { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
@@ -19,6 +19,7 @@ import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../h
 import { checkChatBinding } from "../helpers/chat.js";
 import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
 import type { ChannelKey, DecodedEvent, JoinMaterial } from "../types.js";
+import type { ConcordRumorStore } from "./storage.js";
 import { syncAuthors } from "./sync.js";
 import { channelLiveAuthors, syncChannelEpochs, type ChannelSyncContext } from "./channel-sync.js";
 
@@ -35,8 +36,8 @@ export interface ConcordPrivateChannelOptions {
   relayAuth: ConcordRelayAuth;
   /** Shared wrap-level store (dedup + NIP-77 local store). */
   eventStore: EventStore;
-  /** The `channel:<id>` RumorStore (owned by the community's store factory). */
-  store: RumorStore;
+  /** The `channel:<id>` rumor store (owned by the community's store factory). */
+  store: ConcordRumorStore;
   relays: string[];
   /** May `rotator` rotate this channel at all — holds `MANAGE_CHANNELS` (CORD-04).
    *  Gates adoption and validity. */
@@ -81,8 +82,8 @@ export class ConcordPrivateChannel {
     return this.channelKey.id;
   }
 
-  /** The channel's message {@link RumorStore} — read with `.timeline([{ kinds: [9] }])`. */
-  get store(): RumorStore {
+  /** The channel's message rumor store — read with `.timeline([{ kinds: [9] }])`. */
+  get store(): ConcordRumorStore {
     return this.opts.store;
   }
 
@@ -154,7 +155,11 @@ export class ConcordPrivateChannel {
       // key that opened it, and voice presence (not chat).
       if (!checkChatBinding(decoded.rumor.tags, this.channelId, info.epoch ?? this.channelKey.epoch)) return;
       if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;
-      this.opts.store.add(decoded.rumor);
+      // `.add` is sync for an in-memory store and a Promise for an async-database-backed one;
+      // state derives reactively from `insert$`, so fire-and-forget while surfacing errors.
+      Promise.resolve(this.opts.store.add(decoded.rumor)).catch((err) =>
+        console.error("[applesauce-concord] Failed to add rumor to channel store:", err),
+      );
     } else if (info.type === "rekey") {
       this.rekeyEvents.set(decoded.wrapId, decoded);
       this.scheduleRekeyCheck();

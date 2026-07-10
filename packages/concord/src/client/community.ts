@@ -60,7 +60,7 @@ import {
 } from "../types.js";
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
-import type { ConcordStoreFactory, ConcordUploader } from "./storage.js";
+import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader } from "./storage.js";
 
 /** Options for constructing a single-community {@link ConcordCommunity} engine. */
 export interface ConcordCommunityOptions {
@@ -122,7 +122,7 @@ export class ConcordCommunity {
   /** The current key state; rolled forward on a Refounding. */
   private keys: ConcordKeys;
   /** planeKey ("control"|"guestbook"|"dissolved"|"rekey"|`channel:<id>`) → store. */
-  private readonly stores = new Map<string, RumorStore>();
+  private readonly stores = new Map<string, ConcordRumorStore>();
   /** channelId → the sub-community engine for each private channel we hold a key for. */
   private readonly privateChannels = new Map<string, ConcordPrivateChannel>();
 
@@ -202,25 +202,25 @@ export class ConcordCommunity {
 
   /** The Control Plane {@link RumorStore} — fold it with `ConcordControlModel` &
    *  friends, or read editions directly with `.timeline([{ kinds: [3308] }])`. */
-  get controlStore(): RumorStore {
+  get controlStore(): ConcordRumorStore {
     return this.storeFor("control");
   }
 
   /** The Guestbook Plane {@link RumorStore} (Joins/Leaves/Kicks/Snapshots). */
-  get guestbookStore(): RumorStore {
+  get guestbookStore(): ConcordRumorStore {
     return this.storeFor("guestbook");
   }
 
   /** A channel's {@link RumorStore}. Consumers render messages themselves off the
    *  standard store API — e.g. `.timeline([{ kinds: [9] }])` for chat, or any
    *  applesauce model — so the engine carries no chat-fold logic. */
-  channelStore(channelId: string): RumorStore {
+  channelStore(channelId: string): ConcordRumorStore {
     return this.storeFor(`channel:${channelId}`);
   }
 
   // ---- stores & state wiring ----------------------------------------------
 
-  private storeFor(planeKey: string): RumorStore {
+  private storeFor(planeKey: string): ConcordRumorStore {
     let store = this.stores.get(planeKey);
     if (!store) {
       store = this.storeFactory(this.communityId, planeKey);
@@ -279,7 +279,13 @@ export class ConcordCommunity {
       if (!checkChatBinding(decoded.rumor.tags, info.channelId!, epoch)) return;
       if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;
     }
-    this.storeFor(planeStoreKey(info)).add(decoded.rumor);
+    // `.add` is synchronous for an in-memory store and a Promise for an async-database-backed
+    // one. Folded state derives reactively from the store's `insert$` (which fires once the add
+    // resolves) and the folds are order-independent, so fire-and-forget is correct here — but
+    // surface async-database errors rather than dropping them.
+    Promise.resolve(this.storeFor(planeStoreKey(info)).add(decoded.rumor)).catch((err) =>
+      console.error("[applesauce-concord] Failed to add rumor to plane store:", err),
+    );
     if (info.type === "rekey") this.scheduleRekeyCheck();
   }
 
@@ -449,9 +455,9 @@ export class ConcordCommunity {
 
   private async checkRekey(): Promise<void> {
     const state = this.state$.value;
-    const rekeyEvents = this.storeFor("rekey")
-      .getTimeline([{}])
-      .map((rumor) => decodedFromRumor(rumor));
+    // `getTimeline` is sync for an in-memory store and a Promise for an async-database-backed one.
+    const rekeyTimeline = await Promise.resolve(this.storeFor("rekey").getTimeline([{}]));
+    const rekeyEvents = rekeyTimeline.map((rumor) => decodedFromRumor(rumor));
     const outcome = await readRekey(
       this.keys,
       rekeyEvents,
@@ -486,9 +492,12 @@ export class ConcordCommunity {
 
   // ---- editions (control-plane versioned entities) ------------------------
 
-  private latestEdition(eid: string): { version: number; hash: string; content: string } | undefined {
+  private async latestEdition(eid: string): Promise<{ version: number; hash: string; content: string } | undefined> {
     let best: { version: number; hash: string; content: string } | undefined;
-    for (const rumor of this.storeFor("control").getByFilters([{ kinds: [CONTROL_KIND] }])) {
+    // `getByFilters` is synchronous for an in-memory store and a Promise for an
+    // async-database-backed one — `Promise.resolve` normalizes both.
+    const rumors = await Promise.resolve(this.storeFor("control").getByFilters([{ kinds: [CONTROL_KIND] }]));
+    for (const rumor of rumors) {
       if (rumor.tags.find((t) => t[0] === "eid")?.[1] !== eid) continue;
       const version = parseInt(rumor.tags.find((t) => t[0] === "ev")?.[1] ?? "1", 10);
       if (!best || version > best.version) {
@@ -500,18 +509,18 @@ export class ConcordCommunity {
     return best;
   }
 
-  private buildVac(actor: string): [string, string, string] | undefined {
+  private async buildVac(actor: string): Promise<[string, string, string] | undefined> {
     if (actor === this.material.owner) return undefined;
     const eid = grantLocator(hexToBytes(this.material.community_id), actor);
-    const latest = this.latestEdition(eid);
+    const latest = await this.latestEdition(eid);
     if (!latest) return undefined;
     return [eid, String(latest.version), latest.hash];
   }
 
   private async publishEdition(vsk: number, eid: string, content: string): Promise<void> {
-    const latest = this.latestEdition(eid);
+    const latest = await this.latestEdition(eid);
     const version = latest ? latest.version + 1 : 1;
-    const vac = this.buildVac(this.pubkey);
+    const vac = await this.buildVac(this.pubkey);
     const rumor = await EditionFactory.create({ vsk, eid, version, prevHash: latest?.hash, content, vac });
     await this.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
   }
@@ -677,7 +686,7 @@ export class ConcordCommunity {
 
   async kick(member: string): Promise<void> {
     await this.grantRoles(member, []);
-    const vac = this.buildVac(this.pubkey);
+    const vac = await this.buildVac(this.pubkey);
     await this.publishToPlane({ plane: "guestbook" }, await KickFactory.create(member, vac), {});
   }
 
@@ -765,7 +774,7 @@ export class ConcordCommunity {
 
     // Register the link into the community (CORD-05 §5) so it counts as Public.
     const registryEid = inviteLinksLocator(hexToBytes(this.material.community_id), this.pubkey);
-    const existing = this.latestEdition(registryEid);
+    const existing = await this.latestEdition(registryEid);
     let links: string[] = [];
     try {
       if (existing) links = JSON.parse(existing.content) as string[];

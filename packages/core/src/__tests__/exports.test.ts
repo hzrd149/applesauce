@@ -7,6 +7,7 @@ describe("exports", () => {
       [
         "AsyncDeleteManager",
         "AsyncEventStore",
+        "AsyncRumorStore",
         "BehaviorSubject",
         "CASTS_SYMBOL",
         "CAST_REF_SYMBOL",

@@ -1,4 +1,8 @@
-import type { RumorStore } from "applesauce-core";
+import type { AsyncRumorStore, RumorStore } from "applesauce-core";
+
+/** A per-plane rumor store — the in-memory {@link RumorStore} or an async-database-backed
+ *  {@link AsyncRumorStore}. Mirrors `ConcordRumorStore` in the client without depending on it. */
+type PlaneStore = RumorStore | AsyncRumorStore;
 import type { Model } from "applesauce-core/event-store";
 import type { Rumor } from "applesauce-core/helpers/event";
 import { combineLatest, map, Observable } from "rxjs";
@@ -12,9 +16,9 @@ import { decodedFromRumor, mergeObserved } from "./utils.js";
 
 export interface ConcordCommunityStores {
   /** The community Guestbook Plane store. */
-  guestbook?: RumorStore;
+  guestbook?: PlaneStore;
   /** Additional stores whose authors should count as observably present. */
-  observed?: Iterable<RumorStore>;
+  observed?: Iterable<PlaneStore>;
 }
 
 /** Fold control, guestbook, and observed plane stores into a complete community state. */
@@ -30,7 +34,7 @@ export function ConcordCommunityStateModel(
       new Observable<Rumor[]>((sub) => {
         sub.next([]);
       });
-    const observedStores = [controlStore, stores.guestbook, ...(stores.observed ?? [])].filter((s): s is RumorStore => !!s);
+    const observedStores = [controlStore, stores.guestbook, ...(stores.observed ?? [])].filter((s): s is PlaneStore => !!s);
     const observed$ = combineLatest(observedStores.map((store) => store.model(ConcordObservedAuthorsModel))).pipe(
       map(mergeObserved),
     );
