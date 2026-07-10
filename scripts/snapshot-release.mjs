@@ -10,6 +10,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const skipVersion = args.includes("--skip-version");
+const changesetBin = "node_modules/@changesets/cli/bin.js";
 
 function getArgValue(name) {
   const equalsArg = args.find((arg) => arg.startsWith(`${name}=`));
@@ -21,13 +22,18 @@ function getArgValue(name) {
 
 const tag = getArgValue("--tag") ?? "next";
 
-function run(command, commandArgs) {
+function run(command, commandArgs, env = {}) {
   if (dryRun) {
     console.log([command, ...commandArgs].join(" "));
     return;
   }
 
-  const result = spawnSync(command, commandArgs, { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
+  const result = spawnSync(command, commandArgs, {
+    cwd: root,
+    env: { ...process.env, ...env },
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
@@ -54,9 +60,9 @@ if (otp === "") throw new Error("NPM OTP cannot be empty");
 
 if (!skipVersion) run("node", ["scripts/snapshot-version.mjs", tag]);
 
-const publishArgs = ["changeset", "publish", "--tag", tag, "--no-git-tag"];
+const publishArgs = ["publish", "--tag", tag, "--no-git-tag"];
 if (otp) publishArgs.push("--otp", otp);
 
-run("pnpm", publishArgs);
+run("node", [changesetBin, ...publishArgs], otp ? { npm_config_otp: otp, NPM_CONFIG_OTP: otp } : {});
 run("git", ["reset", "--hard", "HEAD"]);
 run("git", ["clean", "-fd"]);
