@@ -24,20 +24,46 @@ const settle = () => new Promise((r) => setTimeout(r, 200));
 // A RelayPool stand-in whose per-relay methods are inert (no sockets) — the client's
 // list fetch (`request`) completes empty; we feed the 13302 into the store by hand.
 // `publish` records every event so tests can count kind-13302 republishes.
-function fakePool(): { pool: RelayPool; published: NostrEvent[] } {
+function fakePool(
+  opts: { challenge?: string } = {},
+): { pool: RelayPool; published: NostrEvent[]; authenticatedPubkeys: string[] } {
+  const authenticated = new Set<string>();
+  const authenticatedPubkeys: string[] = [];
+  const challenge = opts.challenge ?? null;
   const relay = {
     url: "wss://fake",
-    challenge: null,
-    challenge$: new BehaviorSubject<string | null>(null),
-    isAuthenticated: () => false,
-    authenticate: async () => ({ ok: true }),
+    challenge,
+    challenge$: new BehaviorSubject<string | null>(challenge),
+    isAuthenticated: (pubkeys: string | string[]) =>
+      (Array.isArray(pubkeys) ? pubkeys : [pubkeys]).every((p) => authenticated.has(p)),
+    authenticate: async (signer: { getPublicKey: () => string | Promise<string> }) => {
+      const pubkey = await signer.getPublicKey();
+      authenticated.add(pubkey);
+      authenticatedPubkeys.push(pubkey);
+      return { ok: true, from: "wss://fake" };
+    },
     getSupported: async () => null,
     request: () => EMPTY,
     sync: () => EMPTY,
   };
   const published: NostrEvent[] = [];
   const pool = {
-    status$: new Subject(),
+    status$: challenge
+      ? new BehaviorSubject({
+          "wss://fake": {
+            url: "wss://fake",
+            connected: true,
+            authenticated: false,
+            authenticatedAs: null,
+            authenticatedPubkeys: [],
+            authentications: {},
+            ready: true,
+            authRequiredForRead: true,
+            authRequiredForPublish: true,
+            challenge,
+          },
+        })
+      : new Subject(),
     relay: () => relay,
     subscription: () => NEVER,
     request: () => EMPTY,
@@ -46,7 +72,7 @@ function fakePool(): { pool: RelayPool; published: NostrEvent[] } {
       return [];
     }),
   } as unknown as RelayPool;
-  return { pool, published };
+  return { pool, published, authenticatedPubkeys };
 }
 
 // A real genesis community + the self-encrypted 13302 that lists it as a live membership.
@@ -120,6 +146,27 @@ describe("ConcordClient community list (DI, no network)", () => {
     const cast = await firstList(client);
     expect(cast.unlocked).toBe(true);
     expect(client.getCommunity(cid)).toBeDefined();
+
+    client.stop();
+  });
+
+  it("community startup authenticates stream keys, not the user key", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", description: "hi", relays: ["wss://fake"] });
+    const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    const storage = memoryStorage();
+    await storage.setItem(pubkey, JSON.stringify([material]));
+
+    const { pool, authenticatedPubkeys } = fakePool({ challenge: "challenge-abc" });
+    const client = new ConcordClient({ signer, pubkey, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+
+    await client.start();
+    await settle();
+
+    expect(client.getCommunity(material.community_id)).toBeDefined();
+    expect(authenticatedPubkeys.length).toBeGreaterThan(0);
+    expect(authenticatedPubkeys).not.toContain(pubkey);
 
     client.stop();
   });

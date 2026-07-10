@@ -113,7 +113,6 @@ export class ConcordClient {
    *  remote copy with a republish rebuilt from the local mirror. */
   private signalListHydrated?: () => void;
   private listHydration = new Promise<void>((resolve) => (this.signalListHydrated = resolve));
-  private authSub?: Subscription;
   private listSub?: Subscription;
   private inviteSub?: Subscription;
   /** Watches the user's gift-wrap inbox for CORD-05 §6 Direct Invites — the delivery
@@ -158,8 +157,6 @@ export class ConcordClient {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    // Answer NIP-42 challenges from community relays so they serve our events.
-    this.authSub = this.relayAuth.autoAuthenticate(this.signer, this.pubkey);
     // Restore memberships from the local mirror first (instant, offline-safe),
     // then reconcile with the relay-published Community List (kind 13302).
     for (const material of await this.loadMaterials()) {
@@ -185,7 +182,6 @@ export class ConcordClient {
   }
 
   stop(): void {
-    this.authSub?.unsubscribe();
     this.listSub?.unsubscribe();
     this.inviteSub?.unsubscribe();
     this.directInviteSub?.unsubscribe();
