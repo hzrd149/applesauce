@@ -109,6 +109,12 @@ export async function createCommunity(opts: {
     community_root: bytesToHex(communityRoot),
     root_epoch: 0,
     channels: [],
+    // Canonicalize held_roots to [] so this genesis material is byte-identical to
+    // what the engine's `buildChain` settles on after start() (epoch 0 has no prior
+    // roots). Otherwise the missing field makes the Community List's post-start
+    // `onMaterialChange` refresh look like a content change and publish 13302 a
+    // second time — an extra signer.signEvent + nip44.encrypt on every create.
+    held_roots: [],
     relays: opts.relays,
     name: opts.name,
   };

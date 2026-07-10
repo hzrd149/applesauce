@@ -23,6 +23,7 @@ import type { ConcordCommunityList, ConcordInviteList } from "../casts/index.js"
 import { createCommunity } from "../helpers/community.js";
 import {
   COMMUNITY_LIST_KIND,
+  canonicalJson,
   communityListWithinByteCap,
   isCommunityLive,
   mergeCommunities,
@@ -93,6 +94,23 @@ export class ConcordClient {
   /** The authoritative 13302 document (CORD-02 §8): two merged, never-clobbered arrays. */
   private list: CommunityListCommunity[] = [];
   private tombstones: CommunityTombstone[] = [];
+  /** Canonical fingerprint of the list content believed to be on the relay. When a save would
+   *  produce identical content we skip the encrypt/sign/publish — 13302 is replaceable, so a
+   *  spurious republish (new nonce, new signature, new created_at) can clobber a newer copy from
+   *  another device. NIP-44's random nonce means we must compare plaintext content, not ciphertext.
+   *  Seeded to the empty-list fingerprint so a brand-new user (no communities, no remote list) never
+   *  republishes an empty document on startup; a genuine local-only membership still differs. */
+  private publishedListFingerprint: string | null = canonicalJson({ entries: [], tombstones: [] });
+  /** True once the initial remote 13302 has been fetched + reconciled (or confirmed absent). A
+   *  reactive (key-roll driven) save must not publish before we've merged the relay's copy, or it
+   *  would push a partial list. */
+  private listHydrated = false;
+  /** Resolves the first time the Community List cast is decrypted + reconciled (fingerprint seeded).
+   *  `start()` waits on this before its startup flush when the relay served a list, so an async
+   *  (e.g. NIP-46 remote) signer's slow decrypt can't lose a race to the flush and clobber a newer
+   *  remote copy with a republish rebuilt from the local mirror. */
+  private signalListHydrated?: () => void;
+  private listHydration = new Promise<void>((resolve) => (this.signalListHydrated = resolve));
   private authSub?: Subscription;
   private listSub?: Subscription;
   private inviteSub?: Subscription;
@@ -141,8 +159,19 @@ export class ConcordClient {
     this.watchLists();
     // Pull the user's self-encrypted lists into the store; the cast subscriptions above pick
     // them up (and auto-unlock / reconcile) as they arrive.
-    void this.fetchList(COMMUNITY_LIST_KIND);
+    await this.fetchList(COMMUNITY_LIST_KIND);
+    // Awaiting the fetch only guarantees the ciphertext landed — not that watchLists decrypted and
+    // reconciled it (auto-unlock is async, and slow for remote signers). If the relay served a list,
+    // wait for that reconcile (which seeds `publishedListFingerprint` from the relay copy) before we
+    // flush; otherwise a startup save could rebuild the list from the local mirror and clobber a
+    // newer remote copy. Bounded by the same timeout as the fetch so a decrypt failure can't hang.
+    if (this.eventStore.getReplaceable(COMMUNITY_LIST_KIND, this.pubkey)) {
+      await Promise.race([this.listHydration, new Promise((r) => setTimeout(r, 8000))]);
+    }
+    this.listHydrated = true; // reconciled, confirmed absent, or timed out — the flush may proceed
     void this.fetchList(INVITE_LIST_KIND);
+    // Dirty-checked flush: a no-op unless startup surfaced a genuine local/remote divergence.
+    await this.saveCommunityList();
   }
 
   stop(): void {
@@ -213,7 +242,12 @@ export class ConcordClient {
       channels: bundle.channels ?? [],
       relays: bundle.relays.length ? bundle.relays : relays,
       name: bundle.name,
-      held_roots: bundle.held_roots,
+      // Canonicalize to [] (invite bundles omit held_roots) so this join material
+      // is byte-identical to what the engine's `buildChain` settles on — otherwise
+      // the post-start Community List refresh re-signs 13302 a second time (an extra
+      // signer.signEvent + nip44.encrypt on every join). A genuine epoch adoption
+      // during sync still legitimately differs and publishes.
+      held_roots: bundle.held_roots ?? [],
       refounder: bundle.refounder,
     };
 
@@ -260,7 +294,7 @@ export class ConcordClient {
         : undefined,
       onMaterialChange: () => {
         void this.saveMaterials();
-        void this.saveCommunityList();
+        void this.saveCommunityList({ reactive: true });
       },
       onRemoved: (removed) => this.handleRemoved(removed),
     });
@@ -344,6 +378,16 @@ export class ConcordClient {
         // Merge into our arrays rather than replace (CORD-02 §8).
         this.list = mergeCommunities(this.list, communities);
         this.tombstones = mergeCommunityTombstones(this.tombstones, cast.tombstones ?? []);
+        // Seed the fingerprint from the REMOTE-only content (not the merged `this.list`) so a
+        // genuine local-only addition can still publish, but a save that would reproduce exactly
+        // what the relay already holds is skipped. A self-published event echoing back here
+        // re-seeds this to the same value → idempotent, no loop.
+        this.publishedListFingerprint = canonicalJson({
+          entries: mergeCommunities([], communities),
+          tombstones: mergeCommunityTombstones([], cast.tombstones ?? []),
+        });
+        this.listHydrated = true;
+        this.signalListHydrated?.(); // release start()'s pre-flush wait now the relay copy is merged
         void this.reconcileCommunities();
       });
 
@@ -376,8 +420,14 @@ export class ConcordClient {
     if (added) await this.saveMaterials();
   }
 
-  private async saveCommunityList(): Promise<void> {
+  private async saveCommunityList(opts?: { reactive?: boolean }): Promise<void> {
     if (!this.signer.nip44) return;
+    // A reactive (key-roll driven) save before hydration must be a complete no-op: the engine loop
+    // below would fold local memberships into `this.list` with a fresh `added_at`, and since merge
+    // keeps the newer `added_at` the relay's original value is lost — making the post-hydration
+    // startup flush look dirty and republish. Bail before touching `this.list`; the awaited startup
+    // flush (start(), non-reactive, after the remote copy is merged) runs the real reconciliation.
+    if (opts?.reactive && !this.listHydrated) return;
     try {
       const nowMs = Date.now();
       let list = this.list;
@@ -404,6 +454,11 @@ export class ConcordClient {
         }
       }
       this.list = list;
+      // Content-fingerprint dirty check: 13302 is replaceable, so skip the encrypt/sign/publish
+      // when the content is byte-for-byte what we believe is already on the relay. Compare
+      // canonical PLAINTEXT (NIP-44's random nonce makes ciphertext comparison useless).
+      const fingerprint = canonicalJson({ entries: list, tombstones });
+      if (fingerprint === this.publishedListFingerprint) return;
       if (!communityListWithinByteCap(list, tombstones)) {
         console.warn("community list exceeds the NIP-44 byte cap; not publishing");
         return;
@@ -422,6 +477,8 @@ export class ConcordClient {
       setHiddenContentCache(signed, plaintext);
       this.eventStore.add(signed);
       this.pool.publish(this.defaultRelays, signed).catch((err) => console.warn("list publish failed", err));
+      // Record what we just put on the relay so an immediate re-save (or the echo) is a no-op.
+      this.publishedListFingerprint = fingerprint;
     } catch (err) {
       console.warn("failed to save community list", err);
     }
