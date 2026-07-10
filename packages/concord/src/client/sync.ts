@@ -78,22 +78,18 @@ export interface SyncContext {
  * Fully sync every gift wrap at `authors` across the context relays and RESOLVE
  * only when done (the atomic barrier). Uses `createSyncLoader`, which probes each
  * relay for NIP-77 and reconciles via negentropy when supported, otherwise pages
- * backward through REQ blocks. The paginated path passes `waitForAuth: authors`
- * so an auth-gating relay holds the REQ until the derived stream keys are
- * NIP-42-authenticated; negentropy authenticates at the connection level via the
- * already-registered {@link ConcordRelayAuth} driver.
+ * backward through REQ blocks. Passing `waitForAuth: authors` makes an auth-gating
+ * relay hold BOTH the negentropy sync and the paginated REQ until the derived
+ * stream keys are NIP-42-authenticated (by the already-registered
+ * {@link ConcordRelayAuth} driver) and retry once they are, rather than erroring.
  */
 export async function syncAuthors(ctx: SyncContext, authors: string[]): Promise<NostrEvent[]> {
   if (authors.length === 0) return [];
-  const loader = createSyncLoader({
-    eventStore: ctx.eventStore,
-    request: (relay, filters) => ctx.pool.relay(relay).request(filters, { waitForAuth: authors }),
-    getSupported: (relay) => ctx.pool.relay(relay).getSupported(),
-    sync: (relay, filter) => ctx.pool.relay(relay).sync(ctx.eventStore, filter),
-  });
+  const loader = createSyncLoader({ eventStore: ctx.eventStore, pool: ctx.pool });
   const { events$ } = loader({
     relays: ctx.relays,
     filter: { kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors },
+    waitForAuth: authors,
   });
   // events$ completes when every relay has finished (completed or errored), so this
   // awaits the whole epoch's traffic — nothing advances until it resolves.
