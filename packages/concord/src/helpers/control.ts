@@ -162,7 +162,8 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
         if (!s.isOwner && role.position <= s.position) continue;
         if (role.position <= 0) continue; // position 0 is the owner alone
         const prev = roles.get(eid);
-        if (!prev || prev.position !== role.position || prev.name !== role.name) changed = true;
+        if (!prev || prev.position !== role.position || prev.name !== role.name || prev.deleted !== role.deleted)
+          changed = true;
         roles.set(eid, role);
         heads.set(eid, cand.source);
         break;

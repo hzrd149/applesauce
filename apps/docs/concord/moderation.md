@@ -48,6 +48,24 @@ await community.grantRoles(memberPubkey, [roleId]);
 
 Roles can be **server-scoped** (community-wide, the default) or **channel-scoped**, which marks the intended readership of a private channel. A channel-scoped role records entitlement only — you still deliver and rotate keys via [Channels](/concord/channels).
 
+Edit a role in place, patching only the fields you pass:
+
+```ts
+await community.editRole(roleId, { position: 3, permissions: PERM.KICK });
+```
+
+Delete (retire) a role. It stays in `community.state$` flagged `deleted` — so history and UI can still resolve it — but confers no permissions or rank, stripping its authority from every grant-holder. Existing grants are left untouched, so restoring the role with `editRole(roleId, { deleted: false })` re-grants it automatically:
+
+```ts
+await community.deleteRole(roleId);
+```
+
+Read the live roles by filtering out the deleted ones:
+
+```ts
+const liveRoles = community.state$.value.roles.filter((r) => !r.deleted);
+```
+
 ## Kick
 
 A kick removes a member's roles and records a Kick in the guestbook. They can rejoin from an invite.

@@ -811,6 +811,18 @@ export class ConcordCommunity {
     await this.publishEdition(VSK.ROLE, roleId, JSON.stringify(role));
   }
 
+  /**
+   * Retire a Role (CORD-04). The role stays in {@link CommunityState.roles} flagged
+   * `deleted` — so it remains visible and compactable — but confers no permissions
+   * or rank, stripping its authority from every grant-holder. Reverse with
+   * `editRole(roleId, { deleted: false })`. Existing grants are left untouched.
+   */
+  async deleteRole(roleId: string): Promise<void> {
+    const current = this.state$.value.roles.find((r) => r.role_id === roleId);
+    if (!current) return;
+    await this.publishEdition(VSK.ROLE, roleId, JSON.stringify({ ...current, deleted: true }));
+  }
+
   async grantRoles(member: string, roleIds: string[]): Promise<void> {
     const eid = grantLocator(hexToBytes(this.material.community_id), member);
     await this.publishEdition(VSK.GRANT, eid, JSON.stringify({ member, role_ids: roleIds }));

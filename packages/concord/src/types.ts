@@ -106,6 +106,9 @@ export interface Role {
   permissions: string; // decimal string
   scope: RoleScope;
   color: number;
+  /** A deleted role stays in the fold (so it remains visible in state and
+   *  compactable) but confers no permissions or rank — see {@link resolveStanding}. */
+  deleted?: boolean;
 }
 
 // ---- Channel metadata (vsk 2) ---------------------------------------------

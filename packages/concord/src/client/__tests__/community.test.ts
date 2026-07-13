@@ -263,6 +263,43 @@ describe("ConcordCommunity (DI, no network)", () => {
     memberEngine.dispose();
   });
 
+  it("deleteRole retires a role: still visible in state but confers no authority", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const member = bytesToHex(generateSecretKey());
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const roleId = await community.createRole("Mod", 5, PERM.KICK);
+    await community.grantRoles(member, [roleId]);
+    await settle();
+    expect(community.standingOf(member).permissions & PERM.KICK).toBe(PERM.KICK);
+
+    await community.deleteRole(roleId);
+    await settle();
+
+    const role = community.state$.value.roles.find((r) => r.role_id === roleId);
+    expect(role?.deleted).toBe(true); // still present, flagged deleted
+    expect(community.standingOf(member).permissions).toBe(0n); // authority stripped
+    expect(community.state$.value.grants.get(member)).toEqual([roleId]); // grant untouched
+
+    community.dispose();
+  });
+
   it("refound compacts control heads (seals recovered) and does not leak private-channel keys", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();

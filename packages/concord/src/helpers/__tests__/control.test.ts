@@ -3,6 +3,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 
 import { VSK } from "../../types.js";
 import { EditionFactory } from "../../factories/control.js";
+import { computeEditionHash } from "../editions.js";
 import { createCommunity } from "../community.js";
 import { foldControl } from "../control.js";
 import { inviteLinksLocator } from "../crypto.js";
@@ -57,5 +58,34 @@ describe("control fold", () => {
     expect(state.roles.length).toBe(100);
     // The dropped one is the highest id (index 100 = 0x64).
     expect(state.roles.some((r) => r.role_id === (100).toString(16).padStart(64, "0"))).toBe(false);
+  });
+
+  it("keeps a deleted role visible in state but strips its authority", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const roleId = "01".repeat(32);
+    const role = { role_id: roleId, name: "mod", position: 5, permissions: "0", scope: { kind: "server" }, color: 0 };
+    const v1Content = JSON.stringify(role);
+    const created = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: v1Content });
+    events.push(decoded(created, genesis.material.owner, 2_000));
+
+    const grant = { member: "cd".repeat(32), role_ids: [roleId] };
+    const granted = await EditionFactory.create({ vsk: VSK.GRANT, eid: roleId, version: 1, content: JSON.stringify(grant) });
+    events.push(decoded(granted, genesis.material.owner, 2_100));
+
+    const live = foldControl(events, genesis.material);
+    expect(live.roles.find((r) => r.role_id === roleId)?.deleted).toBeFalsy();
+    expect(live.grants.get(grant.member)).toEqual([roleId]);
+
+    // A later edition (chained via prev) deletes the role.
+    const prevHash = computeEditionHash({ vsk: VSK.ROLE, eid: roleId, version: 1, content: v1Content });
+    const deleted = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 2, prevHash, content: JSON.stringify({ ...role, deleted: true }) });
+    events.push(decoded(deleted, genesis.material.owner, 3_000));
+
+    const state = foldControl(events, genesis.material);
+    const folded = state.roles.find((r) => r.role_id === roleId);
+    expect(folded?.deleted).toBe(true); // still visible, flagged
+    expect(state.grants.get(grant.member)).toEqual([roleId]); // grant untouched
   });
 });

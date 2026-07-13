@@ -51,7 +51,7 @@ export function resolveStanding(
   let position = ROLELESS_POSITION;
   for (const id of roleIds) {
     const role = roles.get(id);
-    if (!role) continue;
+    if (!role || role.deleted) continue; // a deleted role confers nothing
     permissions |= parsePermissions(role.permissions);
     if (role.position < position) position = role.position;
   }
