@@ -236,6 +236,9 @@ export class ConcordCommunity {
       }
       if (walk.tipKeys) {
         this.keys = walk.tipKeys;
+        // A Refounding adopted during the walk advances material.refounder — rebind
+        // the fold so the tip epoch's guestbook snapshot (kind 3312) is honored.
+        this.rewireState();
         this.openLive();
         this.epoch$.next(this.keys.material.root_epoch);
         if (this.keys.material !== this.state$.value.material) this.onMaterialChange?.(this.keys.material);
@@ -583,6 +586,9 @@ export class ConcordCommunity {
    *  (CORD-06 §94) and the channel-rekey address keys on the (now-changed) root. */
   private adoptRefounding(next: ConcordKeys): void {
     this.keys = next;
+    // Rebind the fold to the new epoch's refounder so foldMembers honors the new
+    // epoch's guestbook snapshot (kind 3312) and the full memberlist carries over.
+    this.rewireState();
     this.openLive();
     this.epoch$.next(this.keys.material.root_epoch);
     this.onMaterialChange?.(this.keys.material);

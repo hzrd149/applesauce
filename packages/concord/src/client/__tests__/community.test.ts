@@ -13,12 +13,13 @@ import { EventStore } from "applesauce-core";
 import type { RelayPool, RelayStatus } from "applesauce-relay";
 
 import { kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
-import { hexToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import type { ConcordCommunityStatus } from "../../types.js";
 
 import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
+import { SnapshotFactory } from "../../factories/guestbook.js";
 import { channelRekeyGroupKey, controlGroupKey } from "../../helpers/crypto.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { PERM } from "../../types.js";
@@ -317,6 +318,47 @@ describe("ConcordCommunity (DI, no network)", () => {
     await community.refound({ keep: [pubkey], channelRekeys: [{ channelId, keep: [pubkey] }] });
     await settle();
     expect(published.some((e) => e.pubkey === channelRekeyAddr2)).toBe(true);
+
+    community.dispose();
+  });
+
+  it("honors the new refounder's guestbook snapshot after a Refounding", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // A retained member carried ONLY by a kind-3312 snapshot (never an author, so not
+    // "observed") — its presence hinges entirely on the snapshot being trusted.
+    const memberM = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
+    const snapshot = await SnapshotFactory.create([pubkey, memberM], bytesToHex(generateSecretKey()), 1, 1, Date.now());
+    await community.publishToPlane({ plane: "guestbook" }, snapshot, {});
+    await settle();
+
+    // Before a Refounding the epoch has no refounder → the snapshot is not honored.
+    expect(community.material.refounder).toBeUndefined();
+    expect(community.state$.value.members.has(memberM)).toBe(false);
+
+    // Refounding mints a new epoch whose refounder is us; the fold rebinds to it so the
+    // now-trusted snapshot seeds the full memberlist on the new epoch.
+    await community.refound({ keep: [pubkey] });
+    await settle();
+    expect(community.material.refounder).toBe(pubkey);
+    expect(community.state$.value.members.has(memberM)).toBe(true);
 
     community.dispose();
   });
