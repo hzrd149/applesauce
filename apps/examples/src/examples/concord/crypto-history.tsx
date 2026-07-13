@@ -54,8 +54,16 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 
 type PlaneCounts = { control: number; guestbook: number; channels: number; dissolved: number; rekey: number };
 
-/** How the walk continues after an epoch — drives the Next button + the badge. */
-type Transition = "known" | "adopt" | "removed" | "tip" | "cannot-follow";
+/**
+ * How the walk continues after an epoch — drives the Next button + the badge.
+ * `removed` and `not-rekeyed` both end the walk (we hold no next root), but they
+ * mean different things: `removed` is a real CORD-02 Guestbook removal (banned /
+ * kicked / left), while `not-rekeyed` is a Refounding that rolled on without
+ * handing this invite a key — a stale invite or an identity that was never a
+ * member of the keyholder set. Concord keeps these planes independent, so we
+ * never conflate the two.
+ */
+type Transition = "known" | "adopt" | "removed" | "not-rekeyed" | "tip" | "cannot-follow";
 
 /** One rendered epoch: its derived keys, folded state, and what fetching found. */
 type EpochSnapshot = {
@@ -171,14 +179,21 @@ async function loadEpoch(
     if (d.ms > (observed.get(d.author) ?? 0)) observed.set(d.author, d.ms);
   }
   const rolesMap = new Map<string, Role>(state0.roles.map((r) => [r.role_id, r]));
-  const members = foldMembers(guestbook, observed, state0.banlist, (m) =>
-    resolveStanding(m, epochMaterial.owner, rolesMap, state0.grants),
+  const members = foldMembers(
+    guestbook,
+    observed,
+    state0.banlist,
+    (m) => resolveStanding(m, epochMaterial.owner, rolesMap, state0.grants),
+    Date.now(),
+    epochMaterial.refounder,
   );
   const state: CommunityState = { ...state0, members };
 
   // 5. Decide the transition. If the invite already holds the next root it's a known
-  //    Refounding; otherwise fold the rekey blobs with the user's signer — adopt the
-  //    new root if one is addressed to us, or detect that we were removed.
+  //    Refounding; otherwise fold the rekey blobs with the user's signer. We ALWAYS
+  //    try to follow, whatever our own Guestbook standing: adoption is keyed on a
+  //    rekey blob addressed to us (`readRekey`), never on membership, so an epoch we
+  //    were kicked from the Guestbook at is still followed as long as we were rekeyed.
   let transition: Transition = "tip";
   let rotator: string | undefined;
   let adoptedMaterial: JoinMaterial | undefined;
@@ -193,7 +208,18 @@ async function loadEpoch(
       rotator = outcome.rotator;
       adoptedMaterial = outcome.next.material;
     } else if (outcome.kind === "removed") {
-      transition = "removed";
+      // A complete, authorized Refounding to the next epoch handed us no key. The
+      // Guestbook (CORD-02) and the rekey roster (CORD-06) are independent planes,
+      // so this is a *removal* only when the Guestbook corroborates it — we're on
+      // the Banlist, or we joined and were later kicked/left (present in the
+      // Guestbook, yet no longer a member). Otherwise this invite was simply never
+      // rekeyed into the new epoch (a stale invite, or an identity that was never a
+      // member of the keyholder set): the community rolled on without us, which is
+      // not the same as being removed. Either way we hold no next root, so the walk
+      // stops here — but we report the accurate reason.
+      const removedByGuestbook =
+        state.banlist.has(self) || (guestbook.some((d) => d.author === self) && !state.members.has(self));
+      transition = removedByGuestbook ? "removed" : "not-rekeyed";
     }
   }
 
@@ -300,7 +326,16 @@ function TransitionBadge({ snap }: { snap: EpochSnapshot }) {
         </span>
       );
     case "removed":
-      return <span className="badge badge-error badge-outline">You were removed at epoch {snap.epoch + 1}</span>;
+      return (
+        <span className="badge badge-error badge-outline">You were removed from the Guestbook at epoch {snap.epoch + 1}</span>
+      );
+    case "not-rekeyed":
+      return (
+        <span className="badge badge-warning badge-outline gap-1">
+          ↻ Refounded → epoch {snap.epoch + 1}
+          <span className="opacity-70">without rekeying this invite — can't follow further</span>
+        </span>
+      );
     case "cannot-follow":
       return <span className="badge badge-ghost">Signer can't decrypt rekeys — can't follow past epoch {snap.epoch}</span>;
     case "tip":

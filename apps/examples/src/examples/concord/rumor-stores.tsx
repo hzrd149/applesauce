@@ -117,7 +117,10 @@ async function fetchWraps(relays: string[], authors: string[]): Promise<NostrEve
 }
 
 /** How the walk continues past this epoch — drives the epoch chip + whether we advance. */
-type Transition = "known" | "adopt" | "removed" | "tip" | "cannot-follow";
+// `removed` = a real CORD-02 Guestbook removal; `not-rekeyed` = a Refounding that
+// rolled on without handing this invite a key (stale invite / never a member). Both
+// end the walk, but they are not the same thing — see crypto-history for the detail.
+type Transition = "known" | "adopt" | "removed" | "not-rekeyed" | "tip" | "cannot-follow";
 
 type EpochSummary = { epoch: number; keys: ConcordKeys; transition: Transition; rumors: number };
 
@@ -195,7 +198,13 @@ async function loadEpoch(
       transition = "adopt";
       adoptedMaterial = outcome.next.material;
     } else if (outcome.kind === "removed") {
-      transition = "removed";
+      // A Refounding to the next epoch handed us no key. In Concord the Guestbook
+      // (CORD-02) and rekey roster (CORD-06) are independent, so treat it as a real
+      // *removal* only when the Guestbook corroborates it — here via the Banlist,
+      // the clearest CORD-02 signal at fold time. Otherwise this invite was simply
+      // never rekeyed into the new epoch (a stale invite / never a member), which is
+      // not a removal even though the walk stops here (we hold no next root).
+      transition = state0.banlist.has(self) ? "removed" : "not-rekeyed";
     }
   }
 
@@ -396,7 +405,7 @@ function Walker({
           prior = res.summary.keys;
           setEpochs((prev) => [...prev, res.summary]);
           if (res.adoptedMaterial) chain = [...chain, res.adoptedMaterial];
-          else if (res.summary.transition !== "known") break; // tip / removed / cannot-follow
+          else if (res.summary.transition !== "known") break; // tip / removed / not-rekeyed / cannot-follow
           i++;
         }
       } catch (e) {
@@ -456,6 +465,7 @@ function Walker({
               epoch {e.epoch}
               <span className="opacity-60">· {e.rumors}</span>
               {e.transition === "removed" && <span className="text-error">removed</span>}
+              {e.transition === "not-rekeyed" && <span className="text-warning">not rekeyed</span>}
               {e.transition === "cannot-follow" && <span className="opacity-70">⛔</span>}
             </span>
           ))}
