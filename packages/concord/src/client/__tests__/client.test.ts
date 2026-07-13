@@ -20,6 +20,8 @@ import { createCommunity } from "../../helpers/community.js";
 import type { ConcordClientStatus, JoinMaterial } from "../../types.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
+// Longer than the client's post-sync auto-save debounce, so a single flush has fired.
+const settleFlush = () => new Promise((r) => setTimeout(r, 600));
 
 // A RelayPool stand-in whose per-relay methods are inert (no sockets) — the client's
 // list fetch (`request`) completes empty; we feed the 13302 into the store by hand.
@@ -166,6 +168,115 @@ describe("ConcordClient community list (DI, no network)", () => {
     expect(client.getCommunity(material.community_id)).toBeDefined();
     expect(authenticatedPubkeys.length).toBeGreaterThan(0);
     expect(authenticatedPubkeys).not.toContain(pubkey);
+
+    client.stop();
+  });
+
+  it("watchDirectInvites:false — does not NIP-42-authenticate as the user on start", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, authenticatedPubkeys } = fakePool({ challenge: "challenge-abc" });
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      watchDirectInvites: false,
+    });
+
+    await client.start();
+    await settle();
+
+    expect(client.directInviteWatcher).toBeUndefined();
+    expect(authenticatedPubkeys).not.toContain(await signer.getPublicKey());
+
+    client.stop();
+  });
+
+  it("autoSaveCommunityList:false — sync is side-effect-free; explicit create still publishes", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+      autoSaveCommunityList: false,
+    });
+
+    await client.start();
+    await settle();
+    expect(listPublishes(published).length).toBe(0); // startup / sync: zero side effects
+
+    // Creating a community is an explicit membership mutation → always publishes, even with autoSave off.
+    await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    await settle();
+    expect(listPublishes(published).length).toBe(1);
+
+    client.stop();
+  });
+
+  it("autoSaveCommunityList:true — a sync-driven change flushes the list exactly once", async () => {
+    // A mirrored community catches up its epoch during the walk (its material object changes), which
+    // marks the list dirty. With autoSave on, a single debounced flush publishes once after settling.
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
+    const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    const storage = memoryStorage();
+    await storage.setItem(pubkey, JSON.stringify([material])); // prior session's local mirror, no remote list
+
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+      autoSaveCommunityList: true,
+    });
+
+    await client.start();
+    await settleFlush();
+    expect(listPublishes(published).length).toBe(1);
+
+    client.stop();
+  });
+
+  it("communityListDirty$ tracks unpublished sync changes; manual save clears it", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
+    const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    const storage = memoryStorage();
+    await storage.setItem(pubkey, JSON.stringify([material]));
+
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+      autoSaveCommunityList: false, // manual mode: nothing publishes without an explicit save
+    });
+
+    await client.start();
+    await settle();
+    // The mirrored community caught up during sync → dirty, but nothing published (autoSave off).
+    expect(client.communityListDirty$.value).toBe(true);
+    expect(listPublishes(published).length).toBe(0);
+
+    // The app publishes on demand → one publish, dirty cleared.
+    await client.saveCommunityList();
+    expect(listPublishes(published).length).toBe(1);
+    expect(client.communityListDirty$.value).toBe(false);
+
+    // A redundant save is a fingerprint no-op — no second publish.
+    await client.saveCommunityList();
+    expect(listPublishes(published).length).toBe(1);
 
     client.stop();
   });

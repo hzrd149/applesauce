@@ -6,10 +6,20 @@
 // fetch/live-subscribe gift wraps, optionally decrypt them, and keep local
 // dismissal state so apps can hide invites without deleting relay data.
 
-import { BehaviorSubject, Subscription, firstValueFrom, timeout, toArray } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  Subscription,
+  combineLatest,
+  distinctUntilChanged,
+  firstValueFrom,
+  map,
+  timeout,
+  toArray,
+} from "rxjs";
 import { EventStore } from "applesauce-core";
 import { castEvent } from "applesauce-core/casts";
-import { kinds, type NostrEvent } from "applesauce-core/helpers";
+import { kinds, normalizeURL, type NostrEvent } from "applesauce-core/helpers";
 import { getGiftWrapRumor } from "applesauce-common/helpers/gift-wrap";
 import { castUser } from "applesauce-common/casts";
 import type { RelayPool } from "applesauce-relay";
@@ -49,6 +59,9 @@ export interface InviteWatcherOptions {
   cursorKey?: string;
   /** Decrypt invites as they arrive instead of exposing them via `pending$`. */
   autoDecrypt?: boolean;
+  /** NIP-42-authenticate as the user when relays challenge. Defaults to `true`; set `false`
+   *  and call {@link authenticateUser} when {@link needsAuth$} is true. */
+  autoAuthenticate?: boolean;
   /** Also scan all `#p=me` gift wraps to catch unindexed kind-3313 rumors. */
   scanUntagged?: boolean;
   /** Seconds to overlap cursor-based fetches. Defaults to two hours for NIP-59 timestamp randomization. */
@@ -64,14 +77,19 @@ export class InviteWatcher {
   readonly relays$ = new BehaviorSubject<string[]>([]);
   /** All discovered candidate wrap events. */
   readonly wraps$ = new BehaviorSubject<NostrEvent[]>([]);
-  /** Locked, indexed direct-invite wraps that have not been dismissed. */
+  /** Locked, indexed direct-invite wraps that have not been dismissed — the invites still
+   *  waiting to be unlocked. {@link readPending} decrypts them all. */
   readonly pending$ = new BehaviorSubject<NostrEvent[]>([]);
+  /** How many pending (locked, undismissed) invites are waiting to be unlocked — for a UI badge. */
+  readonly pendingCount$: Observable<number>;
   /** Decrypted valid invites, including dismissed and expired invites. */
   readonly allInvites$ = new BehaviorSubject<ConcordDirectInvite[]>([]);
   /** Decrypted valid invites visible to the app. Dismissed and expired invites are hidden. */
   readonly invites$ = new BehaviorSubject<ConcordDirectInvite[]>([]);
   readonly dismissed$ = new BehaviorSubject<Set<string>>(new Set());
   readonly status$ = new BehaviorSubject<string>("");
+  /** Whether any connected inbox relay requires user NIP-42 auth that hasn't been satisfied yet. */
+  readonly needsAuth$: Observable<boolean>;
 
   private readonly pool: RelayPool;
   private readonly eventStore: EventStore;
@@ -80,6 +98,7 @@ export class InviteWatcher {
   private readonly inboxRelays?: string[];
   private readonly relayAuth: ConcordRelayAuth;
   private readonly autoDecrypt: boolean;
+  private readonly autoAuthenticate: boolean;
   private readonly scanUntagged: boolean;
   private readonly overlapSeconds: number;
   private readonly requestTimeout: number;
@@ -101,6 +120,15 @@ export class InviteWatcher {
     this.inboxRelays = options.inboxRelays;
     this.relayAuth = new ConcordRelayAuth(options.pool);
     this.autoDecrypt = options.autoDecrypt ?? false;
+    this.autoAuthenticate = options.autoAuthenticate ?? true;
+    this.needsAuth$ = combineLatest([this.relays$, this.pool.status$, this.pubkey$]).pipe(
+      map(([relays, statuses, pubkey]) => this.userNeedsAuth(relays, statuses, pubkey)),
+      distinctUntilChanged(),
+    );
+    this.pendingCount$ = this.pending$.pipe(
+      map((pending) => pending.length),
+      distinctUntilChanged(),
+    );
     this.scanUntagged = options.scanUntagged ?? false;
     this.overlapSeconds = options.overlapSeconds ?? 2 * 60 * 60;
     this.requestTimeout = options.requestTimeout ?? 10_000;
@@ -123,9 +151,29 @@ export class InviteWatcher {
     this.ingestLocalEvents();
     const relays = await this.resolveRelays();
     this.relays$.next(relays);
-    this.authSub = this.relayAuth.autoAuthenticate(this.signer, this.pubkey);
+    if (this.autoAuthenticate) this.authSub = this.relayAuth.autoAuthenticate(this.signer, this.pubkey);
     await this.refresh();
     this.openLive();
+  }
+
+  /** NIP-42-authenticate as the user on every connected inbox relay that requires auth. */
+  async authenticateUser(): Promise<void> {
+    if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
+    const relays = this.relays$.value;
+    if (relays.length === 0) return;
+    const statuses = await firstValueFrom(this.pool.status$);
+    for (const url of relays) {
+      const status = statuses[normalizeURL(url)] ?? statuses[url];
+      if (!status?.connected) continue;
+      if (!status.authRequiredForRead && !status.authRequiredForPublish) continue;
+      const relay = this.pool.relay(url);
+      if (relay.isAuthenticated(this.pubkey)) continue;
+      try {
+        await relay.authenticate(this.signer);
+      } catch (err) {
+        console.warn(`user AUTH to ${url} failed`, err);
+      }
+    }
   }
 
   stop(): void {
@@ -208,6 +256,22 @@ export class InviteWatcher {
     return invites;
   }
 
+  /**
+   * Unlock every pending (locked, undismissed) invite so the app can show them for the user to
+   * accept. This is the deliberate signer-decryption entry point when the client runs without
+   * auto-unlock: {@link pending$} / {@link pendingCount$} surface how many are waiting, and this
+   * decrypts them (each moves from `pending$` into {@link invites$}). Wraps that fail to decrypt
+   * are skipped. Returns the newly-unlocked invites.
+   */
+  async readPending(): Promise<ConcordDirectInvite[]> {
+    const invites: ConcordDirectInvite[] = [];
+    for (const wrap of this.pending$.value) {
+      const invite = await this.decrypt(wrap);
+      if (invite) invites.push(invite);
+    }
+    return invites;
+  }
+
   lock(event: NostrEvent | string): void {
     const wrap = this.resolveWrap(event);
     if (!wrap) return;
@@ -249,6 +313,16 @@ export class InviteWatcher {
   }
 
   // ---- relay setup --------------------------------------------------------
+
+  private userNeedsAuth(relays: string[], statuses: Record<string, { connected?: boolean; authRequiredForRead?: boolean; authRequiredForPublish?: boolean }>, pubkey?: string): boolean {
+    if (!pubkey || relays.length === 0) return false;
+    return relays.some((url) => {
+      const status = statuses[normalizeURL(url)] ?? statuses[url];
+      if (!status?.connected) return false;
+      if (!status.authRequiredForRead && !status.authRequiredForPublish) return false;
+      return !this.pool.relay(url).isAuthenticated(pubkey);
+    });
+  }
 
   private async resolveRelays(): Promise<string[]> {
     if (this.inboxRelays) return this.uniqueRelays(this.inboxRelays);

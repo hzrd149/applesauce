@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BehaviorSubject, EMPTY, firstValueFrom } from "rxjs";
 import { RelayPool } from "applesauce-relay";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
@@ -113,5 +114,76 @@ describe("InviteWatcher", () => {
     expect(w.invites$.value).toHaveLength(1);
     expect(w.invites$.value[0]?.communityId).toBe(first.bundle.community_id);
     expect(w.wraps$.value).toHaveLength(2);
+  });
+
+  it("readPending unlocks every pending invite and pendingCount$ tracks the backlog", async () => {
+    const first = await makeInvite();
+    const second = await makeInvite(undefined, first.recipient); // a second community, same recipient
+    const w = watcher(first.recipient); // no autoDecrypt → invites stay locked/pending
+    await w.ingest(first.wrap);
+    await w.ingest(second.wrap);
+
+    expect(w.pending$.value).toHaveLength(2);
+    expect(await firstValueFrom(w.pendingCount$)).toBe(2);
+    expect(w.invites$.value).toEqual([]);
+
+    const unlocked = await w.readPending();
+
+    expect(unlocked).toHaveLength(2);
+    expect(w.pending$.value).toEqual([]); // nothing left to unlock
+    expect(await firstValueFrom(w.pendingCount$)).toBe(0);
+    expect(w.invites$.value).toHaveLength(2);
+  });
+
+  it("autoAuthenticate:false — authenticateUser satisfies needsAuth$", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const authenticated = new Set<string>();
+    const challenge = "challenge-abc";
+    const relay = {
+      url: "wss://relay.example",
+      challenge,
+      challenge$: new BehaviorSubject<string | null>(challenge),
+      isAuthenticated: (pk: string | string[]) => (Array.isArray(pk) ? pk : [pk]).every((p) => authenticated.has(p)),
+      authenticate: async (s: { getPublicKey: () => Promise<string> }) => {
+        authenticated.add(await s.getPublicKey());
+        return { ok: true, from: "wss://relay.example" };
+      },
+      getSupported: async () => null,
+    };
+    const pool = {
+      status$: new BehaviorSubject({
+        "wss://relay.example": {
+          url: "wss://relay.example",
+          connected: true,
+          authenticated: false,
+          authenticatedAs: null,
+          authenticatedPubkeys: [],
+          authentications: {},
+          ready: true,
+          authRequiredForRead: true,
+          authRequiredForPublish: true,
+          challenge,
+        },
+      }),
+      relay: () => relay,
+      request: () => EMPTY,
+      subscription: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }),
+    } as unknown as RelayPool;
+
+    const w = new InviteWatcher({
+      signer,
+      pool,
+      inboxRelays: ["wss://relay.example"],
+      autoAuthenticate: false,
+    });
+
+    await w.start();
+    expect(await firstValueFrom(w.needsAuth$)).toBe(true);
+    await w.authenticateUser();
+    expect(authenticated.has(pubkey)).toBe(true);
+    expect(await firstValueFrom(w.needsAuth$)).toBe(false);
+
+    w.stop();
   });
 });

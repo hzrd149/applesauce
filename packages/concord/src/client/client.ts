@@ -11,7 +11,9 @@ import {
   Observable,
   Subscription,
   combineLatest,
+  debounceTime,
   distinctUntilChanged,
+  filter,
   firstValueFrom,
   map,
   of,
@@ -66,6 +68,11 @@ import type {
 } from "../types.js";
 import { ConcordCommunity } from "./community.js";
 
+/** Debounce window for the opt-in post-sync community-list flush, so a burst of
+ *  epoch adoptions (each community catching up as its walk finishes) collapses into
+ *  a single {@link ConcordClient.saveCommunityList} call. */
+const COMMUNITY_LIST_FLUSH_DEBOUNCE_MS = 200;
+
 /** Options for constructing the multi-community {@link ConcordClient} manager. */
 export interface ConcordClientOptions {
   /** The logged-in user's signer. */
@@ -82,12 +89,29 @@ export interface ConcordClientOptions {
   relays?: string[];
   /** Per-plane store factory (persistent cache), passed through to every community. */
   storeFactory?: ConcordStoreFactory;
-  /** Automatically issue the user-signer decryption of the Community/Invite lists (kind
-   *  13302/13303) when they arrive, instead of waiting for the app to call `.unlock()` on
-   *  the exposed cast. Defaults to `false` so the user isn't prompted without intent — this
-   *  gates ONLY the self-encrypted list decryptions; community-plane decryptions (derived
-   *  group keys, no prompt) always happen automatically. */
+  /** Automatically decrypt (unlock) the user's self-encrypted events with their signer: the
+   *  Community/Invite lists (kind 13302/13303) as they arrive, and incoming Direct Invites.
+   *  Defaults to `false` so the signer isn't invoked without intent — the app unlocks on demand
+   *  (`.unlock(signer)` on the exposed cast, {@link InviteWatcher.readPending}). Community-plane
+   *  decryptions (derived group keys, no prompt) always happen automatically regardless. */
   autoUnlock?: boolean;
+  /** Automatically NIP-42-authenticate as the user on the Direct Invite inbox relays when they
+   *  challenge. Defaults to `false` — the app authenticates on demand via
+   *  {@link InviteWatcher.authenticateUser} (watch {@link InviteWatcher.needsAuth$}). */
+  autoAuthenticate?: boolean;
+  /** Automatically publish an updated kind 13302 after a sync when the community list has
+   *  changed locally (an epoch caught up, a refounding removal). Defaults to `false` so the
+   *  initial sync has **zero** side effects — no signer calls, no publishes. When `true`, a
+   *  single debounced {@link saveCommunityList} runs once the sync settles, and only if the
+   *  {@link communityListDirty$} flag was flipped. Explicit membership mutations
+   *  ({@link joinByLink}, {@link leave}, {@link createNewCommunity}) always publish regardless
+   *  of this flag — they are the sanctioned points to encrypt + sign the list. */
+  autoSaveCommunityList?: boolean;
+  /** Watch the user's inbox for CORD-05 Direct Invites (community + private-channel invites) during
+   *  {@link start}. Defaults to `true`. Discovery is read-only — the watcher never touches the user's
+   *  signer unless {@link autoUnlock} is on (which gates its auto-decrypt / NIP-42 auth); otherwise
+   *  invites stay pending until the app calls {@link InviteWatcher.readPending}. */
+  watchDirectInvites?: boolean;
 }
 
 export class ConcordClient {
@@ -99,6 +123,10 @@ export class ConcordClient {
   /** A flat snapshot of the manager's status (lifecycle + aggregate sync/connection
    *  across every joined community), for UI to react to as one value. */
   readonly status$: Observable<ConcordClientStatus>;
+  /** The active Direct Invite inbox watcher, or `undefined` before it starts. Reactive so UI can
+   *  subscribe to its {@link InviteWatcher.needsAuth$} / {@link InviteWatcher.pendingCount$} once
+   *  it exists (see {@link watchDirectInvites} / {@link startDirectInviteWatcher}). */
+  readonly directInviteWatcher$ = new BehaviorSubject<InviteWatcher | undefined>(undefined);
 
   private readonly pool: RelayPool;
   private readonly eventStore: EventStore;
@@ -108,9 +136,13 @@ export class ConcordClient {
   private readonly storeFactory?: ConcordStoreFactory;
   private readonly relayAuth: ConcordRelayAuth;
   private readonly autoUnlock: boolean;
+  private readonly autoAuthenticate: boolean;
+  private readonly autoSaveCommunityList: boolean;
+  private readonly watchDirectInvites: boolean;
   /** The logged-in user as a cast over the shared event store — the source of the exposed
-   *  `communityList$` / `inviteList$` observables. Initialized in {@link start}. */
-  private user?: User;
+   *  `communityList$` / `inviteList$` observables. Undefined until {@link start} resolves the
+   *  pubkey; the exposed getters switch onto it reactively, so they never throw pre-start. */
+  private readonly user$ = new BehaviorSubject<User | undefined>(undefined);
   /** Resolved from the signer in {@link start}. */
   private _pubkey?: string;
 
@@ -126,16 +158,22 @@ export class ConcordClient {
    *  Seeded to the empty-list fingerprint so a brand-new user (no communities, no remote list) never
    *  republishes an empty document on startup; a genuine local-only membership still differs. */
   private publishedListFingerprint: string | null = canonicalJson({ entries: [], tombstones: [] });
-  /** True once the initial remote 13302 has been fetched + reconciled (or confirmed absent). A
-   *  reactive (key-roll driven) save must not publish before we've merged the relay's copy, or it
-   *  would push a partial list. */
-  private listHydrated = false;
   /** Resolves the first time the Community List cast is decrypted + reconciled (fingerprint seeded).
-   *  `start()` waits on this before its startup flush when the relay served a list, so an async
-   *  (e.g. NIP-46 remote) signer's slow decrypt can't lose a race to the flush and clobber a newer
-   *  remote copy with a republish rebuilt from the local mirror. */
+   *  `start()` awaits this before enabling the auto-save flush when the relay served a list, so an
+   *  async (e.g. NIP-46 remote) signer's slow decrypt can't lose a race and clobber a newer remote
+   *  copy with a save rebuilt from the local mirror. */
   private signalListHydrated?: () => void;
   private listHydration = new Promise<void>((resolve) => (this.signalListHydrated = resolve));
+  /** True when the in-memory community list has diverged from the copy we last saved to nostr —
+   *  an epoch caught up during sync, or a refounding removal. UI can subscribe to show an
+   *  "unpublished changes" indicator, and the opt-in auto-save debounces off it. Set by
+   *  {@link markCommunityListDirty}; cleared by {@link saveCommunityList} once back in sync.
+   *  Explicit join/leave/create publish immediately; the sync-time flush is opt-in via
+   *  {@link ConcordClientOptions.autoSaveCommunityList}. */
+  readonly communityListDirty$ = new BehaviorSubject<boolean>(false);
+  /** The debounced auto-save subscription over {@link communityListDirty$}, live only while
+   *  {@link autoSaveCommunityList} is on (created after hydration in {@link start}). */
+  private autoSaveSub?: Subscription;
   private listSub?: Subscription;
   private inviteSub?: Subscription;
   /** Watches the user's gift-wrap inbox for CORD-05 §6 Direct Invites — the delivery
@@ -159,6 +197,9 @@ export class ConcordClient {
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
     this.storeFactory = options.storeFactory;
     this.autoUnlock = options.autoUnlock ?? false;
+    this.autoAuthenticate = options.autoAuthenticate ?? false;
+    this.autoSaveCommunityList = options.autoSaveCommunityList ?? false;
+    this.watchDirectInvites = options.watchDirectInvites ?? true;
     this.relayAuth = new ConcordRelayAuth(options.pool);
 
     // Aggregate status: fold every community's status$ into a single client snapshot.
@@ -205,20 +246,23 @@ export class ConcordClient {
     return this._pubkey;
   }
 
-  /** The user's Community List (kind 13302) as a reactive cast — `undefined` until the event
-   *  lands in the store; locked until `autoUnlock` or the app calls `.unlock(signer)`. */
+  /** The user's Community List (kind 13302) as a reactive cast — emits `undefined` before
+   *  {@link start} and until the event lands in the store; locked until `autoUnlock` or the app
+   *  calls `.unlock(signer)`. Safe to subscribe to before start (it switches on once ready). */
   get communityList$(): Observable<ConcordCommunityList | undefined> {
-    return this.requireUser().concordCommunityList$;
+    return this.user$.pipe(switchMap((user) => (user ? user.concordCommunityList$ : of(undefined))));
   }
 
-  /** The user's Invite List (kind 13303) as a reactive cast — same lock/unlock semantics. */
+  /** The user's Invite List (kind 13303) as a reactive cast — same lock/unlock semantics, also
+   *  safe before start. */
   get inviteList$(): Observable<ConcordInviteList | undefined> {
-    return this.requireUser().concordInviteList$;
+    return this.user$.pipe(switchMap((user) => (user ? user.concordInviteList$ : of(undefined))));
   }
 
   private requireUser(): User {
-    if (!this.user) throw new Error("ConcordClient not started — call start() first");
-    return this.user;
+    const user = this.user$.value;
+    if (!user) throw new Error("ConcordClient not started — call start() first");
+    return user;
   }
 
   // ---- lifecycle ----------------------------------------------------------
@@ -228,7 +272,7 @@ export class ConcordClient {
     this.started = true;
     this.phase$.next("starting");
     this._pubkey = await this.signer.getPublicKey();
-    this.user ??= castUser(this._pubkey, this.eventStore);
+    if (!this.user$.value) this.user$.next(castUser(this._pubkey, this.eventStore));
     // Restore memberships from the local mirror first (instant, offline-safe),
     // then reconcile with the relay-published Community List (kind 13302).
     for (const material of await this.loadMaterials()) {
@@ -241,16 +285,20 @@ export class ConcordClient {
     // Awaiting the fetch only guarantees the ciphertext landed — not that watchLists decrypted and
     // reconciled it (auto-unlock is async, and slow for remote signers). If the relay served a list,
     // wait for that reconcile (which seeds `publishedListFingerprint` from the relay copy) before we
-    // flush; otherwise a startup save could rebuild the list from the local mirror and clobber a
+    // enable auto-save; otherwise a flush could rebuild the list from the local mirror and clobber a
     // newer remote copy. Bounded by the same timeout as the fetch so a decrypt failure can't hang.
     if (this.eventStore.getReplaceable(COMMUNITY_LIST_KIND, this.pubkey)) {
       await Promise.race([this.listHydration, new Promise((r) => setTimeout(r, 8000))]);
     }
-    this.listHydrated = true; // reconciled, confirmed absent, or timed out — the flush may proceed
-    void this.fetchList(INVITE_LIST_KIND);
-    this.startInviteWatcher();
-    // Dirty-checked flush: a no-op unless startup surfaced a genuine local/remote divergence.
-    await this.saveCommunityList();
+    if (this.watchDirectInvites) {
+      void this.fetchList(INVITE_LIST_KIND);
+      this.startDirectInviteWatcher();
+    }
+    // No unconditional startup publish: the initial sync is side-effect-free. If autoSave is on,
+    // wire the debounced flush now that the remote copy is merged — a dirty flag raised during the
+    // sync (epoch catch-up) is replayed to this subscription and flushed once, and later adoptions
+    // flush themselves. When autoSave is off, nothing here ever publishes.
+    if (this.autoSaveCommunityList) this.startAutoSave();
     this.phase$.next("ready");
   }
 
@@ -258,13 +306,17 @@ export class ConcordClient {
     this.listSub?.unsubscribe();
     this.inviteSub?.unsubscribe();
     this.directInviteSub?.unsubscribe();
+    this.autoSaveSub?.unsubscribe();
+    this.autoSaveSub = undefined;
     this.inviteWatcher?.stop();
     this.inviteWatcher = undefined;
+    this.directInviteWatcher$.next(undefined);
     for (const sub of this.stateSubs.values()) sub.unsubscribe();
     this.stateSubs.clear();
     for (const community of this.communities.values()) community.dispose();
     this.communities.clear();
     this.communities$.next([]);
+    this.communityListDirty$.next(false);
     this.started = false;
     this.phase$.next("idle");
   }
@@ -276,7 +328,18 @@ export class ConcordClient {
    * the user's NIP-17 inboxes plus the shared community relays (the fallback),
    * where a co-member's grant lands. Idempotent (guards against double-start).
    */
-  private startInviteWatcher(): void {
+  startDirectInviteWatcher(): void {
+    void this.fetchList(INVITE_LIST_KIND);
+    this.ensureInviteWatcher();
+  }
+
+  /** The active direct-invite inbox watcher, if {@link watchDirectInvites} or
+   *  {@link startDirectInviteWatcher} has started it. Prefer {@link directInviteWatcher$} in UI. */
+  get directInviteWatcher(): InviteWatcher | undefined {
+    return this.inviteWatcher;
+  }
+
+  private ensureInviteWatcher(): void {
     if (this.inviteWatcher) return;
     this.inviteWatcher = new InviteWatcher({
       signer: this.signer,
@@ -284,11 +347,16 @@ export class ConcordClient {
       eventStore: this.eventStore,
       storage: this.storage,
       relays: this.defaultRelays,
-      autoDecrypt: true,
+      // Two independent gates, mirroring the client's: `autoUnlock` decrypts incoming Direct
+      // Invites, `autoAuthenticate` NIP-42-authenticates as the user. Off by default so the app
+      // drives each explicitly via the exposed watcher (`readPending` / `authenticateUser`).
+      autoDecrypt: this.autoUnlock,
+      autoAuthenticate: this.autoAuthenticate,
     });
     this.directInviteSub = this.inviteWatcher.invites$.subscribe((invites) => {
       for (const invite of invites) this.onDirectInvite(invite);
     });
+    this.directInviteWatcher$.next(this.inviteWatcher);
     void this.inviteWatcher.start().catch((err) => console.warn("invite watcher failed to start", err));
   }
 
@@ -329,6 +397,7 @@ export class ConcordClient {
     for (const rumor of genesis.controlRumors)
       await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    // Explicit membership mutation — always publish (independent of autoSaveCommunityList).
     await this.saveCommunityList();
     return genesis.material.community_id;
   }
@@ -380,6 +449,7 @@ export class ConcordClient {
       invite: bundle.creator_npub ? { creator: bundle.creator_npub, label: bundle.label } : undefined,
     });
     await community.publishToPlane({ plane: "guestbook" }, joinRumor, {});
+    // Accepting an invite is an explicit mutation — always publish the updated list.
     await this.saveCommunityList();
     return community;
   }
@@ -393,6 +463,7 @@ export class ConcordClient {
     // (a bare omission would merge back as still-joined — CORD-02 §8).
     this.tombstones = leaveCommunity(cid, Date.now())(this.list, this.tombstones).tombstones;
     await this.saveMaterials();
+    // Leaving is an explicit mutation — always publish the tombstoned list.
     await this.saveCommunityList();
   }
 
@@ -413,7 +484,9 @@ export class ConcordClient {
         : undefined,
       onMaterialChange: () => {
         void this.saveMaterials();
-        void this.saveCommunityList({ reactive: true });
+        // A sync-time change (epoch catch-up). Never publishes on its own — it flags the list
+        // dirty; the opt-in debounced auto-save flushes it, or the app publishes manually.
+        this.markCommunityListDirty();
       },
       onRemoved: (removed) => this.handleRemoved(removed),
     });
@@ -440,7 +513,9 @@ export class ConcordClient {
     this.removeCommunity(cid);
     this.tombstones = leaveCommunity(cid, Date.now())(this.list, this.tombstones).tombstones;
     void this.saveMaterials();
-    void this.saveCommunityList();
+    // Involuntary removal during sync/live — flag dirty rather than publish inline so a sync stays
+    // side-effect-free; the opt-in auto-save (or a later explicit mutation) propagates the tombstone.
+    this.markCommunityListDirty();
   }
 
   private emitCommunities(): void {
@@ -505,8 +580,7 @@ export class ConcordClient {
           entries: mergeCommunities([], communities),
           tombstones: mergeCommunityTombstones([], cast.tombstones ?? []),
         });
-        this.listHydrated = true;
-        this.signalListHydrated?.(); // release start()'s pre-flush wait now the relay copy is merged
+        this.signalListHydrated?.(); // release start()'s pre-auto-save wait now the relay copy is merged
         void this.reconcileCommunities();
       });
 
@@ -539,14 +613,35 @@ export class ConcordClient {
     if (added) await this.saveMaterials();
   }
 
-  private async saveCommunityList(opts?: { reactive?: boolean }): Promise<void> {
+  /** Flag the community list as needing a re-publish (a sync-time epoch catch-up or a refounding
+   *  removal). Emitting on each change resets the auto-save debounce so a burst of adoptions
+   *  collapses into one save; UI subscribers see the "unpublished changes" state. */
+  private markCommunityListDirty(): void {
+    this.communityListDirty$.next(true);
+  }
+
+  /** Wire the opt-in debounced flush: whenever the list is dirty, publish once after the changes
+   *  settle. Created only after the remote copy is merged (post-hydration in {@link start}) so a
+   *  flush can't rebuild from the local mirror and clobber a newer relay copy. Because
+   *  {@link communityListDirty$} is a BehaviorSubject, a dirty flag raised before this subscription
+   *  exists is replayed on subscribe and still flushes. */
+  private startAutoSave(): void {
+    if (this.autoSaveSub) return;
+    this.autoSaveSub = this.communityListDirty$
+      .pipe(
+        filter((dirty) => dirty),
+        debounceTime(COMMUNITY_LIST_FLUSH_DEBOUNCE_MS),
+      )
+      .subscribe(() => {
+        if (this.communityListDirty$.value) void this.saveCommunityList();
+      });
+  }
+
+  /** Encrypt/sign/publish the user's Community List (kind 13302) when local memberships
+   *  differ from the last known relay copy. No-op (no signer call) when content is unchanged,
+   *  and clears {@link communityListDirty$} once the list is back in sync. */
+  async saveCommunityList(): Promise<void> {
     if (!this.signer.nip44) return;
-    // A reactive (key-roll driven) save before hydration must be a complete no-op: the engine loop
-    // below would fold local memberships into `this.list` with a fresh `added_at`, and since merge
-    // keeps the newer `added_at` the relay's original value is lost — making the post-hydration
-    // startup flush look dirty and republish. Bail before touching `this.list`; the awaited startup
-    // flush (start(), non-reactive, after the remote copy is merged) runs the real reconciliation.
-    if (opts?.reactive && !this.listHydrated) return;
     try {
       const nowMs = Date.now();
       let list = this.list;
@@ -577,7 +672,10 @@ export class ConcordClient {
       // when the content is byte-for-byte what we believe is already on the relay. Compare
       // canonical PLAINTEXT (NIP-44's random nonce makes ciphertext comparison useless).
       const fingerprint = canonicalJson({ entries: list, tombstones });
-      if (fingerprint === this.publishedListFingerprint) return;
+      if (fingerprint === this.publishedListFingerprint) {
+        this.clearCommunityListDirty(); // already in sync with the relay copy
+        return;
+      }
       if (!communityListWithinByteCap(list, tombstones)) {
         console.warn("community list exceeds the NIP-44 byte cap; not publishing");
         return;
@@ -598,8 +696,14 @@ export class ConcordClient {
       this.pool.publish(this.defaultRelays, signed).catch((err) => console.warn("list publish failed", err));
       // Record what we just put on the relay so an immediate re-save (or the echo) is a no-op.
       this.publishedListFingerprint = fingerprint;
+      this.clearCommunityListDirty();
     } catch (err) {
       console.warn("failed to save community list", err);
     }
+  }
+
+  /** Mark the community list as back in sync with the relay copy. */
+  private clearCommunityListDirty(): void {
+    this.communityListDirty$.next(false);
   }
 }

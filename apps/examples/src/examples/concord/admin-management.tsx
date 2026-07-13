@@ -4,7 +4,9 @@
  * @tags concord, admin, communities, roles, moderation, encryption, client
  * @related concord/community-list, concord/invite-manager, concord/direct-invites
  */
+import { castUser } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
+import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import {
   ConcordClient,
   Helpers,
@@ -15,17 +17,24 @@ import {
   type ConcordCommunity,
   type PermName,
 } from "applesauce-concord";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { nip19 } from "nostr-tools";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import LoginView from "../../components/login-view";
 
 const { STOCK_RELAYS, parsePermissions, permNames } = Helpers;
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
+const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
+
+createEventLoaderForStore(eventStore, pool, {
+  lookupRelays: LOOKUP_RELAYS,
+  extraRelays: STOCK_RELAYS,
+});
+
 const ADMIN_BITS = [
   PERM.MANAGE_METADATA,
   PERM.MANAGE_CHANNELS,
@@ -94,8 +103,145 @@ function StatusLine({ client }: { client: ConcordClient }) {
       </span>
       {status.connected && (
         <span className={`badge badge-sm ${status.authenticated ? "badge-success" : "badge-warning"}`}>
-          {status.authenticated ? "authenticated" : "authenticating"}
+          {status.authenticated ? "stream keys authed" : "stream keys pending"}
         </span>
+      )}
+    </div>
+  );
+}
+
+// A single call-to-action banner: a title, an explanation, and one action button. `tone` maps to a
+// literal DaisyUI alert class (kept literal so Tailwind doesn't purge it).
+function Banner({
+  tone,
+  title,
+  body,
+  action,
+  onClick,
+  busy,
+  disabled,
+}: {
+  tone: "warning" | "info";
+  title: string;
+  body: string;
+  action: string;
+  onClick: () => void;
+  busy?: boolean;
+  disabled?: boolean;
+}) {
+  const toneClass = tone === "warning" ? "alert-warning" : "alert-info";
+  return (
+    <div className={`alert ${toneClass} flex flex-wrap items-center gap-3 py-2`}>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{title}</div>
+        <div className="text-xs opacity-80">{body}</div>
+      </div>
+      <button className="btn btn-sm" disabled={disabled || busy} onClick={onClick}>
+        {busy ? "Working…" : action}
+      </button>
+    </div>
+  );
+}
+
+// Reactive alert banners: each appears only while the client needs the user to unlock, authenticate,
+// read pending invites, or publish. Everything is driven off the client's observables — with all the
+// `auto*` gates off, nothing touches the signer until the user acts on a banner.
+function ActionBanners({ client, signer }: { client: ConcordClient; signer: ISigner }) {
+  const communityList = use$(client.communityList$);
+  const inviteList = use$(client.inviteList$);
+  const dirty = use$(client.communityListDirty$);
+  const watcher = use$(client.directInviteWatcher$);
+  const needsAuth = use$(() => watcher?.needsAuth$, [watcher]);
+  const pending = use$(() => watcher?.pendingCount$, [watcher]) ?? 0;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(label: string, action: () => Promise<unknown>) {
+    setBusy(label);
+    setError(null);
+    try {
+      await action();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const listLocked = !!communityList && !communityList.unlocked;
+  const inviteLocked = !!inviteList && !inviteList.unlocked;
+  const noSigner = !signer.nip44;
+
+  if (!error && !listLocked && !inviteLocked && !needsAuth && !dirty && pending === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {error && (
+        <div className="alert alert-error py-2 text-sm">
+          <span>{error}</span>
+          <button className="btn btn-xs btn-ghost" onClick={() => setError(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {listLocked && (
+        <Banner
+          tone="warning"
+          title="Community list is locked"
+          body="Your membership list (kind 13302) is encrypted to you. Unlock it to load and sync your communities."
+          action="Unlock"
+          busy={busy === "unlock-list"}
+          disabled={noSigner}
+          onClick={() => run("unlock-list", () => communityList!.unlock(signer))}
+        />
+      )}
+
+      {inviteLocked && (
+        <Banner
+          tone="warning"
+          title="Invite list is locked"
+          body="Your saved invites (kind 13303) are encrypted. Unlock it to read them."
+          action="Unlock"
+          busy={busy === "unlock-invites"}
+          disabled={noSigner}
+          onClick={() => run("unlock-invites", () => inviteList!.unlock(signer))}
+        />
+      )}
+
+      {needsAuth && (
+        <Banner
+          tone="warning"
+          title="Inbox authentication required"
+          body="Your inbox relays require NIP-42 authentication before they will deliver Direct Invites."
+          action="Authenticate"
+          busy={busy === "auth"}
+          onClick={() => run("auth", () => watcher!.authenticateUser())}
+        />
+      )}
+
+      {pending > 0 && (
+        <Banner
+          tone="info"
+          title={`${pending} pending invite${pending === 1 ? "" : "s"}`}
+          body="You have unread Direct Invites (community + private-channel grants). Unlock them to review and accept."
+          action="Read invites"
+          busy={busy === "read"}
+          disabled={noSigner}
+          onClick={() => run("read", () => watcher!.readPending())}
+        />
+      )}
+
+      {dirty && (
+        <Banner
+          tone="warning"
+          title="Unpublished membership changes"
+          body="Your community list changed locally (an epoch caught up, or you joined/left). Publish it so your other devices stay in sync."
+          action="Publish"
+          busy={busy === "publish"}
+          disabled={noSigner}
+          onClick={() => run("publish", () => client.saveCommunityList())}
+        />
       )}
     </div>
   );
@@ -115,8 +261,8 @@ function CommunitySelector({ client, selected, onSelect }: { client: ConcordClie
       <div className="border border-base-300 rounded-box p-4">
         <h2 className="font-semibold">No synced admin communities yet</h2>
         <p className="mt-1 text-sm opacity-70">
-          This example uses in-memory Concord storage, so every reload starts from the relay-published community list and
-          fully syncs community state again.
+          Unlock your community list above to bootstrap memberships, then wait for admin communities to sync. This
+          example uses in-memory storage, so every reload starts from the relay-published list and fully syncs again.
         </p>
       </div>
     );
@@ -259,6 +405,57 @@ function InfoTab({ community, state, onError }: { community: ConcordCommunity; s
   );
 }
 
+function UserSummary({ pubkey }: { pubkey: string }) {
+  const user = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
+  const profile = use$(() => user.profile$, [user.pubkey]);
+  const npub = user.npub;
+  const displayName = getDisplayName(profile, shortId(npub));
+  const picture = getProfilePicture(profile, `https://robohash.org/${pubkey}.png`);
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <img className="size-9 rounded-box" src={picture} alt={displayName} />
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium">{displayName}</div>
+        <code className="block truncate text-xs opacity-60">{shortId(npub)}</code>
+      </div>
+    </div>
+  );
+}
+
+function MemberRow({ community, state, member, busy, onRun }: { community: ConcordCommunity; state: CommunityState; member: string; busy: string | null; onRun: (label: string, action: () => Promise<void>) => void }) {
+  const standing = community.standingOf(member);
+  const banned = state.banlist.has(member);
+  const canKick = member !== community.pubkey && community.canDo(PERM.KICK, standing.position);
+  const canBan = member !== community.pubkey && community.canDo(PERM.BAN, standing.position);
+
+  return (
+    <div className="flex flex-col gap-3 py-3 md:flex-row md:items-center">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <UserSummary pubkey={member} />
+          {standing.isOwner && <span className="badge badge-primary badge-sm">owner</span>}
+          {banned && <span className="badge badge-error badge-sm">banned</span>}
+        </div>
+        <div className="mt-1 text-xs opacity-60">
+          position {standing.isOwner ? 0 : standing.position} · {standing.roleIds.length} roles
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-xs btn-outline" disabled={!canKick || !!busy} onClick={() => onRun("kick", () => community.kick(member))}>
+          Kick
+        </button>
+        <button className="btn btn-xs btn-outline btn-error" disabled={!canBan || !!busy} onClick={() => onRun("ban", () => community.ban(member))}>
+          Ban
+        </button>
+        <button className="btn btn-xs btn-ghost" disabled={!banned || !community.canDo(PERM.BAN) || !!busy} onClick={() => onRun("unban", () => community.unban(member))}>
+          Unban
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MembersTab({ community, state, onError }: { community: ConcordCommunity; state: CommunityState; onError: (error: string) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const members = [...state.members].sort();
@@ -279,38 +476,9 @@ function MembersTab({ community, state, onError }: { community: ConcordCommunity
       <h3 className="font-semibold">Members</h3>
       <p className="mt-1 text-sm opacity-70">Kick removes roles and publishes a guestbook kick. Ban also updates the banlist.</p>
       <div className="mt-4 divide-y divide-base-300">
-        {members.map((member) => {
-          const standing = community.standingOf(member);
-          const banned = state.banlist.has(member);
-          const canKick = member !== community.pubkey && community.canDo(PERM.KICK, standing.position);
-          const canBan = member !== community.pubkey && community.canDo(PERM.BAN, standing.position);
-
-          return (
-            <div key={member} className="flex flex-col gap-3 py-3 md:flex-row md:items-center">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <code className="break-all text-sm">{shortId(nip19.npubEncode(member))}</code>
-                  {standing.isOwner && <span className="badge badge-primary badge-sm">owner</span>}
-                  {banned && <span className="badge badge-error badge-sm">banned</span>}
-                </div>
-                <div className="mt-1 text-xs opacity-60">
-                  position {standing.isOwner ? 0 : standing.position} · {standing.roleIds.length} roles
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button className="btn btn-xs btn-outline" disabled={!canKick || !!busy} onClick={() => run("kick", () => community.kick(member))}>
-                  Kick
-                </button>
-                <button className="btn btn-xs btn-outline btn-error" disabled={!canBan || !!busy} onClick={() => run("ban", () => community.ban(member))}>
-                  Ban
-                </button>
-                <button className="btn btn-xs btn-ghost" disabled={!banned || !community.canDo(PERM.BAN) || !!busy} onClick={() => run("unban", () => community.unban(member))}>
-                  Unban
-                </button>
-              </div>
-            </div>
-          );
-        })}
+        {members.map((member) => (
+          <MemberRow key={member} community={community} state={state} member={member} busy={busy} onRun={run} />
+        ))}
       </div>
     </section>
   );
@@ -489,6 +657,17 @@ function ChannelsTab({ community, state, onError }: { community: ConcordCommunit
   );
 }
 
+function RefoundMemberOption({ community, member, checked, disabled, onToggle }: { community: ConcordCommunity; member: string; checked: boolean; disabled: boolean; onToggle: () => void }) {
+  return (
+    <label className={`flex items-center gap-3 text-sm ${disabled ? "opacity-50" : ""}`}>
+      <input type="checkbox" className="checkbox checkbox-sm" checked={checked} disabled={disabled} onChange={onToggle} />
+      <span className="opacity-70">Exclude</span>
+      <UserSummary pubkey={member} />
+      {community.standingOf(member).isOwner && <span className="badge badge-primary badge-sm">owner</span>}
+    </label>
+  );
+}
+
 function SecurityTab({ community, state, onError }: { community: ConcordCommunity; state: CommunityState; onError: (error: string) => void }) {
   const [excluded, setExcluded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -525,10 +704,14 @@ function SecurityTab({ community, state, onError }: { community: ConcordCommunit
           const standing = community.standingOf(member);
           const disabled = !community.canDo(PERM.BAN, standing.position);
           return (
-            <label key={member} className={`flex items-center gap-2 text-sm ${disabled ? "opacity-50" : ""}`}>
-              <input type="checkbox" className="checkbox checkbox-sm" checked={excluded.includes(member)} disabled={disabled} onChange={() => toggle(member)} />
-              Exclude <code>{shortId(nip19.npubEncode(member))}</code>
-            </label>
+            <RefoundMemberOption
+              key={member}
+              community={community}
+              member={member}
+              checked={excluded.includes(member)}
+              disabled={disabled}
+              onToggle={() => toggle(member)}
+            />
           );
         })}
       </div>
@@ -596,7 +779,8 @@ function ConcordAdminManager({ signer }: { signer: ISigner }) {
       eventStore,
       storage: Storage.memoryStorage(),
       relays: STOCK_RELAYS,
-      autoUnlock: true,
+      autoUnlock: false,
+      autoSaveCommunityList: false,
     });
 
     setClient(next);
@@ -609,12 +793,15 @@ function ConcordAdminManager({ signer }: { signer: ISigner }) {
       <div>
         <h1 className="text-3xl font-semibold">Concord Admin Management</h1>
         <p className="mt-2 text-base-content/70">
-          Select a joined community where your synced roster grants admin authority. The client uses in-memory storage so
-          this page tests a fresh full sync each session.
+          The client runs in fully manual mode — every automatic gate (unlock, authenticate, publish) is off, so it
+          starts up and syncs with zero calls to your signer. The status line below reflects the client, and a banner
+          appears whenever it needs you to unlock a list, authenticate to a relay, read pending invites, or publish a
+          membership change. In-memory storage means a fresh full sync each session.
         </p>
       </div>
 
       {client && <StatusLine client={client} />}
+      {client && <ActionBanners client={client} signer={signer} />}
       {client && <CommunitySelector client={client} selected={communityId} onSelect={setCommunityId} />}
       {client && communityId && <AdminPanel client={client} communityId={communityId} />}
     </div>
