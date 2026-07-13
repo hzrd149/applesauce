@@ -41,6 +41,22 @@ function shortId(id: string) {
   return id.slice(0, 8) + "..." + id.slice(-8);
 }
 
+// Map a sync-lifecycle phase to a DaisyUI badge color for the status indicators.
+function phaseBadgeClass(phase: string) {
+  switch (phase) {
+    case "live":
+      return "badge-success";
+    case "syncing":
+      return "badge-info";
+    case "error":
+    case "removed":
+    case "dissolved":
+      return "badge-error";
+    default:
+      return "badge-ghost";
+  }
+}
+
 function namesFor(perms: bigint) {
   return permNames(perms).map((name) => name.replace(/_/g, " "));
 }
@@ -58,9 +74,31 @@ function isAdminCommunity(client: ConcordClient, state: CommunityState) {
   return ADMIN_BITS.some((perm) => community.canDo(perm));
 }
 
+// The client's descriptive status is now a typed snapshot (lifecycle phase + an
+// aggregate over every joined community's sync/connection), so a UI can react to
+// the whole client at a glance instead of a free-form string.
 function StatusLine({ client }: { client: ConcordClient }) {
   const status = use$(client.status$);
-  return status ? <div className="alert alert-info py-2 text-sm">{status}</div> : null;
+  if (!status) return null;
+
+  const phaseLabel = status.phase === "starting" ? "Starting…" : status.phase === "idle" ? "Idle" : "Ready";
+
+  return (
+    <div className="alert alert-info flex flex-wrap items-center gap-2 py-2 text-sm">
+      <span className="font-medium">{phaseLabel}</span>
+      <span className="opacity-70">
+        {status.communities} communities · {status.live} live · {status.syncing} syncing
+      </span>
+      <span className={`badge badge-sm ${status.connected ? "badge-success" : "badge-ghost"}`}>
+        {status.connected ? "connected" : "offline"}
+      </span>
+      {status.connected && (
+        <span className={`badge badge-sm ${status.authenticated ? "badge-success" : "badge-warning"}`}>
+          {status.authenticated ? "authenticated" : "authenticating"}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function CommunitySelector({ client, selected, onSelect }: { client: ConcordClient; selected?: string; onSelect: (id: string) => void }) {
@@ -114,11 +152,28 @@ function PermissionBadges({ names }: { names: string[] }) {
 function OverviewTab({ community, state }: { community: ConcordCommunity; state: CommunityState }) {
   const standing = community.standingOf(community.pubkey);
   const metadata = state.metadata;
+  // The engine's descriptive status: sync phase (idle → syncing → live) plus relay
+  // connection/NIP-42 auth, derived reactively so this badge row updates live.
+  const status = use$(community.status$);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <section className="border border-base-300 rounded-box p-4">
         <h3 className="font-semibold">Community</h3>
+        {status && (
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            <span className={`badge badge-sm ${phaseBadgeClass(status.phase)}`}>{status.phase}</span>
+            <span className={`badge badge-sm ${status.connected ? "badge-success" : "badge-ghost"}`}>
+              {status.connected ? "connected" : "offline"}
+            </span>
+            {status.connected && (
+              <span className={`badge badge-sm ${status.authenticated ? "badge-success" : "badge-warning"}`}>
+                {status.authenticated ? "authenticated" : "authenticating"}
+              </span>
+            )}
+            {status.error && <span className="badge badge-sm badge-error">{status.error}</span>}
+          </div>
+        )}
         <div className="mt-3 space-y-2 text-sm">
           <div>
             <span className="opacity-60">Name</span> {metadata?.name || state.material.name || "Unnamed"}
@@ -127,7 +182,7 @@ function OverviewTab({ community, state }: { community: ConcordCommunity; state:
             <span className="opacity-60">ID</span> <code>{shortId(state.material.community_id)}</code>
           </div>
           <div>
-            <span className="opacity-60">Root epoch</span> {state.material.root_epoch}
+            <span className="opacity-60">Root epoch</span> {status?.epoch ?? state.material.root_epoch}
           </div>
           <div>
             <span className="opacity-60">Members</span> {state.members.size}
@@ -530,14 +585,13 @@ function AdminPanel({ client, communityId }: { client: ConcordClient; communityI
   );
 }
 
-function ConcordAdminManager({ signer, pubkey }: { signer: ISigner; pubkey: string }) {
+function ConcordAdminManager({ signer }: { signer: ISigner }) {
   const [client, setClient] = useState<ConcordClient | null>(null);
   const [communityId, setCommunityId] = useState("");
 
   useEffect(() => {
     const next = new ConcordClient({
       signer,
-      pubkey,
       pool,
       eventStore,
       storage: Storage.memoryStorage(),
@@ -548,7 +602,7 @@ function ConcordAdminManager({ signer, pubkey }: { signer: ISigner; pubkey: stri
     setClient(next);
     void next.start();
     return () => next.stop();
-  }, [signer, pubkey]);
+  }, [signer]);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 p-4">
@@ -568,8 +622,8 @@ function ConcordAdminManager({ signer, pubkey }: { signer: ISigner; pubkey: stri
 }
 
 export default function ConcordAdminManagementExample() {
-  const [account, setAccount] = useState<{ signer: ISigner; pubkey: string } | null>(null);
+  const [account, setAccount] = useState<{ signer: ISigner } | null>(null);
 
-  if (!account) return <LoginView onLogin={(signer, pubkey) => setAccount({ signer, pubkey })} />;
-  return <ConcordAdminManager signer={account.signer} pubkey={account.pubkey} />;
+  if (!account) return <LoginView onLogin={(signer) => setAccount({ signer })} />;
+  return <ConcordAdminManager signer={account.signer} />;
 }

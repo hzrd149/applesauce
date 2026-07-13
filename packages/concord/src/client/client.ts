@@ -6,7 +6,20 @@
 // syncing, folding, and publishing all live in `ConcordCommunity`. One instance
 // per logged-in user.
 
-import { BehaviorSubject, Observable, Subscription, firstValueFrom, map, of, switchMap, timeout, toArray } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  Subscription,
+  combineLatest,
+  distinctUntilChanged,
+  firstValueFrom,
+  map,
+  of,
+  shareReplay,
+  switchMap,
+  timeout,
+  toArray,
+} from "rxjs";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { castUser, type User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers/event";
@@ -43,15 +56,20 @@ import { joinCommunity, leaveCommunity, refreshCommunity } from "../operations/c
 import { JoinLeaveFactory } from "../factories/guestbook.js";
 import { InviteWatcher } from "./invite-watcher.js";
 import type { ConcordDirectInvite } from "../casts/direct-invite.js";
-import type { CommunityListCommunity, CommunityState, CommunityTombstone, JoinMaterial } from "../types.js";
+import type {
+  CommunityListCommunity,
+  CommunityState,
+  CommunityTombstone,
+  ConcordClientStatus,
+  ConcordCommunityStatus,
+  JoinMaterial,
+} from "../types.js";
 import { ConcordCommunity } from "./community.js";
 
 /** Options for constructing the multi-community {@link ConcordClient} manager. */
 export interface ConcordClientOptions {
   /** The logged-in user's signer. */
   signer: ISigner;
-  /** The logged-in user's hex pubkey. */
-  pubkey: string;
   /** The applesauce RelayPool used for all subscriptions/publishes. */
   pool: RelayPool;
   /** Shared wrap-level store. Defaults to a fresh {@link EventStore}. */
@@ -74,10 +92,13 @@ export interface ConcordClientOptions {
 
 export class ConcordClient {
   readonly signer: ISigner;
-  readonly pubkey: string;
   /** Every joined community's current folded state. */
   readonly communities$ = new BehaviorSubject<CommunityState[]>([]);
-  readonly status$ = new BehaviorSubject<string>("");
+  /** `"idle"` before `start()`, `"starting"` during startup, `"ready"` afterward. */
+  readonly phase$ = new BehaviorSubject<ConcordClientStatus["phase"]>("idle");
+  /** A flat snapshot of the manager's status (lifecycle + aggregate sync/connection
+   *  across every joined community), for UI to react to as one value. */
+  readonly status$: Observable<ConcordClientStatus>;
 
   private readonly pool: RelayPool;
   private readonly eventStore: EventStore;
@@ -88,8 +109,10 @@ export class ConcordClient {
   private readonly relayAuth: ConcordRelayAuth;
   private readonly autoUnlock: boolean;
   /** The logged-in user as a cast over the shared event store — the source of the exposed
-   *  `communityList$` / `inviteList$` observables. */
-  private readonly user: User;
+   *  `communityList$` / `inviteList$` observables. Initialized in {@link start}. */
+  private user?: User;
+  /** Resolved from the signer in {@link start}. */
+  private _pubkey?: string;
 
   private readonly communities = new Map<string, ConcordCommunity>();
   private readonly stateSubs = new Map<string, Subscription>();
@@ -129,7 +152,6 @@ export class ConcordClient {
 
   constructor(options: ConcordClientOptions) {
     this.signer = options.signer;
-    this.pubkey = options.pubkey;
     this.pool = options.pool;
     this.eventStore = options.eventStore ?? new EventStore();
     this.storage = options.storage ?? defaultStorage();
@@ -138,18 +160,65 @@ export class ConcordClient {
     this.storeFactory = options.storeFactory;
     this.autoUnlock = options.autoUnlock ?? false;
     this.relayAuth = new ConcordRelayAuth(options.pool);
-    this.user = castUser(this.pubkey, this.eventStore);
+
+    // Aggregate status: fold every community's status$ into a single client snapshot.
+    // Rebuild the fan-in only when the membership set changes (not on every state fold),
+    // so a phase/connection change on a child propagates through the inner combineLatest.
+    const childStatuses$ = this.communities$.pipe(
+      map(() => [...this.communities.keys()].sort().join(",")),
+      distinctUntilChanged(),
+      switchMap(() => {
+        const engines = [...this.communities.values()];
+        if (engines.length === 0) return of([] as ConcordCommunityStatus[]);
+        return combineLatest(engines.map((c) => c.status$));
+      }),
+    );
+    this.status$ = combineLatest({ phase: this.phase$, children: childStatuses$ }).pipe(
+      map(({ phase, children }): ConcordClientStatus => {
+        const live = children.filter((s) => s.phase === "live").length;
+        const connectedChildren = children.filter((s) => s.connected);
+        return {
+          phase,
+          communities: children.length,
+          syncing: children.length - live,
+          live,
+          connected: connectedChildren.length > 0,
+          authenticated: connectedChildren.length > 0 && connectedChildren.every((s) => s.authenticated),
+        };
+      }),
+      distinctUntilChanged(
+        (a, b) =>
+          a.phase === b.phase &&
+          a.communities === b.communities &&
+          a.syncing === b.syncing &&
+          a.live === b.live &&
+          a.connected === b.connected &&
+          a.authenticated === b.authenticated,
+      ),
+      shareReplay(1),
+    );
+  }
+
+  /** The logged-in user's hex pubkey. Available after {@link start}. */
+  get pubkey(): string {
+    if (!this._pubkey) throw new Error("ConcordClient not started — call start() first");
+    return this._pubkey;
   }
 
   /** The user's Community List (kind 13302) as a reactive cast — `undefined` until the event
    *  lands in the store; locked until `autoUnlock` or the app calls `.unlock(signer)`. */
   get communityList$(): Observable<ConcordCommunityList | undefined> {
-    return this.user.concordCommunityList$;
+    return this.requireUser().concordCommunityList$;
   }
 
   /** The user's Invite List (kind 13303) as a reactive cast — same lock/unlock semantics. */
   get inviteList$(): Observable<ConcordInviteList | undefined> {
-    return this.user.concordInviteList$;
+    return this.requireUser().concordInviteList$;
+  }
+
+  private requireUser(): User {
+    if (!this.user) throw new Error("ConcordClient not started — call start() first");
+    return this.user;
   }
 
   // ---- lifecycle ----------------------------------------------------------
@@ -157,6 +226,9 @@ export class ConcordClient {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    this.phase$.next("starting");
+    this._pubkey = await this.signer.getPublicKey();
+    this.user ??= castUser(this._pubkey, this.eventStore);
     // Restore memberships from the local mirror first (instant, offline-safe),
     // then reconcile with the relay-published Community List (kind 13302).
     for (const material of await this.loadMaterials()) {
@@ -179,6 +251,7 @@ export class ConcordClient {
     this.startInviteWatcher();
     // Dirty-checked flush: a no-op unless startup surfaced a genuine local/remote divergence.
     await this.saveCommunityList();
+    this.phase$.next("ready");
   }
 
   stop(): void {
@@ -192,6 +265,8 @@ export class ConcordClient {
     for (const community of this.communities.values()) community.dispose();
     this.communities.clear();
     this.communities$.next([]);
+    this.started = false;
+    this.phase$.next("idle");
   }
 
   /**
@@ -258,8 +333,7 @@ export class ConcordClient {
     return genesis.material.community_id;
   }
 
-  async joinByLink(url: string): Promise<string> {
-    this.status$.next("Fetching invite…");
+  async joinByLink(url: string): Promise<ConcordCommunity> {
     const parsed = parseInviteLink(url);
     const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : this.defaultRelays;
     const events = await firstValueFrom(
@@ -296,7 +370,8 @@ export class ConcordClient {
       refounder: bundle.refounder,
     };
 
-    if (this.communities.has(material.community_id)) return material.community_id;
+    // If we're already in the community, return the existing community.
+    if (this.communities.has(material.community_id)) return this.communities.get(material.community_id)!;
 
     const community = this.addCommunity(material);
     await this.saveMaterials();
@@ -306,8 +381,7 @@ export class ConcordClient {
     });
     await community.publishToPlane({ plane: "guestbook" }, joinRumor, {});
     await this.saveCommunityList();
-    this.status$.next("");
-    return material.community_id;
+    return community;
   }
 
   async leave(cid: string): Promise<void> {
@@ -410,7 +484,7 @@ export class ConcordClient {
    *  Reconcile fires on every decrypted emission — whether the unlock was ours or the app's
    *  — because the cast's `communities$` re-emits on `update$` after `notifyEventUpdate`. */
   private watchLists(): void {
-    this.listSub = this.user.concordCommunityList$
+    this.listSub = this.requireUser().concordCommunityList$
       .pipe(switchMap((cast) => (cast ? cast.communities$.pipe(map(() => cast)) : of(undefined))))
       .subscribe((cast) => {
         if (!cast) return;
@@ -438,7 +512,7 @@ export class ConcordClient {
 
     // Nothing consumes the Invite List yet — just auto-unlock it so the exposed cast is
     // populated for the app when `autoUnlock` is on.
-    this.inviteSub = this.user.concordInviteList$.subscribe((cast) => {
+    this.inviteSub = this.requireUser().concordInviteList$.subscribe((cast) => {
       if (this.autoUnlock && cast && !cast.unlocked) this.autoUnlockCast(cast);
     });
   }

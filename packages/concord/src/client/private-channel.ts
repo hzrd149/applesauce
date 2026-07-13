@@ -7,7 +7,7 @@
 // follow channel Rekeys — scoped to a single channel. It carries no fold logic:
 // consumers read its `store` with the standard timeline/model API.
 
-import { BehaviorSubject, Subscription } from "rxjs";
+import { BehaviorSubject, Observable, Subscription, combineLatest, shareReplay } from "rxjs";
 import type { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { ISigner } from "applesauce-signers";
@@ -18,7 +18,7 @@ import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo }
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { checkChatBinding } from "../helpers/chat.js";
 import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
-import type { ChannelKey, DecodedEvent, JoinMaterial } from "../types.js";
+import type { ChannelKey, ConcordPrivateChannelStatus, ConcordSyncPhase, DecodedEvent, JoinMaterial } from "../types.js";
 import type { ConcordRumorStore } from "./storage.js";
 import { syncAuthors } from "./sync.js";
 import { channelLiveAuthors, syncChannelEpochs, type ChannelSyncContext } from "./channel-sync.js";
@@ -55,6 +55,16 @@ export interface ConcordPrivateChannelOptions {
 export class ConcordPrivateChannel {
   /** The channel's current epoch (bumps on each adopted Rekey). */
   readonly epoch$: BehaviorSubject<number>;
+  /** The channel's sync-lifecycle phase (idle → syncing → live; removed/error). */
+  readonly phase$ = new BehaviorSubject<ConcordSyncPhase>("idle");
+  /** The last sync error message, or null. */
+  readonly error$ = new BehaviorSubject<string | null>(null);
+  /** Whether any of the channel's relays has an open socket. */
+  readonly connected$: Observable<boolean>;
+  /** Whether the channel's stream keys are NIP-42-authenticated on every connected relay. */
+  readonly authenticated$: Observable<boolean>;
+  /** A flat snapshot of the channel's status, for UI to react to as one value. */
+  readonly status$: Observable<ConcordPrivateChannelStatus>;
 
   private readonly opts: ConcordPrivateChannelOptions;
   private channelKey: ChannelKey;
@@ -76,6 +86,19 @@ export class ConcordPrivateChannel {
     this.channelKey = options.channelKey;
     this.keys = deriveChannelKeys(options.material(), options.channelKey);
     this.epoch$ = new BehaviorSubject<number>(options.channelKey.epoch);
+
+    this.connected$ = options.relayAuth.connected$(options.relays);
+    this.authenticated$ = options.relayAuth.authenticated$(
+      options.relays,
+      () => channelLiveAuthors(this.opts.material(), this.channelKey).authors,
+    );
+    this.status$ = combineLatest({
+      phase: this.phase$,
+      epoch: this.epoch$,
+      connected: this.connected$,
+      authenticated: this.authenticated$,
+      error: this.error$,
+    }).pipe(shareReplay(1));
   }
 
   get channelId(): string {
@@ -113,17 +136,26 @@ export class ConcordPrivateChannel {
   }
 
   private async walk(): Promise<void> {
-    const result = await syncChannelEpochs(this.syncContext(), this.channelKey);
-    if (this.disposed) return;
-    if (result.removed) {
-      this.handleRemoved();
-      return;
-    }
-    if (result.tipKey) {
-      const rolled = result.tipKey.epoch !== this.channelKey.epoch;
-      this.setChannelKey(result.tipKey);
-      if (rolled) this.opts.onKeyChange?.(result.tipKey);
-      this.openLive();
+    this.phase$.next("syncing");
+    try {
+      const result = await syncChannelEpochs(this.syncContext(), this.channelKey);
+      if (this.disposed) return;
+      if (result.removed) {
+        this.handleRemoved();
+        return;
+      }
+      if (result.tipKey) {
+        const rolled = result.tipKey.epoch !== this.channelKey.epoch;
+        this.setChannelKey(result.tipKey);
+        if (rolled) this.opts.onKeyChange?.(result.tipKey);
+        this.openLive();
+      }
+      this.error$.next(null);
+      this.phase$.next("live");
+    } catch (err) {
+      if (this.disposed) return;
+      this.error$.next(err instanceof Error ? err.message : String(err));
+      this.phase$.next("error");
     }
   }
 
@@ -249,6 +281,7 @@ export class ConcordPrivateChannel {
 
   private handleRemoved(): void {
     const id = this.channelId;
+    this.phase$.next("removed");
     this.dispose();
     this.opts.onRemoved?.(id);
   }

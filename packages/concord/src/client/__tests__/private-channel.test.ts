@@ -5,7 +5,7 @@
 // lifecycle, independent of the community root.
 
 import { describe, expect, it } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject, from } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Subject, firstValueFrom, from } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { kinds, type NostrEvent } from "applesauce-core/helpers/event";
 import { PrivateKeySigner } from "applesauce-signers";
@@ -111,6 +111,7 @@ describe("ConcordPrivateChannel (DI, served wraps)", () => {
       onKeyChange: (ck) => (persisted = ck),
     });
 
+    expect(sub.phase$.value).toBe("idle"); // not started yet
     await sub.start();
     await settle();
 
@@ -121,6 +122,11 @@ describe("ConcordPrivateChannel (DI, served wraps)", () => {
     expect(sub.epoch$.value).toBe(2);
     expect(persisted?.epoch).toBe(2);
     expect(persisted?.held?.[0]).toMatchObject({ epoch: 1, key: channel.key });
+
+    // Descriptive status: caught up to the tip, epoch rolled, no error.
+    expect(sub.phase$.value).toBe("live");
+    const snap = await firstValueFrom(sub.status$);
+    expect(snap).toMatchObject({ phase: "live", epoch: 2, connected: false, error: null });
 
     sub.dispose();
   });

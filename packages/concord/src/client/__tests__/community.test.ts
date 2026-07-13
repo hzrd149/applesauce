@@ -7,12 +7,15 @@
 import { describe, expect, it } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
-import type { RelayPool } from "applesauce-relay";
+import type { RelayPool, RelayStatus } from "applesauce-relay";
 
 import { kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
 import { hexToBytes } from "@noble/hashes/utils.js";
+
+import type { ConcordCommunityStatus } from "../../types.js";
 
 import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
@@ -44,6 +47,44 @@ function fakePool(): RelayPool {
     request: () => EMPTY,
     publish: async () => [],
   } as unknown as RelayPool;
+}
+
+// Like fakePool, but with a controllable `status$` so tests can drive connection state.
+function fakePoolWithStatus(): { pool: RelayPool; status$: BehaviorSubject<Record<string, RelayStatus>> } {
+  const status$ = new BehaviorSubject<Record<string, RelayStatus>>({});
+  const relay = {
+    url: "wss://fake",
+    challenge: null,
+    challenge$: new BehaviorSubject<string | null>(null),
+    isAuthenticated: () => false,
+    authenticate: async () => ({ ok: true }),
+    getSupported: async () => null,
+    request: () => EMPTY,
+    sync: () => EMPTY,
+  };
+  const pool = {
+    status$,
+    relay: () => relay,
+    subscription: () => NEVER,
+    request: () => EMPTY,
+    publish: async () => [],
+  } as unknown as RelayPool;
+  return { pool, status$ };
+}
+
+function mkStatus(over: Partial<RelayStatus> & { url: string }): RelayStatus {
+  return {
+    connected: false,
+    authenticated: false,
+    authenticatedAs: null,
+    authenticatedPubkeys: [],
+    authentications: {},
+    ready: true,
+    authRequiredForRead: false,
+    authRequiredForPublish: false,
+    challenge: null,
+    ...over,
+  };
 }
 
 describe("ConcordCommunity (DI, no network)", () => {
@@ -277,6 +318,43 @@ describe("ConcordCommunity (DI, no network)", () => {
     await settle();
     expect(published.some((e) => e.pubkey === channelRekeyAddr2)).toBe(true);
 
+    community.dispose();
+  });
+
+  it("exposes a descriptive status$ (idle → syncing → live + connection)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, status$ } = fakePoolWithStatus();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+
+    expect(community.phase$.value).toBe("idle");
+    await community.start(); // walks the empty relays to the tip, then opens live
+    expect(community.phase$.value).toBe("live");
+    expect(community.epoch$.value).toBe(genesis.material.root_epoch);
+
+    // Subscribe to the aggregate BEFORE driving the pool so it tracks the latest.
+    let snap: ConcordCommunityStatus | undefined;
+    const sub = community.status$.subscribe((v) => (snap = v));
+    expect(snap?.phase).toBe("live");
+    expect(snap?.connected).toBe(false);
+    expect(snap?.error).toBeNull();
+
+    // A relay socket opens (gates nothing behind auth) → connected + authenticated flip.
+    const url = normalizeURL("wss://fake");
+    status$.next({ [url]: mkStatus({ url, connected: true }) });
+    expect(snap?.connected).toBe(true);
+    expect(snap?.authenticated).toBe(true);
+
+    sub.unsubscribe();
     community.dispose();
   });
 });

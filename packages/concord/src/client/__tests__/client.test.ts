@@ -17,7 +17,7 @@ import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
 import { COMMUNITY_LIST_KIND, mergeCommunities } from "../../helpers/community-list.js";
 import { createCommunity } from "../../helpers/community.js";
-import type { JoinMaterial } from "../../types.js";
+import type { ConcordClientStatus, JoinMaterial } from "../../types.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
 
@@ -94,7 +94,7 @@ async function setup() {
 
   const store = new EventStore();
   const { pool, published } = fakePool();
-  const client = new ConcordClient({ signer, pubkey, pool, eventStore: store, storage: memoryStorage(), relays: ["wss://fake"] });
+  const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), relays: ["wss://fake"] });
   return { signer, pubkey, decrypt, genesis, cid, listEvent, store, client, pool, published };
 }
 
@@ -129,7 +129,6 @@ describe("ConcordClient community list (DI, no network)", () => {
     const { pool } = fakePool();
     const client = new ConcordClient({
       signer,
-      pubkey,
       pool,
       eventStore: store,
       storage: memoryStorage(),
@@ -159,7 +158,7 @@ describe("ConcordClient community list (DI, no network)", () => {
     await storage.setItem(pubkey, JSON.stringify([material]));
 
     const { pool, authenticatedPubkeys } = fakePool({ challenge: "challenge-abc" });
-    const client = new ConcordClient({ signer, pubkey, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
 
     await client.start();
     await settle();
@@ -177,7 +176,6 @@ describe("ConcordClient community list (DI, no network)", () => {
     const { pool, published } = fakePool();
     const client = new ConcordClient({
       signer,
-      pubkey,
       pool,
       eventStore: store,
       storage: memoryStorage(),
@@ -228,7 +226,7 @@ describe("ConcordClient community list (DI, no network)", () => {
     store.add(listEvent as NostrEvent); // the matching remote copy is already present at startup
 
     const { pool, published } = fakePool();
-    const client = new ConcordClient({ signer, pubkey, pool, eventStore: store, storage, relays: ["wss://fake"], autoUnlock: true });
+    const client = new ConcordClient({ signer, pool, eventStore: store, storage, relays: ["wss://fake"], autoUnlock: true });
 
     await client.start();
     await settle();
@@ -244,7 +242,6 @@ describe("ConcordClient community list (DI, no network)", () => {
     const { pool, published } = fakePool();
     const client = new ConcordClient({
       signer,
-      pubkey,
       pool,
       eventStore: store,
       storage: memoryStorage(),
@@ -274,7 +271,6 @@ describe("ConcordClient community list (DI, no network)", () => {
     const store = new EventStore();
     const client = new ConcordClient({
       signer,
-      pubkey,
       pool,
       eventStore: store,
       storage: memoryStorage(),
@@ -292,5 +288,40 @@ describe("ConcordClient community list (DI, no network)", () => {
     expect(listPublishes(published).length).toBe(1);
 
     client.stop();
+  });
+
+  it("exposes a descriptive status$ (phase + aggregate over communities)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
+
+    let snap: ConcordClientStatus | undefined;
+    const sub = client.status$.subscribe((v) => (snap = v));
+    expect(snap?.phase).toBe("idle");
+    expect(snap?.communities).toBe(0);
+
+    await client.start();
+    await settle();
+    expect(client.phase$.value).toBe("ready");
+    expect(snap?.phase).toBe("ready");
+
+    // Creating a community bootstraps an engine; it walks the empty fake relays to
+    // its tip → live, so the aggregate counts one community, one of it live.
+    await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    await settle();
+    expect(snap?.communities).toBe(1);
+    expect((snap?.live ?? 0) + (snap?.syncing ?? 0)).toBe(1);
+    expect(snap?.live).toBe(1);
+
+    client.stop();
+    expect(client.phase$.value).toBe("idle");
+    sub.unsubscribe();
   });
 });

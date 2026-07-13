@@ -7,7 +7,7 @@
 // only derives keys, routes decoded wraps into the right plane store, runs the
 // epoch-atomic sync, and publishes.
 
-import { BehaviorSubject, Subscription, combineLatest, map } from "rxjs";
+import { BehaviorSubject, Observable, Subscription, combineLatest, distinctUntilChanged, map, shareReplay } from "rxjs";
 import { EventStore, RumorStore } from "applesauce-core";
 import { finalizeEvent, kinds, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
@@ -55,6 +55,8 @@ import {
   type ChannelKey,
   type CommunityMetadata,
   type CommunityState,
+  type ConcordCommunityStatus,
+  type ConcordSyncPhase,
   type DecodedEvent,
   type InviteBundle,
   type JoinMaterial,
@@ -112,6 +114,20 @@ export class ConcordCommunity {
   readonly pubkey: string;
   /** The current folded community state (channels, roles, members, …). */
   readonly state$: BehaviorSubject<CommunityState>;
+  /** The community's sync-lifecycle phase (idle → syncing → live; removed/error). */
+  readonly phase$ = new BehaviorSubject<ConcordSyncPhase>("idle");
+  /** The community's current root epoch (bumps on each adopted Refounding). */
+  readonly epoch$: BehaviorSubject<number>;
+  /** The last sync error message, or null. */
+  readonly error$ = new BehaviorSubject<string | null>(null);
+  /** Whether the owner has dissolved the community. */
+  readonly dissolved$: Observable<boolean>;
+  /** Whether any of the community's relays has an open socket. */
+  readonly connected$: Observable<boolean>;
+  /** Whether the community's stream keys are NIP-42-authenticated on every connected relay. */
+  readonly authenticated$: Observable<boolean>;
+  /** A flat snapshot of the community's status, for UI to react to as one value. */
+  readonly status$: Observable<ConcordCommunityStatus>;
 
   private readonly pool: RelayPool;
   private readonly relayAuth: ConcordRelayAuth;
@@ -153,6 +169,38 @@ export class ConcordCommunity {
 
     this.keys = deriveConcordKeys(options.material, []);
     this.state$ = new BehaviorSubject<CommunityState>(emptyState(options.material));
+    this.epoch$ = new BehaviorSubject<number>(options.material.root_epoch);
+
+    this.dissolved$ = this.state$.pipe(
+      map((s) => s.dissolved),
+      distinctUntilChanged(),
+    );
+    this.connected$ = this.relayAuth.connected$(this.relays());
+    this.authenticated$ = this.relayAuth.authenticated$(this.relays(), () => this.currentAuthors());
+    this.status$ = combineLatest({
+      phase: this.phase$,
+      epoch: this.epoch$,
+      dissolved: this.dissolved$,
+      connected: this.connected$,
+      authenticated: this.authenticated$,
+      error: this.error$,
+    }).pipe(
+      map(
+        ({ dissolved, ...s }): ConcordCommunityStatus => ({
+          ...s,
+          phase: dissolved ? "dissolved" : s.phase,
+        }),
+      ),
+      distinctUntilChanged(
+        (a, b) =>
+          a.phase === b.phase &&
+          a.epoch === b.epoch &&
+          a.connected === b.connected &&
+          a.authenticated === b.authenticated &&
+          a.error === b.error,
+      ),
+      shareReplay(1),
+    );
 
     // Eagerly create the community planes so the state model has stores to fold
     // and the (cached) history renders immediately, before sync fills the delta.
@@ -178,16 +226,26 @@ export class ConcordCommunity {
   async start(): Promise<void> {
     if (this.started || this.disposed) return;
     this.started = true;
-    const walk = await syncEpochs(this.syncContext(), this.material);
-    if (this.disposed) return;
-    if (walk.removed) {
-      this.handleRemoved();
-      return;
-    }
-    if (walk.tipKeys) {
-      this.keys = walk.tipKeys;
-      this.openLive();
-      if (this.keys.material !== this.state$.value.material) this.onMaterialChange?.(this.keys.material);
+    this.phase$.next("syncing");
+    try {
+      const walk = await syncEpochs(this.syncContext(), this.material);
+      if (this.disposed) return;
+      if (walk.removed) {
+        this.handleRemoved();
+        return;
+      }
+      if (walk.tipKeys) {
+        this.keys = walk.tipKeys;
+        this.openLive();
+        this.epoch$.next(this.keys.material.root_epoch);
+        if (this.keys.material !== this.state$.value.material) this.onMaterialChange?.(this.keys.material);
+      }
+      this.error$.next(null);
+      this.phase$.next("live");
+    } catch (err) {
+      if (this.disposed) return;
+      this.error$.next(err instanceof Error ? err.message : String(err));
+      this.phase$.next("error");
     }
   }
 
@@ -526,12 +584,14 @@ export class ConcordCommunity {
   private adoptRefounding(next: ConcordKeys): void {
     this.keys = next;
     this.openLive();
+    this.epoch$.next(this.keys.material.root_epoch);
     this.onMaterialChange?.(this.keys.material);
     for (const engine of this.privateChannels.values()) void engine.refreshForCommunityEpoch();
   }
 
   private handleRemoved(): void {
     const cid = this.communityId;
+    this.phase$.next("removed");
     this.dispose();
     this.onRemoved?.(cid);
   }

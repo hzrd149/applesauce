@@ -4,21 +4,20 @@
  * @tags concord, direct-invites, communities, gift-wraps, encryption, nip-44, reactive
  * @related concord/community-list, concord/invite-manager
  */
-import { BehaviorSubject, EventStore } from "applesauce-core";
-import { castUser } from "applesauce-core/casts";
-import { kinds, relaySet } from "applesauce-core/helpers";
-import type { NostrEvent } from "applesauce-core/helpers/event";
 import { getRumorGiftWraps } from "applesauce-common/helpers/gift-wrap";
 import {
   ConcordRelayAuth,
-  Factories,
-  Helpers,
   InviteWatcher,
   type CommunityListCommunity,
   type InviteBundle,
   type JoinMaterial,
 } from "applesauce-concord";
 import type { ConcordDirectInvite } from "applesauce-concord/casts";
+import { COMMUNITY_LIST_KIND, deriveConcordKeys, STOCK_RELAYS, wrapForTarget } from "applesauce-concord/helpers";
+import { BehaviorSubject, EventStore } from "applesauce-core";
+import { castUser } from "applesauce-core/casts";
+import { kinds, relaySet } from "applesauce-core/helpers";
+import type { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -29,9 +28,7 @@ import { combineLatest, map, of, switchMap } from "rxjs";
 
 import "applesauce-concord/casts";
 import LoginView from "../../components/login-view";
-
-const { CommunityListFactory, JoinLeaveFactory } = Factories;
-const { COMMUNITY_LIST_KIND, STOCK_RELAYS, deriveConcordKeys, wrapForTarget } = Helpers;
+import { CommunityListFactory, JoinLeaveFactory } from "applesauce-concord/factories";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();

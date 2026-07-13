@@ -228,3 +228,53 @@ export interface CommunityState {
 }
 
 export type RawEvent = NostrEvent;
+
+// ---- Descriptive status observables ---------------------------------------
+// Flat, single-value status snapshots (one field per underlying observable),
+// mirroring `RelayStatus` in applesauce-relay. Each engine exposes the granular
+// `$` fields these are composed from plus a derived `status$` carrying the whole
+// snapshot, so UI can react to either the individual signal or the aggregate.
+
+/** The sync-lifecycle phase of a synced Concord entity (community or private channel). */
+export type ConcordSyncPhase = "idle" | "syncing" | "live" | "removed" | "error";
+
+/** A snapshot of a {@link CommunityState}-backed community engine's status. */
+export interface ConcordCommunityStatus {
+  /** Sync lifecycle, or `"dissolved"` once the owner dissolves the community. */
+  phase: ConcordSyncPhase | "dissolved";
+  /** The community's current root epoch (bumps on each adopted Refounding). */
+  epoch: number;
+  /** At least one of the community's relays has an open socket. */
+  connected: boolean;
+  /** The community's stream keys are NIP-42-authenticated on every connected
+   *  relay (or none of them gate reads/publishes behind auth). */
+  authenticated: boolean;
+  /** The last sync error message, or null. */
+  error: string | null;
+}
+
+/** A snapshot of a private-channel sub-engine's status. */
+export interface ConcordPrivateChannelStatus {
+  phase: ConcordSyncPhase;
+  /** The channel's current epoch (bumps on each adopted channel Rekey). */
+  epoch: number;
+  connected: boolean;
+  authenticated: boolean;
+  error: string | null;
+}
+
+/** A snapshot of the multi-community {@link ConcordClient} manager's status. */
+export interface ConcordClientStatus {
+  /** `"idle"` before `start()`, `"starting"` during startup, `"ready"` after. */
+  phase: "idle" | "starting" | "ready";
+  /** Number of joined communities. */
+  communities: number;
+  /** Communities not yet caught up to their tip (phase ≠ "live"). */
+  syncing: number;
+  /** Communities caught up and live. */
+  live: number;
+  /** At least one community relay has an open socket. */
+  connected: boolean;
+  /** Every connected community relay is authenticated for our stream keys. */
+  authenticated: boolean;
+}

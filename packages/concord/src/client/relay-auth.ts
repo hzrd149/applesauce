@@ -21,8 +21,9 @@
 
 import { PrivateKeySigner } from "applesauce-signers";
 import type { ISigner } from "applesauce-signers";
-import { BehaviorSubject, Subscription, combineLatest } from "rxjs";
-import type { Relay, RelayPool } from "applesauce-relay";
+import { BehaviorSubject, Observable, Subscription, combineLatest, distinctUntilChanged, map, startWith } from "rxjs";
+import { normalizeURL } from "applesauce-core/helpers";
+import type { Relay, RelayPool, RelayStatus } from "applesauce-relay";
 import type { GroupKey } from "../helpers/crypto.js";
 
 // One shared auth driver per relay URL, reference-counted. Both the control and
@@ -62,6 +63,51 @@ export class ConcordRelayAuth {
 
   streamPubkeys(): string[] {
     return [...this.registry.keys()];
+  }
+
+  // ---- connection / auth status (for UI) ----------------------------------
+
+  /** Look up a relay's status in a `pool.status$` snapshot, tolerating un/normalized URLs. */
+  private lookupStatus(statuses: Record<string, RelayStatus>, url: string): RelayStatus | undefined {
+    return statuses[normalizeURL(url)] ?? statuses[url];
+  }
+
+  /**
+   * Whether at least one of `relays` has an open socket, as a derived boolean
+   * observable over `pool.status$`. For a community/channel to show a live vs
+   * "reconnecting…" indicator without reaching into the pool itself.
+   */
+  connected$(relays: string[]): Observable<boolean> {
+    return this.pool.status$.pipe(
+      startWith({} as Record<string, RelayStatus>),
+      map((statuses) => relays.some((url) => this.lookupStatus(statuses, url)?.connected ?? false)),
+      distinctUntilChanged(),
+    );
+  }
+
+  /**
+   * Whether every currently-connected relay in `relays` is NIP-42-authenticated
+   * for the caller's `streamPubkeys()` — i.e. either the relay gates nothing
+   * behind auth, or all of our stream keys are authenticated on it. Re-evaluates
+   * whenever `pool.status$` re-emits (connect / AUTH state changes). Returns false
+   * when no relay is connected (nothing to be authenticated on yet).
+   */
+  authenticated$(relays: string[], streamPubkeys: () => string[]): Observable<boolean> {
+    return this.pool.status$.pipe(
+      startWith({} as Record<string, RelayStatus>),
+      map((statuses) => {
+        const connected = relays
+          .map((url) => this.lookupStatus(statuses, url))
+          .filter((s): s is RelayStatus => !!s?.connected);
+        if (connected.length === 0) return false;
+        const pubkeys = streamPubkeys();
+        return connected.every((s) => {
+          if (!s.authRequiredForRead && !s.authRequiredForPublish) return true;
+          return pubkeys.every((pk) => s.authenticatedPubkeys.includes(pk));
+        });
+      }),
+      distinctUntilChanged(),
+    );
   }
 
   /** Every registered stream key as a `(pubkey, signer)` pair, for feeding to
