@@ -804,6 +804,13 @@ export class ConcordCommunity {
     return roleId;
   }
 
+  async editRole(roleId: string, patch: Partial<Omit<Role, "role_id">>): Promise<void> {
+    const current = this.state$.value.roles.find((r) => r.role_id === roleId);
+    if (!current) throw new Error("role not found");
+    const role: Role = { ...current, ...patch, role_id: roleId };
+    await this.publishEdition(VSK.ROLE, roleId, JSON.stringify(role));
+  }
+
   async grantRoles(member: string, roleIds: string[]): Promise<void> {
     const eid = grantLocator(hexToBytes(this.material.community_id), member);
     await this.publishEdition(VSK.GRANT, eid, JSON.stringify({ member, role_ids: roleIds }));

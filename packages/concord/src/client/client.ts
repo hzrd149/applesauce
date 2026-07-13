@@ -145,8 +145,6 @@ export class ConcordClient {
    *  `communityList$` / `inviteList$` observables. Undefined until {@link start} resolves the
    *  pubkey; the exposed getters switch onto it reactively, so they never throw pre-start. */
   private readonly user$ = new BehaviorSubject<User | undefined>(undefined);
-  /** Resolved from the signer in {@link start}. */
-  private _pubkey?: string;
 
   private readonly communities = new Map<string, ConcordCommunity>();
   private readonly stateSubs = new Map<string, Subscription>();
@@ -244,8 +242,7 @@ export class ConcordClient {
 
   /** The logged-in user's hex pubkey. Available after {@link start}. */
   get pubkey(): string {
-    if (!this._pubkey) throw new Error("ConcordClient not started — call start() first");
-    return this._pubkey;
+    return this.requireUser().pubkey;
   }
 
   /** The user's Community List (kind 13302) as a reactive cast — emits `undefined` before
@@ -273,8 +270,7 @@ export class ConcordClient {
     if (this.started) return;
     this.started = true;
     this.phase$.next("starting");
-    this._pubkey = await this.signer.getPublicKey();
-    if (!this.user$.value) this.user$.next(castUser(this._pubkey, this.eventStore));
+    if (!this.user$.value) this.user$.next(castUser(await this.signer.getPublicKey(), this.eventStore));
     // Restore memberships from the local mirror first (instant, offline-safe),
     // then reconcile with the relay-published Community List (kind 13302).
     for (const material of await this.loadMaterials()) {
@@ -378,10 +374,6 @@ export class ConcordClient {
   /** The single-community engine for `cid`, or undefined if not joined. */
   getCommunity(cid: string): ConcordCommunity | undefined {
     return this.communities.get(cid);
-  }
-
-  getState$(cid: string): BehaviorSubject<CommunityState> | undefined {
-    return this.communities.get(cid)?.state$;
   }
 
   // ---- creating / joining -------------------------------------------------
