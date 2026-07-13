@@ -4,19 +4,21 @@
 // issued automatically or left for the app to trigger via the cast's `.unlock()`.
 
 import { describe, expect, it, vi } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject, filter, firstValueFrom } from "rxjs";
-import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { BehaviorSubject, EMPTY, NEVER, Subject, delay, filter, firstValueFrom, from } from "rxjs";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
 import "applesauce-common/casts";
 import type { RelayPool } from "applesauce-relay";
-import type { NostrEvent } from "applesauce-core/helpers/event";
+import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
 
 import { ConcordClient } from "../client.js";
 import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
 import { COMMUNITY_LIST_KIND, mergeCommunities } from "../../helpers/community-list.js";
 import { createCommunity } from "../../helpers/community.js";
+import { buildInviteBundle, buildInviteLink, newInviteToken } from "../../helpers/invite-bundle.js";
+import { InviteBundleFactory } from "../../factories/invite-bundle.js";
 import type { ConcordClientStatus, JoinMaterial } from "../../types.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
@@ -434,5 +436,81 @@ describe("ConcordClient community list (DI, no network)", () => {
     client.stop();
     expect(client.phase$.value).toBe("idle");
     sub.unsubscribe();
+  });
+});
+
+// A pool that serves matching events ASYNCHRONOUSLY (a tick after subscribe), like a
+// real relay, then completes on EOSE. This is what makes the join regression below
+// meaningful: a synchronous `from(events)` mock would let a buggy `firstValueFrom`
+// pipe see the real value first and hide the defect.
+function asyncServingPool(events: NostrEvent[]): RelayPool {
+  const serve = (filters: unknown) => {
+    const fs = (Array.isArray(filters) ? filters : [filters]) as Array<{ kinds?: number[]; authors?: string[] }>;
+    const match = events.filter((e) =>
+      fs.some((f) => (!f.kinds || f.kinds.includes(e.kind)) && (!f.authors || f.authors.includes(e.pubkey))),
+    );
+    return from(match).pipe(delay(0));
+  };
+  const relay = {
+    url: "wss://fake",
+    challenge: null,
+    challenge$: new BehaviorSubject<string | null>(null),
+    isAuthenticated: () => false,
+    authenticate: async () => ({ ok: true, from: "wss://fake" }),
+    getSupported: async () => null,
+    sync: () => EMPTY,
+    request: (filters: unknown) => serve(filters),
+  };
+  return {
+    status$: new Subject(),
+    relay: () => relay,
+    subscription: () => NEVER,
+    request: (_relays: string[], filters: unknown) => serve(filters),
+    publish: async () => [],
+  } as unknown as RelayPool;
+}
+
+describe("ConcordClient.joinByLink (DI, async-served bundle)", () => {
+  // Regression: `mapEventsToTimeline` seeds an immediate `[]` so the pipe never
+  // completes empty; a `firstValueFrom` there resolves with that synchronous `[]`
+  // BEFORE any relay replies, so the invite bundle is never actually read and the
+  // join throws "invite bundle not found". `joinByLink` must instead wait for the
+  // request to complete (`lastValueFrom`) and take the accumulated timeline.
+  it("waits for the relay reply and joins from the fetched bundle", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const genesis = await createCommunity({
+      ownerPubkey: ownerPub,
+      name: "Async",
+      description: "served after a tick",
+      relays: ["wss://fake"],
+    });
+    const cid = genesis.material.community_id;
+
+    // Mint an invite bundle event exactly as `ConcordCommunity.createInvite` does:
+    // a link-key-signed kind-13309 carrying the token-encrypted §1 bundle, plus the
+    // shareable link that points at it.
+    const token = newInviteToken();
+    const linkSk = generateSecretKey();
+    const linkPub = getPublicKey(linkSk);
+    const bundle = buildInviteBundle(genesis.material, { name: "Async", creator_npub: ownerPub });
+    const template = await InviteBundleFactory.create(bundle, token);
+    const bundleEvent = finalizeEvent(template, linkSk) as NostrEvent;
+    const link = buildInviteLink("https://app.example", linkPub, token, genesis.material.relays);
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      pool: asyncServingPool([bundleEvent]),
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+    });
+    await client.start();
+
+    const community = await client.joinByLink(link);
+    expect(community.communityId).toBe(cid);
+    expect(client.getCommunity(cid)).toBeDefined();
+
+    client.stop();
   });
 });

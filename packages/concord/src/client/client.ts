@@ -15,6 +15,7 @@ import {
   distinctUntilChanged,
   filter,
   firstValueFrom,
+  lastValueFrom,
   map,
   of,
   shareReplay,
@@ -64,6 +65,7 @@ import type {
   CommunityTombstone,
   ConcordClientStatus,
   ConcordCommunityStatus,
+  InviteBundle,
   JoinMaterial,
 } from "../types.js";
 import { ConcordCommunity } from "./community.js";
@@ -405,10 +407,17 @@ export class ConcordClient {
   async joinByLink(url: string): Promise<ConcordCommunity> {
     const parsed = parseInviteLink(url);
     const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : this.defaultRelays;
-    const events = await firstValueFrom(
+    // Collect the whole timeline once the request completes (EOSE), NOT the first
+    // emission: `mapEventsToTimeline` seeds an immediate `[]` (via
+    // `withImmediateValueOrDefault`) so the pipe never completes empty, which means
+    // `firstValueFrom` would resolve with that synchronous `[]` before any relay
+    // replies — the invite bundle would never be fetched. `lastValueFrom` waits for
+    // completion and yields the fully-accumulated timeline.
+    const events = await lastValueFrom(
       this.pool
         .request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner] }])
         .pipe(mapEventsToTimeline(), timeout(10000)),
+      { defaultValue: [] as NostrEvent[] },
     ).catch(() => [] as NostrEvent[]);
 
     const live = events
@@ -419,6 +428,26 @@ export class ConcordClient {
     // Bound and self-certify the attacker-crafted bundle (CORD-05 §1).
     const bundle = validateInviteBundle(getInviteBundle(live, parsed.token));
     if (!bundle) throw new Error("invite failed owner verification");
+
+    return this.joinFromBundle(bundle, relays);
+  }
+
+  /**
+   * Accept a CORD-05 §6 Direct Invite to a **new** community: join from the
+   * invite's self-certified §1 bundle (e.g. `ConcordDirectInvite.bundle`). A
+   * Direct Invite for a community we're already in has its channel keys folded in
+   * automatically by {@link InviteWatcher}; this drives the full-join flow the
+   * watcher deliberately leaves to the app. Returns the existing engine if we are
+   * already a member.
+   */
+  async joinByBundle(bundle: InviteBundle): Promise<ConcordCommunity> {
+    return this.joinFromBundle(bundle, this.defaultRelays);
+  }
+
+  /** The shared tail of {@link joinByLink} / {@link joinByBundle}: turn an
+   *  already-validated §1 bundle into a joined community (add engine, persist,
+   *  publish our attributed Join, republish the list). */
+  private async joinFromBundle(bundle: InviteBundle, fallbackRelays: string[]): Promise<ConcordCommunity> {
     if (bundle.expires_at && Date.now() > bundle.expires_at) throw new Error("invite expired");
 
     const material: JoinMaterial = {
@@ -428,7 +457,7 @@ export class ConcordClient {
       community_root: bundle.community_root,
       root_epoch: bundle.root_epoch,
       channels: bundle.channels ?? [],
-      relays: bundle.relays.length ? bundle.relays : relays,
+      relays: bundle.relays.length ? bundle.relays : fallbackRelays,
       name: bundle.name,
       // Canonicalize to [] (invite bundles omit held_roots) so this join material
       // is byte-identical to what the engine's `buildChain` settles on — otherwise
@@ -682,11 +711,17 @@ export class ConcordClient {
       }
       const plaintext = JSON.stringify({ entries: list, tombstones });
       const content = await this.signer.nip44.encrypt(this.pubkey, plaintext);
+      // 13302 is replaceable: NIP-01 keeps the lowest event id on a created_at tie, so a save
+      // within the same second as the edition already on the relay could lose that tie and be
+      // dropped. Stamp a strictly-greater created_at than the last known edition so this always
+      // supersedes it.
+      const previous = this.eventStore.getReplaceable(COMMUNITY_LIST_KIND, this.pubkey);
+      const createdAt = Math.max(Math.floor(Date.now() / 1000), (previous?.created_at ?? 0) + 1);
       const signed = await this.signer.signEvent({
         kind: COMMUNITY_LIST_KIND,
         content,
         tags: [],
-        created_at: Math.floor(Date.now() / 1000),
+        created_at: createdAt,
       });
       // Prime the plaintext BEFORE adding: `eventStore.add` notifies subscribers synchronously,
       // so the exposed cast (and the auto-unlock path) must already see this event as unlocked —
