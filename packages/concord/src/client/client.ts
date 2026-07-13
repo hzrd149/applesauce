@@ -386,7 +386,7 @@ export class ConcordClient {
 
   // ---- creating / joining -------------------------------------------------
 
-  async createNewCommunity(name: string, description: string, relays: string[]): Promise<string> {
+  async createNewCommunity(name: string, description: string, relays: string[]): Promise<ConcordCommunity> {
     const genesis = await createCommunity({
       ownerPubkey: this.pubkey,
       name,
@@ -401,7 +401,7 @@ export class ConcordClient {
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     // Explicit membership mutation — always publish (independent of autoSaveCommunityList).
     await this.saveCommunityList();
-    return genesis.material.community_id;
+    return community;
   }
 
   async joinByLink(url: string): Promise<ConcordCommunity> {

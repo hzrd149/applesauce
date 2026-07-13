@@ -75,14 +75,14 @@ client.status$.subscribe((s) => {
 ## Creating a community
 
 ```ts
-const communityId = await client.createNewCommunity(
+const community = await client.createNewCommunity(
   "My Community",
   "A place to hang out",
   ["wss://relay.example.com"],
 );
 ```
 
-This mints the genesis events, publishes them, adds you as the owner, and republishes your community list. The returned id is joinable immediately via `getCommunity`.
+This mints the genesis events, publishes them, adds you as the owner, and republishes your community list. It returns the live `ConcordCommunity` engine, ready to act on immediately.
 
 ## Joining a community
 
