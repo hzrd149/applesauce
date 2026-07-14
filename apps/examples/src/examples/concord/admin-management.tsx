@@ -620,7 +620,7 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
   async function createChannel() {
     setBusy(true);
     try {
-      await community.admin.createChannel(name.trim() || "new-channel", isPrivate, voice);
+      await community.admin.createChannel(name.trim() || "new-channel", { private: isPrivate, voice });
       setName("");
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to create channel");

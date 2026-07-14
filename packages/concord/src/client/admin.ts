@@ -47,6 +47,14 @@ import type { ConcordCommunity } from "./community.js";
 import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
 import type { ConcordRumorStore, ConcordUploader } from "./storage.js";
 
+/** Options for {@link ConcordCommunityAdmin.createChannel}. */
+export interface CreateChannelOptions {
+  /** Create a private (key-gated, invite-only) channel. Defaults to `false` — a public channel. */
+  private?: boolean;
+  /** Mark the channel as voice. Defaults to `false`. */
+  voice?: boolean;
+}
+
 /** An entity's current head edition — what the next version must chain to. */
 export interface EditionHead {
   version: number;
@@ -171,11 +179,12 @@ export class ConcordCommunityAdmin {
 
   // ---- channels (vsk 2) ----------------------------------------------------
 
-  async createChannel(name: string, isPrivate: boolean, voice = false): Promise<string> {
+  async createChannel(name: string, options: CreateChannelOptions = {}): Promise<string> {
+    const isPrivate = options.private ?? false;
     const channelId = bytesToHex(generateSecretKey());
     if (isPrivate) this.opts.mintChannelKey(channelId, name);
     const content: Record<string, unknown> = { name, private: isPrivate };
-    if (voice) content.voice = true;
+    if (options.voice) content.voice = true;
     await this.publishEdition(VSK.CHANNEL, channelId, JSON.stringify(content));
     return channelId;
   }

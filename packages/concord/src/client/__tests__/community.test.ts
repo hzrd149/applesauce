@@ -157,7 +157,7 @@ describe("ConcordCommunity (DI, no network)", () => {
 
     // Create a private channel — mints its key + publishes the CHANNEL edition;
     // once it folds, the community spawns a ConcordPrivateChannel sub-engine.
-    const channelId = await community.createChannel("secret", true);
+    const channelId = await community.createChannel("secret", { private: true });
     await settle();
     expect(community.state$.value.channels.find((c) => c.channel_id === channelId)?.private).toBe(true);
 
@@ -211,8 +211,8 @@ describe("ConcordCommunity (DI, no network)", () => {
     await settle();
 
     // Two private channels — the grant must carry ONLY the named one, never the other.
-    const secret = await community.createChannel("secret", true);
-    const other = await community.createChannel("other", true);
+    const secret = await community.createChannel("secret", { private: true });
+    const other = await community.createChannel("other", { private: true });
     await settle();
 
     // A channel-scoped membership role folds with its channel_id intact (CORD-04 §2).
@@ -325,7 +325,7 @@ describe("ConcordCommunity (DI, no network)", () => {
     for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
-    const channelId = await community.createChannel("secret", true);
+    const channelId = await community.createChannel("secret", { private: true });
     await settle();
     await community.sendMessage(channelId, "secret hello");
     await settle();

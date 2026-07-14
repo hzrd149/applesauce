@@ -61,7 +61,7 @@ import {
   type RoleScope,
 } from "../types.js";
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
-import { ConcordCommunityAdmin } from "./admin.js";
+import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
 import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader } from "./storage.js";
 import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
@@ -797,8 +797,8 @@ export class ConcordCommunity {
     return this.admin.removeCommunityImage(which);
   }
 
-  createChannel(name: string, isPrivate: boolean, voice = false): Promise<string> {
-    return this.admin.createChannel(name, isPrivate, voice);
+  createChannel(name: string, options?: CreateChannelOptions): Promise<string> {
+    return this.admin.createChannel(name, options);
   }
 
   deleteChannel(channelId: string): Promise<void> {
