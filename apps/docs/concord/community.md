@@ -76,6 +76,18 @@ Attachments require an `uploader` on the [client](/concord/client). Each file is
 await community.sendMessage(channelId, "check this out", undefined, [file]);
 ```
 
+Pass `onUploadProgress` to show per-send attachment progress without global state:
+
+```ts
+await community.sendMessage(channelId, text, undefined, files, emojis, {
+  onUploadProgress: ({ total, done, phase }) => {
+    console.log(`${phase} file ${done + 1} of ${total}`);
+  },
+});
+```
+
+`done` counts completed files. Once `done === total`, the media work is finished and the remaining wait is the message publish.
+
 ### Reactions, edits, deletes
 
 ```ts

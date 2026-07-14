@@ -26,6 +26,7 @@ import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity } from "../community.js";
+import type { ConcordUploader } from "../storage.js";
 
 // The control fold + sync are debounced/async; let them run before asserting.
 const settle = () => new Promise((r) => setTimeout(r, 200));
@@ -586,7 +587,7 @@ function rumorFromTemplate(template: RumorTemplate, pubkey: string, ms = 1_000):
 
 describe("ConcordCommunity permissions + granular reads", () => {
   /** An engine whose logged-in user is a plain member, seeded with owner genesis. */
-  async function memberCommunity() {
+  async function memberCommunity(uploader?: ConcordUploader) {
     const ownerSigner = new PrivateKeySigner(generateSecretKey());
     const owner = await ownerSigner.getPublicKey();
     const memberSigner = new PrivateKeySigner(generateSecretKey());
@@ -600,6 +601,7 @@ describe("ConcordCommunity permissions + granular reads", () => {
       pool,
       relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
+      uploader,
       relays: ["wss://fake"],
     });
     await community.start();
@@ -730,6 +732,30 @@ describe("ConcordCommunity permissions + granular reads", () => {
 
     roleSub.unsubscribe();
     memberSub.unsubscribe();
+    community.dispose();
+  });
+
+  it("reports attachment upload progress per send", async () => {
+    const uploader: ConcordUploader = {
+      async upload(file, _communityId, options) {
+        options?.onProgress?.("uploading");
+        return { url: `https://cdn.example/${await file.text()}` };
+      },
+    };
+    const { community } = await memberCommunity(uploader);
+    const progress: string[] = [];
+    const general = community.state$.value.channels.find((c) => c.name === "general")!;
+
+    await community.sendMessage(
+      general.channel_id,
+      "files",
+      undefined,
+      [new Blob(["a"]), new Blob(["b"])],
+      undefined,
+      { onUploadProgress: (p) => progress.push(`${p.phase}:${p.done}/${p.total}`) },
+    );
+
+    expect(progress).toEqual(["encrypting:0/2", "uploading:0/2", "uploading:1/2", "encrypting:1/2", "uploading:1/2", "uploading:2/2"]);
     community.dispose();
   });
 });

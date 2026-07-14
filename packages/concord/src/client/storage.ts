@@ -4,6 +4,21 @@ import type { AsyncRumorStore, RumorStore } from "applesauce-core";
 
 import type { MediaAttachment } from "../helpers/imeta.js";
 
+/** Progress for a batch of attachments sent with a chat message. */
+export interface ConcordUploadProgress {
+  /** Files in this send operation. */
+  total: number;
+  /** Files fully uploaded so far, so the file being worked on is `done + 1`. */
+  done: number;
+  /** Which half of the current file's trip is in progress. */
+  phase: "encrypting" | "uploading";
+}
+
+/** Per-file progress emitted by a {@link ConcordUploader}. */
+export interface ConcordUploadOptions {
+  onProgress?: (phase: ConcordUploadProgress["phase"]) => void;
+}
+
 /** A per-plane rumor store — either the in-memory {@link RumorStore} or an
  *  {@link AsyncRumorStore} backed by an async event database. */
 export type ConcordRumorStore = RumorStore | AsyncRumorStore;
@@ -55,7 +70,7 @@ export function defaultStorage(): ConcordStorage {
  * Blossom dependency; the app supplies a Blossom-backed implementation.
  */
 export interface ConcordUploader {
-  upload(file: Blob, communityId: string): Promise<MediaAttachment>;
+  upload(file: Blob, communityId: string, options?: ConcordUploadOptions): Promise<MediaAttachment>;
 }
 
 // ---- decoded-rumor cache (survives reload independent of relay behaviour) ----

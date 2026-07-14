@@ -42,10 +42,26 @@ Sending file attachments or setting a community icon/banner requires an `uploade
 
 ```ts
 interface ConcordUploader {
-  upload(file: Blob, communityId: string): Promise<MediaAttachment>;
+  upload(file: Blob, communityId: string, options?: ConcordUploadOptions): Promise<MediaAttachment>;
 }
 
 const client = new ConcordClient({ signer, pool, uploader: myUploader });
 ```
 
 Without an uploader, `sendMessage` with files, `setCommunityImage`, and friends throw. Everything else works fine.
+
+### Upload progress
+
+`sendMessage` can report progress for the whole attachment batch. The uploader reports per-file phase changes through `options.onProgress`, and Concord turns them into `{ total, done, phase }` for the send call.
+
+```ts
+const uploader: ConcordUploader = {
+  async upload(file, communityId, options) {
+    const encrypted = await encrypt(file);
+    options?.onProgress?.("uploading");
+    return uploadEncrypted(encrypted, communityId);
+  },
+};
+```
+
+Concord emits the initial `"encrypting"` phase before each file is handed to the uploader, so uploaders usually only need to report the transition to `"uploading"`.

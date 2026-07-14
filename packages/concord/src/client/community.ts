@@ -63,8 +63,12 @@ import {
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
 import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
-import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader } from "./storage.js";
+import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader, ConcordUploadProgress } from "./storage.js";
 import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
+
+export interface ConcordSendMessageOptions {
+  onUploadProgress?: (progress: ConcordUploadProgress) => void;
+}
 
 /** Options for constructing a single-community {@link ConcordCommunity} engine. */
 export interface ConcordCommunityOptions {
@@ -720,6 +724,7 @@ export class ConcordCommunity {
     replyTo?: { id: string; author: string },
     files?: Blob[],
     emojis?: Emoji[],
+    options: ConcordSendMessageOptions = {},
   ): Promise<void> {
     const epoch = this.channelEpoch(channelId);
     let content = text;
@@ -727,10 +732,18 @@ export class ConcordCommunity {
     if (files?.length) {
       if (!this.uploader) throw new Error("no uploader configured: cannot send file attachments");
       attachments = [];
-      for (const file of files) {
-        const attachment = await this.uploader.upload(file, this.communityId);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        let phase: ConcordUploadProgress["phase"] = "encrypting";
+        const emit = (next: ConcordUploadProgress["phase"]) => {
+          phase = next;
+          options.onUploadProgress?.({ total: files.length, done: i, phase });
+        };
+        emit("encrypting");
+        const attachment = await this.uploader.upload(file, this.communityId, { onProgress: emit });
         if (!attachment.url) throw new Error("uploader did not return a url");
         attachments.push(attachment);
+        options.onUploadProgress?.({ total: files.length, done: i + 1, phase });
         content = content ? `${content}\n${attachment.url}` : attachment.url;
       }
     }
