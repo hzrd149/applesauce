@@ -6,7 +6,7 @@ import { EditionFactory } from "../../factories/control.js";
 import { computeEditionHash } from "../editions.js";
 import { createCommunity } from "../community.js";
 import { foldControl } from "../control.js";
-import { inviteLinksLocator } from "../crypto.js";
+import { banlistLocator, inviteLinksLocator } from "../crypto.js";
 import { decoded } from "./test-utils.js";
 
 const OWNER = "ab".repeat(32);
@@ -40,6 +40,25 @@ describe("control fold", () => {
     const state = foldControl(events, genesis.material);
     expect(state.inviteLinks.has("11".repeat(32))).toBe(true);
     expect(state.inviteLinks.has("22".repeat(32))).toBe(false);
+  });
+
+  it("folds the banlist only at its derived coordinate", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    // A banlist at any other eid is forged. Delivered FIRST, so a fold that took
+    // whichever eid group arrived first would shadow the real list with this one —
+    // and would disagree with a client that received them the other way round.
+    const forged = await EditionFactory.create({ vsk: VSK.BANLIST, eid: "cc".repeat(32), version: 1, content: JSON.stringify(["22".repeat(32)]) });
+    events.push(decoded(forged, genesis.material.owner, 2_000));
+
+    const real = await EditionFactory.create({ vsk: VSK.BANLIST, eid: banlistLocator(hexToBytes(cid)), version: 1, content: JSON.stringify(["11".repeat(32)]) });
+    events.push(decoded(real, genesis.material.owner, 3_000));
+
+    const state = foldControl(events, genesis.material);
+    expect(state.banlist.has("11".repeat(32))).toBe(true);
+    expect(state.banlist.has("22".repeat(32))).toBe(false);
   });
 
   it("folds only the 100 lowest role_ids", async () => {

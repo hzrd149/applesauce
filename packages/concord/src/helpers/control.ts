@@ -19,7 +19,7 @@ import type {
 import { hasPerm, resolveStanding } from "./permissions.js";
 import { isHexKey } from "applesauce-core/helpers/string";
 import { hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { editionHash, inviteLinksLocator } from "./crypto.js";
+import { banlistLocator, editionHash, inviteLinksLocator } from "./crypto.js";
 
 /** Concord control-plane edition kind (CORD-04). */
 export const CONTROL_KIND = 3308;
@@ -238,15 +238,20 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
     }
   }
 
+  const cidBytes = hexToBytes(material.community_id);
+
   // ---- Banlist (BAN) ------------------------------------------------------
+  // The Banlist lives at exactly ONE derived coordinate, so an edition at any other
+  // eid is forged. Folding whichever eid group happened to arrive first would both
+  // let a BAN-holder shadow the real list with an empty one and make the fold
+  // delivery-order dependent — clients would disagree on who is banned.
   const banlist = new Set<string>();
-  for (const cand of groupByEntity(byVsk(VSK.BANLIST)).values().next().value ?? []) {
-    const e = cand as Edition;
-    const s = standing(e.author);
+  for (const cand of groupByEntity(byVsk(VSK.BANLIST)).get(banlistLocator(cidBytes)) ?? []) {
+    const s = standing(cand.author);
     if (!s.isOwner && !hasPerm(s.permissions, PERM.BAN)) continue;
     try {
-      for (const pk of JSON.parse(e.content) as string[]) banlist.add(pk);
-      heads.set(e.eid, e.source);
+      for (const pk of JSON.parse(cand.content) as string[]) banlist.add(pk);
+      heads.set(cand.eid, cand.source);
       break;
     } catch {
       /* skip */
@@ -259,7 +264,6 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
   // forged entry into someone else's list. The aggregate live-link set is the
   // Public/Private source of truth: non-empty = Public.
   const inviteLinks = new Set<string>();
-  const cidBytes = hexToBytes(material.community_id);
   for (const [eid, cands] of groupByEntity(byVsk(VSK.INVITE_REGISTRY))) {
     for (const cand of cands) {
       const s = standing(cand.author);
