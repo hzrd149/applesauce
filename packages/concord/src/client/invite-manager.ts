@@ -39,6 +39,8 @@ export interface ConcordInviteLink {
   communityId: string;
   url: string;
   label?: string;
+  /** Private channel ids this link grants. Omitted or empty grants none. */
+  channels?: string[];
   /** Unix seconds, matching the CORD-05 Invite List wire field. */
   createdAt: number;
   /** Unix milliseconds, matching the CommunityInvite bundle field. */
@@ -67,6 +69,8 @@ export interface CreateInviteOptions {
   label?: string;
   /** Unix milliseconds. */
   expiresAt?: number;
+  /** Private channels this link grants, by channel id. Omit to grant none. */
+  channels?: string[];
 }
 
 export class ConcordInviteManager {
@@ -265,6 +269,7 @@ function fromInviteListInvite(invite: InviteListInvite, tombstones: InviteListTo
     communityId: invite.community_id,
     url: invite.url,
     label: invite.label,
+    channels: invite.channels,
     createdAt: invite.created_at,
     expiresAt: invite.expires_at,
     revoked: tombstones.some((t) => t.token === invite.token),
@@ -279,6 +284,7 @@ function toInviteListInvite(invite: ConcordInviteLink | InviteListInvite): Invit
     community_id: invite.communityId,
     url: invite.url,
     label: invite.label,
+    channels: invite.channels,
     created_at: invite.createdAt,
     expires_at: invite.expiresAt,
   };

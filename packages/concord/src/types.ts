@@ -200,9 +200,11 @@ export interface InviteListInvite {
   /** The full shareable invite URL. */
   url: string;
   label?: string;
+  /** Private channel ids this link grants. Omitted or empty grants none. */
+  channels?: string[];
   /** Unix seconds the link was minted. */
   created_at: number;
-  /** Optional unix-second expiry. */
+  /** Optional unix-millisecond expiry. */
   expires_at?: number;
   [k: string]: unknown;
 }

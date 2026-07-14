@@ -153,30 +153,39 @@ export interface BuildInviteBundleOptions {
   label?: string;
   /** Optional unix-ms expiry; past it the preview renders but joining refuses. */
   expires_at?: number;
+  /** Private channels this bundle grants, by channel id. Omit to grant none. */
+  channels?: string[];
 }
 
 /**
  * Assemble the §1 `CommunityInvite` bundle from the inviter's own join material.
  * The single source of truth for both the link bundle (§1) and the Direct Invite
- * bundle (§6): the inviter's held channel keys travel so the joiner can read the
- * granted Channels, and the `community_id` self-certifies the owner (§1).
+ * bundle (§6): explicitly selected channel keys travel so the joiner can read
+ * the granted Channels, and the `community_id` self-certifies the owner (§1).
  */
 export function buildInviteBundle(material: JoinMaterial, opts: BuildInviteBundleOptions = {}): InviteBundle {
+  const channelIds = opts.channels ?? [];
+  const channels = channelIds.map((id) => {
+    const channel = material.channels.find((c) => c.id === id);
+    if (!channel) throw new Error(`not a private channel we hold a key for: ${id}`);
+    return {
+      id: channel.id,
+      key: channel.key,
+      epoch: channel.epoch,
+      name: channel.name,
+      // Carry prior channel keys so a joiner decodes messages under earlier channel
+      // epochs (a channel that was rekeyed before they joined — CORD-06).
+      ...(channel.held ? { held: channel.held } : {}),
+    };
+  });
+
   return {
     community_id: material.community_id,
     owner: material.owner,
     owner_salt: material.owner_salt,
     community_root: material.community_root,
     root_epoch: material.root_epoch,
-    channels: material.channels.map((c) => ({
-      id: c.id,
-      key: c.key,
-      epoch: c.epoch,
-      name: c.name,
-      // Carry prior channel keys so a joiner decodes messages under earlier channel
-      // epochs (a channel that was rekeyed before they joined — CORD-06).
-      ...(c.held ? { held: c.held } : {}),
-    })),
+    channels,
     relays: material.relays,
     name: opts.name ?? material.name,
     icon: opts.icon,

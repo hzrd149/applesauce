@@ -932,6 +932,7 @@ export class ConcordCommunity {
       creator_npub: this.pubkey,
       label: options.label,
       expires_at: options.expiresAt,
+      channels: options.channels,
     });
 
     const template = await InviteBundleFactory.create(bundle, token);
@@ -950,6 +951,7 @@ export class ConcordCommunity {
       communityId: this.communityId,
       url: buildInviteLink(options.base, linkPub, token, inviteRelays),
       label: options.label,
+      channels: options.channels,
       createdAt: Math.floor(Date.now() / 1000),
       expiresAt: options.expiresAt,
       revoked: false,
@@ -976,6 +978,7 @@ export class ConcordCommunity {
         creator_npub: this.pubkey,
         label: link.label,
         expires_at: link.expiresAt,
+        channels: link.channels,
       });
       const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
       const signed = finalizeEvent(template, hexToBytes(link.signerSk));
@@ -1015,29 +1018,13 @@ export class ConcordCommunity {
     if (ids.length === 0) throw new Error("no channels to grant");
     if (!this.canDo(PERM.MANAGE_CHANNELS)) throw new Error("need MANAGE_CHANNELS to grant channel access");
 
-    const keys: ChannelKey[] = ids.map((id) => {
-      const channelKey = this.material.channels.find((c) => c.id === id);
-      if (!channelKey) throw new Error(`not a private channel we hold a key for: ${id}`);
-      return {
-        id: channelKey.id,
-        key: channelKey.key,
-        epoch: channelKey.epoch,
-        name: channelKey.name,
-        ...(channelKey.held ? { held: channelKey.held } : {}),
-      };
-    });
-
     const state = this.state$.value;
-    const bundle: InviteBundle = {
-      ...buildInviteBundle(this.material, {
-        name: state.metadata?.name,
-        icon: state.metadata?.icon,
-        creator_npub: this.pubkey,
-      }),
-      // Only the requested channels travel — buildInviteBundle would otherwise carry
-      // every private channel we hold, over-granting the recipient.
-      channels: keys,
-    };
+    const bundle: InviteBundle = buildInviteBundle(this.material, {
+      name: state.metadata?.name,
+      icon: state.metadata?.icon,
+      creator_npub: this.pubkey,
+      channels: ids,
+    });
 
     const wrap = await DirectInviteFactory.create(bundle, member, this.signer);
     this.eventStore.add(wrap);

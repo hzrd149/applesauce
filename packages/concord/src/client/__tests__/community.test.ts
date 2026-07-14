@@ -366,11 +366,18 @@ describe("ConcordCommunity (DI, no network)", () => {
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
-    const link = await community.createInvite({ base: "https://x.io", label: "Reddit" });
+    const secret = await community.createChannel("secret", { private: true });
+    const other = await community.createChannel("other", { private: true });
+    await settle();
+
+    const link = await community.createInvite({ base: "https://x.io", label: "Reddit", channels: [secret] });
     const priorRoot = community.material.community_root;
     // The freshly minted bundle carries the current (pre-Refounding) root.
     const minted = published.find((e) => e.kind === INVITE_BUNDLE_KIND && e.pubkey === link.signerPubkey)!;
-    expect(getInviteBundle(minted, hexToBytes(link.token))?.community_root).toBe(priorRoot);
+    const mintedBundle = getInviteBundle(minted, hexToBytes(link.token));
+    expect(mintedBundle?.community_root).toBe(priorRoot);
+    expect(mintedBundle?.channels.map((c) => c.id)).toEqual([secret]);
+    expect(mintedBundle?.channels.map((c) => c.id)).not.toContain(other);
 
     // Refound: the root rolls, and the community signals onRefounded (the client's
     // cue to drive the refresh, which needs the link secret it holds).
@@ -389,6 +396,8 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(bundle?.community_root).toBe(newRoot);
     expect(bundle?.root_epoch).toBe(community.material.root_epoch);
     expect(bundle?.label).toBe("Reddit");
+    expect(bundle?.channels.map((c) => c.id)).toEqual([secret]);
+    expect(bundle?.channels.map((c) => c.id)).not.toContain(other);
 
     community.dispose();
   });

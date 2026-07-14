@@ -11,6 +11,7 @@ import { EventStore } from "applesauce-core";
 import "applesauce-common/casts";
 import type { RelayPool } from "applesauce-relay";
 import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
+import { hexToBytes } from "@noble/hashes/utils.js";
 
 import { ConcordClient } from "../client.js";
 import type { ConcordCommunityList } from "../../casts/index.js";
@@ -18,7 +19,7 @@ import { memoryStorage } from "../storage.js";
 import { COMMUNITY_LIST_KIND, mergeCommunities } from "../../helpers/community-list.js";
 import { INVITE_LIST_KIND } from "../../helpers/invite-list.js";
 import { createCommunity } from "../../helpers/community.js";
-import { buildInviteBundle, buildInviteLink, newInviteToken } from "../../helpers/invite-bundle.js";
+import { INVITE_BUNDLE_KIND, buildInviteBundle, buildInviteLink, getInviteBundle, newInviteToken } from "../../helpers/invite-bundle.js";
 import { InviteBundleFactory } from "../../factories/invite-bundle.js";
 import type { ConcordClientStatus, JoinMaterial } from "../../types.js";
 
@@ -112,7 +113,7 @@ const inviteListPublishes = (published: NostrEvent[]) => published.filter((e) =>
 async function decryptInviteList(signer: PrivateKeySigner, event: NostrEvent) {
   const pubkey = await signer.getPublicKey();
   return JSON.parse(await signer.nip44!.decrypt(pubkey, event.content)) as {
-    entries: Array<{ token: string; signer_sk: string; community_id: string; url: string; label?: string }>;
+    entries: Array<{ token: string; signer_sk: string; community_id: string; url: string; label?: string; channels?: string[] }>;
     tombstones: Array<{ token: string; community_id: string }>;
   };
 }
@@ -428,16 +429,29 @@ describe("ConcordClient community list (DI, no network)", () => {
     await client.start();
     const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
     await settle();
+    const secret = await community.createChannel("secret", { private: true });
+    const other = await community.createChannel("other", { private: true });
+    await settle();
     published.length = 0;
 
-    const invite = await client.invites.create(community.communityId, { base: "https://app.example", label: "Reddit" });
+    const invite = await client.invites.create(community.communityId, {
+      base: "https://app.example",
+      label: "Reddit",
+      channels: [secret],
+    });
     await settle();
 
     expect(invite.url).toContain("https://app.example/invite/");
     expect(invite.communityId).toBe(community.communityId);
     expect(invite.label).toBe("Reddit");
+    expect(invite.channels).toEqual([secret]);
     expect(client.invites.live$.value.map((i) => i.token)).toContain(invite.token);
     expect(community.state$.value.inviteLinks.has(invite.signerPubkey)).toBe(true);
+
+    const bundleEvent = published.find((e) => e.kind === INVITE_BUNDLE_KIND && e.pubkey === invite.signerPubkey)!;
+    const bundle = getInviteBundle(bundleEvent, hexToBytes(invite.token));
+    expect(bundle?.channels.map((c) => c.id)).toEqual([secret]);
+    expect(bundle?.channels.map((c) => c.id)).not.toContain(other);
 
     const saves = inviteListPublishes(published);
     expect(saves).toHaveLength(1);
@@ -445,6 +459,7 @@ describe("ConcordClient community list (DI, no network)", () => {
     expect(doc.entries.map((entry) => entry.token)).toEqual([invite.token]);
     expect(doc.entries[0].signer_sk).toBe(invite.signerSk);
     expect(doc.entries[0].label).toBe("Reddit");
+    expect(doc.entries[0].channels).toEqual([secret]);
     expect(doc.tombstones).toEqual([]);
 
     client.stop();

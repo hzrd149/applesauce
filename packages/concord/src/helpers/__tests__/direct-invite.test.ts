@@ -25,7 +25,26 @@ describe("buildInviteBundle", () => {
     expect(bundle.owner).toBe(owner);
     expect(bundle.creator_npub).toBe(owner);
     expect(bundle.label).toBe("Reddit");
+    expect(bundle.channels).toEqual([]);
     expect(validateInviteBundle(bundle)).toBeTruthy();
+  });
+
+  it("grants only selected private channels and preserves held keys", async () => {
+    const { material } = await genesis();
+    const channels = [
+      { id: "a", key: "11".repeat(32), epoch: 2, name: "mods", held: [{ epoch: 1, key: "22".repeat(32) }] },
+      { id: "b", key: "33".repeat(32), epoch: 1, name: "founders" },
+    ];
+
+    const bundle = buildInviteBundle({ ...material, channels }, { channels: ["a"] });
+    expect(bundle.channels).toEqual([channels[0]]);
+  });
+
+  it("rejects unknown channel grants", async () => {
+    const { material } = await genesis();
+    expect(() => buildInviteBundle(material, { channels: ["missing"] })).toThrow(
+      "not a private channel we hold a key for: missing",
+    );
   });
 });
 
