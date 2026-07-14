@@ -520,6 +520,7 @@ export class ConcordClient {
       onRemoved: (removed) => this.handleRemoved(removed),
       onInviteCreated: (invite) => this.invites.record(invite),
       onInviteRevoked: (invite) => this.invites.tombstone(invite),
+      onRefounded: (cid) => this.refreshInvitesFor(cid),
     });
     this.communities.set(material.community_id, community);
     this.stateSubs.set(
@@ -551,6 +552,18 @@ export class ConcordClient {
 
   private emitCommunities(): void {
     this.communities$.next([...this.communities.values()].map((c) => c.state$.value));
+  }
+
+  /** Re-post a community's live invite bundles after a Refounding (CORD-05 §2). The
+   *  Invite List holds the per-link signer secrets, so the refresh is driven here
+   *  and handed to the community engine, which rebuilds each bundle from the fresh
+   *  material. Revoked links are skipped — their coordinate is already a tombstone. */
+  private refreshInvitesFor(cid: string): void {
+    const community = this.communities.get(cid);
+    if (!community) return;
+    const links = this.invites.forCommunity(cid).filter((link) => !link.revoked);
+    if (links.length === 0) return;
+    void community.refreshInviteBundles(links).catch((err) => console.warn("invite refresh failed", err));
   }
 
   // ---- local material mirror ----------------------------------------------

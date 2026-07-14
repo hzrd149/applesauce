@@ -23,6 +23,7 @@ import { SnapshotFactory } from "../../factories/guestbook.js";
 import { EditionFactory } from "../../factories/control.js";
 import { channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
+import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity } from "../community.js";
 
@@ -262,6 +263,133 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(community.canDo(PERM.MANAGE_CHANNELS)).toBe(true); // owner can
     community.dispose();
     memberEngine.dispose();
+  });
+
+  it("grants a hand-picked subset of private channels in one Direct Invite (CORD-05 §6)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const member = new PrivateKeySigner(generateSecretKey());
+    const memberPub = await member.getPublicKey();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return [];
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Three private channels; grant exactly two of them.
+    const a = await community.createChannel("a", { private: true });
+    const b = await community.createChannel("b", { private: true });
+    const c = await community.createChannel("c", { private: true });
+    await settle();
+
+    published.length = 0;
+    await community.grantChannelAccess([a, b], memberPub);
+    const wrap = published.find(
+      (e) =>
+        e.kind === kinds.GiftWrap &&
+        e.tags.some((t) => t[0] === "p" && t[1] === memberPub) &&
+        e.tags.some((t) => t[0] === "k" && t[1] === "3313"),
+    );
+    expect(wrap).toBeDefined();
+
+    // The bundle carries exactly the two granted channels — never the third.
+    const bundle = await unlockDirectInvite(wrap!, member);
+    expect(bundle?.channels.map((ch) => ch.id).sort()).toEqual([a, b].sort());
+    expect(bundle?.channels.some((ch) => ch.id === c)).toBe(false);
+
+    // The member folds both keys from the one invite.
+    const memberEngine = new ConcordCommunity({
+      material: { ...bundle!, channels: [] },
+      signer: member,
+      pubkey: memberPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await memberEngine.start();
+    expect(memberEngine.receiveChannelKeys(bundle!.channels)).toBe(true);
+    const held = memberEngine.material.channels.map((ch) => ch.id);
+    expect(held).toContain(a);
+    expect(held).toContain(b);
+    expect(held).not.toContain(c);
+
+    // Granting a channel we don't hold throws before anything is published.
+    await expect(community.grantChannelAccess([a, "ff".repeat(32)], memberPub)).rejects.toThrow();
+
+    community.dispose();
+    memberEngine.dispose();
+  });
+
+  it("refreshes live invite bundles behind their URL after a Refounding (CORD-05 §2)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return [];
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    let refoundedCid: string | undefined;
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+      onRefounded: (cid) => {
+        refoundedCid = cid;
+      },
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const link = await community.createInvite({ base: "https://x.io", label: "Reddit" });
+    const priorRoot = community.material.community_root;
+    // The freshly minted bundle carries the current (pre-Refounding) root.
+    const minted = published.find((e) => e.kind === INVITE_BUNDLE_KIND && e.pubkey === link.signerPubkey)!;
+    expect(getInviteBundle(minted, hexToBytes(link.token))?.community_root).toBe(priorRoot);
+
+    // Refound: the root rolls, and the community signals onRefounded (the client's
+    // cue to drive the refresh, which needs the link secret it holds).
+    await community.refound({ keep: [pubkey] });
+    expect(refoundedCid).toBe(community.communityId);
+    const newRoot = community.material.community_root;
+    expect(newRoot).not.toBe(priorRoot);
+
+    // The refresh re-posts the bundle at the SAME coordinate, now carrying the new root.
+    published.length = 0;
+    await community.refreshInviteBundles([link]);
+    const refreshed = published.find((e) => e.kind === INVITE_BUNDLE_KIND && e.pubkey === link.signerPubkey);
+    expect(refreshed).toBeDefined();
+    expect(refreshed!.tags.find((t) => t[0] === "d")?.[1]).toBe("");
+    const bundle = getInviteBundle(refreshed!, hexToBytes(link.token));
+    expect(bundle?.community_root).toBe(newRoot);
+    expect(bundle?.root_epoch).toBe(community.material.root_epoch);
+    expect(bundle?.label).toBe("Reddit");
+
+    community.dispose();
   });
 
   it("deleteRole retires a role: still visible in state but confers no authority", async () => {

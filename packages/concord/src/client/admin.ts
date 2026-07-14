@@ -323,9 +323,9 @@ export class ConcordCommunityAdmin {
     return this.opts.community.revokeInvite(invite);
   }
 
-  /** Hand a member the current key for ONE private channel we hold (CORD-05 §6). */
-  grantChannelAccess(channelId: string, member: string): Promise<void> {
-    return this.opts.community.grantChannelAccess(channelId, member);
+  /** Hand a member the current key for one or more private channels we hold (CORD-05 §6). */
+  grantChannelAccess(channels: string | string[], member: string): Promise<void> {
+    return this.opts.community.grantChannelAccess(channels, member);
   }
 
   /** Rotate a private channel's key to sever the excluded members (CORD-06). */

@@ -99,6 +99,9 @@ export interface ConcordCommunityOptions {
   /** Called after a public invite link has been revoked so the owning client can
    *  persist the terminal tombstone into the user's private Invite List (13303). */
   onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
+  /** Called after a Refounding rolls the community_root so the owning client can
+   *  refresh every live invite bundle behind its unchanged URL (CORD-05 §2). */
+  onRefounded?: (communityId: string) => void;
 }
 
 /** Content equality for the member/ban sets, which are rebuilt on every fold. */
@@ -184,6 +187,7 @@ export class ConcordCommunity {
   private readonly onRemoved?: (communityId: string) => void;
   private readonly onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
   private readonly onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
+  private readonly onRefounded?: (communityId: string) => void;
 
   /** The current key state; rolled forward on a Refounding. */
   private keys: ConcordKeys;
@@ -215,6 +219,7 @@ export class ConcordCommunity {
     this.onRemoved = options.onRemoved;
     this.onInviteCreated = options.onInviteCreated;
     this.onInviteRevoked = options.onInviteRevoked;
+    this.onRefounded = options.onRefounded;
 
     this.keys = deriveConcordKeys(options.material, []);
     this.state$ = new BehaviorSubject<CommunityState>(emptyState(options.material));
@@ -677,6 +682,10 @@ export class ConcordCommunity {
     this.epoch$.next(this.keys.material.root_epoch);
     this.onMaterialChange?.(this.keys.material);
     for (const engine of this.privateChannels.values()) void engine.refreshForCommunityEpoch();
+    // The root just rolled, so every live invite bundle now carries a stale
+    // community_root. Ask the client to re-post them behind their unchanged URLs
+    // (CORD-05 §2); it holds the per-link signer secrets, we don't.
+    this.onRefounded?.(this.communityId);
   }
 
   private handleRemoved(): void {
@@ -936,6 +945,34 @@ export class ConcordCommunity {
     return invite;
   }
 
+  /**
+   * Re-post the given live invite bundles behind their unchanged URLs (CORD-05 §2).
+   * Called after a Refounding: each bundle is rebuilt from the CURRENT material (the
+   * fresh community_root, root_epoch, and channel keys) and re-signed under the same
+   * `link_signer`, replacing the stale bundle at its coordinate (`d: ""`). The URL —
+   * whose naddr is the link_signer pubkey and whose token is unchanged — keeps
+   * opening, so a link shared once survives every rotation. Best-effort per link.
+   */
+  async refreshInviteBundles(links: ConcordInviteLink[]): Promise<void> {
+    const state = this.state$.value;
+    const inviteRelays = this.relays();
+    for (const link of links) {
+      const bundle = buildInviteBundle(this.material, {
+        name: state.metadata?.name,
+        icon: state.metadata?.icon,
+        creator_npub: this.pubkey,
+        label: link.label,
+        expires_at: link.expiresAt,
+      });
+      const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
+      const signed = finalizeEvent(template, hexToBytes(link.signerSk));
+      this.eventStore.add(signed);
+      this.pool
+        .publish(inviteRelays, signed)
+        .catch((err) => console.warn("invite bundle refresh publish failed", err));
+    }
+  }
+
   async revokeInvite(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
     const template = await InviteBundleFactory.revoke();
     const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
@@ -949,20 +986,33 @@ export class ConcordCommunity {
   }
 
   /**
-   * Grant a specific member access to ONE private channel we hold (CORD-05 §6 /
-   * CORD-03: "delivered on grant"). Hands over the channel's CURRENT `(key, epoch)`
-   * — plus any held prior keys, so they read recent history — via a Direct Invite
-   * gift-wrapped to `member`. This is the spec-correct way to ADD someone: no
+   * Grant a member access to one or more private channels we hold (CORD-05 §6 /
+   * CORD-03: "delivered on grant"). Hands over each channel's CURRENT `(key, epoch)`
+   * — plus any held prior keys, so they read recent history — via a single Direct
+   * Invite gift-wrapped to `member`. This is the spec-correct way to ADD someone: no
    * rotation and no epoch bump (rotations sever, and a {@link rotateChannel} can
    * never onboard a new holder — its continuity check requires the prior key).
-   * The bundle carries only this one channel key (never the caller's other private
-   * channels). Requires `MANAGE_CHANNELS`. Publish is best-effort to the community
-   * relays, where the recipient's Direct-Invite watcher also listens.
+   * The bundle carries only the requested channel keys (never the caller's other
+   * private channels), so an inviter can hand-pick an arbitrary subset. Requires
+   * `MANAGE_CHANNELS`. Publish is best-effort to the community relays, where the
+   * recipient's Direct-Invite watcher also listens.
    */
-  async grantChannelAccess(channelId: string, member: string): Promise<void> {
-    const channelKey = this.material.channels.find((c) => c.id === channelId);
-    if (!channelKey) throw new Error("not a private channel we hold a key for");
+  async grantChannelAccess(channels: string | string[], member: string): Promise<void> {
+    const ids = [...new Set(Array.isArray(channels) ? channels : [channels])];
+    if (ids.length === 0) throw new Error("no channels to grant");
     if (!this.canDo(PERM.MANAGE_CHANNELS)) throw new Error("need MANAGE_CHANNELS to grant channel access");
+
+    const keys: ChannelKey[] = ids.map((id) => {
+      const channelKey = this.material.channels.find((c) => c.id === id);
+      if (!channelKey) throw new Error(`not a private channel we hold a key for: ${id}`);
+      return {
+        id: channelKey.id,
+        key: channelKey.key,
+        epoch: channelKey.epoch,
+        name: channelKey.name,
+        ...(channelKey.held ? { held: channelKey.held } : {}),
+      };
+    });
 
     const state = this.state$.value;
     const bundle: InviteBundle = {
@@ -971,17 +1021,9 @@ export class ConcordCommunity {
         icon: state.metadata?.icon,
         creator_npub: this.pubkey,
       }),
-      // Only THIS channel travels — buildInviteBundle would otherwise carry every
-      // private channel we hold, over-granting the recipient.
-      channels: [
-        {
-          id: channelKey.id,
-          key: channelKey.key,
-          epoch: channelKey.epoch,
-          name: channelKey.name,
-          ...(channelKey.held ? { held: channelKey.held } : {}),
-        },
-      ],
+      // Only the requested channels travel — buildInviteBundle would otherwise carry
+      // every private channel we hold, over-granting the recipient.
+      channels: keys,
     };
 
     const wrap = await DirectInviteFactory.create(bundle, member, this.signer);
