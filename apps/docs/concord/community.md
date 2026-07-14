@@ -4,20 +4,27 @@
 
 ## Reading community state
 
-`state$` is the folded, always-current view of the community. Render your UI off it.
+Each slice of the community is its own observable, and each only emits when **that** slice changes.
 
 ```ts
-community.state$.subscribe((state) => {
-  state.metadata?.name;   // name, icon, banner, description
-  state.channels;         // channel metadata (name, private, voice, deleted)
-  state.roles;            // defined roles
-  state.members;          // Set of member pubkeys
-  state.banlist;          // Set of banned pubkeys
-  state.dissolved;        // owner shut the community down
-});
+community.metadata$.subscribe((m) => m?.name); // name, icon, banner, description
+community.channels$.subscribe(render);         // live channels
+community.roles$.subscribe(render);            // defined roles
+community.members$.subscribe(render);          // Set of member pubkeys
+community.banlist$.subscribe(render);          // Set of banned pubkeys
+community.inviteLinks$.subscribe(render);      // non-empty ⇒ the community is Public
 ```
 
-Because it's folded from the encrypted streams, `state$` fills in as sync catches up — cached history renders immediately, then live events refine it.
+Prefer these over `state$`, the aggregate of all of them. `state$` re-emits on **any**
+change — including a chat message in any channel, which moves the presence-derived
+member set — so a roles UI built on `state$` re-renders on every message. `roles$`
+doesn't.
+
+```ts
+community.state$.subscribe((state) => state.dissolved); // the whole snapshot
+```
+
+Because it's folded from the encrypted streams, state fills in as sync catches up — cached history renders immediately, then live events refine it.
 
 ## Watching sync status
 
@@ -99,9 +106,9 @@ await community.sendEvent(channelId, someFactory.create(...));
 Owner/admin actions on the community itself:
 
 ```ts
-await community.editMetadata({ name: "New Name", description: "..." });
-await community.setCommunityImage("icon", iconFile);   // needs an uploader
-await community.removeCommunityImage("banner");
+await community.admin.editMetadata({ name: "New Name", description: "..." });
+await community.admin.setCommunityImage("icon", iconFile);   // needs an uploader
+await community.admin.removeCommunityImage("banner");
 ```
 
 Creating and managing channels, roles, and members is covered in [Channels](/concord/channels) and [Moderation](/concord/moderation).
@@ -125,5 +132,5 @@ if (community.canDo(PERM.MANAGE_CHANNELS)) {
 Only the owner can dissolve a community. It flips `state.dissolved` for every member.
 
 ```ts
-await community.dissolve();
+await community.admin.dissolve();
 ```

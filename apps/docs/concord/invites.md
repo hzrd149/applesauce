@@ -7,7 +7,7 @@ There are two ways to bring someone into a community: a shareable **invite link*
 Create a link off the [community engine](/concord/community). Pass the base URL your app redeems links at:
 
 ```ts
-const url = await community.createInvite("https://myapp.example/join");
+const url = await community.admin.createInvite("https://myapp.example/join");
 // share `url` anywhere
 ```
 

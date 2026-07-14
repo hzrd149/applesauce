@@ -6,13 +6,13 @@ Channels are where messages live. A community can have **public** channels (read
 
 ```ts
 // A public text channel
-const channelId = await community.createChannel("general", false);
+const channelId = await community.admin.createChannel("general", false);
 
 // A private text channel
-const privateId = await community.createChannel("mods-only", true);
+const privateId = await community.admin.createChannel("mods-only", true);
 
 // A voice channel
-const voiceId = await community.createChannel("lounge", false, true);
+const voiceId = await community.admin.createChannel("lounge", false, true);
 ```
 
 Creating a private channel mints and persists its key locally. Requires `MANAGE_CHANNELS` — see [Moderation](/concord/moderation).
@@ -20,7 +20,7 @@ Creating a private channel mints and persists its key locally. Requires `MANAGE_
 ## Deleting a channel
 
 ```ts
-await community.deleteChannel(channelId);
+await community.admin.deleteChannel(channelId);
 ```
 
 The channel is flagged deleted in the community state; already-synced messages stay readable in the store.
@@ -46,7 +46,7 @@ Each private channel keys and rotates independently of the community, so it runs
 To **add** someone to a private channel, hand them its current key via a [direct invite](/concord/invites). This is the correct way to onboard a member — no rotation, no epoch bump:
 
 ```ts
-await community.grantChannelAccess(channelId, memberPubkey);
+await community.admin.grantChannelAccess(channelId, memberPubkey);
 ```
 
 The grant is gift-wrapped to that member and best-effort published to the community relays, where their `InviteWatcher` is listening. If they're already in the community, the client folds the key in automatically and their channel starts syncing.
@@ -58,7 +58,7 @@ Requires `MANAGE_CHANNELS`.
 To **remove** someone, rotate the channel key. The new key is delivered only to the members you keep, so the excluded can no longer read new messages:
 
 ```ts
-await community.rotateChannel(channelId, {
+await community.admin.rotateChannel(channelId, {
   keep: [alicePubkey, bobPubkey],
   exclude: [malloryPubkey],
 });

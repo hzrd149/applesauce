@@ -77,6 +77,13 @@ function relaysFromText(text: string) {
     .filter(Boolean);
 }
 
+// "Do I hold ANY admin bit here" — note this is `.some`, not `canDo(ADMIN_PERMS)`,
+// which requires holding EVERY bit.
+//
+// The snapshot `canDo` is the right call in this one place: it runs over
+// `client.communities$`, which re-emits whenever any community's state folds, so the
+// filter already recomputes. Inside a single community, prefer `can$` — a component
+// gating on `canDo` only re-renders if something above it happens to subscribe.
 function isAdminCommunity(client: ConcordClient, state: CommunityState) {
   const community = client.getCommunity(state.material.community_id);
   if (!community || state.dissolved) return false;
@@ -295,12 +302,18 @@ function PermissionBadges({ names }: { names: string[] }) {
   );
 }
 
-function OverviewTab({ community, state }: { community: ConcordCommunity; state: CommunityState }) {
-  const standing = community.standingOf(community.pubkey);
-  const metadata = state.metadata;
+function OverviewTab({ community }: { community: ConcordCommunity }) {
+  const standing = use$(() => community.standing$(community.pubkey), [community]);
+  const metadata = use$(() => community.metadata$, [community]);
+  const members = use$(() => community.members$, [community]);
+  const channels = use$(() => community.channels$, [community]);
+  const dissolved = use$(() => community.dissolved$, [community]);
   // The engine's descriptive status: sync phase (idle → syncing → live) plus relay
   // connection/NIP-42 auth, derived reactively so this badge row updates live.
   const status = use$(community.status$);
+  const material = community.material;
+
+  if (!standing || !members || !channels) return null;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -322,21 +335,21 @@ function OverviewTab({ community, state }: { community: ConcordCommunity; state:
         )}
         <div className="mt-3 space-y-2 text-sm">
           <div>
-            <span className="opacity-60">Name</span> {metadata?.name || state.material.name || "Unnamed"}
+            <span className="opacity-60">Name</span> {metadata?.name || material.name || "Unnamed"}
           </div>
           <div>
-            <span className="opacity-60">ID</span> <code>{shortId(state.material.community_id)}</code>
+            <span className="opacity-60">ID</span> <code>{shortId(material.community_id)}</code>
           </div>
           <div>
-            <span className="opacity-60">Root epoch</span> {status?.epoch ?? state.material.root_epoch}
+            <span className="opacity-60">Root epoch</span> {status?.epoch ?? material.root_epoch}
           </div>
           <div>
-            <span className="opacity-60">Members</span> {state.members.size}
+            <span className="opacity-60">Members</span> {members.size}
           </div>
           <div>
-            <span className="opacity-60">Channels</span> {state.channels.filter((c) => !c.deleted).length}
+            <span className="opacity-60">Channels</span> {channels.length}
           </div>
-          {state.dissolved && <div className="badge badge-error">Dissolved</div>}
+          {dissolved && <div className="badge badge-error">Dissolved</div>}
         </div>
       </section>
 
@@ -353,8 +366,10 @@ function OverviewTab({ community, state }: { community: ConcordCommunity; state:
   );
 }
 
-function InfoTab({ community, state, onError }: { community: ConcordCommunity; state: CommunityState; onError: (error: string) => void }) {
-  const current = state.metadata ?? { name: state.material.name, relays: state.material.relays };
+function InfoTab({ community, onError }: { community: ConcordCommunity; onError: (error: string) => void }) {
+  const metadata = use$(() => community.metadata$, [community]);
+  const canEdit = use$(() => community.can$(PERM.MANAGE_METADATA), [community]) ?? false;
+  const current = metadata ?? { name: community.material.name, relays: community.material.relays };
   const [name, setName] = useState(current.name ?? "");
   const [description, setDescription] = useState(current.description ?? "");
   const [relays, setRelays] = useState((current.relays ?? []).join("\n"));
@@ -370,7 +385,7 @@ function InfoTab({ community, state, onError }: { community: ConcordCommunity; s
     setSaving(true);
     try {
       const patch: Partial<CommunityMetadata> = { name: name.trim() || "Unnamed", description, relays: relaysFromText(relays) };
-      await community.editMetadata(patch);
+      await community.admin.editMetadata(patch);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to update metadata");
     } finally {
@@ -398,7 +413,7 @@ function InfoTab({ community, state, onError }: { community: ConcordCommunity; s
         placeholder="wss://relay.example"
         rows={4}
       />
-      <button className="btn btn-primary" onClick={save} disabled={saving || !community.canDo(PERM.MANAGE_METADATA)}>
+      <button className="btn btn-primary" onClick={save} disabled={saving || !canEdit}>
         {saving ? "Saving..." : "Update info"}
       </button>
     </section>
@@ -423,11 +438,18 @@ function UserSummary({ pubkey }: { pubkey: string }) {
   );
 }
 
-function MemberRow({ community, state, member, busy, onRun }: { community: ConcordCommunity; state: CommunityState; member: string; busy: string | null; onRun: (label: string, action: () => Promise<void>) => void }) {
-  const standing = community.standingOf(member);
-  const banned = state.banlist.has(member);
-  const canKick = member !== community.pubkey && community.canDo(PERM.KICK, standing.position);
-  const canBan = member !== community.pubkey && community.canDo(PERM.BAN, standing.position);
+function MemberRow({ community, member, busy, onRun }: { community: ConcordCommunity; member: string; busy: string | null; onRun: (label: string, action: () => Promise<void>) => void }) {
+  const standing = use$(() => community.standing$(member), [community, member]);
+  const banlist = use$(() => community.banlist$, [community]);
+  const banned = banlist?.has(member) ?? false;
+  // canModerate$ carries the whole CORD-04 rule: hold the bit AND strictly outrank
+  // the target — which is never true of yourself. Pairing canDo with a separately
+  // read standing position leaves both halves for each call site to remember.
+  const canKick = use$(() => community.canModerate$(member, PERM.KICK), [community, member]) ?? false;
+  const canBan = use$(() => community.canModerate$(member, PERM.BAN), [community, member]) ?? false;
+  const canUnban = use$(() => community.can$(PERM.BAN), [community]) ?? false;
+
+  if (!standing) return null;
 
   return (
     <div className="flex flex-col gap-3 py-3 md:flex-row md:items-center">
@@ -442,13 +464,13 @@ function MemberRow({ community, state, member, busy, onRun }: { community: Conco
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button className="btn btn-xs btn-outline" disabled={!canKick || !!busy} onClick={() => onRun("kick", () => community.kick(member))}>
+        <button className="btn btn-xs btn-outline" disabled={!canKick || !!busy} onClick={() => onRun("kick", () => community.admin.kick(member))}>
           Kick
         </button>
-        <button className="btn btn-xs btn-outline btn-error" disabled={!canBan || !!busy} onClick={() => onRun("ban", () => community.ban(member))}>
+        <button className="btn btn-xs btn-outline btn-error" disabled={!canBan || !!busy} onClick={() => onRun("ban", () => community.admin.ban(member))}>
           Ban
         </button>
-        <button className="btn btn-xs btn-ghost" disabled={!banned || !community.canDo(PERM.BAN) || !!busy} onClick={() => onRun("unban", () => community.unban(member))}>
+        <button className="btn btn-xs btn-ghost" disabled={!banned || !canUnban || !!busy} onClick={() => onRun("unban", () => community.admin.unban(member))}>
           Unban
         </button>
       </div>
@@ -456,9 +478,10 @@ function MemberRow({ community, state, member, busy, onRun }: { community: Conco
   );
 }
 
-function MembersTab({ community, state, onError }: { community: ConcordCommunity; state: CommunityState; onError: (error: string) => void }) {
+function MembersTab({ community, onError }: { community: ConcordCommunity; onError: (error: string) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
-  const members = [...state.members].sort();
+  const memberSet = use$(() => community.members$, [community]);
+  const members = useMemo(() => [...(memberSet ?? [])].sort(), [memberSet]);
 
   async function run(label: string, action: () => Promise<void>) {
     setBusy(label);
@@ -477,14 +500,16 @@ function MembersTab({ community, state, onError }: { community: ConcordCommunity
       <p className="mt-1 text-sm opacity-70">Kick removes roles and publishes a guestbook kick. Ban also updates the banlist.</p>
       <div className="mt-4 divide-y divide-base-300">
         {members.map((member) => (
-          <MemberRow key={member} community={community} state={state} member={member} busy={busy} onRun={run} />
+          <MemberRow key={member} community={community} member={member} busy={busy} onRun={run} />
         ))}
       </div>
     </section>
   );
 }
 
-function RolesTab({ community, state, onError }: { community: ConcordCommunity; state: CommunityState; onError: (error: string) => void }) {
+function RolesTab({ community, onError }: { community: ConcordCommunity; onError: (error: string) => void }) {
+  const roles = use$(() => community.roles$, [community]) ?? [];
+  const canManageRoles = use$(() => community.can$(PERM.MANAGE_ROLES), [community]) ?? false;
   const [name, setName] = useState("");
   const [position, setPosition] = useState(100);
   const [selectedPerms, setSelectedPerms] = useState<PermName[]>(["MANAGE_MESSAGES"]);
@@ -502,7 +527,7 @@ function RolesTab({ community, state, onError }: { community: ConcordCommunity; 
     setBusy(true);
     try {
       const permissions = selectedPerms.reduce((bits, perm) => bits | PERM[perm], 0n);
-      await community.createRole(name.trim() || "Moderator", position, permissions);
+      await community.admin.createRole(name.trim() || "Moderator", position, permissions);
       setName("");
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to create role");
@@ -514,7 +539,7 @@ function RolesTab({ community, state, onError }: { community: ConcordCommunity; 
   async function saveGrant() {
     setBusy(true);
     try {
-      await community.grantRoles(grantMember.trim(), grantRoles);
+      await community.admin.grantRoles(grantMember.trim(), grantRoles);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to grant roles");
     } finally {
@@ -542,7 +567,7 @@ function RolesTab({ community, state, onError }: { community: ConcordCommunity; 
             </label>
           ))}
         </div>
-        <button className="btn btn-primary" disabled={!community.canDo(PERM.MANAGE_ROLES) || busy} onClick={createRole}>
+        <button className="btn btn-primary" disabled={!canManageRoles || busy} onClick={createRole}>
           Create role
         </button>
       </section>
@@ -551,7 +576,7 @@ function RolesTab({ community, state, onError }: { community: ConcordCommunity; 
         <h3 className="font-semibold">Grant roles</h3>
         <input className="input input-bordered w-full" value={grantMember} onChange={(e) => setGrantMember(e.target.value)} placeholder="Member pubkey hex" />
         <div className="space-y-2">
-          {state.roles.map((role) => (
+          {roles.map((role) => (
             <label key={role.role_id} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -563,7 +588,7 @@ function RolesTab({ community, state, onError }: { community: ConcordCommunity; 
             </label>
           ))}
         </div>
-        <button className="btn btn-primary" disabled={!grantMember.trim() || !community.canDo(PERM.MANAGE_ROLES) || busy} onClick={saveGrant}>
+        <button className="btn btn-primary" disabled={!grantMember.trim() || !canManageRoles || busy} onClick={saveGrant}>
           Save grant
         </button>
       </section>
@@ -571,7 +596,7 @@ function RolesTab({ community, state, onError }: { community: ConcordCommunity; 
       <section className="border border-base-300 rounded-box p-4 lg:col-span-2">
         <h3 className="font-semibold">Existing roles</h3>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {state.roles.map((role) => (
+          {roles.map((role) => (
             <div key={role.role_id} className="border border-base-300 rounded-box p-3 text-sm">
               <div className="font-medium">{role.name}</div>
               <div className="opacity-60">position {role.position}</div>
@@ -584,7 +609,9 @@ function RolesTab({ community, state, onError }: { community: ConcordCommunity; 
   );
 }
 
-function ChannelsTab({ community, state, onError }: { community: ConcordCommunity; state: CommunityState; onError: (error: string) => void }) {
+function ChannelsTab({ community, onError }: { community: ConcordCommunity; onError: (error: string) => void }) {
+  const channels = use$(() => community.channels$, [community]) ?? [];
+  const canManageChannels = use$(() => community.can$(PERM.MANAGE_CHANNELS), [community]) ?? false;
   const [name, setName] = useState("");
   const [isPrivate, setPrivate] = useState(false);
   const [voice, setVoice] = useState(false);
@@ -593,7 +620,7 @@ function ChannelsTab({ community, state, onError }: { community: ConcordCommunit
   async function createChannel() {
     setBusy(true);
     try {
-      await community.createChannel(name.trim() || "new-channel", isPrivate, voice);
+      await community.admin.createChannel(name.trim() || "new-channel", isPrivate, voice);
       setName("");
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to create channel");
@@ -605,7 +632,7 @@ function ChannelsTab({ community, state, onError }: { community: ConcordCommunit
   async function deleteChannel(channelId: string) {
     setBusy(true);
     try {
-      await community.deleteChannel(channelId);
+      await community.admin.deleteChannel(channelId);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to delete channel");
     } finally {
@@ -624,7 +651,7 @@ function ChannelsTab({ community, state, onError }: { community: ConcordCommunit
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="checkbox checkbox-sm" checked={voice} onChange={(e) => setVoice(e.target.checked)} /> Voice
         </label>
-        <button className="btn btn-primary" disabled={!community.canDo(PERM.MANAGE_CHANNELS) || busy} onClick={createChannel}>
+        <button className="btn btn-primary" disabled={!canManageChannels || busy} onClick={createChannel}>
           Create channel
         </button>
       </section>
@@ -632,19 +659,19 @@ function ChannelsTab({ community, state, onError }: { community: ConcordCommunit
       <section className="border border-base-300 rounded-box p-4">
         <h3 className="font-semibold">Channels</h3>
         <div className="mt-3 divide-y divide-base-300">
-          {state.channels.map((channel) => (
+          {channels.map((channel) => (
             <div key={channel.channel_id} className={`flex items-center gap-2 py-3 ${channel.deleted ? "opacity-50" : ""}`}>
               <div className="min-w-0 flex-1">
                 <div className="font-medium">#{channel.name}</div>
                 <div className="text-xs opacity-60">
-                  {channel.private ? "private" : "public"} · epoch {channel.epoch ?? state.material.root_epoch}
+                  {channel.private ? "private" : "public"} · epoch {channel.epoch ?? community.material.root_epoch}
                   {channel.voice ? " · voice" : ""}
                   {channel.deleted ? " · deleted" : ""}
                 </div>
               </div>
               <button
                 className="btn btn-xs btn-outline btn-error"
-                disabled={channel.deleted || !community.canDo(PERM.MANAGE_CHANNELS) || busy}
+                disabled={channel.deleted || !canManageChannels || busy}
                 onClick={() => deleteChannel(channel.channel_id)}
               >
                 Delete
@@ -657,21 +684,33 @@ function ChannelsTab({ community, state, onError }: { community: ConcordCommunit
   );
 }
 
-function RefoundMemberOption({ community, member, checked, disabled, onToggle }: { community: ConcordCommunity; member: string; checked: boolean; disabled: boolean; onToggle: () => void }) {
+// The per-member authority check lives here rather than in the parent's map, so it
+// can be a hook — and so excluding someone asks the same `canModerate$` question the
+// Members tab asks before kicking them.
+function RefoundMemberOption({ community, member, checked, onToggle }: { community: ConcordCommunity; member: string; checked: boolean; onToggle: () => void }) {
+  const standing = use$(() => community.standing$(member), [community, member]);
+  const canExclude = use$(() => community.canModerate$(member, PERM.BAN), [community, member]) ?? false;
+
   return (
-    <label className={`flex items-center gap-3 text-sm ${disabled ? "opacity-50" : ""}`}>
-      <input type="checkbox" className="checkbox checkbox-sm" checked={checked} disabled={disabled} onChange={onToggle} />
+    <label className={`flex items-center gap-3 text-sm ${!canExclude ? "opacity-50" : ""}`}>
+      <input type="checkbox" className="checkbox checkbox-sm" checked={checked} disabled={!canExclude} onChange={onToggle} />
       <span className="opacity-70">Exclude</span>
       <UserSummary pubkey={member} />
-      {community.standingOf(member).isOwner && <span className="badge badge-primary badge-sm">owner</span>}
+      {standing?.isOwner && <span className="badge badge-primary badge-sm">owner</span>}
     </label>
   );
 }
 
-function SecurityTab({ community, state, onError }: { community: ConcordCommunity; state: CommunityState; onError: (error: string) => void }) {
+function SecurityTab({ community, onError }: { community: ConcordCommunity; onError: (error: string) => void }) {
   const [excluded, setExcluded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const members = [...state.members].filter((member) => member !== community.pubkey);
+  const memberSet = use$(() => community.members$, [community]);
+  // `refound` keeps everyone not explicitly excluded — never ourselves, since the
+  // engine always adds the caller back to the recipient set.
+  const members = useMemo(
+    () => [...(memberSet ?? [])].filter((member) => member !== community.pubkey),
+    [memberSet, community],
+  );
 
   function toggle(member: string) {
     setExcluded((current) => (current.includes(member) ? current.filter((m) => m !== member) : [...current, member]));
@@ -680,8 +719,8 @@ function SecurityTab({ community, state, onError }: { community: ConcordCommunit
   async function refound() {
     setBusy(true);
     try {
-      const keep = [...state.members].filter((member) => member !== community.pubkey && !excluded.includes(member));
-      await community.refound({ keep, exclude: excluded });
+      const keep = members.filter((member) => !excluded.includes(member));
+      await community.admin.refound({ keep, exclude: excluded });
       setExcluded([]);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to refound community");
@@ -700,20 +739,15 @@ function SecurityTab({ community, state, onError }: { community: ConcordCommunit
         </p>
       </div>
       <div className="space-y-2">
-        {members.map((member) => {
-          const standing = community.standingOf(member);
-          const disabled = !community.canDo(PERM.BAN, standing.position);
-          return (
-            <RefoundMemberOption
-              key={member}
-              community={community}
-              member={member}
-              checked={excluded.includes(member)}
-              disabled={disabled}
-              onToggle={() => toggle(member)}
-            />
-          );
-        })}
+        {members.map((member) => (
+          <RefoundMemberOption
+            key={member}
+            community={community}
+            member={member}
+            checked={excluded.includes(member)}
+            onToggle={() => toggle(member)}
+          />
+        ))}
       </div>
       <button className="btn btn-error" disabled={excluded.length === 0 || busy} onClick={refound}>
         {busy ? "Refounding..." : `Refound and exclude ${excluded.length}`}
@@ -722,13 +756,16 @@ function SecurityTab({ community, state, onError }: { community: ConcordCommunit
   );
 }
 
+// No `state$` subscription here, and no `state` prop drilled into the tabs. Each tab
+// subscribes the slice it renders, so a chat message arriving in any channel — which
+// moves the presence-derived member set and re-emits `state$` — no longer re-renders
+// the roles and channels UI along with it.
 function AdminPanel({ client, communityId }: { client: ConcordClient; communityId: string }) {
   const community = client.getCommunity(communityId);
-  const state = use$(() => community?.state$, [community]);
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
 
-  if (!community || !state) return null;
+  if (!community) return null;
 
   const tabs: Array<[Tab, string]> = [
     ["overview", "Overview"],
@@ -758,12 +795,12 @@ function AdminPanel({ client, communityId }: { client: ConcordClient; communityI
         ))}
       </div>
 
-      {tab === "overview" && <OverviewTab community={community} state={state} />}
-      {tab === "info" && <InfoTab community={community} state={state} onError={setError} />}
-      {tab === "members" && <MembersTab community={community} state={state} onError={setError} />}
-      {tab === "roles" && <RolesTab community={community} state={state} onError={setError} />}
-      {tab === "channels" && <ChannelsTab community={community} state={state} onError={setError} />}
-      {tab === "security" && <SecurityTab community={community} state={state} onError={setError} />}
+      {tab === "overview" && <OverviewTab community={community} />}
+      {tab === "info" && <InfoTab community={community} onError={setError} />}
+      {tab === "members" && <MembersTab community={community} onError={setError} />}
+      {tab === "roles" && <RolesTab community={community} onError={setError} />}
+      {tab === "channels" && <ChannelsTab community={community} onError={setError} />}
+      {tab === "security" && <SecurityTab community={community} onError={setError} />}
     </div>
   );
 }
