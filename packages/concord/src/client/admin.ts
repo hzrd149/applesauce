@@ -44,6 +44,7 @@ import {
 // Type-only: erased at runtime, so this doesn't create an import cycle with the
 // community module that constructs us.
 import type { ConcordCommunity } from "./community.js";
+import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
 import type { ConcordRumorStore, ConcordUploader } from "./storage.js";
 
 /** An entity's current head edition — what the next version must chain to. */
@@ -79,12 +80,14 @@ export interface ConcordCommunityAdminOptions {
 
 export class ConcordCommunityAdmin {
   readonly pubkey: string;
+  readonly invites: ConcordCommunityAdminInvites;
 
   private readonly opts: ConcordCommunityAdminOptions;
 
   constructor(options: ConcordCommunityAdminOptions) {
     this.opts = options;
     this.pubkey = options.pubkey;
+    this.invites = new ConcordCommunityAdminInvites(this);
   }
 
   private get material(): JoinMaterial {
@@ -274,6 +277,22 @@ export class ConcordCommunityAdmin {
     await this.publishEdition(VSK.INVITE_REGISTRY, eid, JSON.stringify(links));
   }
 
+  /** Remove a link_signer coordinate from OUR registry (CORD-05 §5), usually
+   *  after reposting the bundle coordinate as a revocation tombstone. */
+  async unregisterInviteLink(linkPubkey: string): Promise<void> {
+    const eid = inviteLinksLocator(this.communityIdBytes, this.pubkey);
+    const existing = await this.latestEdition(eid);
+    let links: string[] = [];
+    try {
+      if (existing) links = JSON.parse(existing.content) as string[];
+    } catch {
+      /* ignore */
+    }
+    const next = links.filter((link) => link !== linkPubkey);
+    if (next.length === links.length) return;
+    await this.publishEdition(VSK.INVITE_REGISTRY, eid, JSON.stringify(next));
+  }
+
   // ---- cross-plane composites ---------------------------------------------
   //
   // Implemented on the community (they need its keys, sub-engines, and relays) and
@@ -286,8 +305,13 @@ export class ConcordCommunityAdmin {
   }
 
   /** Mint a public invite link and register it (CORD-05 §5). */
-  createInvite(base: string): Promise<string> {
-    return this.opts.community.createInvite(base);
+  createInvite(options: CreateInviteOptions): Promise<ConcordInviteLink> {
+    return this.opts.community.createInvite(options);
+  }
+
+  /** Retire a public invite link (bundle tombstone + registry removal). */
+  revokeInvite(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
+    return this.opts.community.revokeInvite(invite);
   }
 
   /** Hand a member the current key for ONE private channel we hold (CORD-05 §6). */
@@ -332,5 +356,18 @@ export class ConcordCommunityAdmin {
   hasPerm(member: string, perm: bigint, targetPosition = 0xffffffff): boolean {
     const standing = this.standingOf(member);
     return canActOn(standing, { permissions: 0n, position: targetPosition, isOwner: false, roleIds: [] }, perm);
+  }
+}
+
+/** Community-scoped invite-link management, exposed at `community.admin.invites`. */
+export class ConcordCommunityAdminInvites {
+  constructor(private readonly admin: ConcordCommunityAdmin) {}
+
+  create(options: CreateInviteOptions): Promise<ConcordInviteLink> {
+    return this.admin.createInvite(options);
+  }
+
+  revoke(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
+    return this.admin.revokeInvite(invite);
   }
 }

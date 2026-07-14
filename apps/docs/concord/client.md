@@ -1,6 +1,6 @@
 # The client
 
-`ConcordClient` is the entry point for a logged-in user. There is **one instance per user**, and it owns everything: the shared relay pool, the encrypted event store, every joined community, the user's community list, and the direct-invite inbox watcher.
+`ConcordClient` is the entry point for a logged-in user. There is **one instance per user**, and it owns everything: the shared relay pool, the encrypted event store, every joined community, the user's community list, invite-link manager, and direct-invite inbox watcher.
 
 ## Creating a client
 
@@ -142,6 +142,32 @@ Several signer-touching behaviours are **off by default** so startup stays quiet
 | `watchDirectInvites` | `true` | Watch the user's inbox for [direct invites](/concord/invites) during `start()`. |
 
 Explicit `joinByLink` / `leave` / `createNewCommunity` always publish the list regardless of `autoSaveCommunityList` — those are the sanctioned points to sign it.
+
+## Invite Links
+
+`client.invites` manages the user's private Invite List (kind 13303) and coordinates link creation with joined communities. It returns rich invite records, not just URLs:
+
+```ts
+const invite = await client.invites.create(communityId, {
+  base: "https://app.example",
+  label: "Reddit",
+});
+
+invite.url;
+```
+
+Creating a link publishes its bundle, registers it in the community, and saves it to the Invite List. Revoke through the same manager:
+
+```ts
+await client.invites.revoke(invite);
+```
+
+Use the observables for invite-management screens:
+
+```ts
+client.invites.live$.subscribe(renderLiveInvites);
+client.invites.revoked$.subscribe(renderRevokedInvites);
+```
 
 ## Direct invites
 

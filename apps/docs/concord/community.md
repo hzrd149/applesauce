@@ -1,6 +1,6 @@
 # Communities
 
-`ConcordCommunity` is the reactive engine for a **single** community. The [client](/concord/client) creates and owns these — you get one with `client.getCommunity(communityId)`. This page covers reading a community's state and the day-to-day messaging actions; [Channels](/concord/channels) and [Moderation](/concord/moderation) cover the rest.
+`ConcordCommunity` is the reactive engine for a **single** community. The [client](/concord/client) creates and owns these — you get one with `client.getCommunity(communityId)`. This page covers reading a community's state and the day-to-day messaging actions. Management actions live on `community.admin`; [Channels](/concord/channels), [Moderation](/concord/moderation), and [Invites](/concord/invites) cover those workflows.
 
 ## Reading community state
 
@@ -101,17 +101,28 @@ To publish a non-standard event to a channel, `sendEvent` takes a factory promis
 await community.sendEvent(channelId, someFactory.create(...));
 ```
 
-## Editing the community
+## Managing the community
 
-Owner/admin actions on the community itself:
+Owner/admin actions are grouped under `community.admin`:
 
 ```ts
 await community.admin.editMetadata({ name: "New Name", description: "..." });
-await community.admin.setCommunityImage("icon", iconFile);   // needs an uploader
+await community.admin.setCommunityImage("icon", iconFile);
 await community.admin.removeCommunityImage("banner");
 ```
 
-Creating and managing channels, roles, and members is covered in [Channels](/concord/channels) and [Moderation](/concord/moderation).
+Invite links also have a scoped admin surface:
+
+```ts
+const invite = await community.admin.invites.create({
+  base: "https://app.example",
+  label: "Reddit",
+});
+
+await community.admin.invites.revoke(invite);
+```
+
+Creating and managing channels, roles, members, and invites is covered in [Channels](/concord/channels), [Moderation](/concord/moderation), and [Invites](/concord/invites).
 
 ## Permissions
 

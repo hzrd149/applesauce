@@ -16,6 +16,7 @@ import { ConcordClient } from "../client.js";
 import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
 import { COMMUNITY_LIST_KIND, mergeCommunities } from "../../helpers/community-list.js";
+import { INVITE_LIST_KIND } from "../../helpers/invite-list.js";
 import { createCommunity } from "../../helpers/community.js";
 import { buildInviteBundle, buildInviteLink, newInviteToken } from "../../helpers/invite-bundle.js";
 import { InviteBundleFactory } from "../../factories/invite-bundle.js";
@@ -106,6 +107,15 @@ const firstList = (client: ConcordClient) =>
   firstValueFrom(client.communityList$.pipe(filter((c): c is ConcordCommunityList => !!c)));
 
 const listPublishes = (published: NostrEvent[]) => published.filter((e) => e.kind === COMMUNITY_LIST_KIND);
+const inviteListPublishes = (published: NostrEvent[]) => published.filter((e) => e.kind === INVITE_LIST_KIND);
+
+async function decryptInviteList(signer: PrivateKeySigner, event: NostrEvent) {
+  const pubkey = await signer.getPublicKey();
+  return JSON.parse(await signer.nip44!.decrypt(pubkey, event.content)) as {
+    entries: Array<{ token: string; signer_sk: string; community_id: string; url: string; label?: string }>;
+    tombstones: Array<{ token: string; community_id: string }>;
+  };
+}
 
 describe("ConcordClient community list (DI, no network)", () => {
   it("autoUnlock:false — exposes a locked cast, no signer prompt, bootstraps only on app .unlock()", async () => {
@@ -399,6 +409,83 @@ describe("ConcordClient community list (DI, no network)", () => {
     await settle();
 
     expect(listPublishes(published).length).toBe(1);
+
+    client.stop();
+  });
+
+  it("client.invites.create mints a link, registers it, and saves the invite list", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
+
+    await client.start();
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    await settle();
+    published.length = 0;
+
+    const invite = await client.invites.create(community.communityId, { base: "https://app.example", label: "Reddit" });
+    await settle();
+
+    expect(invite.url).toContain("https://app.example/invite/");
+    expect(invite.communityId).toBe(community.communityId);
+    expect(invite.label).toBe("Reddit");
+    expect(client.invites.live$.value.map((i) => i.token)).toContain(invite.token);
+    expect(community.state$.value.inviteLinks.has(invite.signerPubkey)).toBe(true);
+
+    const saves = inviteListPublishes(published);
+    expect(saves).toHaveLength(1);
+    const doc = await decryptInviteList(signer, saves[0]);
+    expect(doc.entries.map((entry) => entry.token)).toEqual([invite.token]);
+    expect(doc.entries[0].signer_sk).toBe(invite.signerSk);
+    expect(doc.entries[0].label).toBe("Reddit");
+    expect(doc.tombstones).toEqual([]);
+
+    client.stop();
+  });
+
+  it("client.invites.revoke tombstones the bundle, registry, and invite list", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
+
+    await client.start();
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    await settle();
+    const invite = await client.invites.create(community.communityId, { base: "https://app.example" });
+    await settle();
+    published.length = 0;
+
+    const revoked = await client.invites.revoke(invite);
+    await settle();
+
+    expect(revoked.revoked).toBe(true);
+    expect(client.invites.live$.value).toEqual([]);
+    expect(client.invites.revoked$.value.map((i) => i.token)).toEqual([invite.token]);
+    expect(community.state$.value.inviteLinks.has(invite.signerPubkey)).toBe(false);
+
+    const bundleTombstone = published.find(
+      (event) => event.kind === 33301 && event.pubkey === invite.signerPubkey && event.tags.some((t) => t[0] === "vsk" && t[1] === "9"),
+    );
+    expect(bundleTombstone).toBeDefined();
+
+    const saves = inviteListPublishes(published);
+    expect(saves).toHaveLength(1);
+    const doc = await decryptInviteList(signer, saves[0]);
+    expect(doc.tombstones).toEqual([{ token: invite.token, community_id: community.communityId }]);
 
     client.stop();
   });

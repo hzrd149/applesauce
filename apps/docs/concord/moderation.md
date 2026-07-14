@@ -16,7 +16,7 @@ await community.admin.refound({ keep, exclude });
 
 Reading is separate and stays on the community itself (`roles$`, `members$`, `banlist$`, `canDo`) — every member needs those, not just admins.
 
-Each of these is also aliased flat on the community for convenience — `community.ban(pubkey)` is the same call as `community.admin.ban(pubkey)` — but `community.admin` is the surface to reach for.
+Some actions have flat community aliases for convenience, but `community.admin` is the surface to reach for in app code.
 
 ## The permission model
 
@@ -47,7 +47,9 @@ UI, so a role grant that changes the answer re-renders the button.
 ```ts
 community.can$(PERM.CREATE_INVITE).subscribe((allowed) => toggleInviteButton(allowed));
 
-if (community.canDo(PERM.CREATE_INVITE)) await community.admin.createInvite(base);
+if (community.canDo(PERM.CREATE_INVITE)) {
+  await community.admin.invites.create({ base });
+}
 ```
 
 To act *on someone*, reach for `canModerate$` rather than pairing `canDo` with a

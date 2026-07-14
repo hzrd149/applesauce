@@ -4,14 +4,55 @@ There are two ways to bring someone into a community: a shareable **invite link*
 
 ## Invite links
 
-Create a link off the [community engine](/concord/community). Pass the base URL your app redeems links at:
+Create and manage links through the [client](/concord/client). Pass the base URL your app redeems links at:
 
 ```ts
-const url = await community.admin.createInvite("https://myapp.example/join");
-// share `url` anywhere
+const invite = await client.invites.create(communityId, {
+  base: "https://myapp.example",
+  label: "Reddit",
+});
+
+invite.url; // share this anywhere
 ```
 
-Creating a link registers it into the community, which marks the community as **public** (link-joinable). Requires `CREATE_INVITE`.
+Creating a link publishes the bundle, registers it into the community, and saves it to your private Invite List. A registered link marks the community as **public** (link-joinable). Requires `CREATE_INVITE`.
+
+The returned record has the fields apps need for invite-management screens:
+
+```ts
+invite.url;
+invite.label;
+invite.createdAt;
+invite.revoked;
+```
+
+On a community settings page, use the scoped admin surface:
+
+```ts
+const invite = await community.admin.invites.create({
+  base: "https://myapp.example",
+  label: "Mods",
+});
+```
+
+Both creation APIs save to the same client-owned Invite List when the community is owned by a `ConcordClient`.
+
+Revoke a link through the same manager:
+
+```ts
+await client.invites.revoke(invite);
+// or, on a community settings page:
+await community.admin.invites.revoke(invite);
+```
+
+Revoking reposts the invite bundle as a tombstone, removes it from your registry, and tombstones it in your private Invite List.
+
+Read the user's links reactively:
+
+```ts
+client.invites.live$.subscribe((invites) => render(invites));
+client.invites.revoked$.subscribe((invites) => renderRevoked(invites));
+```
 
 Redeem a link on the [client](/concord/client):
 

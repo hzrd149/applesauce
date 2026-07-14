@@ -77,6 +77,7 @@ Everything you build against lives in `applesauce-concord/client`:
 | --- | --- |
 | [`ConcordClient`](/concord/client) | The per-user manager. One instance per logged-in user; owns every joined community. |
 | [`ConcordCommunity`](/concord/community) | A single community's reactive engine — read state, send messages, run admin actions. |
+| `ConcordInviteManager` | The client-owned invite-link manager exposed as `client.invites`. |
 | `ConcordPrivateChannel` | A sub-engine for one private channel. Spawned automatically; you rarely construct it. |
 | [`InviteWatcher`](/concord/invites) | Watches the user's inbox for [direct invites](/concord/invites). |
 

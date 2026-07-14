@@ -45,7 +45,6 @@ import {
   mergeCommunities,
   mergeCommunityTombstones,
 } from "../helpers/community-list.js";
-import { INVITE_LIST_KIND } from "../helpers/invite-list.js";
 import {
   INVITE_BUNDLE_KIND,
   STOCK_RELAYS,
@@ -59,6 +58,7 @@ import { joinCommunity, leaveCommunity, refreshCommunity } from "../operations/c
 import { JoinLeaveFactory } from "../factories/guestbook.js";
 import { InviteWatcher } from "./invite-watcher.js";
 import type { ConcordDirectInvite } from "../casts/direct-invite.js";
+import { ConcordInviteManager } from "./invite-manager.js";
 import type {
   CommunityListCommunity,
   CommunityState,
@@ -129,6 +129,8 @@ export class ConcordClient {
    *  subscribe to its {@link InviteWatcher.needsAuth$} / {@link InviteWatcher.pendingCount$} once
    *  it exists (see {@link watchDirectInvites} / {@link startDirectInviteWatcher}). */
   readonly directInviteWatcher$ = new BehaviorSubject<InviteWatcher | undefined>(undefined);
+  /** The user's public invite-link manager (private kind-13303 list + community invite creation). */
+  readonly invites: ConcordInviteManager;
 
   private readonly pool: RelayPool;
   private readonly eventStore: EventStore;
@@ -175,7 +177,6 @@ export class ConcordClient {
    *  {@link autoSaveCommunityList} is on (created after hydration in {@link start}). */
   private autoSaveSub?: Subscription;
   private listSub?: Subscription;
-  private inviteSub?: Subscription;
   /** Watches the user's gift-wrap inbox for CORD-05 §6 Direct Invites — the delivery
    *  channel for private-channel grants ({@link ConcordCommunity.grantChannelAccess}). */
   private inviteWatcher?: InviteWatcher;
@@ -201,6 +202,14 @@ export class ConcordClient {
     this.autoSaveCommunityList = options.autoSaveCommunityList ?? false;
     this.watchDirectInvites = options.watchDirectInvites ?? true;
     this.relayAuth = new ConcordRelayAuth(options.pool);
+    this.invites = new ConcordInviteManager({
+      signer: this.signer,
+      pool: this.pool,
+      eventStore: this.eventStore,
+      relays: this.defaultRelays,
+      autoUnlock: this.autoUnlock,
+      getCommunity: (communityId) => this.getCommunity(communityId),
+    });
 
     // Aggregate status: fold every community's status$ into a single client snapshot.
     // Rebuild the fan-in only when the membership set changes (not on every state fold),
@@ -255,7 +264,7 @@ export class ConcordClient {
   /** The user's Invite List (kind 13303) as a reactive cast — same lock/unlock semantics, also
    *  safe before start. */
   get inviteList$(): Observable<ConcordInviteList | undefined> {
-    return this.user$.pipe(switchMap((user) => (user ? user.concordInviteList$ : of(undefined))));
+    return this.invites.event$;
   }
 
   private requireUser(): User {
@@ -288,8 +297,8 @@ export class ConcordClient {
     if (this.eventStore.getReplaceable(COMMUNITY_LIST_KIND, this.pubkey)) {
       await Promise.race([this.listHydration, new Promise((r) => setTimeout(r, 8000))]);
     }
+    await this.invites.start(this.requireUser());
     if (this.watchDirectInvites) {
-      void this.fetchList(INVITE_LIST_KIND);
       this.startDirectInviteWatcher();
     }
     // No unconditional startup publish: the initial sync is side-effect-free. If autoSave is on,
@@ -302,11 +311,11 @@ export class ConcordClient {
 
   stop(): void {
     this.listSub?.unsubscribe();
-    this.inviteSub?.unsubscribe();
     this.directInviteSub?.unsubscribe();
     this.autoSaveSub?.unsubscribe();
     this.autoSaveSub = undefined;
     this.inviteWatcher?.stop();
+    this.invites.stop();
     this.inviteWatcher = undefined;
     this.directInviteWatcher$.next(undefined);
     for (const sub of this.stateSubs.values()) sub.unsubscribe();
@@ -327,7 +336,6 @@ export class ConcordClient {
    * where a co-member's grant lands. Idempotent (guards against double-start).
    */
   startDirectInviteWatcher(): void {
-    void this.fetchList(INVITE_LIST_KIND);
     this.ensureInviteWatcher();
   }
 
@@ -510,6 +518,8 @@ export class ConcordClient {
         this.markCommunityListDirty();
       },
       onRemoved: (removed) => this.handleRemoved(removed),
+      onInviteCreated: (invite) => this.invites.record(invite),
+      onInviteRevoked: (invite) => this.invites.tombstone(invite),
     });
     this.communities.set(material.community_id, community);
     this.stateSubs.set(
@@ -605,16 +615,11 @@ export class ConcordClient {
         void this.reconcileCommunities();
       });
 
-    // Nothing consumes the Invite List yet — just auto-unlock it so the exposed cast is
-    // populated for the app when `autoUnlock` is on.
-    this.inviteSub = this.requireUser().concordInviteList$.subscribe((cast) => {
-      if (this.autoUnlock && cast && !cast.unlocked) this.autoUnlockCast(cast);
-    });
   }
 
   /** Issue the user-signer decrypt of a list cast at most once per event id. The unlock's
    *  `notifyEventUpdate` re-emits the now-decrypted cast for the reconcile path. */
-  private autoUnlockCast(cast: ConcordCommunityList | ConcordInviteList): void {
+  private autoUnlockCast(cast: ConcordCommunityList): void {
     if (!this.signer.nip44 || this.autoUnlocked.has(cast.id)) return;
     this.autoUnlocked.add(cast.id);
     void cast.unlock(this.signer).catch(() => {});

@@ -11,6 +11,7 @@ import { BehaviorSubject, Observable, Subscription, combineLatest, distinctUntil
 import { EventStore, RumorStore } from "applesauce-core";
 import { finalizeEvent, kinds, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
 import { DeleteFactory, type Emoji } from "applesauce-core/factories";
 import type { ISigner } from "applesauce-signers";
@@ -63,6 +64,7 @@ import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync
 import { ConcordCommunityAdmin } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
 import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader } from "./storage.js";
+import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
 
 /** Options for constructing a single-community {@link ConcordCommunity} engine. */
 export interface ConcordCommunityOptions {
@@ -91,6 +93,12 @@ export interface ConcordCommunityOptions {
   /** Called when a Refounding excludes us (CORD-06): the manager tombstones the
    *  membership and drops the community. */
   onRemoved?: (communityId: string) => void;
+  /** Called after a public invite link has been minted and registered so the
+   *  owning client can persist it into the user's private Invite List (13303). */
+  onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
+  /** Called after a public invite link has been revoked so the owning client can
+   *  persist the terminal tombstone into the user's private Invite List (13303). */
+  onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
 }
 
 /** Content equality for the member/ban sets, which are rebuilt on every fold. */
@@ -174,6 +182,8 @@ export class ConcordCommunity {
   private readonly storeFactory: ConcordStoreFactory;
   private readonly onMaterialChange?: (material: JoinMaterial) => void;
   private readonly onRemoved?: (communityId: string) => void;
+  private readonly onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
+  private readonly onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
 
   /** The current key state; rolled forward on a Refounding. */
   private keys: ConcordKeys;
@@ -203,6 +213,8 @@ export class ConcordCommunity {
     this.storeFactory = options.storeFactory ?? (() => new RumorStore());
     this.onMaterialChange = options.onMaterialChange;
     this.onRemoved = options.onRemoved;
+    this.onInviteCreated = options.onInviteCreated;
+    this.onInviteRevoked = options.onInviteRevoked;
 
     this.keys = deriveConcordKeys(options.material, []);
     this.state$ = new BehaviorSubject<CommunityState>(emptyState(options.material));
@@ -886,7 +898,7 @@ export class ConcordCommunity {
 
   // ---- invites ------------------------------------------------------------
 
-  async createInvite(base: string): Promise<string> {
+  async createInvite(options: CreateInviteOptions): Promise<ConcordInviteLink> {
     const token = newInviteToken();
     const linkSk = generateSecretKey();
     const linkPub = getPublicKey(linkSk);
@@ -896,6 +908,8 @@ export class ConcordCommunity {
       name: state.metadata?.name,
       icon: state.metadata?.icon,
       creator_npub: this.pubkey,
+      label: options.label,
+      expires_at: options.expiresAt,
     });
 
     const template = await InviteBundleFactory.create(bundle, token);
@@ -907,7 +921,31 @@ export class ConcordCommunity {
     // Register the link into the community (CORD-05 §5) so it counts as Public.
     await this.admin.registerInviteLink(linkPub);
 
-    return buildInviteLink(base, linkPub, token, inviteRelays);
+    const invite: ConcordInviteLink = {
+      token: bytesToHex(token),
+      signerSk: bytesToHex(linkSk),
+      signerPubkey: linkPub,
+      communityId: this.communityId,
+      url: buildInviteLink(options.base, linkPub, token, inviteRelays),
+      label: options.label,
+      createdAt: Math.floor(Date.now() / 1000),
+      expiresAt: options.expiresAt,
+      revoked: false,
+    };
+    await this.onInviteCreated?.(invite);
+    return invite;
+  }
+
+  async revokeInvite(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
+    const template = await InviteBundleFactory.revoke();
+    const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
+    this.eventStore.add(signed);
+    await this.pool.publish(this.relays(), signed).catch((err) => console.warn("bundle revocation publish failed", err));
+    await this.admin.unregisterInviteLink(invite.signerPubkey);
+
+    const revoked = { ...invite, revoked: true };
+    await this.onInviteRevoked?.(revoked);
+    return revoked;
   }
 
   /**

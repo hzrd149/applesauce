@@ -7,6 +7,7 @@ export * as Storage from "./storage.js";
 export * from "./sync.js";
 export * from "./channel-sync.js";
 export * from "./invite-watcher.js";
+export * from "./invite-manager.js";
 export * from "./private-channel.js";
 export * from "./admin.js";
 export * from "./community.js";
