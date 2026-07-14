@@ -5,14 +5,14 @@
 // is covered by the puppeteer drivers.
 
 import { describe, expect, it } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Subject, firstValueFrom } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
 import type { RelayPool, RelayStatus } from "applesauce-relay";
 
-import { kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
+import { getEventHash, kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import type { ConcordCommunityStatus } from "../../types.js";
@@ -20,9 +20,10 @@ import type { ConcordCommunityStatus } from "../../types.js";
 import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { SnapshotFactory } from "../../factories/guestbook.js";
-import { channelRekeyGroupKey, controlGroupKey } from "../../helpers/crypto.js";
+import { EditionFactory } from "../../factories/control.js";
+import { channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
-import { PERM } from "../../types.js";
+import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity } from "../community.js";
 
 // The control fold + sync are debounced/async; let them run before asserting.
@@ -434,6 +435,173 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(snap?.authenticated).toBe(true);
 
     sub.unsubscribe();
+    community.dispose();
+  });
+});
+
+// A rumor authored by `pubkey`, so owner-signed control editions can be fed into a
+// member's engine directly (the fold reads the author off the rumor).
+function rumorFromTemplate(template: RumorTemplate, pubkey: string, ms = 1_000): Rumor {
+  const tags = template.tags.filter((t) => t[0] !== "ms");
+  tags.push(["ms", String(ms % 1000)]);
+  const rumor: Rumor = {
+    kind: template.kind,
+    pubkey,
+    content: template.content,
+    tags,
+    created_at: Math.floor(ms / 1000),
+    id: "",
+  };
+  rumor.id = getEventHash(rumor);
+  return rumor;
+}
+
+describe("ConcordCommunity permissions + granular reads", () => {
+  /** An engine whose logged-in user is a plain member, seeded with owner genesis. */
+  async function memberCommunity() {
+    const ownerSigner = new PrivateKeySigner(generateSecretKey());
+    const owner = await ownerSigner.getPublicKey();
+    const memberSigner = new PrivateKeySigner(generateSecretKey());
+    const member = await memberSigner.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", description: "d", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer: memberSigner,
+      pubkey: member,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const t of genesis.controlRumors) community.controlStore.add(rumorFromTemplate(t, owner));
+    await settle();
+    return { community, owner, member, genesis };
+  }
+
+  it("can$ re-emits when a grant changes the answer", async () => {
+    const { community, owner, member, genesis } = await memberCommunity();
+
+    const seen: boolean[] = [];
+    const sub = community.can$(PERM.MANAGE_CHANNELS).subscribe((v) => seen.push(v));
+    expect(seen).toEqual([false]);
+
+    // The owner mints a MANAGE_CHANNELS role and grants it to the member.
+    const roleId = "01".repeat(32);
+    const role = { role_id: roleId, name: "Mods", position: 5, permissions: PERM.MANAGE_CHANNELS.toString(), scope: { kind: "server" }, color: 0 };
+    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    community.controlStore.add(rumorFromTemplate(roleEd, owner, 2_000));
+
+    const grantEid = grantLocator(hexToBytes(genesis.material.community_id), member);
+    const grantEd = await EditionFactory.create({ vsk: VSK.GRANT, eid: grantEid, version: 1, content: JSON.stringify({ member, role_ids: [roleId] }) });
+    community.controlStore.add(rumorFromTemplate(grantEd, owner, 3_000));
+    await settle();
+
+    // The point of the reactive form: a `canDo` read in a render path would have
+    // been captured at `false` and never recomputed.
+    expect(seen).toEqual([false, true]);
+    expect(community.canDo(PERM.MANAGE_CHANNELS)).toBe(true);
+
+    sub.unsubscribe();
+    community.dispose();
+  });
+
+  it("community.admin spans planes, and the flat aliases hit the same code", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const owner = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", description: "d", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey: owner,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // A control-plane edition, implemented on admin.
+    await community.admin.editMetadata({ description: "via admin" });
+    await settle();
+    expect(community.state$.value.metadata?.description).toBe("via admin");
+
+    const roleId = await community.admin.createRole("Mods", 5, PERM.KICK);
+    await settle();
+    expect(community.state$.value.roles.some((r) => r.role_id === roleId)).toBe(true);
+
+    // A cross-plane composite, delegated back to the community — the flat method is
+    // the implementation, so a delegation cycle here would blow the stack.
+    const target = "dd".repeat(32);
+    await community.admin.ban(target);
+    await settle();
+    expect(community.state$.value.banlist.has(target)).toBe(true);
+
+    await community.admin.kick(target);
+    await settle();
+    // The Kick lands on the guestbook — the plane `admin.ban` never touches.
+    const kicks = await Promise.resolve(community.guestbookStore.getTimeline([{ kinds: [3309] }]));
+    expect(kicks.some((r) => r.tags.some((t) => t[0] === "p" && t[1] === target))).toBe(true);
+
+    // The flat alias and the namespaced call are the same method.
+    expect(community.ban).toBeInstanceOf(Function);
+    await community.unban(target);
+    await settle();
+    expect(community.state$.value.banlist.has(target)).toBe(false);
+
+    community.dispose();
+  });
+
+  it("canModerate$ refuses to act on yourself even holding every bit", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const owner = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", description: "d", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey: owner,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const t of genesis.controlRumors) community.controlStore.add(rumorFromTemplate(t, owner));
+    await settle();
+
+    // The owner holds BAN outright, but can never outrank themselves.
+    expect(community.canDo(PERM.BAN)).toBe(true);
+    expect(await firstValueFrom(community.canModerate$(owner, PERM.BAN))).toBe(false);
+
+    community.dispose();
+  });
+
+  it("roles$ stays quiet while channel traffic moves the member set", async () => {
+    const { community } = await memberCommunity();
+
+    let roleEmissions = 0;
+    let memberEmissions = 0;
+    const roleSub = community.roles$.subscribe(() => roleEmissions++);
+    const memberSub = community.members$.subscribe(() => memberEmissions++);
+    expect(roleEmissions).toBe(1);
+
+    // A chat message re-runs the members/presence fold, so `state$` emits — but the
+    // control slices keep their references, so a roles-driven UI must not re-render.
+    const general = community.state$.value.channels.find((c) => c.name === "general")!;
+    await community.sendMessage(general.channel_id, "hello");
+    await settle();
+
+    expect(memberEmissions).toBe(2); // the sender joins the observed member set
+    expect(roleEmissions).toBe(1);
+
+    roleSub.unsubscribe();
+    memberSub.unsubscribe();
     community.dispose();
   });
 });

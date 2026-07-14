@@ -11,7 +11,6 @@ import { BehaviorSubject, Observable, Subscription, combineLatest, distinctUntil
 import { EventStore, RumorStore } from "applesauce-core";
 import { finalizeEvent, kinds, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
 import { DeleteFactory, type Emoji } from "applesauce-core/factories";
 import type { ISigner } from "applesauce-signers";
@@ -32,16 +31,14 @@ import {
 } from "../helpers/keys.js";
 import type { GroupKey } from "../helpers/crypto.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
-import { CONTROL_KIND, foldControl } from "../helpers/control.js";
+import { foldControl } from "../helpers/control.js";
 import { checkChatBinding } from "../helpers/chat.js";
 import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
-import { canActOn, refoundAuthority, resolveStanding, type Standing } from "../helpers/permissions.js";
-import { banlistLocator, grantLocator, inviteLinksLocator } from "../helpers/crypto.js";
-import { computeEditionHash } from "../helpers/editions.js";
+import { refoundAuthority, type Standing } from "../helpers/permissions.js";
 import type { AttachmentEncryption, MediaAttachment } from "../helpers/imeta.js";
 import { STOCK_RELAYS, buildInviteBundle, buildInviteLink, newInviteToken } from "../helpers/invite-bundle.js";
 import { EditFactory } from "../factories/edit.js";
-import { DissolutionFactory, EditionFactory } from "../factories/control.js";
+import { DissolutionFactory } from "../factories/control.js";
 import { JoinLeaveFactory, KickFactory } from "../factories/guestbook.js";
 import { InviteBundleFactory } from "../factories/invite-bundle.js";
 import { DirectInviteFactory } from "../factories/direct-invite.js";
@@ -50,9 +47,8 @@ import { ConcordCommunityStateModel } from "../models/community.js";
 import { decodedFromRumor } from "../models/utils.js";
 import {
   PERM,
-  VSK,
-  type BlobPointer,
   type ChannelKey,
+  type ChannelMetadata,
   type CommunityMetadata,
   type CommunityState,
   type ConcordCommunityStatus,
@@ -64,6 +60,7 @@ import {
   type RoleScope,
 } from "../types.js";
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
+import { ConcordCommunityAdmin } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
 import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader } from "./storage.js";
 
@@ -96,6 +93,24 @@ export interface ConcordCommunityOptions {
   onRemoved?: (communityId: string) => void;
 }
 
+/** Content equality for the member/ban sets, which are rebuilt on every fold. */
+function sameSet(a: Set<string>, b: Set<string>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const value of a) if (!b.has(value)) return false;
+  return true;
+}
+
+function sameStanding(a: Standing, b: Standing): boolean {
+  return (
+    a.isOwner === b.isOwner &&
+    a.position === b.position &&
+    a.permissions === b.permissions &&
+    a.roleIds.length === b.roleIds.length &&
+    a.roleIds.every((id, i) => id === b.roleIds[i])
+  );
+}
+
 function emptyState(material: JoinMaterial): CommunityState {
   return {
     material,
@@ -112,8 +127,24 @@ function emptyState(material: JoinMaterial): CommunityState {
 export class ConcordCommunity {
   readonly signer: ISigner;
   readonly pubkey: string;
-  /** The current folded community state (channels, roles, members, …). */
+  /** The current folded community state (channels, roles, members, …). The
+   *  aggregate; prefer the granular reads below, which only emit when their own
+   *  slice changes. */
   readonly state$: BehaviorSubject<CommunityState>;
+  /** The community's metadata (name, description, icon, banner, relays). */
+  readonly metadata$: Observable<CommunityMetadata | undefined>;
+  /** The community's live (non-deleted) channels. */
+  readonly channels$: Observable<ChannelMetadata[]>;
+  /** The community's roles, ordered by position (highest authority first). */
+  readonly roles$: Observable<Role[]>;
+  /** member → role_ids. */
+  readonly grants$: Observable<Map<string, string[]>>;
+  /** The banned pubkeys. */
+  readonly banlist$: Observable<Set<string>>;
+  /** Live invite-link coordinates; non-empty ⇒ the community is Public (CORD-05 §5). */
+  readonly inviteLinks$: Observable<Set<string>>;
+  /** The community's members. */
+  readonly members$: Observable<Set<string>>;
   /** The community's sync-lifecycle phase (idle → syncing → live; removed/error). */
   readonly phase$ = new BehaviorSubject<ConcordSyncPhase>("idle");
   /** The community's current root epoch (bumps on each adopted Refounding). */
@@ -128,6 +159,12 @@ export class ConcordCommunity {
   readonly authenticated$: Observable<boolean>;
   /** A flat snapshot of the community's status, for UI to react to as one value. */
   readonly status$: Observable<ConcordCommunityStatus>;
+
+  /** Every action that requires authority — metadata, channels, roles, members,
+   *  invites, refounding, dissolution — as one intent-shaped surface. This is the
+   *  community-management API; prefer it over the flat aliases the community keeps
+   *  for convenience. Nothing in it names a protocol plane. */
+  readonly admin: ConcordCommunityAdmin;
 
   private readonly pool: RelayPool;
   private readonly relayAuth: ConcordRelayAuth;
@@ -175,6 +212,26 @@ export class ConcordCommunity {
       map((s) => s.dissolved),
       distinctUntilChanged(),
     );
+
+    // Granular reads. Every control-plane slice keeps a STABLE REFERENCE between
+    // control folds — `ConcordCommunityStateModel` spreads `{ ...control, members }`,
+    // so `state$` re-emitting because a chat message moved the observed-authors set
+    // leaves `roles`/`channels`/… pointing at the same objects. Reference identity is
+    // therefore enough to keep these quiet under channel traffic.
+    const slice = <T>(select: (s: CommunityState) => T): Observable<T> =>
+      this.state$.pipe(map(select), distinctUntilChanged());
+    this.metadata$ = slice((s) => s.metadata);
+    this.channels$ = slice((s) => s.channels);
+    this.roles$ = slice((s) => s.roles);
+    this.grants$ = slice((s) => s.grants);
+    this.banlist$ = slice((s) => s.banlist);
+    this.inviteLinks$ = slice((s) => s.inviteLinks);
+    // `members` is rebuilt by every guestbook/presence fold, so compare by content.
+    this.members$ = this.state$.pipe(
+      map((s) => s.members),
+      distinctUntilChanged(sameSet),
+    );
+
     this.connected$ = this.relayAuth.connected$(this.relays());
     this.authenticated$ = this.relayAuth.authenticated$(this.relays(), () => this.currentAuthors());
     this.status$ = combineLatest({
@@ -208,6 +265,20 @@ export class ConcordCommunity {
     this.storeFor("guestbook");
     this.storeFor("dissolved");
     this.storeFor("rekey");
+
+    this.admin = new ConcordCommunityAdmin({
+      community: this,
+      store: this.storeFor("control"),
+      state: () => this.state$.value,
+      pubkey: this.pubkey,
+      uploader: this.uploader,
+      publish: (rumor) => this.publishToPlane({ plane: "control" }, rumor, { plaintext: true }),
+      mintChannelKey: (channelId, name) => {
+        this.keys = addChannelKey(this.keys, channelId, name);
+        this.onMaterialChange?.(this.keys.material);
+      },
+    });
+
     this.rewireState();
   }
 
@@ -499,10 +570,11 @@ export class ConcordCommunity {
       eventStore: this.eventStore,
       store: this.storeFor(`channel:${channelKey.id}`),
       relays: this.relays(),
-      isAuthorized: (rotator) => this.hasPerm(rotator, PERM.MANAGE_CHANNELS),
+      isAuthorized: (rotator) => this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS),
       // A rotator may only remove US if they also strictly outrank us (CORD-04),
       // so an under-ranked channel manager can't rekey a higher-ranked member out.
-      canRemoveSelf: (rotator) => this.hasPerm(rotator, PERM.MANAGE_CHANNELS, this.standingOf(this.pubkey).position),
+      canRemoveSelf: (rotator) =>
+        this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS, this.standingOf(this.pubkey).position),
       onKeyChange: (ck) => this.persistChannelKey(ck),
       onRemoved: (id) => this.onPrivateChannelRemoved(id),
     });
@@ -602,41 +674,6 @@ export class ConcordCommunity {
     this.onRemoved?.(cid);
   }
 
-  // ---- editions (control-plane versioned entities) ------------------------
-
-  private async latestEdition(eid: string): Promise<{ version: number; hash: string; content: string } | undefined> {
-    let best: { version: number; hash: string; content: string } | undefined;
-    // `getByFilters` is synchronous for an in-memory store and a Promise for an
-    // async-database-backed one — `Promise.resolve` normalizes both.
-    const rumors = await Promise.resolve(this.storeFor("control").getByFilters([{ kinds: [CONTROL_KIND] }]));
-    for (const rumor of rumors) {
-      if (rumor.tags.find((t) => t[0] === "eid")?.[1] !== eid) continue;
-      const version = parseInt(rumor.tags.find((t) => t[0] === "ev")?.[1] ?? "1", 10);
-      if (!best || version > best.version) {
-        const prev = rumor.tags.find((t) => t[0] === "ep")?.[1];
-        const hash = computeEditionHash({ vsk: 0, eid, version, prevHash: prev, content: rumor.content });
-        best = { version, hash, content: rumor.content };
-      }
-    }
-    return best;
-  }
-
-  private async buildVac(actor: string): Promise<[string, string, string] | undefined> {
-    if (actor === this.material.owner) return undefined;
-    const eid = grantLocator(hexToBytes(this.material.community_id), actor);
-    const latest = await this.latestEdition(eid);
-    if (!latest) return undefined;
-    return [eid, String(latest.version), latest.hash];
-  }
-
-  private async publishEdition(vsk: number, eid: string, content: string): Promise<void> {
-    const latest = await this.latestEdition(eid);
-    const version = latest ? latest.version + 1 : 1;
-    const vac = await this.buildVac(this.pubkey);
-    const rumor = await EditionFactory.create({ vsk, eid, version, prevHash: latest?.hash, content, vac });
-    await this.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
-  }
-
   // ---- chat actions -------------------------------------------------------
 
   private channelEpoch(channelId: string): number {
@@ -728,53 +765,32 @@ export class ConcordCommunity {
   }
 
   // ---- admin actions ------------------------------------------------------
+  //
+  // Each of these is a CORD-04 edition: the version/hash chain, the entity
+  // coordinates, and the authority resolution all live in ConcordCommunityControl.
+  // They stay exposed here so an app never has to know which plane an action lands
+  // on — `kick` writes the guestbook, `ban` the control plane, and both read the
+  // same to a caller.
 
-  async editMetadata(patch: Partial<CommunityMetadata>): Promise<void> {
-    const current = this.state$.value.metadata ?? { name: this.material.name, relays: this.material.relays };
-    const next: CommunityMetadata = { ...current, ...patch };
-    await this.publishEdition(VSK.METADATA, this.material.community_id, JSON.stringify(next));
+  editMetadata(patch: Partial<CommunityMetadata>): Promise<void> {
+    return this.admin.editMetadata(patch);
   }
 
   /** Encrypt an image via the uploader and publish it as the icon or banner. */
-  async setCommunityImage(which: "icon" | "banner", file: Blob): Promise<void> {
-    if (!this.uploader) throw new Error("no uploader configured: cannot set community image");
-    const att = await this.uploader.upload(file, this.communityId);
-    if (!att.encryption || !att.originalSha256 || !att.url)
-      throw new Error("uploader did not return an encrypted attachment");
-    const pointer: BlobPointer = {
-      url: att.url,
-      key: att.encryption.key,
-      nonce: att.encryption.nonce,
-      hash: att.originalSha256,
-    };
-    await this.editMetadata({ [which]: pointer });
+  setCommunityImage(which: "icon" | "banner", file: Blob): Promise<void> {
+    return this.admin.setCommunityImage(which, file);
   }
 
-  async removeCommunityImage(which: "icon" | "banner"): Promise<void> {
-    await this.editMetadata({ [which]: undefined });
+  removeCommunityImage(which: "icon" | "banner"): Promise<void> {
+    return this.admin.removeCommunityImage(which);
   }
 
-  async createChannel(name: string, isPrivate: boolean, voice = false): Promise<string> {
-    const channelId = bytesToHex(generateSecretKey());
-    if (isPrivate) {
-      // A private channel mints its own key; persist it (else it's lost on reload).
-      this.keys = addChannelKey(this.keys, channelId, name);
-      this.onMaterialChange?.(this.keys.material);
-    }
-    const content: Record<string, unknown> = { name, private: isPrivate };
-    if (voice) content.voice = true;
-    await this.publishEdition(VSK.CHANNEL, channelId, JSON.stringify(content));
-    return channelId;
+  createChannel(name: string, isPrivate: boolean, voice = false): Promise<string> {
+    return this.admin.createChannel(name, isPrivate, voice);
   }
 
-  async deleteChannel(channelId: string): Promise<void> {
-    const ch = this.state$.value.channels.find((c) => c.channel_id === channelId);
-    if (!ch) return;
-    await this.publishEdition(
-      VSK.CHANNEL,
-      channelId,
-      JSON.stringify({ name: ch.name, private: ch.private, deleted: true }),
-    );
+  deleteChannel(channelId: string): Promise<void> {
+    return this.admin.deleteChannel(channelId);
   }
 
   /**
@@ -785,30 +801,12 @@ export class ConcordCommunity {
    * (deliver on grant via {@link grantChannelAccess}, rekey on removal via
    * {@link rotateChannel}). A role mints no key, so this only records entitlement.
    */
-  async createRole(
-    name: string,
-    position: number,
-    permissions: bigint,
-    scope: RoleScope = { kind: "server" },
-  ): Promise<string> {
-    const roleId = bytesToHex(generateSecretKey());
-    const role: Role = {
-      role_id: roleId,
-      name,
-      position,
-      permissions: permissions.toString(),
-      scope,
-      color: 0,
-    };
-    await this.publishEdition(VSK.ROLE, roleId, JSON.stringify(role));
-    return roleId;
+  createRole(name: string, position: number, permissions: bigint, scope: RoleScope = { kind: "server" }): Promise<string> {
+    return this.admin.createRole(name, position, permissions, scope);
   }
 
-  async editRole(roleId: string, patch: Partial<Omit<Role, "role_id">>): Promise<void> {
-    const current = this.state$.value.roles.find((r) => r.role_id === roleId);
-    if (!current) throw new Error("role not found");
-    const role: Role = { ...current, ...patch, role_id: roleId };
-    await this.publishEdition(VSK.ROLE, roleId, JSON.stringify(role));
+  editRole(roleId: string, patch: Partial<Omit<Role, "role_id">>): Promise<void> {
+    return this.admin.editRole(roleId, patch);
   }
 
   /**
@@ -817,37 +815,27 @@ export class ConcordCommunity {
    * or rank, stripping its authority from every grant-holder. Reverse with
    * `editRole(roleId, { deleted: false })`. Existing grants are left untouched.
    */
-  async deleteRole(roleId: string): Promise<void> {
-    const current = this.state$.value.roles.find((r) => r.role_id === roleId);
-    if (!current) return;
-    await this.publishEdition(VSK.ROLE, roleId, JSON.stringify({ ...current, deleted: true }));
+  deleteRole(roleId: string): Promise<void> {
+    return this.admin.deleteRole(roleId);
   }
 
-  async grantRoles(member: string, roleIds: string[]): Promise<void> {
-    const eid = grantLocator(hexToBytes(this.material.community_id), member);
-    await this.publishEdition(VSK.GRANT, eid, JSON.stringify({ member, role_ids: roleIds }));
+  grantRoles(member: string, roleIds: string[]): Promise<void> {
+    return this.admin.grantRoles(member, roleIds);
   }
 
+  /** Strip a member's roles (control plane) and publish the Kick (guestbook). */
   async kick(member: string): Promise<void> {
-    await this.grantRoles(member, []);
-    const vac = await this.buildVac(this.pubkey);
+    await this.admin.grantRoles(member, []);
+    const vac = await this.admin.vacFor(this.pubkey);
     await this.publishToPlane({ plane: "guestbook" }, await KickFactory.create(member, vac), {});
   }
 
-  async ban(member: string): Promise<void> {
-    const current = new Set(this.state$.value.banlist);
-    current.add(member);
-    const eid = banlistLocator(hexToBytes(this.material.community_id));
-    await this.publishEdition(VSK.BANLIST, eid, JSON.stringify([...current]));
-    await this.grantRoles(member, []);
-    // NOTE: full enforcement also requires a Refounding (rekey) — CORD-06.
+  ban(member: string): Promise<void> {
+    return this.admin.ban(member);
   }
 
-  async unban(member: string): Promise<void> {
-    const current = new Set(this.state$.value.banlist);
-    current.delete(member);
-    const eid = banlistLocator(hexToBytes(this.material.community_id));
-    await this.publishEdition(VSK.BANLIST, eid, JSON.stringify([...current]));
+  unban(member: string): Promise<void> {
+    return this.admin.unban(member);
   }
 
   /**
@@ -917,16 +905,7 @@ export class ConcordCommunity {
     this.pool.publish(inviteRelays, signed).catch((err) => console.warn("bundle publish failed", err));
 
     // Register the link into the community (CORD-05 §5) so it counts as Public.
-    const registryEid = inviteLinksLocator(hexToBytes(this.material.community_id), this.pubkey);
-    const existing = await this.latestEdition(registryEid);
-    let links: string[] = [];
-    try {
-      if (existing) links = JSON.parse(existing.content) as string[];
-    } catch {
-      /* ignore */
-    }
-    if (!links.includes(linkPub)) links.push(linkPub);
-    await this.publishEdition(VSK.INVITE_REGISTRY, registryEid, JSON.stringify(links));
+    await this.admin.registerInviteLink(linkPub);
 
     return buildInviteLink(base, linkPub, token, inviteRelays);
   }
@@ -1066,22 +1045,50 @@ export class ConcordCommunity {
     return rumorId;
   }
 
-  // ---- helpers for UI -----------------------------------------------------
+  // ---- permissions --------------------------------------------------------
+  //
+  // Snapshot and reactive forms of the same checks. The snapshot form is correct in
+  // an event handler (an answer at click-time) and is what the engine's own guards
+  // use; a render path wants the `$` form, because a role grant that changes the
+  // answer has to re-render the button it gates.
 
+  /** A member's resolved authority — snapshot. */
   standingOf(member: string): Standing {
-    const state = this.state$.value;
-    const rolesMap = new Map<string, Role>(state.roles.map((r) => [r.role_id, r]));
-    return resolveStanding(member, this.material.owner, rolesMap, state.grants);
+    return this.admin.standingOf(member);
   }
 
+  /** A member's resolved authority, re-emitted whenever roles or grants move. */
+  standing$(member: string): Observable<Standing> {
+    return this.state$.pipe(
+      map(() => this.standingOf(member)),
+      distinctUntilChanged(sameStanding),
+    );
+  }
+
+  /** Whether the logged-in user holds `perm` (and outranks `targetPosition`) — snapshot. */
   canDo(perm: bigint, targetPosition = 0xffffffff): boolean {
-    return this.hasPerm(this.pubkey, perm, targetPosition);
+    return this.admin.canDo(perm, targetPosition);
   }
 
-  /** Whether `member` holds `perm` (the roster authority check, e.g. for accepting
-   *  a channel Rekey from a rotator). */
-  private hasPerm(member: string, perm: bigint, targetPosition = 0xffffffff): boolean {
-    const standing = this.standingOf(member);
-    return canActOn(standing, { permissions: 0n, position: targetPosition, isOwner: false, roleIds: [] }, perm);
+  /** Reactive {@link canDo} — prefer this in a render path. */
+  can$(perm: bigint, targetPosition = 0xffffffff): Observable<boolean> {
+    return this.state$.pipe(
+      map(() => this.canDo(perm, targetPosition)),
+      distinctUntilChanged(),
+    );
+  }
+
+  /**
+   * Whether the logged-in user may act on `member` with `perm` — reactive. Holding
+   * the bit isn't enough: CORD-04 requires strictly outranking the target, and you
+   * can never act on yourself (you never outrank yourself). Both halves are folded
+   * in here so a caller can't pair `canDo` with a stale `standingOf` position or
+   * forget the self-check.
+   */
+  canModerate$(member: string, perm: bigint): Observable<boolean> {
+    return this.state$.pipe(
+      map(() => member !== this.pubkey && this.canDo(perm, this.standingOf(member).position)),
+      distinctUntilChanged(),
+    );
   }
 }

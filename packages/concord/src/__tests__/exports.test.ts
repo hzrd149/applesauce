@@ -9,6 +9,7 @@ describe("concord exports", () => {
         "Casts",
         "ConcordClient",
         "ConcordCommunity",
+        "ConcordCommunityAdmin",
         "ConcordPrivateChannel",
         "ConcordRelayAuth",
         "Factories",

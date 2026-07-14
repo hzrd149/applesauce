@@ -8,5 +8,6 @@ export * from "./sync.js";
 export * from "./channel-sync.js";
 export * from "./invite-watcher.js";
 export * from "./private-channel.js";
+export * from "./admin.js";
 export * from "./community.js";
 export * from "./client.js";
