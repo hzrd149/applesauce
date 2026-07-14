@@ -3,7 +3,9 @@ import {
   EncryptedContentSigner,
   EventTemplate,
   finalizeEvent,
+  getEventHash,
   kinds,
+  Rumor,
   unixNow,
   UnsignedEvent,
 } from "applesauce-core/helpers";
@@ -49,6 +51,18 @@ export class FakeUser implements EncryptedContentSigner, EventSigner {
 
   note(content = "Hello World", extra?: Partial<NostrEvent>) {
     return this.event({ kind: kinds.ShortTextNote, content, ...extra });
+  }
+
+  /** An unsigned event with a computed id — the NIP-59 rumor form. */
+  rumor(data?: Partial<NostrEvent>): Rumor {
+    const unsigned: UnsignedEvent = {
+      kind: data?.kind ?? kinds.ShortTextNote,
+      content: data?.content || "",
+      created_at: data?.created_at ?? unixNow(),
+      tags: data?.tags || [],
+      pubkey: this.pubkey,
+    };
+    return { ...unsigned, id: getEventHash(unsigned) };
   }
 
   profile(profile: any, extra?: Partial<NostrEvent>) {

@@ -5,6 +5,7 @@ import {
   isAddressableKind,
   KnownEvent,
   NostrEvent,
+  StoreEvent,
 } from "applesauce-core/helpers/event";
 import { getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { isSafeRelayURL } from "applesauce-core/helpers/relays";
@@ -115,8 +116,8 @@ export function getCommentExternalPointer(
 
 /** Returns the root pointer for a comment */
 export function getCommentRootPointer(comment: CommentEvent): CommentPointer;
-export function getCommentRootPointer(comment: NostrEvent): CommentPointer | null;
-export function getCommentRootPointer(comment: NostrEvent): CommentPointer | null {
+export function getCommentRootPointer(comment: StoreEvent): CommentPointer | null;
+export function getCommentRootPointer(comment: StoreEvent): CommentPointer | null {
   if (comment.kind !== COMMENT_KIND) return null;
 
   return getOrComputeCachedValue(comment, CommentRootPointerSymbol, () => {
@@ -135,7 +136,7 @@ export function getCommentRootPointer(comment: NostrEvent): CommentPointer | nul
 }
 
 /** Returns the reply pointer for a comment */
-export function getCommentReplyPointer(comment: NostrEvent): CommentPointer | null {
+export function getCommentReplyPointer(comment: StoreEvent): CommentPointer | null {
   if (comment.kind !== COMMENT_KIND) return null;
 
   return getOrComputeCachedValue(comment, CommentReplyPointerSymbol, () => {
@@ -222,8 +223,14 @@ export function createCommentTagsFromCommentPointer(pointer: CommentPointer, roo
   throw new Error("Unknown comment pointer kind");
 }
 
-/** Returns an array of NIP-22 tags for a kind 1111 comment event */
-export function createCommentTagsForEvent(parent: NostrEvent, relayHint?: string) {
+/**
+ * Returns an array of NIP-22 tags for a kind 1111 comment event
+ * @param parent - The full parent event or {@link Rumor} being replied to. Only
+ * `id`/`kind`/`pubkey`/`tags` are read, so an unsigned rumor works the same as a
+ * signed event — the parent's own root tags are what make nested replies stay
+ * rooted on the original event.
+ */
+export function createCommentTagsForEvent(parent: StoreEvent, relayHint?: string) {
   const tags: string[][] = [];
 
   let parentPointer: CommentPointer;

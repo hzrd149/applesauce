@@ -1,9 +1,9 @@
 import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
-import { KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
+import { KnownEventTemplate } from "applesauce-core/helpers";
 import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
 import { MetaTagOptions } from "applesauce-core/operations/event";
-import { COMMENT_KIND, CommentPointer } from "../helpers/comment.js";
-import { setParent } from "../operations/comment.js";
+import { COMMENT_KIND } from "../helpers/comment.js";
+import { CommentParent, setParent } from "../operations/comment.js";
 import { GroupPointer } from "../helpers/groups.js";
 import { setGroupPointer } from "../operations/group.js";
 import { addHashtag, includeHashtags } from "../operations/hashtags.js";
@@ -13,7 +13,7 @@ export type CommentFactoryOptions = TextContentOptions & MetaTagOptions;
 
 export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTemplate> {
   /** Creates a new comment event */
-  static create(parent: NostrEvent | CommentPointer, content: string, options?: CommentFactoryOptions): CommentFactory {
+  static create(parent: CommentParent, content: string, options?: CommentFactoryOptions): CommentFactory {
     let factory = new CommentFactory((res) => res(blankEventTemplate(COMMENT_KIND)))
       .parent(parent)
       .text(content, options);
@@ -21,8 +21,8 @@ export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTem
     return factory;
   }
 
-  /** Creates a new comment that is replying to a parent event or pointer */
-  static reply(parent: NostrEvent | CommentPointer, content: string, options?: CommentFactoryOptions): CommentFactory {
+  /** Creates a new comment that is replying to a parent event, rumor, or pointer */
+  static reply(parent: CommentParent, content: string, options?: CommentFactoryOptions): CommentFactory {
     let factory = new CommentFactory((res) => res(blankEventTemplate(COMMENT_KIND)))
       .parent(parent)
       .text(content, options);
@@ -30,8 +30,8 @@ export class CommentFactory extends EventFactory<typeof COMMENT_KIND, CommentTem
     return factory;
   }
 
-  /** Sets the parent event or pointer that this comment is replying to */
-  parent(parent: NostrEvent | CommentPointer) {
+  /** Sets the parent event, rumor, or pointer that this comment is replying to */
+  parent(parent: CommentParent) {
     return this.chain(setParent(parent));
   }
 
