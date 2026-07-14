@@ -490,6 +490,49 @@ describe("ConcordClient community list (DI, no network)", () => {
     client.stop();
   });
 
+  it("client.invites.revoke cleans up an invite after leaving the community", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
+
+    await client.start();
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    await settle();
+    const invite = await client.invites.create(community.communityId, { base: "https://app.example" });
+    await settle();
+
+    // Leave the community — its engine is disposed, so the registry is no longer reachable.
+    await client.leave(community.communityId);
+    await settle();
+    expect(client.getCommunity(community.communityId)).toBeUndefined();
+    published.length = 0;
+
+    // Cleanup still works: the bundle is revoked straight from the stored link key.
+    const revoked = await client.invites.revoke(invite.token);
+    await settle();
+
+    expect(revoked.revoked).toBe(true);
+    expect(client.invites.revoked$.value.map((i) => i.token)).toEqual([invite.token]);
+
+    const bundleTombstone = published.find(
+      (event) => event.kind === 33301 && event.pubkey === invite.signerPubkey && event.tags.some((t) => t[0] === "vsk" && t[1] === "9"),
+    );
+    expect(bundleTombstone).toBeDefined();
+
+    const saves = inviteListPublishes(published);
+    const doc = await decryptInviteList(signer, saves.at(-1)!);
+    expect(doc.tombstones).toContainEqual({ token: invite.token, community_id: community.communityId });
+
+    client.stop();
+  });
+
   it("exposes a descriptive status$ (phase + aggregate over communities)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const { pool } = fakePool();

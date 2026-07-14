@@ -10,6 +10,7 @@ import { BehaviorSubject, Subscription, firstValueFrom, map, of, switchMap, time
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import type { User } from "applesauce-core/casts";
 import { setHiddenContentCache } from "applesauce-core/helpers";
+import { finalizeEvent } from "applesauce-core/helpers/event";
 import { getPublicKey } from "applesauce-core/helpers/keys";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { RelayPool } from "applesauce-relay";
@@ -17,6 +18,8 @@ import type { ISigner } from "applesauce-signers";
 
 import type { ConcordInviteList } from "../casts/index.js";
 import { canonicalJson } from "../helpers/community-list.js";
+import { parseInviteLink } from "../helpers/invite-bundle.js";
+import { InviteBundleFactory } from "../factories/invite-bundle.js";
 import {
   INVITE_LIST_KIND,
   inviteListWithinByteCap,
@@ -160,11 +163,27 @@ export class ConcordInviteManager {
   async revoke(inviteOrToken: string | ConcordInviteLink | InviteListInvite): Promise<ConcordInviteLink> {
     const invite = typeof inviteOrToken === "string" ? this.get(inviteOrToken) : fromInviteListInvite(toInviteListInvite(inviteOrToken), this.tombstones);
     if (!invite) throw new Error("invite not found");
+    // While we're still a member the community revokes the bundle AND unregisters the public link
+    // (CORD-05 §5). Once we've left, the registry — which holds only public link coordinates, never
+    // any private material — is neither reachable nor needed: revoke the bundle straight from the
+    // stored link key so old invites can still be cleaned up.
     const community = this.getCommunity(invite.communityId);
-    if (!community) throw new Error("community not found");
-    const revoked = await community.admin.revokeInvite(invite);
+    const revoked = community ? await community.admin.revokeInvite(invite) : await this.revokeBundle(invite);
     if (!this.get(revoked.token)?.revoked) await this.tombstone(revoked);
     return this.get(revoked.token) ?? revoked;
+  }
+
+  /** Revoke just the bundle, membership-free: publish an empty vsk-9 edition signed by the invite's
+   *  stored link key to its own bootstrap relays. The community-side registry unregister is skipped —
+   *  it needs a membership we no longer have, and a stale registry link resolves to a revoked bundle. */
+  private async revokeBundle(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
+    const signed = finalizeEvent(await InviteBundleFactory.revoke(), hexToBytes(invite.signerSk));
+    this.eventStore.add(signed);
+    const relays = parseInviteLink(invite.url).bootstrapRelays;
+    await this.pool
+      .publish(relays.length ? relays : this.relays, signed)
+      .catch((err) => console.warn("bundle revocation publish failed", err));
+    return { ...invite, revoked: true };
   }
 
   /** Record a newly minted link into the private Invite List and publish it. */
