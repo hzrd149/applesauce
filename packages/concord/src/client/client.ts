@@ -41,9 +41,10 @@ import {
   COMMUNITY_LIST_KIND,
   canonicalJson,
   communityListWithinByteCap,
-  isCommunityLive,
+  liveCommunities,
   mergeCommunities,
   mergeCommunityTombstones,
+  parseCommunityList,
 } from "../helpers/community-list.js";
 import {
   INVITE_BUNDLE_KIND,
@@ -150,7 +151,10 @@ export class ConcordClient {
 
   private readonly communities = new Map<string, ConcordCommunity>();
   private readonly stateSubs = new Map<string, Subscription>();
-  /** The authoritative 13302 document (CORD-02 §8): two merged, never-clobbered arrays. */
+  /** The authoritative 13302 document (CORD-02 §8): two merged, never-clobbered arrays. Both the
+   *  local mirror and the relay copy are merged into these through the same primitives, and the
+   *  running engine set is derived from them — so a leave on another device reaps the engine here
+   *  instead of the stale engine resurrecting the membership. */
   private list: CommunityListCommunity[] = [];
   private tombstones: CommunityTombstone[] = [];
   /** Canonical fingerprint of the list content believed to be on the relay. When a save would
@@ -282,9 +286,8 @@ export class ConcordClient {
     if (!this.user$.value) this.user$.next(castUser(await this.signer.getPublicKey(), this.eventStore));
     // Restore memberships from the local mirror first (instant, offline-safe),
     // then reconcile with the relay-published Community List (kind 13302).
-    for (const material of await this.loadMaterials()) {
-      if (!this.communities.has(material.community_id)) this.addCommunity(material);
-    }
+    await this.loadMirror();
+    await this.reconcileCommunities();
     this.watchLists();
     // Pull the user's self-encrypted lists into the store; the cast subscriptions above pick
     // them up (and auto-unlock / reconcile) as they arrive.
@@ -393,8 +396,8 @@ export class ConcordClient {
       description,
       relays: relays.length ? relays : this.defaultRelays,
     });
-    const community = this.addCommunity(genesis.material);
-    await this.saveMaterials();
+    const community = this.recordJoin(genesis.material);
+    await this.saveMirror();
     // Publish genesis control editions (plaintext seal) + owner Join.
     for (const rumor of genesis.controlRumors)
       await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
@@ -471,8 +474,8 @@ export class ConcordClient {
     // If we're already in the community, return the existing community.
     if (this.communities.has(material.community_id)) return this.communities.get(material.community_id)!;
 
-    const community = this.addCommunity(material);
-    await this.saveMaterials();
+    const community = this.recordJoin(material);
+    await this.saveMirror();
     // Publish our Join (with attribution, CORD-05).
     const joinRumor = await JoinLeaveFactory.create("join", {
       invite: bundle.creator_npub ? { creator: bundle.creator_npub, label: bundle.label } : undefined,
@@ -491,12 +494,26 @@ export class ConcordClient {
     // Tombstone the membership so the leave propagates across devices/clients
     // (a bare omission would merge back as still-joined — CORD-02 §8).
     this.tombstones = leaveCommunity(cid, Date.now())(this.list, this.tombstones).tombstones;
-    await this.saveMaterials();
+    await this.saveMirror();
     // Leaving is an explicit mutation — always publish the tombstoned list.
     await this.saveCommunityList();
   }
 
   // ---- internal: community lifecycle --------------------------------------
+
+  /** Record an **explicit** join (create/accept-invite) in the document and start its engine.
+   *  Stamping `added_at` here — at the one moment the user actually opted in — is what lets a
+   *  re-join outlive an older tombstone (CORD-02 §8) without the save path having to infer intent
+   *  from the running engine set, which cannot tell a deliberate re-join from a stale engine. */
+  private recordJoin(material: JoinMaterial): ConcordCommunity {
+    this.list = joinCommunity({
+      community_id: material.community_id,
+      seed: material,
+      current: material,
+      added_at: Date.now(),
+    })(this.list, this.tombstones).communities;
+    return this.addCommunity(material);
+  }
 
   private addCommunity(material: JoinMaterial): ConcordCommunity {
     const community = new ConcordCommunity({
@@ -511,8 +528,13 @@ export class ConcordClient {
       storeFactory: this.storeFactory
         ? (_cid, planeKey) => this.storeFactory!(material.community_id, planeKey)
         : undefined,
-      onMaterialChange: () => {
-        void this.saveMaterials();
+      onMaterialChange: (changed) => {
+        // Fold the engine's new snapshot into the document in place, so the mirror we persist and
+        // the list we publish always carry what the engine actually holds. `refreshCommunity`
+        // bypasses the epoch-keyed `freshest` merge, so a same-epoch change (a minted channel key)
+        // can't lose the canonical-bytes tiebreak against the snapshot it replaces.
+        this.list = refreshCommunity(changed)(this.list, this.tombstones).communities;
+        void this.saveMirror();
         // A sync-time change (epoch catch-up). Never publishes on its own — it flags the list
         // dirty; the opt-in debounced auto-save flushes it, or the app publishes manually.
         this.markCommunityListDirty();
@@ -544,7 +566,7 @@ export class ConcordClient {
   private handleRemoved(cid: string): void {
     this.removeCommunity(cid);
     this.tombstones = leaveCommunity(cid, Date.now())(this.list, this.tombstones).tombstones;
-    void this.saveMaterials();
+    void this.saveMirror();
     // Involuntary removal during sync/live — flag dirty rather than publish inline so a sync stays
     // side-effect-free; the opt-in auto-save (or a later explicit mutation) propagates the tombstone.
     this.markCommunityListDirty();
@@ -566,21 +588,50 @@ export class ConcordClient {
     void community.refreshInviteBundles(links).catch((err) => console.warn("invite refresh failed", err));
   }
 
-  // ---- local material mirror ----------------------------------------------
+  // ---- local mirror of the community list ----------------------------------
 
-  private async loadMaterials(): Promise<JoinMaterial[]> {
+  /** Read the local mirror and merge it into the document. The mirror holds the same
+   *  `{entries, tombstones}` shape the relay copy does, so local and remote state combine through
+   *  the identical CORD-02 §8 primitives — a mirror can contribute an unpublished join but can
+   *  never clobber a tombstone another device wrote. */
+  private async loadMirror(): Promise<void> {
     try {
       const raw = await this.storage.getItem(this.pubkey);
-      return raw ? (JSON.parse(raw) as JoinMaterial[]) : [];
-    } catch {
-      return [];
+      if (!raw) return;
+      const mirror = this.parseMirror(raw);
+      this.list = mergeCommunities(this.list, mirror.communities);
+      this.tombstones = mergeCommunityTombstones(this.tombstones, mirror.tombstones);
+    } catch (err) {
+      console.warn("failed to read the local community mirror", err);
     }
   }
 
-  private async saveMaterials(): Promise<void> {
+  /** Parse a mirror payload, migrating the legacy format (a bare `JoinMaterial[]` — a membership
+   *  set with no `added_at` and no tombstones) in place. Legacy memberships seed `added_at: 0` so
+   *  any tombstone the relay copy carries outranks them: a device whose mirror predates this format
+   *  must not undo a leave it never witnessed. An unpublished legacy join still survives, because
+   *  liveness only consults `added_at` when a tombstone exists at all. */
+  private parseMirror(raw: string): { communities: CommunityListCommunity[]; tombstones: CommunityTombstone[] } {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return parseCommunityList(raw);
+    return {
+      communities: (parsed as JoinMaterial[])
+        .filter((material) => typeof material?.community_id === "string")
+        .map((material) => ({
+          community_id: material.community_id,
+          seed: material,
+          current: material,
+          added_at: 0,
+        })),
+      tombstones: [],
+    };
+  }
+
+  private async saveMirror(): Promise<void> {
     try {
-      const materials = [...this.communities.values()].map((c) => c.material);
-      await this.storage.setItem(this.pubkey, JSON.stringify(materials));
+      // Keyed as `entries` to match the wire document (armada-compatible), so the mirror and the
+      // 13302 plaintext stay parseable by the same helper.
+      await this.storage.setItem(this.pubkey, JSON.stringify({ entries: this.list, tombstones: this.tombstones }));
     } catch (err) {
       console.warn("failed to mirror communities locally", err);
     }
@@ -638,18 +689,25 @@ export class ConcordClient {
     void cast.unlock(this.signer).catch(() => {});
   }
 
-  /** Spin up any live membership from the merged list that isn't already running. */
+  /** Drive the running engine set to exactly the live memberships derived from the merged document
+   *  (CORD-02 §8): start what's live and isn't running, stop what's running and is no longer live.
+   *  The reap is the half that makes a leave propagate — without it a membership tombstoned on
+   *  another device keeps its engine (and its place in `communities$`) forever, and would be
+   *  republished as live on the next save. */
   private async reconcileCommunities(): Promise<void> {
-    let added = false;
-    for (const community of this.list) {
-      const m = community.current;
-      if (!m?.community_id || !isCommunityLive(this.list, this.tombstones, m.community_id)) continue;
-      if (!this.communities.has(m.community_id)) {
-        this.addCommunity(m);
-        added = true;
-      }
+    const live = new Map(liveCommunities(this.list, this.tombstones).map((e) => [e.community_id, e]));
+    let changed = false;
+    for (const cid of [...this.communities.keys()]) {
+      if (live.has(cid)) continue;
+      this.removeCommunity(cid);
+      changed = true;
     }
-    if (added) await this.saveMaterials();
+    for (const [cid, community] of live) {
+      if (this.communities.has(cid) || !community.current?.community_id) continue;
+      this.addCommunity(community.current);
+      changed = true;
+    }
+    if (changed) await this.saveMirror();
   }
 
   /** Flag the community list as needing a re-publish (a sync-time epoch catch-up or a refounding
@@ -682,31 +740,13 @@ export class ConcordClient {
   async saveCommunityList(): Promise<void> {
     if (!this.signer.nip44) return;
     try {
-      const nowMs = Date.now();
-      let list = this.list;
+      // Serialize the document as-is. Joins stamp `added_at` in `recordJoin`, leaves tombstone in
+      // `leave`/`handleRemoved`, and engine snapshots fold in via `onMaterialChange` — so there is
+      // nothing to reconstruct here, and in particular no re-deriving membership from the engine
+      // map (which cannot distinguish a deliberate re-join from an engine still running against a
+      // membership another device already left).
+      const list = this.list;
       const tombstones = this.tombstones;
-      for (const community of this.communities.values()) {
-        const cid = community.communityId;
-        const existing = list.find((e) => e.community_id === cid);
-        if (!existing) {
-          list = joinCommunity({
-            community_id: cid,
-            seed: community.material,
-            current: community.material,
-            added_at: nowMs,
-          })(list, tombstones).communities;
-          continue;
-        }
-        list = refreshCommunity(community.material)(list, tombstones).communities;
-        const tomb = tombstones.find((t) => t.community_id === cid);
-        if (tomb && existing.added_at <= tomb.removed_at) {
-          list = joinCommunity({ ...existing, current: community.material, added_at: nowMs })(
-            list,
-            tombstones,
-          ).communities;
-        }
-      }
-      this.list = list;
       // Content-fingerprint dirty check: 13302 is replaceable, so skip the encrypt/sign/publish
       // when the content is byte-for-byte what we believe is already on the relay. Compare
       // canonical PLAINTEXT (NIP-44's random nonce makes ciphertext comparison useless).

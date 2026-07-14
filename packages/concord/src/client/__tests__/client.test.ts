@@ -533,6 +533,137 @@ describe("ConcordClient community list (DI, no network)", () => {
     client.stop();
   });
 
+  // A leave on device A must stick when device B loads: B's mirror still holds the membership, so
+  // the merged tombstone has to reap B's engine — and must never be republished as a fresh join.
+  async function leftElsewhere(opts: { mirror: "legacy" | "document" }) {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", description: "hi", relays: ["wss://fake"] });
+    const cid = genesis.material.community_id;
+    const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+
+    // The relay copy device A published: the membership stays in the document (nothing is ever
+    // deleted) with a tombstone that postdates its add — so it is derived-dead.
+    const communities = mergeCommunities([], [{ community_id: cid, seed: material, current: material, added_at: 1000 }]);
+    const remote = JSON.stringify({ entries: communities, tombstones: [{ community_id: cid, removed_at: 2000 }] });
+    const listEvent = await signer.signEvent({
+      kind: COMMUNITY_LIST_KIND,
+      content: await signer.nip44!.encrypt(pubkey, remote),
+      tags: [],
+      created_at: 1,
+    });
+
+    // Device B's mirror, written before the leave — it has no idea the membership is gone.
+    const storage = memoryStorage();
+    await storage.setItem(
+      pubkey,
+      opts.mirror === "legacy"
+        ? JSON.stringify([material])
+        : JSON.stringify({ entries: communities, tombstones: [] }),
+    );
+
+    const store = new EventStore();
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage,
+      relays: ["wss://fake"],
+      autoUnlock: true,
+      autoSaveCommunityList: true,
+    });
+    return { client, store, listEvent, cid, published, storage, pubkey, signer };
+  }
+
+  it.each(["legacy", "document"] as const)(
+    "reaps a membership left on another device (%s mirror) — no resurrection",
+    async (mirror) => {
+      const { client, store, listEvent, cid, published } = await leftElsewhere({ mirror });
+
+      await client.start();
+      // The mirror bootstraps the engine before the relay copy lands (offline-first).
+      expect(client.getCommunity(cid)).toBeDefined();
+
+      store.add(listEvent as NostrEvent); // the relay copy, carrying the tombstone, arrives
+      await settleFlush();
+
+      // The engine is reaped and the membership leaves communities$ — not merely hidden.
+      expect(client.getCommunity(cid)).toBeUndefined();
+      expect(client.communities$.value.map((s) => s.material.community_id)).not.toContain(cid);
+
+      // And nothing republished it as a live join — the leave stays propagated.
+      for (const event of listPublishes(published)) {
+        const doc = JSON.parse(await client.signer.nip44!.decrypt(client.pubkey, event.content));
+        const entry = doc.entries.find((e: any) => e.community_id === cid);
+        const tomb = doc.tombstones.find((t: any) => t.community_id === cid);
+        expect(entry === undefined || (tomb && entry.added_at <= tomb.removed_at)).toBe(true);
+      }
+
+      client.stop();
+    },
+  );
+
+  it("prunes the reaped membership from the mirror, so a restart does not revive it", async () => {
+    const { client, store, listEvent, cid, storage, pubkey } = await leftElsewhere({ mirror: "legacy" });
+    await client.start();
+    store.add(listEvent as NostrEvent);
+    await settleFlush();
+    client.stop();
+
+    // The mirror now carries the tombstone, so a fresh client never spins the engine at all.
+    const mirror = JSON.parse((await storage.getItem(pubkey))!);
+    expect(mirror.tombstones).toContainEqual({ community_id: cid, removed_at: 2000 });
+
+    const { pool } = fakePool();
+    const revived = new ConcordClient({
+      signer: client.signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+    });
+    await revived.start();
+    await settle();
+    expect(revived.getCommunity(cid)).toBeUndefined();
+    revived.stop();
+  });
+
+  it("an explicit re-join outlives an older tombstone", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
+
+    await client.start();
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    const cid = community.communityId;
+    await client.leave(cid);
+    await settle();
+    expect(client.getCommunity(cid)).toBeUndefined();
+
+    // Re-joining stamps a fresh added_at, which outranks the leave (CORD-02 §8) — the tombstone
+    // itself is never removed.
+    published.length = 0;
+    await client.joinByBundle(buildInviteBundle(community.material, { name: "Test" }));
+    await settle();
+
+    expect(client.getCommunity(cid)).toBeDefined();
+    const doc = JSON.parse(await signer.nip44!.decrypt(await signer.getPublicKey(), listPublishes(published).at(-1)!.content));
+    const entry = doc.entries.find((e: any) => e.community_id === cid);
+    const tomb = doc.tombstones.find((t: any) => t.community_id === cid);
+    expect(tomb).toBeDefined();
+    expect(entry.added_at).toBeGreaterThan(tomb.removed_at);
+
+    client.stop();
+  });
+
   it("exposes a descriptive status$ (phase + aggregate over communities)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const { pool } = fakePool();
