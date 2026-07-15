@@ -74,7 +74,7 @@ Plans:
 
 **Gap Wave 1**
 
-- [ ] 05-06-PLAN.md — Repair the canonical `cache.ts` taxonomy: drop the false machine-readable-definition framing, reclassify `setEncryptedContentCache` as carry-forward, correct the descriptor rationale, disclose the frozen-object throw (gap wave 1)
+- [ ] 05-06-PLAN.md — Repair the canonical `cache.ts` taxonomy and its restatement in `operations/event.ts`: drop the false machine-readable-definition framing, reclassify `setEncryptedContentCache` as carry-forward, correct the descriptor rationale, disclose the frozen-object throw (gap wave 1)
 
 **Gap Wave 2** *(blocked on 05-06 — every downstream comment cites the corrected taxonomy)*
 
@@ -82,7 +82,7 @@ Plans:
 - [ ] 05-08-PLAN.md — Reword the six core write-site comments that assert a spread-survival property their enumerable writes lack, plus the `setEncryptedContentCache` classification mirror (gap wave 2)
 - [ ] 05-09-PLAN.md — Reword the eight common write-site comments that assert a spread-survival property their enumerable writes lack (gap wave 2)
 - [ ] 05-10-PLAN.md — Make `cache.test.ts`'s carry-forward half genuinely enforce the D-13 contract via an intervening uncompensated spread, proven by a recorded non-vacuity probe (gap wave 2)
-- [ ] 05-11-PLAN.md — Correct the two residual false comments (`common/gift-wrap.ts` sentinel, concord `keys.ts` "hand-rolled") and record the deferral register for every unclosed review finding (gap wave 2)
+- [ ] 05-11-PLAN.md — Correct the residual false comments (`common/helpers/gift-wrap.ts` sentinel, `common/operations/gift-wrap.ts` propagation claims, concord `keys.ts` "hand-rolled") and record the deferral register for every unclosed review finding (gap wave 2)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
 
