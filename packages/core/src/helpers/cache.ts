@@ -66,12 +66,33 @@
  *   write site does. This is the exact confusion that produced CR-02.
  *
  * Scope: this helper (`getCachedValue`/`setCachedValue`/`getOrComputeCachedValue`)
- * writes identity memos ONLY, and writes them non-enumerable so a spread drops
- * them. The write descriptor's other two flags are load-bearing, not stylistic:
- * `configurable: true` is required because `pipeFromAsyncArray`'s
- * `Reflect.deleteProperty` throws on a non-configurable
- * property, and `writable: true` is required because `setCachedValue` overwrites
- * an existing memo.
+ * writes identity memos ONLY — including memos whose value happens to be a
+ * mutable container (see category 3's `ChannelKeysSymbol` discriminator above;
+ * a container's mutability does not change this) — and writes them
+ * non-enumerable so a spread drops them. The write descriptor's other two
+ * flags are load-bearing, not stylistic:
+ *   - `configurable: true` is required because without it,
+ *     `pipeFromAsyncArray`'s delete loop would fail silently instead of
+ *     dropping the memo: `Reflect.deleteProperty` does NOT throw on a
+ *     non-configurable property, it returns `false`, so a non-configurable
+ *     memo would ride through the rest of the pipe as a stale value instead
+ *     of being deleted. That silent-stale outcome is materially more
+ *     dangerous than a throw, and is the exact shape of CONCORD-H01.
+ *   - `writable: true` is NOT required by `setCachedValue` itself:
+ *     `setCachedValue` overwrites an existing memo via `Object.defineProperty`,
+ *     and `configurable: true` alone permits redefinition regardless of
+ *     `writable`. It is kept so an external `event[sym] = x` / `Reflect.set`
+ *     on a memo still succeeds instead of silently failing.
+ *   - Writing via `Object.defineProperty` (rather than `Reflect.set`) THROWS a
+ *     `TypeError` if the event is frozen, sealed, or otherwise non-extensible,
+ *     where `Reflect.set` would have returned `false` silently. This is
+ *     deliberate (D-02): a silent write failure here means a stale memo is
+ *     returned forever, so surfacing the programming error is correct.
+ *     Consumers that freeze events (e.g. Redux Toolkit / immer freezing state
+ *     in development) will see a throw where they previously saw silent
+ *     degradation. `getReplaceableIdentifier` routes through
+ *     `getOrComputeCachedValue`, and `EventStore.add` calls it on every
+ *     replaceable event, so this is reachable from a normal insert.
  */
 export function getCachedValue<T extends unknown>(event: any, symbol: symbol): T | undefined {
   return Reflect.get(event, symbol);
