@@ -112,17 +112,74 @@ Deferred — acknowledged, not in this roadmap.
 
 ## Traceability
 
-Populated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(pending roadmap)_ | — | — |
+| CACHE-01 | Phase 5 | Pending |
+| CACHE-02 | Phase 5 | Pending |
+| CACHE-03 | Phase 5 | Pending |
+| TEST-01 | Phase 5–12 (standing) | Pending — **cross-cutting; does NOT close at Phase 5** |
+| ROTATE-01 | Phase 6 | Pending |
+| ROTATE-02 | Phase 6 | Pending |
+| ROTATE-04 | Phase 6 | Pending |
+| AUTH-01 | Phase 6 | Pending |
+| AUTH-02 | Phase 6 | Pending |
+| CHAN-01 | Phase 7 | Pending |
+| CHAN-02 | Phase 7 | Pending |
+| CHAN-03 | Phase 7 | Pending |
+| CHAN-04 | Phase 7 | Pending |
+| CHAN-05 | Phase 7 | Pending |
+| CHAN-06 | Phase 7 | Pending |
+| CHAN-07 | Phase 7 | Pending — blocked on spec ruling |
+| ROTATE-03 | Phase 7 | Pending |
+| TEST-02 | Phase 7 | Pending |
+| ROTATE-05 | Phase 8 | Pending |
+| ROTATE-06 | Phase 8 | Pending |
+| ROTATE-07 | Phase 8 | Pending |
+| ROTATE-08 | Phase 8 | Pending |
+| ROTATE-09 | Phase 8 | Pending |
+| ROTATE-10 | Phase 8 | Pending — blocked on spec ruling |
+| ROTATE-11 | Phase 8 | Pending |
+| ROTATE-12 | Phase 8 | Pending |
+| ROTATE-13 | Phase 8 | Pending — blocked on spec ruling |
+| AUTH-03 | Phase 9 | Pending |
+| AUTH-04 | Phase 9 | Pending |
+| AUTH-05 | Phase 9 | Pending |
+| AUTH-06 | Phase 9 | Pending |
+| AUTH-07 | Phase 9 | Pending — blocked on spec ruling |
+| AUTH-08 | Phase 9 | Pending — blocked on spec ruling |
+| INVITE-01 | Phase 10 | Pending |
+| INVITE-02 | Phase 10 | Pending |
+| INVITE-03 | Phase 10 | Pending |
+| INVITE-04 | Phase 10 | Pending |
+| INVITE-05 | Phase 10 | Pending |
+| TIME-01 | Phase 10 | Pending |
+| TIME-02 | Phase 10 | Pending |
+| TIME-03 | Phase 10 | Pending |
+| WIRE-01 | Phase 11 | Pending — breaking |
+| WIRE-02 | Phase 11 | Pending |
+| WIRE-03 | Phase 11 | Pending |
+| WIRE-04 | Phase 11 | Pending |
+| WIRE-05 | Phase 11 | Pending |
+| WIRE-11 | Phase 11 | Pending |
+| WIRE-06 | Phase 12 | Pending |
+| WIRE-07 | Phase 12 | Pending |
+| WIRE-08 | Phase 12 | Pending |
+| WIRE-09 | Phase 12 | Pending |
+| WIRE-10 | Phase 12 | Pending |
+| WIRE-12 | Phase 12 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 52 total
-- Mapped to phases: 0 ⚠️ (roadmap pending)
-- Blocked on a spec ruling: 5 (ROTATE-10, ROTATE-13, AUTH-07, AUTH-08, CHAN-07)
+- v1.1 requirements: 53 total *(corrected from the "52 total" originally recorded here — a recount of every checklist item above finds 53 distinct REQ-IDs; no requirement content changed)*
+- Mapped to phases: 53/53 ✓
+- Blocked on a spec ruling: 5 (ROTATE-10 → Phase 8, ROTATE-13 → Phase 8, AUTH-07 → Phase 9, AUTH-08 → Phase 9, CHAN-07 → Phase 7) — each phase resolves its ruling(s) as its first task; any may conclude "no change needed"
+
+**Cross-cutting standard — TEST-01 (read before closing any phase):**
+TEST-01 is a **standing criterion across Phases 5–12**, not a Phase-5 deliverable. It is listed at Phase 5 for one-requirement-one-phase accounting only; its scope is the whole milestone. It is **not satisfied until Phase 12 completes** and must not be ticked Complete when Phase 5 closes.
+
+Every phase touching a derivation, fold, or wire shape the specs define by formula or example carries an explicit `(TEST-01, standing)` criterion in its ROADMAP success-criteria list — Phases 5, 6, 7, 8, 9, 10, 11, and 12. Each is verified by that phase's own verification step; TEST-01 closes only when all eight have passed.
+
+Why this is enforced per-phase rather than delegated to one phase: all 189 concord tests passed while 9 HIGH bugs were live *because every test compared the implementation against itself*. A phase permitted to assert against its own output reintroduces the exact root cause this milestone exists to fix. Phase 7 is the sharpest case — the CORD-03 §1 channel derivations are where H07 hid, and it was a spec-derived probe that exposed it. Phases 11 and 12 have no crypto derivations, so their obligation binds to the `examples.md` fixtures and transcribed spec constants instead of to formulas.
 
 ---
 *Requirements defined: 2026-07-15*
-*Last updated: 2026-07-15 after initial definition*
+*Last updated: 2026-07-15 after roadmap creation (8 phases, Phase 5–12, full coverage; TEST-01 scoped as a standing cross-phase criterion)*

@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
 status: planning
-last_updated: "2026-07-15T15:24:17.255Z"
+last_updated: "2026-07-15T00:00:00.000Z"
 last_activity: 2026-07-15
 progress:
-  total_phases: 0
+  total_phases: 8
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -15,59 +15,75 @@ progress:
 
 # Project State
 
+## Project Reference
+
+See: .planning/PROJECT.md (updated 2026-07-15)
+
+**Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
+**Current focus:** Phase 5 — Cache Identity Memo Fix (`applesauce-core`)
+
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-15 — Milestone v1.1 started
+Phase: 5 of 12 (Cache Identity Memo Fix) — first phase of milestone v1.1
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-07-15 — ROADMAP.md created: 8 phases (5–12), 53/53 v1.1 requirements mapped, REQUIREMENTS.md traceability filled in
 
-## Session
-
-**Last session:** 2026-07-09T05:46:19.703Z
-**Stopped at:** Completed 04-01-PLAN.md (Phase 4 complete, milestone v1.0 ready for verify-work)
-**Resume file:** None
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
-| Phase | Plan | Duration | Notes |
-|-------|------|----------|-------|
-| Phase 01 P01 | 10min | 3 tasks | 9 files |
-| Phase 01 P02 | 8min | 2 tasks | 2 files |
-| Phase 01-generic-store-foundation P03 | 12min | 2 tasks | 5 files |
-| Phase 01-generic-store-foundation P04 | 15min | 2 tasks | 6 files |
-| Phase 02 P01 | 25min | 2 tasks | 5 files |
-| Phase 02 P02 | 25min | 2 tasks | 6 files |
-| Phase 02-generic-models-casts P03 | 12min | 2 tasks | 3 files |
-| Phase 03 P01 | 20min | 2 tasks | 5 files |
-| Phase 03 P02 | 15min | 2 tasks | 2 files |
-| Phase 03 P03 | 12min | 2 tasks | 2 files |
-| Phase 04 P01 | 10min | 2 tasks | 6 files |
+**Velocity (v1.0, for reference):** 11 plans, ~15min avg/plan, ~2.6 hours total.
+v1.1 metrics begin populating after Phase 5's first plan completes.
 
-## Decisions
+**By Phase (v1.0):**
 
-- [Phase 01]: Imported getEventHash as a local binding in event.ts since a bare re-export does not create a usable local identifier for verifyRumor
-- [Phase 01]: Cast Reflect.get(event, SeenRelaysSymbol) explicitly to Set<string> | undefined in relays.ts to satisfy tsc generic inference
-- [Phase 01]: IEventStore<E>/IAsyncEventStore<E> extend IEventSubscriptions and IEventModelMixin bare (NostrEvent default) since those methods come from the non-generic EventModels superclass deferred to Phase 2 (D-02 seam)
-- [Phase 01]: EventMemory's claims WeakMap<E, number> compiles directly without an E-extends-object conditional guard
-- [Phase 01]: D-01 kept: EventStore/AsyncEventStore verifyEvent setter console.warn preserved verbatim even for intentional undefined
-- [Phase 01]: Deferred applesauce-relay EventMemory<StoreEvent> inference break to deferred-items.md (out of scope for Plan 04)
-- [Phase 02 Plan 01]: claimEvents' non-array narrowing needed a localized 'as E' cast since TS cannot narrow a naked type param against a generic-parameterized union constraint
-- [Phase 02 Plan 01]: Kept Model<T> return type (1-arg, TStore default) on the four base models and bridge-cast each model's store to IEventStore<E>|IAsyncEventStore<E> internally, deferring full Model<T,E,TStore>/ModelEventStore<E,TStore> threading to Plan 02
-- [Phase 02 Plan 01]: event-models.ts call sites needed explicit <NostrEvent> type arguments (FiltersModel<NostrEvent> etc.) since a bare generic function reference infers E from its constraint, not its default
-- [Phase 02 Plan 02]: IEventModelMixin gained an explicit <E, TStore> parameter (not just TStore alone) because TStore's bare constraint could not absorb an abstract IEventStore<E>/IAsyncEventStore<E>
-- [Phase 02 Plan 02]: EventStore<E>/AsyncEventStore<E> extend bare EventModels<E>, letting TStore default to the union, rather than the plan's literal EventModels<E, IEventStore<E>> -- pinning a narrower TStore broke applesauce-wallet's castUser/ActionRunner call sites
-- [Phase 02 Plan 03]: CastConstructor/castEvent/castEventStream/castTimelineStream gained a defaulted E extends StoreEvent = NostrEvent parameter with zero deviation from the RESEARCH/PATTERNS target shape; the contravariance trick (constructor event param stays NostrEvent) was preserved verbatim
-- [Phase 02 Plan 03]: full-workspace pnpm -r build gate was green on first run with no downstream fixes required -- castUser/User/castPubkey/PubkeyCast continued resolving bare CastRefEventStore to the NostrEvent default with zero edits
-- [Phase 03]: No AsyncRumorStore added -- AsyncEventStore<Rumor> already covers the async case with no concrete consumer requiring a dedicated class
-- [Phase 03]: Test rumors constructed as plain object literals with getEventHash-computed ids rather than via FakeUser, to directly demonstrate unsigned rumor-shaped input
-- [Phase 03 Plan 02]: Used sig-gated CastEventInput<T> = T extends { sig: string } ? NostrEvent : StoreEvent (not the naive exact-T conditional) for castEvent's public input, since the exact-T form was empirically proven in RESEARCH to over-tighten concord's ConcordDirectInvite narrowed-kind rumor cast
-- [Phase 03 Plan 02]: cast-stream.ts imports EventCast from ../casts/event.js and performCast from ../casts/cast.js separately, since cast.ts imports EventCast locally without re-exporting it
-- [Phase 03 Plan 03]: Used a minimal local SignedOnlyCast probe class (reads this.event.sig) rather than reusing a production cast, keeping the WR-01 regression guard self-contained
-- [Phase 03 Plan 03]: RumorStore was already present in the exports snapshot from plan 01; this plan's regeneration only needed to absorb performCast
-- [Phase 04]: Used narrow { tags: string[][] } inline bound for tag-only helpers and full StoreEvent bound only for getReactionEmoji (reads content + tags)
-- [Phase 04]: COMMON-02 targeted-cast set audited empty -- no applesauce-common cast/model/factory changed; documented in 04-COMMON-02-AUDIT.md
+| Phase | Plans | Avg/Plan |
+|-------|-------|----------|
+| 1. Generic store foundation | 4 | 11min |
+| 2. Generic models & casts | 3 | 21min |
+| 3. RumorStore & verification | 3 | 16min |
+| 4. Common package rumor support | 1 | 10min |
+
+## Accumulated Context
+
+### Decisions
+
+Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current milestone (v1.1) roadmap decisions:
+
+- [Roadmap]: Phase 5 (cache fix, `applesauce-core`) gets its own small phase ahead of all concord work — it's the root cause of ROTATE-01/02/03 and unmasks ROTATE-04 (H02) the moment it lands
+- [Roadmap]: CHAN-05 and ROTATE-03 placed in the same phase (7) — independent root causes of the same bug (H08); either alone leaves a rekeyed channel on its old plane
+- [Roadmap]: CHAN-01/02/03 (Accordian-blocking) weighted into Phase 7, immediately after the mandatory cache→refounding-core sequence, ahead of rotation-robustness/authority-fold work
+- [Roadmap]: 5 spec-ruling-blocked requirements (ROTATE-10/13, AUTH-07/08, CHAN-07) distributed into their topical phases (7/8/9) rather than one adjudication phase, with the ruling as each phase's first task
+- [Roadmap]: REQUIREMENTS.md's stated "52 total" corrected to 53 — a recount of every checklist item found 53 distinct REQ-IDs; no requirement content changed
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+- 5 requirements are blocked on a spec ruling before their implementation task can complete: ROTATE-10, ROTATE-13 (Phase 8); AUTH-07, AUTH-08 (Phase 9); CHAN-07 (Phase 7). Each may resolve to "no change needed" — a planning-time gate for those three phases, not a roadmap risk.
+- Verification standard for this milestone: every fix needs a regression test asserting against an independently-derived spec value, not implementation output — the exact gap that let all 43 findings pass CI before. Plan-phase should hold plans to this explicitly.
+
+## Deferred Items
+
+Items acknowledged and carried forward, not in this roadmap:
+
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| Channels | FUT-01: public↔private channel conversion, channel rename (CORD-03 §2) | Deferred | v1.1 requirements definition |
+| Voice | FUT-02: CORD-07 §2/§3/§5/§6/§7 broker/media/rendezvous transport | Deferred | v1.1 requirements definition |
+| Common | COMMON-F1/F2: genericize remaining `applesauce-common` casts/helpers one-by-one as concrete rumor needs arise | Deferred | v1.0 close |
+| Common | Pre-existing unsafe `getHashtagTag` cast; migration release-note for `verifyEvent: undefined` semantics | Deferred | v1.0 close |
+
+## Session Continuity
+
+Last session: 2026-07-15
+Stopped at: ROADMAP.md, REQUIREMENTS.md (traceability), and this file written for milestone v1.1
+Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Review the roadmap draft: `.planning/ROADMAP.md` (Phases 5–12)
+- Start planning the first phase: `/gsd-plan-phase 5`
