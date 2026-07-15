@@ -3,7 +3,7 @@ export function getCachedValue<T extends unknown>(event: any, symbol: symbol): T
 }
 
 export function setCachedValue<T extends unknown>(event: any, symbol: symbol, value: T) {
-  Reflect.set(event, symbol, value);
+  Object.defineProperty(event, symbol, { value, enumerable: false, writable: true, configurable: true });
 }
 
 /** Internal method used to cache computed values on events */
@@ -12,7 +12,7 @@ export function getOrComputeCachedValue<T extends unknown>(event: any, symbol: s
     return Reflect.get(event, symbol);
   } else {
     const value = compute();
-    Reflect.set(event, symbol, value);
+    Object.defineProperty(event, symbol, { value, enumerable: false, writable: true, configurable: true });
     return value;
   }
 }
