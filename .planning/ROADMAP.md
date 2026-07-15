@@ -50,7 +50,14 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
   3. `getEncryptedContent`/`getHiddenTags` still return correct plaintext when read off a signed event that passed through the factory pipe's spread operations — the memo fix does not disturb the deliberate carry-forward path.
   4. `pnpm -r test` passes across the full workspace (baseline: 1989 tests, exit 0) — the shared core change regresses nothing downstream.
   5. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently from the spec formula — never by calling the implementation under test — and asserting the implementation matches. Concretely: a test derives the expected epoch-N control address from the CORD-02 §4 formula by hand and asserts a rolled-forward object matches it, reproducing and closing H01's exact failure mode.
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Fix `cache.ts` to write memos non-enumerable, land the canonical taxonomy prose, add the patch changeset (wave 1)
+- [ ] 05-02-PLAN.md — New `cache.test.ts`: the two-sided convention test (memo dropped by spread / plaintext survives real pipe + signing) (wave 2)
+- [ ] 05-03-PLAN.md — Classify-and-comment sweep over 35 symbol-write sites in core + common, plus the false-comment correction at concord `keys.ts:98-104` (wave 2)
+- [ ] 05-04-PLAN.md — Spec-derived concord tests closing H01(a) control address and H01(c) channel plane address (wave 2)
+- [ ] 05-05-PLAN.md — Phase gate: non-vacuity probes proving each new test fails without the fix, plus `pnpm -r test` against the 1989 baseline (wave 3)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
 **Goal**: A Refounding is no longer a cryptographic no-op in-session — it rotates every plane address, actually drops excluded members from the memberlist, and is honored only from a rotator who strictly outranks every target it removes.
