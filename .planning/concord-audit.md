@@ -29,10 +29,13 @@ Nearly every finding below is one of four variants of the same mistake:
 
 ## HIGH severity
 
-### CONCORD-H01 — Base-key memo survives object spread: Refoundings do not rotate
-- **Status:** VERIFIED (reproduced at runtime against production code)
-- **Spec:** CORD-02 §4 — "Rotating the epoch rotates the `pk`, keeping a plane's traffic unlinkable across epochs."
-- **Code:** `helpers/keys.ts:105` (`BaseKeysSymbol`), `:112-124` (`baseKeysFor`), `:249-255` (`rollForward`); `client/sync.ts:239-247` (`buildChain`); root cause `packages/core/src/helpers/cache.ts:15` (`Reflect.set`).
+### CONCORD-H01 — Cached derivations survive object spread: Refoundings and channel Rekeys do not rotate
+- **Status:** VERIFIED (both instances reproduced at runtime against production code)
+- **Spec:** CORD-02 §4 — "Rotating the epoch rotates the `pk`, keeping a plane's traffic unlinkable across epochs." CORD-03 §1/§9 — a private channel's key is "rekeyed on removal".
+- **Code:** Root cause `packages/core/src/helpers/cache.ts:15` (`Reflect.set` → enumerable symbol prop). **Three memo sites, all on objects that are later spread:**
+  - `keys.ts:105` `BaseKeysSymbol` on `material` — spread by `rollForward` (`:249-255`) and `buildChain` (`client/sync.ts:239-247`)
+  - `keys.ts:106` `ChannelKeysSymbol` on `material` — same two spread sites
+  - `keys.ts:109` `ChannelPlaneKeysSymbol` on a `ChannelKey` — spread by `rollForwardChannel` (`:508-515`)
 - **What's wrong:** `baseKeysFor` memoizes derived keys onto the `material` object via `getOrComputeCachedValue`, which stores with `Reflect.set` — an **enumerable** own symbol property. Object spread copies enumerable symbol properties. `rollForward` builds new material with `{ ...keys.material, community_root: newRoot, root_epoch: newEpoch }`, carrying the previous epoch's cache forward; `baseKeysFor` then returns the **old** keys instead of re-deriving. The comment at `keys.ts:102` reasons that symbol props are skipped by `JSON.stringify` (true, and why persistence is safe) — spread was never considered, and spread is how both `rollForward` and `buildChain` mint material.
 - **Proof:**
   ```
@@ -41,9 +44,19 @@ Nearly every finding below is one of four variants of the same mistake:
   epoch-5 EXPECTED   : 69b8b950a2ecc23684fa4fbf43400c834943e1093ff7a0fa2ae86d75d1208b35  <- spec-derived
   symbol carried by spread? [ 'Symbol(concord-base-keys)' ]
   ```
-- **Symptom:** Two independent catastrophic behaviors. (a) **Refounding is cryptographically a no-op in-session** — `buildRefounding` publishes to correct new-epoch addresses (it calls `controlGroupKey`/`guestbookGroupKey` directly at `keys.ts:343`/`:355`), but the state everyone *adopts* stays on the old root at the old addresses. A removed member still holding the old root keeps reading Control and Guestbook traffic. Self-heals on restart (material re-parsed from JSON drops the symbol), which is why it never surfaced as a bug report. (b) **The epoch walk collapses** — all per-epoch materials resolve to one address, so history is never fetched.
-- **Fix (decision pending):** Either make `getOrComputeCachedValue` non-enumerable via `Object.defineProperty` in `applesauce-core` (correct; shared repo-wide; needs a survey of other callers), or strip symbols locally after every spread in concord (contained; leaves the trap armed). Add a test asserting `rollForward(...).control.pk === controlGroupKey(newRoot, cid, newEpoch).pk`.
+  And the same for a channel Rekey — a rolled-forward channel with a brand-new key at a new epoch:
+  ```
+  epoch-1 plane pk : e695402fb6a1f1318d86863346c95009a3b62bd71279a66bc65a572ca897f325
+  epoch-2 plane pk : e695402fb6a1f1318d86863346c95009a3b62bd71279a66bc65a572ca897f325  <- deriveChannelKeys
+  epoch-2 EXPECTED : 78fa2e873e1e0614c01765a9d6be36ac8cc50aa420e444f81e1552f26b9aa8b2  <- spec-derived
+  symbols on rolled object: [ 'Symbol(concord-channel-plane-keys)' ]
+  ```
+- **Symptom:** Three independent catastrophic behaviors. (a) **Refounding is cryptographically a no-op in-session** — `buildRefounding` publishes to correct new-epoch addresses (it calls `controlGroupKey`/`guestbookGroupKey` directly at `keys.ts:343`/`:355`), but the state everyone *adopts* stays on the old root at the old addresses. A removed member still holding the old root keeps reading Control and Guestbook traffic. Self-heals on restart (material re-parsed from JSON drops the symbol), which is why it never surfaced as a bug report. (b) **The epoch walk collapses** — all per-epoch materials resolve to one address, so history is never fetched. (c) **A channel Rekey does not rotate the message plane** — a rolled-forward `ChannelKey` still derives the prior epoch's address, so the rotated-out member's key still opens the traffic.
+- **The reasoning error is identical at all three sites.** `keys.ts:100-103` argues the cache is safe because "symbol-keyed props are skipped by `JSON.stringify`" — true, and why persistence is safe and why restart heals it. `keys.ts:543-546` argues `channel` is "replaced only when it rolls forward — so memoize on it". Both assume a *new object means a fresh cache*; both are defeated because the replacement is performed **by spread**, and spread copies enumerable own **symbol** properties. `JSON.stringify` and spread treat symbols in exactly opposite ways, and that asymmetry is the entire bug.
+- **Fix (decision pending):** Either make `setCachedValue`/`getOrComputeCachedValue` write with `Object.defineProperty(…, { enumerable: false, writable: true, configurable: true })` in `applesauce-core` (correct; fixes all three sites at once; the *only* behavior change is that spread/`Object.assign` no longer copy the cache — `JSON.stringify`, `Object.keys`, and `Reflect.get` are unaffected either way), or strip symbols locally after every spread in concord (contained; leaves the trap armed for the next caller). Add tests asserting `rollForward(...).control.pk === controlGroupKey(newRoot, cid, newEpoch).pk` and the `rollForwardChannel` analog.
+- **Blast-radius note for the central fix:** 101 call sites across 42 files, but ~all cache onto a **`NostrEvent`**, which is signed and immutable — spreading one invalidates its `id`/`sig`, so nobody does. The at-risk pattern is caching onto a *mutable config object that is later spread*, and concord's `material`/`ChannelKey` are the only instances found.
 - **Blocks:** H02 is masked by this bug and activates when it is fixed. Must land together.
+- **Interacts with H08:** H08 (stale channel key after Rekey) has **two independent root causes** — the `state$.value.channels` threading *and* instance (c) above. Fixing either alone leaves the channel on the old plane. The CORD-06 agent marked `rollForwardChannel` "verified correct" (it checked for *dropped* fields and did not consider what the spread *added*) — a false negative, and a caution that the "verified correct" register below is not infallible.
 
 ### CONCORD-H02 — Guestbook and observed authors folded across ALL epochs: a Refounding never removes anyone
 - **Status:** REPORTED
@@ -108,7 +121,8 @@ Nearly every finding below is one of four variants of the same mistake:
 - **Code:** `client/community.ts:609` (`persistChannelKey`), also `:577` (`receiveChannelKeys`), `:630` (`dropChannelKey`); reading `helpers/keys.ts:130-139`, `:157-160`; fed by `helpers/control.ts:227-231`.
 - **What's wrong:** `deriveConcordKeys` takes the channel secret from the **`ChannelMetadata`** argument (`:157-158` → `channelKeyMemo` → `channelSecret` reads `channel.key`/`channel.epoch`), **not** from `material.channels`. Those metadata objects get their `key`/`epoch` merged in by `foldControl` from the material captured when `ConcordControlModel(material)` was constructed. `persistChannelKey` updates `material.channels` and re-derives — but passes `this.state$.value.channels`, whose `key`/`epoch` are still pre-rekey, and never calls `rewireState()`. So after a channel Rekey, `keys.channels` and `channelEpochOf` stay pinned to the **old key at the old epoch** for the rest of the session.
 - **Symptom:** After `rotateChannel(id, {keep, exclude})`, the rotator's own `sendMessage` wraps to the **epoch-1** plane and binds `["epoch","1"]`. Members who adopted epoch 2 never see it; the **excluded member still holds the epoch-1 key and reads it**. The sender sees their own text via the optimistic echo, so the UI looks healthy. Recovers only on reload or a Refounding.
-- **Fix:** Derive the channel secret from `material.channels` (the source of truth) rather than the folded `ChannelMetadata`. This is the real fix and it **subsumes H06 and H07** — `ChannelMetadata.key`/`.epoch` should not exist. (Breaking change.)
+- **Fix:** Derive the channel secret from `material.channels` (the source of truth) rather than the folded `ChannelMetadata`. This **subsumes H06 and H07** — `ChannelMetadata.key`/`.epoch` should not exist. (Breaking change.)
+- **⚠ Two root causes — both must be fixed.** The threading above is only half. `deriveChannelKeys` also memoizes plane keys onto the `ChannelKey` object (`keys.ts:547`), and `rollForwardChannel` replaces that object *by spread*, carrying the stale memo — see **H01 instance (c)**, reproduced at runtime. Fixing the threading alone still leaves a rekeyed channel deriving its **old** plane address. Any plan that treats H08 as a pure-threading fix is incomplete.
 
 ### CONCORD-H09 — A transient signer error during blob decrypt is treated as removal
 - **Status:** REPORTED
