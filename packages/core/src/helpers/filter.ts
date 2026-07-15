@@ -20,8 +20,12 @@ export function getIndexableTags<E extends StoreEvent = NostrEvent>(event: E): S
     }
 
     indexable = tags;
-    // Derived from the event's own tags; a copy with different tags must recompute, so this
-    // must not survive a spread — identity memo (see cache.ts taxonomy).
+    // Derived from the event's own tags — identity memo per cache.ts's taxonomy. A copy built
+    // from `{ ...event, tags: newTags }` inherits the SAME Set (this write is a plain enumerable
+    // Reflect.set, so the value does survive a spread today), so filter matching on the copy
+    // evaluates the ORIGINAL's tags and the `if (!indexable)` guard above never recomputes. Known,
+    // deliberately-deferred gap; only pipeFromAsyncArray's delete loop masks it, on the one call
+    // path that runs it.
     Reflect.set(event, EventIndexableTagsSymbol, tags);
   }
 
