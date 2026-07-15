@@ -53,7 +53,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
   4. `pnpm -r test` passes across the full workspace (baseline: 1989 tests, exit 0) — the shared core change regresses nothing downstream.
   5. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently from the spec formula — never by calling the implementation under test — and asserting the implementation matches. Concretely: a test derives the expected epoch-N control address from the CORD-02 §4 formula by hand and asserts a rolled-forward object matches it, reproducing and closing H01's exact failure mode.
 
-**Plans**: 11 plans — 5/5 original complete; 6 gap-closure plans pending *(verification found Success Criterion 2 / CACHE-02 unmet; see `05-VERIFICATION.md`)*
+**Plans**: 6/11 plans executed
 
 Plans:
 **Wave 1**
@@ -74,7 +74,7 @@ Plans:
 
 **Gap Wave 1**
 
-- [ ] 05-06-PLAN.md — Repair the canonical `cache.ts` taxonomy and its restatement in `operations/event.ts`: drop the false machine-readable-definition framing, reclassify `setEncryptedContentCache` as carry-forward, correct the descriptor rationale, disclose the frozen-object throw (gap wave 1)
+- [x] 05-06-PLAN.md — Repair the canonical `cache.ts` taxonomy and its restatement in `operations/event.ts`: drop the false machine-readable-definition framing, reclassify `setEncryptedContentCache` as carry-forward, correct the descriptor rationale, disclose the frozen-object throw (gap wave 1)
 
 **Gap Wave 2** *(blocked on 05-06 — every downstream comment cites the corrected taxonomy)*
 
@@ -209,7 +209,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 | 2. Generic models & casts | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
-| 5. Cache Identity Memo Fix | v1.1 | 5/11 | Gap closure — planned | - |
+| 5. Cache Identity Memo Fix | v1.1 | 6/11 | In Progress|  |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
@@ -229,6 +229,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ### Phase 999.2: Concord media epoch key decryption audit (BACKLOG)
@@ -238,6 +239,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ### Phase 999.3: Concord sync skips ephemeral kind 21059 (BACKLOG)
@@ -247,4 +249,5 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
