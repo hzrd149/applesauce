@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { createCommunity } from "../community.js";
 import {
@@ -18,6 +18,7 @@ import {
   readChannelRekey,
   rollForwardChannel,
 } from "../keys.js";
+import { channelGroupKey } from "../crypto.js";
 import { decodeWrap } from "../gift-wrap.js";
 import type { ChannelKey, DecodedEvent, JoinMaterial } from "../../types.js";
 
@@ -80,6 +81,40 @@ describe("channel-scoped rekey", () => {
     expect(keys.held).toHaveLength(1);
     expect(keys.held[0].epoch).toBe(1);
     expect(keys.planes.get(keys.held[0].key.pk)).toMatchObject({ type: "channel", epoch: 1 });
+  });
+
+  // H01(c) (CORD-03 §1), also H08's second root cause: rollForwardChannel's plane
+  // address must match the private-channel branch of the spec formula. The
+  // expected value below comes ONLY from `channelGroupKey` in crypto.ts (D-18) —
+  // never from `deriveChannelKeys`/`rollForwardChannel` — so this is not
+  // self-referential. Proving the memo half dead here lets Phase 7 focus purely
+  // on H08's metadata-threading half.
+  it("rollForwardChannel's plane address matches the CORD-03 §1 private formula over the new key/epoch", async () => {
+    const { material } = await genesis();
+    const channel = privateChannel();
+
+    // ARM THE MEMO: unlike rollForward/deriveConcordKeys above, this does NOT
+    // happen naturally here — deriveChannelKeys must be called explicitly on the
+    // ORIGINAL channel to write ChannelPlaneKeysSymbol onto it. Skipping this call
+    // means rollForwardChannel's spread has no memo to carry, and the assertion
+    // below would pass even against the pre-05-01 broken code (vacuous test).
+    const before = deriveChannelKeys(material, channel);
+
+    const newKey = bytesToHex(generateSecretKey());
+    const newEpoch = channel.epoch + 1;
+
+    // EXPECTED, independently derived from the spec formula's PRIVATE branch:
+    // secret = the channel's own (new) key, id = channel.id, epoch = the
+    // channel's own new epoch — NOT community_root/root_epoch (the public branch).
+    const expected = channelGroupKey(hexToBytes(newKey), hexToBytes(channel.id), newEpoch);
+
+    const rolled = rollForwardChannel(channel, newKey, newEpoch);
+    const after = deriveChannelKeys(material, rolled);
+
+    expect(after.current.pk).toBe(expected.pk);
+    // The message plane actually rotated — a Rekey that doesn't rotate the plane
+    // means the rotated-out member's key still opens the channel's traffic.
+    expect(after.current.pk).not.toBe(before.current.pk);
   });
 
   it("a kept member adopts the new channel key; an excluded member is removed", async () => {
