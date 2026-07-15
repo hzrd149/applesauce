@@ -103,13 +103,14 @@ interface BaseKeys {
  * That claim is true NOW, and only because `applesauce-core`'s cache helper writes the
  * memo non-enumerable (see `cache.ts`'s identity-memo taxonomy): object spread only
  * copies enumerable own properties, so a non-enumerable memo is dropped instead of riding
- * along stale when `rollForward` mints fresh material via `{ ...keys.material,
- * community_root: newRoot, ... }` (`:249-255`).
+ * along stale when `rollForward`'s spread mints fresh material via `{ ...keys.material,
+ * community_root: newRoot, ... }`.
  *
- * It was NOT true before that fix — this is CONCORD-H01. Before `cache.ts` wrote
- * non-enumerable, this memo hand-rolled a plain enumerable `Reflect.set`, so the PRIOR
- * epoch's cached keys rode along on `rollForward`'s spread and `baseKeysFor` silently kept
- * returning the old epoch's keys after every Refounding.
+ * It was NOT true before that fix — this is CONCORD-H01. Until then, `getOrComputeCachedValue`
+ * ITSELF wrote enumerable — `baseKeysFor` has always called it; the write was inside the
+ * shared helper, never hand-rolled here — so the PRIOR epoch's cached keys rode along on
+ * `rollForward`'s spread and `baseKeysFor` silently kept returning the old epoch's keys
+ * after every Refounding.
  *
  * `JSON.stringify` and object spread treat symbol-keyed properties in exactly OPPOSITE
  * ways, and that asymmetry was the entire bug. Symbol-keyed props ARE skipped by
@@ -560,7 +561,7 @@ export function deriveChannelKeys(material: JoinMaterial, channel: ChannelKey): 
   // derivation on it. This is safe only because applesauce-core's cache helper writes the
   // memo non-enumerable (see cache.ts's identity-memo taxonomy) — so it is dropped, not
   // carried forward stale, when `rollForwardChannel` mints a fresh `ChannelKey` via
-  // `{ ...channel, key: newKey, epoch: newEpoch, held: [...] }` (`:508-515`). Before that
+  // `{ ...channel, key: newKey, epoch: newEpoch, held: [...] }`. Before that
   // fix this was the identical reasoning error as CONCORD-H01: assuming a fresh `channel`
   // object (replaced only when it rolls forward) meant a fresh cache, when the replacement
   // is performed by spread and spread copies enumerable symbol-keyed properties. The rekey

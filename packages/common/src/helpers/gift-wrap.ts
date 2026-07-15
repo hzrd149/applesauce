@@ -152,8 +152,13 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
   // Failed to parse rumor, save undefined and return undefined
   if (!rumor) {
     // The write is meaningful precisely because the value is `undefined` — a negative-result
-    // sentinel, which is why callers check presence (`RumorSymbol in seal`) rather than
-    // truthiness — accumulated state (see cache.ts taxonomy).
+    // sentinel — accumulated state (see cache.ts taxonomy). KNOWN GAP: `isSealUnlocked` only
+    // checks presence (`RumorSymbol in seal`), so a seal whose content never parsed is
+    // reported as unlocked, and `unlockSeal` then returns this `undefined` typed as a
+    // `Rumor`, bypassing its own `if (!rumor) throw` guard. Fix (deferred, out of this
+    // phase's comment-only scope): narrow `isSealUnlocked` to check the sentinel's value
+    // rather than mere presence, or use a sentinel that a presence check can distinguish
+    // from "unlocked."
     Reflect.set(seal, RumorSymbol, undefined);
     return undefined;
   }
