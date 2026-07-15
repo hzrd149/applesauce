@@ -41,115 +41,147 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 ## Phase Details
 
 ### Phase 5: Cache Identity Memo Fix
+
 **Goal**: A value memoized onto a config object by `applesauce-core`'s cache helper does not survive an object spread, so a rolled-forward copy recomputes its derivation instead of returning the source's stale memo — the single root cause behind three HIGH concord findings.
 **Depends on**: Nothing new (first phase of v1.1; builds on the v1.0 generic-store foundation)
 **Requirements**: CACHE-01, CACHE-02, CACHE-03, TEST-01 *(anchor only — TEST-01 stands across Phases 6–12 and does not close here)*
 **Success Criteria** (what must be TRUE):
+
   1. A value written by `setCachedValue`/`getOrComputeCachedValue` is stored as a non-enumerable property, so spreading a `material`-like object with a changed field recomputes the derivation instead of returning the source's memo.
   2. The cache helper's source carries a comment distinguishing identity memos (must NOT survive a spread) from carry-forward payloads like `EncryptedContentSymbol` (MUST survive a spread), so a future cleanup cannot collapse the two conventions onto one write mechanism.
   3. `getEncryptedContent`/`getHiddenTags` still return correct plaintext when read off a signed event that passed through the factory pipe's spread operations — the memo fix does not disturb the deliberate carry-forward path.
   4. `pnpm -r test` passes across the full workspace (baseline: 1989 tests, exit 0) — the shared core change regresses nothing downstream.
   5. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently from the spec formula — never by calling the implementation under test — and asserting the implementation matches. Concretely: a test derives the expected epoch-N control address from the CORD-02 §4 formula by hand and asserts a rolled-forward object matches it, reproducing and closing H01's exact failure mode.
+
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 05-01-PLAN.md — Fix `cache.ts` to write memos non-enumerable, land the canonical taxonomy prose, add the patch changeset (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 05-02-PLAN.md — New `cache.test.ts`: the two-sided convention test (memo dropped by spread / plaintext survives real pipe + signing) (wave 2)
 - [ ] 05-03-PLAN.md — Classify-and-comment sweep over 35 symbol-write sites in core + common, plus the false-comment correction at concord `keys.ts:98-104` (wave 2)
 - [ ] 05-04-PLAN.md — Spec-derived concord tests closing H01(a) control address and H01(c) channel plane address (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 05-05-PLAN.md — Phase gate: non-vacuity probes proving each new test fails without the fix, plus `pnpm -r test` against the 1989 baseline (wave 3)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
+
 **Goal**: A Refounding is no longer a cryptographic no-op in-session — it rotates every plane address, actually drops excluded members from the memberlist, and is honored only from a rotator who strictly outranks every target it removes.
 **Depends on**: Phase 5 (CACHE-01 must land first — ROTATE-04 is masked by the cache bug and only activates once it's fixed)
 **Requirements**: ROTATE-01, ROTATE-02, ROTATE-04, AUTH-01, AUTH-02
 **Success Criteria** (what must be TRUE):
+
   1. After a Refounding, `rollForward(...).control.pk` (and the guestbook/rekey addresses alongside it) equal the spec formula computed over the new root, so a removed member holding the old root no longer reads current Control/Guestbook traffic.
   2. Each held epoch's material addresses a distinct plane, so the epoch walk fetches every historical epoch instead of collapsing onto one address.
   3. A member excluded by a Refounding is absent from the new epoch's Complete Memberlist even when they have a prior-epoch Join or an `observed` entry — the new epoch's Guestbook is seeded only by the snapshot, and passing `state.members` as the next `refound()`'s `keep` list does not re-admit them.
   4. A rotator who does not strictly outrank a target named in a root Refounding's exclusion list is rejected on both the send path (`refound()`) and the receive path (`readRekey`'s guard denies by default when the outrank check is absent, matching the already-correct channel path).
   5. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-02 §4/§5 formula — never by calling the implementation under test — and asserting the implementation matches. Covers the new epoch's control/guestbook/rekey addresses and the post-Refounding memberlist, each derived by hand from the spec.
+
 **Plans**: TBD
 
 ### Phase 7: Private Channel Keying
+
 **Goal**: Private channel access derives only from held key material — never a fallthrough to the public `community_root` formula and never from Control-Plane edition JSON — and a client can tell "visible metadata" apart from "key held" without hand-rolling a lookup. Closes the field-confirmed Accordian-blocking bug (H07/H08) end to end.
 **Depends on**: Phase 5 (the channel-plane cache memo is the second independent root cause of H08 — CHAN-05's threading fix alone is not sufficient)
 **Requirements**: CHAN-01, CHAN-02, CHAN-03, CHAN-04, CHAN-05, CHAN-06, CHAN-07, ROTATE-03, TEST-02
 **Success Criteria** (what must be TRUE):
+
   1. A private channel with visible metadata but no held key material derives no channel `GroupKey`, gets no `keys.channels`/`keys.channelEpochs` entry, and its plane is never registered, subscribed, or published to.
   2. Sending to a private channel without key material rejects with a distinct, clear error (e.g. `missing private channel key`), never the generic `unknown channel`.
   3. Channel key material is read only from `material.channels` — an edition-JSON `key`/`epoch` field is never used to derive a plane — and a channel Rekey's new secret takes effect immediately, with `rollForwardChannel`'s output addressing the new epoch's plane without a client reload.
   4. A client can query whether a folded channel is visible-but-inaccessible versus one it holds a key for, without hand-rolling a `material.channels` lookup; a channel marked deleted cannot be revived by a later edition.
   5. All five Accordian-named tests pass: keyless private metadata derives nothing; public channels still derive from `community_root`; keyed private channels still derive from their own key; sending to a keyless private channel rejects; the direct-invite/private-channel grant flow still works once key material is folded.
   6. **(TEST-01, standing — sharpest case in the milestone)** Every channel derivation this phase touches has at least one test computing its expected value independently from the CORD-03 §1 formula — never by calling the implementation under test — and asserting the implementation matches. Both §1 branches are covered by hand-derived values: the public `group_key("concord/channel", community_root, channel_id, root_epoch).pk` and the private `group_key("concord/channel", channel_key, channel_id, channel_epoch).pk`. The keyless-private case asserts the implementation derives **nothing** rather than asserting it matches the independently-derived public address — the byte-identical collision that *was* H07.
+
 **Plans**: TBD
 **Note**: CHAN-07 (channel-deletion terminality) is blocked on a spec ruling — CORD-03's "deletion is terminal" clause admits a narrow reading around id reuse. Resolve the reading as this phase's first task; it may conclude "no change needed."
 
 ### Phase 8: Rotation Robustness & Consensus
+
 **Goal**: Rotation behaves correctly under real-world adversity — racing Refoundings, a bunker signer that blips mid-decrypt, and malformed or partial chunk sets — instead of silently forking the community or evicting a member who was never removed.
 **Depends on**: Phase 6 (robustness fixes build on a base Refounding that already rotates correctly)
 **Requirements**: ROTATE-05, ROTATE-06, ROTATE-07, ROTATE-08, ROTATE-09, ROTATE-10, ROTATE-11, ROTATE-12, ROTATE-13
 **Success Criteria** (what must be TRUE):
+
   1. A transient signer/decrypt error while reading a rekey blob is retried and never interpreted as removal — a NIP-46 bunker timeout no longer permanently evicts a member who was never excluded.
   2. Two rotations racing to the same epoch converge down-only to a single lower-keyed sibling, the winner is computed among all authorized and continuity-checked candidates (not only those the local client happened to receive), and a converged community can never re-fork.
   3. A rotation cites the Grant it acts under (`vac`), a receiver verifies that citation against its folded Roster before honoring it, and compaction/snapshot wraps publish only after the root roll's publication is confirmed.
   4. Rotation chunk sets correlate on `chunkCount` and `prevepoch` identity is validated across a rotation's chunks, so a resumed rotation's stale generation cannot complete a set or forge continuity.
   5. Historical epoch material does not inherit the tip's `refounder`, and a Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction.
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-06 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the continuity math, the `lowerKeyWins` tie-break, and the complete-set gate, each with expected outcomes derived by hand from the §2/§3 rules rather than observed from the implementation.
+
 **Plans**: TBD
 **Note**: Two items are blocked on spec rulings, resolved as this phase's first task (either may conclude "no change needed"). ROTATE-10 (S03): confirm the resume path can actually emit a differing `n` before implementing chunkCount correlation. ROTATE-13 (M-conflict): adjudicate whether `controlHeadsWithSeals`'s re-decode of control wraps is a silent-skip bug or correct-by-design before scoping a fix.
 
 ### Phase 9: Authority & Permission Fold Correctness
+
 **Goal**: Grant, Kick, Ban, and Role folds enforce the rank comparisons CORD-04 specifies and reject malformed input locally, instead of defaulting to permit or throwing out of `foldControl` and failing every member's community state.
 **Depends on**: Phase 6 (shares the Refounding authority code paths and outrank-guard pattern established there)
 **Requirements**: AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-08
 **Success Criteria** (what must be TRUE):
+
   1. A Grant edition is folded only at its derived coordinate (`grantLocator`) on the read path — the same rule already enforced for the write path and the banlist beside it — so two conflicting Grants for one member are not delivery-order dependent.
   2. A malformed Grant (invalid `role_ids`) is skipped rather than throwing an uncaught `TypeError` out of `foldControl` and failing every member's fold.
   3. `kick()` and `ban()` reject locally when the caller lacks the bit or the rank, matching the existing local checks in `rotateChannel()`/`refound()`.
   4. `Role.position` is validated as a positive integer before a role confers any permission bit.
   5. A Grant that revokes or demotes is gated by a rank comparison against its target member, and a Kick's `vac` is validated against its cited Grant and required for non-owner Kicks (both post-ruling).
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-04 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the `grantLocator` coordinate (derived by hand from the §5 formula, not read back from the write path that produces it) and the union-of-bits/min-position rank outcomes, tabulated from §2 rather than observed.
+
 **Plans**: TBD
 **Note**: AUTH-07 (S01) and AUTH-08 (S02) are blocked on spec rulings, resolved as this phase's first task. AUTH-07: whether CORD-04 §3's "strictly outrank its target" binds a Grant's target member, not just the roles it hands out — the permissive reading is a real privilege-escalation path. AUTH-08: CORD-02 §5 defers Kick's `vac` rule to CORD-04 §5; confirm there first.
 
 ### Phase 10: Invite Lifecycle & Event Time Consistency
+
 **Goal**: A revoked invite link is unjoinable regardless of relay lag, malformed bundles fail closed at the validation boundary, and an event's `created_at`/`ms` pair is always one true decomposition of a single clock read — so ordering and membership never silently disagree.
 **Depends on**: Phase 5 (workspace-wide stability from the cache fix; otherwise independent of the rotation/channel work in Phases 6–9)
 **Requirements**: INVITE-01, INVITE-02, INVITE-03, INVITE-04, INVITE-05, TIME-01, TIME-02, TIME-03
 **Success Criteria** (what must be TRUE):
+
   1. A revoked invite link is unjoinable even when a lagging relay still serves the old bundle — the coordinate resolves to its newest event first, then the tombstone is evaluated, reusing `ConcordInviteList.bundles$`'s already-correct `store.replaceable` pattern.
   2. `validateInviteBundle` fails closed on a bundle whose `channels`/`relays` are not arrays, and `decodeFragment` rejects a fragment version it does not know rather than decoding it against the wrong dictionary.
   3. `refreshInviteBundles` skips a link it cannot rebuild and continues refreshing the rest, instead of aborting every link after it; the Invite List's `expires_at` is written in the spec-correct unit (confirmed against CORD-05 §4 first).
   4. An event's `created_at` and `ms` tag come from a single clock read via `splitTime()`, so `created_at * 1000 + ms` is a true decomposition of one instant with zero skew.
   5. All chunks of one Guestbook snapshot share one timestamp (including `created_at`), and `rumorMs`/`hasMalformedMs` agree on what a valid `ms` tag is, so ordering and membership can never disagree about the same rumor.
   6. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently — never by calling the implementation under test — and asserting the implementation matches. Covers the `inviteBundleKey` derivation and the invite coordinate `(33301, link_signer, "")` (hand-derived from CORD-05 §2), plus the time decomposition asserted against hand-computed `{created_at, ms}` pairs at a chosen instant — including the ≥500ms remainder that produced H04's +1000ms skew.
+
 **Plans**: TBD
 
 ### Phase 11: Messaging Wire Conformance
+
 **Goal**: Reactions, threaded replies, deletes, and voice presence carry the exact wire shape CORD-01/03/07 define, so a compliant client can express a full-depth thread, receive voice presence, and clean up its own giftwraps.
 **Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–10)
 **Requirements**: WIRE-01, WIRE-02, WIRE-03, WIRE-04, WIRE-05, WIRE-11
 **Success Criteria** (what must be TRUE):
+
   1. `ChannelMetadata.voice` no longer exists — every channel is callable and no per-channel voice flag is read, written, or gated on (breaking change; changeset + migration note included).
   2. Kind 23313 voice presence reaches consumers through the receive funnel instead of being silently dropped, so a client can implement CORD-07 §4.
   3. A reaction's `k` tag names its target's actual kind rather than a hardcoded `9`, and a threaded reply inherits its parent's root tags verbatim while deriving `K`/`k` from the real target kind — a reply off a kind-9 message and nesting beyond depth 1 are both expressible.
   4. A `deleteMessage` event carries a `k` tag naming its target's kind.
   5. A client can retain a wrap's ephemeral key so it can NIP-09-delete its own giftwrap by `p` tag.
   6. **(TEST-01, standing — fixture-anchored)** This phase has no crypto derivations, so its spec-derived obligation binds to the **`examples.md` fixtures**: every wire shape this phase touches has at least one test asserting the emitted event against the expected tag set transcribed from the `examples.md` fixture (or the CORD-01/03/07 spec text) — never against a snapshot of our own output. Covers the reaction `k` tag, the threaded-reply `K`/`k` and inherited root tags, and the delete `k` tag.
+
 **Plans**: TBD
 
 ### Phase 12: Document & Caps Conformance
+
 **Goal**: Community and channel documents respect the protocol's byte and membership caps, and round-trip fields the current client doesn't understand — so two clients sharing one npub, or a future protocol revision, cannot silently destroy each other's data.
 **Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–11)
 **Requirements**: WIRE-06, WIRE-07, WIRE-08, WIRE-09, WIRE-10, WIRE-12
 **Success Criteria** (what must be TRUE):
+
   1. A channel `name` is capped at 64 bytes (UTF-8 byte length via `TextEncoder`, not UTF-16 code units) on write and defensively on read.
   2. Community `name` (64B) and `description` (10000B) byte caps are enforced, alongside the Community List's 50-membership protocol constant (already-enforced byte cap included).
   3. The Community List and Invite List round-trip unknown top-level document fields — not just per-entry unknowns — so a second client sharing one npub cannot wipe fields it doesn't recognize.
   4. A `deleteChannel` edition preserves `custom` via an explicit destructure while still excluding client-only key material (never a naive spread, which would leak `ch.key`).
   5. Code comments cite real, existing spec sections (no more `CORD-06 §94`, a line number mistaken for a section).
   6. **(TEST-01, standing — constant- and fixture-anchored)** Every cap and document rule this phase touches is asserted against the value transcribed from the spec text or the `examples.md` fixture — never against the implementation's own constant. Each cap test names its literal spec value (64B, 10000B, 50 entries) independently of the source constant, so renaming or mis-setting that constant fails the test; the byte caps are exercised with a multi-byte UTF-8 string whose UTF-16 `.length` and UTF-8 byte length differ.
+
 **Plans**: TBD
 
 ## Progress
