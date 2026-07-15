@@ -29,7 +29,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 
 **TEST-01 is a standing criterion across Phases 5–12, not a single phase's deliverable.** It is anchored at Phase 5 for requirement accounting, but it does **not** close there. Every phase that touches a derivation, fold, or wire shape the specs define by formula or example carries an explicit spec-derived-assertion criterion in its numbered list below (Phases 5, 6, 7, 8, 9, 10, 11, 12). Rationale: all 189 concord tests passed while 9 HIGH bugs were live because every test compared the implementation against itself. A phase permitted to assert against its own output reintroduces the milestone's root cause. Phase 7 is the sharpest case — the channel-keying derivations CORD-03 §1 defines by formula are precisely where H07 hid, and a spec-derived probe is what exposed it.
 
-- [ ] **Phase 5: Cache Identity Memo Fix** - Core cache memos stop surviving object spread in `applesauce-core`, unblocking every downstream rotation fix
+- [x] **Phase 5: Cache Identity Memo Fix** - Core cache memos stop surviving object spread in `applesauce-core`, unblocking every downstream rotation fix (completed 2026-07-15)
 - [ ] **Phase 6: Refounding Rotation & Authority Correctness** - A Refounding actually rotates its addresses in-session, drops excluded members from the memberlist, and is honored only from a rotator who outranks every removed target
 - [ ] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug)
 - [ ] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member
@@ -53,7 +53,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
   4. `pnpm -r test` passes across the full workspace (baseline: 1989 tests, exit 0) — the shared core change regresses nothing downstream.
   5. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently from the spec formula — never by calling the implementation under test — and asserting the implementation matches. Concretely: a test derives the expected epoch-N control address from the CORD-02 §4 formula by hand and asserts a rolled-forward object matches it, reproducing and closing H01's exact failure mode.
 
-**Plans**: 6/11 plans executed
+**Plans**: 11/11 plans complete
 
 Plans:
 **Wave 1**
@@ -78,11 +78,11 @@ Plans:
 
 **Gap Wave 2** *(blocked on 05-06 — every downstream comment cites the corrected taxonomy)*
 
-- [ ] 05-07-PLAN.md — Remove every false "propagated via the merge list" citation in core + common (`relays.ts`, `event-store.ts`, `async-event-store.ts`, `encrypted-content-cache.ts`) (gap wave 2)
-- [ ] 05-08-PLAN.md — Reword the six core write-site comments that assert a spread-survival property their enumerable writes lack, plus the `setEncryptedContentCache` classification mirror (gap wave 2)
-- [ ] 05-09-PLAN.md — Reword the eight common write-site comments that assert a spread-survival property their enumerable writes lack (gap wave 2)
-- [ ] 05-10-PLAN.md — Make `cache.test.ts`'s carry-forward half genuinely enforce the D-13 contract via an intervening uncompensated spread, proven by a recorded non-vacuity probe (gap wave 2)
-- [ ] 05-11-PLAN.md — Correct the residual false comments (`common/helpers/gift-wrap.ts` sentinel, `common/operations/gift-wrap.ts` propagation claims, concord `keys.ts` "hand-rolled") and record the deferral register for every unclosed review finding (gap wave 2)
+- [x] 05-07-PLAN.md — Remove every false "propagated via the merge list" citation in core + common (`relays.ts`, `event-store.ts`, `async-event-store.ts`, `encrypted-content-cache.ts`) (gap wave 2)
+- [x] 05-08-PLAN.md — Reword the six core write-site comments that assert a spread-survival property their enumerable writes lack, plus the `setEncryptedContentCache` classification mirror (gap wave 2)
+- [x] 05-09-PLAN.md — Reword the eight common write-site comments that assert a spread-survival property their enumerable writes lack (gap wave 2)
+- [x] 05-10-PLAN.md — Make `cache.test.ts`'s carry-forward half genuinely enforce the D-13 contract via an intervening uncompensated spread, proven by a recorded non-vacuity probe (gap wave 2)
+- [x] 05-11-PLAN.md — Correct the residual false comments (`common/helpers/gift-wrap.ts` sentinel, `common/operations/gift-wrap.ts` propagation claims, concord `keys.ts` "hand-rolled") and record the deferral register for every unclosed review finding (gap wave 2)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
 
@@ -209,7 +209,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 | 2. Generic models & casts | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
-| 5. Cache Identity Memo Fix | v1.1 | 6/11 | In Progress|  |
+| 5. Cache Identity Memo Fix | v1.1 | 11/11 | Complete   | 2026-07-15 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
