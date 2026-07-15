@@ -79,8 +79,11 @@ export function sealRumor(
 
     const seal = await signer.signEvent(unsigned);
 
-    // Set the downstream reference on the seal. Propagated by reference across duplicate
-    // events, not by spread — accumulated state (see cache.ts taxonomy).
+    // Set the downstream reference on the seal: an object-reference link to `rumor`, not a
+    // value copy. `RumorSymbol` is registered into `PRESERVE_EVENT_SYMBOLS` above, which
+    // stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
+    // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
+    // list, which has no gift-wrap symbols — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, RumorSymbol, rumor);
 
     // Add the upstream reference to the rumor
@@ -114,19 +117,26 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
 
     const gift = finalizeEvent(draft, key);
 
-    // Set the upstream references on the seal. Propagated by reference across duplicate
-    // events, not by spread — accumulated state (see cache.ts taxonomy).
+    // Set the upstream reference on the seal: an object-reference link to `gift`, not a
+    // value copy. `GiftWrapSymbol` is registered into `PRESERVE_EVENT_SYMBOLS` above, which
+    // stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
+    // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
+    // list, which has no gift-wrap symbols — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, GiftWrapSymbol, gift);
 
-    // Set the downstream reference on the gift wrap. Propagated by reference across
-    // duplicate events, not by spread — accumulated state (see cache.ts taxonomy).
+    // Set the downstream reference on the gift wrap: an object-reference link to `seal`, not
+    // a value copy. `SealSymbol` registration into `PRESERVE_EVENT_SYMBOLS` above buys
+    // survival of `eventPipe`'s delete loop, nothing more — it is NOT carried onto a
+    // redelivered duplicate of this event by that merge list, which has no gift-wrap symbols
+    // — accumulated state (see cache.ts taxonomy).
     Reflect.set(gift, SealSymbol, seal);
 
     // Set the encrypted content on the gift wrap. This is the ONLY carry-forward site in
     // applesauce-common: the plaintext must survive downstream spreads exactly like
-    // applesauce-core's operations/tags.ts:87, and migrating it onto the memo helper would
-    // break gift-wrap plaintext. Surrounded by accumulated-state writes above, this is the
-    // easiest site in the monorepo for a future cleanup to sweep up by mistake.
+    // applesauce-core's operations/tags.ts's modifyHiddenTags return, and migrating it onto
+    // the memo helper would break gift-wrap plaintext. Surrounded by accumulated-state writes
+    // above, this is the easiest site in the monorepo for a future cleanup to sweep up by
+    // mistake.
     // carry-forward payload (see cache.ts taxonomy).
     Reflect.set(gift, EncryptedContentSymbol, plaintext);
 
