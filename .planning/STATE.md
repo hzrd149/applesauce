@@ -1,30 +1,26 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: event-store-supports-rumors
-current_phase: 0
-status: Awaiting next milestone
-stopped_at: Completed 04-01-PLAN.md (Phase 4 complete, milestone v1.0 ready for verify-work)
-last_updated: "2026-07-09T06:04:09.946Z"
-last_activity: 2026-07-09
-last_activity_desc: Milestone v1.0 completed and archived
+milestone: v1.1
+milestone_name: first-fixes
+status: planning
+last_updated: "2026-07-15T15:24:17.255Z"
+last_activity: 2026-07-15
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-  percent: 100
-current_phase_name: common-package-rumor-support
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-09 — Milestone v1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-07-15 — Milestone v1.1 started
 
 ## Session
 
