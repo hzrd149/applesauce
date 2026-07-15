@@ -162,6 +162,11 @@ export interface BuildInviteBundleOptions {
  * The single source of truth for both the link bundle (§1) and the Direct Invite
  * bundle (§6): explicitly selected channel keys travel so the joiner can read
  * the granted Channels, and the `community_id` self-certifies the owner (§1).
+ *
+ * `held_roots` is deliberately NOT carried — a joiner gets the current epoch only,
+ * never the history. `refounder` IS carried: without it a joiner's `foldMembers`
+ * discards the epoch's Guestbook snapshot (kind 3312), which — having no prior
+ * epoch to walk — is the only thing that gives them the memberlist (CORD-02 §5).
  */
 export function buildInviteBundle(material: JoinMaterial, opts: BuildInviteBundleOptions = {}): InviteBundle {
   const channelIds = opts.channels ?? [];
@@ -185,6 +190,7 @@ export function buildInviteBundle(material: JoinMaterial, opts: BuildInviteBundl
     owner_salt: material.owner_salt,
     community_root: material.community_root,
     root_epoch: material.root_epoch,
+    refounder: material.refounder,
     channels,
     relays: material.relays,
     name: opts.name ?? material.name,
@@ -217,7 +223,9 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
   const channels = bundle.channels ?? [];
   if (channels.length > INVITE_BUNDLE_MAX_CHANNELS) return undefined;
   const relays = (bundle.relays ?? []).slice(0, INVITE_BUNDLE_RELAY_CAP);
-  return { ...bundle, channels, relays };
+  // A non-string `refounder` would gate the snapshot fold on a junk comparison; drop it.
+  const refounder = typeof bundle.refounder === "string" ? bundle.refounder : undefined;
+  return { ...bundle, channels, relays, refounder };
 }
 
 export function encryptBundle(bundle: InviteBundle, token: Uint8Array): string {

@@ -46,6 +46,19 @@ describe("buildInviteBundle", () => {
       "not a private channel we hold a key for: missing",
     );
   });
+
+  it("carries the refounder so a joiner honors the epoch's guestbook snapshot", async () => {
+    const { material } = await genesis();
+    const refounder = getPublicKey(generateSecretKey());
+    const bundle = buildInviteBundle({ ...material, root_epoch: 1, refounder });
+    expect(bundle.refounder).toBe(refounder);
+    expect(validateInviteBundle(bundle)?.refounder).toBe(refounder);
+  });
+
+  it("carries no refounder before any refounding", async () => {
+    const { material } = await genesis();
+    expect(buildInviteBundle(material).refounder).toBeUndefined();
+  });
 });
 
 describe("validateInviteBundle", () => {
