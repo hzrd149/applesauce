@@ -13,7 +13,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 *Must land first: CACHE-01 is the root cause of ROTATE-01/02/03, and H01 currently masks H02 (ROTATE-04).*
 
 - [x] **CACHE-01**: A value memoized by `setCachedValue`/`getOrComputeCachedValue` does not survive an object spread — a copy with changed fields recomputes instead of returning the source's stale memo *(H01 root cause; `core/helpers/cache.ts:15`)*
-- [x] **CACHE-02**: The cache helper documents the identity-memo vs carry-forward-payload distinction, so a future cleanup cannot collapse `EncryptedContentSymbol`'s deliberate enumerable write onto the memo helper *(H01 note; the two conventions are currently distinguished only by which write mechanism an author happened to reach for)*
+- [ ] **CACHE-02**: The cache helper documents the identity-memo vs carry-forward-payload distinction, so a future cleanup cannot collapse `EncryptedContentSymbol`'s deliberate enumerable write onto the memo helper *(H01 note; the two conventions are currently distinguished only by which write mechanism an author happened to reach for)*
 - [x] **CACHE-03**: Encrypted-content plaintext still survives the factory pipe and signing — `getEncryptedContent`/`getHiddenTags` read correctly off a signed event built through spread operations *(regression guard for CACHE-01; `core/operations/tags.ts:87`)*
 
 ### Key Rotation & Epoch Correctness (ROTATE)
@@ -115,7 +115,7 @@ Deferred — acknowledged, not in this roadmap.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | CACHE-01 | Phase 5 | Complete |
-| CACHE-02 | Phase 5 | Complete |
+| CACHE-02 | Phase 5 | Pending — taxonomy unsound (see 05-VERIFICATION.md) |
 | CACHE-03 | Phase 5 | Complete |
 | TEST-01 | Phase 5–12 (standing) | Pending — **cross-cutting; does NOT close at Phase 5** |
 | ROTATE-01 | Phase 6 | Pending |
