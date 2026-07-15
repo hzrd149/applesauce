@@ -41,21 +41,29 @@
  *    object's own fields. The test is whether a copy with changed fields must
  *    recompute.
  *
- * Worked example — `EncryptedContentSymbol` has two lifecycles with OPPOSITE
- * semantics, proving the taxonomy classifies write sites, not symbols:
+ * Worked example — `EncryptedContentSymbol` has TWO write sites, BOTH
+ * carry-forward payload but for DIFFERENT reasons, proving the taxonomy
+ * classifies write sites (not symbols) and that a site's PURPOSE does not
+ * decide its category:
  *   - carry-forward payload at `operations/tags.ts`'s `modifyHiddenTags`
- *     return — the write/build path, where the decrypted plaintext is spread
- *     onto the draft (`{ ...draft, content, [EncryptedContentSymbol]:
- *     plaintext }`) so it survives the pipe's intermediate spreads into the
- *     signed event.
- *   - identity memo at `helpers/encrypted-content.ts`'s
- *     `setEncryptedContentCache` — the read/unlock path, where the same
- *     symbol memoizes decrypted content on an already-signed, immutable event
- *     to avoid a repeat signer round-trip.
- *   That is why `setEncryptedContentCache` hand-rolls its own enumerable
- *   `Reflect.set` write instead of calling this helper: at ITS write site the
- *   value must stay enumerable so it keeps surviving the pipe's spreads, even
- *   though its own read-path usage would otherwise be safe non-enumerable.
+ *     return — the write/build path, where the decrypted plaintext is placed
+ *     on the draft by an object literal (`{ ...draft, content,
+ *     [EncryptedContentSymbol]: plaintext }`) so it survives the pipe's
+ *     intermediate spreads into the signed event.
+ *   - carry-forward payload at `helpers/encrypted-content.ts`'s
+ *     `setEncryptedContentCache` — the read/unlock path. Its PURPOSE is
+ *     memoization (avoiding a repeat signer round-trip on an already-signed
+ *     event), which is why it looks like a memo. But its write site answers
+ *     the same question the build path does: an unlocked event re-entering
+ *     the factory pipe hits `operations/tags.ts`'s `modifyPublicTags`
+ *     (`{ ...draft, tags }`), which copies only enumerable own properties —
+ *     a non-enumerable write here would be dropped there and force a
+ *     re-decrypt. "Must THIS WRITE survive a spread?" = yes, so this is
+ *     carry-forward payload, not identity memo. That is why it hand-rolls its
+ *     own enumerable `Reflect.set` write instead of calling `setCachedValue`.
+ *   A site whose purpose is memoization can still be category 2 — purpose
+ *   does not decide the category; the spread-survival requirement at the
+ *   write site does. This is the exact confusion that produced CR-02.
  *
  * Scope: this helper (`getCachedValue`/`setCachedValue`/`getOrComputeCachedValue`)
  * writes identity memos ONLY, and writes them non-enumerable so a spread drops
