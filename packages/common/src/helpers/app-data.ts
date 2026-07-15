@@ -62,8 +62,12 @@ export function getAppDataContent<
   }
   if (!data) return undefined;
 
-  // Derived from the event's own (possibly encrypted) content; a copy with different content
-  // must re-parse, so this must not survive a spread — identity memo (see cache.ts taxonomy).
+  // Derived from the event's own (possibly encrypted) content — identity memo (see
+  // applesauce-core's cache.ts taxonomy). Written here with a plain enumerable Reflect.set, so
+  // it DOES survive a spread today, riding onto a copy whose content differs. Only
+  // pipeFromAsyncArray's delete loop (applesauce-core's helpers/pipeline.ts) scrubs it, and only
+  // on the call path that runs it — a coincidence of one code path, not an invariant. Known,
+  // deliberately-deferred gap; not migrated to setCachedValue here.
   Reflect.set(event, AppDataContentSymbol, data);
   return data;
 }

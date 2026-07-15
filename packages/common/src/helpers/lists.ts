@@ -44,8 +44,12 @@ function getOrComputeListCache<T>(
   if ((cacheType === "hidden" || cacheType === "all") && !isHiddenTagsUnlocked(list)) return compute();
 
   const cache = (Reflect.get(list, symbol) as ListCacheByType<T> | undefined) ?? ({} as ListCacheByType<T>);
-  // Two-level cache (symbol -> cacheType -> value) derived from the list's own tags; a copy
-  // with different tags must recompute, so this must not survive a spread — identity memo (see cache.ts taxonomy).
+  // Two-level cache (symbol -> cacheType -> value) derived from the list's own tags — identity memo
+  // (see cache.ts taxonomy). Written here with a plain enumerable Reflect.set, so it DOES survive
+  // a spread today, riding onto a copy whose tags differ. Only pipeFromAsyncArray's delete loop
+  // (applesauce-core's helpers/pipeline.ts) scrubs it, and only on the call path that runs it —
+  // a coincidence of one code path, not an invariant. Known, deliberately-deferred gap (see
+  // 05-CONTEXT.md's Deferred Ideas); not migrated to setCachedValue here.
   Reflect.set(list, symbol, cache);
   const cached = cache[cacheType];
   if (cached !== undefined) return cached;
