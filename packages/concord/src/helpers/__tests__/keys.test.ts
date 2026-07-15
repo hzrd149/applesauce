@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { createCommunity } from "../community.js";
 import {
@@ -16,8 +16,10 @@ import {
   deriveConcordKeys,
   planeKeyFor,
   readRekey,
+  rollForward,
   wrapForTarget,
 } from "../keys.js";
+import { controlGroupKey } from "../crypto.js";
 import { decodeWrap } from "../gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent } from "../../types.js";
 
@@ -186,6 +188,35 @@ describe("ConcordKeys", () => {
       [],
     );
     expect(outcome.kind).toBe("none");
+  });
+
+  // H01(a) (CORD-02 §4): "Rotating the epoch rotates the pk, keeping a plane's
+  // traffic unlinkable across epochs." The expected value below comes ONLY from
+  // `controlGroupKey` in crypto.ts (D-18) — never from `deriveConcordKeys`,
+  // `baseKeysFor`, or `rollForward` themselves — so this cannot be a
+  // self-referential (implementation-compares-to-itself) assertion.
+  it("rollForward's control address matches the CORD-02 §4 formula over the new root", async () => {
+    const { material, ownerPub } = await genesis();
+
+    // ARM THE MEMO: deriving keys from `material` writes BaseKeysSymbol onto it.
+    // Without this step, rollForward's `{ ...keys.material, ... }` spread has no
+    // memo to carry forward, and this assertion would pass even against the
+    // pre-05-01 broken code (vacuous test) — see D-18/non-vacuity note in the plan.
+    const keys = deriveConcordKeys(material, []);
+
+    const newRoot = generateSecretKey();
+    const newEpoch = material.root_epoch + 1;
+
+    // EXPECTED, independently derived from the spec formula (never via rollForward
+    // / deriveConcordKeys / baseKeysFor).
+    const expected = controlGroupKey(newRoot, hexToBytes(material.community_id), newEpoch);
+
+    const rolled = rollForward(keys, newRoot, newEpoch, ownerPub, []);
+
+    expect(rolled.control.pk).toBe(expected.pk);
+    // The rotation actually happened — the defect this closes is a Refounding
+    // that silently keeps serving the OLD control address.
+    expect(rolled.control.pk).not.toBe(keys.control.pk);
   });
 });
 
