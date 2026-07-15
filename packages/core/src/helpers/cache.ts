@@ -13,23 +13,43 @@
  *    non-enumerable memo is dropped by a spread instead of riding along stale.
  * 2. **carry-forward payload** — deliberately propagated through the factory pipe
  *    into the signed event. MUST survive a spread. `PRESERVE_EVENT_SYMBOLS`
- *    (`pipeline.ts:5`) is the machine-readable definition of this category: any
- *    symbol listed there is explicitly kept across `eventPipe`'s intermediate
- *    spreads.
+ *    (`helpers/pipeline.ts`) is the allowlist `pipeFromAsyncArray`'s delete loop
+ *    consults: after each pipe operation it deletes every symbol-keyed own
+ *    property of the result that is NOT listed there. Membership is therefore
+ *    NECESSARY but NOT SUFFICIENT for surviving a spread — the loop only
+ *    deletes non-listed symbols; it never copies a listed symbol from `prev`
+ *    onto `result`. Actually surviving an individual operation's own internal
+ *    spread additionally requires either an enumerable write (as
+ *    `modifyHiddenTags`'s object-literal return gives `EncryptedContentSymbol`)
+ *    or an explicit re-copy by that operation (as `stamp`/`sign` in
+ *    `operations/event.ts` do, via `Reflect.has`/`get`/`set`, which are
+ *    enumerability-blind).
  * 3. **accumulated state** — mutable, propagated by the event store's merge
- *    rather than by spread (e.g. `SeenRelaysSymbol`, and the gift-wrap
- *    `Seal`/`Rumor`/`GiftWrap` symbols). The `[FromCacheSymbol, verifiedSymbol,
- *    EncryptedContentSymbol]` merge list at `event-store.ts:219` is the
- *    machine-readable definition of this category.
+ *    rather than by spread. This category has no single defining list; the
+ *    propagation mechanism differs per symbol. `FromCacheSymbol` and
+ *    `verifiedSymbol` propagate via the symbol merge loop in
+ *    `EventStore.copySymbolsToDuplicateEvent`. `SeenRelaysSymbol` propagates
+ *    via a SEPARATE, element-wise merge in that same function
+ *    (`getSeenRelays`/`addSeenRelay`) and is NOT in that merge loop's list.
+ *    applesauce-common's `Seal`/`Rumor`/`GiftWrap` symbols are not merged by
+ *    any event store at all (they are unknown to applesauce-core) and
+ *    propagate by shared object reference. Mutability of the value is NOT the
+ *    test for this category: a memo whose value happens to be a mutable
+ *    container (e.g. concord's `ChannelKeysSymbol`, a `Map` written through
+ *    `getOrComputeCachedValue` and grown in place by `channelKeyMemo`) is
+ *    still an **identity memo** when its validity is bound to the host
+ *    object's own fields. The test is whether a copy with changed fields must
+ *    recompute.
  *
  * Worked example — `EncryptedContentSymbol` has two lifecycles with OPPOSITE
  * semantics, proving the taxonomy classifies write sites, not symbols:
- *   - carry-forward payload at `operations/tags.ts:87` — the write/build path,
- *     where the decrypted plaintext is spread onto the draft (`{ ...draft,
- *     content, [EncryptedContentSymbol]: plaintext }`) so it survives the
- *     pipe's intermediate spreads into the signed event.
- *   - identity memo at `helpers/encrypted-content.ts:117`
- *     (`setEncryptedContentCache`) — the read/unlock path, where the same
+ *   - carry-forward payload at `operations/tags.ts`'s `modifyHiddenTags`
+ *     return — the write/build path, where the decrypted plaintext is spread
+ *     onto the draft (`{ ...draft, content, [EncryptedContentSymbol]:
+ *     plaintext }`) so it survives the pipe's intermediate spreads into the
+ *     signed event.
+ *   - identity memo at `helpers/encrypted-content.ts`'s
+ *     `setEncryptedContentCache` — the read/unlock path, where the same
  *     symbol memoizes decrypted content on an already-signed, immutable event
  *     to avoid a repeat signer round-trip.
  *   That is why `setEncryptedContentCache` hand-rolls its own enumerable
@@ -41,7 +61,7 @@
  * writes identity memos ONLY, and writes them non-enumerable so a spread drops
  * them. The write descriptor's other two flags are load-bearing, not stylistic:
  * `configurable: true` is required because `pipeFromAsyncArray`'s
- * `Reflect.deleteProperty` (`pipeline.ts:63`) throws on a non-configurable
+ * `Reflect.deleteProperty` throws on a non-configurable
  * property, and `writable: true` is required because `setCachedValue` overwrites
  * an existing memo.
  */
