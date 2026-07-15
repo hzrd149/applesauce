@@ -133,7 +133,7 @@ Categories per D-04/D-05 (classifying the **write site**, not the symbol):
 
 **Scope reminder (D-09/D-11):** `concord` is excluded from this sweep except the single comment-only correction at `packages/concord/src/helpers/keys.ts:98-104` (the false "a rekey/Refounding mints a fresh `material`" reasoning) — do not classify or comment any other concord symbol site in this phase.
 
-## Gap 3 — Validation Architecture
+## Validation Architecture
 
 ### Test Framework
 | Property | Value |
