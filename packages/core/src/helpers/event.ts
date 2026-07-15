@@ -125,6 +125,8 @@ export function getEventUID<E extends StoreEvent = NostrEvent>(event: E) {
   if (!uid) {
     if (isReplaceable(event.kind)) uid = getReplaceableAddress(event) ?? event.id;
     else uid = event.id;
+    // Derived from the event's own kind/pubkey/tags; a copy with different fields must
+    // recompute its UID, so this must not survive a spread — identity memo (see cache.ts taxonomy).
     Reflect.set(event, EventUIDSymbol, uid);
   }
 
@@ -172,6 +174,8 @@ export function fakeVerifyEvent(event: NostrEvent): event is VerifiedEvent {
 
 /** Marks an event as being from a cache */
 export function markFromCache(event: NostrEvent) {
+  // FromCacheSymbol is propagated across duplicate events via the event store's merge list
+  // (event-store.ts:219), not via object spread — accumulated state (see cache.ts taxonomy).
   Reflect.set(event, FromCacheSymbol, true);
 }
 

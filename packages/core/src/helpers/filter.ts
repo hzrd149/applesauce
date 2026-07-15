@@ -20,6 +20,8 @@ export function getIndexableTags<E extends StoreEvent = NostrEvent>(event: E): S
     }
 
     indexable = tags;
+    // Derived from the event's own tags; a copy with different tags must recompute, so this
+    // must not survive a spread — identity memo (see cache.ts taxonomy).
     Reflect.set(event, EventIndexableTagsSymbol, tags);
   }
 

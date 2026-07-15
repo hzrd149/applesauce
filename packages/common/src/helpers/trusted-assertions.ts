@@ -86,6 +86,8 @@ export function getHiddenProviders<T extends NostrEvent>(event: T): TrustedProvi
   if (!tags) return undefined;
 
   const providers = tags.map(parseProviderTag).filter((p): p is TrustedProvider => p !== undefined);
+  // Derived from the event's own hidden tags; a copy with different tags must re-parse, so
+  // this must not survive a spread — identity memo (see applesauce-core's cache.ts taxonomy).
   Reflect.set(event, TrustedProvidersHiddenSymbol, providers);
   return providers;
 }

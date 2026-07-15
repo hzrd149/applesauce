@@ -13,6 +13,8 @@ export function addSeenRelay<E extends StoreEvent = NostrEvent>(event: E, relay:
   let seen = Reflect.get(event, SeenRelaysSymbol) as Set<string> | undefined;
   if (!seen) {
     seen = new Set([relay]);
+    // SeenRelaysSymbol is propagated across duplicate events via the event store's merge
+    // (event-store.ts:219), not via object spread — accumulated state (see cache.ts taxonomy).
     Reflect.set(event, SeenRelaysSymbol, seen);
     return seen;
   } else {

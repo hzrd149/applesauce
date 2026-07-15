@@ -91,7 +91,8 @@ export function getHiddenContacts(event: NostrEvent | UnlockedContacts): Profile
     (t) => getProfilePointerFromPTag(t) ?? undefined,
   );
 
-  // Set cache and notify event store
+  // Set cache and notify event store. Derived from the event's own hidden tags; a copy with
+  // different tags must re-parse, so this must not survive a spread: identity memo (see cache.ts taxonomy).
   Reflect.set(event, HiddenContactsSymbol, contacts);
 
   return contacts;

@@ -99,8 +99,24 @@ interface BaseKeys {
  * memoize the expensive secp256k1 derivations directly on it (the repo's
  * `getOrComputeCachedValue` symbol pattern), computed once and reused until a
  * rekey/Refounding mints a fresh `material` — exactly when the keys must change.
- * Symbol-keyed props are skipped by `JSON.stringify`, so the cached secret keys
- * never leak into persisted material.
+ *
+ * That claim is true NOW, and only because `applesauce-core`'s cache helper writes the
+ * memo non-enumerable (see `cache.ts`'s identity-memo taxonomy): object spread only
+ * copies enumerable own properties, so a non-enumerable memo is dropped instead of riding
+ * along stale when `rollForward` mints fresh material via `{ ...keys.material,
+ * community_root: newRoot, ... }` (`:249-255`).
+ *
+ * It was NOT true before that fix — this is CONCORD-H01. Before `cache.ts` wrote
+ * non-enumerable, this memo hand-rolled a plain enumerable `Reflect.set`, so the PRIOR
+ * epoch's cached keys rode along on `rollForward`'s spread and `baseKeysFor` silently kept
+ * returning the old epoch's keys after every Refounding.
+ *
+ * `JSON.stringify` and object spread treat symbol-keyed properties in exactly OPPOSITE
+ * ways, and that asymmetry was the entire bug. Symbol-keyed props ARE skipped by
+ * `JSON.stringify`, so the cached secret keys never leak into persisted material — this
+ * half of the original reasoning was always true, and it's why a process restart silently
+ * healed the bug instead of it surfacing as a repro. But spread copies enumerable
+ * symbol-keyed props, and the original comment never considered spread.
  */
 const BaseKeysSymbol = Symbol.for("concord-base-keys");
 const ChannelKeysSymbol = Symbol.for("concord-channel-keys");
@@ -540,10 +556,15 @@ export interface ChannelKeys {
 export function deriveChannelKeys(material: JoinMaterial, channel: ChannelKey): ChannelKeys {
   const channelId = hexToBytes(channel.id);
   // The current + held message-plane keys derive purely from `channel` (its own
-  // secret/epoch, independent of the community root), and `channel` is a stable
-  // object across `openLive`/sync-walk steps — replaced only when it rolls forward
-  // — so memoize this (dominant) derivation on it. The rekey addresses below key
-  // on `material`'s roots, so they stay per-call.
+  // secret/epoch, independent of the community root), so memoize this (dominant)
+  // derivation on it. This is safe only because applesauce-core's cache helper writes the
+  // memo non-enumerable (see cache.ts's identity-memo taxonomy) — so it is dropped, not
+  // carried forward stale, when `rollForwardChannel` mints a fresh `ChannelKey` via
+  // `{ ...channel, key: newKey, epoch: newEpoch, held: [...] }` (`:508-515`). Before that
+  // fix this was the identical reasoning error as CONCORD-H01: assuming a fresh `channel`
+  // object (replaced only when it rolls forward) meant a fresh cache, when the replacement
+  // is performed by spread and spread copies enumerable symbol-keyed properties. The rekey
+  // addresses below key on `material`'s roots, so they stay per-call.
   const { current, held } = getOrComputeCachedValue(channel, ChannelPlaneKeysSymbol, () => ({
     current: channelGroupKey(hexToBytes(channel.key), channelId, channel.epoch),
     held: (channel.held ?? []).map((h) => ({

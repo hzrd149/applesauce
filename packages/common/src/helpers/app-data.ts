@@ -62,6 +62,8 @@ export function getAppDataContent<
   }
   if (!data) return undefined;
 
+  // Derived from the event's own (possibly encrypted) content; a copy with different content
+  // must re-parse, so this must not survive a spread — identity memo (see cache.ts taxonomy).
   Reflect.set(event, AppDataContentSymbol, data);
   return data;
 }
