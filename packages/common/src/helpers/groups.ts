@@ -104,8 +104,14 @@ export function getHiddenGroups<T extends NostrEvent>(bookmark: T): GroupPointer
       getGroupPointerFromGroupTag,
     );
 
-    // Derived from the event's own hidden tags; a copy with different tags must re-parse, so
-    // this must not survive a spread — identity memo (see applesauce-core's cache.ts taxonomy).
+    // Derived from the event's own hidden tags — identity memo (see applesauce-core's cache.ts
+    // taxonomy). Unlike this plan's other seven common sites, this explicit Reflect.set is NOT
+    // the property's final write: it creates an enumerable descriptor, but the enclosing
+    // getOrComputeCachedValue call immediately redefines the same symbol non-enumerable via
+    // Object.defineProperty once this compute callback returns, so GroupsHiddenSymbol's descriptor
+    // here is non-enumerable today and correctly does not survive a spread — no pipeFromAsyncArray
+    // delete-loop mask is needed for this site, unlike the sibling sites where that delete loop is
+    // the only thing scrubbing the value. This explicit Reflect.set is redundant, not load-bearing.
     Reflect.set(bookmark, GroupsHiddenSymbol, groups);
 
     return groups;

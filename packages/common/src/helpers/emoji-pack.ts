@@ -100,8 +100,12 @@ export function getHiddenFavoriteEmojis<T extends NostrEvent>(list: T): Emoji[] 
   if (!tags) return undefined;
 
   const emojis = parseEmojiTags(tags);
-  // Derived from the list's own hidden tags; a copy with different tags must re-parse, so
-  // this must not survive a spread — identity memo (see applesauce-core's cache.ts taxonomy).
+  // Derived from the list's own hidden tags — identity memo (see applesauce-core's cache.ts
+  // taxonomy). Written here with a plain enumerable Reflect.set, so it DOES survive a spread
+  // today, riding onto a copy whose hidden tags differ. Only pipeFromAsyncArray's delete loop
+  // (applesauce-core's helpers/pipeline.ts) scrubs it, and only on the call path that runs it —
+  // a coincidence of one code path, not an invariant. Known, deliberately-deferred gap; not
+  // migrated to setCachedValue here.
   Reflect.set(list, FavoriteEmojiPacksHiddenSymbol, emojis);
   return emojis;
 }
@@ -119,8 +123,12 @@ export function getHiddenFavoriteEmojiPackPointers<T extends NostrEvent>(list: T
   if (!tags) return undefined;
 
   const pointers = parseEmojiPackPointers(tags);
-  // Derived from the list's own hidden tags; a copy with different tags must re-parse, so
-  // this must not survive a spread — identity memo (see applesauce-core's cache.ts taxonomy).
+  // Derived from the list's own hidden tags — identity memo (see applesauce-core's cache.ts
+  // taxonomy). Written here with a plain enumerable Reflect.set, so it DOES survive a spread
+  // today, riding onto a copy whose hidden tags differ. Only pipeFromAsyncArray's delete loop
+  // (applesauce-core's helpers/pipeline.ts) scrubs it, and only on the call path that runs it —
+  // a coincidence of one code path, not an invariant. Known, deliberately-deferred gap; not
+  // migrated to setCachedValue here.
   Reflect.set(list, FavoriteEmojiPacksHiddenPointersSymbol, pointers);
   return pointers;
 }
