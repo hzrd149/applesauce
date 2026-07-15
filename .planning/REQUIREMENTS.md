@@ -12,9 +12,9 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 *Must land first: CACHE-01 is the root cause of ROTATE-01/02/03, and H01 currently masks H02 (ROTATE-04).*
 
-- [ ] **CACHE-01**: A value memoized by `setCachedValue`/`getOrComputeCachedValue` does not survive an object spread — a copy with changed fields recomputes instead of returning the source's stale memo *(H01 root cause; `core/helpers/cache.ts:15`)*
+- [x] **CACHE-01**: A value memoized by `setCachedValue`/`getOrComputeCachedValue` does not survive an object spread — a copy with changed fields recomputes instead of returning the source's stale memo *(H01 root cause; `core/helpers/cache.ts:15`)*
 - [ ] **CACHE-02**: The cache helper documents the identity-memo vs carry-forward-payload distinction, so a future cleanup cannot collapse `EncryptedContentSymbol`'s deliberate enumerable write onto the memo helper *(H01 note; the two conventions are currently distinguished only by which write mechanism an author happened to reach for)*
-- [ ] **CACHE-03**: Encrypted-content plaintext still survives the factory pipe and signing — `getEncryptedContent`/`getHiddenTags` read correctly off a signed event built through spread operations *(regression guard for CACHE-01; `core/operations/tags.ts:87`)*
+- [x] **CACHE-03**: Encrypted-content plaintext still survives the factory pipe and signing — `getEncryptedContent`/`getHiddenTags` read correctly off a signed event built through spread operations *(regression guard for CACHE-01; `core/operations/tags.ts:87`)*
 
 ### Key Rotation & Epoch Correctness (ROTATE)
 
@@ -114,9 +114,9 @@ Deferred — acknowledged, not in this roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CACHE-01 | Phase 5 | Pending |
+| CACHE-01 | Phase 5 | Complete |
 | CACHE-02 | Phase 5 | Pending |
-| CACHE-03 | Phase 5 | Pending |
+| CACHE-03 | Phase 5 | Complete |
 | TEST-01 | Phase 5–12 (standing) | Pending — **cross-cutting; does NOT close at Phase 5** |
 | ROTATE-01 | Phase 6 | Pending |
 | ROTATE-02 | Phase 6 | Pending |
@@ -169,6 +169,7 @@ Deferred — acknowledged, not in this roadmap.
 | WIRE-12 | Phase 12 | Pending |
 
 **Coverage:**
+
 - v1.1 requirements: 53 total *(corrected from the "52 total" originally recorded here — a recount of every checklist item above finds 53 distinct REQ-IDs; no requirement content changed)*
 - Mapped to phases: 53/53 ✓
 - Blocked on a spec ruling: 5 (ROTATE-10 → Phase 8, ROTATE-13 → Phase 8, AUTH-07 → Phase 9, AUTH-08 → Phase 9, CHAN-07 → Phase 7) — each phase resolves its ruling(s) as its first task; any may conclude "no change needed"
