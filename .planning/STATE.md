@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 5
-current_phase_name: Cache Identity Memo Fix
+current_phase: 05
+current_phase_name: cache-identity-memo-fix
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-07-15T17:23:33.160Z"
+last_updated: "2026-07-15T17:34:26.600Z"
 last_activity: 2026-07-15
-last_activity_desc: "ROADMAP.md created: 8 phases (5–12), 53/53 v1.1 requirements mapped, REQUIREMENTS.md traceability filled in"
+last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
   percent: 0
 ---
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 5 — Cache Identity Memo Fix (`applesauce-core`)
+**Current focus:** Phase 05 — cache-identity-memo-fix
 
 ## Current Position
 
-Phase: 5 of 12 (Cache Identity Memo Fix) — first phase of milestone v1.1
-Plan: — (not yet planned)
-Status: Ready to execute
-Last activity: 2026-07-15 — ROADMAP.md created: 8 phases (5–12), 53/53 v1.1 requirements mapped, REQUIREMENTS.md traceability filled in
+Phase: 05 (cache-identity-memo-fix) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 05
+Last activity: 2026-07-15 — Phase 05 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
