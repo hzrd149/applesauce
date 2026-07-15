@@ -50,6 +50,8 @@ export type UnlockedSeal = KnownEvent<kinds.Seal> & {
 /** Adds a parent reference to a seal or rumor */
 function addParentSealReference(rumor: Rumor, seal: NostrEvent): void {
   const parents = Reflect.get(rumor, SealSymbol);
+  // Mutated in place across calls (the Set gains members over time), the same shape as
+  // applesauce-core's SeenRelaysSymbol — accumulated state (see cache.ts taxonomy), not a memo.
   if (!parents) Reflect.set(rumor, SealSymbol, new Set([seal]));
   else parents.add(seal);
 }
@@ -88,6 +90,8 @@ export function getRumorSeals(rumor: Rumor): UnlockedSeal[] {
   let set = Reflect.get(rumor, SealSymbol);
   if (!set) {
     set = new Set();
+    // Lazily initializes the same mutable Set addParentSealReference (line ~53) grows over
+    // time — accumulated state (see cache.ts taxonomy), not a memo.
     Reflect.set(rumor, SealSymbol, set);
   }
   return Array.from(set);
@@ -147,6 +151,9 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
 
   // Failed to parse rumor, save undefined and return undefined
   if (!rumor) {
+    // The write is meaningful precisely because the value is `undefined` — a negative-result
+    // sentinel, which is why callers check presence (`RumorSymbol in seal`) rather than
+    // truthiness — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, RumorSymbol, undefined);
     return undefined;
   }
@@ -166,7 +173,8 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
   // Save a reference to the parent seal event
   addParentSealReference(rumor, seal);
 
-  // Cache the rumor event
+  // Cache the rumor event. Propagated by reference across duplicate seal events rather than
+  // by spread — accumulated state (see cache.ts taxonomy).
   Reflect.set(seal, RumorSymbol, rumor);
 
   return rumor;
@@ -199,11 +207,13 @@ export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined {
     // Add to the internal event set
     internalGiftWrapEvents.add(seal);
 
-    // Set the reference to the parent gift wrap event (upstream)
+    // Set the reference to the parent gift wrap event (upstream). Propagated by reference
+    // across duplicate events, not by spread — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, GiftWrapSymbol, gift);
   }
 
-  // Save a reference to the seal on the gift wrap (downstream)
+  // Save a reference to the seal on the gift wrap (downstream). Propagated by reference
+  // across duplicate events, not by spread — accumulated state (see cache.ts taxonomy).
   Reflect.set(gift, SealSymbol, seal);
 
   return seal;

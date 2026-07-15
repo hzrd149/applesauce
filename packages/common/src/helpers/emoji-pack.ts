@@ -100,6 +100,8 @@ export function getHiddenFavoriteEmojis<T extends NostrEvent>(list: T): Emoji[] 
   if (!tags) return undefined;
 
   const emojis = parseEmojiTags(tags);
+  // Derived from the list's own hidden tags; a copy with different tags must re-parse, so
+  // this must not survive a spread — identity memo (see applesauce-core's cache.ts taxonomy).
   Reflect.set(list, FavoriteEmojiPacksHiddenSymbol, emojis);
   return emojis;
 }
@@ -117,6 +119,8 @@ export function getHiddenFavoriteEmojiPackPointers<T extends NostrEvent>(list: T
   if (!tags) return undefined;
 
   const pointers = parseEmojiPackPointers(tags);
+  // Derived from the list's own hidden tags; a copy with different tags must re-parse, so
+  // this must not survive a spread — identity memo (see applesauce-core's cache.ts taxonomy).
   Reflect.set(list, FavoriteEmojiPacksHiddenPointersSymbol, pointers);
   return pointers;
 }

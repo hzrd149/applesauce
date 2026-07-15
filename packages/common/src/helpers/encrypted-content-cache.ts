@@ -35,6 +35,8 @@ export interface EncryptedContentCache {
 
 /** Marks the encrypted content as being from a cache */
 export function markEncryptedContentFromCache<T extends object>(event: T) {
+  // A restore-provenance flag propagated across duplicate events the same way FromCacheSymbol
+  // is (applesauce-core's event-store.ts:219 merge list) — accumulated state (see cache.ts taxonomy).
   Reflect.set(event, EncryptedContentFromCacheSymbol, true);
 }
 

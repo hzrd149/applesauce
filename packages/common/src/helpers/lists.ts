@@ -44,6 +44,8 @@ function getOrComputeListCache<T>(
   if ((cacheType === "hidden" || cacheType === "all") && !isHiddenTagsUnlocked(list)) return compute();
 
   const cache = (Reflect.get(list, symbol) as ListCacheByType<T> | undefined) ?? ({} as ListCacheByType<T>);
+  // Two-level cache (symbol -> cacheType -> value) derived from the list's own tags; a copy
+  // with different tags must recompute, so this must not survive a spread — identity memo (see cache.ts taxonomy).
   Reflect.set(list, symbol, cache);
   const cached = cache[cacheType];
   if (cached !== undefined) return cached;

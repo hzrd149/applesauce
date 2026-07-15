@@ -98,7 +98,8 @@ export function getHiddenBookmarks<T extends NostrEvent>(bookmark: T): BookmarkP
   // parse bookmarks
   const bookmarks = parseBookmarkTags(tags);
 
-  // set cached value
+  // Derived from the event's own hidden tags; a copy with different tags must re-parse, so
+  // this must not survive a spread — identity memo (see applesauce-core's cache.ts taxonomy).
   Reflect.set(bookmark, BookmarkHiddenSymbol, bookmarks);
 
   return bookmarks;

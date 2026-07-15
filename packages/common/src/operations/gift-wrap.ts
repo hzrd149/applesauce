@@ -79,12 +79,15 @@ export function sealRumor(
 
     const seal = await signer.signEvent(unsigned);
 
-    // Set the downstream reference on the seal
+    // Set the downstream reference on the seal. Propagated by reference across duplicate
+    // events, not by spread — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, RumorSymbol, rumor);
 
     // Add the upstream reference to the rumor
     const seals = Reflect.get(rumor, SealSymbol);
     if (seals) seals.add(seal);
+    // Initializes the mutable Set that grows in place elsewhere (helpers/gift-wrap.ts's
+    // addParentSealReference) — accumulated state (see cache.ts taxonomy), not a memo.
     else Reflect.set(rumor, SealSymbol, new Set([seal]));
 
     return seal;
@@ -111,13 +114,20 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
 
     const gift = finalizeEvent(draft, key);
 
-    // Set the upstream references on the seal
+    // Set the upstream references on the seal. Propagated by reference across duplicate
+    // events, not by spread — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, GiftWrapSymbol, gift);
 
-    // Set the downstream reference on the gift wrap
+    // Set the downstream reference on the gift wrap. Propagated by reference across
+    // duplicate events, not by spread — accumulated state (see cache.ts taxonomy).
     Reflect.set(gift, SealSymbol, seal);
 
-    // Set the encrypted content on the gift wrap
+    // Set the encrypted content on the gift wrap. This is the ONLY carry-forward site in
+    // applesauce-common: the plaintext must survive downstream spreads exactly like
+    // applesauce-core's operations/tags.ts:87, and migrating it onto the memo helper would
+    // break gift-wrap plaintext. Surrounded by accumulated-state writes above, this is the
+    // easiest site in the monorepo for a future cleanup to sweep up by mistake.
+    // carry-forward payload (see cache.ts taxonomy).
     Reflect.set(gift, EncryptedContentSymbol, plaintext);
 
     return gift;
