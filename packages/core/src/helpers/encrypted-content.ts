@@ -115,11 +115,13 @@ export async function unlockEncryptedContent<T extends { kind: number; content: 
 /** Sets the encrypted content on an event and updates it if its part of an event store */
 export function setEncryptedContentCache<T extends object>(event: T, plaintext: string) {
   // Avoids a repeat signer round-trip on an already-signed, immutable event. This write stays
-  // enumerable (unlike setCachedValue) because EncryptedContentSymbol is ALSO a carry-forward
-  // payload at operations/tags.ts:87 and operations/event.ts:134,163: the same symbol has two
-  // lifecycles with opposite spread semantics (cache.ts's worked example), and hand-rolling
-  // this write preserves that carry-forward half's requirement to survive a spread — this
-  // write site is itself an identity memo (see cache.ts taxonomy).
+  // enumerable (unlike setCachedValue) because it is carry-forward payload (see cache.ts
+  // taxonomy's worked example), not a memoized value scoped to derivation from the event's own
+  // fields — purpose does not decide the category, the spread-survival requirement at the write
+  // site does. An unlocked event re-entering the factory pipe hits operations/tags.ts's
+  // modifyPublicTags (`{ ...draft, tags }`), which copies only enumerable own properties — a
+  // non-enumerable write here would be dropped there, forcing a repeat signer round-trip to
+  // re-decrypt.
   Reflect.set(event, EncryptedContentSymbol, plaintext);
 
   // if the event has been added to an event store, notify it

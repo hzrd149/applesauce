@@ -53,8 +53,13 @@ export function performCast<C extends EventCast<StoreEvent>, E extends StoreEven
 
   // Create a new instance of the class (the constructor reads only StoreEvent fields).
   const cast = new cls(event as NostrEvent, store);
-  // The cast instance is derived from and wraps this specific event object; a copy must not
-  // inherit a stale cast bound to a different instance — identity memo (see cache.ts taxonomy).
+  // The cast instance is derived from and bound to this specific event instance — identity-memo
+  // shaped per cache.ts's taxonomy. But performCast(copy, cls) would return the cast built
+  // against the ORIGINAL event, and casts.set(cls, cast) would mutate a Map shared by both
+  // objects — a plain enumerable Reflect.set means a spread copy today inherits the same Map by
+  // reference (aliased mutable state, not merely a stale value). Known, deliberately-deferred gap
+  // (D-08 — migration out of scope); only pipeFromAsyncArray's delete loop masks it, on the one
+  // call path that runs it.
   if (!casts) Reflect.set(event, CASTS_SYMBOL, new Map([[cls, cast]]));
   else casts.set(cls, cast);
 
