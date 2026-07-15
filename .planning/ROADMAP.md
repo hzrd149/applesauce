@@ -53,7 +53,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
   4. `pnpm -r test` passes across the full workspace (baseline: 1989 tests, exit 0) — the shared core change regresses nothing downstream.
   5. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently from the spec formula — never by calling the implementation under test — and asserting the implementation matches. Concretely: a test derives the expected epoch-N control address from the CORD-02 §4 formula by hand and asserts a rolled-forward object matches it, reproducing and closing H01's exact failure mode.
 
-**Plans**: 5/5 plans complete
+**Plans**: 11 plans — 5/5 original complete; 6 gap-closure plans pending *(verification found Success Criterion 2 / CACHE-02 unmet; see `05-VERIFICATION.md`)*
 
 Plans:
 **Wave 1**
@@ -69,6 +69,20 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 05-05-PLAN.md — Phase gate: non-vacuity probes proving each new test fails without the fix, plus `pnpm -r test` against the 1989 baseline (wave 3)
+
+#### Gap closure *(Success Criterion 2 / CACHE-02 failed verification — the taxonomy's own citations are false for the examples they cite. Criteria 1, 3, 4, 5 PASSED and are not reopened; the runtime fix is correct and stays untouched. All gap-closure work is comment/prose-only except 05-10's test.)*
+
+**Gap Wave 1**
+
+- [ ] 05-06-PLAN.md — Repair the canonical `cache.ts` taxonomy: drop the false machine-readable-definition framing, reclassify `setEncryptedContentCache` as carry-forward, correct the descriptor rationale, disclose the frozen-object throw (gap wave 1)
+
+**Gap Wave 2** *(blocked on 05-06 — every downstream comment cites the corrected taxonomy)*
+
+- [ ] 05-07-PLAN.md — Remove every false "propagated via the merge list" citation in core + common (`relays.ts`, `event-store.ts`, `async-event-store.ts`, `encrypted-content-cache.ts`) (gap wave 2)
+- [ ] 05-08-PLAN.md — Reword the six core write-site comments that assert a spread-survival property their enumerable writes lack, plus the `setEncryptedContentCache` classification mirror (gap wave 2)
+- [ ] 05-09-PLAN.md — Reword the eight common write-site comments that assert a spread-survival property their enumerable writes lack (gap wave 2)
+- [ ] 05-10-PLAN.md — Make `cache.test.ts`'s carry-forward half genuinely enforce the D-13 contract via an intervening uncompensated spread, proven by a recorded non-vacuity probe (gap wave 2)
+- [ ] 05-11-PLAN.md — Correct the two residual false comments (`common/gift-wrap.ts` sentinel, concord `keys.ts` "hand-rolled") and record the deferral register for every unclosed review finding (gap wave 2)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
 
