@@ -122,3 +122,12 @@ None - no external service configuration required.
 ---
 *Phase: 05-cache-identity-memo-fix*
 *Completed: 2026-07-15*
+
+## Self-Check: PASSED
+
+- FOUND: packages/concord/src/helpers/__tests__/keys.test.ts
+- FOUND: packages/concord/src/helpers/__tests__/channel-rekey.test.ts
+- FOUND: .planning/phases/05-cache-identity-memo-fix/05-04-SUMMARY.md
+- FOUND commit: c44cb38d (Task 1)
+- FOUND commit: f9eca302 (Task 2)
+- FOUND commit: 88415809 (SUMMARY.md)
