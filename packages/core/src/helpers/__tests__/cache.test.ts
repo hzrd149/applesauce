@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { FakeUser } from "../../__tests__/fixtures.js";
+import { modifyHiddenTags } from "../../operations/tags.js";
+import { sign } from "../../operations/event.js";
 import { getCachedValue, getOrComputeCachedValue, setCachedValue } from "../cache.js";
+import { getEncryptedContent } from "../encrypted-content.js";
+import { kinds } from "../event.js";
+import { getHiddenTags } from "../hidden-tags.js";
+import { eventPipe } from "../pipeline.js";
+import { unixNow } from "../time.js";
 
 /**
  * Both halves of the D-13 two-sided convention live in this ONE file — the
@@ -71,5 +79,41 @@ describe("cache identity memos", () => {
     expect(Object.keys(material)).toEqual(["community_root", "root_epoch"]);
     expect(JSON.stringify(material)).toBe(JSON.stringify({ community_root: "root-a", root_epoch: 1 }));
     expect(Object.getOwnPropertySymbols(material)).toContain(symbol);
+  });
+});
+
+describe("carry-forward payloads", () => {
+  // Asserts the OPPOSITE outcome of the memo half above: EncryptedContentSymbol
+  // is a carry-forward payload at this write site (operations/tags.ts:87), not
+  // an identity memo, so it MUST survive the pipe's spreads and the sign
+  // operation's re-copy. See cache.ts's write-site taxonomy (D-06) for the
+  // full category definitions. Enforcement contract: if a future cleanup
+  // migrates this write site (or encrypted-content.ts:117,
+  // common/operations/gift-wrap.ts:121) onto setCachedValue, this suite goes
+  // red immediately — that is its job. This half is a regression guard, not a
+  // proof of the 05-01 fix — the carry-forward sites never routed through
+  // cache.ts, so it was green before and after that fix.
+
+  it("real pipe + real signing preserve plaintext hidden tags on the signed event", async () => {
+    const user = new FakeUser();
+    const plaintextTags = [["p", "friend-pubkey"]];
+
+    const signed = await eventPipe(
+      modifyHiddenTags(user, (tags) => [...tags, ["p", "friend-pubkey"]]),
+      sign(user),
+    )({ kind: kinds.Mutelist, content: "", tags: [], created_at: unixNow() });
+
+    // The event is genuinely signed.
+    expect(signed.id).toBeTruthy();
+    expect(signed.sig).toBeTruthy();
+    expect(signed.pubkey).toBe(user.pubkey);
+
+    // The content really was encrypted, not passed through.
+    expect(signed.content).not.toBe("");
+    expect(signed.content).not.toBe(JSON.stringify(plaintextTags));
+
+    // The plaintext survived every spread in the pipe and reads back correctly.
+    expect(getHiddenTags(signed)).toEqual(plaintextTags);
+    expect(getEncryptedContent(signed)).toBe(JSON.stringify(plaintextTags));
   });
 });
