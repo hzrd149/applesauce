@@ -239,3 +239,12 @@ Plans:
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.3: Concord sync skips ephemeral kind 21059 (BACKLOG)
+
+**Goal:** [Captured for future planning] Concord community sync should not sync kind 21059 events — they are ephemeral and should only be reached via a live subscription, never a historical fetch/backfill filter. Grounding: `EPHEMERAL_GIFT_WRAP_KIND = 21059` (`packages/concord/src/helpers/gift-wrap.ts:25`); kinds 20000–29999 are ephemeral under NIP-01, so relays do not retain them and a sync filter for 21059 can only ever return nothing — wasted round-trips, and a misleading "synced" signal for events that by definition cannot arrive that way.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
