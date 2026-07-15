@@ -125,8 +125,11 @@ export function getEventUID<E extends StoreEvent = NostrEvent>(event: E) {
   if (!uid) {
     if (isReplaceable(event.kind)) uid = getReplaceableAddress(event) ?? event.id;
     else uid = event.id;
-    // Derived from the event's own kind/pubkey/tags; a copy with different fields must
-    // recompute its UID, so this must not survive a spread — identity memo (see cache.ts taxonomy).
+    // Derived from the event's own kind/pubkey/tags — identity memo per cache.ts's taxonomy. But
+    // this write is a plain enumerable Reflect.set, so the value does survive a spread today: a
+    // copy with different fields inherits the stale UID instead of recomputing it. Known,
+    // deliberately-deferred gap; only pipeFromAsyncArray's delete loop (helpers/pipeline.ts)
+    // masks it, on the one call path that runs it.
     Reflect.set(event, EventUIDSymbol, uid);
   }
 
@@ -175,7 +178,8 @@ export function fakeVerifyEvent(event: NostrEvent): event is VerifiedEvent {
 /** Marks an event as being from a cache */
 export function markFromCache(event: NostrEvent) {
   // FromCacheSymbol is propagated across duplicate events via the event store's merge list
-  // (event-store.ts:219), not via object spread — accumulated state (see cache.ts taxonomy).
+  // (EventStore.copySymbolsToDuplicateEvent), not via object spread — accumulated state (see
+  // cache.ts taxonomy).
   Reflect.set(event, FromCacheSymbol, true);
 }
 
