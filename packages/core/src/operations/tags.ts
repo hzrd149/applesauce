@@ -83,7 +83,10 @@ export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | Nostr
     const plaintext = JSON.stringify(tags);
     const content = await methods.encrypt(pubkey, plaintext);
 
-    // add the plaintext content on the draft so it can be carried forward
+    // carry-forward payload (see cache.ts taxonomy): add the plaintext content on the draft so
+    // it can be carried forward — this is the taxonomy's canonical worked example (cache.ts's
+    // dual-lifecycle note), even though it's a plain object literal rather than a symbol write
+    // via Reflect's setter, so it does not show up in the D-10 grep.
     return { ...draft, content, [EncryptedContentSymbol]: plaintext };
   };
 }

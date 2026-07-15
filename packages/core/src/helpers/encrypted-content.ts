@@ -114,6 +114,12 @@ export async function unlockEncryptedContent<T extends { kind: number; content: 
 
 /** Sets the encrypted content on an event and updates it if its part of an event store */
 export function setEncryptedContentCache<T extends object>(event: T, plaintext: string) {
+  // Avoids a repeat signer round-trip on an already-signed, immutable event. This write stays
+  // enumerable (unlike setCachedValue) because EncryptedContentSymbol is ALSO a carry-forward
+  // payload at operations/tags.ts:87 and operations/event.ts:134,163: the same symbol has two
+  // lifecycles with opposite spread semantics (cache.ts's worked example), and hand-rolling
+  // this write preserves that carry-forward half's requirement to survive a spread — this
+  // write site is itself an identity memo (see cache.ts taxonomy).
   Reflect.set(event, EncryptedContentSymbol, plaintext);
 
   // if the event has been added to an event store, notify it

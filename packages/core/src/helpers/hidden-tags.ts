@@ -101,7 +101,8 @@ export function getHiddenTags<T extends { kind: number }>(event: T): string[][] 
   // Convert array to tags array string[][]
   const tags = parsed.filter((t) => Array.isArray(t)).map((t) => t.map((v) => String(v)));
 
-  // Set the cached value
+  // Derived from the event's own decrypted hidden content; a copy with different content
+  // must re-parse, so this must not survive a spread — identity memo (see cache.ts taxonomy).
   Reflect.set(event, HiddenTagsSymbol, tags);
 
   return tags;
@@ -145,7 +146,8 @@ export async function unlockHiddenTags<T extends { kind: number; pubkey: string;
 export function setHiddenTagsCache<T extends { kind: number }>(event: T, tags: string[][]) {
   if (!canHaveHiddenTags(event.kind)) throw new Error("Event kind does not support hidden tags");
 
-  // Set the cached value
+  // Re-derived from the newly unlocked hidden content; must not survive a spread onto a
+  // differently-keyed draft — identity memo (see cache.ts taxonomy).
   Reflect.set(event, HiddenTagsSymbol, tags);
 
   // Set the cached content

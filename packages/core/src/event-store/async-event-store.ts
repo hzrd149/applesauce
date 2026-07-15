@@ -261,7 +261,9 @@ export class AsyncEventStore<E extends StoreEvent = NostrEvent>
 
     // If the event is the same as the inserted event, its a new event
     if (inserted === event) {
-      // Set the event store on the event
+      // Set the event store on the event. EventStoreSymbol is deliberately EXCLUDED from
+      // EventStore's merge list (event-store.ts:~219) — a duplicate event keeps its own store
+      // reference rather than inheriting the source's — accumulated state (see cache.ts taxonomy).
       Reflect.set(inserted, EventStoreSymbol, this);
 
       // Emit insert$ signal

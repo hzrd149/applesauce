@@ -53,6 +53,8 @@ export function performCast<C extends EventCast<StoreEvent>, E extends StoreEven
 
   // Create a new instance of the class (the constructor reads only StoreEvent fields).
   const cast = new cls(event as NostrEvent, store);
+  // The cast instance is derived from and wraps this specific event object; a copy must not
+  // inherit a stale cast bound to a different instance — identity memo (see cache.ts taxonomy).
   if (!casts) Reflect.set(event, CASTS_SYMBOL, new Map([[cls, cast]]));
   else casts.set(cls, cast);
 

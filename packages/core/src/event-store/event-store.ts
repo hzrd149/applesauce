@@ -219,6 +219,9 @@ export class EventStore<E extends StoreEvent = NostrEvent>
     const symbols = [FromCacheSymbol, verifiedSymbol, EncryptedContentSymbol];
     for (const symbol of symbols) {
       if (symbol in source && !(symbol in dest)) {
+        // This merge loop IS the canonical/executable definition of the category — these
+        // symbols propagate across duplicate events via this merge, not via object spread —
+        // accumulated state (see cache.ts taxonomy).
         Reflect.set(dest, symbol, Reflect.get(source, symbol));
         changed = true;
       }
@@ -291,7 +294,9 @@ export class EventStore<E extends StoreEvent = NostrEvent>
 
     // If the event is the same as the inserted event, its a new event
     if (inserted === event) {
-      // Set the event store on the event
+      // Set the event store on the event. EventStoreSymbol is deliberately EXCLUDED from the
+      // merge list above (line ~219) — a duplicate event keeps its own store reference rather
+      // than inheriting the source's — accumulated state (see cache.ts taxonomy).
       Reflect.set(inserted, EventStoreSymbol, this);
 
       // Emit insert$ signal

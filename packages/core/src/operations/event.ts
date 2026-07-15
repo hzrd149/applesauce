@@ -131,6 +131,9 @@ export function stamp<K extends number = number>(
 
     // copy the plaintext hidden content if its on the draft
     if (Reflect.has(draft, EncryptedContentSymbol))
+      // EncryptedContentSymbol must survive this spread onto newDraft so the decrypted
+      // plaintext reaches the signed event; PRESERVE_EVENT_SYMBOLS (pipeline.ts:5) is the
+      // machine-readable definition of this carry-forward payload category (see cache.ts taxonomy).
       Reflect.set(newDraft, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
 
     return newDraft;
@@ -160,6 +163,9 @@ export function sign<K extends number = number, T extends KnownEventTemplate<K> 
 
     // copy the plaintext hidden content if its on the draft
     if (Reflect.has(draft, EncryptedContentSymbol))
+      // EncryptedContentSymbol must survive onto the signed event so the decrypted plaintext
+      // isn't lost after signing; see PRESERVE_EVENT_SYMBOLS (pipeline.ts:5) — this is a
+      // carry-forward payload write site (see cache.ts taxonomy).
       Reflect.set(signed, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
 
     return signed;
