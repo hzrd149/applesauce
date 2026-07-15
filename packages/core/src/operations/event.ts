@@ -131,9 +131,15 @@ export function stamp<K extends number = number>(
 
     // copy the plaintext hidden content if its on the draft
     if (Reflect.has(draft, EncryptedContentSymbol))
-      // EncryptedContentSymbol must survive this spread onto newDraft so the decrypted
-      // plaintext reaches the signed event; PRESERVE_EVENT_SYMBOLS (pipeline.ts:5) is the
-      // machine-readable definition of this carry-forward payload category (see cache.ts taxonomy).
+      // carry-forward payload (see cache.ts taxonomy). PRESERVE_EVENT_SYMBOLS
+      // (helpers/pipeline.ts) is the allowlist eventPipe's delete loop consults
+      // after each operation, deleting every non-listed symbol from the result.
+      // Membership is necessary but not sufficient for spread survival: what
+      // actually carries EncryptedContentSymbol onto newDraft is this explicit
+      // Reflect.has/get/set copy, which is enumerability-blind (it works
+      // regardless of how the symbol was written upstream). Today's
+      // { ...draft, pubkey } spread already copies it too, since modifyHiddenTags
+      // writes it enumerably — so this copy is belt-and-braces on that path.
       Reflect.set(newDraft, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
 
     return newDraft;
@@ -163,9 +169,14 @@ export function sign<K extends number = number, T extends KnownEventTemplate<K> 
 
     // copy the plaintext hidden content if its on the draft
     if (Reflect.has(draft, EncryptedContentSymbol))
-      // EncryptedContentSymbol must survive onto the signed event so the decrypted plaintext
-      // isn't lost after signing; see PRESERVE_EVENT_SYMBOLS (pipeline.ts:5) — this is a
-      // carry-forward payload write site (see cache.ts taxonomy).
+      // carry-forward payload (see cache.ts taxonomy). PRESERVE_EVENT_SYMBOLS
+      // (helpers/pipeline.ts) governs eventPipe's delete loop, not signing — it
+      // is not why this copy exists. signer.signEvent's return type is a plain
+      // NostrEvent with no symbol-keyed properties, and the EventSigner
+      // interface makes no guarantee that a pluggable signer implementation
+      // preserves symbols from its input onto its output. What is certain:
+      // this explicit Reflect.get/set copy is what guarantees the plaintext
+      // reaches signed, independent of what any given signer does internally.
       Reflect.set(signed, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
 
     return signed;
