@@ -53,7 +53,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
   4. `pnpm -r test` passes across the full workspace (baseline: 1989 tests, exit 0) — the shared core change regresses nothing downstream.
   5. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently from the spec formula — never by calling the implementation under test — and asserting the implementation matches. Concretely: a test derives the expected epoch-N control address from the CORD-02 §4 formula by hand and asserts a rolled-forward object matches it, reproducing and closing H01's exact failure mode.
 
-**Plans**: 1/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -62,9 +62,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — New `cache.test.ts`: the two-sided convention test (memo dropped by spread / plaintext survives real pipe + signing) (wave 2)
-- [ ] 05-03-PLAN.md — Classify-and-comment sweep over 35 symbol-write sites in core + common, plus the false-comment correction at concord `keys.ts:98-104` (wave 2)
-- [ ] 05-04-PLAN.md — Spec-derived concord tests closing H01(a) control address and H01(c) channel plane address (wave 2)
+- [x] 05-02-PLAN.md — New `cache.test.ts`: the two-sided convention test (memo dropped by spread / plaintext survives real pipe + signing) (wave 2)
+- [x] 05-03-PLAN.md — Classify-and-comment sweep over 35 symbol-write sites in core + common, plus the false-comment correction at concord `keys.ts:98-104` (wave 2)
+- [x] 05-04-PLAN.md — Spec-derived concord tests closing H01(a) control address and H01(c) channel plane address (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -195,7 +195,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 | 2. Generic models & casts | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
-| 5. Cache Identity Memo Fix | v1.1 | 1/5 | In Progress|  |
+| 5. Cache Identity Memo Fix | v1.1 | 4/5 | In Progress|  |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
