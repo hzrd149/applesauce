@@ -177,6 +177,10 @@ None - no external service configuration required.
 - Repo-wide sweep confirms no other file in `packages/core/src` or `packages/common/src` contains the `"machine-readable definition"` phrase or a `pipeline.ts:<line>` citation — the defect class this plan exists to eliminate does not survive outside the two files edited here.
 - Zero behavior change confirmed: both `stamp`'s and `sign`'s explicit `Reflect.set` copies are still present exactly once each; `git diff` on both source files shows only `*`/`//`-prefixed lines changed; full `applesauce-core` test suite green (635/635).
 
+## Self-Check: PASSED
+
+All created/modified files verified present on disk (packages/core/src/helpers/cache.ts, packages/core/src/operations/event.ts, .changeset/cache-frozen-event-throws.md, this SUMMARY.md). All four commit hashes (d4e5b532, c82f9e75, 4264d915, f45017ea) verified present in `git log --oneline --all`.
+
 ---
 *Phase: 05-cache-identity-memo-fix*
 *Completed: 2026-07-15*
