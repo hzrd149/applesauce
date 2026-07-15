@@ -6,7 +6,7 @@
 
 ## Summary
 
-This phase's decisions are already fully locked in `05-CONTEXT.md` (D-01 through D-18) — nothing here re-opens them. This research fills the three gaps CONTEXT.md left open: (1) the exact CORD-02 §4 and CORD-03 §1 spec formulas needed to hand-derive the two spec-derived test fixtures, sourced directly from the protocol spec repo (not from the implementation); (2) a complete, re-run grep of every `Reflect.set` symbol-write site in `core`+`common`, classified against D-04's three categories — 33 sites, not the scout's "~20" estimate; (3) the Validation Architecture section the orchestrator requires to generate VALIDATION.md.
+This phase's decisions are already fully locked in `05-CONTEXT.md` (D-01 through D-18) — nothing here re-opens them. This research fills the three gaps CONTEXT.md left open: (1) the exact CORD-02 §4 and CORD-03 §1 spec formulas needed to hand-derive the two spec-derived test fixtures, sourced directly from the protocol spec repo (not from the implementation); (2) a complete, re-run grep of every `Reflect.set` symbol-write site in `core`+`common`, classified against D-04's three categories — 35 comment sites, not the scout's "~20" estimate; (3) the Validation Architecture section the orchestrator requires to generate VALIDATION.md.
 
 **Primary recommendation:** Derive the two spec-fixture expected values by calling `controlGroupKey`/`channelGroupKey` from `packages/concord/src/helpers/crypto.ts` directly with a hand-picked new root/epoch — **not** by calling `rollForward`/`rollForwardChannel`/`baseKeysFor`/`deriveChannelKeys` (those are the code under test). `crypto.ts` is the audit's separately-verified "crypto/derivation" register entry and is the literal transcription of CORD-02 Appendix A's frozen formulas — calling it independently of the caching-and-rollforward code path is exactly the "compute by hand from the spec formula" D-18 requires, and is what the audit's own proof did.
 
@@ -84,7 +84,17 @@ D-18 forbids deriving the expected value from the implementation under test. The
 ```bash
 grep -rn "Reflect\.set" packages/core/src packages/common/src --include="*.ts" | grep -v "__tests__"
 ```
-`[VERIFIED: grep run 2026-07-15 against working tree]` — **35 total hits**, of which 2 are `cache.ts`'s own definition (the fix target, not a sweep classification target) and **33 are sweep sites** to comment. This is notably more than the scout's "~20" estimate; treat the count below as authoritative and re-run the grep at execution time to confirm nothing drifted.
+`[VERIFIED: grep re-run 2026-07-15 against working tree; totals corrected during planning]` — **36 total grep hits** (16 in `core`, 20 in `common`), which reconcile as:
+
+| | Count |
+|---|---|
+| Total `Reflect.set` grep hits | 36 |
+| − `cache.ts`'s own 2 writes (the fix target, not a sweep classification target) | 34 grep sweep sites |
+| + `core/operations/tags.ts:87` (row 15 — an object-literal spread, **not** a `Reflect.set`, so it never appears in the grep) | **35 comment sites** |
+
+The classification table below has **35 rows**, splitting **15 IM / 16 AS / 4 CF**. This is notably more than the scout's "~20" estimate; treat the table as authoritative and re-run the grep at execution time to confirm nothing drifted.
+
+**Useful post-fix property:** once D-01/D-02 land, `cache.ts` no longer uses `Reflect.set`, so this grep returns exactly **34** — every hit a sweep site, making it a clean 34/34 completeness check. `05-05-PLAN.md` re-runs it at gate time.
 
 Categories per D-04/D-05 (classifying the **write site**, not the symbol):
 - **IM** = identity memo — must NOT survive a spread (derived from the object's own current fields; a stale copy must recompute)
