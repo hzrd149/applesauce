@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { modifyHiddenTags } from "../../operations/tags.js";
-import { sign } from "../../operations/event.js";
+import { includeAltTag, sign } from "../../operations/event.js";
 import { getCachedValue, getOrComputeCachedValue, setCachedValue } from "../cache.js";
 import { getEncryptedContent } from "../encrypted-content.js";
 import { kinds } from "../event.js";
@@ -97,9 +97,11 @@ describe("carry-forward payloads", () => {
   it("real pipe + real signing preserve plaintext hidden tags on the signed event", async () => {
     const user = new FakeUser();
     const plaintextTags = [["p", "friend-pubkey"]];
+    const altDescription = "carry-forward regression probe";
 
     const signed = await eventPipe(
       modifyHiddenTags(user, (tags) => [...tags, ["p", "friend-pubkey"]]),
+      includeAltTag(altDescription),
       sign(user),
     )({ kind: kinds.Mutelist, content: "", tags: [], created_at: unixNow() });
 
@@ -112,7 +114,13 @@ describe("carry-forward payloads", () => {
     expect(signed.content).not.toBe("");
     expect(signed.content).not.toBe(JSON.stringify(plaintextTags));
 
-    // The plaintext survived every spread in the pipe and reads back correctly.
+    // The intervening operation actually ran: includeAltTag's public-tag spread sits between
+    // the hidden-tag write and sign() below, so its effect landing on the signed event proves
+    // the spread executed (a no-op insertion would make this test vacuous in a new way).
+    expect(signed.tags).toContainEqual(["alt", altDescription]);
+
+    // The plaintext survived every spread in the pipe — including the alt-tag spread above —
+    // and reads back correctly.
     expect(getHiddenTags(signed)).toEqual(plaintextTags);
     expect(getEncryptedContent(signed)).toBe(JSON.stringify(plaintextTags));
   });
