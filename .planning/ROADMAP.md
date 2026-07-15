@@ -205,3 +205,14 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
+
+## Backlog
+
+### Phase 999.1: Concord sync debug logging (BACKLOG)
+
+**Goal:** [Captured for future planning] Concord community client and private channel sync need proper debug logging across the board — and most specifically for syncing, so that it is possible to know when synced events fail to decrypt. Today a decryption failure during sync is silent, which makes it impossible to tell "no events" apart from "events arrived but could not be decrypted."
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
