@@ -109,9 +109,33 @@ export function getHiddenGroups<T extends NostrEvent>(bookmark: T): GroupPointer
     // the property's final write: it creates an enumerable descriptor, but the enclosing
     // getOrComputeCachedValue call immediately redefines the same symbol non-enumerable via
     // Object.defineProperty once this compute callback returns, so GroupsHiddenSymbol's descriptor
-    // here is non-enumerable today and correctly does not survive a spread — no pipeFromAsyncArray
-    // delete-loop mask is needed for this site, unlike the sibling sites where that delete loop is
-    // the only thing scrubbing the value. This explicit Reflect.set is redundant, not load-bearing.
+    // here is non-enumerable today and does not survive a spread — no pipeFromAsyncArray delete-loop
+    // mask is needed for this site's descriptor mechanics, unlike the sibling sites where that
+    // delete loop is the only thing scrubbing the value.
+    //
+    // KNOWN, DELIBERATELY-DEFERRED DEFECT (comment-only phase scope, D-08 — see .planning/STATE.md's
+    // Deferred Items table for the routing record): getOrComputeCachedValue gates only on
+    // Reflect.has and unconditionally defines whatever this callback returns, including undefined.
+    // When `tags` above is undefined (hidden tags locked), this callback returns undefined, so
+    // getOrComputeCachedValue permanently memoizes undefined on GroupsHiddenSymbol — and
+    // getHiddenGroups's own early-return branch (`if (GroupsHiddenSymbol in bookmark) return
+    // bookmark[GroupsHiddenSymbol] ...`) then hands that poisoned undefined back cast as
+    // GroupPointer[] on every future call, even after the hidden tags are later unlocked. The
+    // poisoning only becomes reachable through isHiddenGroupsUnlocked and unlockHiddenGroups once
+    // the hidden tags are subsequently unlocked by some path other than unlockHiddenGroups itself:
+    // isHiddenGroupsUnlocked's `isHiddenTagsUnlocked(bookmark) &&` guard requires the tags to be
+    // genuinely unlocked before it reaches its own `GroupsHiddenSymbol in bookmark` check, so a
+    // caller who has not yet unlocked the tags never observes the poisoning through
+    // isHiddenGroupsUnlocked. But once the tags do become unlocked, that `GroupsHiddenSymbol in
+    // bookmark` check is satisfied by the poisoned symbol regardless of its value, so
+    // isHiddenGroupsUnlocked returns true against a bookmark that does not actually hold unlocked
+    // groups. unlockHiddenGroups's `if (isHiddenGroupsUnlocked(bookmark)) return
+    // bookmark[GroupsHiddenSymbol];` short-circuit then hands back that poisoned undefined directly,
+    // bypassing unlockHiddenGroups's own `if (!groups) throw new Error(...)` guard further down and
+    // lying against its `Promise<GroupPointer[]>` signature. (A direct call to unlockHiddenGroups on
+    // an already-poisoned-but-still-locked bookmark does NOT hit this: its short-circuit is false,
+    // so it falls through to unlockHiddenTags, then getHiddenGroups, whose own poisoned early return
+    // is caught by the `if (!groups) throw` guard.)
     Reflect.set(bookmark, GroupsHiddenSymbol, groups);
 
     return groups;
