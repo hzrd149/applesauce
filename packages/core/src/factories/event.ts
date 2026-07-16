@@ -73,16 +73,6 @@ export class EventFactory<
         this.then(async (draft) => {
           const result = await operation(draft);
 
-          // Strip any symbols that are not in the preserve list, matching the
-          // behaviour of eventPipe / pipeFromAsyncArray so stale caches (e.g.
-          // HiddenTagsSymbol set by a previous modifyHiddenTags step) never
-          // leak into subsequent chain operations.
-          for (const key of Reflect.ownKeys(result)) {
-            if (typeof key === "symbol" && !PRESERVE_EVENT_SYMBOLS.has(key)) {
-              Reflect.deleteProperty(result, key);
-            }
-          }
-
           // Carry forward: restore any preserved symbol draft had that result is missing,
           // mirroring pipeFromAsyncArray's carry-forward loop (an operation's own internal
           // spread drops non-enumerable writes; this explicitly restores them). Only carry
