@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 06
-current_phase_name: refounding-rotation-authority-correctness
+current_phase: 7
+current_phase_name: Private Channel Keying
 status: verifying
 stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-07-16T20:25:29.261Z"
+last_updated: "2026-07-16T20:32:40.647Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 06 execution started
+last_activity_desc: Phase 06 complete, transitioned to Phase 7
 progress:
   total_phases: 9
   completed_phases: 3
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 06 (refounding-rotation-authority-correctness) — EXECUTING
-Plan: 3 of 3
+Phase: 7 — Private Channel Keying
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-07-16 — Phase 06 execution started
+Last activity: 2026-07-16 — Phase 06 complete, transitioned to Phase 7
 
 Progress: [█████████░] 93%
 
