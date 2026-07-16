@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { EncryptedContentSymbol } from "../../helpers/encrypted-content.js";
 import { unixNow } from "../../helpers";
-import { kinds, NostrEvent } from "../../helpers/event.js";
+import { EventStoreSymbol, kinds, NostrEvent } from "../../helpers/event.js";
 import { addSeenRelay, getSeenRelays } from "../../helpers/relays.js";
 import { EventModel } from "../../models/base.js";
 import { ProfileModel } from "../../models/profile.js";
@@ -162,6 +162,16 @@ describe("add", () => {
 
   it("should handle addressable events without an identifier", () => {
     expect(() => eventStore.add(user.event({ kind: 30000 }))).not.toThrow();
+  });
+
+  it("should store EventStoreSymbol non-enumerably on the added event", () => {
+    const added = eventStore.add(user.note("non-enumerable store link"))!;
+
+    expect(Reflect.get(added, EventStoreSymbol)).toBe(eventStore);
+    expect(Object.getOwnPropertyDescriptor(added, EventStoreSymbol)?.enumerable).toBe(false);
+    // Object spread only copies enumerable own properties, so a non-enumerable
+    // write must not ride along a spread of the stored event.
+    expect(EventStoreSymbol in { ...added }).toBe(false);
   });
 
   describe("NIP-01 tie-break for replaceable events", () => {
@@ -432,6 +442,27 @@ describe("copySymbolsToDuplicateEvent (CR-04 regression)", () => {
     Reflect.set(source, EncryptedContentSymbol, "plaintext");
 
     expect(EventStore.copySymbolsToDuplicateEvent(source, dest)).toBe(true);
+    expect(Reflect.get(dest, EncryptedContentSymbol)).toBe("plaintext");
+  });
+
+  it("merges the symbol onto dest non-enumerably, and the `symbol in dest` gate still prevents a double-merge", () => {
+    // Note: verifiedSymbol is deliberately excluded here — nostr-tools' finalizeEvent (used by
+    // FakeUser.event()) already sets verifiedSymbol on freshly built events, which would make the
+    // `symbol in dest` gate skip the merge for that symbol before this test even starts.
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+
+    Reflect.set(source, EncryptedContentSymbol, "plaintext");
+
+    expect(EventStore.copySymbolsToDuplicateEvent(source, dest)).toBe(true);
+
+    // Non-enumerable: descriptor check and spread-drop check.
+    expect(Object.getOwnPropertyDescriptor(dest, EncryptedContentSymbol)?.enumerable).toBe(false);
+    expect(EncryptedContentSymbol in { ...dest }).toBe(false);
+
+    // The `symbol in dest` presence gate still blocks re-merging an already-merged symbol.
+    Reflect.set(source, EncryptedContentSymbol, "different plaintext");
+    EventStore.copySymbolsToDuplicateEvent(source, dest);
     expect(Reflect.get(dest, EncryptedContentSymbol)).toBe("plaintext");
   });
 });
