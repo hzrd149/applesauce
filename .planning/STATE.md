@@ -73,6 +73,7 @@ None yet.
 ### Roadmap Evolution
 
 - Phase 05.1 inserted after Phase 5: Symbol propagation redesign: all symbol writes non-enumerable via setCachedValue; factory pipelines carry PRESERVE_EVENT_SYMBOLS explicitly; gift-wrap symbols move to core; strip loops deleted; supersedes the cache.ts taxonomy
+- 2026-07-16: Phase 5 code review surfaced 5 confirmed blocker bugs (CR-01..05) + 11 warnings in write-sites 05.1 already touches (unlock-guard family returns undefined-as-array; lockAppData leaks plaintext; copySymbols &&/|| fail-open; stamp mutates caller). Decision: fold the fixes into Phase 5.1 rather than a standalone phase. Constraint recorded in 05.1 ROADMAP scope — each behavioral fix gets its own commit + spec-derived regression test, landed before the enumerable→non-enumerable migration rewrites the site, so verification can attribute pass/fail to the fix and not the refactor. Full detail: 05-REVIEW.md.
 
 ## Deferred Items
 
