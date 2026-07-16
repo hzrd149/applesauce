@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
+import { includeAltTag } from "../../operations/event.js";
+import {
+  EncryptedContentSigner,
+  EncryptedContentSymbol,
+  getEncryptedContent,
+  getEncryptedContentEncryptionMethods,
+  setEncryptedContentCache,
+} from "../encrypted-content.js";
 import { kinds } from "../event.js";
-import { getEncryptedContentEncryptionMethods, EncryptedContentSigner } from "../encrypted-content.js";
+import { eventPipe } from "../pipeline.js";
+import { unixNow } from "../time.js";
 
 describe("getEncryptedContentEncryptionMethods", () => {
   const mockSigner: EncryptedContentSigner = {
@@ -53,5 +62,36 @@ describe("getEncryptedContentEncryptionMethods", () => {
     expect(() => {
       getEncryptedContentEncryptionMethods(kinds.Seal, signerWithoutNip44);
     }).toThrow("Signer does not support nip44 encryption");
+  });
+});
+
+describe("setEncryptedContentCache", () => {
+  it("writes EncryptedContentSymbol non-enumerable and a plain spread copy drops it", () => {
+    const draft = { kind: kinds.EncryptedDirectMessage, content: "ciphertext", tags: [], created_at: unixNow() };
+    setEncryptedContentCache(draft, "plaintext");
+
+    const descriptor = Object.getOwnPropertyDescriptor(draft, EncryptedContentSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    const copy = { ...draft };
+    expect(Object.prototype.hasOwnProperty.call(copy, EncryptedContentSymbol)).toBe(false);
+  });
+
+  it("re-entry integration: plaintext survives modifyPublicTags's spread across a real eventPipe via carry-forward", async () => {
+    // An unlocked event (EncryptedContentSymbol already cached via setEncryptedContentCache)
+    // re-enters a factory pipe whose first step is a public-tag operation (includeAltTag ->
+    // modifyPublicTags's `{ ...draft, tags }` spread). Once the write is non-enumerable, this
+    // spread alone would drop the symbol -- it survives only because pipeFromAsyncArray's
+    // carry-forward loop restores every PRESERVE_EVENT_SYMBOLS member (EncryptedContentSymbol is
+    // already a permanent member) from the step's input onto its output.
+    const draft = { kind: kinds.EncryptedDirectMessage, content: "ciphertext", tags: [], created_at: unixNow() };
+    setEncryptedContentCache(draft, "decrypted-plaintext");
+
+    const result = await eventPipe(includeAltTag("carry-forward probe"))(draft);
+
+    // The intervening operation actually ran (proves the spread executed, not a no-op).
+    expect(result.tags).toContainEqual(["alt", "carry-forward probe"]);
+    // The plaintext survived that spread via carry-forward, not write-site enumerability.
+    expect(getEncryptedContent(result)).toBe("decrypted-plaintext");
   });
 });
