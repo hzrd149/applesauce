@@ -1,12 +1,15 @@
+import { unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { describe, expect, it } from "vitest";
 import { getEmojiFromTags, getEmojiTag, getReactionEmoji } from "../emoji.js";
 import {
+  FavoriteEmojiPacksHiddenPointersSymbol,
   getEmojiPackEmojis,
   getEmojiPackName,
   getFavoriteEmojiPackPointers,
   getFavoriteEmojis,
   getHiddenFavoriteEmojiPackPointers,
   getHiddenFavoriteEmojis,
+  isHiddenFavoriteEmojiPacksUnlocked,
   isValidEmojiPack,
   isValidFavoriteEmojiPacks,
   unlockHiddenFavoriteEmojiPacks,
@@ -175,6 +178,43 @@ describe("emoji packs", () => {
     });
     expect(getHiddenFavoriteEmojis(list)).toEqual(unlocked.emojis);
     expect(getHiddenFavoriteEmojiPackPointers(list)).toEqual(unlocked.packPointers);
+  });
+
+  // CR-02 regression: isHiddenFavoriteEmojiPacksUnlocked used to OR four disjuncts together, so
+  // the mere presence of ONE hidden-emoji symbol (e.g. from a prior call to
+  // getHiddenFavoriteEmojis) short-circuited the OR to true WITHOUT ever evaluating — and thus
+  // never deriving — FavoriteEmojiPacksHiddenPointersSymbol. unlockHiddenFavoriteEmojiPacks then
+  // trusted that lie and read the pointers symbol directly off the event, getting back
+  // `undefined` typed as AddressPointer[] (a TypeError on .map waiting for any consumer).
+  it("derives pack pointers via unlockHiddenFavoriteEmojiPacks even after a prior partial getter call", async () => {
+    const hiddenTags = [
+      ["emoji", "wave", "https://cdn.example.com/wave.png", `30030:${user.pubkey}:greetings`],
+      ["a", `30030:${user.pubkey}:greetings`],
+    ];
+    const list = user.event({
+      kind: 10030,
+      tags: [],
+      content: await user.nip44.encrypt(user.pubkey, JSON.stringify(hiddenTags)),
+    });
+
+    // Unlock hidden tags directly (not through unlockHiddenFavoriteEmojiPacks), then read only
+    // the emojis. This populates FavoriteEmojiPacksHiddenSymbol but NOT
+    // FavoriteEmojiPacksHiddenPointersSymbol — the exact first-call short-circuit shape.
+    await unlockHiddenTags(list, user);
+    getHiddenFavoriteEmojis(list);
+
+    // Direct property access (what the pre-fix guard trusted) proves the pointers symbol was
+    // never populated by the partial getter call above.
+    expect(Reflect.has(list, FavoriteEmojiPacksHiddenPointersSymbol)).toBe(false);
+
+    // Hand-derived expected pointers from the fixture's hidden "a" tag (NIP-30 semantics).
+    const expectedPointers = [expect.objectContaining({ kind: 30030, pubkey: user.pubkey, identifier: "greetings" })];
+
+    // unlockHiddenFavoriteEmojiPacks must derive packPointers instead of trusting a guard that
+    // reported "unlocked" off a single stale symbol and handing back `undefined`.
+    const unlocked = await unlockHiddenFavoriteEmojiPacks(list, user);
+    expect(unlocked.packPointers).toEqual(expectedPointers);
+    expect(isHiddenFavoriteEmojiPacksUnlocked(list)).toBe(true);
   });
 });
 
