@@ -1,5 +1,6 @@
 import equal from "fast-deep-equal";
 import { Filter as CoreFilter } from "nostr-tools";
+import { setCachedValue } from "./cache.js";
 import { NostrEvent, StoreEvent } from "./event.js";
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
@@ -20,13 +21,13 @@ export function getIndexableTags<E extends StoreEvent = NostrEvent>(event: E): S
     }
 
     indexable = tags;
-    // Derived from the event's own tags — identity memo per cache.ts's taxonomy. A copy built
-    // from `{ ...event, tags: newTags }` inherits the SAME Set (this write is a plain enumerable
-    // Reflect.set, so the value does survive a spread today), so filter matching on the copy
-    // evaluates the ORIGINAL's tags and the `if (!indexable)` guard above never recomputes. Known,
-    // deliberately-deferred gap; only pipeFromAsyncArray's delete loop masks it, on the one call
-    // path that runs it.
-    Reflect.set(event, EventIndexableTagsSymbol, tags);
+    // Identity memo per cache.ts's one rule: written non-enumerable via setCachedValue, so a copy
+    // built from `{ ...event, tags: newTags }` does NOT inherit this Set — the `if (!indexable)`
+    // guard above recomputes from the copy's own tags on next access. This closes D-01/D-04's
+    // shared-Set defect (a copy with different tags previously matched against the ORIGINAL's
+    // indexable set). D-12: Phase 5's hot-path deferral for this site is intentionally lifted
+    // here — "one rule" is exceptionless.
+    setCachedValue(event, EventIndexableTagsSymbol, indexable);
   }
 
   return indexable;

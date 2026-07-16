@@ -1,4 +1,4 @@
-import { getOrComputeCachedValue } from "./cache.js";
+import { getOrComputeCachedValue, setCachedValue } from "./cache.js";
 import { NostrEvent, notifyEventUpdate } from "./event.js";
 import { HiddenContentSigner } from "./hidden-content.js";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "./hidden-tags.js";
@@ -93,12 +93,10 @@ export function getHiddenContacts(event: NostrEvent | UnlockedContacts): Profile
     (t) => getProfilePointerFromPTag(t) ?? undefined,
   );
 
-  // Set cache and notify event store. Derived from the event's own hidden tags — identity memo
-  // per cache.ts's taxonomy. But this write is a plain enumerable Reflect.set, so the value does
-  // survive a spread today: a copy with different tags inherits the stale parsed contacts
-  // instead of re-parsing. Known, deliberately-deferred gap; only pipeFromAsyncArray's delete
-  // loop (helpers/pipeline.ts) masks it, on the one call path that runs it.
-  Reflect.set(event, HiddenContactsSymbol, contacts);
+  // Set cache and notify event store. Identity memo per cache.ts's one rule: written non-
+  // enumerable via setCachedValue, so a copy with different tags does not inherit the stale
+  // parsed contacts — it re-parses on next access.
+  setCachedValue(event, HiddenContactsSymbol, contacts);
 
   return contacts;
 }

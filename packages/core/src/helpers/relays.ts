@@ -1,3 +1,4 @@
+import { setCachedValue } from "./cache.js";
 import { NostrEvent, StoreEvent } from "./event.js";
 import { ensureWebSocketURL, normalizeURL } from "./url.js";
 
@@ -16,7 +17,7 @@ export function addSeenRelay<E extends StoreEvent = NostrEvent>(event: E, relay:
     // SeenRelaysSymbol is propagated across duplicate events via the element-wise seen-relays
     // merge in EventStore.copySymbolsToDuplicateEvent (a separate branch from that function's
     // symbol merge list), not via object spread — accumulated state (see cache.ts taxonomy).
-    Reflect.set(event, SeenRelaysSymbol, seen);
+    setCachedValue(event, SeenRelaysSymbol, seen);
     return seen;
   } else {
     seen.add(relay);

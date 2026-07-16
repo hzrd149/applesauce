@@ -1,3 +1,4 @@
+import { setCachedValue } from "./cache.js";
 import { EncryptionMethod } from "./encrypted-content.js";
 import { kinds } from "./event.js";
 import {
@@ -101,12 +102,9 @@ export function getHiddenTags<T extends { kind: number }>(event: T): string[][] 
   // Convert array to tags array string[][]
   const tags = parsed.filter((t) => Array.isArray(t)).map((t) => t.map((v) => String(v)));
 
-  // Derived from the event's own decrypted hidden content — identity memo per cache.ts's
-  // taxonomy. But this write is a plain enumerable Reflect.set, so the value does survive a
-  // spread today: a copy with different content inherits the stale parsed tags instead of
-  // re-parsing. Known, deliberately-deferred gap; only pipeFromAsyncArray's delete loop
-  // (helpers/pipeline.ts) masks it, on the one call path that runs it.
-  Reflect.set(event, HiddenTagsSymbol, tags);
+  // Identity memo per cache.ts's one rule: written non-enumerable via setCachedValue, so a copy
+  // with different content does not inherit the stale parsed tags — it re-parses on next access.
+  setCachedValue(event, HiddenTagsSymbol, tags);
 
   return tags;
 }
@@ -149,12 +147,9 @@ export async function unlockHiddenTags<T extends { kind: number; pubkey: string;
 export function setHiddenTagsCache<T extends { kind: number }>(event: T, tags: string[][]) {
   if (!canHaveHiddenTags(event.kind)) throw new Error("Event kind does not support hidden tags");
 
-  // Re-derived from the newly unlocked hidden content — identity memo per cache.ts's taxonomy.
-  // But this write is a plain enumerable Reflect.set, so the value does survive a spread today:
-  // a copy spread onto a differently-keyed draft inherits the stale tags instead of re-deriving
-  // them. Known, deliberately-deferred gap; only pipeFromAsyncArray's delete loop
-  // (helpers/pipeline.ts) masks it, on the one call path that runs it.
-  Reflect.set(event, HiddenTagsSymbol, tags);
+  // Identity memo per cache.ts's one rule: written non-enumerable via setCachedValue, so a copy
+  // spread onto a differently-keyed draft does not inherit the stale tags — it re-derives them.
+  setCachedValue(event, HiddenTagsSymbol, tags);
 
   // Set the cached content
   setHiddenContentCache(event, JSON.stringify(tags));
