@@ -67,8 +67,7 @@ export function getPublicMutedThings(mute: NostrEvent): MutedThings {
 
 /** Checks if the hidden mutes are unlocked */
 export function isHiddenMutesUnlocked<T extends NostrEvent>(mute: T): mute is T & UnlockedMutes {
-  // No need for try catch or proactivly parsing here since it only depends on hidden tags
-  return MuteHiddenSymbol in mute || isHiddenTagsUnlocked(mute);
+  return isHiddenTagsUnlocked(mute) && (MuteHiddenSymbol in mute || getHiddenMutedThings(mute) !== undefined);
 }
 
 /** Returns the hidden muted content if the event is unlocked */
