@@ -1,7 +1,7 @@
 import { unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { isHiddenMutesUnlocked, MuteHiddenSymbol, Mutes, matchMutes } from "../mute.js";
+import { getHiddenMutedThings, isHiddenMutesUnlocked, MuteHiddenSymbol, Mutes, matchMutes } from "../mute.js";
 
 const mutedUser = new FakeUser();
 const nonMutedUser = new FakeUser();
@@ -115,5 +115,32 @@ describe("isHiddenMutesUnlocked", () => {
     // Hand-derived expected value from the fixture's hidden "p" tag (NIP-51 mute list semantics).
     const expected = { pubkeys: new Set([user.pubkey]), threads: new Set(), hashtags: new Set(), words: new Set() };
     expect(Reflect.get(mute, MuteHiddenSymbol)).toEqual(expected);
+  });
+});
+
+// 05.1-09: getHiddenMutedThings's MuteHiddenSymbol write migrated from Reflect.set to
+// setCachedValue — the memo must be non-enumerable and dropped by a plain spread.
+describe("getHiddenMutedThings non-enumerability (05.1-09)", () => {
+  it("writes MuteHiddenSymbol non-enumerable and drops it on a plain spread", async () => {
+    const user = new FakeUser();
+    const hiddenTags = [["p", user.pubkey]];
+    const mute = user.event({
+      kind: 10000,
+      tags: [],
+      content: await user.nip04.encrypt(user.pubkey, JSON.stringify(hiddenTags)),
+    });
+
+    await unlockHiddenTags(mute, user);
+    getHiddenMutedThings(mute);
+
+    // Non-enumerable: hidden from Object.keys/JSON.stringify but present via getOwnPropertySymbols
+    expect(Object.keys(mute)).not.toContain(MuteHiddenSymbol);
+    expect(Object.getOwnPropertySymbols(mute)).toContain(MuteHiddenSymbol);
+    const descriptor = Object.getOwnPropertyDescriptor(mute, MuteHiddenSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    // Dropped by a plain spread
+    const spread = { ...mute };
+    expect(Reflect.has(spread, MuteHiddenSymbol)).toBe(false);
   });
 });

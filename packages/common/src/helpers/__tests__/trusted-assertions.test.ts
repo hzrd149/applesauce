@@ -53,3 +53,27 @@ describe("isHiddenProvidersUnlocked", () => {
     expect(getHiddenProviders(event)).toEqual(expected);
   });
 });
+
+// 05.1-09: getHiddenProviders's TrustedProvidersHiddenSymbol write migrated from Reflect.set to
+// setCachedValue — the memo must be non-enumerable and dropped by a plain spread.
+describe("getHiddenProviders non-enumerability (05.1-09)", () => {
+  it("writes TrustedProvidersHiddenSymbol non-enumerable and drops it on a plain spread", async () => {
+    const hiddenTags = [[`${30382}:rank`, user.pubkey]];
+    const event = user.event({
+      kind: TRUSTED_PROVIDER_LIST_KIND,
+      tags: [],
+      content: await user.nip44.encrypt(user.pubkey, JSON.stringify(hiddenTags)),
+    });
+
+    await unlockHiddenTags(event, user);
+    getHiddenProviders(event);
+
+    expect(Object.keys(event)).not.toContain(TrustedProvidersHiddenSymbol);
+    expect(Object.getOwnPropertySymbols(event)).toContain(TrustedProvidersHiddenSymbol);
+    const descriptor = Object.getOwnPropertyDescriptor(event, TrustedProvidersHiddenSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    const spread = { ...event };
+    expect(Reflect.has(spread, TrustedProvidersHiddenSymbol)).toBe(false);
+  });
+});

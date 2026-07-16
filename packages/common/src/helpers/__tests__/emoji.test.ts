@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getEmojiFromTags, getEmojiTag, getReactionEmoji } from "../emoji.js";
 import {
   FavoriteEmojiPacksHiddenPointersSymbol,
+  FavoriteEmojiPacksHiddenSymbol,
   getEmojiPackEmojis,
   getEmojiPackName,
   getFavoriteEmojiPackPointers,
@@ -215,6 +216,36 @@ describe("emoji packs", () => {
     const unlocked = await unlockHiddenFavoriteEmojiPacks(list, user);
     expect(unlocked.packPointers).toEqual(expectedPointers);
     expect(isHiddenFavoriteEmojiPacksUnlocked(list)).toBe(true);
+  });
+
+  // 05.1-09: getHiddenFavoriteEmojis/getHiddenFavoriteEmojiPackPointers's symbol writes migrated
+  // from Reflect.set to setCachedValue — each memo must be non-enumerable and dropped by a plain
+  // spread.
+  it("writes the hidden favorite-emoji symbols non-enumerable and drops them on a plain spread (05.1-09)", async () => {
+    const hiddenTags = [
+      ["emoji", "wave", "https://cdn.example.com/wave.png", `30030:${user.pubkey}:greetings`],
+      ["a", `30030:${user.pubkey}:greetings`],
+    ];
+    const list = user.event({
+      kind: 10030,
+      tags: [],
+      content: await user.nip44.encrypt(user.pubkey, JSON.stringify(hiddenTags)),
+    });
+
+    await unlockHiddenTags(list, user);
+    getHiddenFavoriteEmojis(list);
+    getHiddenFavoriteEmojiPackPointers(list);
+
+    for (const symbol of [FavoriteEmojiPacksHiddenSymbol, FavoriteEmojiPacksHiddenPointersSymbol]) {
+      expect(Object.keys(list)).not.toContain(symbol);
+      expect(Object.getOwnPropertySymbols(list)).toContain(symbol);
+      const descriptor = Object.getOwnPropertyDescriptor(list, symbol);
+      expect(descriptor?.enumerable).toBe(false);
+    }
+
+    const spread = { ...list };
+    expect(Reflect.has(spread, FavoriteEmojiPacksHiddenSymbol)).toBe(false);
+    expect(Reflect.has(spread, FavoriteEmojiPacksHiddenPointersSymbol)).toBe(false);
   });
 });
 
