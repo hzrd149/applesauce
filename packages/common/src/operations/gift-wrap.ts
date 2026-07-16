@@ -3,6 +3,7 @@
 
 import type { EventOperation } from "applesauce-core/factories";
 import { blankEventTemplate } from "applesauce-core/factories";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { EncryptedContentSymbol } from "applesauce-core/helpers/encrypted-content";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import {
@@ -81,15 +82,18 @@ export function sealRumor(
     // value copy. `RumorSymbol` is a static member of `PRESERVE_EVENT_SYMBOLS` (applesauce-core),
     // which stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
     // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
-    // list, which has no gift-wrap symbols — accumulated state (see cache.ts taxonomy).
-    Reflect.set(seal, RumorSymbol, rumor);
+    // list, which has no gift-wrap symbols — accumulated state (see cache.ts one-rule doc block).
+    // Written non-enumerable via setCachedValue so a plain spread drops it instead of silently
+    // carrying a stale reference forward.
+    setCachedValue(seal, RumorSymbol, rumor);
 
     // Add the upstream reference to the rumor
     const seals = Reflect.get(rumor, SealSymbol);
     if (seals) seals.add(seal);
     // Initializes the mutable Set that grows in place elsewhere (helpers/gift-wrap.ts's
-    // addParentSealReference) — accumulated state (see cache.ts taxonomy), not a memo.
-    else Reflect.set(rumor, SealSymbol, new Set([seal]));
+    // addParentSealReference) — accumulated state (see cache.ts one-rule doc block), not a memo.
+    // Written non-enumerable via setCachedValue.
+    else setCachedValue(rumor, SealSymbol, new Set([seal]));
 
     return seal;
   };
@@ -119,24 +123,26 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
     // value copy. `GiftWrapSymbol` is a static member of `PRESERVE_EVENT_SYMBOLS` (applesauce-core),
     // which stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
     // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
-    // list, which has no gift-wrap symbols — accumulated state (see cache.ts taxonomy).
-    Reflect.set(seal, GiftWrapSymbol, gift);
+    // list, which has no gift-wrap symbols — accumulated state (see cache.ts one-rule doc block).
+    // Written non-enumerable via setCachedValue.
+    setCachedValue(seal, GiftWrapSymbol, gift);
 
     // Set the downstream reference on the gift wrap: an object-reference link to `seal`, not
     // a value copy. `SealSymbol`'s static membership in `PRESERVE_EVENT_SYMBOLS` (applesauce-core)
     // buys survival of `eventPipe`'s delete loop, nothing more — it is NOT carried onto a
     // redelivered duplicate of this event by that merge list, which has no gift-wrap symbols
-    // — accumulated state (see cache.ts taxonomy).
-    Reflect.set(gift, SealSymbol, seal);
+    // — accumulated state (see cache.ts one-rule doc block). Written non-enumerable via
+    // setCachedValue.
+    setCachedValue(gift, SealSymbol, seal);
 
-    // Set the encrypted content on the gift wrap. This is the ONLY carry-forward site in
-    // applesauce-common: the plaintext must survive downstream spreads exactly like
-    // applesauce-core's operations/tags.ts's modifyHiddenTags return, and migrating it onto
-    // the memo helper would break gift-wrap plaintext. Surrounded by accumulated-state writes
-    // above, this is the easiest site in the monorepo for a future cleanup to sweep up by
-    // mistake.
-    // carry-forward payload (see cache.ts taxonomy).
-    Reflect.set(gift, EncryptedContentSymbol, plaintext);
+    // Set the encrypted content on the gift wrap: a build-path write, like applesauce-core's
+    // operations/tags.ts's modifyHiddenTags return and operations/encrypted-content.ts's
+    // setEncryptedContent return. `wrapSeal` is the last step of the `giftWrap` eventPipe, so this
+    // write survives because PRESERVE_EVENT_SYMBOLS keeps it through the delete loop that runs
+    // immediately after this operation — it is set directly on this operation's own returned
+    // event (`gift`), not inherited from a prior step's carry-forward. Written non-enumerable via
+    // setCachedValue (see cache.ts one-rule doc block).
+    setCachedValue(gift, EncryptedContentSymbol, plaintext);
 
     return gift;
   };
