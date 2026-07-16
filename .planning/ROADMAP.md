@@ -54,13 +54,13 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
   4. `pnpm -r test` passes across the full workspace (baseline: 1989 tests, exit 0) — the shared core change regresses nothing downstream.
   5. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently from the spec formula — never by calling the implementation under test — and asserting the implementation matches. Concretely: a test derives the expected epoch-N control address from the CORD-02 §4 formula by hand and asserts a rolled-forward object matches it, reproducing and closing H01's exact failure mode.
 
-**Plans**: 13/14 plans executed
+**Plans**: 14/14 plans executed
 
 Plans:
 
 - [x] 05-12-PLAN.md
 - [x] 05-13-PLAN.md
-- [ ] 05-14-PLAN.md
+- [x] 05-14-PLAN.md
 
 **Wave 1**
 
@@ -227,7 +227,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 2. Generic models & casts | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
-| 5. Cache Identity Memo Fix | v1.1 | 13/14 | In gap closure | - |
+| 5. Cache Identity Memo Fix | v1.1 | 14/14 | In gap closure | - |
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 0/TBD | Not started | - |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
