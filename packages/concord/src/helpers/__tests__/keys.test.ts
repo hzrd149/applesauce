@@ -19,7 +19,7 @@ import {
   rollForward,
   wrapForTarget,
 } from "../keys.js";
-import { controlGroupKey, guestbookGroupKey } from "../crypto.js";
+import { baseRekeyGroupKey, controlGroupKey, guestbookGroupKey } from "../crypto.js";
 import { decodeWrap } from "../gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent } from "../../types.js";
 
@@ -249,6 +249,43 @@ describe("ConcordKeys", () => {
     // that silently keeps serving the OLD guestbook address, letting a removed
     // member read current traffic.
     expect(rolled.guestbook.pk).not.toBe(keys.guestbook.pk);
+  });
+
+  // ROTATE-02 (CORD-06 §2): the base-rekey listen address is deliberately
+  // asymmetric — it addresses the PRIOR root at heldEpoch+1 (so every current
+  // holder converges), NOT the new root like control/guestbook. The expected
+  // values below come ONLY from `baseRekeyGroupKey` in crypto.ts — never from
+  // `deriveConcordKeys`, `baseKeysFor`, or `rollForward` themselves.
+  it("the base-rekey listen address matches the CORD-06 §2 formula over the prior root, and rollForward re-derives it over the new root", async () => {
+    const { material, ownerPub } = await genesis();
+
+    // ARM THE MEMO (same rationale as the guestbook probe above).
+    const keys = deriveConcordKeys(material, []);
+
+    // EXPECTED listen address: over the CURRENT/PRIOR root, at root_epoch + 1 —
+    // Pitfall 1 (06-RESEARCH.md): do NOT derive this over a new root.
+    const expectedListen = baseRekeyGroupKey(
+      hexToBytes(material.community_root),
+      hexToBytes(material.community_id),
+      material.root_epoch + 1,
+    );
+    expect(keys.nextBaseRekey.key.pk).toBe(expectedListen.pk);
+    expect(keys.nextBaseRekey.epoch).toBe(material.root_epoch + 1);
+
+    const newRoot = generateSecretKey();
+    const newEpoch = material.root_epoch + 1;
+    const rolled = rollForward(keys, newRoot, newEpoch, ownerPub, []);
+
+    // EXPECTED rolled next-listen address: over the NEW root, at newEpoch + 1 —
+    // the rolled object's own next-epoch base-rekey listen address, one epoch
+    // further on than the roll itself (never copy the prior-root expected value
+    // here — that's the exact vacuous mistake Pitfall 1 warns against).
+    const expectedRolled = baseRekeyGroupKey(newRoot, hexToBytes(material.community_id), newEpoch + 1);
+    expect(rolled.nextBaseRekey.key.pk).toBe(expectedRolled.pk);
+    expect(rolled.nextBaseRekey.epoch).toBe(newEpoch + 1);
+    // The rotation actually happened — the listen address moved off the old
+    // (prior-root) address a removed member could otherwise still derive.
+    expect(rolled.nextBaseRekey.key.pk).not.toBe(keys.nextBaseRekey.key.pk);
   });
 });
 
