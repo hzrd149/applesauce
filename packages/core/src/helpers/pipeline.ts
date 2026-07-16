@@ -1,4 +1,5 @@
 import type { EventOperation, Operation, TagOperation } from "../factories/types.js";
+import { setCachedValue } from "./cache.js";
 import { EncryptedContentSymbol } from "./encrypted-content.js";
 import { GiftWrapSymbol, RumorSymbol, SealSymbol } from "./gift-wrap.js";
 
@@ -85,7 +86,9 @@ export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?:
         if (sameEvent) {
           for (const symbol of preserve) {
             if (Reflect.has(prevValue, symbol) && !Reflect.has(result, symbol)) {
-              Reflect.set(result, symbol, Reflect.get(prevValue, symbol));
+              // Restore non-enumerably (the one rule) so the carried symbol is not re-enumerated
+              // and cannot be copied across a later kind-changing spread.
+              setCachedValue(result, symbol, Reflect.get(prevValue, symbol));
             }
           }
         }

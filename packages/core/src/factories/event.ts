@@ -2,6 +2,7 @@ import { isAddressableKind, isKind } from "nostr-tools/kinds";
 import { EventSigner } from "./types.js";
 import type { EventOperation } from "./types.js";
 import { EncryptionMethod } from "../helpers/encrypted-content.js";
+import { setCachedValue } from "../helpers/cache.js";
 import { KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
 import { PRESERVE_EVENT_SYMBOLS } from "../helpers/pipeline.js";
 import { unixNow } from "../helpers/time.js";
@@ -84,7 +85,9 @@ export class EventFactory<
           if (sameEvent) {
             for (const symbol of PRESERVE_EVENT_SYMBOLS) {
               if (Reflect.has(draft, symbol) && !Reflect.has(result, symbol)) {
-                Reflect.set(result, symbol, Reflect.get(draft, symbol));
+                // Restore non-enumerably (the one rule) so the carried symbol is not re-enumerated
+                // and cannot be copied across a later kind-changing spread.
+                setCachedValue(result, symbol, Reflect.get(draft, symbol));
               }
             }
           }
