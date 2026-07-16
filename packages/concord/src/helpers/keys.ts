@@ -403,6 +403,7 @@ export async function readRekey(
   self: string,
   signer: ISigner,
   channels: ChannelMetadata[],
+  canRemoveSelf?: (rotator: string) => boolean,
 ): Promise<RekeyOutcome> {
   if (!signer.nip44) return { kind: "none" };
   const scoped = await readRekeyScoped(
@@ -411,6 +412,7 @@ export async function readRekey(
       scopeId: new Uint8Array(32),
       heldEpoch: keys.material.root_epoch,
       heldKey: hexToBytes(keys.material.community_root),
+      canRemoveSelf,
     },
     rekeyEvents,
     isAuthorized,
@@ -450,8 +452,10 @@ interface ScopedHeld {
    * Whether `rotator` is authorized to remove US specifically (CORD-04: holds the
    * bit AND strictly outranks us). Gates ONLY the `removed` outcome, never
    * adoption — so a lower-ranked manager can't sever a higher-ranked member by
-   * rotating them out, but legitimate convergence among peers is unaffected. When
-   * omitted (the root path), any authorized complete rotation may remove us.
+   * rotating them out, but legitimate convergence among peers is unaffected.
+   * REQUIRED to honor a removal: CORD-06 §3 requires the outrank check "in both"
+   * the root and channel paths, so an omitted predicate fails closed — a removal
+   * is denied, not permitted, when this is absent.
    */
   canRemoveSelf?: (rotator: string) => boolean;
 }
@@ -504,8 +508,9 @@ async function readRekeyScoped(
     }
     // A complete rotation that handed us no usable key removes us — but only honor
     // the removal if this rotator is authorized to remove US (CORD-04). An
-    // under-ranked rotator's removal is ignored: we keep our current key.
-    if (!adoptedHere && (!held.canRemoveSelf || held.canRemoveSelf(set.rotator))) removed = true;
+    // under-ranked rotator's removal is ignored, and an absent predicate denies
+    // the removal (fail-closed): we keep our current key either way.
+    if (!adoptedHere && held.canRemoveSelf?.(set.rotator) === true) removed = true;
   }
 
   if (adopted) return { kind: "adopt", newKey: adopted.key, rotator: adopted.rotator, epoch: targetEpoch };

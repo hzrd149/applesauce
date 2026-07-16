@@ -152,12 +152,15 @@ describe("channel-scoped rekey", () => {
       expect(keptOutcome.next.held?.[0]).toMatchObject({ epoch: 1, key: channel.key });
     }
 
+    // The owner strictly outranks everyone, so `canRemoveSelf` (fail-closed by
+    // default) truthfully permits the removal here.
     const droppedOutcome = await readChannelRekey(
       channel,
       decodeChannelRekey(material, channel, plan.rekeyWraps),
       isOwner,
       dropped.pub,
       dropped.signer,
+      isOwner,
     );
     expect(droppedOutcome.kind).toBe("removed");
   });
@@ -192,13 +195,15 @@ describe("channel-scoped rekey", () => {
     );
     expect(keptOutcome.kind).toBe("adopt");
 
-    // The excluded member is severed from the private channel too.
+    // The excluded member is severed from the private channel too. The owner
+    // strictly outranks everyone, so `canRemoveSelf` truthfully permits it.
     const droppedOutcome = await readChannelRekey(
       channel,
       decodeChannelRekey(postMaterial, channel, plan.channelRekeyWraps),
       isOwner,
       dropped.pub,
       dropped.signer,
+      isOwner,
     );
     expect(droppedOutcome.kind).toBe("removed");
   });

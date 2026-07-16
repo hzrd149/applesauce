@@ -21,6 +21,10 @@ import { syncAuthors, type SyncContext } from "./sync.js";
 export interface ChannelSyncContext extends SyncContext {
   material: JoinMaterial;
   isAuthorized: (rotator: string) => boolean;
+  /** May `rotator` remove US from the channel — `MANAGE_CHANNELS` AND strictly
+   *  outranks us (CORD-04/CORD-06 §3 "in both"). Fail-closed when absent —
+   *  mirrors {@link ConcordPrivateChannelOptions.canRemoveSelf}'s live-check use. */
+  canRemoveSelf?: (rotator: string) => boolean;
 }
 
 /** The outcome of walking a private channel to its tip. */
@@ -74,7 +78,7 @@ async function syncRekeyAndAdvance(
       ctx.route(info, decoded); // let the sub-engine retain it for the live check too
     }
   }
-  const outcome = await readChannelRekey(channel, rekeyEvents, ctx.isAuthorized, ctx.self, ctx.signer);
+  const outcome = await readChannelRekey(channel, rekeyEvents, ctx.isAuthorized, ctx.self, ctx.signer, ctx.canRemoveSelf);
   if (outcome.kind === "adopt") return { next: outcome.next, removed: false, done: false };
   if (outcome.kind === "removed") return { removed: true, done: true };
   return { removed: false, done: true }; // "none" → this is the tip

@@ -694,6 +694,10 @@ export class ConcordCommunity {
       this.pubkey,
       this.signer,
       state.channels,
+      // A rotator may only remove US if they also strictly outrank us (CORD-04/
+      // CORD-06 §3 "in both"), so an under-ranked BAN holder can't rotate a
+      // higher-ranked member out via a root Refounding (mirrors spawnPrivateChannel).
+      (rotator) => this.admin.hasPerm(rotator, PERM.BAN, this.standingOf(this.pubkey).position),
     );
     if (outcome.kind === "none" || this.disposed) return;
     if (this.rekeyHandled.has(outcome.epoch)) return;

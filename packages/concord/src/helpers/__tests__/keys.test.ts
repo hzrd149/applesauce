@@ -142,7 +142,8 @@ describe("ConcordKeys", () => {
     }
 
     // The excluded member sees a complete, authorized rotation with no blob for
-    // them → removed.
+    // them → removed. The owner strictly outranks everyone, so `canRemoveSelf`
+    // (fail-closed by default, D-07) truthfully permits the removal here.
     const droppedOutcome = await readRekey(
       droppedKeys,
       decodeRekey(droppedKeys, plan.rekeyWraps),
@@ -150,6 +151,7 @@ describe("ConcordKeys", () => {
       droppedPub,
       dropped,
       [],
+      isOwner,
     );
     expect(droppedOutcome.kind).toBe("removed");
   });
@@ -181,6 +183,40 @@ describe("ConcordKeys", () => {
       [],
     );
     expect(outcome.kind).toBe("none");
+  });
+
+  // AUTH-01 (CORD-04 / CORD-06 §3 "in both"): the root path must mirror the
+  // channel path's outrank guard (channel-rekey.test.ts:206-237). Also proves
+  // D-07's fail-closed-on-absence: omitting `canRemoveSelf` entirely must deny
+  // the removal, not default-permit it.
+  it("readRekey's root path honors removal only from an outranking rotator, and denies it when canRemoveSelf is absent (AUTH-01)", async () => {
+    const { owner, ownerPub, material } = await genesis();
+    const dropped = new PrivateKeySigner(generateSecretKey());
+    const droppedPub = await dropped.getPublicKey();
+    const droppedKeys = deriveConcordKeys(material, []);
+
+    // Owner rotates, excluding `dropped` — a complete, authorized rotation with
+    // no blob for the victim.
+    const plan = await buildRefounding(deriveConcordKeys(material, []), owner, {
+      recipients: [ownerPub],
+      self: ownerPub,
+      heads: [],
+      channels: [],
+    });
+    const events = () => decodeRekey(droppedKeys, plan.rekeyWraps);
+
+    // (a) Fail-closed: a rotator who does NOT outrank the victim → not removed.
+    const ignored = await readRekey(droppedKeys, events(), () => true, droppedPub, dropped, [], () => false);
+    expect(ignored.kind).not.toBe("removed");
+
+    // (b) The same rotation, from a rotator who DOES outrank the victim → removed.
+    const honored = await readRekey(droppedKeys, events(), () => true, droppedPub, dropped, [], () => true);
+    expect(honored.kind).toBe("removed");
+
+    // (c) Fail-closed-on-absence: no `canRemoveSelf` argument at all → not
+    // removed, matching the channel path's guard rather than defaulting to permit.
+    const absent = await readRekey(droppedKeys, events(), () => true, droppedPub, dropped, []);
+    expect(absent.kind).not.toBe("removed");
   });
 
   // H01(a) (CORD-02 §4): "Rotating the epoch rotates the pk, keeping a plane's

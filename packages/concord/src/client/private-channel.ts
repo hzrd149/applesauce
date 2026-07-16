@@ -216,6 +216,7 @@ export class ConcordPrivateChannel {
       relays: this.opts.relays,
       material: this.opts.material(),
       isAuthorized: this.opts.isAuthorized,
+      canRemoveSelf: this.opts.canRemoveSelf,
       route: (info, decoded) => this.route(info, decoded),
       ensureAuth: (relays) => this.ensureAuth(relays),
       alive: () => !this.disposed,

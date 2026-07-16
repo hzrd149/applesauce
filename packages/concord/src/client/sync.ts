@@ -28,7 +28,8 @@ import { deriveConcordKeys, readRekey, type ConcordKeys, type PlaneInfo } from "
 import { decodeWrapCached, EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { foldMembers } from "../helpers/guestbook.js";
-import { refoundAuthority, resolveStanding } from "../helpers/permissions.js";
+import { canActOn, refoundAuthority, resolveStanding } from "../helpers/permissions.js";
+import { PERM } from "../types.js";
 import type { CommunityState, DecodedEvent, JoinMaterial, Role } from "../types.js";
 
 /** How the walk continues past an epoch. */
@@ -181,7 +182,24 @@ export async function syncEpoch(
   } else if (!ctx.signer.nip44) {
     transition = "cannot-follow";
   } else {
-    const outcome = await readRekey(keys, rekey, refoundAuthority(state), ctx.self, ctx.signer, state.channels);
+    // A rotator may only remove US if they also strictly outrank us (CORD-04/
+    // CORD-06 §3 "in both"); no admin instance exists in the sync walk, so build
+    // the predicate directly from the same resolveStanding/canActOn primitives.
+    const canRemoveSelf = (rotator: string) =>
+      canActOn(
+        resolveStanding(rotator, epochMaterial.owner, rolesMap, state0.grants),
+        resolveStanding(ctx.self, epochMaterial.owner, rolesMap, state0.grants),
+        PERM.BAN,
+      );
+    const outcome = await readRekey(
+      keys,
+      rekey,
+      refoundAuthority(state),
+      ctx.self,
+      ctx.signer,
+      state.channels,
+      canRemoveSelf,
+    );
     if (outcome.kind === "adopt") {
       transition = "adopt";
       adoptedMaterial = outcome.next.material;
