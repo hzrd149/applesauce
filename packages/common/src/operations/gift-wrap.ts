@@ -14,16 +14,14 @@ import {
   UnsignedEvent,
 } from "applesauce-core/helpers/event";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
-import { eventPipe, PRESERVE_EVENT_SYMBOLS } from "applesauce-core/helpers/pipeline";
+import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { unixNow } from "applesauce-core/helpers/time";
 import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
 import { MetaTagOptions, setMetaTags, stamp } from "applesauce-core/operations/event";
 import { GiftWrapSymbol, Rumor, RumorSymbol, SealSymbol } from "../helpers/gift-wrap.js";
 
-// Preserve gift-wrap and seal symbols when building gift-wrap events
-PRESERVE_EVENT_SYMBOLS.add(GiftWrapSymbol);
-PRESERVE_EVENT_SYMBOLS.add(SealSymbol);
-PRESERVE_EVENT_SYMBOLS.add(RumorSymbol);
+// GiftWrapSymbol/SealSymbol/RumorSymbol are static members of applesauce-core's
+// PRESERVE_EVENT_SYMBOLS (see core/helpers/pipeline.ts) — no import-time mutation needed here.
 
 /** Create a timestamp with a random offset of an hour */
 function randomNow() {
@@ -80,8 +78,8 @@ export function sealRumor(
     const seal = await signer.signEvent(unsigned);
 
     // Set the downstream reference on the seal: an object-reference link to `rumor`, not a
-    // value copy. `RumorSymbol` is registered into `PRESERVE_EVENT_SYMBOLS` above, which
-    // stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
+    // value copy. `RumorSymbol` is a static member of `PRESERVE_EVENT_SYMBOLS` (applesauce-core),
+    // which stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
     // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
     // list, which has no gift-wrap symbols — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, RumorSymbol, rumor);
@@ -118,15 +116,15 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
     const gift = finalizeEvent(draft, key);
 
     // Set the upstream reference on the seal: an object-reference link to `gift`, not a
-    // value copy. `GiftWrapSymbol` is registered into `PRESERVE_EVENT_SYMBOLS` above, which
-    // stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
+    // value copy. `GiftWrapSymbol` is a static member of `PRESERVE_EVENT_SYMBOLS` (applesauce-core),
+    // which stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
     // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
     // list, which has no gift-wrap symbols — accumulated state (see cache.ts taxonomy).
     Reflect.set(seal, GiftWrapSymbol, gift);
 
     // Set the downstream reference on the gift wrap: an object-reference link to `seal`, not
-    // a value copy. `SealSymbol` registration into `PRESERVE_EVENT_SYMBOLS` above buys
-    // survival of `eventPipe`'s delete loop, nothing more — it is NOT carried onto a
+    // a value copy. `SealSymbol`'s static membership in `PRESERVE_EVENT_SYMBOLS` (applesauce-core)
+    // buys survival of `eventPipe`'s delete loop, nothing more — it is NOT carried onto a
     // redelivered duplicate of this event by that merge list, which has no gift-wrap symbols
     // — accumulated state (see cache.ts taxonomy).
     Reflect.set(gift, SealSymbol, seal);

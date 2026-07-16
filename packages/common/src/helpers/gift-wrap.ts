@@ -15,6 +15,10 @@ import {
   Rumor,
   verifyWrappedEvent,
 } from "applesauce-core/helpers/event";
+// GiftWrapSymbol/SealSymbol/RumorSymbol are owned by applesauce-core (members of
+// PRESERVE_EVENT_SYMBOLS) and re-exported here so existing common consumers keep resolving
+// them; Symbol.for() registry identity is unchanged regardless of which module imports it.
+import { GiftWrapSymbol, RumorSymbol, SealSymbol } from "applesauce-core/helpers/gift-wrap";
 
 /**
  * An internal event set to keep track of seals and rumors
@@ -24,14 +28,7 @@ export const internalGiftWrapEvents = new EventMemory();
 
 export type { Rumor };
 
-/** Used to store a reference to the seal event on gift wraps (downstream) or the seal event on rumors (upstream[]) */
-export const SealSymbol = Symbol.for("seal");
-
-/** Used to store a reference to the rumor on seals (downstream) */
-export const RumorSymbol = Symbol.for("rumor");
-
-/** Used to store a reference to the parent gift wrap event on seals (upstream) */
-export const GiftWrapSymbol = Symbol.for("gift-wrap");
+export { GiftWrapSymbol, RumorSymbol, SealSymbol };
 
 /** A gift wrap event that knows its seal event */
 export type UnlockedGiftWrapEvent = KnownEvent<kinds.GiftWrap> & {

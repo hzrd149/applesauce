@@ -1,8 +1,9 @@
 import type { EventOperation, Operation, TagOperation } from "../factories/types.js";
 import { EncryptedContentSymbol } from "./encrypted-content.js";
+import { GiftWrapSymbol, RumorSymbol, SealSymbol } from "./gift-wrap.js";
 
 /** An array of Symbols to preserve when building events with {@link eventPipe} */
-export const PRESERVE_EVENT_SYMBOLS = new Set([EncryptedContentSymbol]);
+export const PRESERVE_EVENT_SYMBOLS = new Set([EncryptedContentSymbol, GiftWrapSymbol, SealSymbol, RumorSymbol]);
 
 export function identity<T>(x: T): T {
   return x;
