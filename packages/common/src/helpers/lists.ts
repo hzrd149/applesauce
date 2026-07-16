@@ -1,3 +1,4 @@
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import {
   getReplaceableIdentifier,
   isAddressableKind,
@@ -43,14 +44,19 @@ function getOrComputeListCache<T>(
   // Hidden/all results depend on unlocked hidden tags, so avoid caching until available
   if ((cacheType === "hidden" || cacheType === "all") && !isHiddenTagsUnlocked(list)) return compute();
 
-  const cache = (Reflect.get(list, symbol) as ListCacheByType<T> | undefined) ?? ({} as ListCacheByType<T>);
-  // Two-level cache (symbol -> cacheType -> value) derived from the list's own tags — identity memo
-  // (see cache.ts taxonomy). Written here with a plain enumerable Reflect.set, so it DOES survive
-  // a spread today, riding onto a copy whose tags differ. Only pipeFromAsyncArray's delete loop
-  // (applesauce-core's helpers/pipeline.ts) scrubs it, and only on the call path that runs it —
-  // a coincidence of one code path, not an invariant. Known, deliberately-deferred gap (see
-  // 05-CONTEXT.md's Deferred Ideas); not migrated to setCachedValue here.
-  Reflect.set(list, symbol, cache);
+  // Two-level cache (symbol -> cacheType -> value) derived from the list's own tags — identity
+  // memo (see cache.ts taxonomy). D-12 hot-path lift: this Phase 5 write site was deliberately
+  // deferred because this function runs on every getter call — unconditionally calling
+  // setCachedValue (Object.defineProperty) on every call would redefine the property descriptor
+  // every time instead of a plain assignment. That deferral is lifted here (05.1-09) by only
+  // calling setCachedValue once, when the cache object is first created; the returned cache is a
+  // mutable container that subsequent calls populate in place without touching the descriptor
+  // again (mirroring getOrComputeCachedValue's own once-only write).
+  let cache = Reflect.get(list, symbol) as ListCacheByType<T> | undefined;
+  if (!cache) {
+    cache = {} as ListCacheByType<T>;
+    setCachedValue(list, symbol, cache);
+  }
   const cached = cache[cacheType];
   if (cached !== undefined) return cached;
 

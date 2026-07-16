@@ -1,4 +1,5 @@
 import { getOrComputeCachedValue, notifyEventUpdate } from "applesauce-core/helpers";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { getTagValue } from "applesauce-core/helpers/event";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
@@ -87,12 +88,9 @@ export function getHiddenProviders<T extends NostrEvent>(event: T): TrustedProvi
 
   const providers = tags.map(parseProviderTag).filter((p): p is TrustedProvider => p !== undefined);
   // Derived from the event's own hidden tags — identity memo (see applesauce-core's cache.ts
-  // taxonomy). Written here with a plain enumerable Reflect.set, so it DOES survive a spread
-  // today, riding onto a copy whose hidden tags differ. Only pipeFromAsyncArray's delete loop
-  // (applesauce-core's helpers/pipeline.ts) scrubs it, and only on the call path that runs it —
-  // a coincidence of one code path, not an invariant. Known, deliberately-deferred gap; not
-  // migrated to setCachedValue here.
-  Reflect.set(event, TrustedProvidersHiddenSymbol, providers);
+  // taxonomy). Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it
+  // instead of carrying a stale derivation onto a copy whose hidden tags differ.
+  setCachedValue(event, TrustedProvidersHiddenSymbol, providers);
   return providers;
 }
 

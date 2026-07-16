@@ -1,5 +1,6 @@
 import { logger } from "applesauce-core";
 import { IEventStoreStreams } from "applesauce-core/event-store";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import {
   canHaveEncryptedContent,
   getEncryptedContent,
@@ -46,7 +47,12 @@ export function markEncryptedContentFromCache<T extends object>(event: T) {
   // and discards the newcomer entirely, so the ordinary EventStore.add duplicate-delivery path does
   // not appear to replace the tracked instance — but replaceable-history and cross-store paths were
   // not traced as part of this comment-only fix.
-  Reflect.set(event, EncryptedContentFromCacheSymbol, true);
+  //
+  // Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it instead of
+  // carrying a stale provenance flag forward. isEncryptedContentFromCache's Reflect.has reader is
+  // enumerability-blind and still sees this write (WR-11's separate === true tightening stays
+  // deferred — D-10 — and is out of scope here).
+  setCachedValue(event, EncryptedContentFromCacheSymbol, true);
 }
 
 /** Checks if the encrypted content is from a cache */

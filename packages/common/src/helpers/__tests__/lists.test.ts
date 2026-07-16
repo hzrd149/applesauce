@@ -8,6 +8,7 @@ import {
   getProfilePointersFromList,
   getRelaysFromList,
   isEventPointerInList,
+  ListEventPointersSymbol,
 } from "../lists.js";
 
 const user = new FakeUser();
@@ -180,5 +181,28 @@ describe("isEventPointerInList", () => {
   it("returns false when no matching e tag exists", () => {
     const list = user.list([["p", "a".repeat(64)]]);
     expect(isEventPointerInList(list, "f".repeat(64))).toBe(false);
+  });
+});
+
+// 05.1-09: getOrComputeListCache's two-level cache write (D-12 hot-path lift) migrated from
+// Reflect.set to setCachedValue — the cache-object memo must be non-enumerable and dropped by a
+// plain spread, and must still function as a working cache across repeated calls/types.
+describe("getOrComputeListCache non-enumerability (05.1-09)", () => {
+  it("writes the list cache non-enumerable and drops it on a plain spread", () => {
+    const eventId = "5".repeat(64);
+    const list = user.list([["e", eventId]]);
+
+    const pointers = getEventPointersFromList(list);
+
+    expect(Object.keys(list)).not.toContain(ListEventPointersSymbol);
+    expect(Object.getOwnPropertySymbols(list)).toContain(ListEventPointersSymbol);
+    const descriptor = Object.getOwnPropertyDescriptor(list, ListEventPointersSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    const spread = { ...list };
+    expect(Reflect.has(spread, ListEventPointersSymbol)).toBe(false);
+
+    // Still works as a cache on the original object: same reference returned on repeat calls
+    expect(getEventPointersFromList(list)).toBe(pointers);
   });
 });

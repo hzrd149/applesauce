@@ -7,7 +7,12 @@ import {
 import { kinds } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { EncryptedContentFromCacheSymbol, persistEncryptedContent } from "../encrypted-content-cache.js";
+import {
+  EncryptedContentFromCacheSymbol,
+  isEncryptedContentFromCache,
+  markEncryptedContentFromCache,
+  persistEncryptedContent,
+} from "../encrypted-content-cache.js";
 
 const mockStorage = {
   getItem: vi.fn(),
@@ -109,5 +114,33 @@ describe("persistEncryptedContent", () => {
     expect(Reflect.has(event, EncryptedContentFromCacheSymbol)).toBe(false);
 
     dispose();
+  });
+});
+
+// 05.1-09: markEncryptedContentFromCache's EncryptedContentFromCacheSymbol write migrated from
+// Reflect.set to setCachedValue — the flag must be non-enumerable and dropped by a plain spread,
+// and isEncryptedContentFromCache's Reflect.has-based reader must still return true (WR-11's
+// separate === true tightening stays deferred, D-10 — out of scope here).
+describe("markEncryptedContentFromCache non-enumerability (05.1-09)", () => {
+  it("writes EncryptedContentFromCacheSymbol non-enumerable and drops it on a plain spread", () => {
+    const event = user.event({ kind: kinds.EncryptedDirectMessage, content: "encrypted" });
+
+    markEncryptedContentFromCache(event);
+
+    expect(Object.keys(event)).not.toContain(EncryptedContentFromCacheSymbol);
+    expect(Object.getOwnPropertySymbols(event)).toContain(EncryptedContentFromCacheSymbol);
+    const descriptor = Object.getOwnPropertyDescriptor(event, EncryptedContentFromCacheSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    const spread = { ...event };
+    expect(Reflect.has(spread, EncryptedContentFromCacheSymbol)).toBe(false);
+  });
+
+  it("isEncryptedContentFromCache still returns true after the flag is set (reader unchanged)", () => {
+    const event = user.event({ kind: kinds.EncryptedDirectMessage, content: "encrypted" });
+
+    expect(isEncryptedContentFromCache(event)).toBe(false);
+    markEncryptedContentFromCache(event);
+    expect(isEncryptedContentFromCache(event)).toBe(true);
   });
 });
