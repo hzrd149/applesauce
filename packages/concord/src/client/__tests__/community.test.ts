@@ -4,7 +4,7 @@
 // tip) plus the fold-via-models + optimistic local-echo path. Live relay behaviour
 // is covered by the puppeteer drivers.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject, firstValueFrom } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
@@ -626,6 +626,144 @@ describe("ConcordCommunity (DI, no network)", () => {
     // prior-epoch observed authorship resurrects them.
     expect(community.state$.value.members.has(memberJoin)).toBe(false);
     expect(community.state$.value.members.has(memberObserved)).toBe(false);
+
+    community.dispose();
+  });
+
+  it("D-03: disposes+deletes a guestbook store whose epoch ages out of held_roots", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Refound #1: epoch 0 → 1. `held_roots` retains epoch 0, so its guestbook
+    // store stays addressable — nothing is trimmed yet.
+    await community.refound({ keep: [pubkey] });
+    await settle();
+    const stores = (community as unknown as { stores: Map<string, { dispose: () => void }> }).stores;
+    const epoch0Store = stores.get("guestbook@0");
+    expect(epoch0Store).toBeDefined();
+    const disposeSpy = vi.spyOn(epoch0Store!, "dispose");
+
+    // No compaction step exists yet to age epoch 0 out of `held_roots` (that's a
+    // later phase's concern) — simulate its precondition directly so the D-03
+    // trim's own contract ("an epoch no longer in held_roots gets its store
+    // disposed") is exercised independent of whatever eventually ages it out.
+    const keys = (
+      community as unknown as { keys: { material: { held_roots: Array<{ epoch: number; key: string }> } } }
+    ).keys;
+    keys.material.held_roots = [];
+
+    // Refound #2: epoch 1 → 2. Epoch 0 is now neither current nor held — trimmed.
+    await community.refound({ keep: [pubkey] });
+    await settle();
+
+    expect(disposeSpy).toHaveBeenCalled();
+    expect(stores.has("guestbook@0")).toBe(false);
+    // Epoch 1's store is retained: `rollForward` always prepends the epoch it
+    // rolls FROM, so epoch 1 is in the fresh `held_roots`.
+    expect(stores.has("guestbook@1")).toBe(true);
+
+    community.dispose();
+  });
+
+  it("D-04: passing state.members as the next refound()'s keep does not re-admit a dropped member", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const memberX = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
+    community.guestbookStore.add(rumorFromTemplate(await JoinLeaveFactory.create("join"), memberX, 1_000));
+    await settle();
+    expect(community.state$.value.members.has(memberX)).toBe(true);
+
+    // Exclude memberX.
+    await community.refound({ keep: [pubkey], exclude: [memberX] });
+    await settle();
+    expect(community.state$.value.members.has(memberX)).toBe(false);
+
+    // Feed the folded member Set straight back in as the next keep list — the
+    // exact footgun D-04 guards against (resolved structurally by D-01/D-02: once
+    // the fold drops a removed member, `state.members` no longer contains them).
+    await community.refound({ keep: [...community.state$.value.members] });
+    await settle();
+    expect(community.state$.value.members.has(memberX)).toBe(false);
+
+    community.dispose();
+  });
+
+  it("Open Question 1 (DEFERRED to Phase 7): an excluded member's OLD public-channel message still counts as observed post-Refounding", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const general = community.state$.value.channels.find((c) => c.name === "general")!;
+    const memberX = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
+    // memberX's only activity is an OLD (pre-Refounding) message in a PUBLIC
+    // channel. Public-channel stores are deliberately NOT epoch-keyed this phase
+    // (`planeStoreKey`'s `"channel"` branch is untouched — channel keying is Phase
+    // 7 territory), so this message stays visible to `observed` across the
+    // Refounding.
+    community.channelStore(general.channel_id).add(rumorFromTemplate({ kind: 9, content: "hi", tags: [] }, memberX, 1_000));
+    await settle();
+    expect(community.state$.value.members.has(memberX)).toBe(true);
+
+    await community.refound({ keep: [pubkey] }); // memberX not kept
+    await settle();
+
+    // KNOWN RESIDUAL (Open Question 1, DEFERRED to Phase 7 channel-keying): the
+    // public-channel store is un-epoch-scoped, so memberX's old message still
+    // registers as observed and they remain a "member" post-Refounding. This
+    // pins the CURRENT behavior as a regression fixture — it is not asserted as
+    // correct, and Phase 7's channel epoch-keying is expected to close it.
+    expect(community.state$.value.members.has(memberX)).toBe(true);
 
     community.dispose();
   });

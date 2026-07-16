@@ -313,6 +313,27 @@ export class ConcordCommunity {
     return `guestbook@${this.keys.material.root_epoch}`;
   }
 
+  /**
+   * D-03: dispose+delete any `guestbook@<epoch>` store whose epoch is no longer
+   * live — neither the current epoch nor one of `held_roots`. Keys and stores
+   * share one retention horizon: you can't decode an epoch you no longer hold the
+   * root for (its address is unrecoverable), so its store is dead weight. Only
+   * the guestbook plane is epoch-keyed this phase (control/dissolved/rekey/
+   * channel are untouched) — called once per adopted Refounding, after the key
+   * roll so `held_roots`/the current epoch are already current.
+   */
+  private trimStaleGuestbookStores(): void {
+    const material = this.keys.material;
+    const liveEpochs = new Set<number>([material.root_epoch, ...(material.held_roots ?? []).map((r) => r.epoch)]);
+    for (const key of [...this.stores.keys()]) {
+      if (!key.startsWith("guestbook@")) continue;
+      const epoch = Number(key.slice("guestbook@".length));
+      if (liveEpochs.has(epoch)) continue;
+      this.stores.get(key)?.dispose();
+      this.stores.delete(key);
+    }
+  }
+
   get communityId(): string {
     return this.keys.material.community_id;
   }
@@ -687,6 +708,7 @@ export class ConcordCommunity {
    *  (CORD-06 §94) and the channel-rekey address keys on the (now-changed) root. */
   private adoptRefounding(next: ConcordKeys): void {
     this.keys = next;
+    this.trimStaleGuestbookStores();
     // Rebind the fold to the new epoch's refounder so foldMembers honors the new
     // epoch's guestbook snapshot (kind 3312) and the full memberlist carries over.
     this.rewireState();

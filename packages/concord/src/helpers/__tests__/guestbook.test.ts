@@ -93,4 +93,19 @@ describe("guestbook fold", () => {
     // malformed guestbook entry alone didn't admit her.
     expect(members.has("eve")).toBe(false);
   });
+
+  // Characterization test (Pitfall 3, 06-RESEARCH.md): a bare `observed` entry
+  // with no coalesced Guestbook state (no Join/Leave/Kick/Snapshot at all) is
+  // admitted by the `!c` forward-observation branch (guestbook.ts:109-111) — this
+  // is the spec's OWN "auto-included even if their Join never arrived" behavior
+  // (CORD-02 §5), not a bug. `foldMembers` itself stays untouched by the ROTATE-04
+  // fix; epoch scoping is applied one layer up, to the `observed` map's INPUT
+  // (client/sync.ts's `planeStoreKey` + community.ts's `rewireState`), so a
+  // removed member's prior-epoch observed authorship never reaches this branch
+  // for the new epoch in the first place.
+  it("admits a bare observed entry with no coalesced guestbook state (the `!c` branch) — foldMembers is unmodified by ROTATE-04's fix", () => {
+    const observed = new Map([["frank", 5_000]]);
+    const members = foldMembers([], observed, new Set(), standing, 10_000);
+    expect(members.has("frank")).toBe(true);
+  });
 });
