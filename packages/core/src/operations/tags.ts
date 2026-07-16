@@ -16,6 +16,29 @@ export function includeSingletonTag(tag: [string, ...string[]], replace = true):
   return modifyPublicTags(setSingletonTag(tag, replace));
 }
 
+/**
+ * Builds a shallow copy of `draft` that preserves every own property descriptor — including
+ * non-enumerable symbols — then overrides `pubkey` on the copy. Used to build the throwaway
+ * temp object passed into {@link unlockHiddenTags} (Site-1, out-of-pipe spread): a plain
+ * `{ ...draft, pubkey }` spread only copies own ENUMERABLE properties, silently dropping any
+ * non-enumerable symbol (e.g. `HiddenTagsSymbol`/`EncryptedContentSymbol`) already cached on
+ * `draft`, which would force `unlockHiddenTags` to take its "not yet unlocked" branch and
+ * re-decrypt unnecessarily. This copy is genuinely out-of-pipe (never the pipe operation's own
+ * return value), so the pipe-level symbol carry-forward cannot cover it — the fix must be local.
+ *
+ * Note: gift-wrap's `toRumor`'s `{ ...draft }` (`common/operations/gift-wrap.ts`) is deliberately
+ * NOT changed to this pattern — it IS a pipe operation's return value, so the pipe carry-forward
+ * restores any dropped symbol for that site (RESEARCH out-of-pipe spread audit, Site 2).
+ */
+function copyDraftWithPubkey<T extends EventTemplate | UnsignedEvent | NostrEvent>(
+  draft: T,
+  pubkey: string,
+): T & { pubkey: string } {
+  const copy = Object.defineProperties({}, Object.getOwnPropertyDescriptors(draft)) as T;
+  Object.defineProperty(copy, "pubkey", { value: pubkey, enumerable: true, writable: true, configurable: true });
+  return copy as T & { pubkey: string };
+}
+
 /** Includes only a single name / value tag in an events public tags */
 export function includeNameValueTag(tag: [string, string, ...string[]], replace = true): EventOperation {
   return modifyPublicTags(addNameValueTag(tag, replace));
@@ -62,7 +85,13 @@ export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | Nostr
         if (hasHiddenTags(draft)) {
           // draft is an existing event, attempt to unlock tags
           pubkey = await signer.getPublicKey();
-          hidden = await unlockHiddenTags({ ...draft, pubkey }, signer);
+          // draft is constrained (EventTemplate | UnsignedEvent | NostrEvent) to always carry
+          // kind/content; the cast only affirms what copyDraftWithPubkey's descriptor-preserving
+          // copy already guarantees at runtime (every own property of draft, plus pubkey).
+          hidden = await unlockHiddenTags(
+            copyDraftWithPubkey(draft, pubkey) as EventTemplate & { pubkey: string },
+            signer,
+          );
         }
         // create a new array of hidden tags
         else hidden = [];
