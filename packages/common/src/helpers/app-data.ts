@@ -1,3 +1,4 @@
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
 import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -63,12 +64,10 @@ export function getAppDataContent<
   if (!data) return undefined;
 
   // Derived from the event's own (possibly encrypted) content — identity memo (see
-  // applesauce-core's cache.ts taxonomy). Written here with a plain enumerable Reflect.set, so
-  // it DOES survive a spread today, riding onto a copy whose content differs. Only
-  // pipeFromAsyncArray's delete loop (applesauce-core's helpers/pipeline.ts) scrubs it, and only
-  // on the call path that runs it — a coincidence of one code path, not an invariant. Known,
-  // deliberately-deferred gap; not migrated to setCachedValue here.
-  Reflect.set(event, AppDataContentSymbol, data);
+  // applesauce-core's cache.ts taxonomy). Written non-enumerable via setCachedValue (05.1-09) so
+  // a plain spread drops it instead of carrying a stale derivation onto a copy whose content
+  // differs. lockAppData's Reflect.deleteProperty still clears it (CR-03).
+  setCachedValue(event, AppDataContentSymbol, data);
   return data;
 }
 

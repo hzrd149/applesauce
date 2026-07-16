@@ -1,7 +1,9 @@
 import { kinds } from "applesauce-core/helpers/event";
+import { unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { AddressPointer, EventPointer, isAddressPointer, isEventPointer } from "applesauce-core/helpers/pointers";
 import { describe, expect, it } from "vitest";
-import { mergeBookmarks } from "../bookmark.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
+import { BookmarkHiddenSymbol, getHiddenBookmarks, mergeBookmarks } from "../bookmark.js";
 
 describe("mergeBookmarks", () => {
   it("should merge bookmarks and handle duplicates", () => {
@@ -100,5 +102,31 @@ describe("mergeBookmarks", () => {
     expect(result).toHaveLength(3);
     expect(result.filter(isEventPointer)).toHaveLength(2);
     expect(result.filter(isAddressPointer)).toHaveLength(1);
+  });
+});
+
+// 05.1-09: getHiddenBookmarks's BookmarkHiddenSymbol write migrated from Reflect.set to
+// setCachedValue — the memo must be non-enumerable and dropped by a plain spread.
+describe("getHiddenBookmarks non-enumerability (05.1-09)", () => {
+  it("writes BookmarkHiddenSymbol non-enumerable and drops it on a plain spread", async () => {
+    const user = new FakeUser();
+    const hiddenEventId = "a".repeat(64);
+    const hiddenTags = [["e", hiddenEventId]];
+    const bookmark = user.event({
+      kind: kinds.BookmarkList,
+      tags: [],
+      content: await user.nip04.encrypt(user.pubkey, JSON.stringify(hiddenTags)),
+    });
+
+    await unlockHiddenTags(bookmark, user);
+    getHiddenBookmarks(bookmark);
+
+    expect(Object.keys(bookmark)).not.toContain(BookmarkHiddenSymbol);
+    expect(Object.getOwnPropertySymbols(bookmark)).toContain(BookmarkHiddenSymbol);
+    const descriptor = Object.getOwnPropertyDescriptor(bookmark, BookmarkHiddenSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    const spread = { ...bookmark };
+    expect(Reflect.has(spread, BookmarkHiddenSymbol)).toBe(false);
   });
 });
