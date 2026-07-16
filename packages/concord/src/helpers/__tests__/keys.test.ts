@@ -19,7 +19,7 @@ import {
   rollForward,
   wrapForTarget,
 } from "../keys.js";
-import { controlGroupKey } from "../crypto.js";
+import { controlGroupKey, guestbookGroupKey } from "../crypto.js";
 import { decodeWrap } from "../gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent } from "../../types.js";
 
@@ -210,6 +210,45 @@ describe("ConcordKeys", () => {
     // The rotation actually happened — the defect this closes is a Refounding
     // that silently keeps serving the OLD control address.
     expect(rolled.control.pk).not.toBe(keys.control.pk);
+  });
+
+  // ROTATE-01 (CORD-02 §5): "The Guestbook rides the epoch" — its address
+  // rotates with the root exactly like the control plane. The expected value
+  // below comes ONLY from `guestbookGroupKey` in crypto.ts — never from
+  // `deriveConcordKeys`, `baseKeysFor`, or `rollForward` themselves — so this
+  // cannot be a self-referential (implementation-compares-to-itself) assertion.
+  it("rollForward's guestbook address matches the CORD-02 §5 formula over the new root", async () => {
+    const { material, ownerPub } = await genesis();
+
+    // ARM THE MEMO: deriving keys from `material` writes BaseKeysSymbol onto it.
+    // Without this step, rollForward's `{ ...keys.material, ... }` spread has no
+    // memo to carry forward, and this assertion would pass even against the
+    // pre-05-01 broken code (vacuous test) — see the plan's non-vacuity note.
+    const keys = deriveConcordKeys(material, []);
+
+    // EXPECTED (current epoch, over the current root), independently derived
+    // from the spec formula (never via deriveConcordKeys / baseKeysFor).
+    const currentExpected = guestbookGroupKey(
+      hexToBytes(material.community_root),
+      hexToBytes(material.community_id),
+      material.root_epoch,
+    );
+    expect(keys.guestbook.pk).toBe(currentExpected.pk);
+
+    const newRoot = generateSecretKey();
+    const newEpoch = material.root_epoch + 1;
+
+    // EXPECTED (new epoch, over the new root), independently derived from the
+    // spec formula (never via rollForward / deriveConcordKeys / baseKeysFor).
+    const expected = guestbookGroupKey(newRoot, hexToBytes(material.community_id), newEpoch);
+
+    const rolled = rollForward(keys, newRoot, newEpoch, ownerPub, []);
+
+    expect(rolled.guestbook.pk).toBe(expected.pk);
+    // The rotation actually happened — the defect this closes is a Refounding
+    // that silently keeps serving the OLD guestbook address, letting a removed
+    // member read current traffic.
+    expect(rolled.guestbook.pk).not.toBe(keys.guestbook.pk);
   });
 });
 
