@@ -1106,6 +1106,15 @@ export class ConcordCommunity {
     const state = this.state$.value;
     if (!refoundAuthority(state)(this.pubkey)) throw new Error("need BAN or ownership to refound");
 
+    // CORD-04/CORD-06 §3: excluding a member is acting on them — the rotator must
+    // strictly outrank each excluded target, not merely hold BAN (mirrors
+    // rotateChannel's outrank loop). Throws before anything is built or published,
+    // so a failed check aborts the whole Refounding atomically — no partial rotation.
+    for (const target of opts.exclude ?? []) {
+      if (!this.canDo(PERM.BAN, this.standingOf(target).position))
+        throw new Error(`cannot exclude ${target} — you do not outrank them`);
+    }
+
     const excluded = new Set(opts.exclude ?? []);
     const recipients = [...new Set([this.pubkey, ...opts.keep])].filter((pk) => !excluded.has(pk));
     const relays = this.relays();
