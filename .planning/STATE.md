@@ -6,14 +6,14 @@ current_phase: 05
 current_phase_name: cache-identity-memo-fix
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-07-16T04:23:52.554Z"
+last_updated: "2026-07-16T04:33:24.897Z"
 last_activity: 2026-07-15
 last_activity_desc: Phase 05 execution started
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 0
-  total_plans: 11
-  completed_plans: 5
+  total_plans: 14
+  completed_plans: 11
   percent: 0
 ---
 
@@ -69,6 +69,10 @@ None yet.
 
 - 5 requirements are blocked on a spec ruling before their implementation task can complete: ROTATE-10, ROTATE-13 (Phase 8); AUTH-07, AUTH-08 (Phase 9); CHAN-07 (Phase 7). Each may resolve to "no change needed" — a planning-time gate for those three phases, not a roadmap risk.
 - Verification standard for this milestone: every fix needs a regression test asserting against an independently-derived spec value, not implementation output — the exact gap that let all 43 findings pass CI before. Plan-phase should hold plans to this explicitly.
+
+### Roadmap Evolution
+
+- Phase 05.1 inserted after Phase 5: Symbol propagation redesign: all symbol writes non-enumerable via setCachedValue; factory pipelines carry PRESERVE_EVENT_SYMBOLS explicitly; gift-wrap symbols move to core; strip loops deleted; supersedes the cache.ts taxonomy
 
 ## Deferred Items
 

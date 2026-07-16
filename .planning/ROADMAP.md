@@ -30,6 +30,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 **TEST-01 is a standing criterion across Phases 5–12, not a single phase's deliverable.** It is anchored at Phase 5 for requirement accounting, but it does **not** close there. Every phase that touches a derivation, fold, or wire shape the specs define by formula or example carries an explicit spec-derived-assertion criterion in its numbered list below (Phases 5, 6, 7, 8, 9, 10, 11, 12). Rationale: all 189 concord tests passed while 9 HIGH bugs were live because every test compared the implementation against itself. A phase permitted to assert against its own output reintroduces the milestone's root cause. Phase 7 is the sharpest case — the channel-keying derivations CORD-03 §1 defines by formula are precisely where H07 hid, and a spec-derived probe is what exposed it.
 
 - [x] **Phase 5: Cache Identity Memo Fix** - Core cache memos stop surviving object spread in `applesauce-core`, unblocking every downstream rotation fix (completed 2026-07-15)
+- [ ] **Phase 5.1: Symbol Propagation Redesign (INSERTED)** - Every symbol write becomes non-enumerable and the factory pipeline carries the `PRESERVE_EVENT_SYMBOLS` whitelist explicitly, collapsing the identity-memo/carry-forward taxonomy into one rule and deleting the strip loops
 - [ ] **Phase 6: Refounding Rotation & Authority Correctness** - A Refounding actually rotates its addresses in-session, drops excluded members from the memberlist, and is honored only from a rotator who outranks every removed target
 - [ ] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug)
 - [ ] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member
@@ -83,6 +84,18 @@ Plans:
 - [x] 05-09-PLAN.md — Reword the eight common write-site comments that assert a spread-survival property their enumerable writes lack (gap wave 2)
 - [x] 05-10-PLAN.md — Make `cache.test.ts`'s carry-forward half genuinely enforce the D-13 contract via an intervening uncompensated spread, proven by a recorded non-vacuity probe (gap wave 2)
 - [x] 05-11-PLAN.md — Correct the residual false comments (`common/helpers/gift-wrap.ts` sentinel, `common/operations/gift-wrap.ts` propagation claims, concord `keys.ts` "hand-rolled") and record the deferral register for every unclosed review finding (gap wave 2)
+
+### Phase 05.1: Symbol Propagation Redesign (INSERTED)
+
+**Goal:** Symbol propagation has one teachable rule instead of three overlapping mechanisms: every symbol write is non-enumerable (via `setCachedValue`), nothing survives an object copy implicitly, and the factory pipeline explicitly carries the `PRESERVE_EVENT_SYMBOLS` whitelist forward between operations — with `stamp`/`sign` keeping their explicit copies so standalone `sign(signer)(draft)` still preserves plaintext.
+**Scope:** (1) Move `GiftWrapSymbol`/`SealSymbol`/`RumorSymbol` to core (re-exported from common), making `PRESERVE_EVENT_SYMBOLS` a static set with no import-time mutation. (2) Add the whitelist carry-forward half to `pipeFromAsyncArray` and `EventFactory.chain`. (3) Migrate the ~41 enumerable symbol write sites across core, common, wallet, wallet-connect, and concord onto `setCachedValue`, fixing the `filter.ts` shared-Set defect and the `groups.ts` undefined-memoization defect en route (both sites are touched anyway; see STATE.md Deferred Items). (4) Delete the two strip loops last, once no enumerable write remains. (5) Rewrite `cache.test.ts`'s carry-forward suite against the pipeline-carry mechanism and delete `cache.ts`'s superseded taxonomy prose. Audit the out-of-pipe spreads (`unlockHiddenTags`'s `{ ...draft, pubkey }`, gift-wrap's `{ ...draft }` rumor copy) before migrating their sources.
+**Requirements**: TBD
+**Depends on:** Phase 5
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 05.1 to break down)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
 
@@ -201,7 +214,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -210,6 +223,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
 | 5. Cache Identity Memo Fix | v1.1 | 11/11 | Complete   | 2026-07-15 |
+| 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 0/TBD | Not started | - |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
