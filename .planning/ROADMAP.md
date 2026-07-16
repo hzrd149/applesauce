@@ -105,7 +105,7 @@ Plans:
   The 11 WARNING-severity findings in the same review are lower priority; fold in opportunistically where a site is touched, otherwise leave for milestone review.
 **Requirements**: TBD (governed by CONTEXT.md decisions D-01..D-14; CACHE-02 superseded+reinterpreted per D-06)
 **Depends on:** Phase 5
-**Plans:** 11/13 plans executed
+**Plans:** 12/13 plans executed
 
 Plans:
 **Wave 1**
@@ -127,7 +127,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05.1-12-PLAN.md — Group-B build-path migrations: tags/encrypted-content/gift-wrap operations (wave 3)
+- [x] 05.1-12-PLAN.md — Group-B build-path migrations: tags/encrypted-content/gift-wrap operations (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -259,7 +259,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
 | 5. Cache Identity Memo Fix | v1.1 | 14/14 | In gap closure | - |
-| 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 11/13 | In Progress|  |
+| 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 12/13 | In Progress|  |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
