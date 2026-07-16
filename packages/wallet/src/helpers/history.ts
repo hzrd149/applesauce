@@ -6,6 +6,7 @@ import {
   isHiddenTagsUnlocked,
   lockHiddenTags,
   notifyEventUpdate,
+  setCachedValue,
   setHiddenTagsEncryptionMethod,
   UnlockedHiddenTags,
   unlockHiddenTags,
@@ -90,8 +91,8 @@ export function getHistoryContent<T extends NostrEvent>(history: T): HistoryCont
 
   const content = { direction, amount, created, mint, fee };
 
-  // Set the cached value
-  Reflect.set(history, HistoryContentSymbol, content);
+  // Set the cached value (identity memo, non-enumerable so a spread drops it)
+  setCachedValue(history, HistoryContentSymbol, content);
 
   return content;
 }

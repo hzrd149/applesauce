@@ -4,6 +4,7 @@ import {
   isHiddenContentUnlocked,
   lockHiddenContent,
   notifyEventUpdate,
+  setCachedValue,
   setHiddenContentEncryptionMethod,
   UnlockedHiddenContent,
   unlockHiddenContent,
@@ -88,8 +89,8 @@ export function getTokenContent<T extends NostrEvent>(token: T): TokenContent | 
   if (!details.proofs) throw new Error("Token missing proofs");
   if (!details.del) details.del = [];
 
-  // Set the cached value
-  Reflect.set(token, TokenContentSymbol, details);
+  // Set the cached value (identity memo, non-enumerable so a spread drops it)
+  setCachedValue(token, TokenContentSymbol, details);
 
   return details;
 }

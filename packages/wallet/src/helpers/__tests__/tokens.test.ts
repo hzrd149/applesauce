@@ -6,8 +6,10 @@ import { WalletTokenFactory } from "../../factories/tokens.js";
 import { decodeTokenFromEmojiString, encodeTokenToEmoji } from "../cashu.js";
 import {
   dumbTokenSelection,
+  getTokenContent,
   getTokenDeletedIds,
   isTokenContentUnlocked,
+  TokenContentSymbol,
   unlockTokenContent,
   WALLET_TOKEN_KIND,
 } from "../tokens.js";
@@ -52,6 +54,34 @@ describe("isTokenContentUnlocked", () => {
 
     expect(isEncryptedContentUnlocked(token)).toBe(true);
     expect(isTokenContentUnlocked(token)).toBe(true);
+  });
+});
+
+describe("getTokenContent", () => {
+  it("memoizes the parsed token content non-enumerably (setCachedValue migration)", async () => {
+    const token = await WalletTokenFactory.create({
+      mint: "https://money.com",
+      proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }],
+    })
+      .as(user)
+      .sign();
+
+    // Unattempted before the first read.
+    expect(TokenContentSymbol in token).toBe(false);
+
+    const parsed = getTokenContent(token);
+    expect(parsed).toMatchObject({ mint: "https://money.com" });
+
+    // Non-enumerable: Reflect.ownKeys sees it, but a plain spread drops it.
+    expect(Reflect.ownKeys(token)).toContain(TokenContentSymbol);
+    expect(Object.getOwnPropertyDescriptor(token, TokenContentSymbol)?.enumerable).toBe(false);
+
+    const spread = { ...token };
+    expect(Reflect.ownKeys(spread)).not.toContain(TokenContentSymbol);
+    expect(TokenContentSymbol in spread).toBe(false);
+
+    // A second read short-circuits and returns the exact same memoized object.
+    expect(getTokenContent(token)).toBe(parsed);
   });
 });
 
