@@ -1,90 +1,25 @@
 /**
- * Superseded: this taxonomy documents the current hand-rolled state of symbol
- * writes and is scheduled for replacement by a symbol-propagation redesign in
- * which every symbol write is non-enumerable (via `setCachedValue`) and
- * carry-forward is performed explicitly by the factory pipeline against the
- * `PRESERVE_EVENT_SYMBOLS` whitelist. Until then, new code should write
- * through `setCachedValue` and should not extend the category system below.
+ * One rule: every symbol write on an event-like object is non-enumerable (via
+ * `setCachedValue`/`getOrComputeCachedValue` below). Nothing survives an
+ * object copy implicitly — spread only copies enumerable own properties.
+ * Carry-forward across factory-pipe operations is performed EXPLICITLY by the
+ * pipe (`pipeFromAsyncArray` / `EventFactory.chain`), which copies every
+ * symbol in `PRESERVE_EVENT_SYMBOLS` (`helpers/pipeline.ts`) from each step's
+ * input to its output after the operation runs. `stamp()`/`sign()`
+ * additionally re-copy `EncryptedContentSymbol` via `Reflect.has`/`get`/`set`
+ * so a standalone `sign(signer)(draft)` call (outside any pipe) still
+ * preserves plaintext.
  *
- * Symbol-keyed properties on events fall into three categories. The categories
- * classify WRITE SITES, not symbols — the question an author must answer at each
- * call site is "must THIS WRITE survive a spread?", not "which category does this
- * symbol belong to?". The same symbol can answer that question differently at
- * different write sites (see the worked example below), so a symbol-to-category
- * lookup table would be wrong on the taxonomy's single most important example.
- *
- * 1. **identity memo** — a derivation of the object's own current fields. A copy
- *    with changed fields MUST recompute, so it must NOT survive a spread. This is
- *    what `setCachedValue`/`getOrComputeCachedValue` write, and why they write
- *    non-enumerable: object spread only copies enumerable own properties, so a
- *    non-enumerable memo is dropped by a spread instead of riding along stale.
- * 2. **carry-forward payload** — deliberately propagated through the factory pipe
- *    into the signed event. MUST survive a spread. `PRESERVE_EVENT_SYMBOLS`
- *    (`helpers/pipeline.ts`) is the allowlist `pipeFromAsyncArray`'s delete loop
- *    consults: after each pipe operation it deletes every symbol-keyed own
- *    property of the result that is NOT listed there. Membership is therefore
- *    NECESSARY but NOT SUFFICIENT for surviving a spread — the loop only
- *    deletes non-listed symbols; it never copies a listed symbol from `prev`
- *    onto `result`. Actually surviving an individual operation's own internal
- *    spread additionally requires either an enumerable write (as
- *    `modifyHiddenTags`'s object-literal return gives `EncryptedContentSymbol`)
- *    or an explicit re-copy by that operation (as `stamp`/`sign` in
- *    `operations/event.ts` do, via `Reflect.has`/`get`/`set`, which are
- *    enumerability-blind).
- * 3. **accumulated state** — mutable, propagated by the event store's merge
- *    rather than by spread. This category has no single defining list; the
- *    propagation mechanism differs per symbol. `FromCacheSymbol` and
- *    `verifiedSymbol` propagate via the symbol merge loop in
- *    `EventStore.copySymbolsToDuplicateEvent`. `SeenRelaysSymbol` propagates
- *    via a SEPARATE, element-wise merge in that same function
- *    (`getSeenRelays`/`addSeenRelay`) and is NOT in that merge loop's list.
- *    applesauce-common's `Seal`/`Rumor`/`GiftWrap` symbols are not merged by
- *    any event store at all (they are unknown to applesauce-core) and
- *    propagate by shared object reference. Mutability of the value is NOT the
- *    test for this category: a memo whose value happens to be a mutable
- *    container (e.g. concord's `ChannelKeysSymbol`, a `Map` written through
- *    `getOrComputeCachedValue` and grown in place by `channelKeyMemo`) is
- *    still an **identity memo** when its validity is bound to the host
- *    object's own fields. The test is whether a copy with changed fields must
- *    recompute.
- *
- * Worked example — `EncryptedContentSymbol` has multiple write sites (this
- * list is non-exhaustive), and they do NOT all share one category, proving
- * the taxonomy classifies write sites (not symbols) and that a site's
- * PURPOSE does not decide its category:
- *   - carry-forward payload at `operations/tags.ts`'s `modifyHiddenTags`
- *     return — the write/build path, where the decrypted plaintext is placed
- *     on the draft by an object literal (`{ ...draft, content,
- *     [EncryptedContentSymbol]: plaintext }`) so it survives the pipe's
- *     intermediate spreads into the signed event.
- *   - carry-forward payload at `helpers/encrypted-content.ts`'s
- *     `setEncryptedContentCache` — the read/unlock path. Its PURPOSE is
- *     memoization (avoiding a repeat signer round-trip on an already-signed
- *     event), which is why it looks like a memo. But its write site answers
- *     the same question the build path does: an unlocked event re-entering
- *     the factory pipe hits `operations/tags.ts`'s `modifyPublicTags`
- *     (`{ ...draft, tags }`), which copies only enumerable own properties —
- *     a non-enumerable write here would be dropped there and force a
- *     re-decrypt. "Must THIS WRITE survive a spread?" = yes, so this is
- *     carry-forward payload, not identity memo. That is why it hand-rolls its
- *     own enumerable `Reflect.set` write instead of calling `setCachedValue`.
- *   - accumulated state at `EventStore.copySymbolsToDuplicateEvent`'s symbol
- *     merge loop — the SAME symbol is also propagated there, and that
- *     function's own comment classifies this loop's writes (including
- *     `EncryptedContentSymbol`) as accumulated state, not carry-forward
- *     payload: a THIRD category on the same symbol, at a THIRD write site.
- *   A site whose purpose is memoization can still be category 2, and a
- *   symbol already carry-forward at one site can still be accumulated state
- *   at another — purpose and prior classification do not decide the
- *   category; the spread-survival requirement at the write site does. This
- *   is the exact confusion that produced CR-02.
+ * This replaces the three-category taxonomy this doc comment used to carry
+ * (superseded — see `05.1-symbol-propagation-redesign` D-05/D-06): the
+ * memo-vs-carry-forward distinction that taxonomy existed to document is now
+ * met structurally by the one rule above plus the pipe's explicit carry, not
+ * by a hand-maintained category system an author had to keep in sync.
  *
  * Scope: this helper (`getCachedValue`/`setCachedValue`/`getOrComputeCachedValue`)
- * writes identity memos ONLY — including memos whose value happens to be a
- * mutable container (see category 3's `ChannelKeysSymbol` discriminator above;
- * a container's mutability does not change this) — and writes them
- * non-enumerable so a spread drops them. The write descriptor's other two
- * flags are load-bearing, not stylistic:
+ * writes non-enumerable so a spread drops the write unless the pipe carries it
+ * forward. The write descriptor's other two flags are load-bearing, not
+ * stylistic:
  *   - `configurable: true` is required because without it,
  *     `pipeFromAsyncArray`'s delete loop would fail silently instead of
  *     dropping the memo: `Reflect.deleteProperty` does NOT throw on a
