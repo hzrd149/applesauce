@@ -1,5 +1,6 @@
 import type { EventOperation, TagOperation } from "../factories/types.js";
 import { eventPipe, skip, tagPipe } from "../helpers/pipeline.js";
+import { setCachedValue } from "../helpers/cache.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import { EventTemplate, NostrEvent, UnsignedEvent } from "../helpers/event.js";
 import {
@@ -112,11 +113,14 @@ export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | Nostr
     const plaintext = JSON.stringify(tags);
     const content = await methods.encrypt(pubkey, plaintext);
 
-    // carry-forward payload (see cache.ts taxonomy): add the plaintext content on the draft so
-    // it can be carried forward — this is the taxonomy's canonical worked example (cache.ts's
-    // dual-lifecycle note), even though it's a plain object literal rather than a symbol write
-    // via Reflect's setter, so it does not show up in the D-10 grep.
-    return { ...draft, content, [EncryptedContentSymbol]: plaintext };
+    // carry-forward payload (see cache.ts one-rule doc block): construct the object first, then
+    // write EncryptedContentSymbol non-enumerably via setCachedValue. It survives downstream
+    // pipe steps' own spreads because pipeFromAsyncArray's carry-forward loop (helpers/pipeline.ts)
+    // explicitly restores any PRESERVE_EVENT_SYMBOLS member the previous step's value had that the
+    // new result is missing — not because this write happens to be enumerable.
+    const result = { ...draft, content };
+    setCachedValue(result, EncryptedContentSymbol, plaintext);
+    return result;
   };
 }
 
