@@ -4,6 +4,7 @@ import { wrapEvent } from "nostr-tools/nip59";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import {
+  GiftWrapSymbol,
   getGiftWrapRumor,
   getGiftWrapSeal,
   getRumorGiftWraps,
@@ -465,5 +466,32 @@ describe("setCachedValue migration — non-enumerable accumulated-state writes",
     const descriptor = Object.getOwnPropertyDescriptor(seal, RumorSymbol);
     expect(descriptor?.enumerable).toBe(false);
     expect(Object.getOwnPropertySymbols({ ...seal })).not.toContain(RumorSymbol);
+  });
+
+  it("GiftWrapSymbol and SealSymbol writes in getGiftWrapSeal are non-enumerable and dropped by a plain spread", async () => {
+    const rumorEvent = {
+      id: "i".repeat(64),
+      pubkey: alice.pubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: kinds.ShortTextNote,
+      tags: [["p", bob.pubkey]],
+      content: "gift-wrap/seal symbol enumerability",
+    };
+    const giftWrap = wrapEvent(rumorEvent, alice.key, bob.pubkey);
+
+    await unlockGiftWrap(giftWrap, bob);
+    const seal = getGiftWrapSeal(giftWrap)!;
+
+    // GiftWrapSymbol on the seal (upstream reference, gift-wrap.ts:217)
+    const giftWrapDescriptor = Object.getOwnPropertyDescriptor(seal, GiftWrapSymbol);
+    expect(giftWrapDescriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...seal })).not.toContain(GiftWrapSymbol);
+    expect(getSealGiftWrap(seal)).toBe(giftWrap);
+
+    // SealSymbol on the gift wrap (downstream reference, gift-wrap.ts:222)
+    const sealDescriptor = Object.getOwnPropertyDescriptor(giftWrap, SealSymbol);
+    expect(sealDescriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...giftWrap })).not.toContain(SealSymbol);
+    expect(getGiftWrapSeal(giftWrap)).toBe(seal);
   });
 });

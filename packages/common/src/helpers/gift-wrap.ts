@@ -212,12 +212,12 @@ export function getGiftWrapSeal(gift: NostrEvent): NostrEvent | undefined {
 
     // Set the reference to the parent gift wrap event (upstream). Propagated by reference
     // across duplicate events, not by spread — accumulated state (see cache.ts taxonomy).
-    Reflect.set(seal, GiftWrapSymbol, gift);
+    setCachedValue(seal, GiftWrapSymbol, gift);
   }
 
   // Save a reference to the seal on the gift wrap (downstream). Propagated by reference
   // across duplicate events, not by spread — accumulated state (see cache.ts taxonomy).
-  Reflect.set(gift, SealSymbol, seal);
+  setCachedValue(gift, SealSymbol, seal);
 
   return seal;
 }
