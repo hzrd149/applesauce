@@ -90,9 +90,14 @@
  *     returned forever, so surfacing the programming error is correct.
  *     Consumers that freeze events (e.g. Redux Toolkit / immer freezing state
  *     in development) will see a throw where they previously saw silent
- *     degradation. `getReplaceableIdentifier` routes through
- *     `getOrComputeCachedValue`, and `EventStore.add` calls it on every
- *     replaceable event, so this is reachable from a normal insert.
+ *     degradation. `getExpirationTimestamp` routes through
+ *     `getOrComputeCachedValue`, and both `EventStore.add` and
+ *     `AsyncEventStore.add` call it unconditionally before any kind or
+ *     replaceable branching — the throw is therefore NOT limited to
+ *     replaceable events; an ordinary regular-kind event (e.g. a kind-1 note)
+ *     reaches it on a normal insert. The one carve-out: both stores return
+ *     early for `kinds.EventDeletion` before reaching that call, so a
+ *     deletion event does not trigger it via this path.
  */
 export function getCachedValue<T extends unknown>(event: any, symbol: symbol): T | undefined {
   return Reflect.get(event, symbol);
