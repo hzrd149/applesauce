@@ -96,5 +96,9 @@ export async function unlockAppData<
 
 /** Removes the unencrypted application data cache on an event */
 export function lockAppData<T extends object>(event: T): void {
+  // Two-delete lock (mirrors lockHiddenTags): drop the parsed-plaintext memo first, then lock the
+  // underlying hidden content. Without this, AppDataContentSymbol's cached-read early return in
+  // getAppDataContent survives the lock and keeps handing back decrypted plaintext (CR-03).
+  Reflect.deleteProperty(event, AppDataContentSymbol);
   lockHiddenContent(event);
 }
