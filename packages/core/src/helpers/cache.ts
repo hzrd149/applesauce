@@ -1,4 +1,11 @@
 /**
+ * Superseded: this taxonomy documents the current hand-rolled state of symbol
+ * writes and is scheduled for replacement by a symbol-propagation redesign in
+ * which every symbol write is non-enumerable (via `setCachedValue`) and
+ * carry-forward is performed explicitly by the factory pipeline against the
+ * `PRESERVE_EVENT_SYMBOLS` whitelist. Until then, new code should write
+ * through `setCachedValue` and should not extend the category system below.
+ *
  * Symbol-keyed properties on events fall into three categories. The categories
  * classify WRITE SITES, not symbols — the question an author must answer at each
  * call site is "must THIS WRITE survive a spread?", not "which category does this
@@ -41,10 +48,10 @@
  *    object's own fields. The test is whether a copy with changed fields must
  *    recompute.
  *
- * Worked example — `EncryptedContentSymbol` has TWO write sites, BOTH
- * carry-forward payload but for DIFFERENT reasons, proving the taxonomy
- * classifies write sites (not symbols) and that a site's PURPOSE does not
- * decide its category:
+ * Worked example — `EncryptedContentSymbol` has multiple write sites (this
+ * list is non-exhaustive), and they do NOT all share one category, proving
+ * the taxonomy classifies write sites (not symbols) and that a site's
+ * PURPOSE does not decide its category:
  *   - carry-forward payload at `operations/tags.ts`'s `modifyHiddenTags`
  *     return — the write/build path, where the decrypted plaintext is placed
  *     on the draft by an object literal (`{ ...draft, content,
@@ -61,9 +68,16 @@
  *     re-decrypt. "Must THIS WRITE survive a spread?" = yes, so this is
  *     carry-forward payload, not identity memo. That is why it hand-rolls its
  *     own enumerable `Reflect.set` write instead of calling `setCachedValue`.
- *   A site whose purpose is memoization can still be category 2 — purpose
- *   does not decide the category; the spread-survival requirement at the
- *   write site does. This is the exact confusion that produced CR-02.
+ *   - accumulated state at `EventStore.copySymbolsToDuplicateEvent`'s symbol
+ *     merge loop — the SAME symbol is also propagated there, and that
+ *     function's own comment classifies this loop's writes (including
+ *     `EncryptedContentSymbol`) as accumulated state, not carry-forward
+ *     payload: a THIRD category on the same symbol, at a THIRD write site.
+ *   A site whose purpose is memoization can still be category 2, and a
+ *   symbol already carry-forward at one site can still be accumulated state
+ *   at another — purpose and prior classification do not decide the
+ *   category; the spread-survival requirement at the write site does. This
+ *   is the exact confusion that produced CR-02.
  *
  * Scope: this helper (`getCachedValue`/`setCachedValue`/`getOrComputeCachedValue`)
  * writes identity memos ONLY — including memos whose value happens to be a
@@ -90,9 +104,14 @@
  *     returned forever, so surfacing the programming error is correct.
  *     Consumers that freeze events (e.g. Redux Toolkit / immer freezing state
  *     in development) will see a throw where they previously saw silent
- *     degradation. `getReplaceableIdentifier` routes through
- *     `getOrComputeCachedValue`, and `EventStore.add` calls it on every
- *     replaceable event, so this is reachable from a normal insert.
+ *     degradation. `getExpirationTimestamp` routes through
+ *     `getOrComputeCachedValue`, and both `EventStore.add` and
+ *     `AsyncEventStore.add` call it unconditionally before any kind or
+ *     replaceable branching — the throw is therefore NOT limited to
+ *     replaceable events; an ordinary regular-kind event (e.g. a kind-1 note)
+ *     reaches it on a normal insert. The one carve-out: both stores return
+ *     early for `kinds.EventDeletion` before reaching that call, so a
+ *     deletion event does not trigger it via this path.
  */
 export function getCachedValue<T extends unknown>(event: any, symbol: symbol): T | undefined {
   return Reflect.get(event, symbol);
