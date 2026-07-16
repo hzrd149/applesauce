@@ -4,6 +4,7 @@ import {
   isHiddenContentUnlocked,
   KnownEvent,
   notifyEventUpdate,
+  setCachedValue,
   setHiddenContentEncryptionMethod,
   UnlockedHiddenContent,
   unlockHiddenContent,
@@ -88,8 +89,8 @@ export function getWalletNotification(notification: NostrEvent): WalletNotificat
   // Parse the content as a wallet notification
   const parsed = JSON.parse(content) as WalletNotification;
 
-  // Save the parsed content
-  Reflect.set(notification, WalletNotificationSymbol, parsed);
+  // Save the parsed content (identity memo, non-enumerable so a spread drops it)
+  setCachedValue(notification, WalletNotificationSymbol, parsed);
   notifyEventUpdate(notification);
 
   return parsed;
