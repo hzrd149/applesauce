@@ -1,10 +1,13 @@
-import { unixNow } from "applesauce-core/helpers";
+import { EncryptedContentSymbol, getEncryptedContent, unixNow } from "applesauce-core/helpers";
 import {
   getGiftWrapRumor,
   getGiftWrapSeal,
   getRumorGiftWraps,
   getRumorSeals,
   getSealGiftWrap,
+  GiftWrapSymbol,
+  RumorSymbol,
+  SealSymbol,
 } from "../../helpers/gift-wrap.js";
 import { describe, expect, it } from "vitest";
 import { kinds } from "applesauce-core/helpers/event";
@@ -75,6 +78,25 @@ describe("sealRumor", () => {
     const event = user.event({ kind: kinds.PrivateDirectMessage, content: "test" });
     await expect(sealRumor(other.pubkey)(event)).rejects.toThrow("A signer is required to create a seal");
   });
+
+  it("writes RumorSymbol (downstream ref on the seal) non-enumerably via setCachedValue", async () => {
+    const event = user.event({ kind: kinds.PrivateDirectMessage, content: "test" });
+    const seal = await sealRumor(other.pubkey, user)(event);
+
+    const descriptor = Object.getOwnPropertyDescriptor(seal, RumorSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    // A plain spread must drop it, proving it is not carried by enumerable write.
+    expect(RumorSymbol in { ...seal }).toBe(false);
+  });
+
+  it("writes SealSymbol (upstream ref set on the rumor) non-enumerably via setCachedValue", async () => {
+    const rumor = user.event({ kind: kinds.PrivateDirectMessage, content: "test" });
+    await sealRumor(other.pubkey, user)(rumor);
+
+    const descriptor = Object.getOwnPropertyDescriptor(rumor, SealSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    expect(SealSymbol in { ...rumor }).toBe(false);
+  });
 });
 
 describe("wrapSeal", () => {
@@ -111,6 +133,37 @@ describe("wrapSeal", () => {
     expect(giftWrap.pubkey).not.toBe(user.pubkey);
     expect(giftWrap.pubkey).not.toBe(other.pubkey);
   });
+
+  it("writes GiftWrapSymbol (upstream ref on the seal) non-enumerably via setCachedValue", async () => {
+    const seal = user.event({ kind: kinds.Seal, content: "test" });
+    await wrapSeal(other.pubkey)(seal);
+
+    const descriptor = Object.getOwnPropertyDescriptor(seal, GiftWrapSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    expect(GiftWrapSymbol in { ...seal }).toBe(false);
+  });
+
+  it("writes SealSymbol (downstream ref on the gift wrap) non-enumerably via setCachedValue", async () => {
+    const seal = user.event({ kind: kinds.Seal, content: "test" });
+    const giftWrap = await wrapSeal(other.pubkey)(seal);
+
+    const descriptor = Object.getOwnPropertyDescriptor(giftWrap, SealSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    expect(SealSymbol in { ...giftWrap }).toBe(false);
+  });
+
+  it("writes EncryptedContentSymbol (build-path) non-enumerably via setCachedValue, surviving the delete loop on wrapSeal's own returned event", async () => {
+    const seal = user.event({ kind: kinds.Seal, content: "test" });
+    const giftWrap = await wrapSeal(other.pubkey)(seal);
+
+    const descriptor = Object.getOwnPropertyDescriptor(giftWrap, EncryptedContentSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    // Expected plaintext derived independently by decrypting the gift wrap's own ciphertext
+    // content — not by reading back the operation's own EncryptedContentSymbol write.
+    const decrypted = await other.nip44.decrypt(giftWrap.pubkey, giftWrap.content);
+    expect(getEncryptedContent(giftWrap)).toBe(decrypted);
+  });
 });
 
 describe("giftWrap", () => {
@@ -126,5 +179,20 @@ describe("giftWrap", () => {
     expect(getRumorSeals(rumor!)).toContain(seal!);
     expect(getSealGiftWrap(seal!)).toBe(gift);
     expect(getRumorGiftWraps(rumor!)).toContain(gift);
+  });
+
+  it("full-pipe survival: the gift wrap's build-path EncryptedContentSymbol survives the entire toRumor->sealRumor->wrapSeal pipe non-enumerably", async () => {
+    const event = user.event({ kind: kinds.PrivateDirectMessage, content: "test" });
+
+    const gift = await giftWrap(other.pubkey, user)(event);
+
+    const descriptor = Object.getOwnPropertyDescriptor(gift, EncryptedContentSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    // Expected plaintext derived independently by decrypting the final gift wrap's own
+    // ciphertext content (recipient-side decrypt) — not by reading back the pipe's own
+    // EncryptedContentSymbol write.
+    const decrypted = await other.nip44.decrypt(gift.pubkey, gift.content);
+    expect(getEncryptedContent(gift)).toBe(decrypted);
   });
 });

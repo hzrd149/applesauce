@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { setEncryptedContent } from "../encrypted-content.js";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { EncryptedContentSymbol, setEncryptedContentEncryptionMethod } from "../../helpers";
+import { eventPipe } from "../../helpers/pipeline.js";
+import { EncryptedContentSymbol, getEncryptedContent, setEncryptedContentEncryptionMethod } from "../../helpers";
+import { unixNow } from "../../helpers/time.js";
+import { includeAltTag, sign } from "../event.js";
 
 let user: FakeUser;
 
@@ -105,5 +108,33 @@ describe("setEncryptedContent", () => {
     await expect(operation({ kind: 1, content: "", tags: [], created_at: 0 })).rejects.toThrow(
       "Signer does not support nip44 encryption",
     );
+  });
+
+  it("writes EncryptedContentSymbol non-enumerably (construct-then-setCachedValue, not an object-literal computed key)", async () => {
+    const draft = await setEncryptedContent(
+      user.pubkey,
+      "secret message",
+      user,
+      "nip04",
+    )({ kind: 4, content: "", tags: [], created_at: 0 });
+
+    const descriptor = Object.getOwnPropertyDescriptor(draft, EncryptedContentSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+  });
+
+  it("full-pipe survival: plaintext survives an intervening spread step and signing, read back off the signed event", async () => {
+    const template = { kind: 4, content: "", tags: [] as string[][], created_at: unixNow() };
+    // Expected plaintext derived from the fixture's own input, not from the operation's own output.
+    const expectedPlaintext = "secret message";
+
+    const signed = await eventPipe(
+      setEncryptedContent(user.pubkey, expectedPlaintext, user, "nip04"),
+      includeAltTag("test-alt"), // intervening spread: modifyPublicTags's `{ ...draft, tags }`
+      sign(user),
+    )(template);
+
+    expect(signed.sig).toBeTruthy();
+    expect(signed.tags).toContainEqual(["alt", "test-alt"]);
+    expect(getEncryptedContent(signed)).toBe(expectedPlaintext);
   });
 });

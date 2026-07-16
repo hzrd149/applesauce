@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { kinds } from "../../helpers/event.js";
+import { eventPipe } from "../../helpers/pipeline.js";
 import { unixNow } from "../../helpers/time.js";
+import { includeAltTag, sign } from "../event.js";
 import { modifyHiddenTags } from "../tags.js";
-import { EncryptedContentSymbol, getHiddenTags, HiddenTagsSymbol, unlockHiddenTags } from "../../helpers";
+import {
+  EncryptedContentSymbol,
+  getEncryptedContent,
+  getHiddenTags,
+  HiddenTagsSymbol,
+  unlockHiddenTags,
+} from "../../helpers";
 
 /**
  * Mirrors the private `copyDraftWithPubkey` helper in `../tags.js` (Site-1 fix): a
@@ -84,6 +92,43 @@ describe("modifyHiddenTags", () => {
       ["e", "test-id"],
       ["e", "second-id"],
     ]);
+  });
+});
+
+describe("modifyHiddenTags build-path write (Group B: setCachedValue, carry-forward dependent)", () => {
+  let user: FakeUser;
+
+  beforeEach(() => {
+    user = new FakeUser();
+  });
+
+  it("writes EncryptedContentSymbol non-enumerably (construct-then-setCachedValue, not an object-literal computed key)", async () => {
+    const draft = await modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]])({
+      kind: kinds.BookmarkList,
+      content: "",
+      tags: [],
+      created_at: unixNow(),
+    });
+
+    const descriptor = Object.getOwnPropertyDescriptor(draft, EncryptedContentSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+  });
+
+  it("full-pipe survival: plaintext survives an intervening spread step and signing, read back off the signed event", async () => {
+    const template = { kind: kinds.BookmarkList, content: "", tags: [] as string[][], created_at: unixNow() };
+    // Expected plaintext derived from the fixture's hidden tags, not from the operation's own output.
+    const expectedPlaintext = JSON.stringify([["e", "test-id"]]);
+
+    const signed = await eventPipe(
+      modifyHiddenTags(user, (tags) => [...tags, ["e", "test-id"]]),
+      includeAltTag("test-alt"), // intervening spread: modifyPublicTags's `{ ...draft, tags }`
+      sign(user),
+    )(template);
+
+    expect(signed.sig).toBeTruthy();
+    expect(signed.tags).toContainEqual(["alt", "test-alt"]);
+    expect(getEncryptedContent(signed)).toBe(expectedPlaintext);
+    expect(getHiddenTags(signed)).toEqual([["e", "test-id"]]);
   });
 });
 
