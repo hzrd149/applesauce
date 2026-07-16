@@ -96,6 +96,7 @@ Plans:
 **Scope:** (1) Move `GiftWrapSymbol`/`SealSymbol`/`RumorSymbol` to core (re-exported from common), making `PRESERVE_EVENT_SYMBOLS` a static set with no import-time mutation. (2) Add the whitelist carry-forward half to `pipeFromAsyncArray` and `EventFactory.chain`. (3) Migrate the ~41 enumerable symbol write sites across core, common, wallet, wallet-connect, and concord onto `setCachedValue`, fixing the `filter.ts` shared-Set defect and the `groups.ts` undefined-memoization defect en route (both sites are touched anyway; see STATE.md Deferred Items). (4) Delete the two strip loops last, once no enumerable write remains. (5) Rewrite `cache.test.ts`'s carry-forward suite against the pipeline-carry mechanism and delete `cache.ts`'s superseded taxonomy prose. Audit the out-of-pipe spreads (`unlockHiddenTags`'s `{ ...draft, pubkey }`, gift-wrap's `{ ...draft }` rumor copy) before migrating their sources.
 
 **Folded-in behavioral bug fixes (decision 2026-07-16 — Phase 5 code review, full detail in `.planning/phases/05-cache-identity-memo-fix/05-REVIEW.md`).** Five confirmed blocker-severity defects in write-sites this redesign already touches are fixed here rather than in a standalone phase. **Fix each in its OWN commit with its OWN spec-derived regression test, landed BEFORE the enumerable→non-enumerable migration rewrites the site — so a failing test attributes to the bug fix, not the refactor. Do not let a migration commit and a behavioral fix share a commit.** The five:
+
   - **CR-01/CR-02 — unlock-guard family returns `undefined` typed as an array.** `isHiddenContactsUnlocked` (`packages/core/src/helpers/contacts.ts:72-75`) type-asserts the symbol is present but only checks `isHiddenTagsUnlocked`; `unlockHiddenContacts:106` then returns `undefined` as `ProfilePointer[]`. Same shape in `emoji-pack.ts:137-159`, `mute.ts:69-72`, `trusted-assertions.ts:100-102`. The correct pattern already exists at `bookmark.ts:82-86` / `groups.ts:146-148` (`isHiddenTagsUnlocked && (Symbol in event || getter() !== undefined)`).
   - **CR-03 — `lockAppData` does not lock.** `packages/common/src/helpers/app-data.ts:98-100` deletes `HiddenContentSymbol` but the decrypted+parsed payload on `AppDataContentSymbol` (written `:71`) survives, so `getAppDataContent` keeps returning plaintext after a lock. Data exposure. (Compare `lockHiddenTags`, which deletes both.)
   - **CR-04 — `copySymbolsToDuplicateEvent` fails open on the wrong operator.** `packages/core/src/event-store/event-store.ts:200-205` throws only when pubkey **and** identifier both differ; the invariant (per its own message) needs `||`. Lets `verifiedSymbol` + decrypted plaintext merge onto an unrelated event. Pre-existing; this phase only commented the function.
@@ -107,19 +108,29 @@ Plans:
 **Plans:** 13 plans (4 waves)
 
 Plans:
+**Wave 1**
 
 - [ ] 05.1-01-PLAN.md — Mechanism: move gift-wrap symbols to core, static PRESERVE_EVENT_SYMBOLS, carry-forward half in both strip loops (wave 1)
 - [ ] 05.1-02-PLAN.md — Core guard fixes: CR-01 contacts unlock-guard, CR-04 copySymbols replaceable guard (wave 1)
 - [ ] 05.1-03-PLAN.md — Core input-safety fixes: CR-05 stamp copy-then-delete, Site-1 unlockHiddenTags spread (wave 1)
 - [ ] 05.1-04-PLAN.md — Common unlock-guard family: CR-02 emoji-pack/mute/trusted-assertions (wave 1)
 - [ ] 05.1-05-PLAN.md — Common lock + memo: CR-03 lockAppData, groups D-02/D-03 fix + line-139 delete (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 05.1-06-PLAN.md — Mechanism proof + docs: cache.test.ts carry-forward rewrite (non-vacuous), cache.ts one-rule doc (wave 2)
 - [ ] 05.1-07-PLAN.md — Core helper migrations: filter/event/cast/encrypted-content/relays/hidden-tags/contacts (wave 2)
 - [ ] 05.1-08-PLAN.md — Core event-store migrations: copySymbols merge, EventStoreSymbol sync+async (wave 2)
 - [ ] 05.1-09-PLAN.md — Common identity-memo migrations: mute/emoji/trusted/app-data/bookmark/lists/enc-content-cache (wave 2)
 - [ ] 05.1-10-PLAN.md — Common gift-wrap helper migrations (6 sites) (wave 2)
 - [ ] 05.1-11-PLAN.md — Downstream migrations: concord/wallet/wallet-connect + Wave-0 gap tests (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 05.1-12-PLAN.md — Group-B build-path migrations: tags/encrypted-content/gift-wrap operations (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 05.1-13-PLAN.md — Strip-loop deletion (delete-loop half removed, carry-forward kept) + full-suite gate (wave 4)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
