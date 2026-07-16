@@ -1,7 +1,9 @@
 import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04 } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 import {
+  getHiddenContacts,
   getRelaysFromContactsEvent,
+  HiddenContactsSymbol,
   isHiddenContactsUnlocked,
   mergeContacts,
   unlockHiddenContacts,
@@ -163,5 +165,18 @@ describe("isHiddenContactsUnlocked / unlockHiddenContacts (CR-01 regression)", (
 
     const result = await unlockHiddenContacts(event, signer);
     expect(result).toEqual(expected);
+  });
+
+  it("writes HiddenContactsSymbol non-enumerable and a plain spread copy drops it", async () => {
+    const event = await createContactsEvent();
+    await unlockHiddenTags(event, signer);
+
+    getHiddenContacts(event);
+
+    const descriptor = Object.getOwnPropertyDescriptor(event, HiddenContactsSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    const copy = { ...event };
+    expect(Object.prototype.hasOwnProperty.call(copy, HiddenContactsSymbol)).toBe(false);
   });
 });
