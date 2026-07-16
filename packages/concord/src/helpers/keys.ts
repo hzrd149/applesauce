@@ -178,7 +178,9 @@ export function deriveConcordKeys(
 
   const planes = new Map<string, PlaneInfo>(prior?.planes);
   planes.set(control.pk, { type: "control", convKey: control.convKey });
-  planes.set(guestbook.pk, { type: "guestbook", convKey: guestbook.convKey });
+  // The Guestbook rides the epoch (CORD-02 §5): stamp it so `planeStoreKey`
+  // (client/sync.ts) can key its store per epoch, unlike control/dissolved.
+  planes.set(guestbook.pk, { type: "guestbook", convKey: guestbook.convKey, epoch: material.root_epoch });
   planes.set(dissolved.pk, { type: "dissolved", convKey: dissolved.convKey });
   planes.set(nextBaseRekey.key.pk, { type: "rekey", convKey: nextBaseRekey.key.convKey, epoch: nextEpoch });
   for (const [channelId, key] of channelKeys) {

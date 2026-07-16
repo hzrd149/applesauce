@@ -34,9 +34,13 @@ export function ConcordCommunityStateModel(
       new Observable<Rumor[]>((sub) => {
         sub.next([]);
       });
-    const observedStores = [controlStore, stores.guestbook, ...(stores.observed ?? [])].filter(
-      (s): s is PlaneStore => !!s,
-    );
+    // Control is NOT counted as observed activity here (D-02/T-06-03): the control
+    // store remains the fold host (`controlStore.model(...)` above) but its authors
+    // no longer auto-count as "present" — narrowing observation is fail-safe (it can
+    // only shrink the memberlist, never resurrect a removed member). The
+    // current-epoch guestbook + caller-supplied stores (channels) are the only
+    // observed inputs.
+    const observedStores = [stores.guestbook, ...(stores.observed ?? [])].filter((s): s is PlaneStore => !!s);
     const observed$ = combineLatest(observedStores.map((store) => store.model(ConcordObservedAuthorsModel))).pipe(
       map(mergeObserved),
     );

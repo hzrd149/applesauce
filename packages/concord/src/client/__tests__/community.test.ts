@@ -19,7 +19,7 @@ import type { ConcordCommunityStatus } from "../../types.js";
 
 import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
-import { SnapshotFactory } from "../../factories/guestbook.js";
+import { JoinLeaveFactory, SnapshotFactory } from "../../factories/guestbook.js";
 import { EditionFactory } from "../../factories/control.js";
 import { channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
@@ -512,7 +512,7 @@ describe("ConcordCommunity (DI, no network)", () => {
     community.dispose();
   });
 
-  it("honors the new refounder's guestbook snapshot after a Refounding", async () => {
+  it("honors the NEW epoch's guestbook snapshot after a Refounding, not the prior epoch's", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const pool = fakePool();
@@ -533,23 +533,99 @@ describe("ConcordCommunity (DI, no network)", () => {
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
-    // A retained member carried ONLY by a kind-3312 snapshot (never an author, so not
-    // "observed") — its presence hinges entirely on the snapshot being trusted.
+    // The epoch-0 snapshot names two members carried ONLY by it (never an author,
+    // so not "observed"): memberM (kept through the coming Refounding) and
+    // memberX (excluded).
     const memberM = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
-    const snapshot = await SnapshotFactory.create([pubkey, memberM], bytesToHex(generateSecretKey()), 1, 1, Date.now());
-    await community.publishToPlane({ plane: "guestbook" }, snapshot, {});
+    const memberX = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
+    const oldSnapshot = await SnapshotFactory.create(
+      [pubkey, memberM, memberX],
+      bytesToHex(generateSecretKey()),
+      1,
+      1,
+      Date.now(),
+    );
+    await community.publishToPlane({ plane: "guestbook" }, oldSnapshot, {});
     await settle();
 
     // Before a Refounding the epoch has no refounder → the snapshot is not honored.
     expect(community.material.refounder).toBeUndefined();
     expect(community.state$.value.members.has(memberM)).toBe(false);
+    expect(community.state$.value.members.has(memberX)).toBe(false);
 
-    // Refounding mints a new epoch whose refounder is us; the fold rebinds to it so the
-    // now-trusted snapshot seeds the full memberlist on the new epoch.
-    await community.refound({ keep: [pubkey] });
+    // Refound keeping memberM, excluding memberX. The new epoch's Guestbook
+    // (`guestbook@1`) starts empty — the CORD-02 §5 epoch-0 snapshot lives on
+    // `guestbook@0` and is never read by the new epoch's fold, so neither member
+    // is seeded yet by it.
+    await community.refound({ keep: [pubkey, memberM] });
     await settle();
     expect(community.material.refounder).toBe(pubkey);
+    expect(community.state$.value.members.has(memberM)).toBe(false);
+    expect(community.state$.value.members.has(memberX)).toBe(false);
+
+    // Simulate the refounder's new-epoch snapshot (`buildRefounding`'s non-gating
+    // step, CORD-02 §5) landing on `guestbook@1` — present-members-only, so it
+    // names memberM (kept) but never memberX (excluded).
+    const newSnapshot = rumorFromTemplate(
+      await SnapshotFactory.create([pubkey, memberM], bytesToHex(generateSecretKey()), 1, 1, Date.now()),
+      pubkey,
+    );
+    community.guestbookStore.add(newSnapshot);
+    await settle();
+
+    // The NEW epoch's snapshot seeds memberM...
     expect(community.state$.value.members.has(memberM)).toBe(true);
+    // ...but memberX, whose only-ever seed was the OLD epoch's snapshot, stays
+    // absent: prior-epoch seeding does not carry across a Refounding (ROTATE-04).
+    expect(community.state$.value.members.has(memberX)).toBe(false);
+
+    community.dispose();
+  });
+
+  it("drops a member excluded by a Refounding even with a prior-epoch Join or observed authorship (ROTATE-04)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // A member with an epoch-0 self-signed Join.
+    const memberJoin = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
+    community.guestbookStore.add(rumorFromTemplate(await JoinLeaveFactory.create("join"), memberJoin, 1_000));
+    await settle();
+    expect(community.state$.value.members.has(memberJoin)).toBe(true);
+
+    // A member with ONLY epoch-0 OBSERVED authorship — a guestbook-plane rumor of
+    // no Join/Leave/Kick/Snapshot kind, admitted via `foldMembers`'s `!c`
+    // forward-observation branch (guestbook.ts:109-111).
+    const memberObserved = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
+    community.guestbookStore.add(rumorFromTemplate({ kind: 1, content: "hi", tags: [] }, memberObserved, 1_500));
+    await settle();
+    expect(community.state$.value.members.has(memberObserved)).toBe(true);
+
+    // Refound keeping only the owner — neither member is kept.
+    await community.refound({ keep: [pubkey] });
+    await settle();
+
+    // Both members' ONLY activity lives on `guestbook@0`; the new epoch's fold
+    // reads only `guestbook@1`, so neither the prior-epoch Join nor the
+    // prior-epoch observed authorship resurrects them.
+    expect(community.state$.value.members.has(memberJoin)).toBe(false);
+    expect(community.state$.value.members.has(memberObserved)).toBe(false);
 
     community.dispose();
   });

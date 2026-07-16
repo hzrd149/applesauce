@@ -283,7 +283,7 @@ export class ConcordCommunity {
     // Eagerly create the community planes so the state model has stores to fold
     // and the (cached) history renders immediately, before sync fills the delta.
     this.storeFor("control");
-    this.storeFor("guestbook");
+    this.storeFor(this.guestbookPlaneKey());
     this.storeFor("dissolved");
     this.storeFor("rekey");
 
@@ -305,6 +305,12 @@ export class ConcordCommunity {
 
   get material(): JoinMaterial {
     return this.keys.material;
+  }
+
+  /** The current-epoch Guestbook store key (CORD-02 §5: the Guestbook rides the
+   *  epoch) — mirrors `planeStoreKey`'s `guestbook@<epoch>` scheme in sync.ts. */
+  private guestbookPlaneKey(): string {
+    return `guestbook@${this.keys.material.root_epoch}`;
   }
 
   get communityId(): string {
@@ -362,9 +368,11 @@ export class ConcordCommunity {
     return this.storeFor("control");
   }
 
-  /** The Guestbook Plane {@link RumorStore} (Joins/Leaves/Kicks/Snapshots). */
+  /** The current-epoch Guestbook Plane {@link RumorStore} (Joins/Leaves/Kicks/
+   *  Snapshots). The Guestbook rides the epoch (CORD-02 §5) — a Refounding's new
+   *  epoch reads a fresh store; see {@link guestbookPlaneKey}. */
   get guestbookStore(): ConcordRumorStore {
-    return this.storeFor("guestbook");
+    return this.storeFor(this.guestbookPlaneKey());
   }
 
   /** A channel's {@link RumorStore}. Consumers render messages themselves off the
@@ -393,9 +401,17 @@ export class ConcordCommunity {
   private rewireState(): void {
     this.stateSub?.unsubscribe();
     const control = this.storeFor("control");
-    const guestbook = this.storeFor("guestbook");
+    const guestbook = this.storeFor(this.guestbookPlaneKey());
     const dissolved = this.storeFor("dissolved");
-    const observed = [...this.stores.values()];
+    // The live `observed` set is scoped to current-epoch guestbook (added by the
+    // model itself, below) + channel activity only. Control/dissolved/rekey are
+    // protocol/tombstone traffic, not "publishing" — excluding them also keeps the
+    // control store from entangling the roster fold with observed-authorship
+    // (Phase 8/9 territory). Public-channel stores stay un-epoch-scoped (continuous
+    // chat history); a removed member's OLD public-channel activity is a known
+    // residual DEFERRED to Phase 7 (channel epoch-keying) — see 06-RESEARCH.md
+    // Open Question 1 and the community.test.ts regression test that pins it.
+    const observed = [...this.stores.entries()].filter(([key]) => key.startsWith("channel:")).map(([, s]) => s);
     const state$ = control.model(ConcordCommunityStateModel, this.material, { guestbook, observed });
     const dissolved$ = dissolved
       .timeline([{}])

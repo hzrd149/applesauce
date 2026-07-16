@@ -249,8 +249,17 @@ export function buildChain(material: JoinMaterial): JoinMaterial[] {
   }));
 }
 
-/** The logical plane a decoded wrap belongs to — the RumorStore key. Community
- *  planes key by kind; channels key by their stable id (shared across epochs). */
+/** The logical plane a decoded wrap belongs to — the RumorStore key. Channels
+ *  key by their stable id (shared across epochs); control/dissolved/rekey key by
+ *  kind (not epoch-partitioned in this phase). The Guestbook rides the epoch
+ *  (CORD-02 §5), so its key includes `info.epoch` — a Refounding's new epoch
+ *  starts a fresh store, and `foldMembers` reads only the current epoch's Joins/
+ *  Leaves/Kicks/Snapshots + observed authors, so a removed member's prior-epoch
+ *  activity can't resurrect them. Old-epoch guestbook stores stay addressable for
+ *  reading history until the retention trim (`adoptRefounding`, D-03) disposes
+ *  them once their epoch leaves `held_roots`. */
 export function planeStoreKey(info: PlaneInfo): string {
-  return info.type === "channel" ? `channel:${info.channelId}` : info.type;
+  if (info.type === "channel") return `channel:${info.channelId}`;
+  if (info.type === "guestbook") return `guestbook@${info.epoch}`;
+  return info.type;
 }
