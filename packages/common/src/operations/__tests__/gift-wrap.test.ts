@@ -9,7 +9,7 @@ import {
   RumorSymbol,
   SealSymbol,
 } from "../../helpers/gift-wrap.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { kinds } from "applesauce-core/helpers/event";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { giftWrap, sealRumor, toRumor, wrapSeal } from "../gift-wrap.js";
@@ -179,6 +179,30 @@ describe("giftWrap", () => {
     expect(getRumorSeals(rumor!)).toContain(seal!);
     expect(getSealGiftWrap(seal!)).toBe(gift);
     expect(getRumorGiftWraps(rumor!)).toContain(gift);
+  });
+
+  it("is readable without any decryption: the rumor content survives the factory build", async () => {
+    const event = user.event({ kind: kinds.PrivateDirectMessage, content: "hello without decrypt" });
+
+    // Spy on both parties' decrypt so we can prove the read path never runs the decryption cycle.
+    const senderDecrypt = vi.spyOn(user.nip44, "decrypt");
+    const recipientDecrypt = vi.spyOn(other.nip44, "decrypt");
+
+    const gift = await giftWrap(other.pubkey, user)(event);
+
+    // Only the READ path is under test — ignore anything the build itself did.
+    senderDecrypt.mockClear();
+    recipientDecrypt.mockClear();
+
+    const rumor = getGiftWrapRumor(gift);
+    expect(rumor?.kind).toBe(kinds.PrivateDirectMessage);
+    expect(rumor?.content).toBe("hello without decrypt");
+    expect(rumor?.pubkey).toBe(user.pubkey);
+
+    // The original goal of the carry-forward symbols: a complex encrypted event built in the
+    // factory stays readable off its own instance with no decryption/verification cycle.
+    expect(senderDecrypt).not.toHaveBeenCalled();
+    expect(recipientDecrypt).not.toHaveBeenCalled();
   });
 
   it("full-pipe survival: the gift wrap's build-path EncryptedContentSymbol survives the entire toRumor->sealRumor->wrapSeal pipe non-enumerably", async () => {
