@@ -105,16 +105,16 @@ Plans:
   The 11 WARNING-severity findings in the same review are lower priority; fold in opportunistically where a site is touched, otherwise leave for milestone review.
 **Requirements**: TBD (governed by CONTEXT.md decisions D-01..D-14; CACHE-02 superseded+reinterpreted per D-06)
 **Depends on:** Phase 5
-**Plans:** 13 plans (4 waves)
+**Plans:** 5/13 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 05.1-01-PLAN.md — Mechanism: move gift-wrap symbols to core, static PRESERVE_EVENT_SYMBOLS, carry-forward half in both strip loops (wave 1)
-- [ ] 05.1-02-PLAN.md — Core guard fixes: CR-01 contacts unlock-guard, CR-04 copySymbols replaceable guard (wave 1)
-- [ ] 05.1-03-PLAN.md — Core input-safety fixes: CR-05 stamp copy-then-delete, Site-1 unlockHiddenTags spread (wave 1)
-- [ ] 05.1-04-PLAN.md — Common unlock-guard family: CR-02 emoji-pack/mute/trusted-assertions (wave 1)
-- [ ] 05.1-05-PLAN.md — Common lock + memo: CR-03 lockAppData, groups D-02/D-03 fix + line-139 delete (wave 1)
+- [x] 05.1-01-PLAN.md — Mechanism: move gift-wrap symbols to core, static PRESERVE_EVENT_SYMBOLS, carry-forward half in both strip loops (wave 1)
+- [x] 05.1-02-PLAN.md — Core guard fixes: CR-01 contacts unlock-guard, CR-04 copySymbols replaceable guard (wave 1)
+- [x] 05.1-03-PLAN.md — Core input-safety fixes: CR-05 stamp copy-then-delete, Site-1 unlockHiddenTags spread (wave 1)
+- [x] 05.1-04-PLAN.md — Common unlock-guard family: CR-02 emoji-pack/mute/trusted-assertions (wave 1)
+- [x] 05.1-05-PLAN.md — Common lock + memo: CR-03 lockAppData, groups D-02/D-03 fix + line-139 delete (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -259,7 +259,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
 | 5. Cache Identity Memo Fix | v1.1 | 14/14 | In gap closure | - |
-| 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 0/TBD | Not started | - |
+| 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 5/13 | In Progress|  |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |

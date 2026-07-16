@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 05
-current_phase_name: cache-identity-memo-fix
+current_phase: 05.1
+current_phase_name: symbol-propagation-redesign
 status: executing
 stopped_at: Phase 05.1 context gathered
-last_updated: "2026-07-16T14:24:19.762Z"
+last_updated: "2026-07-16T14:30:39.596Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 05 execution started
+last_activity_desc: Phase 05.1 execution started
 progress:
   total_phases: 9
   completed_phases: 1
-  total_plans: 14
+  total_plans: 27
   completed_plans: 14
   percent: 11
 ---
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 05 — cache-identity-memo-fix
+**Current focus:** Phase 05.1 — symbol-propagation-redesign
 
 ## Current Position
 
-Phase: 05 (cache-identity-memo-fix) — EXECUTING
-Plan: 1 of 14
-Status: Ready to execute
-Last activity: 2026-07-16 — Phase 05 execution started
+Phase: 05.1 (symbol-propagation-redesign) — EXECUTING
+Plan: 1 of 13
+Status: Executing Phase 05.1
+Last activity: 2026-07-16 — Phase 05.1 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
