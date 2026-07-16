@@ -98,7 +98,9 @@ export function getHiddenProviders<T extends NostrEvent>(event: T): TrustedProvi
 
 /** Checks if the hidden providers are unlocked */
 export function isHiddenProvidersUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedTrustedProviderList {
-  return TrustedProvidersHiddenSymbol in event || isHiddenTagsUnlocked(event);
+  return (
+    isHiddenTagsUnlocked(event) && (TrustedProvidersHiddenSymbol in event || getHiddenProviders(event) !== undefined)
+  );
 }
 
 /** Unlocks the hidden providers in a trusted provider list event */
