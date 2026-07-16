@@ -139,10 +139,8 @@ export function isHiddenFavoriteEmojiPacksUnlocked<T extends NostrEvent>(
 ): list is T & UnlockedFavoriteEmojiPacks {
   return (
     isHiddenTagsUnlocked(list) &&
-    (FavoriteEmojiPacksHiddenSymbol in list ||
-      FavoriteEmojiPacksHiddenPointersSymbol in list ||
-      getHiddenFavoriteEmojis(list) !== undefined ||
-      getHiddenFavoriteEmojiPackPointers(list) !== undefined)
+    getHiddenFavoriteEmojis(list) !== undefined &&
+    getHiddenFavoriteEmojiPackPointers(list) !== undefined
   );
 }
 
