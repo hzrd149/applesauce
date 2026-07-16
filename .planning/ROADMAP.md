@@ -30,7 +30,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 **TEST-01 is a standing criterion across Phases 5–12, not a single phase's deliverable.** It is anchored at Phase 5 for requirement accounting, but it does **not** close there. Every phase that touches a derivation, fold, or wire shape the specs define by formula or example carries an explicit spec-derived-assertion criterion in its numbered list below (Phases 5, 6, 7, 8, 9, 10, 11, 12). Rationale: all 189 concord tests passed while 9 HIGH bugs were live because every test compared the implementation against itself. A phase permitted to assert against its own output reintroduces the milestone's root cause. Phase 7 is the sharpest case — the channel-keying derivations CORD-03 §1 defines by formula are precisely where H07 hid, and a spec-derived probe is what exposed it.
 
 - [ ] **Phase 5: Cache Identity Memo Fix** - Core cache memos stop surviving object spread in `applesauce-core`, unblocking every downstream rotation fix (in gap closure — CACHE-02 open, reduced round-3 scope)
-- [ ] **Phase 5.1: Symbol Propagation Redesign (INSERTED)** - Every symbol write becomes non-enumerable and the factory pipeline carries the `PRESERVE_EVENT_SYMBOLS` whitelist explicitly, collapsing the identity-memo/carry-forward taxonomy into one rule and deleting the strip loops
+- [x] **Phase 5.1: Symbol Propagation Redesign (INSERTED)** - Every symbol write becomes non-enumerable and the factory pipeline carries the `PRESERVE_EVENT_SYMBOLS` whitelist explicitly, collapsing the identity-memo/carry-forward taxonomy into one rule and deleting the strip loops (completed 2026-07-16)
 - [ ] **Phase 6: Refounding Rotation & Authority Correctness** - A Refounding actually rotates its addresses in-session, drops excluded members from the memberlist, and is honored only from a rotator who outranks every removed target
 - [ ] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug)
 - [ ] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member
@@ -105,7 +105,7 @@ Plans:
   The 11 WARNING-severity findings in the same review are lower priority; fold in opportunistically where a site is touched, otherwise leave for milestone review.
 **Requirements**: TBD (governed by CONTEXT.md decisions D-01..D-14; CACHE-02 superseded+reinterpreted per D-06)
 **Depends on:** Phase 5
-**Plans:** 12/13 plans executed
+**Plans:** 13/13 plans complete
 
 Plans:
 **Wave 1**
@@ -131,7 +131,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 05.1-13-PLAN.md — Strip-loop deletion (delete-loop half removed, carry-forward kept) + full-suite gate (wave 4)
+- [x] 05.1-13-PLAN.md — Strip-loop deletion (delete-loop half removed, carry-forward kept) + full-suite gate (wave 4)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
 
@@ -259,7 +259,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 3. RumorStore & verification | v1.0 | 3/3 | Complete | 2026-07-09 |
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
 | 5. Cache Identity Memo Fix | v1.1 | 14/14 | In gap closure | - |
-| 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 12/13 | In Progress|  |
+| 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete   | 2026-07-16 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
