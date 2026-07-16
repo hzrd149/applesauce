@@ -46,7 +46,8 @@ export async function pipe<T>(value: T, ...operations: Array<(v: any) => any | P
 
 /**
  * @param fns - An array of operations to pipe together
- * @param preserve - If set an array of symbols to keep, all other symbols will be removed
+ * @param preserve - If set, an array of symbols to carry forward from the previous value onto
+ * the result when a same-kind step's own spread drops a non-enumerable symbol write
  * @internal
  */
 export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?: Set<symbol>): Operation<T, R> {
@@ -67,12 +68,6 @@ export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?:
         typeof prevValue === "object" &&
         prevValue !== null
       ) {
-        const keys = Reflect.ownKeys(result).filter((key) => typeof key === "symbol");
-
-        for (const symbol of keys) {
-          if (!preserve.has(symbol)) Reflect.deleteProperty(result, symbol);
-        }
-
         // Carry forward: restore any preserved symbol prevValue had that result is missing
         // (an operation's own internal spread — e.g. modifyPublicTags's `{ ...draft, tags }` —
         // drops non-enumerable writes; this explicitly restores them instead of relying on

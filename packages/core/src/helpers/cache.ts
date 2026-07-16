@@ -20,13 +20,10 @@
  * writes non-enumerable so a spread drops the write unless the pipe carries it
  * forward. The write descriptor's other two flags are load-bearing, not
  * stylistic:
- *   - `configurable: true` is required because without it,
- *     `pipeFromAsyncArray`'s delete loop would fail silently instead of
- *     dropping the memo: `Reflect.deleteProperty` does NOT throw on a
- *     non-configurable property, it returns `false`, so a non-configurable
- *     memo would ride through the rest of the pipe as a stale value instead
- *     of being deleted. That silent-stale outcome is materially more
- *     dangerous than a throw, and is the exact shape of CONCORD-H01.
+ *   - `configurable: true` is required because `setCachedValue` may be called
+ *     again on the same event/symbol to overwrite a previous memo via
+ *     `Object.defineProperty` — redefining a non-configurable property throws
+ *     a `TypeError` instead of updating the value.
  *   - `writable: true` is NOT required by `setCachedValue` itself:
  *     `setCachedValue` overwrites an existing memo via `Object.defineProperty`,
  *     and `configurable: true` alone permits redefinition regardless of
