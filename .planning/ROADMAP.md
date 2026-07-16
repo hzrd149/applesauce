@@ -146,7 +146,18 @@ Plans:
   4. A rotator who does not strictly outrank a target named in a root Refounding's exclusion list is rejected on both the send path (`refound()`) and the receive path (`readRekey`'s guard denies by default when the outrank check is absent, matching the already-correct channel path).
   5. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-02 §4/§5 formula — never by calling the implementation under test — and asserting the implementation matches. Covers the new epoch's control/guestbook/rekey addresses and the post-Refounding memberlist, each derived by hand from the spec.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Spec-derived guestbook + base-rekey address tests with memo-armed spread guards (ROTATE-01/02, D-10/D-11) (wave 1)
+- [ ] 06-02-PLAN.md — Memberlist epoch-scoping: epoch-keyed guestbook store + scoped observed set + D-03 retention trim (ROTATE-04/02, D-01..D-04) (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-03-PLAN.md — Authority guards both paths: refound() send-path outrank loop + fail-closed readRekey receive path (AUTH-01/02, D-05..D-09) (wave 2)
 
 ### Phase 7: Private Channel Keying
 
@@ -260,7 +271,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 4. Common package rumor support | v1.0 | 1/1 | Complete | 2026-07-09 |
 | 5. Cache Identity Memo Fix | v1.1 | 14/14 | In gap closure | - |
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete    | 2026-07-16 |
-| 6. Refounding Rotation & Authority Correctness | v1.1 | 0/TBD | Not started | - |
+| 6. Refounding Rotation & Authority Correctness | v1.1 | 0/3 | Not started | - |
 | 7. Private Channel Keying | v1.1 | 0/TBD | Not started | - |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
 | 9. Authority & Permission Fold Correctness | v1.1 | 0/TBD | Not started | - |
