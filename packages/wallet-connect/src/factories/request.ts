@@ -1,5 +1,6 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { KnownEventTemplate } from "applesauce-core/helpers";
+import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { includeSingletonTag } from "applesauce-core/operations/tags";
 import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
 import { WALLET_REQUEST_KIND } from "../helpers/request.js";
@@ -25,15 +26,21 @@ export class WalletRequestFactory extends EventFactory<typeof WALLET_REQUEST_KIN
 
   request<T>(request: T, encryption: WalletConnectEncryptionMethod = "nip44_v2"): this {
     let result: this;
-    result = this.chain(async (draft) => {
-      const encrypted = await setEncryptedContent(
-        draft.tags.find((t) => t[0] === "p")?.[1] || "",
-        JSON.stringify(request),
-        result.signer,
-        encryption === "nip44_v2" ? "nip44" : "nip04",
-      )(draft);
-      return includeSingletonTag(["encryption", encryption])(encrypted);
-    });
+    // Compose via eventPipe so the "encryption" tag's `{ ...draft }` spread cannot silently drop
+    // the non-enumerable EncryptedContentSymbol that setEncryptedContent writes — the pipe's
+    // same-kind carry-forward restores it. Sequencing these two operations by hand (encrypt then
+    // spread) dropped the plaintext cache once the write became non-enumerable.
+    result = this.chain((draft) =>
+      eventPipe(
+        setEncryptedContent(
+          draft.tags.find((t) => t[0] === "p")?.[1] || "",
+          JSON.stringify(request),
+          result.signer,
+          encryption === "nip44_v2" ? "nip44" : "nip04",
+        ),
+        includeSingletonTag(["encryption", encryption]),
+      )(draft),
+    );
     return result;
   }
 }
