@@ -34,8 +34,8 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 ### Authority & Permissions (AUTH)
 
-- [ ] **AUTH-01**: A root Refounding's removal is honored only from a rotator who strictly outranks the removed target — the receive-path guard denies when absent rather than permitting *(H03a; any BAN holder can currently evict the owner)*
-- [ ] **AUTH-02**: `refound()` rejects excluding any target the caller does not strictly outrank, mirroring `rotateChannel()` *(H03b; send-path half of the same hole)*
+- [x] **AUTH-01**: A root Refounding's removal is honored only from a rotator who strictly outranks the removed target — the receive-path guard denies when absent rather than permitting *(H03a; any BAN holder can currently evict the owner)*
+- [x] **AUTH-02**: `refound()` rejects excluding any target the caller does not strictly outrank, mirroring `rotateChannel()` *(H03b; send-path half of the same hole)*
 - [ ] **AUTH-03**: A Grant edition is folded only at its derived coordinate (`grantLocator`), so the roster is not delivery-order dependent *(M05; the helper exists and is used on the write path but never on the read path)*
 - [ ] **AUTH-04**: A malformed Grant is skipped rather than throwing out of `foldControl` and failing every member's community state *(M06)*
 - [ ] **AUTH-05**: `kick()` and `ban()` reject locally when the caller lacks the bit or the rank, matching `rotateChannel`/`refound` *(L04; no authority is gained today — the read path enforces — but the UI shows a removal that never happened)*
@@ -121,8 +121,8 @@ Deferred — acknowledged, not in this roadmap.
 | ROTATE-01 | Phase 6 | Complete |
 | ROTATE-02 | Phase 6 | Complete |
 | ROTATE-04 | Phase 6 | Complete |
-| AUTH-01 | Phase 6 | Pending |
-| AUTH-02 | Phase 6 | Pending |
+| AUTH-01 | Phase 6 | Complete |
+| AUTH-02 | Phase 6 | Complete |
 | CHAN-01 | Phase 7 | Pending |
 | CHAN-02 | Phase 7 | Pending |
 | CHAN-03 | Phase 7 | Pending |

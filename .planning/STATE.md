@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 06
 current_phase_name: refounding-rotation-authority-correctness
-status: executing
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-07-16T20:10:53.146Z"
+status: verifying
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-07-16T20:25:29.261Z"
 last_activity: 2026-07-16
 last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 30
-  completed_plans: 29
-  percent: 22
+  completed_plans: 30
+  percent: 33
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 06 (refounding-rotation-authority-correctness) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-16 — Phase 06 execution started
 
 Progress: [█████████░] 93%
@@ -50,6 +50,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | 4. Common package rumor support | 1 | 10min |
 | Phase 06 P01 | 5min | 2 tasks | 1 files |
 | Phase 06 P02 | 22min | 2 tasks | 6 files |
+| Phase 06 P03 | 10min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Phase 06-02: epoch-scoped the Guestbook plane store (guestbook@<epoch>) and scoped the live observed set to current-epoch guestbook + channel stores only, resolving ROTATE-04's memberlist resurrection defect without touching foldMembers — CORD-02 §5: the Guestbook rides the epoch — matches the spec's structural model rather than a timestamp heuristic
 - [Phase ?]: Phase 06-02: added a D-03 retention trim disposing stale-epoch guestbook stores once their epoch leaves held_roots, proven via a test that manually simulates the (currently nonexistent) compaction precondition — Keys and stores share one retention horizon; the trim must be ready before a future compaction step ages entries out of held_roots
 - [Phase ?]: Phase 06-02: Open Question 1 (public-channel observed residual) deliberately left unfixed and pinned by a regression test with an explicit Phase-7 deferral comment — Channel epoch-keying is out of Phase 6's scope; fixing it here would cross into Phase 7 territory
+- [Phase 06]: Phase 06-03: AUTH-02 - refound() gained a per-target BAN outrank loop mirroring rotateChannel's, throwing before buildRefounding/any publish so a failed outrank check aborts the whole Refounding atomically
+- [Phase 06]: Phase 06-03: AUTH-01 - readRekeyScoped's removal branch is now fail-closed (held.canRemoveSelf?.(rotator) === true); readRekey supplies canRemoveSelf at both call sites (checkRekey, syncEpoch) via hasPerm/canActOn over PERM.BAN
+- [Phase 06]: Phase 06-03: Rule 1 auto-fix - the shared fail-closed guard also gated the channel scope; channel-sync.ts's sync-walk path never threaded canRemoveSelf (only the live checkRekey path did), fixed by threading the already-existing predicate through ChannelSyncContext, no new rank logic
 
 ### Pending Todos
 
@@ -98,8 +102,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-16T20:10:53.138Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-07-16T20:25:29.252Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
