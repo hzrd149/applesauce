@@ -35,10 +35,17 @@ export interface EncryptedContentCache {
 
 /** Marks the encrypted content as being from a cache */
 export function markEncryptedContentFromCache<T extends object>(event: T) {
-  // A restore-provenance flag that is NOT propagated across duplicate events at all — unlike
-  // FromCacheSymbol it is not a member of EventStore.copySymbolsToDuplicateEvent's merge list
-  // (see cache.ts taxonomy) and is only ever read on the instance it was written to. Consequence:
-  // isEncryptedContentFromCache gates persistEncryptedContent below — assuming provenance survives dedup goes untested.
+  // A restore-provenance flag that is instance-local — unlike FromCacheSymbol, it is NOT a member
+  // of EventStore.copySymbolsToDuplicateEvent's merge list (see cache.ts taxonomy), so a
+  // duplicate-delivery merge never copies it onto another object. persistEncryptedContent's
+  // `persist` and `persistSeals` subscriptions both filter on isEncryptedContentFromCache(event)
+  // === false to avoid re-persisting content that was just restored from the cache: if a
+  // logically-identical event ever reached that filter as a distinct object lacking this flag, the
+  // filter would fail open and re-persist already-cached content. Whether that is reachable is
+  // unverified here: EventMemory.add keeps the originally-tracked object for a same-id duplicate
+  // and discards the newcomer entirely, so the ordinary EventStore.add duplicate-delivery path does
+  // not appear to replace the tracked instance — but replaceable-history and cross-store paths were
+  // not traced as part of this comment-only fix.
   Reflect.set(event, EncryptedContentFromCacheSymbol, true);
 }
 
