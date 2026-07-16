@@ -11,7 +11,7 @@ import {
   verifyEvent,
 } from "nostr-tools/pure";
 import { IAsyncEventStore, IEventStore } from "../event-store/interface.js";
-import { getOrComputeCachedValue } from "./cache.js";
+import { getOrComputeCachedValue, setCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
 export {
@@ -125,12 +125,11 @@ export function getEventUID<E extends StoreEvent = NostrEvent>(event: E) {
   if (!uid) {
     if (isReplaceable(event.kind)) uid = getReplaceableAddress(event) ?? event.id;
     else uid = event.id;
-    // Derived from the event's own kind/pubkey/tags — identity memo per cache.ts's taxonomy. But
-    // this write is a plain enumerable Reflect.set, so the value does survive a spread today: a
-    // copy with different fields inherits the stale UID instead of recomputing it. Known,
-    // deliberately-deferred gap; only pipeFromAsyncArray's delete loop (helpers/pipeline.ts)
-    // masks it, on the one call path that runs it.
-    Reflect.set(event, EventUIDSymbol, uid);
+    // Identity memo per cache.ts's one rule: written non-enumerable via setCachedValue, so a copy
+    // with different kind/pubkey/tags does not inherit this stale UID — it recomputes on next
+    // access instead. D-12: Phase 5's hot-path deferral for this site is intentionally lifted
+    // here — "one rule" is exceptionless.
+    setCachedValue(event, EventUIDSymbol, uid);
   }
 
   return uid;
@@ -171,7 +170,7 @@ export function verifyWrappedEvent(event: NostrEvent): event is VerifiedEvent {
 
 /** Sets events verified flag without checking anything */
 export function fakeVerifyEvent(event: NostrEvent): event is VerifiedEvent {
-  event[verifiedSymbol] = true;
+  setCachedValue(event, verifiedSymbol, true);
   return true;
 }
 
@@ -180,7 +179,7 @@ export function markFromCache(event: NostrEvent) {
   // FromCacheSymbol is propagated across duplicate events via the event store's merge list
   // (EventStore.copySymbolsToDuplicateEvent), not via object spread — accumulated state (see
   // cache.ts taxonomy).
-  Reflect.set(event, FromCacheSymbol, true);
+  setCachedValue(event, FromCacheSymbol, true);
 }
 
 /** Returns if an event was from a cache */

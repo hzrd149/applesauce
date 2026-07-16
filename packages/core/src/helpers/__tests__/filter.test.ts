@@ -2,7 +2,7 @@ import { kinds } from "nostr-tools";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { matchFilter, matchFilters } from "../filter.js";
+import { EventIndexableTagsSymbol, getIndexableTags, matchFilter, matchFilters } from "../filter.js";
 
 let user1: FakeUser;
 let user2: FakeUser;
@@ -414,6 +414,28 @@ describe("matchFilter- NIP-91 AND Operator", () => {
 
       expect(matchFilter({ "&t": ["meme", "cat"] }, event)).toBe(true);
     });
+  });
+});
+
+describe("getIndexableTags (D-04)", () => {
+  it("writes the memo non-enumerable and a spread copy with different tags recomputes its own set", () => {
+    const event = user1.note("Test", { tags: [["t", "meme"]] });
+    const original = getIndexableTags(event);
+    expect(original).toEqual(new Set(["t:meme"]));
+
+    // Non-enumerable: doesn't show up in Object.keys/for-in/spread
+    const descriptor = Object.getOwnPropertyDescriptor(event, EventIndexableTagsSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    // A spread copy with DIFFERENT tags must not inherit the source's memo
+    const copy = { ...event, tags: [["t", "dog"]] };
+    expect(Object.prototype.hasOwnProperty.call(copy, EventIndexableTagsSymbol)).toBe(false);
+
+    // The copy recomputes its own indexable set from its own tags -- hand-derived, not the source's
+    const handDerived = new Set(["t:dog"]);
+    const recomputed = getIndexableTags(copy);
+    expect(recomputed).toEqual(handDerived);
+    expect(recomputed).not.toBe(original);
   });
 });
 

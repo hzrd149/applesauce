@@ -1,3 +1,4 @@
+import { setCachedValue } from "../helpers/cache.js";
 import { EventModels, IEventStoreStreams, IEventSubscriptions } from "../event-store/index.js";
 import { getParentEventStore, NostrEvent, StoreEvent } from "../helpers/event.js";
 import { EventCast } from "./event.js";
@@ -54,13 +55,14 @@ export function performCast<C extends EventCast<StoreEvent>, E extends StoreEven
   // Create a new instance of the class (the constructor reads only StoreEvent fields).
   const cast = new cls(event as NostrEvent, store);
   // The cast instance is derived from and bound to this specific event instance — identity-memo
-  // shaped per cache.ts's taxonomy. But performCast(copy, cls) would return the cast built
-  // against the ORIGINAL event, and casts.set(cls, cast) would mutate a Map shared by both
-  // objects — a plain enumerable Reflect.set means a spread copy today inherits the same Map by
-  // reference (aliased mutable state, not merely a stale value). Known, deliberately-deferred gap
-  // (D-08 — migration out of scope); only pipeFromAsyncArray's delete loop masks it, on the one
-  // call path that runs it.
-  if (!casts) Reflect.set(event, CASTS_SYMBOL, new Map([[cls, cast]]));
+  // shaped per cache.ts's taxonomy. D-13: this write's DESCRIPTOR migrates to setCachedValue (a
+  // spread copy no longer inherits the Map by non-enumerability alone) — but the deeper defect
+  // stays deferred exactly as Phase 5 left it: casts.set(cls, cast) mutates a Map shared by
+  // reference, so performCast(copy, cls) would still return the cast built against the ORIGINAL
+  // event, and a copy sharing the SAME Map reference would still mutate both objects' cast cache
+  // together (aliased mutable state, not merely a stale value). That aliasing gap is a separate,
+  // deeper defect (D-08, migration out of scope here) — do not conflate the two.
+  if (!casts) setCachedValue(event, CASTS_SYMBOL, new Map([[cls, cast]]));
   else casts.set(cls, cast);
 
   return cast;
