@@ -70,8 +70,10 @@ export function getPublicContacts(event: NostrEvent): ProfilePointer[] {
 
 /** Checks if the hidden contacts are unlocked */
 export function isHiddenContactsUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedContacts {
-  // No need for try catch or proactivly parsing here since it only depends on hidden tags
-  return isHiddenTagsUnlocked(event);
+  // Hidden tags being unlocked does not imply the contacts were ever parsed and cached: require
+  // HiddenContactsSymbol to already be present, or derive it now via getHiddenContacts, so this
+  // guard never lies to a caller doing `event[HiddenContactsSymbol]` immediately after (CR-01).
+  return isHiddenTagsUnlocked(event) && (HiddenContactsSymbol in event || getHiddenContacts(event) !== undefined);
 }
 
 /** Returns only the hidden contacts from a contacts list event */

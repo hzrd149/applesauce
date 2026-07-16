@@ -199,8 +199,7 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
       throw new Error("Source and destination events must have the same ID");
     if (
       isReplaceable(source.kind) &&
-      source.pubkey !== dest.pubkey &&
-      getReplaceableIdentifier(source) !== getReplaceableIdentifier(dest)
+      (source.pubkey !== dest.pubkey || getReplaceableIdentifier(source) !== getReplaceableIdentifier(dest))
     )
       throw new Error("Source and destination events must have the same pubkey and replaceable identifier");
 

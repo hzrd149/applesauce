@@ -1,6 +1,8 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
+import { verifiedSymbol } from "nostr-tools/pure";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
+import { EncryptedContentSymbol } from "../../helpers/encrypted-content.js";
 import { unixNow } from "../../helpers";
 import { kinds, NostrEvent } from "../../helpers/event.js";
 import { addSeenRelay, getSeenRelays } from "../../helpers/relays.js";
@@ -389,6 +391,48 @@ describe("replaceable", () => {
     let value: NostrEvent | undefined = undefined;
     observable.subscribe((v) => (value = v));
     expect(value).toBe(profile);
+  });
+});
+
+describe("copySymbolsToDuplicateEvent (CR-04 regression)", () => {
+  const userA = new FakeUser();
+  const userB = new FakeUser();
+
+  it("throws when pubkey matches but the replaceable identifier differs", () => {
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "list-one"]] });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "list-two"]] });
+
+    // Prove the guard is what stops the merge, not an incidental absence of symbols to copy.
+    Reflect.set(source, verifiedSymbol, true);
+    Reflect.set(source, EncryptedContentSymbol, "leaked plaintext");
+
+    expect(() => EventStore.copySymbolsToDuplicateEvent(source, dest)).toThrow(
+      /same pubkey and replaceable identifier/,
+    );
+    expect(Reflect.has(dest, EncryptedContentSymbol)).toBe(false);
+  });
+
+  it("throws when the replaceable identifier matches but pubkey differs", () => {
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+    const dest = userB.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+
+    Reflect.set(source, verifiedSymbol, true);
+    Reflect.set(source, EncryptedContentSymbol, "leaked plaintext");
+
+    expect(() => EventStore.copySymbolsToDuplicateEvent(source, dest)).toThrow(
+      /same pubkey and replaceable identifier/,
+    );
+    expect(Reflect.has(dest, EncryptedContentSymbol)).toBe(false);
+  });
+
+  it("merges symbols when pubkey and replaceable identifier both match", () => {
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+
+    Reflect.set(source, EncryptedContentSymbol, "plaintext");
+
+    expect(EventStore.copySymbolsToDuplicateEvent(source, dest)).toBe(true);
+    expect(Reflect.get(dest, EncryptedContentSymbol)).toBe("plaintext");
   });
 });
 
