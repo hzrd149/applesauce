@@ -1,6 +1,6 @@
 ---
 phase: 05-cache-identity-memo-fix
-reviewed: 2026-07-15T17:50:00Z
+reviewed: 2026-07-16T00:00:00Z
 depth: standard
 files_reviewed: 28
 files_reviewed_list:
@@ -33,712 +33,508 @@ files_reviewed_list:
   - packages/core/src/operations/event.ts
   - packages/core/src/operations/tags.ts
 findings:
-  critical: 3
-  warning: 10
-  info: 3
+  critical: 5
+  warning: 11
+  info: 0
   total: 16
 status: issues_found
-supersedes: prior 05-REVIEW.md dated 2026-07-15T13:30:00Z
 ---
 
 # Phase 05: Code Review Report
 
-**Reviewed:** 2026-07-15T17:50:00Z
+**Reviewed:** 2026-07-16
 **Depth:** standard
-**Files Reviewed:** 28
 **Status:** issues_found
+
+> **Numbering note:** IDs below are fresh for this round (`CR-01…CR-05`, `WR-01…WR-11`) and have
+> **no continuity** with any earlier review's `CR-`/`WR-` numbering. Do not cross-reference by ID.
 
 ## Summary
 
-This phase is a comment-accuracy round: plans 05-06 through 05-11 rewrote explanatory comments that a
-prior review found to be false of the code beneath them. The review axis applied here was therefore
-"is each comment TRUE of the code it describes?", cross-checked against the actual property
-descriptors and against the real membership of `EventStore.copySymbolsToDuplicateEvent`'s merge list.
-Three findings were confirmed by executing probe tests against the current tree, not by reading alone.
+The one runtime change this phase actually made — `setCachedValue`/`getOrComputeCachedValue`
+writing memos non-enumerable via `Object.defineProperty` — is correct, and I verified its
+downstream claims by tracing the mechanism rather than accepting the prose: `Reflect.deleteProperty`
+does return `false` (not throw) on a non-configurable property, so `configurable: true` really is
+load-bearing; `configurable: true` alone really does permit redefinition regardless of `writable`;
+`getOrComputeCachedValue`'s post-compute `Object.defineProperty` really does override the enumerable
+descriptor that `groups.ts`'s in-callback `Reflect.set` creates; and `cache.test.ts`'s carry-forward
+half really is non-vacuous (a non-enumerable write at `modifyHiddenTags`'s return would be dropped
+by `includeAltTag` → `modifyPublicTags`'s `{ ...draft, tags }` before `sign`'s enumerability-blind
+re-copy could rescue it, turning the suite red). The concord CONCORD-H01 narrative also checks out
+against `rollForward`'s and `rollForwardChannel`'s spreads.
 
-**What holds up.** The per-site sweep across common (`bookmark.ts`, `mute.ts`, `emoji-pack.ts`,
-`trusted-assertions.ts`, `lists.ts`, `app-data.ts`) and core (`contacts.ts`, `hidden-tags.ts`,
-`filter.ts`, `event.ts#getEventUID`, `casts/cast.ts`) is now accurate: each of those sites really is
-a hand-rolled enumerable `Reflect.set`, each really does survive a spread today, and
-`pipeFromAsyncArray`'s delete loop really is the only thing scrubbing them. `markEncryptedContentFromCache`'s
-merge-list exclusion claim is true (the list is `[FromCacheSymbol, verifiedSymbol, EncryptedContentSymbol]`).
-`groups.ts`'s subtle "the enclosing `getOrComputeCachedValue` redefines this non-enumerable after the
-callback returns" claim is true. The `concord/keys.ts` CONCORD-H01 narrative is true and its two
-"ARM THE MEMO" tests are genuinely non-vacuous. `cache.test.ts`'s enforcement contract holds under
-tracing (see IN-03).
+The comment corpus is nevertheless wrong in two places I can disprove: one is repeated verbatim
+across **twelve** write sites (WR-01), and one is self-contradictory within a single sentence and
+was introduced by *this round's* diff (WR-02). Both are exactly the defect class this phase exists
+to eliminate.
 
-**What does not.** Three findings block:
-
-1. The taxonomy's single load-bearing **worked example is factually false**. `cache.ts` states
-   `EncryptedContentSymbol` "has TWO write sites, BOTH carry-forward payload". There are **seven**,
-   and `event-store.ts`'s own phase-05 comment classifies one of them as *accumulated state* — a
-   direct contradiction under an exhaustive "TWO" claim. This is the example the taxonomy cites as
-   the thing a symbol-to-category table "would be wrong on"; it is now wrong on its own example.
-2. The **frozen-event throw's blast radius is materially understated**, proven wider than both the
-   comment and the changeset admit. `cache.ts` says the throw is reachable because `EventStore.add`
-   calls `getReplaceableIdentifier` "on every replaceable event". In fact `EventStore.add` calls
-   `getExpirationTimestamp` — also a `getOrComputeCachedValue` route — on **every** event, so
-   `store.add()` now throws a `TypeError` on any frozen event, regular kinds included.
-3. `groups.ts#getHiddenGroups` **permanently poisons its memo with `undefined`**, making
-   `unlockHiddenGroups` resolve `undefined` against a `Promise<GroupPointer[]>` signature and making
-   `isHiddenGroupsUnlocked`'s type guard lie. The phase's comment sits directly on this site and
-   ratifies it as correct.
-
-The "zero behavior change" intent held for the comment plans; the one deliberate runtime change
-(05-01's non-enumerable write) is correct in itself, but CR-02 shows its release framing is wrong.
-
-## Narrative Findings (AI reviewer)
-
-_No `<structural_findings>` block was supplied for this review, so there is no fallow-substrate
-section. All findings below are narrative._
+Separately, reading the submitted files surfaced five genuine correctness defects that outrank the
+comment issues, none of which appear in STATE.md's Deferred Items table: an unlock-guard family that
+hands back `undefined` typed as an array (CR-01, CR-02), a `lock*` function that does not lock
+(CR-03), a validation guard that fails open on the wrong boolean operator (CR-04), and an event
+operation that mutates its caller's input (CR-05).
 
 ## Critical Issues
 
-### CR-01: `cache.ts`'s worked example asserts a false, exhaustive write-site count and contradicts `event-store.ts`
+### CR-01: `unlockHiddenContacts` returns `undefined` typed as `ProfilePointer[]`
 
-**File:** `packages/core/src/helpers/cache.ts:44-66` (worked example), cross-referenced against
-`packages/core/src/event-store/event-store.ts:219-228`
+**File:** `packages/core/src/helpers/contacts.ts:72-75` (guard), `packages/core/src/helpers/contacts.ts:106` (consumer)
+**Issue:** `isHiddenContactsUnlocked` is declared `event is T & UnlockedContacts` — i.e. it asserts
+`HiddenContactsSymbol` is present — but its body only checks `isHiddenTagsUnlocked(event)`. Hidden
+tags being unlocked does **not** imply the contacts were ever parsed and cached. The comment above
+it ("No need for try catch or proactivly parsing here since it only depends on hidden tags") states
+the false premise directly.
 
-**Issue:** The taxonomy's worked example — the passage that justifies the entire "categories classify
-WRITE SITES, not symbols" framing — opens with:
-
-> Worked example — `EncryptedContentSymbol` has TWO write sites, BOTH carry-forward payload but for
-> DIFFERENT reasons
-
-"TWO" is an exhaustive claim. The actual write sites for `EncryptedContentSymbol` in core + common
-are **seven**:
-
-| # | Site | Mechanism | Cited by the example? |
-|---|------|-----------|----------------------|
-| 1 | `operations/tags.ts:90` (`modifyHiddenTags`) | object literal | yes |
-| 2 | `helpers/encrypted-content.ts:125` (`setEncryptedContentCache`) | `Reflect.set` | yes |
-| 3 | `operations/encrypted-content.ts:29` (`setEncryptedContent`) | object literal | **no** |
-| 4 | `operations/event.ts:143` (`stamp`) | `Reflect.set` | no |
-| 5 | `operations/event.ts:180` (`sign`) | `Reflect.set` | no |
-| 6 | `event-store/event-store.ts:225` (merge loop) | `Reflect.set` | no |
-| 7 | `common/operations/gift-wrap.ts:141` (`wrapSeal`) | `Reflect.set` | no |
-
-Site 3 is the most damaging omission: `setEncryptedContent`'s
-`return { ...draft, content: encrypted, [EncryptedContentSymbol]: content }` is structurally
-*identical* to site 1, which the example presents as one of only two. Sites 4/5 are described in
-`operations/event.ts`'s own phase-05 comments as carry-forward payload, so they are known to the
-phase and still uncounted.
-
-Worse, site 6 is classified **differently** by this phase's own comment:
+`unlockHiddenContacts` then trusts the guard:
 
 ```ts
-// packages/core/src/event-store/event-store.ts:222-224
-// These three symbols propagate across duplicate events via this loop rather than via
-// object spread — accumulated state (see cache.ts taxonomy). SeenRelaysSymbol merges via
-// the separate element-wise branch above instead; this loop is not the category's sole definition.
+if (isHiddenContactsUnlocked(event)) return event[HiddenContactsSymbol]; // undefined
 ```
 
-`EncryptedContentSymbol` is one of "these three". So `event-store.ts` calls a write site of
-`EncryptedContentSymbol` *accumulated state*, while `cache.ts` says that symbol has exactly two write
-sites and **both** are *carry-forward payload*. Under the "TWO" claim these two comments cannot both
-be true. A reader reconciling them concludes the taxonomy is unreliable — the precise failure mode
-05-06 was written to eliminate. The example is not incidentally wrong; it is wrong in exactly the way
-it warns the reader about.
+Reachable on a plain call: unlock the hidden tags by any path (`unlockHiddenTags`,
+`unlockHiddenBookmarks`, `unlockHiddenMutes`, …), then call `unlockHiddenContacts` — the guard is
+true, `HiddenContactsSymbol` was never written, and the function resolves to `undefined` against a
+`Promise<ProfilePointer[]>` signature, bypassing its own `if (!contacts) throw` guard further down.
+Callers doing `(await unlockHiddenContacts(e, signer)).map(...)` get a TypeError.
 
-**Fix:** Drop the exhaustive count, make the example enumerate-by-contrast rather than by-census, and
-reconcile it with the merge-loop site explicitly:
+`bookmark.ts:82-86` and `groups.ts:146-148` already implement the correct pattern; contacts is the
+outlier.
 
+**Fix:**
 ```ts
- * Worked example — `EncryptedContentSymbol` is written at several sites that do NOT share a
- * category, proving the taxonomy classifies write sites (not symbols) and that a site's PURPOSE
- * does not decide its category. Three of them:
- *   - carry-forward payload at `operations/tags.ts`'s `modifyHiddenTags` return — the write/build
- *     path ... (existing text unchanged)
- *   - carry-forward payload at `helpers/encrypted-content.ts`'s `setEncryptedContentCache` — the
- *     read/unlock path ... (existing text unchanged)
- *   - accumulated state at `EventStore.copySymbolsToDuplicateEvent`'s merge loop — the dedup path,
- *     where the write propagates an already-unlocked plaintext onto the surviving instance and
- *     spread survival is not the question being answered.
- *   `operations/encrypted-content.ts`'s `setEncryptedContent` and `operations/event.ts`'s
- *   `stamp`/`sign` are further carry-forward sites; this list is illustrative, not a census.
-```
-
----
-
-### CR-02: The frozen-event throw reaches every insert, not just replaceable ones — and ships as a `patch`
-
-**File:** `packages/core/src/helpers/cache.ts:86-95`; `.changeset/cache-frozen-event-throws.md:1-5`
-
-**Issue:** `cache.ts` scopes the reachability of 05-01's new `TypeError` like this:
-
-> `getReplaceableIdentifier` routes through `getOrComputeCachedValue`, and `EventStore.add` calls it
-> on every replaceable event, so this is reachable from a normal insert.
-
-True, but the *narrow* path. `EventStore.add` reaches `getOrComputeCachedValue` earlier and
-unconditionally, via `getExpirationTimestamp`:
-
-- `packages/core/src/event-store/event-store.ts:248` — `const expiration = getExpirationTimestamp(event);` — runs for **every** event, before the `isReplaceable` branch at line 255.
-- `packages/core/src/helpers/expiration.ts:9` — `return getOrComputeCachedValue(event, ExpirationTimestampSymbol, ...)`.
-
-Verified by executing a probe against the current tree:
-
-```
-EventStore.add(Object.freeze(user.event({ kind: 30000, tags: [["d","x"]] })))
-  → TypeError                                          (matches the comment)
-EventStore.add(Object.freeze(user.note("hi")))         (a regular kind — comment implies safe)
-  → TypeError: Cannot define property Symbol(expiration-timestamp), object is not extensible
-```
-
-`packages/core/src/event-store/async-event-store.ts:215` has the identical call and the identical
-exposure. So "reachable from a normal insert" understates by a wide margin: **no** frozen event can
-be inserted into either store any more. The comment names Redux Toolkit / immer as affected consumers
-but leaves the reader believing only replaceable kinds are hit, which is precisely the wrong mental
-model for someone triaging a `TypeError` on a kind-1 note.
-
-Compounding this, `.changeset/cache-frozen-event-throws.md` declares `"applesauce-core": patch` for
-what is a runtime-breaking change for every consumer that freezes events in development. The throw is
-unconditional on `EventStore.add`, not opt-in, and there is no escape hatch.
-
-**Fix:** Correct the reachability claim and re-bump the changeset.
-
-```ts
- *     Consumers that freeze events (e.g. Redux Toolkit / immer freezing state
- *     in development) will see a throw where they previously saw silent
- *     degradation, and the exposure is total rather than kind-specific:
- *     `EventStore.add`/`AsyncEventStore.add` call `getExpirationTimestamp`
- *     (which routes through `getOrComputeCachedValue`) on EVERY event before any
- *     kind branching, so no frozen event can be inserted at all. The replaceable
- *     path adds `getReplaceableIdentifier` on top of that.
-```
-
-```md
----
-"applesauce-core": minor
----
-
-Writing a cached value onto a frozen or otherwise non-extensible event now throws where it previously failed silently; `EventStore.add` therefore rejects frozen events of any kind.
-```
-
----
-
-### CR-03: `getHiddenGroups` permanently caches `undefined`, breaking `unlockHiddenGroups` and lying in its type guard
-
-**File:** `packages/common/src/helpers/groups.ts:93-119` (phase-05 comment at 107-114)
-
-**Issue:** `getHiddenGroups` is the only hidden-list helper in the sweep that wraps its whole body in
-`getOrComputeCachedValue`, and its compute callback can return `undefined`:
-
-```ts
-return getOrComputeCachedValue(bookmark, GroupsHiddenSymbol, () => {
-  const tags = getHiddenTags(bookmark);
-  if (!tags) return undefined;   // <-- memoized as a real own property whose value is `undefined`
-  ...
-});
-```
-
-`getOrComputeCachedValue` gates on `Reflect.has`, not on the value, so `undefined` is cached
-permanently. Any read before the hidden tags are unlocked poisons the event forever. Verified by
-executing a probe against the current tree:
-
-```
-getHiddenGroups(lockedEvent)            -> undefined
-GroupsHiddenSymbol in lockedEvent       -> true          // poisoned
-setHiddenTagsCache(event, [["group", ...]])               // tags now genuinely unlocked
-getHiddenGroups(event)                  -> undefined      // still undefined, forever
-isHiddenGroupsUnlocked(event)           -> true           // type guard now lies
-await unlockHiddenGroups(event, signer) -> undefined      // declared Promise<GroupPointer[]>
-```
-
-Three distinct consequences:
-
-- `unlockHiddenGroups` resolves `undefined` while declared `Promise<GroupPointer[]>`. Its
-  `if (!groups) throw new Error("Failed to unlock hidden groups")` guard at line 135 is bypassed,
-  because line 128's `if (isHiddenGroupsUnlocked(bookmark)) return bookmark[GroupsHiddenSymbol]`
-  fires first. Every caller doing `(await unlockHiddenGroups(e, s)).length` gets a `TypeError` at a
-  call site the types said was safe.
-- `isHiddenGroupsUnlocked` narrows to `T & UnlockedGroups`, so `bookmark[GroupsHiddenSymbol]` is
-  typed `GroupPointer[]` and is `undefined`.
-- Contrast the siblings: `mute.ts:77-96`, `bookmark.ts:91-110`, `trusted-assertions.ts:82-97` and
-  `emoji-pack.ts:96-111` all `return undefined` *before* writing, and are unaffected. Confirmed by
-  execution that `getHiddenMutedThings` recovers after unlock where `getHiddenGroups` does not — the
-  bug is specific to this one site's use of `getOrComputeCachedValue`.
-
-The phase-05 comment sits directly on this write site and ratifies it — "correctly does not survive a
-spread — no `pipeFromAsyncArray` delete-loop mask is needed for this site" — validating the site's
-descriptor while its caching semantics are broken. This is exactly the "reviewed and blessed" outcome
-an adversarial pass exists to catch: the comment is *true about the descriptor* and blind to the
-defect one line above it.
-
-**Fix:** Do not memoize the negative result; mirror the sibling helpers' shape.
-
-```ts
-export function getHiddenGroups<T extends NostrEvent>(bookmark: T): GroupPointer[] | undefined {
-  if (GroupsHiddenSymbol in bookmark) return bookmark[GroupsHiddenSymbol] as GroupPointer[];
-
-  // get hidden tags — bail BEFORE writing so a locked read cannot poison the memo
-  const tags = getHiddenTags(bookmark);
-  if (!tags) return undefined;
-
-  const groups = processTags(
-    tags.filter((t) => t[0] === "group"),
-    getGroupPointerFromGroupTag,
+export function isHiddenContactsUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedContacts {
+  return (
+    isHiddenTagsUnlocked(event) &&
+    (HiddenContactsSymbol in event || getHiddenContacts(event) !== undefined)
   );
-
-  // identity memo — non-enumerable, dropped by a spread (see cache.ts taxonomy)
-  setCachedValue(bookmark, GroupsHiddenSymbol, groups);
-  return groups;
 }
 ```
 
-Then rewrite the comment: with `setCachedValue` the "the enclosing `getOrComputeCachedValue`
-immediately redefines the same symbol non-enumerable" reasoning no longer applies and must not be
-left behind stale.
+### CR-02: `unlockHiddenFavoriteEmojiPacks` returns `undefined` for `packPointers`
+
+**File:** `packages/common/src/helpers/emoji-pack.ts:137-159`
+**Issue:** `isHiddenFavoriteEmojiPacksUnlocked` ORs four disjuncts and asserts
+`list is T & UnlockedFavoriteEmojiPacks` — a type that requires **both**
+`FavoriteEmojiPacksHiddenSymbol` **and** `FavoriteEmojiPacksHiddenPointersSymbol`. Any single
+disjunct satisfies it. `unlockHiddenFavoriteEmojiPacks` then reads both symbols:
+
+```ts
+if (isHiddenFavoriteEmojiPacksUnlocked(list)) {
+  return {
+    emojis: list[FavoriteEmojiPacksHiddenSymbol],
+    packPointers: list[FavoriteEmojiPacksHiddenPointersSymbol], // undefined
+  };
+}
+```
+
+This fires on the **first** call against a list whose hidden tags are already unlocked: disjunct 3
+(`getHiddenFavoriteEmojis(list) !== undefined`) is true and short-circuits before disjunct 4 ever
+runs, so `FavoriteEmojiPacksHiddenPointersSymbol` is never written and `packPointers` resolves to
+`undefined` typed as `AddressPointer[]`. The `if (!emojis || !packPointers) throw` guard below is
+skipped entirely.
+
+Same class as CR-01. `mute.ts:69-72` (`MuteHiddenSymbol in mute || isHiddenTagsUnlocked(mute)`) and
+`trusted-assertions.ts:100-102` (`TrustedProvidersHiddenSymbol in event || isHiddenTagsUnlocked(event)`)
+carry the identical guard lie; their own `unlock*` functions happen to re-check the symbol directly
+so they are safe internally, but both guards are exported and will mislead consumers the same way.
+Fix all four together.
+
+**Fix:** require both symbols in the guard, and derive them if absent:
+```ts
+export function isHiddenFavoriteEmojiPacksUnlocked<T extends NostrEvent>(
+  list: T,
+): list is T & UnlockedFavoriteEmojiPacks {
+  return (
+    isHiddenTagsUnlocked(list) &&
+    getHiddenFavoriteEmojis(list) !== undefined &&
+    getHiddenFavoriteEmojiPackPointers(list) !== undefined
+  );
+}
+```
+
+### CR-03: `lockAppData` does not lock — decrypted app data stays readable
+
+**File:** `packages/common/src/helpers/app-data.ts:98-100` (with `app-data.ts:52-53`, `app-data.ts:71`)
+**Issue:** `getAppDataContent` memoizes the **decrypted, parsed** app data on
+`AppDataContentSymbol` (line 71) — including on the encrypted branch, where `data` comes from
+`getHiddenContent(event)`. `lockAppData` only calls `lockHiddenContent(event)`, which deletes
+`HiddenContentSymbol` (= `EncryptedContentSymbol`) and nothing else. `AppDataContentSymbol`
+survives, and `getAppDataContent`'s first line
+(`const cached = Reflect.get(event, AppDataContentSymbol); if (cached) return cached;`) keeps
+returning the plaintext after the "lock".
+
+This is the same shape as `lockHiddenTags` (`hidden-tags.ts:164-167`), which correctly deletes
+`HiddenTagsSymbol` *and* locks the content. `lockAppData` is missing the first half. A caller that
+locks app data to drop plaintext from memory (e.g. on sign-out / account switch) does not get it.
+
+**Fix:**
+```ts
+export function lockAppData<T extends object>(event: T): void {
+  Reflect.deleteProperty(event, AppDataContentSymbol);
+  lockHiddenContent(event);
+}
+```
+
+### CR-04: `copySymbolsToDuplicateEvent`'s replaceable guard uses `&&` where `||` is required
+
+**File:** `packages/core/src/event-store/event-store.ts:200-205`
+**Issue:**
+```ts
+if (
+  isReplaceable(source.kind) &&
+  source.pubkey !== dest.pubkey &&
+  getReplaceableIdentifier(source) !== getReplaceableIdentifier(dest)
+)
+  throw new Error("Source and destination events must have the same pubkey and replaceable identifier");
+```
+The error message states the intended invariant: same pubkey **and** same identifier. The condition
+only throws when **both** differ. Two replaceable events with the same pubkey but different `d`
+identifiers (or different pubkeys but the same `d`) sail through the guard, and the function then
+merges `SeenRelaysSymbol`, `FromCacheSymbol`, `verifiedSymbol` and `EncryptedContentSymbol` — i.e.
+it can stamp one event's `verifiedSymbol` and decrypted plaintext onto a structurally unrelated
+event. The guard fails open in exactly the direction that matters.
+
+This is a public `static` on an exported class; the two internal call sites in `add()` happen to
+pass consistent pairs, so the defect is currently only reachable via the public API — but the guard
+exists precisely to police that.
+
+**Fix:**
+```ts
+if (
+  isReplaceable(source.kind) &&
+  (source.pubkey !== dest.pubkey || getReplaceableIdentifier(source) !== getReplaceableIdentifier(dest))
+)
+  throw new Error("Source and destination events must have the same pubkey and replaceable identifier");
+```
+
+### CR-05: `stamp()` mutates its caller's draft object
+
+**File:** `packages/core/src/operations/event.ts:122-130`
+**Issue:**
+```ts
+return async (draft) => {
+  if (!signer) throw new Error("Missing signer");
+  Reflect.deleteProperty(draft, "id");   // mutates the INPUT
+  Reflect.deleteProperty(draft, "sig");  // mutates the INPUT
+  const pubkey = await signer.getPublicKey();
+  const newDraft = { ...draft, pubkey };
+```
+The deletes land on `draft` — the caller's object — before the copy is taken. Every other operation
+in this file (`stripSignature:26-30`, `stripStamp:38-43`) copies first and deletes from the copy;
+`stamp` is the outlier. `sign()` calls `stamp()` on the pipe's input, so
+`eventPipe(sign(user))(someSignedEvent)` silently strips `id` and `sig` off the caller's
+`someSignedEvent` — an event that may still be live in an `EventStore` (`EventMemory` indexes it by
+`event.id`, so an event whose `id` has been deleted can no longer be located or removed). That is
+destructive data loss on an object the operation does not own.
+
+It also quietly undermines the phase's own spread-semantics reasoning: the comment block directly
+below (lines 132-143) reasons carefully about what `{ ...draft, pubkey }` copies, while the two
+lines above it have already mutated `draft`.
+
+**Fix:**
+```ts
+const pubkey = await signer.getPublicKey();
+const newDraft = { ...draft, pubkey };
+// Remove old fields from the copy, not the caller's draft
+Reflect.deleteProperty(newDraft, "id");
+Reflect.deleteProperty(newDraft, "sig");
+```
 
 ## Warnings
 
-### WR-01: `getSealRumor`'s `undefined` sentinel makes `unlockSeal`/`unlockGiftWrap` return `undefined` typed as `Rumor`
+### WR-01: "only pipeFromAsyncArray's delete loop" is false — there is a second delete loop, and 12 sites assert otherwise
 
-**File:** `packages/common/src/helpers/gift-wrap.ts:153-164`, `240-254`, `260-278`
+**File:** `packages/common/src/helpers/app-data.ts:67-69`, `packages/common/src/helpers/bookmark.ts:103-105`, `packages/common/src/helpers/emoji-pack.ts:105-107` and `:128-130`, `packages/common/src/helpers/lists.ts:49-51`, `packages/common/src/helpers/mute.ts:89-91`, `packages/common/src/helpers/trusted-assertions.ts:91-93`, `packages/core/src/casts/cast.ts:61-62`, `packages/core/src/helpers/contacts.ts:97-98`, `packages/core/src/helpers/event.ts:131-132`, `packages/core/src/helpers/filter.ts:27-28`, `packages/core/src/helpers/hidden-tags.ts:107-108` and `:155-156`
+**Issue:** All twelve sites assert some variant of "**only** pipeFromAsyncArray's delete loop
+(helpers/pipeline.ts) masks it, **on the one call path that runs it** — a coincidence of one code
+path, not an invariant."
 
-**Issue:** The comment on the sentinel write is accurate and self-aware — but it documents a live
-correctness bug and defers it:
+That is disprovable. `EventFactory.chain` (`packages/core/src/factories/event.ts:80-84`) runs a
+second, structurally identical delete loop over the same `PRESERVE_EVENT_SYMBOLS` allowlist, on a
+different call path, with a comment that says so explicitly ("matching the behaviour of eventPipe /
+pipeFromAsyncArray so stale caches (e.g. `HiddenTagsSymbol` set by a previous `modifyHiddenTags`
+step) never leak into subsequent chain operations"). `cache.ts:22-26` inherits the same singular
+framing ("`PRESERVE_EVENT_SYMBOLS` … is the allowlist `pipeFromAsyncArray`'s delete loop consults").
 
-```ts
-Reflect.set(seal, RumorSymbol, undefined);
+This matters beyond pedantry. The comments' stated justification for deferring the migration is that
+the masking is a one-path coincidence; there are in fact two independent maskers, which changes the
+risk assessment the deferral rests on. And a future cleanup grepping for "the delete loop" will find
+and update one of them.
+
+**Fix:** Amend the shared sentence at all twelve sites (and `cache.ts:22-26`) to name both
+consumers, e.g. "…masked by the two delete loops that consult `PRESERVE_EVENT_SYMBOLS`
+(`helpers/pipeline.ts`'s `pipeFromAsyncArray` and `factories/event.ts`'s `EventFactory.chain`), and
+only on the call paths that run them."
+
+### WR-02: `cache.ts`'s "unconditionally before any kind or replaceable branching" contradicts its own next sentence and omits a second early return
+
+**File:** `packages/core/src/helpers/cache.ts:106-114`
+**Issue:** This claim was introduced by this round's diff (it replaced the previous, narrower
+`getReplaceableIdentifier` framing) and is wrong twice over:
+
+1. "both `EventStore.add` and `AsyncEventStore.add` call it **unconditionally before any kind or
+   replaceable branching**" is contradicted three lines later by "The one carve-out: both stores
+   return early for `kinds.EventDeletion` before reaching that call". A call that a kind branch can
+   skip is not made "before any kind branching". `event-store.ts:236` and `async-event-store.ts:203`
+   are kind branches; `getExpirationTimestamp` is at `event-store.ts:245` /
+   `async-event-store.ts:212`, after them.
+2. "The one carve-out" is not the only one. Both stores also return early at `event-store.ts:242` /
+   `async-event-store.ts:209` (`if (this.deletes.check(event)) return event`) — a previously-deleted
+   event never reaches `getExpirationTimestamp` either, so a frozen deleted event does not throw via
+   this path.
+
+The load-bearing part of the claim (the throw is *not* limited to replaceable events; a kind-1 note
+reaches it on a normal insert) is correct and worth keeping — I verified it at `event-store.ts:245`.
+
+**Fix:**
+```
+ *     degradation. `getExpirationTimestamp` routes through
+ *     `getOrComputeCachedValue`, and both `EventStore.add` and
+ *     `AsyncEventStore.add` call it on every event that survives their two
+ *     early returns — before any *replaceable* branching, so the throw is NOT
+ *     limited to replaceable events; an ordinary regular-kind event (e.g. a
+ *     kind-1 note) reaches it on a normal insert. Two carve-outs: both stores
+ *     return early for `kinds.EventDeletion`, and both return early for an
+ *     already-deleted event (`deletes.check`), before reaching that call.
 ```
 
-`isSealUnlocked` (line 113) checks `RumorSymbol in seal`, which is now `true`. `unlockSeal` (line 242)
-therefore returns `seal[RumorSymbol]` — `undefined` — typed `Rumor`, never reaching its own
-`if (!rumor) throw` at line 248. `unlockGiftWrap` (line 262) inherits it via `getGiftWrapRumor`. Any
-caller of `(await unlockGiftWrap(g, s)).kind` on a seal whose content failed to parse gets a
-`TypeError`. A malformed or hostile seal is an attacker-influenced input arriving over a relay, so
-this is reachable from the network, not just from local corruption.
+### WR-03: `PRESERVE_EVENT_SYMBOLS` is a shared mutable Set widened globally at import time
 
-The comment scopes the fix as "out of this phase's comment-only scope", which is a defensible phase
-boundary — but a comment is not a tracking mechanism, and the finding will be lost with the phase.
+**File:** `packages/common/src/operations/gift-wrap.ts:24-26`, `packages/core/src/helpers/pipeline.ts:5`
+**Issue:** Importing anything from `applesauce-common/operations/gift-wrap` executes three
+`PRESERVE_EVENT_SYMBOLS.add(...)` calls as a module side effect, permanently widening
+applesauce-core's allowlist process-wide. From that moment, **both** delete loops (see WR-01) stop
+scrubbing `SealSymbol`, `RumorSymbol` and `GiftWrapSymbol` from **every** event build in the
+process — including pipes and factory chains that have nothing to do with gift wraps. Those symbols
+hold live object references to decrypted rumors and their parent wraps, so unrelated drafts can
+carry a graph of plaintext-bearing objects through the pipeline and retain them from GC. The effect
+is also import-order-dependent and irreversible within a process.
 
-**Fix:** Narrow the presence check to a value check so the sentinel cannot be mistaken for an unlocked
-rumor:
+The three comments that reason about this (`gift-wrap.ts:83-86`, `:121-124`, `:128-131`) each
+describe the registration as buying survival of "`eventPipe`'s delete loop", which understates it:
+it is a global mutation of another package's exported state affecting every consumer.
 
+**Fix:** Give the pipeline an explicit per-pipe preserve list, or expose a scoped registration API
+(e.g. `eventPipe({ preserve: [...] }, ...ops)`), rather than mutating a module-level `Set` at import
+time.
+
+### WR-04: `copySymbolsToDuplicateEvent` reports `changed = true` when nothing changed
+
+**File:** `packages/core/src/event-store/event-store.ts:209-214`
+**Issue:**
 ```ts
-export function isSealUnlocked(seal: NostrEvent): seal is UnlockedSeal {
-  return (
-    (RumorSymbol in seal && Reflect.get(seal, RumorSymbol) !== undefined) ||
-    (isEncryptedContentUnlocked(seal) === true && getSealRumor(seal) !== undefined)
-  );
+const relays = getSeenRelays(source);
+if (relays) {
+  for (const relay of relays) addSeenRelay(dest, relay);
+  changed = true;
+}
+```
+`changed` is set whenever `source` has a `SeenRelaysSymbol` at all — including an empty `Set`
+(truthy), and including the common case where every relay in `source` is already in `dest`. The
+symbol-merge loop immediately below correctly gates on `!(symbol in dest)`; the relay branch does
+not.
+
+All callers use the return value to decide whether to emit:
+`if (EventStore.copySymbolsToDuplicateEvent(event, existing)) this.update(existing)`
+(`event-store.ts:269`, `:284`, `:304`; same in `async-event-store.ts:236`, `:251`, `:271`). So every
+duplicate delivery of an already-known event from an already-known relay fires `update$` with no
+change — on a stream whose own doc comment warns it is "very noisy". Subscribers that are not
+`distinct`-gated (model recomputation, UI re-render) do redundant work per duplicate.
+
+**Fix:**
+```ts
+const relays = getSeenRelays(source);
+if (relays) {
+  const before = getSeenRelays(dest)?.size ?? 0;
+  for (const relay of relays) addSeenRelay(dest, relay);
+  if ((getSeenRelays(dest)?.size ?? 0) !== before) changed = true;
 }
 ```
 
-If it stays deferred, raise a backlog item rather than relying on the in-file comment.
+### WR-05: Comments that say "not via object spread" for writes that do survive a spread
 
----
+**File:** `packages/core/src/helpers/relays.ts:16-18`, `packages/core/src/helpers/event.ts:180-182`, `packages/common/src/helpers/gift-wrap.ts:181-182` and `:215-216` and `:220-221`, `packages/common/src/operations/gift-wrap.ts:82-86`
+**Issue:** Each of these describes an **enumerable** `Reflect.set` as propagating "not via object
+spread" / "rather than by spread". Enumerable own symbol-keyed properties *are* copied by object
+spread — that asymmetry is the entire subject of `concord/helpers/keys.ts:115-120`'s CONCORD-H01
+note and of `cache.ts`'s category 1. The twelve sites in WR-01 handle this correctly by explicitly
+disclosing "this write is a plain enumerable `Reflect.set`, so the value **does** survive a spread
+today". This cluster does not, and reads as an assertion that spread does not carry them.
 
-### WR-02: Two core sites kept the "not via object spread" phrasing the same sweep corrected elsewhere
+Charitably these sentences mean "the mechanism this code *relies on* is not spread". Given this
+phase's stated purpose, the distinction between "does not propagate by spread" and "does not rely on
+spread to propagate" is precisely the one that must not be left to the reader — and the corpus
+already proves the authors know how to state it unambiguously.
 
-**File:** `packages/core/src/helpers/relays.ts:16-18`; `packages/core/src/helpers/event.ts:180-182`
+**Fix:** Adopt the WR-01 sites' disclosure form, e.g. "…propagated across duplicate events by
+`EventStore.copySymbolsToDuplicateEvent`'s element-wise seen-relays merge. (This write is a plain
+enumerable `Reflect.set`, so it also rides a spread — that is not the mechanism relied on here.)"
 
-**Issue:** Both writes are enumerable `Reflect.set`, so both values **do** survive an object spread.
-Both comments say the opposite-sounding thing:
-
-```ts
-// relays.ts — addSeenRelay
-// SeenRelaysSymbol is propagated across duplicate events via the element-wise seen-relays
-// merge in EventStore.copySymbolsToDuplicateEvent (a separate branch from that function's
-// symbol merge list), not via object spread — accumulated state (see cache.ts taxonomy).
-```
-```ts
-// event.ts — markFromCache
-// FromCacheSymbol is propagated across duplicate events via the event store's merge list
-// (EventStore.copySymbolsToDuplicateEvent), not via object spread — accumulated state (see
-// cache.ts taxonomy).
-```
-
-Read as mechanism claims ("the store's merge is what propagates these across duplicates") they are
-true. Read as descriptor claims ("this does not survive a spread") they are false. That ambiguity is
-the exact thing 05-09 removed from the eight common sites, which now read:
-
-> Written here with a plain enumerable `Reflect.set`, so it DOES survive a spread today...
-
-Leaving two core sites on the old phrasing means the codebase now teaches two contradictory readings
-of the same words, which is worse than either alone — a reader who learns the common phrasing will
-mis-read the core one. Both `FromCacheSymbol` and `SeenRelaysSymbol` surviving a spread is harmless
-(that is the point of the category), but the comment should say so rather than leave it to inference.
-
-**Fix:** Align the phrasing and state the descriptor explicitly.
-
-```ts
-// relays.ts
-// Accumulated state (see cache.ts taxonomy): propagated across duplicate events by the
-// element-wise seen-relays merge in EventStore.copySymbolsToDuplicateEvent (a separate branch
-// from that function's symbol merge list). This write is a plain enumerable Reflect.set, so the
-// Set also rides along on a spread — harmless here, since the value is not bound to the host's
-// own fields and a copy is not required to recompute it.
-```
-
-Apply the mirror wording to `markFromCache`.
-
----
-
-### WR-03: `wrapSeal`'s `GiftWrapSymbol` claim credits `PRESERVE_EVENT_SYMBOLS` for something it does not do here
-
-**File:** `packages/common/src/operations/gift-wrap.ts:120-125`
-
-**Issue:**
-
-```ts
-// Set the upstream reference on the seal: ... `GiftWrapSymbol` is registered into
-// `PRESERVE_EVENT_SYMBOLS` above, which stops `eventPipe`'s delete loop from scrubbing it
-// mid-pipe ...
-Reflect.set(seal, GiftWrapSymbol, gift);
-```
-
-`pipeFromAsyncArray` (`packages/core/src/helpers/pipeline.ts:59-65`) only scrubs `result`, never
-`prev`:
-
-```ts
-const keys = Reflect.ownKeys(result).filter((key) => typeof key === "symbol");
-for (const symbol of keys) if (!preserve.has(symbol)) Reflect.deleteProperty(result, symbol);
-```
-
-In `giftWrap = eventPipe(toRumor, sealRumor, wrapSeal)`, `wrapSeal`'s `result` is `gift`; `seal` is
-`prev`. The delete loop never inspects `seal` after this write, so `GiftWrapSymbol`'s membership in
-`PRESERVE_EVENT_SYMBOLS` is not what protects it — nothing threatens it on this path. The comment
-asserts a causal mechanism the code does not exercise. `sealRumor`'s `SealSymbol` write onto `rumor`
-(line 94) has the same structure and its comment is correctly silent on preservation, which makes the
-inconsistency visible within the same file.
-
-By contrast, `wrapSeal`'s `SealSymbol` and `EncryptedContentSymbol` writes land on `gift` (the
-`result`), where the preservation claim *is* load-bearing and correct — so the fix is site-specific,
-not file-wide.
-
-**Fix:**
-
-```ts
-// Set the upstream reference on the seal: an object-reference link to `gift`, not a value copy.
-// This write lands on the pipe's `prev` (the seal), which `eventPipe`'s delete loop never
-// inspects — the loop only scrubs each operation's `result` — so PRESERVE_EVENT_SYMBOLS
-// membership is not what protects this write. It is NOT carried onto a redelivered duplicate by
-// `EventStore.copySymbolsToDuplicateEvent`'s merge list, which has no gift-wrap symbols —
-// accumulated state (see cache.ts taxonomy).
-```
-
----
-
-### WR-04: `stamp()` mutates its caller's draft
-
-**File:** `packages/core/src/operations/event.ts:125-130`
-
-**Issue:** Every other operation in this file is pure (`{ ...draft, ... }`). `stamp` is not:
-
-```ts
-return async (draft) => {
-  if (!signer) throw new Error("Missing signer");
-
-  // Remove old fields from signed nostr event
-  Reflect.deleteProperty(draft, "id");
-  Reflect.deleteProperty(draft, "sig");
-
-  const pubkey = await signer.getPublicKey();
-  const newDraft = { ...draft, pubkey };
-```
-
-`draft` is the caller's object. Passing a signed `NostrEvent` into `stamp()` or `sign()` silently
-strips `id` and `sig` from the *caller's* event — including an event that is live in an `EventStore`,
-where `id` is the memory key. The intent is clearly to build a clean `newDraft`, which the spread on
-the next line already achieves for every field except these two, so the mutation buys nothing.
-
-**Fix:**
-
-```ts
-return async (draft) => {
-  if (!signer) throw new Error("Missing signer");
-
-  const pubkey = await signer.getPublicKey();
-  // Copy first, then remove old fields from the copy — never mutate the caller's draft
-  const newDraft = { ...draft, pubkey };
-  Reflect.deleteProperty(newDraft, "id");
-  Reflect.deleteProperty(newDraft, "sig");
-```
-
-`sign()` reads `Reflect.has(draft, "pubkey")` at line 164 *after* calling `stamp`; that guard is
-unaffected (`pubkey` was never deleted), but re-run the factory suites to confirm nothing depended on
-the mutation.
-
----
-
-### WR-05: `addParentSealReference`'s "same shape as `SeenRelaysSymbol`" analogy contradicts `cache.ts`
-
-**File:** `packages/common/src/helpers/gift-wrap.ts:53-55`
-
-**Issue:**
-
-```ts
-// Mutated in place across calls (the Set gains members over time), the same shape as
-// applesauce-core's SeenRelaysSymbol — accumulated state (see cache.ts taxonomy), not a memo.
-```
-
-`cache.ts:27-36` draws an explicit line between exactly these two:
-
-> `SeenRelaysSymbol` propagates via a SEPARATE, element-wise merge in that same function ...
-> applesauce-common's `Seal`/`Rumor`/`GiftWrap` symbols are **not merged by any event store at all**
-> (they are unknown to applesauce-core) and propagate by shared object reference.
-
-So the taxonomy's own text says these are *different* propagation mechanisms, and "the same shape as
-`SeenRelaysSymbol`" invites the reader to expect the store to merge `SealSymbol` across duplicates,
-which it does not. `cache.ts` also warns in the same paragraph that "mutability of the value is NOT
-the test for this category" — yet the mutable-`Set` shape is the only thing this analogy rests on, so
-the comment leans on precisely the discriminator the taxonomy disallows.
-
-**Fix:** Anchor the analogy on the category test, not on the container:
-
-```ts
-// Mutated in place across calls (the Set gains members over time) and never bound to the rumor's
-// own fields, so a copy is not required to recompute it — accumulated state (see cache.ts
-// taxonomy), not a memo. Unlike core's SeenRelaysSymbol, no event store merges this symbol across
-// duplicate events; it propagates only by shared object reference.
-```
-
----
-
-### WR-06: Duplicated category label in `wrapSeal`, plus an over-broad "ONLY" claim
+### WR-06: "This is the ONLY carry-forward site in applesauce-common" is not established
 
 **File:** `packages/common/src/operations/gift-wrap.ts:134-141`
+**Issue:** `packages/common/src/helpers/encrypted-content-cache.ts:102` and `:134` both call
+`setEncryptedContentCache`, which `cache.ts:60-70`'s worked example explicitly classifies as a
+**carry-forward payload** write site ("That is why it hand-rolls its own enumerable `Reflect.set`
+write instead of calling `setCachedValue`"). Those are carry-forward writes performed from
+applesauce-common onto applesauce-common's own restored events and seals. Whether "site" means "the
+lexical `Reflect.set`" or "the place carry-forward happens" is exactly the ambiguity that makes an
+absolute like "ONLY" unsafe — and the comment leans on that absolute to justify a warning about
+future cleanup sweeps.
 
-**Issue:** The same site is labelled twice, the second a bare restatement of what the paragraph above
-already established at length:
+**Fix:** Narrow the claim to what is checkable, e.g. "This is the only direct
+`EncryptedContentSymbol` write in applesauce-common; `helpers/encrypted-content-cache.ts` reaches
+the same category indirectly through `setEncryptedContentCache`."
 
+### WR-07: Dead branches in `modifyHiddenTags`
+
+**File:** `packages/core/src/operations/tags.ts:56-75`
+**Issue:** Two unreachable paths:
 ```ts
-    // Set the encrypted content on the gift wrap. This is the ONLY carry-forward site in
-    // applesauce-common: the plaintext must survive downstream spreads exactly like
-    // ... Surrounded by accumulated-state writes above, this is the easiest site in the monorepo
-    // for a future cleanup to sweep up by mistake.
-    // carry-forward payload (see cache.ts taxonomy).      <-- redundant leftover
-    Reflect.set(gift, EncryptedContentSymbol, plaintext);
+if (hasHiddenTags(draft)) {          // line 56 — outer guard
+  hidden = getHiddenTags(draft);
+  if (hidden === undefined) {
+    if (hasHiddenTags(draft)) {      // line 62 — always true; line 56 proved it
+      pubkey = await signer.getPublicKey();
+      hidden = await unlockHiddenTags({ ...draft, pubkey }, signer);
+    }
+    else hidden = [];                // line 68 — UNREACHABLE
+  }
+}
+else hidden = [];
+
+if (hidden === undefined) throw new Error("Failed to find hidden tags"); // line 75 — UNREACHABLE
 ```
+Line 62's re-check is redundant with line 56, making line 68 dead. And every path through the block
+assigns `hidden` a non-`undefined` value (`unlockHiddenTags` throws rather than returning
+`undefined`), making the line-75 throw dead. Dead defensive branches around a signer/decrypt path
+invite a future reader to assume a failure mode is handled when it is not.
 
-This reads as a merge artifact from the 05-03 → 05-09 rewrites. Separately, "the ONLY carry-forward
-site in applesauce-common" is true only under a strict *write-site* reading:
-`helpers/encrypted-content-cache.ts:95` and `:127` call `setEncryptedContentCache`, which performs
-carry-forward writes on applesauce-common code paths. Given the comment's own stated purpose is to
-stop a future cleanup sweeping the site up by mistake, "ONLY" is the wrong word to hand that reader —
-it tells them to stop looking.
-
-**Fix:** Delete the duplicate line and qualify the claim:
-
+**Fix:** Collapse the nested re-check and drop the dead `else` and dead throw:
 ```ts
-    // ... This is the only carry-forward WRITE site in applesauce-common (helpers/
-    // encrypted-content-cache.ts also produces carry-forward writes, but through core's
-    // setEncryptedContentCache rather than a local Reflect.set). Surrounded by accumulated-state
-    // writes above, this is the easiest site in the monorepo for a future cleanup to sweep up by
-    // mistake — carry-forward payload (see cache.ts taxonomy).
-```
-
----
-
-### WR-07: `markEncryptedContentFromCache`'s comment ends in an unparseable fragment and misses the real asymmetry
-
-**File:** `packages/common/src/helpers/encrypted-content-cache.ts:37-43`
-
-**Issue:**
-
-```ts
-// ... and is only ever read on the instance it was written to. Consequence:
-// isEncryptedContentFromCache gates persistEncryptedContent below — assuming provenance survives dedup goes untested.
-```
-
-The final sentence does not parse — "Consequence: X gates Y — assuming Z goes untested" has no
-coherent subject/predicate — so a reader cannot extract the intended warning at all.
-
-The "only ever read on the instance it was written to" claim is also imprecise, and the real
-consequence is sharper than the sentence gestures at: `EventStore.copySymbolsToDuplicateEvent` merges
-`EncryptedContentSymbol` onto the stored instance *without* `EncryptedContentFromCacheSymbol` (which
-is not in the list). So a cache-restored duplicate's plaintext lands on a stored event that reads
-`isEncryptedContentFromCache() === false`, and `persistEncryptedContent` writes content that came from
-the cache back to the cache. Idempotent today, but that is the actual asymmetry worth naming.
-
-**Fix:**
-
-```ts
-/** Marks the encrypted content as being from a cache */
-export function markEncryptedContentFromCache<T extends object>(event: T) {
-  // A restore-provenance flag: unlike FromCacheSymbol it is NOT in
-  // EventStore.copySymbolsToDuplicateEvent's merge list (see cache.ts taxonomy), so it does not
-  // follow its own payload across dedup. EncryptedContentSymbol IS in that list, so a
-  // cache-restored duplicate's plaintext can land on a stored instance that reads
-  // isEncryptedContentFromCache() === false — causing persistEncryptedContent below to write
-  // cache-sourced content back to the cache. Idempotent today, and untested.
-  Reflect.set(event, EncryptedContentFromCacheSymbol, true);
+let hidden: string[][] = [];
+if (hasHiddenTags(draft)) {
+  hidden = getHiddenTags(draft) ?? (await unlockHiddenTags({ ...draft, pubkey: (pubkey = await signer.getPublicKey()) }, signer));
 }
 ```
 
----
+### WR-08: Redundant `Reflect.set` inside `getHiddenGroups`'s compute callback
 
-### WR-08: `of(null)` returned from a Promise `.catch` in the restore pipeline
+**File:** `packages/common/src/helpers/groups.ts:139` (comment at `:107-114`)
+**Issue:** The comment is accurate — I confirmed that `getOrComputeCachedValue` redefines the same
+symbol non-enumerable via `Object.defineProperty` once the callback returns, and that
+`configurable: true` from the preceding `Reflect.set` permits that redefinition. But that accuracy
+*is* the finding: the write is provably a no-op whose only effect is a transiently-enumerable
+descriptor, and it takes eight lines of comment to explain why it is harmless. It is also the sole
+reason this site diverges from its seven siblings and needs a bespoke comment at all.
 
-**File:** `packages/common/src/helpers/encrypted-content-cache.ts:83-87`
+**Fix:** Delete line 139 — `return groups;` on the next line already feeds
+`getOrComputeCachedValue`'s `Object.defineProperty` — and delete the now-unnecessary lines 107-114
+explaining it. The deferred-defect note (lines 116-138) should stay.
 
-**Issue:**
+### WR-09: `getAppDataContent`'s truthiness checks lose falsy payloads and defeat the cache
 
+**File:** `packages/common/src/helpers/app-data.ts:52-53`, `:59`, `:63`
+**Issue:** `if (cached) return cached;` and `if (!data) return undefined;` test truthiness, not
+presence. App data is `unknown`-typed and JSON-parsed, so `0`, `""`, `false` and `null` are all
+legitimate decrypted payloads. Each of them: (a) is never served from the cache even once written,
+so every call re-runs `getAppDataEncryption` + `safeParse` + `getHiddenContent`; and (b) hits
+`if (!data) return undefined` at line 63, so a stored `false` reads back as "no data" — the function
+silently converts a valid payload into `undefined`. The `if (!data)` at line 59 likewise sends a
+falsy *plaintext* payload down the encrypted branch.
+
+**Fix:** Gate on presence:
 ```ts
-getItem(storage, event).catch((error) => {
-  log(`Failed to restore encrypted content for ${event.id}`, error);
-  return of(null);        // <-- an RxJS Observable, inside a Promise catch
-}),
-```
-
-The `.catch` handler must resolve to the same shape as the success path (`string | null`) but returns
-an `Observable<null>`. `combineLatest` unwraps the promise and emits that `Observable` object as
-`content`. It is caught only incidentally by `if (typeof content !== "string") return;` at line 91 —
-the widened type is never surfaced because the value flows through `mergeMap`/`combineLatest`
-untyped. A future edit that loosens that guard to the more idiomatic `if (!content) return;` would
-pass a truthy `Observable` straight into `setEncryptedContentCache`, silently caching an RxJS object
-as an event's decrypted plaintext.
-
-**Fix:**
-
-```ts
-getItem(storage, event).catch((error) => {
-  log(`Failed to restore encrypted content for ${event.id}`, error);
-  return null;
-}),
-```
-
----
-
-### WR-09: `cache.ts`'s identity-memo definition states an invariant that ~12 documented sites violate, without disclosing it
-
-**File:** `packages/core/src/helpers/cache.ts:9-13`
-
-**Issue:** Category 1 is stated normatively and absolutely:
-
-> **identity memo** — a derivation of the object's own current fields. A copy with changed fields
-> MUST recompute, so it must NOT survive a spread.
-
-Every write-site comment this phase produced then documents the opposite for sites it classifies as
-identity memos: `hidden-tags.ts:104-108` and `:152-156`, `contacts.ts:94-98`, `filter.ts:23-28`,
-`event.ts:128-132`, `casts/cast.ts:56-62`, `lists.ts:47-52`, `bookmark.ts:101-106`, `mute.ts:87-92`,
-`emoji-pack.ts:103-108` and `:126-131`, `trusted-assertions.ts:89-94`, `app-data.ts:65-70` — each
-says "identity memo ... but it DOES survive a spread today ... known, deliberately-deferred gap".
-
-So the taxonomy's headline definition is contradicted by roughly a dozen sites the same phase
-annotated, and `cache.ts` — the document every one of those comments points back to — never mentions
-that the invariant currently holds only for the subset routed through this helper. A reader who reads
-`cache.ts` alone (the intended entry point) comes away believing identity memos never survive a
-spread, then meets `filter.ts`'s `getIndexableTags` and concludes one of the two is lying.
-
-**Fix:** Add the disclosure at the definition so the taxonomy and the sites agree:
-
-```ts
- * 1. **identity memo** — a derivation of the object's own current fields. A copy
- *    with changed fields MUST recompute, so it must NOT survive a spread. This is
- *    what `setCachedValue`/`getOrComputeCachedValue` write ... (existing text unchanged)
- *    NOTE: that invariant currently holds only for memos routed through THIS helper.
- *    Roughly a dozen hand-rolled identity-memo sites across core/common still write
- *    enumerable via a bare `Reflect.set` and DO survive a spread today (each is
- *    annotated in place as a deliberately-deferred gap); only `pipeFromAsyncArray`'s
- *    delete loop masks them, and only on the one call path that runs it.
-```
-
----
-
-### WR-10: `cache.ts` category 3 enumerates two merge-list members where the list has three
-
-**File:** `packages/core/src/helpers/cache.ts:30-33` vs `packages/core/src/event-store/event-store.ts:219-224`
-
-**Issue:**
-
-```ts
-// cache.ts
- *    `FromCacheSymbol` and `verifiedSymbol` propagate via the symbol merge loop in
- *    `EventStore.copySymbolsToDuplicateEvent`.
-```
-```ts
-// event-store.ts
-const symbols = [FromCacheSymbol, verifiedSymbol, EncryptedContentSymbol];
+if (Reflect.has(event, AppDataContentSymbol)) return Reflect.get(event, AppDataContentSymbol) as R;
 ...
-// These three symbols propagate across duplicate events via this loop ...
+let data = getAppDataEncryption(event) ? undefined : safeParse<R>(event.content);
+if (data === undefined) {
+  const decrypted = getHiddenContent(event);
+  if (decrypted) data = safeParse<R>(decrypted);
+}
+if (data === undefined) return undefined;
 ```
 
-`cache.ts` names two, `event-store.ts` says three. Not strictly false — `cache.ts` does not say
-"only" — but the two comments cross-reference each other, and a reader checking one against the other
-finds a mismatch in the very list membership the phase set out to make citable. This is also the seam
-CR-01 falls through: `EncryptedContentSymbol`'s absence here is what lets the worked example claim two
-write sites while the merge loop quietly holds a third. Fixing WR-10 and CR-01 together is what makes
-the taxonomy internally consistent.
+### WR-10: `UnlockedSeal`'s `SealSymbol` field contradicts the code, and `SealSymbol` carries two incompatible types
 
-**Fix:** Name all three, and connect it to the worked example:
+**File:** `packages/common/src/helpers/gift-wrap.ts:43-48` (type), `:55`/`:95` (rumor: `Set`), `:222` (gift wrap: single seal), `:85` (reader)
+**Issue:** `UnlockedSeal` declares `[SealSymbol]: UnlockedGiftWrapEvent` ("Upstream gift wrap
+event"), but nothing writes the gift wrap under `SealSymbol` — `getGiftWrapSeal:217` writes it under
+`GiftWrapSymbol`, and `getSealGiftWrap:85` reads `GiftWrapSymbol`. The declared field is a fiction
+that `isSealUnlocked`'s `seal is UnlockedSeal` predicate hands to callers as fact: `seal[SealSymbol]`
+type-checks as `UnlockedGiftWrapEvent` and is `undefined` at runtime.
 
-```ts
- *    `FromCacheSymbol`, `verifiedSymbol`, and `EncryptedContentSymbol` propagate via the
- *    symbol merge loop in `EventStore.copySymbolsToDuplicateEvent`. (`EncryptedContentSymbol`
- *    appearing here as well as in the worked example below is not a contradiction — it is the
- *    point: the merge-loop WRITE is accumulated state, while its factory-pipe writes are
- *    carry-forward payload.)
-```
+Compounding it, `SealSymbol` legitimately holds two different types depending on host: a
+`Set<UnlockedSeal>` on rumors (`:55`, `:95`, read by `getRumorSeals:90`) and a single seal object on
+gift wraps (`:222`, declared at `:39`). `removeParentSealReference:62` calls `parents.delete(seal)`
+on whatever it finds — a `Set` method a plain seal object does not have — so a host mix-up is a
+runtime TypeError rather than a type error.
 
-## Info
+**Fix:** Drop `[SealSymbol]: UnlockedGiftWrapEvent` from `UnlockedSeal` (the upstream link is
+`GiftWrapSymbol`, already reachable via `getSealGiftWrap`), and split the rumor-side parent set onto
+its own symbol (e.g. `ParentSealsSymbol: Set<UnlockedSeal>`) so one symbol has one type.
 
-### IN-01: Stale-prone line-number citation survives the sweep
+### WR-11: Unverified hedge shipped as an explanatory comment, and its premise is narrower than stated
 
-**File:** `packages/common/src/helpers/gift-wrap.ts:92-94`
+**File:** `packages/common/src/helpers/encrypted-content-cache.ts:38-48`, `:53-55`
+**Issue:** The comment ends with "Whether that is reachable is unverified here … but
+replaceable-history and cross-store paths were not traced as part of this comment-only fix." A
+comment whose job is to explain a write site instead records the author's unfinished work; it is not
+actionable and will not age into being actionable.
 
-**Issue:** The one remaining `line ~N` citation in the reviewed set:
+Its checkable premise is also incomplete. "EventMemory.add keeps the originally-tracked object for a
+same-id duplicate and discards the newcomer entirely" is true (`event-memory.ts:78-81`:
+`const current = this.events.get(id); if (current) return current;`) — but only while the id is
+*still tracked*. `EventStore.prune()` (`event-store.ts:473`) and `EventStore.remove()`
+(`event-store.ts:334`) both evict from `memory`, after which a re-delivered logically-identical
+event becomes a new distinct object with no `EncryptedContentFromCacheSymbol`. That is precisely the
+"filter fails open and re-persists already-cached content" scenario the comment describes, reachable
+without touching replaceable-history or cross-store paths.
 
-```ts
-// Lazily initializes the same mutable Set addParentSealReference (line ~53) grows over
-// time — accumulated state (see cache.ts taxonomy), not a memo.
-```
+Separately, `isEncryptedContentFromCache:54` uses `Reflect.has`, which walks the prototype chain and
+ignores the value — it returns `true` for a flag explicitly set to `false`. The writer only ever
+sets `true`, so this is latent, but it is inconsistent with `isFromCache` (`event.ts:188`), which
+checks `Reflect.get(...) === true`.
 
-`addParentSealReference` is declared at line 51 and its `Reflect.set` is at line 55; "~53" is already
-approximate, and this file gained 27 lines during the phase. Function-name citations are the intended
-form everywhere else in the sweep.
-
-**Fix:** `// Lazily initializes the same mutable Set that addParentSealReference grows over time —`
+**Fix:** Replace the hedge with the traced conclusion (prune/remove evict, so the flag *is* lost on
+re-delivery of an evicted event), or drop the paragraph and file the question in STATE.md's Deferred
+Items. Change `isEncryptedContentFromCache` to
+`Reflect.get(event, EncryptedContentFromCacheSymbol) === true` to match `isFromCache`.
 
 ---
 
-### IN-02: `SealSymbol` carries two incompatible value shapes and one wrong type declaration
+## Verified — claims I tried to break and could not
 
-**File:** `packages/common/src/helpers/gift-wrap.ts:28`, `43-48`, `89-98`, `193`
+Recorded so a later round does not re-litigate them:
 
-**Issue:** `SealSymbol` means different things depending on the host:
-
-- on a **gift wrap**: a single seal object (`getGiftWrapSeal`, line 193: `gift[SealSymbol] as UnlockedSeal`)
-- on a **rumor**: a `Set<UnlockedSeal>` (`getRumorSeals`, line 90; `addParentSealReference`, line 55)
-
-and `UnlockedSeal` declares it as a third thing entirely — `[SealSymbol]: UnlockedGiftWrapEvent` —
-even though the upstream gift wrap is actually read from `GiftWrapSymbol` (`getSealGiftWrap`,
-line 85). The doc comment at line 27 acknowledges the overload ("seal event on gift wraps (downstream)
-or the seal event on rumors (upstream[])") but the types do not encode it, so nothing stops
-`getRumorSeals(giftWrap)` from clobbering a gift wrap's seal reference with an empty `Set`. Not
-reachable through the current public API; worth splitting into a distinct `RumorSealsSymbol` if this
-area is touched again.
-
-**Fix:** Split the symbol, or at minimum correct `UnlockedSeal[SealSymbol]`'s declared type to match
-what `getSealGiftWrap` actually reads.
-
----
-
-### IN-03: `cache.test.ts`'s enforcement contract is accurate — recorded as a verified negative
-
-**File:** `packages/core/src/helpers/__tests__/cache.test.ts:86-140`
-
-**Issue:** No defect. Recorded because the review focus called it out explicitly. The suite's claim
-that `includeAltTag`'s `modifyPublicTags` spread is load-bearing between the write and `sign()` was
-traced and holds: `eventPipe(modifyHiddenTags, includeAltTag, sign)` really does place
-`{ ...draft, tags }` (`operations/tags.ts:29`) between `modifyHiddenTags`'s
-`[EncryptedContentSymbol]: plaintext` literal (`operations/tags.ts:90`) and `sign`'s
-enumerability-blind `Reflect.has`/`get`/`set` re-copy (`operations/event.ts:171-180`). A
-non-enumerable write at the first would be dropped by the second (`EncryptedContentSymbol`'s
-`PRESERVE_EVENT_SYMBOLS` membership stops the delete loop but does not survive a spread), so
-`getHiddenTags(signed)` and `getEncryptedContent(signed)` would both fail. The suite is not vacuous.
-
-Its "what this suite does not guard" disclosure (lines 102-106) is correct on both counts:
-`setEncryptedContentCache` is not exercised (the fixture's `content: ""` keeps `hasHiddenTags` false
-so `modifyHiddenTags` never takes the unlock branch), and `common/operations/gift-wrap.ts` is
-cross-package. The `expect(signed.tags).toContainEqual(["alt", altDescription])` assertion correctly
-guards against the intervening operation silently no-op'ing. The `concord/keys.ts` "ARM THE MEMO"
-tests (`keys.test.ts:198-220`, `channel-rekey.test.ts:92-118`) were checked the same way and are also
-non-vacuous: without the priming call, `rollForward`'s spread would have no memo to carry and the
-assertion would pass against the pre-05-01 code.
+- `cache.ts:88-94` — `configurable: true` rationale. `pipeline.ts:63` uses `Reflect.deleteProperty`,
+  which returns `false` rather than throwing on a non-configurable property. Claim holds.
+- `cache.ts:95-99` — `writable: true` is not required for `setCachedValue`'s own overwrite.
+  `Object.defineProperty` + `configurable: true` permits redefinition regardless. Claim holds.
+- `cache.ts:100-105` — `Object.defineProperty` throws on frozen/sealed/non-extensible where
+  `Reflect.set` returns `false`. Claim holds; the "not limited to replaceable events" half is also
+  correct (see WR-02 for the part that isn't).
+- `groups.ts:107-114` — the in-callback `Reflect.set` is overridden non-enumerable by the enclosing
+  `getOrComputeCachedValue`. Claim holds (the write is redundant, see WR-08).
+- `groups.ts:116-138` — the deferred `undefined`-memoization narrative, including the
+  `isHiddenGroupsUnlocked` / `unlockHiddenGroups` reachability analysis and the "direct call on a
+  poisoned-but-locked bookmark does not hit this" carve-out. Traced; accurate. Deferred per STATE.md.
+- `cache.test.ts:86-109` — the carry-forward half is non-vacuous: `includeAltTag` →
+  `modifyPublicTags`'s `{ ...draft, tags }` sits between the write and `sign`'s enumerability-blind
+  re-copy, so a non-enumerable write at `modifyHiddenTags`'s return would fail the suite. Claim holds.
+- `concord/keys.ts:94-121` and `:558-568` — the CONCORD-H01 narrative against `rollForward`'s
+  `{ ...keys.material, ... }` and `rollForwardChannel`'s `{ ...channel, ... }` spreads, and the
+  `JSON.stringify`-skips-symbols / spread-copies-symbols asymmetry. Claims hold.
+- `encrypted-content.ts:117-124` — `setEncryptedContentCache`'s enumerable write is required because
+  `modifyPublicTags`'s `{ ...draft, tags }` would drop a non-enumerable one. Claim holds.
+- `operations/event.ts:132-143`, `:170-180` — `stamp`/`sign`'s `Reflect.has/get/set` copies are
+  enumerability-blind and independent of `PRESERVE_EVENT_SYMBOLS`. Claims hold.
+- `.changeset/*` — both files are single-sentence, single-change, per CLAUDE.md. The `minor` (throw)
+  vs `patch` (non-enumerable) split is defensible: both derive from one edit but are two distinct
+  observable changes, and the throw is the more visible break.
 
 ---
 
-_Reviewed: 2026-07-15T17:50:00Z_
+_Reviewed: 2026-07-16_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
