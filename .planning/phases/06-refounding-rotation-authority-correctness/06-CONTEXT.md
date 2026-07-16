@@ -29,7 +29,7 @@ A Refounding stops being a cryptographic no-op in-session: it rotates every plan
 
 ### AUTH-02 — send-path outrank (H03, `refound()`)
 
-- **D-05: Add a per-target `BAN` outrank loop to `refound()`, mirroring `rotateChannel` (`community.ts:885-888`).** After the `refoundAuthority` check and before building/publishing anything, loop over `opts.exclude`; throw `cannot exclude ${target} — you do not outrank them` on the first target where `!this.canDo(PERM.BAN, this.standingOf(target).position)`.
+- **D-05: Add a per-target `BAN` outrank loop to `refound()`, mirroring `rotateChannel`.** (`community.ts:885-888`) After the `refoundAuthority` check and before building/publishing anything, loop over `opts.exclude`; throw `cannot exclude ${target} — you do not outrank them` on the first target where `!this.canDo(PERM.BAN, this.standingOf(target).position)`.
 - **D-06: Throw and abort the whole Refounding on failure — atomic, no partial rotation, no publishes.** A Refounding is heavier than a channel rekey; a partial one is worse than none. Consistent with `rotateChannel` and the already-shipped `concord-channel-rekey-outrank` changeset. Rejected: silently dropping un-outranked targets and proceeding.
 
 ### AUTH-01 — receive-path outrank (H03, `readRekey`)
