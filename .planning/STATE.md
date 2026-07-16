@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 05.1
-current_phase_name: symbol-propagation-redesign
+current_phase: 6
+current_phase_name: Refounding Rotation & Authority Correctness
 status: executing
 stopped_at: Phase 05.1 context gathered
-last_updated: "2026-07-16T14:30:39.596Z"
+last_updated: "2026-07-16T16:47:30.784Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 05.1 execution started
+last_activity_desc: Phase 05.1 complete, transitioned to Phase 6
 progress:
   total_phases: 9
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 27
-  completed_plans: 14
-  percent: 11
+  completed_plans: 27
+  percent: 22
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 05.1 (symbol-propagation-redesign) — EXECUTING
-Plan: 1 of 13
+Phase: 6 — Refounding Rotation & Authority Correctness
+Plan: Not started
 Status: Executing Phase 05.1
-Last activity: 2026-07-16 — Phase 05.1 execution started
+Last activity: 2026-07-16 — Phase 05.1 complete, transitioned to Phase 6
 
 Progress: [░░░░░░░░░░] 0%
 
