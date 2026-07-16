@@ -140,3 +140,11 @@ None - no external service configuration required.
 ---
 *Phase: 05-cache-identity-memo-fix*
 *Completed: 2026-07-16*
+
+## Self-Check: PASSED
+
+- FOUND: packages/core/src/helpers/cache.ts
+- FOUND: .changeset/cache-frozen-event-throws.md
+- FOUND: 293a8849 (Task 1 commit)
+- FOUND: c47eddbb (Task 2 commit)
+- FOUND: 98759f33 (SUMMARY commit)
