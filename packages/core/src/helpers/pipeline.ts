@@ -1,8 +1,9 @@
 import type { EventOperation, Operation, TagOperation } from "../factories/types.js";
 import { EncryptedContentSymbol } from "./encrypted-content.js";
+import { GiftWrapSymbol, RumorSymbol, SealSymbol } from "./gift-wrap.js";
 
 /** An array of Symbols to preserve when building events with {@link eventPipe} */
-export const PRESERVE_EVENT_SYMBOLS = new Set([EncryptedContentSymbol]);
+export const PRESERVE_EVENT_SYMBOLS = new Set([EncryptedContentSymbol, GiftWrapSymbol, SealSymbol, RumorSymbol]);
 
 export function identity<T>(x: T): T {
   return x;
@@ -53,14 +54,33 @@ export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?:
 
   return async function piped(input: T): Promise<R> {
     return fns.reduce(async (prev: any, fn: Operation<T, R>) => {
-      const result = await fn(await prev);
+      // Hoist the awaited input into a single local reused for both the operation call and the
+      // carry-forward loop below (a Reflect.has on an un-awaited Promise is always false).
+      const prevValue = await prev;
+      const result = await fn(prevValue);
 
       // Copy the symbols and fields if result is an object
-      if (preserve && typeof result === "object" && result !== null && typeof prev === "object" && prev !== null) {
+      if (
+        preserve &&
+        typeof result === "object" &&
+        result !== null &&
+        typeof prevValue === "object" &&
+        prevValue !== null
+      ) {
         const keys = Reflect.ownKeys(result).filter((key) => typeof key === "symbol");
 
         for (const symbol of keys) {
           if (!preserve.has(symbol)) Reflect.deleteProperty(result, symbol);
+        }
+
+        // Carry forward: restore any preserved symbol prevValue had that result is missing
+        // (an operation's own internal spread — e.g. modifyPublicTags's `{ ...draft, tags }` —
+        // drops non-enumerable writes; this explicitly restores them instead of relying on
+        // write-site enumerability).
+        for (const symbol of preserve) {
+          if (Reflect.has(prevValue, symbol) && !Reflect.has(result, symbol)) {
+            Reflect.set(result, symbol, Reflect.get(prevValue, symbol));
+          }
         }
       }
 

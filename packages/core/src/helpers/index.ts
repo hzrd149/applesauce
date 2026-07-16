@@ -7,6 +7,7 @@ export * from "./event.js";
 export * from "./expiration.js";
 export * from "./factory.js";
 export * from "./filter.js";
+export * from "./gift-wrap.js";
 export * from "./hidden-content.js";
 export * from "./hidden-tags.js";
 export * from "./json.js";
