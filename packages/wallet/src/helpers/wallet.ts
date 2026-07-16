@@ -6,6 +6,7 @@ import {
   lockHiddenTags,
   notifyEventUpdate,
   relaySet,
+  setCachedValue,
   setHiddenTagsEncryptionMethod,
   UnlockedHiddenTags,
   unlockHiddenTags,
@@ -58,8 +59,8 @@ export function getWalletMints<T extends NostrEvent>(wallet: T): string[] | unde
   // Get mints
   const mints = tags.filter((t) => t[0] === "mint").map((t) => t[1]);
 
-  // Set the cached value
-  Reflect.set(wallet, WalletMintsSymbol, mints);
+  // Set the cached value (identity memo, non-enumerable so a spread drops it)
+  setCachedValue(wallet, WalletMintsSymbol, mints);
 
   return mints;
 }
@@ -78,8 +79,11 @@ export function getWalletPrivateKey<T extends NostrEvent>(wallet: T): Uint8Array
   const privkey = tags.find((t) => t[0] === "privkey" && t[1])?.[1];
   const key = privkey ? hexToBytes(privkey) : null;
 
-  // Set the cached value
-  Reflect.set(wallet, WalletPrivateKeySymbol, key);
+  // Set the cached value (identity memo, non-enumerable so a spread drops it). This is a V8
+  // improvement: the decrypted private key no longer rides along on an unrelated plain-object
+  // spread of the wallet event. The key itself is still held in memory for this wallet
+  // instance's lifetime -- no lock primitive is added here, that stays out of this phase's scope.
+  setCachedValue(wallet, WalletPrivateKeySymbol, key);
 
   return key;
 }
@@ -99,8 +103,8 @@ export function getWalletRelays<T extends NostrEvent>(wallet: T): string[] | und
   const urls = tags.filter((t) => t[0] === "relay" && t[1]).map((t) => t[1]);
   const relays = relaySet(urls);
 
-  // Set the cached value
-  Reflect.set(wallet, WalletRelaysSymbol, relays);
+  // Set the cached value (identity memo, non-enumerable so a spread drops it)
+  setCachedValue(wallet, WalletRelaysSymbol, relays);
 
   return relays;
 }
