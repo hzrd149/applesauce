@@ -1,5 +1,6 @@
 import { verifyEvent as coreVerifyEvent } from "nostr-tools/pure";
 import { Observable, Subject, Subscription } from "rxjs";
+import { setCachedValue } from "../helpers/cache.js";
 import {
   EventStoreSymbol,
   getReplaceableIdentifier,
@@ -262,7 +263,7 @@ export class AsyncEventStore<E extends StoreEvent = NostrEvent> extends EventMod
       // EventStore.copySymbolsToDuplicateEvent's merge list: that function's source is the
       // incoming duplicate (discarded) and dest is the stored event, so exclusion protects the
       // stored event from acquiring the incoming duplicate's store reference (cache.ts taxonomy).
-      Reflect.set(inserted, EventStoreSymbol, this);
+      setCachedValue(inserted, EventStoreSymbol, this);
 
       // Emit insert$ signal
       this.insert$.next(inserted);
