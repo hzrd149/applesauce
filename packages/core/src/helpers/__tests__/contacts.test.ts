@@ -1,6 +1,11 @@
 import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04 } from "nostr-tools";
 import { describe, expect, it } from "vitest";
-import { getRelaysFromContactsEvent, isHiddenContactsUnlocked, mergeContacts, unlockHiddenContacts } from "../contacts.js";
+import {
+  getRelaysFromContactsEvent,
+  isHiddenContactsUnlocked,
+  mergeContacts,
+  unlockHiddenContacts,
+} from "../contacts.js";
 import { NostrEvent } from "../event.js";
 import { HiddenContentSigner } from "../hidden-content.js";
 import { setHiddenTagsEncryptionMethod, unlockHiddenTags } from "../hidden-tags.js";
