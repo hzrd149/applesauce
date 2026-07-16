@@ -1,7 +1,15 @@
+import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04 } from "nostr-tools";
 import { describe, expect, it } from "vitest";
-import { getRelaysFromContactsEvent, mergeContacts } from "../contacts.js";
+import { getRelaysFromContactsEvent, isHiddenContactsUnlocked, mergeContacts, unlockHiddenContacts } from "../contacts.js";
 import { NostrEvent } from "../event.js";
+import { HiddenContentSigner } from "../hidden-content.js";
+import { setHiddenTagsEncryptionMethod, unlockHiddenTags } from "../hidden-tags.js";
 import { ProfilePointer } from "../pointers.js";
+import { unixNow } from "../time.js";
+
+// NIP-02 private follows encrypt the contacts list content with nip04; register kind 3 (Contacts)
+// for hidden-tags support so the fixtures below can exercise the unlock path.
+setHiddenTagsEncryptionMethod(kinds.Contacts, "nip04");
 
 describe("mergeContacts", () => {
   it("should merge contacts and remove duplicates", () => {
@@ -106,5 +114,49 @@ describe("getRelaysFromContactsEvent", () => {
     expect(result?.size).toBe(1);
     expect(result?.has("wss://active-relay.example.com")).toBe(true);
     expect(result?.has("wss://inactive-relay.example.com")).toBe(false);
+  });
+});
+
+describe("isHiddenContactsUnlocked / unlockHiddenContacts (CR-01 regression)", () => {
+  const key = generateSecretKey();
+  const pubkey = getPublicKey(key);
+  const hiddenContactPubkey = getPublicKey(generateSecretKey());
+  const signer: HiddenContentSigner = {
+    nip04: {
+      encrypt: (pubkey: string, plaintext: string) => nip04.encrypt(key, pubkey, plaintext),
+      decrypt: (pubkey: string, ciphertext: string) => nip04.decrypt(key, pubkey, ciphertext),
+    },
+  };
+
+  const createContactsEvent = async () =>
+    finalizeEvent(
+      {
+        kind: kinds.Contacts,
+        created_at: unixNow(),
+        content: await nip04.encrypt(key, pubkey, JSON.stringify([["p", hiddenContactPubkey]])),
+        tags: [],
+      },
+      key,
+    );
+
+  it("reports locked before hidden tags are unlocked", async () => {
+    const event = await createContactsEvent();
+    expect(isHiddenContactsUnlocked(event)).toBe(false);
+  });
+
+  it("unlockHiddenContacts never resolves undefined, even when hidden tags were unlocked via a different path first", async () => {
+    const event = await createContactsEvent();
+
+    // Unlock hidden tags through a path that never parses/caches contacts -- this is the guard-lie
+    // path from 05-REVIEW.md CR-01 (e.g. unlockHiddenBookmarks/unlockHiddenMutes share this same
+    // hidden-tags unlock without ever touching HiddenContactsSymbol).
+    await unlockHiddenTags(event, signer);
+
+    // Hand-derived from the fixture's own encrypted p-tag (NIP-51/NIP-02 contact pointer
+    // semantics) -- never read from getHiddenContacts's own output.
+    const expected: ProfilePointer[] = [{ pubkey: hiddenContactPubkey }];
+
+    const result = await unlockHiddenContacts(event, signer);
+    expect(result).toEqual(expected);
   });
 });
