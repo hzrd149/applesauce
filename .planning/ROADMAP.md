@@ -102,13 +102,25 @@ Plans:
   - **CR-05 — `stamp()` mutates its caller's draft.** `packages/core/src/operations/event.ts:126-127` deletes `id`/`sig` from `draft` before copying; `stripSignature`/`stripStamp` copy first. `eventPipe(sign(user))(someSignedEvent)` strips the caller's `EventMemory`-indexed event.
 
   The 11 WARNING-severity findings in the same review are lower priority; fold in opportunistically where a site is touched, otherwise leave for milestone review.
-**Requirements**: TBD
+**Requirements**: TBD (governed by CONTEXT.md decisions D-01..D-14; CACHE-02 superseded+reinterpreted per D-06)
 **Depends on:** Phase 5
-**Plans:** 0 plans
+**Plans:** 13 plans (4 waves)
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 05.1 to break down)
+- [ ] 05.1-01-PLAN.md — Mechanism: move gift-wrap symbols to core, static PRESERVE_EVENT_SYMBOLS, carry-forward half in both strip loops (wave 1)
+- [ ] 05.1-02-PLAN.md — Core guard fixes: CR-01 contacts unlock-guard, CR-04 copySymbols replaceable guard (wave 1)
+- [ ] 05.1-03-PLAN.md — Core input-safety fixes: CR-05 stamp copy-then-delete, Site-1 unlockHiddenTags spread (wave 1)
+- [ ] 05.1-04-PLAN.md — Common unlock-guard family: CR-02 emoji-pack/mute/trusted-assertions (wave 1)
+- [ ] 05.1-05-PLAN.md — Common lock + memo: CR-03 lockAppData, groups D-02/D-03 fix + line-139 delete (wave 1)
+- [ ] 05.1-06-PLAN.md — Mechanism proof + docs: cache.test.ts carry-forward rewrite (non-vacuous), cache.ts one-rule doc (wave 2)
+- [ ] 05.1-07-PLAN.md — Core helper migrations: filter/event/cast/encrypted-content/relays/hidden-tags/contacts (wave 2)
+- [ ] 05.1-08-PLAN.md — Core event-store migrations: copySymbols merge, EventStoreSymbol sync+async (wave 2)
+- [ ] 05.1-09-PLAN.md — Common identity-memo migrations: mute/emoji/trusted/app-data/bookmark/lists/enc-content-cache (wave 2)
+- [ ] 05.1-10-PLAN.md — Common gift-wrap helper migrations (6 sites) (wave 2)
+- [ ] 05.1-11-PLAN.md — Downstream migrations: concord/wallet/wallet-connect + Wave-0 gap tests (wave 2)
+- [ ] 05.1-12-PLAN.md — Group-B build-path migrations: tags/encrypted-content/gift-wrap operations (wave 3)
+- [ ] 05.1-13-PLAN.md — Strip-loop deletion (delete-loop half removed, carry-forward kept) + full-suite gate (wave 4)
 
 ### Phase 6: Refounding Rotation & Authority Correctness
 
