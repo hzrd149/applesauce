@@ -140,6 +140,15 @@ None - no external service configuration required.
 - `groups.ts`'s comment now points at `.planning/STATE.md`'s Deferred Items table as the routing record for the `getHiddenGroups` undefined-memoization defect. Plan 05-14 (or whichever plan owns the deferral register) must land a matching row so the comment's pointer resolves to an actual recorded item — this plan intentionally did NOT add that row itself (out of this plan's scope per the plan's `artifacts_this_phase_produces` note).
 - No blockers for downstream work. Both files pass their full test suites and the workspace's `applesauce-common` build target is unaffected (no executable change).
 
+## Self-Check: PASSED
+
+- FOUND: `packages/common/src/helpers/groups.ts`
+- FOUND: `packages/common/src/helpers/encrypted-content-cache.ts`
+- FOUND: `.planning/phases/05-cache-identity-memo-fix/05-13-SUMMARY.md`
+- FOUND commit: `7d4ca5b1`
+- FOUND commit: `c73a3fa6`
+- FOUND commit: `aeed7d07`
+
 ---
 
 *Phase: 05-cache-identity-memo-fix*
