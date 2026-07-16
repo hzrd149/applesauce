@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { modifyHiddenTags } from "../../operations/tags.js";
 import { includeAltTag, sign } from "../../operations/event.js";
 import { getCachedValue, getOrComputeCachedValue, setCachedValue } from "../cache.js";
-import { getEncryptedContent } from "../encrypted-content.js";
-import { kinds } from "../event.js";
-import { getHiddenTags } from "../hidden-tags.js";
+import { EncryptedContentSymbol } from "../encrypted-content.js";
+import { EventTemplate, kinds } from "../event.js";
 import { eventPipe } from "../pipeline.js";
 import { unixNow } from "../time.js";
 
@@ -13,10 +11,13 @@ import { unixNow } from "../time.js";
  * Both halves of the D-13 two-sided convention live in this ONE file — the
  * contrast between them IS the lesson. The first half proves an identity memo
  * (this package's `cache.ts` write mechanism) is DROPPED by a spread. The
- * second half proves a carry-forward payload (`EncryptedContentSymbol` at
- * `operations/tags.ts`'s `modifyHiddenTags` write site) SURVIVES a real
- * factory pipe and real signing. See `cache.ts`'s write-site taxonomy comment
- * for the full rationale.
+ * second half proves a preserved (carry-forward) symbol written non-enumerably
+ * via `setCachedValue` SURVIVES a downstream operation's own internal spread —
+ * specifically because `pipeFromAsyncArray`'s carry-forward loop
+ * (`helpers/pipeline.ts`, Plan 01) restores it — while a symbol NOT in
+ * `PRESERVE_EVENT_SYMBOLS` written the exact same way is dropped by that same
+ * spread and never restored. See `cache.ts`'s one-rule doc block (D-05) for
+ * the mechanism this half guards.
  */
 
 describe("cache identity memos", () => {
@@ -83,59 +84,69 @@ describe("cache identity memos", () => {
   });
 });
 
-describe("carry-forward payloads", () => {
-  // Asserts the OPPOSITE outcome of the memo half above: EncryptedContentSymbol is a
-  // carry-forward payload at operations/tags.ts's modifyHiddenTags return (not an identity
-  // memo), so it MUST survive the pipe's spreads and the sign operation's re-copy. See
-  // cache.ts's write-site taxonomy (D-06) for the full category definitions.
+describe("carry-forward payloads (pipeline carry-forward mechanism, Plan 01)", () => {
+  // Retargeted (05.1-06) onto the real pipeline mechanism instead of modifyHiddenTags's old
+  // enumerable write. That write ({ ...draft, content, [EncryptedContentSymbol]: plaintext })
+  // is an object-literal computed-key assignment, which IS enumerable by default — it would
+  // survive any later spread regardless of whether the carry-forward loop below exists, so a
+  // suite built on it proves nothing about the mechanism (05.1-CONTEXT.md scope point 5).
   //
-  // Enforcement contract — what this suite actually guards: includeAltTag sits between
-  // modifyHiddenTags and sign in the pipe below. includeAltTag routes through
-  // modifyPublicTags, whose `{ ...draft, tags }` return copies only enumerable own
-  // properties and performs no symbol re-copy. A non-enumerable EncryptedContentSymbol write
-  // at modifyHiddenTags's return is therefore dropped by that spread, so
-  // getHiddenTags(signed) and getEncryptedContent(signed) below fail. That spread is
-  // load-bearing: without it, stamp/sign's Reflect.has/get/set copy (operations/event.ts) is
-  // enumerability-blind and would carry a non-enumerable write through untouched, leaving
-  // this suite green regardless of the write's enumerability.
+  // What this suite actually guards: `setCachedValue` (this file's own helper) writes
+  // EncryptedContentSymbol NON-enumerably onto the draft, before the pipe runs. includeAltTag
+  // routes through modifyPublicTags, whose `{ ...draft, tags }` return copies only enumerable
+  // own properties — so that non-enumerable write is genuinely dropped by the spread. The
+  // ONLY thing that can put it back is pipeFromAsyncArray's carry-forward loop
+  // (helpers/pipeline.ts), which explicitly restores any symbol in PRESERVE_EVENT_SYMBOLS that
+  // the previous step's value had and the new result is missing. sign()'s own Reflect
+  // re-copy (operations/event.ts) then carries the (already-restored) value the rest of the
+  // way — it cannot restore a symbol its own `draft` argument never received, so it does not
+  // confound this probe.
   //
-  // What this suite does not guard: helpers/encrypted-content.ts's setEncryptedContentCache
-  // (this fixture's draft has empty content, so hasHiddenTags is false and modifyHiddenTags
-  // never takes the unlock branch that calls it) and common/operations/gift-wrap.ts (a
-  // different package this file does not import and cannot fail on). A future cleanup that
-  // migrates either of those two sites onto setCachedValue will NOT turn this suite red.
+  // Companion (D-13, two-sided convention on one screen): a symbol NOT in
+  // PRESERVE_EVENT_SYMBOLS, written the exact same way, is dropped by the exact same spread
+  // and is never restored — the carry-forward loop only iterates the preserve set.
   //
-  // This half is a regression guard, not a proof of the 05-01 fix — the carry-forward sites
-  // never routed through cache.ts, so it was green before and after that fix.
+  // Non-vacuity (RESEARCH.md § Validation Architecture / Pitfall 2): with the carry-forward
+  // loop in pipeline.ts temporarily commented out, the "preserved symbol survives" assertion
+  // below was observed to fail (RED) — `getCachedValue(signed, EncryptedContentSymbol)` was
+  // `undefined` instead of `plaintext` — then the loop was restored and the suite went GREEN
+  // again. See 05.1-06-SUMMARY.md for the recorded transcript of that probe.
 
-  it("real pipe + real signing preserve plaintext hidden tags on the signed event", async () => {
+  it("a preserved symbol dropped by a downstream operation's own spread is restored by the pipe's carry-forward loop", async () => {
     const user = new FakeUser();
-    const plaintextTags = [["p", "friend-pubkey"]];
-    const altDescription = "carry-forward regression probe";
+    const plaintext = JSON.stringify([["p", "friend-pubkey"]]);
+    const altDescription = "carry-forward probe";
+    const nonPreservedMemo = Symbol("test-memo-not-in-preserve-set");
+
+    const draft: EventTemplate = { kind: kinds.Mutelist, content: "", tags: [], created_at: unixNow() };
+
+    // Non-enumerable writes via setCachedValue — deliberately NOT modifyHiddenTags's own
+    // enumerable object-literal write, which would survive any spread unconditionally and
+    // prove nothing about the carry-forward loop under test.
+    setCachedValue(draft, EncryptedContentSymbol, plaintext);
+    setCachedValue(draft, nonPreservedMemo, "will-not-survive");
 
     const signed = await eventPipe(
-      modifyHiddenTags(user, (tags) => [...tags, ["p", "friend-pubkey"]]),
-      includeAltTag(altDescription),
+      includeAltTag(altDescription), // routes through modifyPublicTags's `{ ...draft, tags }` spread
       sign(user),
-    )({ kind: kinds.Mutelist, content: "", tags: [], created_at: unixNow() });
+    )(draft);
 
-    // The event is genuinely signed.
+    // The event is genuinely signed, and the intervening operation actually ran: includeAltTag's
+    // effect landing on the signed event proves the spread executed (a no-op would make this
+    // suite vacuous in a different way).
     expect(signed.id).toBeTruthy();
     expect(signed.sig).toBeTruthy();
-    expect(signed.pubkey).toBe(user.pubkey);
-
-    // The content really was encrypted, not passed through.
-    expect(signed.content).not.toBe("");
-    expect(signed.content).not.toBe(JSON.stringify(plaintextTags));
-
-    // The intervening operation actually ran: includeAltTag's public-tag spread sits between
-    // the hidden-tag write and sign() below, so its effect landing on the signed event proves
-    // the spread executed (a no-op insertion would make this test vacuous in a new way).
     expect(signed.tags).toContainEqual(["alt", altDescription]);
 
-    // The plaintext survived every spread in the pipe — including the alt-tag spread above —
-    // and reads back correctly.
-    expect(getHiddenTags(signed)).toEqual(plaintextTags);
-    expect(getEncryptedContent(signed)).toBe(JSON.stringify(plaintextTags));
+    // Preserved: EncryptedContentSymbol is a PRESERVE_EVENT_SYMBOLS member, so the pipe's
+    // carry-forward loop restored it after includeAltTag's spread dropped it. Asserted against
+    // the literal constant this test set up — not derived via getEncryptedContent (that would
+    // be asserting against implementation output) — so this only passes if the carry-forward
+    // loop actually ran.
+    expect(getCachedValue(signed, EncryptedContentSymbol)).toBe(plaintext);
+
+    // Companion: a symbol NOT in PRESERVE_EVENT_SYMBOLS, written the same way, is dropped by
+    // the same spread and never restored.
+    expect(Reflect.has(signed, nonPreservedMemo)).toBe(false);
   });
 });
