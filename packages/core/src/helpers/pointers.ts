@@ -32,7 +32,14 @@ export {
 export type { NAddr, NEvent, NProfile, NPub } from "nostr-tools/nip19";
 
 import { getPublicKey } from "nostr-tools/pure";
-import { getReplaceableIdentifier, isAddressableKind, isReplaceableKind, kinds, NostrEvent, StoreEvent } from "./event.js";
+import {
+  getReplaceableIdentifier,
+  isAddressableKind,
+  isReplaceableKind,
+  kinds,
+  NostrEvent,
+  StoreEvent,
+} from "./event.js";
 import { Tokens } from "./regexp.js";
 import { isSafeRelayURL, relaySet } from "./relays.js";
 import { isHexKey } from "./string.js";

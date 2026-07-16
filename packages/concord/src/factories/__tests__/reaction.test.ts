@@ -21,9 +21,10 @@ describe("channel reaction composition", () => {
   });
 
   it("handles a custom emoji", async () => {
-    const t = await bindToChannel("chan", 0)(
-      await ReactionFactory.create(target, { shortcode: "party", url: "https://x/p.png" }),
-    );
+    const t = await bindToChannel(
+      "chan",
+      0,
+    )(await ReactionFactory.create(target, { shortcode: "party", url: "https://x/p.png" }));
     expect(t.content).toBe(":party:");
     expect(t.tags).toContainEqual(["emoji", "party", "https://x/p.png"]);
   });

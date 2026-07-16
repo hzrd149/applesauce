@@ -106,9 +106,9 @@ const community = await client.joinByBundle(invite.bundle);
 The watcher keeps local dismissal state so the user can tidy their inbox without deleting relay data:
 
 ```ts
-await watcher.dismiss(invite);   // hide it
-await watcher.restore(invite);   // bring it back
-await watcher.clearDismissed();  // reset
+await watcher.dismiss(invite); // hide it
+await watcher.restore(invite); // bring it back
+await watcher.clearDismissed(); // reset
 ```
 
 Use `isDismissed(invite)` to check state, and `dismissed$` to observe the whole set.

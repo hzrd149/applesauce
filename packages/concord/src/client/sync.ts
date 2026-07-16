@@ -147,7 +147,10 @@ export async function syncEpoch(
   ctx.relayAuth.registerStreamKeys(publicKeys);
   ctx.ensureAuth(ctx.relays);
   const channelDecoded: DecodedEvent[] = [];
-  for (const ev of await syncAuthors(ctx, publicKeys.map((k) => k.pk))) {
+  for (const ev of await syncAuthors(
+    ctx,
+    publicKeys.map((k) => k.pk),
+  )) {
     const info = keys.planes.get(ev.pubkey);
     if (!info || info.type !== "channel") continue;
     const d = decodeWrapCached(ev, info.convKey);
@@ -230,10 +233,9 @@ export async function syncEpochs(ctx: SyncContext, material: JoinMaterial): Prom
  * before that epoch, so `deriveConcordKeys` addresses the right generation.
  */
 export function buildChain(material: JoinMaterial): JoinMaterial[] {
-  const roots = [
-    ...(material.held_roots ?? []),
-    { epoch: material.root_epoch, key: material.community_root },
-  ].sort((a, b) => a.epoch - b.epoch);
+  const roots = [...(material.held_roots ?? []), { epoch: material.root_epoch, key: material.community_root }].sort(
+    (a, b) => a.epoch - b.epoch,
+  );
   const seen = new Set<number>();
   const uniq = roots.filter((r) => (seen.has(r.epoch) ? false : (seen.add(r.epoch), true)));
   return uniq.map((r) => ({

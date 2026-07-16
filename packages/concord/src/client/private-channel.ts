@@ -18,7 +18,13 @@ import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo }
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { checkChatBinding } from "../helpers/chat.js";
 import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
-import type { ChannelKey, ConcordPrivateChannelStatus, ConcordSyncPhase, DecodedEvent, JoinMaterial } from "../types.js";
+import type {
+  ChannelKey,
+  ConcordPrivateChannelStatus,
+  ConcordSyncPhase,
+  DecodedEvent,
+  JoinMaterial,
+} from "../types.js";
 import type { ConcordRumorStore } from "./storage.js";
 import { syncAuthors } from "./sync.js";
 import { channelLiveAuthors, syncChannelEpochs, type ChannelSyncContext } from "./channel-sync.js";

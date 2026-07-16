@@ -8,11 +8,11 @@ Each slice of the community is its own observable, and each only emits when **th
 
 ```ts
 community.metadata$.subscribe((m) => m?.name); // name, icon, banner, description
-community.channels$.subscribe(render);         // live channels
-community.roles$.subscribe(render);            // defined roles
-community.members$.subscribe(render);          // Set of member pubkeys
-community.banlist$.subscribe(render);          // Set of banned pubkeys
-community.inviteLinks$.subscribe(render);      // non-empty ⇒ the community is Public
+community.channels$.subscribe(render); // live channels
+community.roles$.subscribe(render); // defined roles
+community.members$.subscribe(render); // Set of member pubkeys
+community.banlist$.subscribe(render); // Set of banned pubkeys
+community.inviteLinks$.subscribe(render); // non-empty ⇒ the community is Public
 ```
 
 Prefer these over `state$`, the aggregate of all of them. `state$` re-emits on **any**
@@ -47,7 +47,8 @@ Messages live in per-channel [RumorStores](/core/event-store). Concord folds no 
 
 ```ts
 // A timeline of chat messages (kind 9) in a channel
-community.channelStore(channelId)
+community
+  .channelStore(channelId)
   .timeline([{ kinds: [9] }])
   .subscribe((messages) => render(messages));
 ```
@@ -55,8 +56,8 @@ community.channelStore(channelId)
 The control and guestbook planes are stores too, if you want the raw membership log or control editions:
 
 ```ts
-community.guestbookStore.timeline([{}]);  // Joins / Leaves / Kicks
-community.controlStore.timeline([{}]);    // control editions
+community.guestbookStore.timeline([{}]); // Joins / Leaves / Kicks
+community.controlStore.timeline([{}]); // control editions
 ```
 
 ## Sending messages

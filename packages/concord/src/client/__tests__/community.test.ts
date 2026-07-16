@@ -117,7 +117,8 @@ describe("ConcordCommunity (DI, no network)", () => {
     await community.start();
 
     // Seed genesis control editions (plaintext) + owner Join via optimistic echo.
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -128,7 +129,10 @@ describe("ConcordCommunity (DI, no network)", () => {
 
     // Consumers read the channel store directly with the standard timeline API.
     let messages: Rumor[] = [];
-    const sub = community.channelStore(general!.channel_id).timeline([{ kinds: [kinds.ChatMessage] }]).subscribe((m) => (messages = m));
+    const sub = community
+      .channelStore(general!.channel_id)
+      .timeline([{ kinds: [kinds.ChatMessage] }])
+      .subscribe((m) => (messages = m));
     await community.sendMessage(general!.channel_id, "hello world");
     await settle();
     expect(messages.some((m) => m.content === "hello world" && m.pubkey === pubkey)).toBe(true);
@@ -153,7 +157,8 @@ describe("ConcordCommunity (DI, no network)", () => {
       relays: ["wss://fake"],
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -208,7 +213,8 @@ describe("ConcordCommunity (DI, no network)", () => {
       relays: ["wss://fake"],
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -288,7 +294,8 @@ describe("ConcordCommunity (DI, no network)", () => {
       relays: ["wss://fake"],
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -362,7 +369,8 @@ describe("ConcordCommunity (DI, no network)", () => {
       },
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -419,7 +427,8 @@ describe("ConcordCommunity (DI, no network)", () => {
       relays: ["wss://fake"],
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -460,7 +469,8 @@ describe("ConcordCommunity (DI, no network)", () => {
       relays: ["wss://fake"],
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
     const channelId = await community.createChannel("secret", { private: true });
@@ -483,7 +493,11 @@ describe("ConcordCommunity (DI, no network)", () => {
     // Compaction re-wrapped the folded control heads into the NEW epoch's control
     // plane — proving the plaintext seals were recovered from the wrap store (they
     // are stripped from the RumorStore fold).
-    const newControlPk = controlGroupKey(hexToBytes(community.material.community_root), cid, community.material.root_epoch).pk;
+    const newControlPk = controlGroupKey(
+      hexToBytes(community.material.community_root),
+      cid,
+      community.material.root_epoch,
+    ).pk;
     expect(published.some((e) => e.pubkey === newControlPk)).toBe(true);
 
     // A refound that DOES name the channel rotates it (delivered to its keep set).
@@ -514,7 +528,8 @@ describe("ConcordCommunity (DI, no network)", () => {
       relays: ["wss://fake"],
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -602,7 +617,12 @@ describe("ConcordCommunity permissions + granular reads", () => {
     const memberSigner = new PrivateKeySigner(generateSecretKey());
     const member = await memberSigner.getPublicKey();
     const pool = fakePool();
-    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", description: "d", relays: ["wss://fake"] });
+    const genesis = await createCommunity({
+      ownerPubkey: owner,
+      name: "Test",
+      description: "d",
+      relays: ["wss://fake"],
+    });
     const community = new ConcordCommunity({
       material: genesis.material,
       signer: memberSigner,
@@ -628,12 +648,29 @@ describe("ConcordCommunity permissions + granular reads", () => {
 
     // The owner mints a MANAGE_CHANNELS role and grants it to the member.
     const roleId = "01".repeat(32);
-    const role = { role_id: roleId, name: "Mods", position: 5, permissions: PERM.MANAGE_CHANNELS.toString(), scope: { kind: "server" }, color: 0 };
-    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    const role = {
+      role_id: roleId,
+      name: "Mods",
+      position: 5,
+      permissions: PERM.MANAGE_CHANNELS.toString(),
+      scope: { kind: "server" },
+      color: 0,
+    };
+    const roleEd = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(role),
+    });
     community.controlStore.add(rumorFromTemplate(roleEd, owner, 2_000));
 
     const grantEid = grantLocator(hexToBytes(genesis.material.community_id), member);
-    const grantEd = await EditionFactory.create({ vsk: VSK.GRANT, eid: grantEid, version: 1, content: JSON.stringify({ member, role_ids: [roleId] }) });
+    const grantEd = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid: grantEid,
+      version: 1,
+      content: JSON.stringify({ member, role_ids: [roleId] }),
+    });
     community.controlStore.add(rumorFromTemplate(grantEd, owner, 3_000));
     await settle();
 
@@ -650,7 +687,12 @@ describe("ConcordCommunity permissions + granular reads", () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const owner = await signer.getPublicKey();
     const pool = fakePool();
-    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", description: "d", relays: ["wss://fake"] });
+    const genesis = await createCommunity({
+      ownerPubkey: owner,
+      name: "Test",
+      description: "d",
+      relays: ["wss://fake"],
+    });
     const community = new ConcordCommunity({
       material: genesis.material,
       signer,
@@ -661,7 +703,8 @@ describe("ConcordCommunity permissions + granular reads", () => {
       relays: ["wss://fake"],
     });
     await community.start();
-    for (const rumor of genesis.controlRumors) await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
@@ -700,7 +743,12 @@ describe("ConcordCommunity permissions + granular reads", () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const owner = await signer.getPublicKey();
     const pool = fakePool();
-    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", description: "d", relays: ["wss://fake"] });
+    const genesis = await createCommunity({
+      ownerPubkey: owner,
+      name: "Test",
+      description: "d",
+      relays: ["wss://fake"],
+    });
     const community = new ConcordCommunity({
       material: genesis.material,
       signer,
@@ -755,16 +803,18 @@ describe("ConcordCommunity permissions + granular reads", () => {
     const progress: string[] = [];
     const general = community.state$.value.channels.find((c) => c.name === "general")!;
 
-    await community.sendMessage(
-      general.channel_id,
-      "files",
-      undefined,
-      [new Blob(["a"]), new Blob(["b"])],
-      undefined,
-      { onUploadProgress: (p) => progress.push(`${p.phase}:${p.done}/${p.total}`) },
-    );
+    await community.sendMessage(general.channel_id, "files", undefined, [new Blob(["a"]), new Blob(["b"])], undefined, {
+      onUploadProgress: (p) => progress.push(`${p.phase}:${p.done}/${p.total}`),
+    });
 
-    expect(progress).toEqual(["encrypting:0/2", "uploading:0/2", "uploading:1/2", "encrypting:1/2", "uploading:1/2", "uploading:2/2"]);
+    expect(progress).toEqual([
+      "encrypting:0/2",
+      "uploading:0/2",
+      "uploading:1/2",
+      "encrypting:1/2",
+      "uploading:1/2",
+      "uploading:2/2",
+    ]);
     community.dispose();
   });
 });

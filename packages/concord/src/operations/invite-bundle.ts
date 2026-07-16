@@ -16,6 +16,9 @@ export function setInviteBundle(bundle: InviteBundle, token: Uint8Array): EventO
 
 /** Replace an invite bundle with an empty revocation edition (vsk 9). */
 export function setRevocation(): EventOperation {
-  const tags = modifyPublicTags(setSingletonTag(["d", ""]), setSingletonTag(["vsk", String(INVITE_BUNDLE_VSK_REVOKED)]));
+  const tags = modifyPublicTags(
+    setSingletonTag(["d", ""]),
+    setSingletonTag(["vsk", String(INVITE_BUNDLE_VSK_REVOKED)]),
+  );
   return async (draft) => ({ ...(await tags(draft)), content: "" });
 }

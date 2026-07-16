@@ -64,10 +64,7 @@ export function foldMembers(
     const prev = state.get(subject);
     // A firsthand entry (self-signed join/leave, or authorized kick) supersedes a
     // secondhand snapshot at equal time; two firsthand entries tie on lower rumor id.
-    const wins =
-      !prev ||
-      d.ms > prev.ms ||
-      (d.ms === prev.ms && (prev.snapshot || d.rumor.id < prev.rumorId));
+    const wins = !prev || d.ms > prev.ms || (d.ms === prev.ms && (prev.snapshot || d.rumor.id < prev.rumorId));
     if (wins) state.set(subject, { present, ms: d.ms, rumorId: d.rumor.id, snapshot: false });
   };
 

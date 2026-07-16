@@ -11,7 +11,12 @@ import { decodedFromRumor } from "./utils.js";
 export function ConcordControlModel(material: JoinMaterial): Model<CommunityState, Rumor> {
   return (store) =>
     store.timeline([{ kinds: [CONTROL_KIND] }]).pipe(
-      map((rumors) => foldControl(rumors.map((rumor) => decodedFromRumor(rumor, PLAINTEXT_SEAL_KIND)), material)),
+      map((rumors) =>
+        foldControl(
+          rumors.map((rumor) => decodedFromRumor(rumor, PLAINTEXT_SEAL_KIND)),
+          material,
+        ),
+      ),
     );
 }
 

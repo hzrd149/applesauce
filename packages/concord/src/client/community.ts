@@ -401,9 +401,7 @@ export class ConcordCommunity {
       .timeline([{}])
       .pipe(
         map((rumors) =>
-          rumors.some(
-            (r) => r.pubkey === this.material.owner && r.tags.some((t) => t[0] === "vsk" && t[1] === "10"),
-          ),
+          rumors.some((r) => r.pubkey === this.material.owner && r.tags.some((t) => t[0] === "vsk" && t[1] === "10")),
         ),
       );
     this.stateSub = combineLatest([state$, dissolved$]).subscribe(([state, dissolved]) => {
@@ -486,13 +484,7 @@ export class ConcordCommunity {
    *  PUBLIC channels only (private channels live on their sub-engines). */
   private currentAuthors(): string[] {
     const { control, guestbook, dissolved, nextBaseRekey } = this.keys;
-    return [
-      control.pk,
-      guestbook.pk,
-      dissolved.pk,
-      nextBaseRekey.key.pk,
-      ...this.publicChannelKeys().map((k) => k.pk),
-    ];
+    return [control.pk, guestbook.pk, dissolved.pk, nextBaseRekey.key.pk, ...this.publicChannelKeys().map((k) => k.pk)];
   }
 
   /** Open (or reopen) the live subscription at the current epoch's addresses. */
@@ -835,7 +827,12 @@ export class ConcordCommunity {
    * (deliver on grant via {@link grantChannelAccess}, rekey on removal via
    * {@link rotateChannel}). A role mints no key, so this only records entitlement.
    */
-  createRole(name: string, position: number, permissions: bigint, scope: RoleScope = { kind: "server" }): Promise<string> {
+  createRole(
+    name: string,
+    position: number,
+    permissions: bigint,
+    scope: RoleScope = { kind: "server" },
+  ): Promise<string> {
     return this.admin.createRole(name, position, permissions, scope);
   }
 
@@ -983,9 +980,7 @@ export class ConcordCommunity {
       const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
       const signed = finalizeEvent(template, hexToBytes(link.signerSk));
       this.eventStore.add(signed);
-      this.pool
-        .publish(inviteRelays, signed)
-        .catch((err) => console.warn("invite bundle refresh publish failed", err));
+      this.pool.publish(inviteRelays, signed).catch((err) => console.warn("invite bundle refresh publish failed", err));
     }
   }
 
@@ -993,7 +988,9 @@ export class ConcordCommunity {
     const template = await InviteBundleFactory.revoke();
     const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
     this.eventStore.add(signed);
-    await this.pool.publish(this.relays(), signed).catch((err) => console.warn("bundle revocation publish failed", err));
+    await this.pool
+      .publish(this.relays(), signed)
+      .catch((err) => console.warn("bundle revocation publish failed", err));
     await this.admin.unregisterInviteLink(invite.signerPubkey);
 
     const revoked = { ...invite, revoked: true };

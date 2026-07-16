@@ -19,7 +19,12 @@ describe("chat operations", () => {
   });
 
   describe("includeMediaEncryption", () => {
-    const withImeta = (url: string) => ({ kind: kinds.ChatMessage, content: "", created_at: 0, tags: [["imeta", `url ${url}`, "m image/png"]] });
+    const withImeta = (url: string) => ({
+      kind: kinds.ChatMessage,
+      content: "",
+      created_at: 0,
+      tags: [["imeta", `url ${url}`, "m image/png"]],
+    });
 
     it("appends encryption fields to the matching imeta tag", async () => {
       const draft = await includeMediaEncryption([

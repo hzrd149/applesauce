@@ -35,9 +35,14 @@ describe("guestbook operations", () => {
 
 describe("control operations", () => {
   it("includeEdition writes the edition machinery + content", async () => {
-    const draft = await includeEdition({ vsk: 0, eid: "eid", version: 2, prevHash: "prev", content: "{}", vac: ["e", "1", "h"] })(
-      blank(CONTROL_KIND),
-    );
+    const draft = await includeEdition({
+      vsk: 0,
+      eid: "eid",
+      version: 2,
+      prevHash: "prev",
+      content: "{}",
+      vac: ["e", "1", "h"],
+    })(blank(CONTROL_KIND));
     expect(draft.content).toBe("{}");
     expect(draft.tags).toContainEqual(["vsk", "0"]);
     expect(draft.tags).toContainEqual(["eid", "eid"]);

@@ -25,18 +25,18 @@ Every member has a **standing** derived from the owner flag plus the roles grant
 ```ts
 import { PERM } from "applesauce-concord";
 
-PERM.MANAGE_ROLES
-PERM.MANAGE_CHANNELS
-PERM.MANAGE_METADATA
-PERM.KICK
-PERM.BAN
-PERM.MANAGE_MESSAGES
-PERM.CREATE_INVITE
+PERM.MANAGE_ROLES;
+PERM.MANAGE_CHANNELS;
+PERM.MANAGE_METADATA;
+PERM.KICK;
+PERM.BAN;
+PERM.MANAGE_MESSAGES;
+PERM.CREATE_INVITE;
 ```
 
 `ADMIN_PERMS` is the union of all management bits — a conventional "admin" role.
 
-Roles also carry a **position** (rank). Acting *on another member* — kicking, banning, excluding them from a channel — requires that you both hold the permission **and** strictly outrank the target. This is what stops a moderator from banning an admin.
+Roles also carry a **position** (rank). Acting _on another member_ — kicking, banning, excluding them from a channel — requires that you both hold the permission **and** strictly outrank the target. This is what stops a moderator from banning an admin.
 
 ## Checking permissions
 
@@ -52,7 +52,7 @@ if (community.canDo(PERM.CREATE_INVITE)) {
 }
 ```
 
-To act *on someone*, reach for `canModerate$` rather than pairing `canDo` with a
+To act _on someone_, reach for `canModerate$` rather than pairing `canDo` with a
 position you read yourself. It carries both halves of the rule — hold the bit **and**
 strictly outrank the target — including the fact that you never outrank yourself:
 

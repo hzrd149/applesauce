@@ -30,7 +30,8 @@ The channel is flagged deleted in the community state; already-synced messages s
 Public and private channels are read the same way — through the channel's [RumorStore](/core/event-store):
 
 ```ts
-community.channelStore(channelId)
+community
+  .channelStore(channelId)
   .timeline([{ kinds: [9] }])
   .subscribe((messages) => render(messages));
 ```

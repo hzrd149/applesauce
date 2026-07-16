@@ -60,10 +60,7 @@ export type EventStoreOptions<E extends StoreEvent = NostrEvent> = {
 // sites), since those compose against EventModels' own union default. Letting TStore default
 // (rather than narrowing it) preserves that pre-existing compatibility while still closing the
 // D-02 seam (EventStore<E>'s subscription methods are E-typed regardless of TStore's shape).
-export class EventStore<E extends StoreEvent = NostrEvent>
-  extends EventModels<E>
-  implements IEventStore<E>
-{
+export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E> implements IEventStore<E> {
   database: IEventDatabase<E>;
 
   /** Optional memory database for ensuring single event instances */

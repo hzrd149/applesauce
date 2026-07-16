@@ -17,7 +17,17 @@ describe("permissions", () => {
   it("resolves standing and outranking", () => {
     const owner = "owner";
     const roles = new Map<string, Role>([
-      ["mod", { role_id: "mod", name: "mod", position: 5, permissions: PERM.KICK.toString(), scope: { kind: "server" }, color: 0 }],
+      [
+        "mod",
+        {
+          role_id: "mod",
+          name: "mod",
+          position: 5,
+          permissions: PERM.KICK.toString(),
+          scope: { kind: "server" },
+          color: 0,
+        },
+      ],
     ]);
     const grants = new Map<string, string[]>([["alice", ["mod"]]]);
     const ownerStanding = resolveStanding(owner, owner, roles, grants);
@@ -33,7 +43,18 @@ describe("permissions", () => {
   it("a deleted role confers no permissions or rank", () => {
     const owner = "owner";
     const roles = new Map<string, Role>([
-      ["mod", { role_id: "mod", name: "mod", position: 5, permissions: PERM.KICK.toString(), scope: { kind: "server" }, color: 0, deleted: true }],
+      [
+        "mod",
+        {
+          role_id: "mod",
+          name: "mod",
+          position: 5,
+          permissions: PERM.KICK.toString(),
+          scope: { kind: "server" },
+          color: 0,
+          deleted: true,
+        },
+      ],
     ]);
     const grants = new Map<string, string[]>([["alice", ["mod"]]]);
     const alice = resolveStanding("alice", owner, roles, grants);
@@ -45,8 +66,28 @@ describe("permissions", () => {
 
   it("refoundAuthority: owner or a BAN-holder may rotate the root", () => {
     const roles = new Map<string, Role>([
-      ["ban", { role_id: "ban", name: "admin", position: 1, permissions: PERM.BAN.toString(), scope: { kind: "server" }, color: 0 }],
-      ["mod", { role_id: "mod", name: "mod", position: 5, permissions: PERM.KICK.toString(), scope: { kind: "server" }, color: 0 }],
+      [
+        "ban",
+        {
+          role_id: "ban",
+          name: "admin",
+          position: 1,
+          permissions: PERM.BAN.toString(),
+          scope: { kind: "server" },
+          color: 0,
+        },
+      ],
+      [
+        "mod",
+        {
+          role_id: "mod",
+          name: "mod",
+          position: 5,
+          permissions: PERM.KICK.toString(),
+          scope: { kind: "server" },
+          color: 0,
+        },
+      ],
     ]);
     const state = {
       material: { owner: "owner" } as JoinMaterial,

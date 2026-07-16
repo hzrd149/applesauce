@@ -30,7 +30,10 @@ describe("rekey codec", () => {
     const held = new Uint8Array(32).fill(1);
     const commit = bytesToHex(epochKeyCommitment(2n, held));
     expect(checkContinuity({ prevEpoch: 2n, prevCommit: commit }, 2n, held)).toEqual({ ok: true });
-    expect(checkContinuity({ prevEpoch: 2n, prevCommit: "00".repeat(32) }, 2n, held)).toEqual({ ok: false, reason: "fork" });
+    expect(checkContinuity({ prevEpoch: 2n, prevCommit: "00".repeat(32) }, 2n, held)).toEqual({
+      ok: false,
+      reason: "fork",
+    });
     expect(checkContinuity({ prevEpoch: 5n, prevCommit: commit }, 2n, held)).toEqual({ ok: false, reason: "gap" });
   });
 

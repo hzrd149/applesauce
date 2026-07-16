@@ -327,7 +327,9 @@ function TransitionBadge({ snap }: { snap: EpochSnapshot }) {
       );
     case "removed":
       return (
-        <span className="badge badge-error badge-outline">You were removed from the Guestbook at epoch {snap.epoch + 1}</span>
+        <span className="badge badge-error badge-outline">
+          You were removed from the Guestbook at epoch {snap.epoch + 1}
+        </span>
       );
     case "not-rekeyed":
       return (
@@ -337,7 +339,9 @@ function TransitionBadge({ snap }: { snap: EpochSnapshot }) {
         </span>
       );
     case "cannot-follow":
-      return <span className="badge badge-ghost">Signer can't decrypt rekeys — can't follow past epoch {snap.epoch}</span>;
+      return (
+        <span className="badge badge-ghost">Signer can't decrypt rekeys — can't follow past epoch {snap.epoch}</span>
+      );
     case "tip":
       return <span className="badge badge-success badge-outline">✓ Current tip (epoch {snap.epoch})</span>;
   }

@@ -17,10 +17,9 @@ async function makeInvite(bundle?: InviteBundle, recipient = new PrivateKeySigne
   const recipientPub = await recipient.getPublicKey();
   const material =
     bundle ??
-    buildInviteBundle(
-      (await createCommunity({ ownerPubkey: inviterPub, name: "T", relays: ["wss://r"] })).material,
-      { creator_npub: inviterPub },
-    );
+    buildInviteBundle((await createCommunity({ ownerPubkey: inviterPub, name: "T", relays: ["wss://r"] })).material, {
+      creator_npub: inviterPub,
+    });
   const wrap = await DirectInviteFactory.create(material, recipientPub, inviter);
   return { wrap, bundle: material, recipient, recipientPub, inviterPub };
 }

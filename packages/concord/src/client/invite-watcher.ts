@@ -314,7 +314,11 @@ export class InviteWatcher {
 
   // ---- relay setup --------------------------------------------------------
 
-  private userNeedsAuth(relays: string[], statuses: Record<string, { connected?: boolean; authRequiredForRead?: boolean; authRequiredForPublish?: boolean }>, pubkey?: string): boolean {
+  private userNeedsAuth(
+    relays: string[],
+    statuses: Record<string, { connected?: boolean; authRequiredForRead?: boolean; authRequiredForPublish?: boolean }>,
+    pubkey?: string,
+  ): boolean {
     if (!pubkey || relays.length === 0) return false;
     return relays.some((url) => {
       const status = statuses[normalizeURL(url)] ?? statuses[url];
@@ -421,7 +425,9 @@ export class InviteWatcher {
   }
 
   private sortedRecords(): DirectInviteRecord[] {
-    return [...this.records.values()].sort((a, b) => b.wrap.created_at - a.wrap.created_at || a.wrap.id.localeCompare(b.wrap.id));
+    return [...this.records.values()].sort(
+      (a, b) => b.wrap.created_at - a.wrap.created_at || a.wrap.id.localeCompare(b.wrap.id),
+    );
   }
 
   private recompute(): void {

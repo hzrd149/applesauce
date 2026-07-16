@@ -254,7 +254,15 @@ function ActionBanners({ client, signer }: { client: ConcordClient; signer: ISig
   );
 }
 
-function CommunitySelector({ client, selected, onSelect }: { client: ConcordClient; selected?: string; onSelect: (id: string) => void }) {
+function CommunitySelector({
+  client,
+  selected,
+  onSelect,
+}: {
+  client: ConcordClient;
+  selected?: string;
+  onSelect: (id: string) => void;
+}) {
   const communities = use$(client.communities$) ?? [];
   const adminCommunities = communities.filter((state) => isAdminCommunity(client, state));
 
@@ -278,10 +286,15 @@ function CommunitySelector({ client, selected, onSelect }: { client: ConcordClie
   return (
     <div className="flex flex-col gap-2">
       <label className="text-sm font-medium">Admin community</label>
-      <select className="select select-bordered w-full" value={selected ?? ""} onChange={(e) => onSelect(e.target.value)}>
+      <select
+        className="select select-bordered w-full"
+        value={selected ?? ""}
+        onChange={(e) => onSelect(e.target.value)}
+      >
         {adminCommunities.map((state) => (
           <option key={state.material.community_id} value={state.material.community_id}>
-            {state.metadata?.name || state.material.name || shortId(state.material.community_id)} · epoch {state.material.root_epoch}
+            {state.metadata?.name || state.material.name || shortId(state.material.community_id)} · epoch{" "}
+            {state.material.root_epoch}
           </option>
         ))}
       </select>
@@ -384,7 +397,11 @@ function InfoTab({ community, onError }: { community: ConcordCommunity; onError:
   async function save() {
     setSaving(true);
     try {
-      const patch: Partial<CommunityMetadata> = { name: name.trim() || "Unnamed", description, relays: relaysFromText(relays) };
+      const patch: Partial<CommunityMetadata> = {
+        name: name.trim() || "Unnamed",
+        description,
+        relays: relaysFromText(relays),
+      };
       await community.admin.editMetadata(patch);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to update metadata");
@@ -399,7 +416,12 @@ function InfoTab({ community, onError }: { community: ConcordCommunity; onError:
         <h3 className="font-semibold">Community info</h3>
         <p className="text-sm opacity-70">Requires MANAGE_METADATA.</p>
       </div>
-      <input className="input input-bordered w-full" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+      <input
+        className="input input-bordered w-full"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Name"
+      />
       <textarea
         className="textarea textarea-bordered w-full"
         value={description}
@@ -438,7 +460,17 @@ function UserSummary({ pubkey }: { pubkey: string }) {
   );
 }
 
-function MemberRow({ community, member, busy, onRun }: { community: ConcordCommunity; member: string; busy: string | null; onRun: (label: string, action: () => Promise<void>) => void }) {
+function MemberRow({
+  community,
+  member,
+  busy,
+  onRun,
+}: {
+  community: ConcordCommunity;
+  member: string;
+  busy: string | null;
+  onRun: (label: string, action: () => Promise<void>) => void;
+}) {
   const standing = use$(() => community.standing$(member), [community, member]);
   const banlist = use$(() => community.banlist$, [community]);
   const banned = banlist?.has(member) ?? false;
@@ -464,13 +496,25 @@ function MemberRow({ community, member, busy, onRun }: { community: ConcordCommu
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button className="btn btn-xs btn-outline" disabled={!canKick || !!busy} onClick={() => onRun("kick", () => community.admin.kick(member))}>
+        <button
+          className="btn btn-xs btn-outline"
+          disabled={!canKick || !!busy}
+          onClick={() => onRun("kick", () => community.admin.kick(member))}
+        >
           Kick
         </button>
-        <button className="btn btn-xs btn-outline btn-error" disabled={!canBan || !!busy} onClick={() => onRun("ban", () => community.admin.ban(member))}>
+        <button
+          className="btn btn-xs btn-outline btn-error"
+          disabled={!canBan || !!busy}
+          onClick={() => onRun("ban", () => community.admin.ban(member))}
+        >
           Ban
         </button>
-        <button className="btn btn-xs btn-ghost" disabled={!banned || !canUnban || !!busy} onClick={() => onRun("unban", () => community.admin.unban(member))}>
+        <button
+          className="btn btn-xs btn-ghost"
+          disabled={!banned || !canUnban || !!busy}
+          onClick={() => onRun("unban", () => community.admin.unban(member))}
+        >
           Unban
         </button>
       </div>
@@ -497,7 +541,9 @@ function MembersTab({ community, onError }: { community: ConcordCommunity; onErr
   return (
     <section className="border border-base-300 rounded-box p-4">
       <h3 className="font-semibold">Members</h3>
-      <p className="mt-1 text-sm opacity-70">Kick removes roles and publishes a guestbook kick. Ban also updates the banlist.</p>
+      <p className="mt-1 text-sm opacity-70">
+        Kick removes roles and publishes a guestbook kick. Ban also updates the banlist.
+      </p>
       <div className="mt-4 divide-y divide-base-300">
         {members.map((member) => (
           <MemberRow key={member} community={community} member={member} busy={busy} onRun={run} />
@@ -551,7 +597,12 @@ function RolesTab({ community, onError }: { community: ConcordCommunity; onError
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="border border-base-300 rounded-box p-4 space-y-3">
         <h3 className="font-semibold">Create role</h3>
-        <input className="input input-bordered w-full" value={name} onChange={(e) => setName(e.target.value)} placeholder="Role name" />
+        <input
+          className="input input-bordered w-full"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Role name"
+        />
         <input
           className="input input-bordered w-full"
           type="number"
@@ -562,7 +613,12 @@ function RolesTab({ community, onError }: { community: ConcordCommunity; onError
         <div className="grid gap-2 sm:grid-cols-2">
           {permissionEntries.map(([perm]) => (
             <label key={perm} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="checkbox checkbox-sm" checked={selectedPerms.includes(perm)} onChange={() => togglePerm(perm)} />
+              <input
+                type="checkbox"
+                className="checkbox checkbox-sm"
+                checked={selectedPerms.includes(perm)}
+                onChange={() => togglePerm(perm)}
+              />
               {perm.replace(/_/g, " ")}
             </label>
           ))}
@@ -574,7 +630,12 @@ function RolesTab({ community, onError }: { community: ConcordCommunity; onError
 
       <section className="border border-base-300 rounded-box p-4 space-y-3">
         <h3 className="font-semibold">Grant roles</h3>
-        <input className="input input-bordered w-full" value={grantMember} onChange={(e) => setGrantMember(e.target.value)} placeholder="Member pubkey hex" />
+        <input
+          className="input input-bordered w-full"
+          value={grantMember}
+          onChange={(e) => setGrantMember(e.target.value)}
+          placeholder="Member pubkey hex"
+        />
         <div className="space-y-2">
           {roles.map((role) => (
             <label key={role.role_id} className="flex items-center gap-2 text-sm">
@@ -582,13 +643,23 @@ function RolesTab({ community, onError }: { community: ConcordCommunity; onError
                 type="checkbox"
                 className="checkbox checkbox-sm"
                 checked={grantRoles.includes(role.role_id)}
-                onChange={() => setGrantRoles((current) => (current.includes(role.role_id) ? current.filter((id) => id !== role.role_id) : [...current, role.role_id]))}
+                onChange={() =>
+                  setGrantRoles((current) =>
+                    current.includes(role.role_id)
+                      ? current.filter((id) => id !== role.role_id)
+                      : [...current, role.role_id],
+                  )
+                }
               />
               {role.name} <span className="opacity-60">position {role.position}</span>
             </label>
           ))}
         </div>
-        <button className="btn btn-primary" disabled={!grantMember.trim() || !canManageRoles || busy} onClick={saveGrant}>
+        <button
+          className="btn btn-primary"
+          disabled={!grantMember.trim() || !canManageRoles || busy}
+          onClick={saveGrant}
+        >
           Save grant
         </button>
       </section>
@@ -644,12 +715,29 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
     <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
       <section className="border border-base-300 rounded-box p-4 space-y-3">
         <h3 className="font-semibold">Create channel</h3>
-        <input className="input input-bordered w-full" value={name} onChange={(e) => setName(e.target.value)} placeholder="Channel name" />
+        <input
+          className="input input-bordered w-full"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Channel name"
+        />
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="checkbox checkbox-sm" checked={isPrivate} onChange={(e) => setPrivate(e.target.checked)} /> Private
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={isPrivate}
+            onChange={(e) => setPrivate(e.target.checked)}
+          />{" "}
+          Private
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="checkbox checkbox-sm" checked={voice} onChange={(e) => setVoice(e.target.checked)} /> Voice
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={voice}
+            onChange={(e) => setVoice(e.target.checked)}
+          />{" "}
+          Voice
         </label>
         <button className="btn btn-primary" disabled={!canManageChannels || busy} onClick={createChannel}>
           Create channel
@@ -660,7 +748,10 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
         <h3 className="font-semibold">Channels</h3>
         <div className="mt-3 divide-y divide-base-300">
           {channels.map((channel) => (
-            <div key={channel.channel_id} className={`flex items-center gap-2 py-3 ${channel.deleted ? "opacity-50" : ""}`}>
+            <div
+              key={channel.channel_id}
+              className={`flex items-center gap-2 py-3 ${channel.deleted ? "opacity-50" : ""}`}
+            >
               <div className="min-w-0 flex-1">
                 <div className="font-medium">#{channel.name}</div>
                 <div className="text-xs opacity-60">
@@ -687,13 +778,29 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
 // The per-member authority check lives here rather than in the parent's map, so it
 // can be a hook — and so excluding someone asks the same `canModerate$` question the
 // Members tab asks before kicking them.
-function RefoundMemberOption({ community, member, checked, onToggle }: { community: ConcordCommunity; member: string; checked: boolean; onToggle: () => void }) {
+function RefoundMemberOption({
+  community,
+  member,
+  checked,
+  onToggle,
+}: {
+  community: ConcordCommunity;
+  member: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
   const standing = use$(() => community.standing$(member), [community, member]);
   const canExclude = use$(() => community.canModerate$(member, PERM.BAN), [community, member]) ?? false;
 
   return (
     <label className={`flex items-center gap-3 text-sm ${!canExclude ? "opacity-50" : ""}`}>
-      <input type="checkbox" className="checkbox checkbox-sm" checked={checked} disabled={!canExclude} onChange={onToggle} />
+      <input
+        type="checkbox"
+        className="checkbox checkbox-sm"
+        checked={checked}
+        disabled={!canExclude}
+        onChange={onToggle}
+      />
       <span className="opacity-70">Exclude</span>
       <UserSummary pubkey={member} />
       {standing?.isOwner && <span className="badge badge-primary badge-sm">owner</span>}

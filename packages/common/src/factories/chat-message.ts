@@ -33,7 +33,11 @@ export class ChatMessageFactory extends EventFactory<kinds.ChatMessage, ChatMess
    * @param content - Optional initial message content
    * @param options - Optional content options
    */
-  static reply(parent: NostrEvent | EventPointer, content?: string, options?: ChatMessageFactoryOptions): ChatMessageFactory {
+  static reply(
+    parent: NostrEvent | EventPointer,
+    content?: string,
+    options?: ChatMessageFactoryOptions,
+  ): ChatMessageFactory {
     let factory = new ChatMessageFactory((res) => res(blankEventTemplate(kinds.ChatMessage))).replyTo(parent);
     if (content !== undefined) factory = factory.text(content, options);
     return factory;

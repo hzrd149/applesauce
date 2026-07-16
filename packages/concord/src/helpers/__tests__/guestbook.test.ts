@@ -7,8 +7,10 @@ import { decoded } from "./test-utils.js";
 
 describe("guestbook fold", () => {
   it("coalesces joins/leaves, honors banlist", () => {
-    const join = (pk: string, ms: number) => decoded({ kind: 3306, content: "join", tags: [["ms", String(ms % 1000)]] }, pk, ms);
-    const leave = (pk: string, ms: number) => decoded({ kind: 3306, content: "leave", tags: [["ms", String(ms % 1000)]] }, pk, ms);
+    const join = (pk: string, ms: number) =>
+      decoded({ kind: 3306, content: "join", tags: [["ms", String(ms % 1000)]] }, pk, ms);
+    const leave = (pk: string, ms: number) =>
+      decoded({ kind: 3306, content: "leave", tags: [["ms", String(ms % 1000)]] }, pk, ms);
     const owner = "owner";
     const roles = new Map<string, Role>();
     const grants = new Map<string, string[]>();
@@ -30,20 +32,52 @@ describe("guestbook fold", () => {
 
   it("honors a snapshot only from the epoch's refounder", () => {
     const snap = (author: string, members: string[], ms: number) =>
-      decoded({ kind: 3312, content: JSON.stringify(members), tags: [["snap", "s1", "1", "1"], ["ms", String(ms % 1000)]] }, author, ms);
+      decoded(
+        {
+          kind: 3312,
+          content: JSON.stringify(members),
+          tags: [
+            ["snap", "s1", "1", "1"],
+            ["ms", String(ms % 1000)],
+          ],
+        },
+        author,
+        ms,
+      );
 
     // From an arbitrary member: ignored.
-    const forged = foldMembers([snap("mallory", ["victim"], 1_000)], new Map(), new Set(), standing, 10_000, "refounder");
+    const forged = foldMembers(
+      [snap("mallory", ["victim"], 1_000)],
+      new Map(),
+      new Set(),
+      standing,
+      10_000,
+      "refounder",
+    );
     expect(forged.has("victim")).toBe(false);
 
     // From the refounder: seeds present members.
-    const honored = foldMembers([snap("refounder", ["dave"], 1_000)], new Map(), new Set(), standing, 10_000, "refounder");
+    const honored = foldMembers(
+      [snap("refounder", ["dave"], 1_000)],
+      new Map(),
+      new Set(),
+      standing,
+      10_000,
+      "refounder",
+    );
     expect(honored.has("dave")).toBe(true);
   });
 
   it("drops a snapshot's seed once its subject self-signs a newer leave", () => {
     const snap = decoded(
-      { kind: 3312, content: JSON.stringify(["dave"]), tags: [["snap", "s1", "1", "1"], ["ms", "0"]] },
+      {
+        kind: 3312,
+        content: JSON.stringify(["dave"]),
+        tags: [
+          ["snap", "s1", "1", "1"],
+          ["ms", "0"],
+        ],
+      },
       "refounder",
       1_000,
     );

@@ -17,7 +17,12 @@ describe("control fold", () => {
     const genesis = await newCommunity();
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
     // An outsider trying to publish a metadata edition must be ignored.
-    const rogue = await EditionFactory.create({ vsk: VSK.METADATA, eid: genesis.material.community_id, version: 2, content: JSON.stringify({ name: "Hijacked", relays: [] }) });
+    const rogue = await EditionFactory.create({
+      vsk: VSK.METADATA,
+      eid: genesis.material.community_id,
+      version: 2,
+      content: JSON.stringify({ name: "Hijacked", relays: [] }),
+    });
     events.push(decoded(rogue, "ff".repeat(32), 2_000));
     const state = foldControl(events, genesis.material);
     expect(state.metadata?.name).toBe("Test");
@@ -30,11 +35,21 @@ describe("control fold", () => {
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
 
     const ownerEid = inviteLinksLocator(hexToBytes(cid), OWNER);
-    const reg = await EditionFactory.create({ vsk: VSK.INVITE_REGISTRY, eid: ownerEid, version: 1, content: JSON.stringify(["11".repeat(32)]) });
+    const reg = await EditionFactory.create({
+      vsk: VSK.INVITE_REGISTRY,
+      eid: ownerEid,
+      version: 1,
+      content: JSON.stringify(["11".repeat(32)]),
+    });
     events.push(decoded(reg, genesis.material.owner, 2_000));
 
     // A registry published at someone else's coordinate is a forgery — ignored.
-    const forged = await EditionFactory.create({ vsk: VSK.INVITE_REGISTRY, eid: "cc".repeat(32), version: 1, content: JSON.stringify(["22".repeat(32)]) });
+    const forged = await EditionFactory.create({
+      vsk: VSK.INVITE_REGISTRY,
+      eid: "cc".repeat(32),
+      version: 1,
+      content: JSON.stringify(["22".repeat(32)]),
+    });
     events.push(decoded(forged, genesis.material.owner, 3_000));
 
     const state = foldControl(events, genesis.material);
@@ -50,10 +65,20 @@ describe("control fold", () => {
     // A banlist at any other eid is forged. Delivered FIRST, so a fold that took
     // whichever eid group arrived first would shadow the real list with this one —
     // and would disagree with a client that received them the other way round.
-    const forged = await EditionFactory.create({ vsk: VSK.BANLIST, eid: "cc".repeat(32), version: 1, content: JSON.stringify(["22".repeat(32)]) });
+    const forged = await EditionFactory.create({
+      vsk: VSK.BANLIST,
+      eid: "cc".repeat(32),
+      version: 1,
+      content: JSON.stringify(["22".repeat(32)]),
+    });
     events.push(decoded(forged, genesis.material.owner, 2_000));
 
-    const real = await EditionFactory.create({ vsk: VSK.BANLIST, eid: banlistLocator(hexToBytes(cid)), version: 1, content: JSON.stringify(["11".repeat(32)]) });
+    const real = await EditionFactory.create({
+      vsk: VSK.BANLIST,
+      eid: banlistLocator(hexToBytes(cid)),
+      version: 1,
+      content: JSON.stringify(["11".repeat(32)]),
+    });
     events.push(decoded(real, genesis.material.owner, 3_000));
 
     const state = foldControl(events, genesis.material);
@@ -68,7 +93,14 @@ describe("control fold", () => {
     // 101 owner-signed roles with sortable ids "00…0000".."00…0064".
     for (let i = 0; i < 101; i++) {
       const roleId = i.toString(16).padStart(64, "0");
-      const role = { role_id: roleId, name: `r${i}`, position: 5, permissions: "0", scope: { kind: "server" }, color: 0 };
+      const role = {
+        role_id: roleId,
+        name: `r${i}`,
+        position: 5,
+        permissions: "0",
+        scope: { kind: "server" },
+        color: 0,
+      };
       const ed = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
       events.push(decoded(ed, genesis.material.owner, 2_000 + i));
     }
@@ -90,7 +122,12 @@ describe("control fold", () => {
     events.push(decoded(created, genesis.material.owner, 2_000));
 
     const grant = { member: "cd".repeat(32), role_ids: [roleId] };
-    const granted = await EditionFactory.create({ vsk: VSK.GRANT, eid: roleId, version: 1, content: JSON.stringify(grant) });
+    const granted = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(grant),
+    });
     events.push(decoded(granted, genesis.material.owner, 2_100));
 
     const live = foldControl(events, genesis.material);
@@ -99,7 +136,13 @@ describe("control fold", () => {
 
     // A later edition (chained via prev) deletes the role.
     const prevHash = computeEditionHash({ vsk: VSK.ROLE, eid: roleId, version: 1, content: v1Content });
-    const deleted = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 2, prevHash, content: JSON.stringify({ ...role, deleted: true }) });
+    const deleted = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 2,
+      prevHash,
+      content: JSON.stringify({ ...role, deleted: true }),
+    });
     events.push(decoded(deleted, genesis.material.owner, 3_000));
 
     const state = foldControl(events, genesis.material);

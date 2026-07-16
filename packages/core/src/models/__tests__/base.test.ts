@@ -194,9 +194,9 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       await testStore.add(older);
 
       const values: Array<StoreEvent | undefined> = [];
-      const sub = ReplaceableModel<StoreEvent>({ kind: kinds.Metadata, pubkey: older.pubkey })(testStore.store as any).subscribe((value) =>
-        values.push(value),
-      );
+      const sub = ReplaceableModel<StoreEvent>({ kind: kinds.Metadata, pubkey: older.pubkey })(
+        testStore.store as any,
+      ).subscribe((value) => values.push(value));
       await flush();
 
       expect(values).toEqual([older]);
@@ -237,8 +237,8 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       await testStore.add(newer);
 
       const values: StoreEvent[][] = [];
-      const sub = TimelineModel<StoreEvent>({ kinds: [kinds.ShortTextNote] })(testStore.store as any).subscribe((value) =>
-        values.push(value),
+      const sub = TimelineModel<StoreEvent>({ kinds: [kinds.ShortTextNote] })(testStore.store as any).subscribe(
+        (value) => values.push(value),
       );
       await flush();
 
@@ -265,8 +265,8 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       await testStore.add(existing);
 
       const values: StoreEvent[] = [];
-      const sub = FiltersModel<StoreEvent>({ kinds: [kinds.ShortTextNote] })(testStore.store as any).subscribe((value) =>
-        values.push(value),
+      const sub = FiltersModel<StoreEvent>({ kinds: [kinds.ShortTextNote] })(testStore.store as any).subscribe(
+        (value) => values.push(value),
       );
       await flush();
 
@@ -286,9 +286,10 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       await testStore.add(existing);
 
       const values: StoreEvent[] = [];
-      const sub = FiltersModel<StoreEvent>({ kinds: [kinds.ShortTextNote] }, true)(testStore.store as any).subscribe(
-        (value) => values.push(value),
-      );
+      const sub = FiltersModel<StoreEvent>(
+        { kinds: [kinds.ShortTextNote] },
+        true,
+      )(testStore.store as any).subscribe((value) => values.push(value));
       await flush();
 
       expect(values).toEqual([]);

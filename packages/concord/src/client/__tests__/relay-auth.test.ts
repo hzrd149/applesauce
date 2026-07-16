@@ -98,7 +98,9 @@ describe("ConcordRelayAuth connection status", () => {
     status$.next({ [url]: mkStatus({ url, connected: true, authRequiredForRead: true, authenticatedPubkeys: [] }) });
     expect(authed).toBe(false);
     // Our stream key is now authenticated → true.
-    status$.next({ [url]: mkStatus({ url, connected: true, authRequiredForRead: true, authenticatedPubkeys: ["pk1"] }) });
+    status$.next({
+      [url]: mkStatus({ url, connected: true, authRequiredForRead: true, authenticatedPubkeys: ["pk1"] }),
+    });
     expect(authed).toBe(true);
     // A relay that gates nothing behind auth counts as authenticated regardless.
     status$.next({ [url]: mkStatus({ url, connected: true }) });

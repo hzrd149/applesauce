@@ -64,4 +64,3 @@ export function includeMediaEncryption(entries: MediaEncryption[] = []): EventOp
     }),
   );
 }
-

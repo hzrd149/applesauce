@@ -130,7 +130,15 @@ describe("direct-invite helpers", () => {
     expect(getDirectInviteRecipient(wrap)).toBe(recipient);
     expect(getDirectInviteExpiration(wrap)).toBe(1_800_000_000);
     expect(isValidDirectInvite({ kind: GIFT_WRAP_KIND, tags: [["k", DIRECT_INVITE_INDEX]] } as any)).toBe(false);
-    expect(isValidDirectInvite({ kind: 1, tags: [["p", recipient], ["k", DIRECT_INVITE_INDEX]] } as any)).toBe(false);
+    expect(
+      isValidDirectInvite({
+        kind: 1,
+        tags: [
+          ["p", recipient],
+          ["k", DIRECT_INVITE_INDEX],
+        ],
+      } as any),
+    ).toBe(false);
   });
 
   it("rejects a non-3313 rumor and unparseable content", async () => {

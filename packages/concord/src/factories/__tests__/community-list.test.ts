@@ -81,11 +81,13 @@ describe("CommunityListFactory", () => {
   });
 
   it("requires a signer to encrypt", async () => {
-    await expect(CommunityListFactory.create().join({
-      community_id: "cid",
-      seed: material("cid"),
-      current: material("cid"),
-      added_at: 1,
-    })).rejects.toThrow(/signer/i);
+    await expect(
+      CommunityListFactory.create().join({
+        community_id: "cid",
+        seed: material("cid"),
+        current: material("cid"),
+        added_at: 1,
+      }),
+    ).rejects.toThrow(/signer/i);
   });
 });

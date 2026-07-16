@@ -34,7 +34,9 @@ export function ConcordCommunityStateModel(
       new Observable<Rumor[]>((sub) => {
         sub.next([]);
       });
-    const observedStores = [controlStore, stores.guestbook, ...(stores.observed ?? [])].filter((s): s is PlaneStore => !!s);
+    const observedStores = [controlStore, stores.guestbook, ...(stores.observed ?? [])].filter(
+      (s): s is PlaneStore => !!s,
+    );
     const observed$ = combineLatest(observedStores.map((store) => store.model(ConcordObservedAuthorsModel))).pipe(
       map(mergeObserved),
     );

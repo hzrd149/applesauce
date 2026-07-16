@@ -143,7 +143,9 @@ function InviteRow({
       </div>
 
       {bundle.label && <div className="text-sm opacity-70">Invite label: {bundle.label}</div>}
-      {bundle.expires_at && <div className="text-xs opacity-60">Expires {new Date(bundle.expires_at).toLocaleString()}</div>}
+      {bundle.expires_at && (
+        <div className="text-xs opacity-60">Expires {new Date(bundle.expires_at).toLocaleString()}</div>
+      )}
 
       <div className="flex justify-end gap-2">
         <button className="btn btn-sm btn-ghost" onClick={onDismiss} disabled={disabled || !wrap}>
@@ -223,7 +225,10 @@ function ConcordDirectInvites() {
     };
   }, [signer, user?.pubkey, inboxRelays?.join("\n")]);
 
-  const liveCommunityIds = useMemo(() => new Set((liveCommunities ?? []).map((c) => c.community_id)), [liveCommunities]);
+  const liveCommunityIds = useMemo(
+    () => new Set((liveCommunities ?? []).map((c) => c.community_id)),
+    [liveCommunities],
+  );
   const visibleInvites = useMemo(
     () => (watcherInvites ?? []).filter((invite) => invite.bundle && !liveCommunityIds.has(invite.bundle.community_id)),
     [watcherInvites, liveCommunityIds],
@@ -324,7 +329,11 @@ function ConcordDirectInvites() {
           {status && <span>{status}</span>}
         </div>
         <div className="flex gap-2 justify-end">
-          <button className="btn btn-sm btn-ghost" onClick={() => watcher?.clearDismissed()} disabled={disabled || !watcher}>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => watcher?.clearDismissed()}
+            disabled={disabled || !watcher}
+          >
             Clear dismissed
           </button>
           <button className="btn btn-sm btn-primary" onClick={refreshInbox} disabled={disabled || !watcher}>

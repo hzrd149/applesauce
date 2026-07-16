@@ -11,8 +11,9 @@ describe("EditionFactory", () => {
   });
 
   it("exposes fluent edition method", async () => {
-    const edition = await new EditionFactory((res) => res({ kind: CONTROL_KIND, created_at: 0, tags: [], content: "" }))
-      .edition({ vsk: 0, eid: "eid", version: 1, content: "{}" });
+    const edition = await new EditionFactory((res) =>
+      res({ kind: CONTROL_KIND, created_at: 0, tags: [], content: "" }),
+    ).edition({ vsk: 0, eid: "eid", version: 1, content: "{}" });
     expect(edition.tags).toContainEqual(["ev", "1"]);
   });
 });

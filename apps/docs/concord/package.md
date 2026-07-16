@@ -56,7 +56,7 @@ You never route events between planes yourself; the engine decodes each wrap and
 
 ### Everything is a rumor in a store
 
-Concord carries no chat-fold logic of its own. Decoded events land in a [RumorStore](/core/event-store) per plane, and you read them with the **standard applesauce store/model/timeline API** — the same tools you'd use for any Nostr events. Community *state* (channels, roles, members) is a folded model you consume as a reactive value.
+Concord carries no chat-fold logic of its own. Decoded events land in a [RumorStore](/core/event-store) per plane, and you read them with the **standard applesauce store/model/timeline API** — the same tools you'd use for any Nostr events. Community _state_ (channels, roles, members) is a folded model you consume as a reactive value.
 
 ### Epochs and rekeys
 
@@ -73,12 +73,12 @@ There are two ways in:
 
 Everything you build against lives in `applesauce-concord/client`:
 
-| Class | What it is |
-| --- | --- |
-| [`ConcordClient`](/concord/client) | The per-user manager. One instance per logged-in user; owns every joined community. |
-| [`ConcordCommunity`](/concord/community) | A single community's reactive engine — read state, send messages, run admin actions. |
-| `ConcordInviteManager` | The client-owned invite-link manager exposed as `client.invites`. |
-| `ConcordPrivateChannel` | A sub-engine for one private channel. Spawned automatically; you rarely construct it. |
-| [`InviteWatcher`](/concord/invites) | Watches the user's inbox for [direct invites](/concord/invites). |
+| Class                                    | What it is                                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------- |
+| [`ConcordClient`](/concord/client)       | The per-user manager. One instance per logged-in user; owns every joined community.   |
+| [`ConcordCommunity`](/concord/community) | A single community's reactive engine — read state, send messages, run admin actions.  |
+| `ConcordInviteManager`                   | The client-owned invite-link manager exposed as `client.invites`.                     |
+| `ConcordPrivateChannel`                  | A sub-engine for one private channel. Spawned automatically; you rarely construct it. |
+| [`InviteWatcher`](/concord/invites)      | Watches the user's inbox for [direct invites](/concord/invites).                      |
 
 Start with [The client](/concord/client) to wire everything together, then move on to [Communities](/concord/community), [Channels](/concord/channels), [Moderation](/concord/moderation), and [Invites](/concord/invites).

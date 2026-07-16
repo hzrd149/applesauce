@@ -133,14 +133,7 @@ describe("ConcordKeys", () => {
     const isOwner = (rotator: string) => rotator === ownerPub;
 
     // The kept member folds the rekey blobs and adopts the exact new root.
-    const keptOutcome = await readRekey(
-      keptKeys,
-      decodeRekey(keptKeys, plan.rekeyWraps),
-      isOwner,
-      keptPub,
-      kept,
-      [],
-    );
+    const keptOutcome = await readRekey(keptKeys, decodeRekey(keptKeys, plan.rekeyWraps), isOwner, keptPub, kept, []);
     expect(keptOutcome.kind).toBe("adopt");
     if (keptOutcome.kind === "adopt") {
       expect(keptOutcome.epoch).toBe(1);

@@ -214,11 +214,25 @@ describe("channel-scoped rekey", () => {
 
     // Authorized to rotate, but NOT authorized to remove US → the removal is
     // ignored (we keep our current key) rather than honored.
-    const ignored = await readChannelRekey(channel, events(), () => true, dropped.pub, dropped.signer, () => false);
+    const ignored = await readChannelRekey(
+      channel,
+      events(),
+      () => true,
+      dropped.pub,
+      dropped.signer,
+      () => false,
+    );
     expect(ignored.kind).toBe("none");
 
     // The same rotation, from a rotator who DOES outrank us, is honored.
-    const honored = await readChannelRekey(channel, events(), () => true, dropped.pub, dropped.signer, () => true);
+    const honored = await readChannelRekey(
+      channel,
+      events(),
+      () => true,
+      dropped.pub,
+      dropped.signer,
+      () => true,
+    );
     expect(honored.kind).toBe("removed");
   });
 

@@ -20,8 +20,8 @@ For a real app you'll usually pass a few more options:
 const client = new ConcordClient({
   signer,
   pool,
-  storage,          // persist memberships + keys across reloads (see /concord/storage)
-  uploader,         // encrypt + upload images and file attachments
+  storage, // persist memberships + keys across reloads (see /concord/storage)
+  uploader, // encrypt + upload images and file attachments
   relays: ["wss://relay.example.com"], // fallback relays for communities that define none
 });
 ```
@@ -75,11 +75,7 @@ client.status$.subscribe((s) => {
 ## Creating a community
 
 ```ts
-const community = await client.createNewCommunity(
-  "My Community",
-  "A place to hang out",
-  ["wss://relay.example.com"],
-);
+const community = await client.createNewCommunity("My Community", "A place to hang out", ["wss://relay.example.com"]);
 ```
 
 This mints the genesis events, publishes them, adds you as the owner, and republishes your community list. It returns the live `ConcordCommunity` engine, ready to act on immediately.
@@ -134,12 +130,12 @@ await list?.unlock(signer);
 
 Several signer-touching behaviours are **off by default** so startup stays quiet. Turn them on per app:
 
-| Option | Default | Effect |
-| --- | --- | --- |
-| `autoUnlock` | `false` | Decrypt the community/invite lists and incoming direct invites automatically as they arrive. |
-| `autoAuthenticate` | `false` | NIP-42-authenticate as the user on inbox relays when they challenge. |
-| `autoSaveCommunityList` | `false` | Publish an updated list after a sync when memberships changed locally. |
-| `watchDirectInvites` | `true` | Watch the user's inbox for [direct invites](/concord/invites) during `start()`. |
+| Option                  | Default | Effect                                                                                       |
+| ----------------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `autoUnlock`            | `false` | Decrypt the community/invite lists and incoming direct invites automatically as they arrive. |
+| `autoAuthenticate`      | `false` | NIP-42-authenticate as the user on inbox relays when they challenge.                         |
+| `autoSaveCommunityList` | `false` | Publish an updated list after a sync when memberships changed locally.                       |
+| `watchDirectInvites`    | `true`  | Watch the user's inbox for [direct invites](/concord/invites) during `start()`.              |
 
 Explicit `joinByLink` / `leave` / `createNewCommunity` always publish the list regardless of `autoSaveCommunityList` — those are the sanctioned points to sign it.
 

@@ -7,14 +7,7 @@
  * @related concord/admin-management, concord/community-list, concord/direct-invites
  */
 import { EventStore } from "applesauce-core";
-import {
-  ConcordClient,
-  Helpers,
-  PERM,
-  Storage,
-  type CommunityState,
-  type ConcordInviteLink,
-} from "applesauce-concord";
+import { ConcordClient, Helpers, PERM, Storage, type CommunityState, type ConcordInviteLink } from "applesauce-concord";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -243,7 +236,13 @@ function OrphanPanel({
         your list.
       </p>
       {invites.map((invite) => (
-        <InviteRow key={invite.token} client={client} invite={invite} name={shortId(invite.communityId)} onError={onError} />
+        <InviteRow
+          key={invite.token}
+          client={client}
+          invite={invite}
+          name={shortId(invite.communityId)}
+          onError={onError}
+        />
       ))}
     </div>
   );
@@ -297,7 +296,8 @@ function InviteManager({ signer }: { signer: ISigner }) {
   // Default to the first community (or the Other bucket if that's all there is), and drop a selection
   // that no longer points at a real tab.
   useEffect(() => {
-    const valid = (id: string) => id === (orphans.length ? OTHER_TAB : "") || live.some((s) => s.material.community_id === id);
+    const valid = (id: string) =>
+      id === (orphans.length ? OTHER_TAB : "") || live.some((s) => s.material.community_id === id);
     if (selected && !valid(selected)) setSelected("");
     else if (!selected && live[0]) setSelected(live[0].material.community_id);
     else if (!selected && orphans.length) setSelected(OTHER_TAB);

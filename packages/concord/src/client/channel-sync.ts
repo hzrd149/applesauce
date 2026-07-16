@@ -38,7 +38,10 @@ async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): 
   const streamKeys = [keys.current, ...keys.held.map((h) => h.key)];
   ctx.relayAuth.registerStreamKeys(streamKeys);
   ctx.ensureAuth(ctx.relays);
-  for (const ev of await syncAuthors(ctx, streamKeys.map((k) => k.pk))) {
+  for (const ev of await syncAuthors(
+    ctx,
+    streamKeys.map((k) => k.pk),
+  )) {
     const info = keys.planes.get(ev.pubkey);
     if (!info || info.type !== "channel") continue;
     const decoded = decodeWrapCached(ev, info.convKey);
@@ -59,7 +62,10 @@ async function syncRekeyAndAdvance(
   ctx.relayAuth.registerStreamKeys(keys.nextRekey.map((r) => r.key));
   ctx.ensureAuth(ctx.relays);
   const rekeyEvents: DecodedEvent[] = [];
-  for (const ev of await syncAuthors(ctx, keys.nextRekey.map((r) => r.key.pk))) {
+  for (const ev of await syncAuthors(
+    ctx,
+    keys.nextRekey.map((r) => r.key.pk),
+  )) {
     const info = keys.planes.get(ev.pubkey);
     if (!info || info.type !== "rekey") continue;
     const decoded = decodeWrapCached(ev, info.convKey);
@@ -96,7 +102,10 @@ export async function syncChannelEpochs(ctx: ChannelSyncContext, channelKey: Cha
 
 /** The stream pubkeys a channel holder subscribes live: the current message plane
  *  plus the next-epoch rekey address(es). Held planes are past (no new messages). */
-export function channelLiveAuthors(material: JoinMaterial, channel: ChannelKey): { authors: string[]; planes: Map<string, PlaneInfo> } {
+export function channelLiveAuthors(
+  material: JoinMaterial,
+  channel: ChannelKey,
+): { authors: string[]; planes: Map<string, PlaneInfo> } {
   const keys = deriveChannelKeys(material, channel);
   const authors = [keys.current.pk, ...keys.nextRekey.map((r) => r.key.pk)];
   return { authors, planes: keys.planes };

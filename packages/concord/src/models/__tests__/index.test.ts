@@ -65,9 +65,11 @@ describe("Concord models", () => {
     add(channel, rumorFromTemplate({ kind: kinds.ChatMessage, content: "present", tags: [] }, BOB, 4_000));
 
     let members = new Set<string>();
-    control.model(ConcordCommunityStateModel, genesis.material, { guestbook, observed: [channel] }, 10_000).subscribe((s) => {
-      members = s.members;
-    });
+    control
+      .model(ConcordCommunityStateModel, genesis.material, { guestbook, observed: [channel] }, 10_000)
+      .subscribe((s) => {
+        members = s.members;
+      });
 
     expect(members.has(ALICE)).toBe(false);
     expect(members.has(BOB)).toBe(true);
@@ -90,9 +92,11 @@ describe("Concord models", () => {
     add(channel, rumorFromTemplate({ kind: kinds.ChatMessage, content: "banned", tags: [] }, BOB, 4_000));
 
     let members = new Set<string>();
-    control.model(ConcordCommunityStateModel, genesis.material, { guestbook, observed: [channel] }, 10_000).subscribe((s) => {
-      members = s.members;
-    });
+    control
+      .model(ConcordCommunityStateModel, genesis.material, { guestbook, observed: [channel] }, 10_000)
+      .subscribe((s) => {
+        members = s.members;
+      });
 
     expect(members.has(BOB)).toBe(false);
   });

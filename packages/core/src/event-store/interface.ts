@@ -45,8 +45,10 @@ export interface IAsyncEventStoreRead<E extends StoreEvent = NostrEvent> {
 }
 
 /** An extended read interface for an event store that supports pointers */
-export interface IEventStoreReadAdvanced<E extends StoreEvent = NostrEvent>
-  extends Omit<IEventStoreRead<E>, "hasEvent" | "getEvent"> {
+export interface IEventStoreReadAdvanced<E extends StoreEvent = NostrEvent> extends Omit<
+  IEventStoreRead<E>,
+  "hasEvent" | "getEvent"
+> {
   /** Check if the event store has an event with id */
   hasEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): boolean;
   /** Get an event by id */
@@ -54,8 +56,10 @@ export interface IEventStoreReadAdvanced<E extends StoreEvent = NostrEvent>
 }
 
 /** An extended async read interface for an event store that supports pointers */
-export interface IAsyncEventStoreReadAdvanced<E extends StoreEvent = NostrEvent>
-  extends Omit<IAsyncEventStoreRead<E>, "hasEvent" | "getEvent"> {
+export interface IAsyncEventStoreReadAdvanced<E extends StoreEvent = NostrEvent> extends Omit<
+  IAsyncEventStoreRead<E>,
+  "hasEvent" | "getEvent"
+> {
   /** Check if the event store has an event with id */
   hasEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): Promise<boolean>;
   /** Get an event by id */

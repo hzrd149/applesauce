@@ -15,7 +15,13 @@ import { giftWrap, sealRumor, toRumor, wrapSeal } from "../operations/gift-wrap.
 import { decodeWrap } from "../helpers/gift-wrap.js";
 import { ChatMessageFactory } from "applesauce-common/factories";
 import { bindToChannel } from "../operations/channel.js";
-import { buildInviteLink, decryptBundle, encryptBundle, newInviteToken, parseInviteLink } from "../helpers/invite-bundle.js";
+import {
+  buildInviteLink,
+  decryptBundle,
+  encryptBundle,
+  newInviteToken,
+  parseInviteLink,
+} from "../helpers/invite-bundle.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { DecodedEvent, InviteBundle, Role } from "../types.js";
 
@@ -25,7 +31,12 @@ describe("concord envelope round-trip", () => {
     const ownerPub = await owner.getPublicKey();
 
     // 1. Create community + owner proof.
-    const genesis = await createCommunity({ ownerPubkey: ownerPub, name: "Test", description: "hi", relays: ["wss://x"] });
+    const genesis = await createCommunity({
+      ownerPubkey: ownerPub,
+      name: "Test",
+      description: "hi",
+      relays: ["wss://x"],
+    });
     expect(verifyOwner(genesis.material)).toBe(true);
     const keys = deriveKeys(genesis.material, []);
 
@@ -98,7 +109,8 @@ describe("concord envelope round-trip", () => {
     expect(bytesToHex(parsed.token)).toBe(bytesToHex(token));
 
     // 7. Tamper detection: a wrong conv key sees only noise.
-    const wrongKey = deriveKeys({ ...genesis.material, community_root: bytesToHex(generateSecretKey()) }, []).control.convKey;
+    const wrongKey = deriveKeys({ ...genesis.material, community_root: bytesToHex(generateSecretKey()) }, []).control
+      .convKey;
     expect(decodeWrap(msgWrap, wrongKey)).toBeNull();
   });
 });

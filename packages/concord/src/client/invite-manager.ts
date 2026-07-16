@@ -165,7 +165,10 @@ export class ConcordInviteManager {
   }
 
   async revoke(inviteOrToken: string | ConcordInviteLink | InviteListInvite): Promise<ConcordInviteLink> {
-    const invite = typeof inviteOrToken === "string" ? this.get(inviteOrToken) : fromInviteListInvite(toInviteListInvite(inviteOrToken), this.tombstones);
+    const invite =
+      typeof inviteOrToken === "string"
+        ? this.get(inviteOrToken)
+        : fromInviteListInvite(toInviteListInvite(inviteOrToken), this.tombstones);
     if (!invite) throw new Error("invite not found");
     // While we're still a member the community revokes the bundle AND unregisters the public link
     // (CORD-05 §5). Once we've left, the registry — which holds only public link coordinates, never

@@ -227,9 +227,7 @@ export function editionHash(
   contentBytes: Uint8Array,
 ): string {
   const labelBytes = utf8ToBytes(EDITION_LABEL);
-  const prevPart = prev
-    ? concatBytes(new Uint8Array([0x01]), prev)
-    : concatBytes(new Uint8Array([0x00]), ZERO_32);
+  const prevPart = prev ? concatBytes(new Uint8Array([0x01]), prev) : concatBytes(new Uint8Array([0x00]), ZERO_32);
   const preimage = concatBytes(
     numberToBytesBE(labelBytes.length, 8),
     labelBytes,

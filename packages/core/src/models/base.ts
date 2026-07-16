@@ -90,9 +90,7 @@ function loadEventUsingFallback<E extends StoreEvent = NostrEvent>(
 }
 
 /** A model that returns a single event or undefined when its removed */
-export function EventModel<E extends StoreEvent = NostrEvent>(
-  pointer: string | EventPointer,
-): Model<E | undefined, E> {
+export function EventModel<E extends StoreEvent = NostrEvent>(pointer: string | EventPointer): Model<E | undefined, E> {
   if (typeof pointer === "string") pointer = { id: pointer };
 
   return (store) => {

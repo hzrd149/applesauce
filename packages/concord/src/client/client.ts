@@ -654,8 +654,8 @@ export class ConcordClient {
    *  Reconcile fires on every decrypted emission — whether the unlock was ours or the app's
    *  — because the cast's `communities$` re-emits on `update$` after `notifyEventUpdate`. */
   private watchLists(): void {
-    this.listSub = this.requireUser().concordCommunityList$
-      .pipe(switchMap((cast) => (cast ? cast.communities$.pipe(map(() => cast)) : of(undefined))))
+    this.listSub = this.requireUser()
+      .concordCommunityList$.pipe(switchMap((cast) => (cast ? cast.communities$.pipe(map(() => cast)) : of(undefined))))
       .subscribe((cast) => {
         if (!cast) return;
         if (this.autoUnlock && !cast.unlocked) {
@@ -678,7 +678,6 @@ export class ConcordClient {
         this.signalListHydrated?.(); // release start()'s pre-auto-save wait now the relay copy is merged
         void this.reconcileCommunities();
       });
-
   }
 
   /** Issue the user-signer decrypt of a list cast at most once per event id. The unlock's

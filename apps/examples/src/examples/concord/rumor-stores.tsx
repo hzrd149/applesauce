@@ -11,13 +11,7 @@ import { EventStore, RumorStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import type { NostrEvent, Rumor } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import {
-  ConcordRelayAuth,
-  Helpers,
-  type DecodedEvent,
-  type InviteBundle,
-  type JoinMaterial,
-} from "applesauce-concord";
+import { ConcordRelayAuth, Helpers, type DecodedEvent, type InviteBundle, type JoinMaterial } from "applesauce-concord";
 import { ConcordCommunityStateModel } from "applesauce-concord/models";
 
 const {
@@ -315,10 +309,7 @@ function PlaneButton({
 }) {
   const rumors = use$(() => store.timeline([{}]), [store]) ?? [];
   return (
-    <button
-      className={`btn btn-sm justify-between ${active ? "btn-primary" : "btn-ghost"}`}
-      onClick={onClick}
-    >
+    <button className={`btn btn-sm justify-between ${active ? "btn-primary" : "btn-ghost"}`} onClick={onClick}>
       <span className="truncate">{desc.label}</span>
       <span className="badge badge-sm">{rumors.length}</span>
     </button>
@@ -380,7 +371,9 @@ function Walker({
     if (!store) {
       store = new RumorStore();
       storesRef.current.set(key, store);
-      const label = entry.channelId ? `# ${entry.channelName ?? shortHex(entry.channelId)}` : PLANE_LABELS[entry.kind as Exclude<PlaneKind, "channel">];
+      const label = entry.channelId
+        ? `# ${entry.channelName ?? shortHex(entry.channelId)}`
+        : PLANE_LABELS[entry.kind as Exclude<PlaneKind, "channel">];
       setPlanes((prev) => (prev.some((p) => p.key === key) ? prev : [...prev, { key, kind: entry.kind, label }]));
       setSelected((sel) => sel ?? key);
     }

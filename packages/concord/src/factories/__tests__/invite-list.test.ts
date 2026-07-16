@@ -50,10 +50,7 @@ describe("InviteListFactory", () => {
 
   it("revokes a link by unioning in a terminal tombstone", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
-    const event = await InviteListFactory.create()
-      .mintInvite(entry("a"))
-      .revokeInvite("a", "cid")
-      .sign(signer);
+    const event = await InviteListFactory.create().mintInvite(entry("a")).revokeInvite("a", "cid").sign(signer);
     const doc = await decrypt(signer, event.content);
     expect(doc.entries.map((e: InviteListInvite) => e.token)).toEqual(["a"]);
     expect(doc.tombstones).toEqual([{ token: "a", community_id: "cid" }]);

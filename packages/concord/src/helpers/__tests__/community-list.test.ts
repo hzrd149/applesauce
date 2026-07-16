@@ -20,8 +20,26 @@ import type { CommunityTombstone, JoinMaterial } from "../../types.js";
 describe("community-list CRDT", () => {
   const mkCommunity = (id: string, epoch: number, at: number) => ({
     community_id: id,
-    seed: { community_id: id, owner: "o", owner_salt: "s", community_root: "r", root_epoch: epoch, channels: [], relays: [], name: id },
-    current: { community_id: id, owner: "o", owner_salt: "s", community_root: "r", root_epoch: epoch, channels: [], relays: [], name: id },
+    seed: {
+      community_id: id,
+      owner: "o",
+      owner_salt: "s",
+      community_root: "r",
+      root_epoch: epoch,
+      channels: [],
+      relays: [],
+      name: id,
+    },
+    current: {
+      community_id: id,
+      owner: "o",
+      owner_salt: "s",
+      community_root: "r",
+      root_epoch: epoch,
+      channels: [],
+      relays: [],
+      name: id,
+    },
     added_at: at,
   });
 
@@ -65,7 +83,15 @@ describe("community-list event helpers", () => {
   });
 
   // Rebuild an event stripped of the in-memory plaintext cache (a wire-fresh, locked copy).
-  const relock = (event: { id: string; pubkey: string; created_at: number; kind: number; tags: string[][]; content: string; sig: string }) => ({
+  const relock = (event: {
+    id: string;
+    pubkey: string;
+    created_at: number;
+    kind: number;
+    tags: string[][];
+    content: string;
+    sig: string;
+  }) => ({
     id: event.id,
     pubkey: event.pubkey,
     created_at: event.created_at,

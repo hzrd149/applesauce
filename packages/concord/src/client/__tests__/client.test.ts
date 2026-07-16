@@ -19,7 +19,13 @@ import { memoryStorage } from "../storage.js";
 import { COMMUNITY_LIST_KIND, mergeCommunities } from "../../helpers/community-list.js";
 import { INVITE_LIST_KIND } from "../../helpers/invite-list.js";
 import { createCommunity } from "../../helpers/community.js";
-import { INVITE_BUNDLE_KIND, buildInviteBundle, buildInviteLink, getInviteBundle, newInviteToken } from "../../helpers/invite-bundle.js";
+import {
+  INVITE_BUNDLE_KIND,
+  buildInviteBundle,
+  buildInviteLink,
+  getInviteBundle,
+  newInviteToken,
+} from "../../helpers/invite-bundle.js";
 import { InviteBundleFactory } from "../../factories/invite-bundle.js";
 import type { ConcordClientStatus, JoinMaterial } from "../../types.js";
 
@@ -30,9 +36,11 @@ const settleFlush = () => new Promise((r) => setTimeout(r, 600));
 // A RelayPool stand-in whose per-relay methods are inert (no sockets) — the client's
 // list fetch (`request`) completes empty; we feed the 13302 into the store by hand.
 // `publish` records every event so tests can count kind-13302 republishes.
-function fakePool(
-  opts: { challenge?: string } = {},
-): { pool: RelayPool; published: NostrEvent[]; authenticatedPubkeys: string[] } {
+function fakePool(opts: { challenge?: string } = {}): {
+  pool: RelayPool;
+  published: NostrEvent[];
+  authenticatedPubkeys: string[];
+} {
   const authenticated = new Set<string>();
   const authenticatedPubkeys: string[] = [];
   const challenge = opts.challenge ?? null;
@@ -87,7 +95,12 @@ async function setup() {
   const pubkey = await signer.getPublicKey();
   const decrypt = vi.spyOn(signer.nip44!, "decrypt");
 
-  const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", description: "hi", relays: ["wss://fake"] });
+  const genesis = await createCommunity({
+    ownerPubkey: pubkey,
+    name: "Test",
+    description: "hi",
+    relays: ["wss://fake"],
+  });
   const cid = genesis.material.community_id;
   // Mirror the normalized material the community engine derives (held_roots defaults to []), so the
   // synthetic remote list matches what a real relay copy — itself written from engine material —
@@ -100,7 +113,13 @@ async function setup() {
 
   const store = new EventStore();
   const { pool, published } = fakePool();
-  const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), relays: ["wss://fake"] });
+  const client = new ConcordClient({
+    signer,
+    pool,
+    eventStore: store,
+    storage: memoryStorage(),
+    relays: ["wss://fake"],
+  });
   return { signer, pubkey, decrypt, genesis, cid, listEvent, store, client, pool, published };
 }
 
@@ -113,7 +132,14 @@ const inviteListPublishes = (published: NostrEvent[]) => published.filter((e) =>
 async function decryptInviteList(signer: PrivateKeySigner, event: NostrEvent) {
   const pubkey = await signer.getPublicKey();
   return JSON.parse(await signer.nip44!.decrypt(pubkey, event.content)) as {
-    entries: Array<{ token: string; signer_sk: string; community_id: string; url: string; label?: string; channels?: string[] }>;
+    entries: Array<{
+      token: string;
+      signer_sk: string;
+      community_id: string;
+      url: string;
+      label?: string;
+      channels?: string[];
+    }>;
     tombstones: Array<{ token: string; community_id: string }>;
   };
 }
@@ -167,7 +193,12 @@ describe("ConcordClient community list (DI, no network)", () => {
   it("community startup authenticates stream keys, not the user key", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
-    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", description: "hi", relays: ["wss://fake"] });
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Test",
+      description: "hi",
+      relays: ["wss://fake"],
+    });
     const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
     const storage = memoryStorage();
     await storage.setItem(pubkey, JSON.stringify([material]));
@@ -337,7 +368,12 @@ describe("ConcordClient community list (DI, no network)", () => {
       },
     };
 
-    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", description: "hi", relays: ["wss://fake"] });
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Test",
+      description: "hi",
+      relays: ["wss://fake"],
+    });
     const cid = genesis.material.community_id;
     const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
     const communities = mergeCommunities([], [{ community_id: cid, seed: material, current: material, added_at: 1 }]);
@@ -350,7 +386,14 @@ describe("ConcordClient community list (DI, no network)", () => {
     store.add(listEvent as NostrEvent); // the matching remote copy is already present at startup
 
     const { pool, published } = fakePool();
-    const client = new ConcordClient({ signer, pool, eventStore: store, storage, relays: ["wss://fake"], autoUnlock: true });
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage,
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
 
     await client.start();
     await settle();
@@ -493,7 +536,10 @@ describe("ConcordClient community list (DI, no network)", () => {
     expect(community.state$.value.inviteLinks.has(invite.signerPubkey)).toBe(false);
 
     const bundleTombstone = published.find(
-      (event) => event.kind === 33301 && event.pubkey === invite.signerPubkey && event.tags.some((t) => t[0] === "vsk" && t[1] === "9"),
+      (event) =>
+        event.kind === 33301 &&
+        event.pubkey === invite.signerPubkey &&
+        event.tags.some((t) => t[0] === "vsk" && t[1] === "9"),
     );
     expect(bundleTombstone).toBeDefined();
 
@@ -537,7 +583,10 @@ describe("ConcordClient community list (DI, no network)", () => {
     expect(client.invites.revoked$.value.map((i) => i.token)).toEqual([invite.token]);
 
     const bundleTombstone = published.find(
-      (event) => event.kind === 33301 && event.pubkey === invite.signerPubkey && event.tags.some((t) => t[0] === "vsk" && t[1] === "9"),
+      (event) =>
+        event.kind === 33301 &&
+        event.pubkey === invite.signerPubkey &&
+        event.tags.some((t) => t[0] === "vsk" && t[1] === "9"),
     );
     expect(bundleTombstone).toBeDefined();
 
@@ -553,13 +602,21 @@ describe("ConcordClient community list (DI, no network)", () => {
   async function leftElsewhere(opts: { mirror: "legacy" | "document" }) {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
-    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", description: "hi", relays: ["wss://fake"] });
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Test",
+      description: "hi",
+      relays: ["wss://fake"],
+    });
     const cid = genesis.material.community_id;
     const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
 
     // The relay copy device A published: the membership stays in the document (nothing is ever
     // deleted) with a tombstone that postdates its add — so it is derived-dead.
-    const communities = mergeCommunities([], [{ community_id: cid, seed: material, current: material, added_at: 1000 }]);
+    const communities = mergeCommunities(
+      [],
+      [{ community_id: cid, seed: material, current: material, added_at: 1000 }],
+    );
     const remote = JSON.stringify({ entries: communities, tombstones: [{ community_id: cid, removed_at: 2000 }] });
     const listEvent = await signer.signEvent({
       kind: COMMUNITY_LIST_KIND,
@@ -572,9 +629,7 @@ describe("ConcordClient community list (DI, no network)", () => {
     const storage = memoryStorage();
     await storage.setItem(
       pubkey,
-      opts.mirror === "legacy"
-        ? JSON.stringify([material])
-        : JSON.stringify({ entries: communities, tombstones: [] }),
+      opts.mirror === "legacy" ? JSON.stringify([material]) : JSON.stringify({ entries: communities, tombstones: [] }),
     );
 
     const store = new EventStore();
@@ -670,7 +725,9 @@ describe("ConcordClient community list (DI, no network)", () => {
     await settle();
 
     expect(client.getCommunity(cid)).toBeDefined();
-    const doc = JSON.parse(await signer.nip44!.decrypt(await signer.getPublicKey(), listPublishes(published).at(-1)!.content));
+    const doc = JSON.parse(
+      await signer.nip44!.decrypt(await signer.getPublicKey(), listPublishes(published).at(-1)!.content),
+    );
     const entry = doc.entries.find((e: any) => e.community_id === cid);
     const tomb = doc.tombstones.find((t: any) => t.community_id === cid);
     expect(tomb).toBeDefined();
