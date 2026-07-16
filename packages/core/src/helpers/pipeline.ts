@@ -77,9 +77,21 @@ export function pipeFromAsyncArray<T, R>(fns: Array<Operation<T, R>>, preserve?:
         // (an operation's own internal spread — e.g. modifyPublicTags's `{ ...draft, tags }` —
         // drops non-enumerable writes; this explicitly restores them instead of relying on
         // write-site enumerability).
-        for (const symbol of preserve) {
-          if (Reflect.has(prevValue, symbol) && !Reflect.has(result, symbol)) {
-            Reflect.set(result, symbol, Reflect.get(prevValue, symbol));
+        //
+        // Only carry forward when the step MODIFIES the same event in place (same kind). A
+        // transform step that builds a new, different-kind event — e.g. gift-wrap's
+        // rumor(3313)→seal(13)→wrap(1059) — must NOT inherit the input's symbols: they are
+        // accumulated state whose meaning differs per envelope level (SealSymbol is a Set of
+        // parent seals on a rumor but the single downstream seal on a wrap), and carrying them
+        // across the boundary corrupts the nested event's decode.
+        const sameEvent =
+          typeof (result as { kind?: unknown }).kind === "number" &&
+          (result as { kind?: unknown }).kind === (prevValue as { kind?: unknown }).kind;
+        if (sameEvent) {
+          for (const symbol of preserve) {
+            if (Reflect.has(prevValue, symbol) && !Reflect.has(result, symbol)) {
+              Reflect.set(result, symbol, Reflect.get(prevValue, symbol));
+            }
           }
         }
       }

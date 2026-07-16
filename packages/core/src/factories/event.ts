@@ -85,10 +85,17 @@ export class EventFactory<
 
           // Carry forward: restore any preserved symbol draft had that result is missing,
           // mirroring pipeFromAsyncArray's carry-forward loop (an operation's own internal
-          // spread drops non-enumerable writes; this explicitly restores them).
-          for (const symbol of PRESERVE_EVENT_SYMBOLS) {
-            if (Reflect.has(draft, symbol) && !Reflect.has(result, symbol)) {
-              Reflect.set(result, symbol, Reflect.get(draft, symbol));
+          // spread drops non-enumerable writes; this explicitly restores them). Only carry
+          // forward when the step modifies the same event in place (same kind); a transform
+          // step that builds a new, different-kind event must not inherit the input's symbols.
+          const sameEvent =
+            typeof (result as { kind?: unknown }).kind === "number" &&
+            (result as { kind?: unknown }).kind === (draft as { kind?: unknown }).kind;
+          if (sameEvent) {
+            for (const symbol of PRESERVE_EVENT_SYMBOLS) {
+              if (Reflect.has(draft, symbol) && !Reflect.has(result, symbol)) {
+                Reflect.set(result, symbol, Reflect.get(draft, symbol));
+              }
             }
           }
 
