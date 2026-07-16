@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NostrEvent } from "../../helpers/event.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
+import { EventStoreSymbol, NostrEvent } from "../../helpers/event.js";
 import { AsyncEventStore } from "../async-event-store.js";
 import { IAsyncEventDatabase } from "../interface.js";
 
@@ -18,6 +19,21 @@ function fakeDatabase(): IAsyncEventDatabase {
     getTimeline: async () => [],
   };
 }
+
+const user = new FakeUser();
+
+describe("AsyncEventStore.add", () => {
+  it("should store EventStoreSymbol non-enumerably on the added event", async () => {
+    const store = new AsyncEventStore({ database: fakeDatabase() });
+    const added = (await store.add(user.note("non-enumerable async store link")))!;
+
+    expect(Reflect.get(added, EventStoreSymbol)).toBe(store);
+    expect(Object.getOwnPropertyDescriptor(added, EventStoreSymbol)?.enumerable).toBe(false);
+    // Object spread only copies enumerable own properties, so a non-enumerable
+    // write must not ride along a spread of the stored event.
+    expect(EventStoreSymbol in { ...added }).toBe(false);
+  });
+});
 
 describe("AsyncEventStore.dispose", () => {
   describe("dispose", () => {

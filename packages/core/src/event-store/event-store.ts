@@ -1,5 +1,6 @@
 import { verifyEvent as coreVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
 import { Observable, Subject, Subscription } from "rxjs";
+import { setCachedValue } from "../helpers/cache.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import {
   EventStoreSymbol,
@@ -218,7 +219,7 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
         // These three symbols propagate across duplicate events via this loop rather than via
         // object spread — accumulated state (see cache.ts taxonomy). SeenRelaysSymbol merges via
         // the separate element-wise branch above instead; this loop is not the category's sole definition.
-        Reflect.set(dest, symbol, Reflect.get(source, symbol));
+        setCachedValue(dest, symbol, Reflect.get(source, symbol));
         changed = true;
       }
     }
@@ -294,7 +295,7 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
       // copySymbolsToDuplicateEvent's merge list: that function's source is the incoming
       // duplicate (discarded) and dest is the stored event, so exclusion protects the stored
       // event from acquiring the incoming duplicate's store reference (cache.ts taxonomy).
-      Reflect.set(inserted, EventStoreSymbol, this);
+      setCachedValue(inserted, EventStoreSymbol, this);
 
       // Emit insert$ signal
       this.insert$.next(inserted);
