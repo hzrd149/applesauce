@@ -1,8 +1,10 @@
+import { setEncryptedContentCache } from "applesauce-core/helpers/encrypted-content";
 import { finalizeEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { wrapEvent } from "nostr-tools/nip59";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import {
+  GiftWrapSymbol,
   getGiftWrapRumor,
   getGiftWrapSeal,
   getRumorGiftWraps,
@@ -12,6 +14,8 @@ import {
   internalGiftWrapEvents,
   isGiftWrapUnlocked,
   isRumor,
+  RumorSymbol,
+  SealSymbol,
   unlockGiftWrap,
   type Rumor,
 } from "../gift-wrap.js";
@@ -374,5 +378,120 @@ describe("multiple gift wraps with same rumor", () => {
     expect(updatedGiftWraps).toContain(giftWrapToBob);
     expect(updatedGiftWraps).toContain(giftWrapToCharlie);
     expect(updatedGiftWraps).toContain(giftWrapToDave);
+  });
+});
+
+describe("setCachedValue migration — non-enumerable accumulated-state writes", () => {
+  it("SealSymbol Set-init (getRumorSeals) is non-enumerable and later .add() mutates the same Set", () => {
+    const rumor = {
+      id: "f".repeat(64),
+      pubkey: alice.pubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: kinds.ShortTextNote,
+      tags: [],
+      content: "standalone rumor",
+    } as unknown as Rumor;
+
+    // Lazily initializes the Set (gift-wrap.ts:95)
+    expect(getRumorSeals(rumor)).toEqual([]);
+
+    // Non-enumerable: not visible via Reflect.ownKeys' enumerable check, nor plain spread
+    const descriptor = Object.getOwnPropertyDescriptor(rumor, SealSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...rumor })).not.toContain(SealSymbol);
+
+    // Same Set reference: mutating it directly (as addParentSealReference does) is reflected
+    const seal = alice.event({ kind: kinds.Seal, content: "seal-content" });
+    const set = Reflect.get(rumor, SealSymbol) as Set<NostrEvent>;
+    set.add(seal);
+    expect(getRumorSeals(rumor)).toContain(seal);
+  });
+
+  it("SealSymbol Set-init (addParentSealReference, via unlock) is non-enumerable and keeps accumulating via .add()", async () => {
+    const rumorEvent = {
+      id: "g".repeat(64),
+      pubkey: alice.pubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: kinds.ShortTextNote,
+      tags: [["p", bob.pubkey]],
+      content: "accumulated seal reference",
+    };
+    const giftWrap = wrapEvent(rumorEvent, alice.key, bob.pubkey);
+
+    const rumor = await unlockGiftWrap(giftWrap, bob);
+    const seal = getGiftWrapSeal(giftWrap)!;
+
+    const descriptor = Object.getOwnPropertyDescriptor(rumor, SealSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...rumor })).not.toContain(SealSymbol);
+
+    // The underlying Set still accepts later .add() calls (writable descriptor)
+    const anotherSeal = alice.event({ kind: kinds.Seal, content: "another-seal" });
+    const parents = Reflect.get(rumor, SealSymbol) as Set<NostrEvent>;
+    parents.add(anotherSeal);
+    expect(getRumorSeals(rumor)).toContain(seal);
+    expect(getRumorSeals(rumor)).toContain(anotherSeal);
+  });
+
+  it("RumorSymbol success write (getSealRumor) is non-enumerable and dropped by a plain spread", async () => {
+    const rumorEvent = {
+      id: "h".repeat(64),
+      pubkey: alice.pubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: kinds.ShortTextNote,
+      tags: [["p", bob.pubkey]],
+      content: "rumor symbol enumerability",
+    };
+    const giftWrap = wrapEvent(rumorEvent, alice.key, bob.pubkey);
+
+    await unlockGiftWrap(giftWrap, bob);
+    const seal = getGiftWrapSeal(giftWrap)!;
+
+    expect(RumorSymbol in seal).toBe(true);
+    const descriptor = Object.getOwnPropertyDescriptor(seal, RumorSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...seal })).not.toContain(RumorSymbol);
+  });
+
+  it("RumorSymbol failure sentinel (undefined) is non-enumerable but visible via Reflect.has", () => {
+    // Build a seal event with content that decrypts fine but fails to parse as a rumor
+    const seal = alice.event({ kind: kinds.Seal, content: "encrypted-placeholder" });
+    setEncryptedContentCache(seal, "not valid json{{{");
+
+    expect(getSealRumor(seal)).toBeUndefined();
+
+    // Sentinel is present (Reflect.has sees it) with value `undefined`, and non-enumerable
+    expect(Reflect.has(seal, RumorSymbol)).toBe(true);
+    expect(Reflect.get(seal, RumorSymbol)).toBeUndefined();
+    const descriptor = Object.getOwnPropertyDescriptor(seal, RumorSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...seal })).not.toContain(RumorSymbol);
+  });
+
+  it("GiftWrapSymbol and SealSymbol writes in getGiftWrapSeal are non-enumerable and dropped by a plain spread", async () => {
+    const rumorEvent = {
+      id: "i".repeat(64),
+      pubkey: alice.pubkey,
+      created_at: Math.floor(Date.now() / 1000),
+      kind: kinds.ShortTextNote,
+      tags: [["p", bob.pubkey]],
+      content: "gift-wrap/seal symbol enumerability",
+    };
+    const giftWrap = wrapEvent(rumorEvent, alice.key, bob.pubkey);
+
+    await unlockGiftWrap(giftWrap, bob);
+    const seal = getGiftWrapSeal(giftWrap)!;
+
+    // GiftWrapSymbol on the seal (upstream reference, gift-wrap.ts:217)
+    const giftWrapDescriptor = Object.getOwnPropertyDescriptor(seal, GiftWrapSymbol);
+    expect(giftWrapDescriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...seal })).not.toContain(GiftWrapSymbol);
+    expect(getSealGiftWrap(seal)).toBe(giftWrap);
+
+    // SealSymbol on the gift wrap (downstream reference, gift-wrap.ts:222)
+    const sealDescriptor = Object.getOwnPropertyDescriptor(giftWrap, SealSymbol);
+    expect(sealDescriptor?.enumerable).toBe(false);
+    expect(Object.getOwnPropertySymbols({ ...giftWrap })).not.toContain(SealSymbol);
+    expect(getGiftWrapSeal(giftWrap)).toBe(seal);
   });
 });
