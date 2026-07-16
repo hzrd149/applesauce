@@ -21,7 +21,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **ROTATE-01**: A Refounding derives its new epoch's control, guestbook, and rekey addresses from the newly minted root — `rollForward(...).control.pk` equals the spec formula over the new root *(H01a; Refounding is currently a no-op in-session, so a removed member keeps reading traffic)*
 - [x] **ROTATE-02**: The epoch walk addresses each held epoch distinctly, so historical epochs are actually fetched *(H01b; all per-epoch materials currently resolve to one address)*
 - [ ] **ROTATE-03**: A channel Rekey derives the new epoch's message plane — `rollForwardChannel` output addresses the new key/epoch *(H01c; second root cause of H08)*
-- [ ] **ROTATE-04**: A Refounding removes excluded members from the Complete Memberlist — the new epoch's Guestbook is seeded only by the snapshot, and prior-epoch entries/observations do not resurrect them *(H02; currently masked by H01 — activates when CACHE-01 lands)*
+- [x] **ROTATE-04**: A Refounding removes excluded members from the Complete Memberlist — the new epoch's Guestbook is seeded only by the snapshot, and prior-epoch entries/observations do not resurrect them *(H02; currently masked by H01 — activates when CACHE-01 lands)*
 - [ ] **ROTATE-05**: A transient signer error while decrypting a rekey blob is retried, never interpreted as removal *(H09; a NIP-46 bunker blip currently self-evicts the user permanently)*
 - [ ] **ROTATE-06**: Two rotations racing to one epoch converge down-only — a held epoch re-converges to a strictly lower sibling and can never re-fork *(M01; the community currently splits in half silently)*
 - [ ] **ROTATE-07**: The winning rotation is computed among all authorized, complete, continuity-checked candidates, not only those carrying our blob *(M02)*
@@ -120,7 +120,7 @@ Deferred — acknowledged, not in this roadmap.
 | TEST-01 | Phase 5–12 (standing) | Pending — **cross-cutting; does NOT close at Phase 5** |
 | ROTATE-01 | Phase 6 | Complete |
 | ROTATE-02 | Phase 6 | Complete |
-| ROTATE-04 | Phase 6 | Pending |
+| ROTATE-04 | Phase 6 | Complete |
 | AUTH-01 | Phase 6 | Pending |
 | AUTH-02 | Phase 6 | Pending |
 | CHAN-01 | Phase 7 | Pending |

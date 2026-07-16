@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 06
 current_phase_name: refounding-rotation-authority-correctness
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-07-16T19:49:04.908Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-07-16T20:10:53.146Z"
 last_activity: 2026-07-16
 last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 30
-  completed_plans: 28
+  completed_plans: 29
   percent: 22
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 06 (refounding-rotation-authority-correctness) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-16 — Phase 06 execution started
 
@@ -49,6 +49,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | 3. RumorStore & verification | 3 | 16min |
 | 4. Common package rumor support | 1 | 10min |
 | Phase 06 P01 | 5min | 2 tasks | 1 files |
+| Phase 06 P02 | 22min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Roadmap]: 5 spec-ruling-blocked requirements (ROTATE-10/13, AUTH-07/08, CHAN-07) distributed into their topical phases (7/8/9) rather than one adjudication phase, with the ruling as each phase's first task
 - [Roadmap]: REQUIREMENTS.md's stated "52 total" corrected to 53 — a recount of every checklist item found 53 distinct REQ-IDs; no requirement content changed
 - [Phase 06]: Both ROTATE-01/ROTATE-02 guestbook + base-rekey addresses now have crypto.ts-only spec-derived oracles with memo-armed spread guards, mirroring the existing control-address probe
+- [Phase ?]: Phase 06-02: epoch-scoped the Guestbook plane store (guestbook@<epoch>) and scoped the live observed set to current-epoch guestbook + channel stores only, resolving ROTATE-04's memberlist resurrection defect without touching foldMembers — CORD-02 §5: the Guestbook rides the epoch — matches the spec's structural model rather than a timestamp heuristic
+- [Phase ?]: Phase 06-02: added a D-03 retention trim disposing stale-epoch guestbook stores once their epoch leaves held_roots, proven via a test that manually simulates the (currently nonexistent) compaction precondition — Keys and stores share one retention horizon; the trim must be ready before a future compaction step ages entries out of held_roots
+- [Phase ?]: Phase 06-02: Open Question 1 (public-channel observed residual) deliberately left unfixed and pinned by a regression test with an explicit Phase-7 deferral comment — Channel epoch-keying is out of Phase 6's scope; fixing it here would cross into Phase 7 territory
 
 ### Pending Todos
 
@@ -94,9 +98,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-16T19:47:15.137Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-refounding-rotation-authority-correctness/06-CONTEXT.md
+Last session: 2026-07-16T20:10:53.138Z
+Stopped at: Completed 06-02-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
