@@ -122,12 +122,12 @@ export function stamp<K extends number = number>(
   return async (draft) => {
     if (!signer) throw new Error("Missing signer");
 
-    // Remove old fields from signed nostr event
-    Reflect.deleteProperty(draft, "id");
-    Reflect.deleteProperty(draft, "sig");
-
     const pubkey = await signer.getPublicKey();
     const newDraft = { ...draft, pubkey };
+
+    // Remove old fields from the copy — never the caller's draft (CR-05: stamp must not mutate its input)
+    Reflect.deleteProperty(newDraft, "id");
+    Reflect.deleteProperty(newDraft, "sig");
 
     // copy the plaintext hidden content if its on the draft
     if (Reflect.has(draft, EncryptedContentSymbol))
