@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 6
-current_phase_name: Refounding Rotation & Authority Correctness
+current_phase: 06
+current_phase_name: refounding-rotation-authority-correctness
 status: executing
 stopped_at: Phase 6 context gathered
-last_updated: "2026-07-16T19:26:42.287Z"
+last_updated: "2026-07-16T19:35:41.493Z"
 last_activity: 2026-07-16
-last_activity_desc: Phase 05.1 complete, transitioned to Phase 6
+last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 27
+  total_plans: 30
   completed_plans: 27
   percent: 22
 ---
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 05.1 — symbol-propagation-redesign
+**Current focus:** Phase 06 — refounding-rotation-authority-correctness
 
 ## Current Position
 
-Phase: 6 — Refounding Rotation & Authority Correctness
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-16 — Phase 05.1 complete, transitioned to Phase 6
+Phase: 06 (refounding-rotation-authority-correctness) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 06
+Last activity: 2026-07-16 — Phase 06 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
