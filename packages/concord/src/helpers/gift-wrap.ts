@@ -13,7 +13,7 @@
 // memoises the finished bundle on the wrap instance — a wrap is only ever
 // decoded under its plane's one convKey, so caching the result there is safe.
 
-import { safeParse } from "applesauce-core/helpers";
+import { safeParse, setCachedValue } from "applesauce-core/helpers";
 import { kinds, type NostrEvent, verifyWrappedEvent } from "applesauce-core/helpers/event";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import { rumorMs } from "./stream.js";
@@ -116,7 +116,10 @@ export function decodeWrapCached(wrap: RawEvent, convKey: Uint8Array): DecodedEv
   const cached = Reflect.get(wrap, DecodedWrapSymbol) as DecodedEvent | null | undefined;
   if (cached !== undefined) return cached;
   const decoded = decodeWrap(wrap, convKey);
-  Reflect.set(wrap, DecodedWrapSymbol, decoded);
+  // Identity memo (cache.ts taxonomy): non-enumerable so a spread drops it and a copy with
+  // changed fields recomputes. setCachedValue writes `null` non-enumerably too, so the
+  // attempted-but-failed sentinel above (`cached !== undefined`) is unaffected.
+  setCachedValue(wrap, DecodedWrapSymbol, decoded);
   return decoded;
 }
 
