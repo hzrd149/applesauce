@@ -39,15 +39,15 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 - ✓ Constructor honors explicit `verifyEvent: undefined` to disable verification — v1.0
 - ✓ Core helpers, store interfaces, managers, models, and cast infrastructure generic over `E extends StoreEvent` (`NostrEvent` defaults) — v1.0
 - ✓ `applesauce-common` structural helpers genericized to support rumors (Part B; casts audited, kept `NostrEvent` per conservative scope) — v1.0
+- ✓ A Refounding rotates every plane address and the epoch walk addresses each held epoch distinctly — Validated in Phase 6 (ROTATE-01/02)
+- ✓ A Refounding removes excluded members from the Complete Memberlist — Validated in Phase 6 (ROTATE-04)
+- ✓ A root Refounding is honored only from a rotator who strictly outranks every removed target, on both the send and receive paths — Validated in Phase 6 (AUTH-01/02)
 
 ### Active
 
 <!-- v1.1 first-fixes. Full detail with file:line, spec citations, and repros: .planning/concord-audit.md -->
 
 - Cache identity memos must not survive an object spread (`applesauce-core`); the memo-vs-carry-forward distinction is documented so a future cleanup cannot collapse them
-- A Refounding must actually rotate every plane address, and the epoch walk must address each held epoch distinctly
-- A Refounding must remove excluded members from the Complete Memberlist
-- A root Refounding must be honored only from a rotator who strictly outranks every removed target, on both the send and receive paths
 - A channel Rekey must rotate the channel's message plane
 - Private channel access must derive only from held key material — never from `community_root` — and consumers must be able to distinguish visible metadata from key possession
 - Channel key material must come from `material.channels`, never from Control-Plane edition JSON
@@ -78,6 +78,7 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 - **v1.1 authoritative spec:** `.planning/concord-audit.md` — the 2026-07-15 conformance audit of `packages/concord/src/` against CORD-01..07, produced by seven parallel agents (one per spec doc) and orchestrator-verified. 43 findings: 9 HIGH, 17 MEDIUM, 4 suspected, 13 LOW. Carries file:line, the violated spec sentence, symptom, and fix per finding, plus a "verified correct" register marking ground that does not need re-auditing.
 - **Why v1.1 exists:** a downstream app reported an incomplete member list after a Refounding. Root cause was `buildInviteBundle` dropping an optional `refounder` field from a hand-rolled literal — invisible to TypeScript, silent at runtime, green on all 189 tests. The audit was commissioned on the premise that a defect that quiet was unlikely to be alone; it was not. Nearly every finding is one of four variants of the same mistake: a guard that defaults to permit, a hand-rolled literal that drops an optional field, a correct helper that exists but is never called (`splitTime`, `store.replaceable`, `canRemoveSelf`, `grantLocator`), or a `catch`/`continue` that degrades where the spec says MUST.
 - **Test-methodology finding (drives a v1.1 requirement):** all 189 concord tests passed while 9 HIGH bugs were live, because every test compares the implementation against itself. A four-line probe deriving the expected address from the spec formula caught the worst bug instantly. Spec-derived assertions are the gap.
+- **Phase 6 complete (2026-07-16):** Refounding rotation & authority correctness — 3 plans, 6 tasks. Guestbook/base-rekey addresses gained spec-derived tests (ROTATE-01/02); the guestbook store is now epoch-keyed and the live `observed` set scoped to the current epoch so a Refounding drops excluded members (ROTATE-04); the root Refounding path gained a send-side outrank loop and a fail-closed `readRekey` receive guard mirroring the channel path (AUTH-01/02). `foldMembers` left untouched; `applesauce-concord` 202/202 green, all packages build. Verification passed 5/5 must-haves.
 - **CONCORD-H07 has a blocked downstream consumer** (Accordian): private channel metadata without held key material derives the *public* address, so the composer can publish private content to a plane every community member can derive. Field-confirmed and reproduced 2026-07-15; their acceptance criteria and five required tests are adopted verbatim in the audit register.
 
 ## Constraints
@@ -122,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-15 — started milestone v1.1 first-fixes*
+*Last updated: 2026-07-16 — Phase 6 complete (Refounding rotation & authority correctness)*
