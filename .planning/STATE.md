@@ -6,14 +6,14 @@ current_phase: 07
 current_phase_name: private-channel-keying
 status: executing
 stopped_at: Phase 7 context gathered
-last_updated: "2026-07-17T18:59:05.106Z"
+last_updated: "2026-07-17T19:09:31.093Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 33
-  completed_plans: 31
+  completed_plans: 32
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 07 (private-channel-keying) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-17 — Phase 07 execution started
 
@@ -52,6 +52,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 06 P02 | 22min | 2 tasks | 6 files |
 | Phase 06 P03 | 10min | 2 tasks | 8 files |
 | Phase 07 P01 | 14min | 3 tasks | 7 files |
+| Phase 07 P02 | 5min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 07-01: ChannelMetadata.key/.epoch removed entirely (breaking, concord unreleased); material.channels is now the sole source of channel key material, closing H06/H07/H08 as one refactor
 - [Phase ?]: 07-01: channelSecret/channelKeyFor/voiceKeysFor/deriveKeys made total (return null for a keyless private channel) rather than throwing — routine expected state during a whole-community fold pass
 - [Phase ?]: 07-01: foldControl's sticky-deleted fold rule pins heads to the terminal deleting edition (not the ordinary version-chain head) so compaction cannot resurrect a deleted channel for a fresh joiner (CHAN-07)
+- [Phase ?]: 07-02: sameChannelViews compares length + per-entry channel_id/accessible (mirrors members$'s sameSet) — a mapped array needs a content comparator, not reference identity
+- [Phase ?]: 07-02: materialChanged$.next() placed at all four material.channels mutation sites (receiveChannelKeys, persistChannelKey, dropChannelKey, mintChannelKey callback) rather than one centralized setter
 
 ### Pending Todos
 
@@ -106,7 +109,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-17T18:59:05.095Z
+Last session: 2026-07-17T19:08:27.733Z
 Stopped at: Phase 7 context gathered
 Resume file: .planning/phases/07-private-channel-keying/07-CONTEXT.md
 

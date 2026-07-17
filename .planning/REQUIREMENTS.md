@@ -52,7 +52,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **CHAN-03**: `keys.channelEpochs` records the epoch the channel key was actually derived at, so CORD-03 §3's receiver binding check validates the right number *(H07 addendum — not in the upstream report; found during repro)*
 - [x] **CHAN-04**: Channel key material is taken only from `material.channels`, never from Control-Plane edition JSON, and edition fields are picked explicitly with type validation rather than blind-cast *(H06; a MANAGE_CHANNELS holder can currently publish a "private" channel whose key is cleartext on a member-readable plane)*
 - [x] **CHAN-05**: A channel's secret derives from `material.channels`, so a channel Rekey takes effect immediately without a reload *(H08 first root cause; requires deleting `ChannelMetadata.key`/`.epoch` — **BREAKING**. Pairs with ROTATE-03, the second root cause; either alone leaves the channel on its old plane)*
-- [ ] **CHAN-06**: A client can distinguish a visible-but-inaccessible private channel from one it holds a key for, without hand-rolling a `material.channels` lookup *(API gap surfaced by the Accordian report)*
+- [x] **CHAN-06**: A client can distinguish a visible-but-inaccessible private channel from one it holds a key for, without hand-rolling a `material.channels` lookup *(API gap surfaced by the Accordian report)*
 - [x] **CHAN-07**: Channel deletion is terminal — a later edition cannot un-delete a channel *(S04 — **BLOCKED on ruling**: "Deletion is terminal" is followed by a clause about id reuse, admitting a narrow reading)*
 
 ### Invites (INVITE)
@@ -128,7 +128,7 @@ Deferred — acknowledged, not in this roadmap.
 | CHAN-03 | Phase 7 | Complete |
 | CHAN-04 | Phase 7 | Complete |
 | CHAN-05 | Phase 7 | Complete |
-| CHAN-06 | Phase 7 | Pending |
+| CHAN-06 | Phase 7 | Complete |
 | CHAN-07 | Phase 7 | Pending — blocked on spec ruling |
 | ROTATE-03 | Phase 7 | Complete |
 | TEST-02 | Phase 7 | Complete |
