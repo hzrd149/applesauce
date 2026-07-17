@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 7
-current_phase_name: Private Channel Keying
+current_phase: 07
+current_phase_name: private-channel-keying
 status: executing
 stopped_at: Phase 7 context gathered
-last_updated: "2026-07-17T18:34:25.933Z"
-last_activity: 2026-07-16
-last_activity_desc: Phase 06 complete, transitioned to Phase 7
+last_updated: "2026-07-17T18:59:05.106Z"
+last_activity: 2026-07-17
+last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 9
   completed_phases: 3
-  total_plans: 30
-  completed_plans: 30
+  total_plans: 33
+  completed_plans: 31
   percent: 33
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 06 — refounding-rotation-authority-correctness
+**Current focus:** Phase 07 — private-channel-keying
 
 ## Current Position
 
-Phase: 7 — Private Channel Keying
-Plan: Not started
+Phase: 07 (private-channel-keying) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-16 — Phase 06 complete, transitioned to Phase 7
+Last activity: 2026-07-17 — Phase 07 execution started
 
 Progress: [█████████░] 93%
 
@@ -51,6 +51,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 06 P01 | 5min | 2 tasks | 1 files |
 | Phase 06 P02 | 22min | 2 tasks | 6 files |
 | Phase 06 P03 | 10min | 2 tasks | 8 files |
+| Phase 07 P01 | 14min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 06]: Phase 06-03: AUTH-02 - refound() gained a per-target BAN outrank loop mirroring rotateChannel's, throwing before buildRefounding/any publish so a failed outrank check aborts the whole Refounding atomically
 - [Phase 06]: Phase 06-03: AUTH-01 - readRekeyScoped's removal branch is now fail-closed (held.canRemoveSelf?.(rotator) === true); readRekey supplies canRemoveSelf at both call sites (checkRekey, syncEpoch) via hasPerm/canActOn over PERM.BAN
 - [Phase 06]: Phase 06-03: Rule 1 auto-fix - the shared fail-closed guard also gated the channel scope; channel-sync.ts's sync-walk path never threaded canRemoveSelf (only the live checkRekey path did), fixed by threading the already-existing predicate through ChannelSyncContext, no new rank logic
+- [Phase ?]: 07-01: ChannelMetadata.key/.epoch removed entirely (breaking, concord unreleased); material.channels is now the sole source of channel key material, closing H06/H07/H08 as one refactor
+- [Phase ?]: 07-01: channelSecret/channelKeyFor/voiceKeysFor/deriveKeys made total (return null for a keyless private channel) rather than throwing — routine expected state during a whole-community fold pass
+- [Phase ?]: 07-01: foldControl's sticky-deleted fold rule pins heads to the terminal deleting edition (not the ordinary version-chain head) so compaction cannot resurrect a deleted channel for a fresh joiner (CHAN-07)
 
 ### Pending Todos
 
@@ -102,7 +106,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-17T17:57:55.628Z
+Last session: 2026-07-17T18:59:05.095Z
 Stopped at: Phase 7 context gathered
 Resume file: .planning/phases/07-private-channel-keying/07-CONTEXT.md
 

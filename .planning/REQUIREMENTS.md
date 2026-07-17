@@ -20,7 +20,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 - [x] **ROTATE-01**: A Refounding derives its new epoch's control, guestbook, and rekey addresses from the newly minted root — `rollForward(...).control.pk` equals the spec formula over the new root *(H01a; Refounding is currently a no-op in-session, so a removed member keeps reading traffic)*
 - [x] **ROTATE-02**: The epoch walk addresses each held epoch distinctly, so historical epochs are actually fetched *(H01b; all per-epoch materials currently resolve to one address)*
-- [ ] **ROTATE-03**: A channel Rekey derives the new epoch's message plane — `rollForwardChannel` output addresses the new key/epoch *(H01c; second root cause of H08)*
+- [x] **ROTATE-03**: A channel Rekey derives the new epoch's message plane — `rollForwardChannel` output addresses the new key/epoch *(H01c; second root cause of H08)*
 - [x] **ROTATE-04**: A Refounding removes excluded members from the Complete Memberlist — the new epoch's Guestbook is seeded only by the snapshot, and prior-epoch entries/observations do not resurrect them *(H02; currently masked by H01 — activates when CACHE-01 lands)*
 - [ ] **ROTATE-05**: A transient signer error while decrypting a rekey blob is retried, never interpreted as removal *(H09; a NIP-46 bunker blip currently self-evicts the user permanently)*
 - [ ] **ROTATE-06**: Two rotations racing to one epoch converge down-only — a held epoch re-converges to a strictly lower sibling and can never re-fork *(M01; the community currently splits in half silently)*
@@ -47,13 +47,13 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 *CHAN-01/02/03 have a blocked downstream consumer (Accordian) — acceptance criteria and tests adopted verbatim from their report.*
 
-- [ ] **CHAN-01**: A private channel with visible metadata but no held key material derives no channel `GroupKey` and gets no `keys.channels` entry, and its plane is never registered or subscribed *(H07; currently derives the PUBLIC address, byte-identical to the `community_root` formula)*
+- [x] **CHAN-01**: A private channel with visible metadata but no held key material derives no channel `GroupKey` and gets no `keys.channels` entry, and its plane is never registered or subscribed *(H07; currently derives the PUBLIC address, byte-identical to the `community_root` formula)*
 - [ ] **CHAN-02**: Sending to a private channel without key material rejects with a clear, distinct error (e.g. `missing private channel key`, not `unknown channel`) *(H07; `planeKeyFor` currently resolves and the send proceeds)*
-- [ ] **CHAN-03**: `keys.channelEpochs` records the epoch the channel key was actually derived at, so CORD-03 §3's receiver binding check validates the right number *(H07 addendum — not in the upstream report; found during repro)*
-- [ ] **CHAN-04**: Channel key material is taken only from `material.channels`, never from Control-Plane edition JSON, and edition fields are picked explicitly with type validation rather than blind-cast *(H06; a MANAGE_CHANNELS holder can currently publish a "private" channel whose key is cleartext on a member-readable plane)*
-- [ ] **CHAN-05**: A channel's secret derives from `material.channels`, so a channel Rekey takes effect immediately without a reload *(H08 first root cause; requires deleting `ChannelMetadata.key`/`.epoch` — **BREAKING**. Pairs with ROTATE-03, the second root cause; either alone leaves the channel on its old plane)*
+- [x] **CHAN-03**: `keys.channelEpochs` records the epoch the channel key was actually derived at, so CORD-03 §3's receiver binding check validates the right number *(H07 addendum — not in the upstream report; found during repro)*
+- [x] **CHAN-04**: Channel key material is taken only from `material.channels`, never from Control-Plane edition JSON, and edition fields are picked explicitly with type validation rather than blind-cast *(H06; a MANAGE_CHANNELS holder can currently publish a "private" channel whose key is cleartext on a member-readable plane)*
+- [x] **CHAN-05**: A channel's secret derives from `material.channels`, so a channel Rekey takes effect immediately without a reload *(H08 first root cause; requires deleting `ChannelMetadata.key`/`.epoch` — **BREAKING**. Pairs with ROTATE-03, the second root cause; either alone leaves the channel on its old plane)*
 - [ ] **CHAN-06**: A client can distinguish a visible-but-inaccessible private channel from one it holds a key for, without hand-rolling a `material.channels` lookup *(API gap surfaced by the Accordian report)*
-- [ ] **CHAN-07**: Channel deletion is terminal — a later edition cannot un-delete a channel *(S04 — **BLOCKED on ruling**: "Deletion is terminal" is followed by a clause about id reuse, admitting a narrow reading)*
+- [x] **CHAN-07**: Channel deletion is terminal — a later edition cannot un-delete a channel *(S04 — **BLOCKED on ruling**: "Deletion is terminal" is followed by a clause about id reuse, admitting a narrow reading)*
 
 ### Invites (INVITE)
 
@@ -87,7 +87,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 ### Test Methodology (TEST)
 
 - [ ] **TEST-01**: Every key/address derivation the specs define has a regression test asserting against an **independently-derived spec value**, not against implementation output *(the cross-cutting cause: all 189 concord tests passed while 9 HIGH bugs were live because every test compares the implementation to itself; a 4-line spec-derived probe caught the worst one instantly)*
-- [ ] **TEST-02**: The five tests named in the Accordian upstream report are covered *(keyless private metadata derives nothing; public still derives from `community_root`; keyed private still derives from its key; send to a keyless private channel rejects; the direct-invite grant flow still works once key material is folded)*
+- [x] **TEST-02**: The five tests named in the Accordian upstream report are covered *(keyless private metadata derives nothing; public still derives from `community_root`; keyed private still derives from its key; send to a keyless private channel rejects; the direct-invite grant flow still works once key material is folded)*
 
 ## Future Requirements
 
@@ -123,15 +123,15 @@ Deferred — acknowledged, not in this roadmap.
 | ROTATE-04 | Phase 6 | Complete |
 | AUTH-01 | Phase 6 | Complete |
 | AUTH-02 | Phase 6 | Complete |
-| CHAN-01 | Phase 7 | Pending |
+| CHAN-01 | Phase 7 | Complete |
 | CHAN-02 | Phase 7 | Pending |
-| CHAN-03 | Phase 7 | Pending |
-| CHAN-04 | Phase 7 | Pending |
-| CHAN-05 | Phase 7 | Pending |
+| CHAN-03 | Phase 7 | Complete |
+| CHAN-04 | Phase 7 | Complete |
+| CHAN-05 | Phase 7 | Complete |
 | CHAN-06 | Phase 7 | Pending |
 | CHAN-07 | Phase 7 | Pending — blocked on spec ruling |
-| ROTATE-03 | Phase 7 | Pending |
-| TEST-02 | Phase 7 | Pending |
+| ROTATE-03 | Phase 7 | Complete |
+| TEST-02 | Phase 7 | Complete |
 | ROTATE-05 | Phase 8 | Pending |
 | ROTATE-06 | Phase 8 | Pending |
 | ROTATE-07 | Phase 8 | Pending |
