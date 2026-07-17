@@ -146,6 +146,23 @@ function sameChannelViews(a: ChannelView[], b: ChannelView[]): boolean {
   return true;
 }
 
+/** Thrown by {@link ConcordCommunity.sendMessage}/{@link ConcordCommunity.sendEvent}
+ *  when the target channel is known (folded, visible in `state$.value.channels`)
+ *  and private, but `material.channels` holds no key for it (CHAN-02/D-06). This
+ *  is the client's own guard, thrown BEFORE `channelEpoch`/`planeKeyFor` are ever
+ *  reached — with D-01/D-02, a keyless private channel has no `keys.channels`
+ *  entry, so `planeKeyFor` would otherwise throw its generic `unknown channel`,
+ *  indistinguishable from a truly-unknown id. Consumers `instanceof`-catch this
+ *  to disable the composer precisely. `planeKeyFor`'s generic throw stays as the
+ *  backstop for an id absent from `state.channels` entirely — this guard does
+ *  not cover that case. */
+export class MissingChannelKeyError extends Error {
+  constructor(public readonly channelId: string) {
+    super("missing private channel key");
+    this.name = "MissingChannelKeyError";
+  }
+}
+
 function sameStanding(a: Standing, b: Standing): boolean {
   return (
     a.isOwner === b.isOwner &&
@@ -796,6 +813,17 @@ export class ConcordCommunity {
     return channelEpochOf(this.keys, channelId);
   }
 
+  /** CHAN-02/D-06: throw a typed, `instanceof`-catchable {@link MissingChannelKeyError}
+   *  if `channelId` is a KNOWN private channel we hold no key for — before
+   *  `channelEpoch`/`planeKeyFor` are ever reached. A truly-unknown id (absent
+   *  from `state.channels`) is NOT covered here; it still surfaces `planeKeyFor`'s
+   *  generic `unknown channel` backstop. A public or keyed-private channel passes
+   *  through untouched. */
+  private requireChannelKey(channelId: string): void {
+    const channel = this.state$.value.channels.find((c) => c.channel_id === channelId);
+    if (channel?.private && !hasChannelKey(this.material, channelId)) throw new MissingChannelKeyError(channelId);
+  }
+
   /** Publish ANY event to a channel (CORD-03) — a factory promise, a template, or
    *  a signed event. The channel/epoch binding + ms ordering are appended before
    *  the rumor is sealed + wrapped. */
@@ -804,6 +832,7 @@ export class ConcordCommunity {
     source: PromiseLike<EventTemplate> | EventTemplate,
     opts: { plaintext?: boolean; ephemeral?: boolean } = {},
   ): Promise<string> {
+    this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
     const rumor = await bindToChannel(channelId, epoch)(await source);
     return this.publishToPlane({ plane: "channel", channelId }, rumor, opts);
@@ -817,6 +846,7 @@ export class ConcordCommunity {
     emojis?: Emoji[],
     options: ConcordSendMessageOptions = {},
   ): Promise<void> {
+    this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
     let content = text;
     let attachments: MediaAttachment[] | undefined;
