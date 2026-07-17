@@ -31,6 +31,7 @@ import {
   type WrapTarget,
 } from "../helpers/keys.js";
 import type { GroupKey } from "../helpers/crypto.js";
+import { hasChannelKey } from "../helpers/community.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { checkChatBinding } from "../helpers/chat.js";
@@ -654,7 +655,7 @@ export class ConcordCommunity {
       engine.dispose();
       this.privateChannels.delete(channelId);
     }
-    if (!this.material.channels.some((c) => c.id === channelId)) return;
+    if (!hasChannelKey(this.material, channelId)) return;
     const channels = this.material.channels.filter((c) => c.id !== channelId);
     this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
     this.onMaterialChange?.(this.keys.material);
