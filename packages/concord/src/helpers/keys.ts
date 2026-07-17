@@ -143,15 +143,22 @@ function baseKeysFor(material: JoinMaterial): BaseKeys {
 /** A channel's Chat-Plane group key for `material`, memoized on `material` keyed
  *  by a per-channel signature (public keys derive from the material's root/epoch,
  *  so `channel_id` disambiguates within a material; the private key/epoch are
- *  folded in for safety since a private channel derives from its own secret). */
-function channelKeyMemo(material: JoinMaterial, channel: ChannelMetadata): GroupKey {
-  const cache = getOrComputeCachedValue(material, ChannelKeysSymbol, () => new Map<string, GroupKey>());
-  const sig =
-    channel.private && channel.key
-      ? `p|${channel.channel_id}|${channel.key}|${channel.epoch ?? 1}`
-      : `c|${channel.channel_id}`;
-  let gk = cache.get(sig);
-  if (!gk) cache.set(sig, (gk = channelKeyFor(material, channel)));
+ *  sourced from `material.channels` — the single source of truth post-D-01 —
+ *  and folded in for safety since a private channel derives from its own secret).
+ *  Returns `null` when a private channel has no held key (CHAN-01: derives
+ *  nothing); the `null` itself is memoized (`cache.has`, not truthiness) so a
+ *  cached "no key" result isn't recomputed every call. */
+function channelKeyMemo(material: JoinMaterial, channel: ChannelMetadata): GroupKey | null {
+  const cache = getOrComputeCachedValue(material, ChannelKeysSymbol, () => new Map<string, GroupKey | null>());
+  const held = channel.private ? material.channels.find((c) => c.id === channel.channel_id) : undefined;
+  const sig = channel.private
+    ? held
+      ? `p|${channel.channel_id}|${held.key}|${held.epoch}`
+      : `p0|${channel.channel_id}`
+    : `c|${channel.channel_id}`;
+  if (cache.has(sig)) return cache.get(sig)!;
+  const gk = channelKeyFor(material, channel);
+  cache.set(sig, gk);
   return gk;
 }
 
@@ -172,8 +179,13 @@ export function deriveConcordKeys(
   const channelKeys = new Map<string, GroupKey>();
   const channelEpochs = new Map<string, number>();
   for (const ch of channels) {
-    channelKeys.set(ch.channel_id, channelKeyMemo(material, ch));
-    channelEpochs.set(ch.channel_id, ch.private ? (ch.epoch ?? 1) : material.root_epoch);
+    const gk = channelKeyMemo(material, ch);
+    if (!gk) continue; // CHAN-01: keyless private channel — no entry, no epoch, no plane
+    const held = ch.private ? material.channels.find((c) => c.id === ch.channel_id) : undefined;
+    channelKeys.set(ch.channel_id, gk);
+    // CHAN-03: the epoch the held key actually derived at, never ch.epoch ?? 1
+    // off the edition (that field no longer exists post-D-01).
+    channelEpochs.set(ch.channel_id, ch.private ? held!.epoch : material.root_epoch);
   }
 
   const planes = new Map<string, PlaneInfo>(prior?.planes);

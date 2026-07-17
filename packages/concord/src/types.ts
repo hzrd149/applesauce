@@ -120,9 +120,6 @@ export interface ChannelMetadata {
   /** CORD-07 §1: a voice/video Channel. Folds like any other channel property. */
   voice?: boolean;
   custom?: Record<string, unknown>;
-  // client-tracked keying (from invite / derivation), not part of the edition:
-  key?: string; // private channel key hex; undefined => public (community_root)
-  epoch?: number;
 }
 
 // ---- Grant (vsk 3) --------------------------------------------------------

@@ -215,26 +215,70 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
   }
 
   // ---- Channels (MANAGE_CHANNELS) -----------------------------------------
+  // CHAN-04: fields are picked explicitly with type validation — never a blind
+  // `JSON.parse(...) as ChannelMetadata` cast, and key material is NEVER read
+  // from edition JSON (D-01: `material.channels` is the sole source of truth).
+  // CHAN-07: deletion is terminal (CORD-03 §2, "the id is never reused") — if
+  // ANY authorized candidate for this entity is deleted:true, the channel is
+  // permanently dropped AND `heads` is pinned to that deleting edition (not
+  // whatever the ordinary version-chain head would be), so a later compaction
+  // republishes the terminal state, not a resurrection attempt. Both outputs
+  // (`heads.set` and the `channels.push` decision) derive from ONE scan.
   const channels: ChannelMetadata[] = [];
   for (const [eid, cands] of groupByEntity(byVsk(VSK.CHANNEL))) {
-    for (const cand of cands) {
-      const s = standing(cand.author);
-      if (!s.isOwner && !hasPerm(s.permissions, PERM.MANAGE_CHANNELS)) continue;
+    const authorized = cands.filter((c) => {
+      const s = standing(c.author);
+      return s.isOwner || hasPerm(s.permissions, PERM.MANAGE_CHANNELS);
+    });
+
+    // Scan ALL authorized candidates (not just the head) for a sticky deletion.
+    // Multiple simultaneous deletions at different versions tiebreak on the
+    // lowest rumorId (mirrors headCandidates' tiebreak at :85).
+    let deletion: Edition | undefined;
+    for (const cand of authorized) {
+      let parsed: unknown;
       try {
-        const meta = JSON.parse(cand.content) as ChannelMetadata;
-        meta.channel_id = eid;
-        // Carry any client-known key material for this channel from the invite.
-        const known = material.channels.find((c) => c.id === eid);
-        if (known) {
-          meta.key = known.key;
-          meta.epoch = known.epoch;
-        }
-        heads.set(eid, cand.source); // head retained for compaction even if deleted
-        if (!meta.deleted) channels.push(meta);
-        break;
+        parsed = JSON.parse(cand.content);
       } catch {
-        /* skip */
+        continue;
       }
+      if (
+        parsed !== null &&
+        typeof parsed === "object" &&
+        (parsed as { deleted?: unknown }).deleted === true &&
+        (!deletion || cand.rumorId < deletion.rumorId)
+      ) {
+        deletion = cand;
+      }
+    }
+    if (deletion) {
+      heads.set(eid, deletion.source); // pin to the terminal edition, not the ordinary head
+      continue; // never push — permanently dead, id never reused
+    }
+
+    // Otherwise take the first parseable authorized candidate, picking fields
+    // EXPLICITLY with type validation — never key/epoch from the edition.
+    for (const cand of authorized) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(cand.content);
+      } catch {
+        continue;
+      }
+      if (parsed === null || typeof parsed !== "object") continue;
+      const raw = parsed as Record<string, unknown>;
+      if (typeof raw.name !== "string" || typeof raw.private !== "boolean") continue;
+      const meta: ChannelMetadata = {
+        channel_id: eid,
+        name: raw.name,
+        private: raw.private,
+        ...(typeof raw.deleted === "boolean" ? { deleted: raw.deleted } : {}),
+        ...(typeof raw.voice === "boolean" ? { voice: raw.voice } : {}),
+        ...(raw.custom !== null && typeof raw.custom === "object" ? { custom: raw.custom as Record<string, unknown> } : {}),
+      };
+      heads.set(eid, cand.source);
+      channels.push(meta);
+      break;
     }
   }
 

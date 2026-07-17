@@ -29,17 +29,26 @@ export interface CommunityKeys {
  * (CORD-03 §1): the Channel's own key/epoch for a Private one, the
  * community_root at the root epoch for a Public one. Both the Chat key and the
  * voice keys (CORD-07 §1) derive from this same pair, so they rotate together.
+ *
+ * Total over the private branch (D-02/CHAN-01): `material.channels` is the ONLY
+ * source of a private channel's key — a private channel with no held entry
+ * derives NOTHING (`null`), never the public community_root address (H07).
  */
-function channelSecret(material: JoinMaterial, channel: ChannelMetadata): { secret: Uint8Array; epoch: number } {
-  if (channel.private && channel.key) {
-    return { secret: hexToBytes(channel.key), epoch: channel.epoch ?? 1 };
+function channelSecret(
+  material: JoinMaterial,
+  channel: ChannelMetadata,
+): { secret: Uint8Array; epoch: number } | null {
+  if (channel.private) {
+    const held = material.channels.find((c) => c.id === channel.channel_id);
+    if (!held) return null; // CHAN-01: keyless private channel derives nothing
+    return { secret: hexToBytes(held.key), epoch: held.epoch };
   }
   return { secret: hexToBytes(material.community_root), epoch: material.root_epoch };
 }
 
-export function channelKeyFor(material: JoinMaterial, channel: ChannelMetadata): GroupKey {
-  const { secret, epoch } = channelSecret(material, channel);
-  return channelGroupKey(secret, hexToBytes(channel.channel_id), epoch);
+export function channelKeyFor(material: JoinMaterial, channel: ChannelMetadata): GroupKey | null {
+  const s = channelSecret(material, channel);
+  return s ? channelGroupKey(s.secret, hexToBytes(channel.channel_id), s.epoch) : null;
 }
 
 /** A voice Channel's derived keys (CORD-07 §1): the SFU room signer + media root. */
@@ -50,20 +59,31 @@ export interface VoiceKeys {
   mediaKey: Uint8Array;
 }
 
-export function voiceKeysFor(material: JoinMaterial, channel: ChannelMetadata): VoiceKeys {
-  const { secret, epoch } = channelSecret(material, channel);
+export function voiceKeysFor(material: JoinMaterial, channel: ChannelMetadata): VoiceKeys | null {
+  const s = channelSecret(material, channel);
+  if (!s) return null;
   const channelId = hexToBytes(channel.channel_id);
   return {
-    room: voiceGroupKey(secret, channelId, epoch),
-    mediaKey: voiceMediaKey(secret, channelId, epoch),
+    room: voiceGroupKey(s.secret, channelId, s.epoch),
+    mediaKey: voiceMediaKey(s.secret, channelId, s.epoch),
   };
+}
+
+/** Whether `material` holds key material for a channel id (CHAN-06's shared
+ *  "do I hold a key for this?" affordance — replaces ad-hoc `.channels.find(...)`
+ *  lookups scattered across composer/invite/sendMessage guards). */
+export function hasChannelKey(material: JoinMaterial, channelId: string): boolean {
+  return material.channels.some((c) => c.id === channelId);
 }
 
 export function deriveKeys(material: JoinMaterial, channels: ChannelMetadata[]): CommunityKeys {
   const cid = hexToBytes(material.community_id);
   const root = hexToBytes(material.community_root);
   const channelKeys = new Map<string, GroupKey>();
-  for (const ch of channels) channelKeys.set(ch.channel_id, channelKeyFor(material, ch));
+  for (const ch of channels) {
+    const gk = channelKeyFor(material, ch);
+    if (gk) channelKeys.set(ch.channel_id, gk); // CHAN-01: keyless private channel skipped
+  }
   return {
     control: controlGroupKey(root, cid, material.root_epoch),
     guestbook: guestbookGroupKey(root, cid, material.root_epoch),
