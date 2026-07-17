@@ -316,6 +316,63 @@ describe("ConcordCommunity (DI, no network)", () => {
     community.dispose();
   });
 
+  it("every channel-plane write path (react/editMessage/deleteMessage/sendThread/replyToThread) throws MissingChannelKeyError for a keyless private channel, not unknown channel (CHAN-02 / WR-01)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Mint a private channel, then drop the key locally so the channel is folded
+    // (visible in state$.value.channels) but keyless — the exact "known but
+    // keyless private" state the guard exists to distinguish from a truly-unknown id.
+    const channelId = await community.createChannel("secret", { private: true });
+    await settle();
+    await community.leaveChannel(channelId);
+    expect(community.material.channels.some((c) => c.id === channelId)).toBe(false);
+    expect(community.state$.value.channels.some((c) => c.channel_id === channelId)).toBe(true);
+
+    const target = { id: "0".repeat(64), author: pubkey };
+    const invocations: Array<[string, () => Promise<void>]> = [
+      ["react", () => community.react(channelId, target, "+")],
+      ["editMessage", () => community.editMessage(channelId, target.id, "x")],
+      ["deleteMessage", () => community.deleteMessage(channelId, target.id)],
+      ["sendThread", () => community.sendThread(channelId, "t", "b")],
+      ["replyToThread", () => community.replyToThread(channelId, target, "b")],
+    ];
+
+    for (const [name, invoke] of invocations) {
+      let error: unknown;
+      try {
+        await invoke();
+      } catch (err) {
+        error = err;
+      }
+      expect(error, `${name} should throw`).toBeInstanceOf(MissingChannelKeyError);
+      expect((error as MissingChannelKeyError).message, `${name} message`).toBe("missing private channel key");
+      expect((error as MissingChannelKeyError).message, `${name} must not be the generic backstop`).not.toBe(
+        "unknown channel",
+      );
+      expect((error as MissingChannelKeyError).channelId, `${name} channelId`).toBe(channelId);
+    }
+
+    community.dispose();
+  });
+
   it("direct-invite grant flow: send succeeds after receiveChannelKeys folds the key (TEST-02 case 5)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
