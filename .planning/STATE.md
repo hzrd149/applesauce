@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 07
 current_phase_name: private-channel-keying
-status: verifying
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-07-17T19:20:52.349Z"
+status: executing
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-07-17T19:56:18.785Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 9
   completed_phases: 4
-  total_plans: 33
-  completed_plans: 33
+  total_plans: 34
+  completed_plans: 34
   percent: 44
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 07 (private-channel-keying) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-07-17 — Phase 07 execution started
 
 Progress: [█████████░] 93%
@@ -54,6 +54,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 07 P01 | 14min | 3 tasks | 7 files |
 | Phase 07 P02 | 5min | 3 tasks | 2 files |
 | Phase 07 P03 | 12min | 3 tasks | 3 files |
+| Phase 07 P04 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 07-03: MissingChannelKeyError is a minimal standalone class (no base error class exists anywhere in packages/concord), mirroring RelayManagementError's convention
 - [Phase ?]: 07-03: requireChannelKey is a private helper shared identically by sendMessage and sendEvent rather than duplicating the guard inline
 - [Phase ?]: 07-03: TEST-02 case 5 reuses the single-engine case-4 setup shape (mint, leaveChannel, receiveChannelKeys) rather than extending the cross-engine Direct Invite test, since that test's memberEngine never syncs control-plane data
+- [Phase ?]: 07-04: Prepended this.requireChannelKey(channelId) directly per-method (minimal, mirrors sendMessage/sendEvent) rather than re-plumbing the five methods' distinct factory bodies through a shared helper
 
 ### Pending Todos
 
@@ -113,8 +115,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-17T19:20:52.343Z
-Stopped at: Completed 07-03-PLAN.md
+Last session: 2026-07-17T19:56:18.778Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

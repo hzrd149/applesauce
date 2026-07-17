@@ -173,9 +173,11 @@ Plans:
   5. All five Accordian-named tests pass: keyless private metadata derives nothing; public channels still derive from `community_root`; keyed private channels still derive from their own key; sending to a keyless private channel rejects; the direct-invite/private-channel grant flow still works once key material is folded.
   6. **(TEST-01, standing — sharpest case in the milestone)** Every channel derivation this phase touches has at least one test computing its expected value independently from the CORD-03 §1 formula — never by calling the implementation under test — and asserting the implementation matches. Both §1 branches are covered by hand-derived values: the public `group_key("concord/channel", community_root, channel_id, root_epoch).pk` and the private `group_key("concord/channel", channel_key, channel_id, channel_epoch).pk`. The keyless-private case asserts the implementation derives **nothing** rather than asserting it matches the independently-derived public address — the byte-identical collision that *was* H07.
 
-**Plans**: 3/3 plans complete
+**Plans**: 4/4 plans complete
 
 Plans:
+
+- [x] 07-04-PLAN.md
 
 **Wave 1**
 
@@ -287,7 +289,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 5. Cache Identity Memo Fix | v1.1 | 14/14 | In gap closure | - |
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete    | 2026-07-16 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
-| 7. Private Channel Keying | v1.1 | 3/3 | Complete   | 2026-07-17 |
+| 7. Private Channel Keying | v1.1 | 4/4 | Complete   | 2026-07-17 |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
 | 9. Authority & Permission Fold Correctness | v1.1 | 0/TBD | Not started | - |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |
