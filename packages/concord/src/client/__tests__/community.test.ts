@@ -25,7 +25,7 @@ import { channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpe
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
-import { ConcordCommunity } from "../community.js";
+import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
 import type { ConcordUploader } from "../storage.js";
 
 // The control fold + sync are debounced/async; let them run before asserting.
@@ -245,6 +245,95 @@ describe("ConcordCommunity (DI, no network)", () => {
     // channels$ reacted to the grant alone, driven by materialChanged$.
     expect(views.at(-1)).toBe(true);
     expect(views.length).toBeGreaterThan(1);
+
+    sub.unsubscribe();
+    community.dispose();
+  });
+
+  it("sendMessage to a keyless private channel throws MissingChannelKeyError, not unknown channel (CHAN-02 / TEST-02 case 4)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Mint a private channel, then drop the key locally so the channel is folded
+    // (visible in state$.value.channels) but keyless — the exact "known but
+    // keyless private" state the guard exists to distinguish from a truly-unknown id.
+    const channelId = await community.createChannel("secret", { private: true });
+    await settle();
+    await community.leaveChannel(channelId);
+    expect(community.material.channels.some((c) => c.id === channelId)).toBe(false);
+    expect(community.state$.value.channels.some((c) => c.channel_id === channelId)).toBe(true);
+
+    let error: unknown;
+    try {
+      await community.sendMessage(channelId, "should not send");
+    } catch (err) {
+      error = err;
+    }
+    // Distinct from planeKeyFor's generic "unknown channel" backstop — the exact
+    // distinction the Accordian composer bug needed.
+    expect(error).toBeInstanceOf(MissingChannelKeyError);
+    expect((error as MissingChannelKeyError).message).toBe("missing private channel key");
+    expect((error as MissingChannelKeyError).channelId).toBe(channelId);
+
+    community.dispose();
+  });
+
+  it("direct-invite grant flow: send succeeds after receiveChannelKeys folds the key (TEST-02 case 5)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Same channel as case 4: mint, capture the key, drop it locally.
+    const channelId = await community.createChannel("secret", { private: true });
+    await settle();
+    const key = community.material.channels.find((c) => c.id === channelId)!;
+    await community.leaveChannel(channelId);
+    expect(community.material.channels.some((c) => c.id === channelId)).toBe(false);
+
+    // Grant it back — the direct-invite / channel-grant delivery path.
+    expect(community.receiveChannelKeys([key])).toBe(true);
+
+    let messages: Rumor[] = [];
+    const sub = community
+      .channelStore(channelId)
+      .timeline([{ kinds: [kinds.ChatMessage] }])
+      .subscribe((m) => (messages = m));
+    await expect(community.sendMessage(channelId, "granted hello")).resolves.toBeUndefined();
+    await settle();
+    expect(messages.some((m) => m.content === "granted hello")).toBe(true);
 
     sub.unsubscribe();
     community.dispose();
