@@ -19,9 +19,9 @@ import {
   rollForward,
   wrapForTarget,
 } from "../keys.js";
-import { baseRekeyGroupKey, controlGroupKey, guestbookGroupKey } from "../crypto.js";
+import { baseRekeyGroupKey, channelGroupKey, controlGroupKey, guestbookGroupKey } from "../crypto.js";
 import { decodeWrap } from "../gift-wrap.js";
-import type { ChannelKey, ChannelMetadata, DecodedEvent } from "../../types.js";
+import type { ChannelKey, ChannelMetadata, DecodedEvent, JoinMaterial } from "../../types.js";
 
 async function genesis(name = "Test") {
   const owner = new PrivateKeySigner(generateSecretKey());
@@ -322,6 +322,94 @@ describe("ConcordKeys", () => {
     // The rotation actually happened — the listen address moved off the old
     // (prior-root) address a removed member could otherwise still derive.
     expect(rolled.nextBaseRekey.key.pk).not.toBe(keys.nextBaseRekey.key.pk);
+  });
+});
+
+// D-01/D-02/D-03 (CHAN-01/CHAN-03/TEST-01): material.channels is the SOLE source
+// of a private channel's key. Every expected value below comes ONLY from
+// channelGroupKey (crypto.ts) — never from channelKeyFor/deriveConcordKeys/
+// channelKeyMemo — so these are not self-referential (implementation-compares-
+// to-itself) assertions.
+describe("channel-plane derivation (CORD-03 §1) — CHAN-01 / CHAN-03 / TEST-01", () => {
+  it("keyless private channel metadata derives no key, no channelEpochs entry, no plane (CHAN-01)", async () => {
+    const { material } = await genesis();
+    const channelId = "11".repeat(32);
+    const channel: ChannelMetadata = { channel_id: channelId, name: "secret", private: true };
+
+    // material.channels holds no entry for this id — a routine, expected state
+    // (every member sees channel metadata before being granted access).
+    const keys = deriveConcordKeys(material, [channel]);
+
+    expect(keys.channels.has(channelId)).toBe(false);
+    expect(keys.channelEpochs.has(channelId)).toBe(false);
+
+    // Non-aliasing (H07): the independently-derived PUBLIC pk for this same id
+    // must NOT be present as a plane key either — a keyless private channel must
+    // derive NOTHING, never silently fall through to the public formula.
+    const publicExpected = channelGroupKey(
+      hexToBytes(material.community_root),
+      hexToBytes(channelId),
+      material.root_epoch,
+    );
+    expect(keys.planes.has(publicExpected.pk)).toBe(false);
+  });
+
+  it("public channel derives channel_pk from community_root at root_epoch — CORD-03 §1 public branch, hand-derived (TEST-01)", async () => {
+    const { material } = await genesis();
+    const channelId = "22".repeat(32);
+    const channel: ChannelMetadata = { channel_id: channelId, name: "general2", private: false };
+
+    // EXPECTED, independently derived from CORD-03 §1's public formula:
+    // group_key("concord/channel", community_root, channel_id, root_epoch).
+    const expected = channelGroupKey(hexToBytes(material.community_root), hexToBytes(channelId), material.root_epoch);
+
+    const keys = deriveConcordKeys(material, [channel]);
+    expect(keys.channels.get(channelId)?.pk).toBe(expected.pk);
+  });
+
+  it("keyed private channel derives channel_pk from its own key at its own epoch — CORD-03 §1 private branch, hand-derived (TEST-01)", async () => {
+    const { material } = await genesis();
+    const channelId = "33".repeat(32);
+    const channelKey = bytesToHex(generateSecretKey());
+    const heldEpoch = 3; // a distinct, non-1 epoch — proves the held epoch flows through, not a hardcoded default
+    const withKey: JoinMaterial = {
+      ...material,
+      channels: [...material.channels, { id: channelId, key: channelKey, epoch: heldEpoch, name: "secret-room" }],
+    };
+    const channel: ChannelMetadata = { channel_id: channelId, name: "secret-room", private: true };
+
+    // EXPECTED, independently derived from CORD-03 §1's private branch:
+    // group_key("concord/channel", channel_key, channel_id, channel_epoch).
+    const expected = channelGroupKey(hexToBytes(channelKey), hexToBytes(channelId), heldEpoch);
+    // Non-vacuity (H07): must differ from the independently-derived PUBLIC address
+    // for the same id — a keyed private channel is not the public collision either.
+    const publicExpected = channelGroupKey(
+      hexToBytes(withKey.community_root),
+      hexToBytes(channelId),
+      withKey.root_epoch,
+    );
+
+    const keys = deriveConcordKeys(withKey, [channel]);
+    expect(keys.channels.get(channelId)?.pk).toBe(expected.pk);
+    expect(keys.channels.get(channelId)?.pk).not.toBe(publicExpected.pk);
+  });
+
+  it("channelEpochs records the held key's epoch, not the edition epoch (CHAN-03)", async () => {
+    const { material } = await genesis();
+    const channelId = "44".repeat(32);
+    const channelKey = bytesToHex(generateSecretKey());
+    const heldEpoch = 5; // the epoch the held key actually derived at
+    const withKey: JoinMaterial = {
+      ...material,
+      channels: [...material.channels, { id: channelId, key: channelKey, epoch: heldEpoch, name: "room" }],
+    };
+    // The edition carries only display fields post-D-01 — ChannelMetadata no
+    // longer has an `epoch` field at all, so there is no edition-side number to
+    // read even by accident; channelEpochs MUST come from the held entry.
+    const channel: ChannelMetadata = { channel_id: channelId, name: "room", private: true };
+
+    const keys = deriveConcordKeys(withKey, [channel]);
+    expect(keys.channelEpochs.get(channelId)).toBe(heldEpoch);
   });
 });
 
