@@ -31,7 +31,7 @@ Private channel access derives **only** from held key material — never a fallt
 
 ### CHAN-06 — access-vs-key-possession API
 
-- **D-05: `channels$` emits an enriched `ChannelView[]` carrying `accessible: boolean`.** Public channels: always `true`. Private: `true` iff a key is held in `material.channels`. `ChannelMetadata` stays pure edition-derived data — `accessible` is client-local state, so it lives on the emitted view, not on the edition type. Consumers get the flag inline on the object they already iterate; drives composer/invite enable-disable reactively. Rejected: an imperative `hasChannelKey(id)` method (not reactive) and a separate `accessibleChannels$` set (forces consumers to join two streams).
+- **D-05: `channels$` emits an enriched `ChannelView[]` carrying an `accessible` boolean.** Public channels: always `true`. Private: `true` iff a key is held in `material.channels`. `ChannelMetadata` stays pure edition-derived data — `accessible` is client-local state, so it lives on the emitted view, not on the edition type. Consumers get the flag inline on the object they already iterate; drives composer/invite enable-disable reactively. Rejected: an imperative `hasChannelKey(id)` method (not reactive) and a separate `accessibleChannels$` set (forces consumers to join two streams).
 
 ### CHAN-02 — send rejection surface
 

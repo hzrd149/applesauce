@@ -407,14 +407,16 @@ Not applicable in the usual "library version drift" sense — no external depend
 | A1 | The CORD-03 §3 quote fetched this session ("Clients load a Channel newest-first...", "No member can re-wrap...") is the correct §3 content — the fetch tool summarized/extracted rather than returning raw markdown verbatim, so exact section boundaries were not independently re-verified against the raw file byte-for-byte. | Priority Finding 4 | Low — the CHAN-03 fix (recording `held.epoch` correctly) does not depend on the precise §3 wording, only on `checkChatBinding`'s existing implementation (verified directly in code), so this is a citation-completeness risk, not a correctness risk. |
 | A2 | Assumed the correct disambiguation for "multiple authorized `deleted:true` candidates for one eid" (Priority Finding 1's `heads` pinning) is "pick the lowest `rumorId`," mirroring `headCandidates`'s existing tiebreak (`control.ts:85`) — CONTEXT.md did not specify this, and no spec text was found addressing simultaneous same-version deletions. | Priority Finding 1 / Code Examples | Low — any deterministic tiebreak works as long as every client picks the same one; using the existing convention is the lowest-risk choice, but the planner should confirm this doesn't need a ruling before implementing. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should the ROTATE-03 client-level gap-closing test (Priority Finding 2's "remaining gap") be mandatory in this phase, or deferred?**
+1. **RESOLVED — mandatory, as a cheap in-place addition.** Should the ROTATE-03 client-level gap-closing test (Priority Finding 2's "remaining gap") be mandatory in this phase, or deferred?
    - What we know: the derivation-level probe (`channel-rekey.test.ts:92-118`) already proves the memo half of H01(c) is dead. `community.test.ts:144-191` proves rotation updates `material.channels` but not that a subsequent send actually uses the new plane.
    - What's unclear: whether TEST-02/CHAN-05's acceptance bar requires this specific end-to-end assertion, or whether the existing coverage (derivation-level + material-state-level) is judged sufficient.
-   - Recommendation: treat as a cheap addition to the existing `community.test.ce.ts:144` test (one more `sendMessage` + one more plane-address assertion) rather than a new test file — low cost, closes the loop at the exact level H08's symptom was originally observed.
+   - Recommendation: treat as a cheap addition to the existing `community.test.ts:144` test (one more `sendMessage` + one more plane-address assertion) rather than a new test file — low cost, closes the loop at the exact level H08's symptom was originally observed.
+   - **Resolution:** Plan 07-03 Task 3 implements this as the recommended client-level rotate→send→verify-new-plane test extending the existing suite (not a new file).
 
-2. **Exact tiebreak for multiple simultaneous `deleted:true` editions at different versions for one eid** (see Assumption A2) — likely doesn't need a ruling (any deterministic choice suffices for the sticky-delete fix to be correct), but flag for the planner to confirm during task-writing rather than leave implicit.
+2. **RESOLVED — lowest `rumorId`.** Exact tiebreak for multiple simultaneous `deleted:true` editions at different versions for one eid (see Assumption A2) — likely doesn't need a ruling (any deterministic choice suffices for the sticky-delete fix to be correct), but flag for the planner to confirm during task-writing rather than leave implicit.
+   - **Resolution:** Plan 07-01 Task 1 adopts the lowest-`rumorId` tiebreak (mirrors the existing `headCandidates` convention at `control.ts:85`), flagged explicitly as a non-blocking assumption for executor confirmation.
 
 ## Validation Architecture
 
