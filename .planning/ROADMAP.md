@@ -32,7 +32,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [ ] **Phase 5: Cache Identity Memo Fix** - Core cache memos stop surviving object spread in `applesauce-core`, unblocking every downstream rotation fix (in gap closure — CACHE-02 open, reduced round-3 scope)
 - [x] **Phase 5.1: Symbol Propagation Redesign (INSERTED)** - Every symbol write becomes non-enumerable and the factory pipeline carries the `PRESERVE_EVENT_SYMBOLS` whitelist explicitly, collapsing the identity-memo/carry-forward taxonomy into one rule and deleting the strip loops (completed 2026-07-16)
 - [x] **Phase 6: Refounding Rotation & Authority Correctness** - A Refounding actually rotates its addresses in-session, drops excluded members from the memberlist, and is honored only from a rotator who outranks every removed target (completed 2026-07-16)
-- [ ] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug)
+- [x] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug) (completed 2026-07-17)
 - [ ] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member
 - [ ] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state
 - [ ] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant
@@ -173,7 +173,7 @@ Plans:
   5. All five Accordian-named tests pass: keyless private metadata derives nothing; public channels still derive from `community_root`; keyed private channels still derive from their own key; sending to a keyless private channel rejects; the direct-invite/private-channel grant flow still works once key material is folded.
   6. **(TEST-01, standing — sharpest case in the milestone)** Every channel derivation this phase touches has at least one test computing its expected value independently from the CORD-03 §1 formula — never by calling the implementation under test — and asserting the implementation matches. Both §1 branches are covered by hand-derived values: the public `group_key("concord/channel", community_root, channel_id, root_epoch).pk` and the private `group_key("concord/channel", channel_key, channel_id, channel_epoch).pk`. The keyless-private case asserts the implementation derives **nothing** rather than asserting it matches the independently-derived public address — the byte-identical collision that *was* H07.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 
@@ -187,7 +187,7 @@ Plans:
 
 **Wave 3** *(depends on 07-01, 07-02)*
 
-- [ ] 07-03-PLAN.md — CHAN-02 MissingChannelKeyError send guard + client-level ROTATE-03 rotate→send + TEST-02 cases 4-5 (CHAN-02/05, ROTATE-03, TEST-02) (wave 3)
+- [x] 07-03-PLAN.md — CHAN-02 MissingChannelKeyError send guard + client-level ROTATE-03 rotate→send + TEST-02 cases 4-5 (CHAN-02/05, ROTATE-03, TEST-02) (wave 3)
 
 **Note**: CHAN-07 ruling resolved (D-07): CORD-03 §2 "deletion is terminal; the id is never reused" — enforced via a sticky-deleted fold rule with heads pinning (not "no change needed"). Landed in 07-01 alongside the source-of-truth refactor because both rewrite the same foldControl channel loop.
 
@@ -287,7 +287,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 5. Cache Identity Memo Fix | v1.1 | 14/14 | In gap closure | - |
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete    | 2026-07-16 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
-| 7. Private Channel Keying | v1.1 | 2/3 | In Progress|  |
+| 7. Private Channel Keying | v1.1 | 3/3 | Complete   | 2026-07-17 |
 | 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
 | 9. Authority & Permission Fold Correctness | v1.1 | 0/TBD | Not started | - |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |

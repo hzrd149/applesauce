@@ -48,7 +48,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 *CHAN-01/02/03 have a blocked downstream consumer (Accordian) — acceptance criteria and tests adopted verbatim from their report.*
 
 - [x] **CHAN-01**: A private channel with visible metadata but no held key material derives no channel `GroupKey` and gets no `keys.channels` entry, and its plane is never registered or subscribed *(H07; currently derives the PUBLIC address, byte-identical to the `community_root` formula)*
-- [ ] **CHAN-02**: Sending to a private channel without key material rejects with a clear, distinct error (e.g. `missing private channel key`, not `unknown channel`) *(H07; `planeKeyFor` currently resolves and the send proceeds)*
+- [x] **CHAN-02**: Sending to a private channel without key material rejects with a clear, distinct error (e.g. `missing private channel key`, not `unknown channel`) *(H07; `planeKeyFor` currently resolves and the send proceeds)*
 - [x] **CHAN-03**: `keys.channelEpochs` records the epoch the channel key was actually derived at, so CORD-03 §3's receiver binding check validates the right number *(H07 addendum — not in the upstream report; found during repro)*
 - [x] **CHAN-04**: Channel key material is taken only from `material.channels`, never from Control-Plane edition JSON, and edition fields are picked explicitly with type validation rather than blind-cast *(H06; a MANAGE_CHANNELS holder can currently publish a "private" channel whose key is cleartext on a member-readable plane)*
 - [x] **CHAN-05**: A channel's secret derives from `material.channels`, so a channel Rekey takes effect immediately without a reload *(H08 first root cause; requires deleting `ChannelMetadata.key`/`.epoch` — **BREAKING**. Pairs with ROTATE-03, the second root cause; either alone leaves the channel on its old plane)*
@@ -124,7 +124,7 @@ Deferred — acknowledged, not in this roadmap.
 | AUTH-01 | Phase 6 | Complete |
 | AUTH-02 | Phase 6 | Complete |
 | CHAN-01 | Phase 7 | Complete |
-| CHAN-02 | Phase 7 | Pending |
+| CHAN-02 | Phase 7 | Complete |
 | CHAN-03 | Phase 7 | Complete |
 | CHAN-04 | Phase 7 | Complete |
 | CHAN-05 | Phase 7 | Complete |

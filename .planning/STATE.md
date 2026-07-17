@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 07
 current_phase_name: private-channel-keying
-status: executing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-07-17T19:09:31.093Z"
+status: verifying
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-07-17T19:20:52.349Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 33
-  completed_plans: 32
-  percent: 33
+  completed_plans: 33
+  percent: 44
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 07 (private-channel-keying) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-17 — Phase 07 execution started
 
 Progress: [█████████░] 93%
@@ -53,6 +53,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 06 P03 | 10min | 2 tasks | 8 files |
 | Phase 07 P01 | 14min | 3 tasks | 7 files |
 | Phase 07 P02 | 5min | 3 tasks | 2 files |
+| Phase 07 P03 | 12min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 07-01: foldControl's sticky-deleted fold rule pins heads to the terminal deleting edition (not the ordinary version-chain head) so compaction cannot resurrect a deleted channel for a fresh joiner (CHAN-07)
 - [Phase ?]: 07-02: sameChannelViews compares length + per-entry channel_id/accessible (mirrors members$'s sameSet) — a mapped array needs a content comparator, not reference identity
 - [Phase ?]: 07-02: materialChanged$.next() placed at all four material.channels mutation sites (receiveChannelKeys, persistChannelKey, dropChannelKey, mintChannelKey callback) rather than one centralized setter
+- [Phase ?]: 07-03: MissingChannelKeyError is a minimal standalone class (no base error class exists anywhere in packages/concord), mirroring RelayManagementError's convention
+- [Phase ?]: 07-03: requireChannelKey is a private helper shared identically by sendMessage and sendEvent rather than duplicating the guard inline
+- [Phase ?]: 07-03: TEST-02 case 5 reuses the single-engine case-4 setup shape (mint, leaveChannel, receiveChannelKeys) rather than extending the cross-engine Direct Invite test, since that test's memberEngine never syncs control-plane data
 
 ### Pending Todos
 
@@ -109,9 +113,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-17T19:08:27.733Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-private-channel-keying/07-CONTEXT.md
+Last session: 2026-07-17T19:20:52.343Z
+Stopped at: Completed 07-03-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
