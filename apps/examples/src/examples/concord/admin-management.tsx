@@ -755,7 +755,7 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
               <div className="min-w-0 flex-1">
                 <div className="font-medium">#{channel.name}</div>
                 <div className="text-xs opacity-60">
-                  {channel.private ? "private" : "public"} · epoch {channel.epoch ?? community.material.root_epoch}
+                  {channel.private ? "private" : "public"}
                   {channel.voice ? " · voice" : ""}
                   {channel.deleted ? " · deleted" : ""}
                 </div>
