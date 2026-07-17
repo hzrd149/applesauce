@@ -4,7 +4,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import { VSK } from "../../types.js";
 import { EditionFactory } from "../../factories/control.js";
 import { computeEditionHash } from "../editions.js";
-import { createCommunity } from "../community.js";
+import { channelKeyFor, createCommunity } from "../community.js";
 import { foldControl } from "../control.js";
 import { banlistLocator, inviteLinksLocator } from "../crypto.js";
 import { decoded } from "./test-utils.js";
@@ -149,5 +149,118 @@ describe("control fold", () => {
     const folded = state.roles.find((r) => r.role_id === roleId);
     expect(folded?.deleted).toBe(true); // still visible, flagged
     expect(state.grants.get(grant.member)).toEqual([roleId]); // grant untouched
+  });
+
+  // D-01/D-04 (H06): foldControl must never derive key material from edition
+  // JSON — key/epoch fields are picked explicitly, everything else falls out of
+  // the fold entirely (never blind-cast). A malformed field must be skipped, not
+  // crash the fold.
+  it("foldControl picks edition fields explicitly and never derives key material from edition JSON (CHAN-04)", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    // An authorized edition smuggling `key`/`epoch` in its JSON — must never be read.
+    const channelId = "55".repeat(32);
+    const ed = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: channelId,
+      version: 1,
+      content: JSON.stringify({ name: "secret", private: true, key: "aa".repeat(32), epoch: 99 }),
+    });
+    events.push(decoded(ed, genesis.material.owner, 2_000));
+
+    // A malformed edition (non-boolean `private`) for a different channel must
+    // not crash the fold — it is skipped, never coerced.
+    const malformedId = "66".repeat(32);
+    const malformed = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: malformedId,
+      version: 1,
+      content: JSON.stringify({ name: "broken", private: "yes" }),
+    });
+    events.push(decoded(malformed, genesis.material.owner, 2_100));
+
+    const state = foldControl(events, genesis.material); // must not throw
+
+    const folded = state.channels.find((c) => c.channel_id === channelId);
+    expect(folded).toBeDefined();
+    expect(folded!.name).toBe("secret");
+    expect(folded!.private).toBe(true);
+    expect(Object.hasOwn(folded!, "key")).toBe(false);
+    expect(Object.hasOwn(folded!, "epoch")).toBe(false);
+
+    // The malformed candidate is dropped entirely, not folded with a coerced type.
+    expect(state.channels.some((c) => c.channel_id === malformedId)).toBe(false);
+
+    // The edition's smuggled key never becomes derivable: a client holding no
+    // material.channels entry for this id derives NOTHING for it (CHAN-01/H06).
+    expect(genesis.material.channels.find((c) => c.id === channelId)).toBeUndefined();
+    expect(channelKeyFor(genesis.material, folded!)).toBeNull();
+  });
+
+  // D-07/D-08/D-09 (CHAN-07, CORD-03 §2 "deletion is terminal, the id is never
+  // reused"): once ANY authorized edition for an id is deleted:true, the channel
+  // is permanently dropped and `heads` is pinned to that deleting edition — so a
+  // subsequent compaction cannot resurrect it. This test simulates the full
+  // round trip: create -> delete -> resurrection-attempt -> same-session fold
+  // (still dropped) -> compaction (heads only) -> a FRESH fold over only the
+  // compacted heads, as a new invite joiner would see (still dropped). A test
+  // that only checks `state.channels` after ONE fold would pass even with the
+  // heads-pinning bug present (07-RESEARCH.md Pitfall 1) — this test explicitly
+  // does not stop there.
+  it("a deleted channel stays deleted across a compaction + fresh-joiner fold (CHAN-07)", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const channelId = "77".repeat(32);
+    const v1Content = JSON.stringify({ name: "temp", private: false });
+    const v1 = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content: v1Content });
+    events.push(decoded(v1, genesis.material.owner, 2_000));
+
+    const v1Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content: v1Content });
+    const v2Content = JSON.stringify({ name: "temp", private: false, deleted: true });
+    const v2 = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: channelId,
+      version: 2,
+      prevHash: v1Hash,
+      content: v2Content,
+    });
+    events.push(decoded(v2, genesis.material.owner, 3_000));
+
+    // A higher-version "resurrection" edition citing v2 as its prev.
+    const v2Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+    const v3Content = JSON.stringify({ name: "temp", private: false, deleted: false });
+    const v3 = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: channelId,
+      version: 3,
+      prevHash: v2Hash,
+      content: v3Content,
+    });
+    events.push(decoded(v3, genesis.material.owner, 4_000));
+
+    // Same-session fold over the full history (v1, v2-deleted, v3-resurrection):
+    // the sticky-delete scan sees v2 directly and drops the channel.
+    const full = foldControl(events, genesis.material);
+    expect(full.channels.some((c) => c.channel_id === channelId)).toBe(false);
+
+    // The winning head for this entity must be pinned to the DELETING (v2)
+    // edition, not the ordinary version-chain head (which would be v3).
+    const headEdition = full.heads?.get(channelId);
+    expect(headEdition).toBeDefined();
+
+    // Simulate compaction: a fresh invite joiner never fetches prior-epoch
+    // history (held_roots omission is spec-correct) — they see ONLY what's
+    // compacted into the current heads. Fold a BRAND NEW foldControl call using
+    // only the winning heads as the sole input.
+    const compactedEvents = [...(full.heads?.values() ?? [])];
+    const freshJoinerFold = foldControl(compactedEvents, genesis.material);
+
+    // If heads had followed the ordinary chain (v3, the resurrection), this
+    // fresh fold would see only `{ deleted: false }` and wrongly resurrect the
+    // channel. Because heads is pinned to v2, the sticky-delete scan still finds
+    // the deletion even with no other history present.
+    expect(freshJoinerFold.channels.some((c) => c.channel_id === channelId)).toBe(false);
   });
 });
