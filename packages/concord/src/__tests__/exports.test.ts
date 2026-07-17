@@ -17,6 +17,7 @@ describe("concord exports", () => {
         "Factories",
         "Helpers",
         "InviteWatcher",
+        "MissingChannelKeyError",
         "Models",
         "Operations",
         "PERM",

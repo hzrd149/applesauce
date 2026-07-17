@@ -21,7 +21,7 @@ import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { JoinLeaveFactory, SnapshotFactory } from "../../factories/guestbook.js";
 import { EditionFactory } from "../../factories/control.js";
-import { channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
+import { channelGroupKey, channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
@@ -145,6 +145,11 @@ describe("ConcordCommunity (DI, no network)", () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return [];
+    };
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
 
     const community = new ConcordCommunity({
@@ -185,6 +190,22 @@ describe("ConcordCommunity (DI, no network)", () => {
     const rotated = community.material.channels.find((c) => c.id === channelId);
     expect(rotated?.epoch).toBe(2);
     expect(rotated?.held?.[0]?.epoch).toBe(1);
+
+    // CHAN-05 / ROTATE-03 client-level: a subsequent send addresses the NEW
+    // epoch's plane immediately, in-session, without a reload. EXPECTED is
+    // computed only from channelGroupKey (CORD-03 §1's private branch) — never
+    // via channelKeyFor/deriveConcordKeys — so this is non-self-referential.
+    const expectedEpoch2 = channelGroupKey(hexToBytes(rotated!.key), hexToBytes(channelId), 2);
+    const expectedEpoch1 = channelGroupKey(hexToBytes(rotated!.held![0].key), hexToBytes(channelId), 1);
+    expect(expectedEpoch2.pk).not.toBe(expectedEpoch1.pk);
+
+    published.length = 0;
+    await community.sendMessage(channelId, "post-rotation hello");
+    await settle();
+    const wrap = published.find((e) => e.kind === kinds.GiftWrap);
+    expect(wrap).toBeDefined();
+    expect(wrap!.pubkey).toBe(expectedEpoch2.pk);
+    expect(wrap!.pubkey).not.toBe(expectedEpoch1.pk);
 
     sub.unsubscribe();
     community.dispose();
