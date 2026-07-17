@@ -190,6 +190,66 @@ describe("ConcordCommunity (DI, no network)", () => {
     community.dispose();
   });
 
+  it("channels$ flips accessible:true when a key is granted out-of-band with no control-plane fold (CHAN-06)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Mint a private channel — the owner auto-holds its key (mintChannelKey).
+    const channelId = await community.createChannel("secret", { private: true });
+    await settle();
+
+    // Capture the minted key, then drop it locally (leaveChannel ONLY mutates
+    // material.channels + disposes the sub-engine — no control-plane fold, no
+    // state$ re-emission), leaving the channel's metadata still folded (visible)
+    // but keyless: the exact "visible but inaccessible" state CHAN-06 targets.
+    const key = community.material.channels.find((c) => c.id === channelId)!;
+    await community.leaveChannel(channelId);
+    expect(community.material.channels.some((c) => c.id === channelId)).toBe(false);
+    expect(community.state$.value.channels.some((c) => c.channel_id === channelId)).toBe(true);
+
+    const views: boolean[] = [];
+    const sub = community.channels$.subscribe((v) => {
+      const entry = v.find((c) => c.channel_id === channelId);
+      views.push(entry?.accessible ?? false);
+    });
+
+    // Sanity: the pre-grant emission (subscribe replays the current combineLatest
+    // value synchronously) shows accessible:false — no key held.
+    expect(views.at(-1)).toBe(false);
+
+    // Grant the key back — this is the Direct Invite delivery path
+    // (receiveChannelKeys). NOTHING else touches community/state$ between this
+    // call and the assertion below: no sendMessage, no fold, no settle-triggering
+    // action. If channels$ only reacted to state$ (the pre-fix behavior), this
+    // emission would never arrive and the assertion below would see the stale
+    // accessible:false value — proving the grant alone is the sole trigger.
+    expect(community.receiveChannelKeys([key])).toBe(true);
+
+    // channels$ reacted to the grant alone, driven by materialChanged$.
+    expect(views.at(-1)).toBe(true);
+    expect(views.length).toBeGreaterThan(1);
+
+    sub.unsubscribe();
+    community.dispose();
+  });
+
   it("grants a private channel via a Direct Invite carrying only that channel key, and merges/leaves it", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
