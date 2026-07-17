@@ -173,8 +173,23 @@ Plans:
   5. All five Accordian-named tests pass: keyless private metadata derives nothing; public channels still derive from `community_root`; keyed private channels still derive from their own key; sending to a keyless private channel rejects; the direct-invite/private-channel grant flow still works once key material is folded.
   6. **(TEST-01, standing — sharpest case in the milestone)** Every channel derivation this phase touches has at least one test computing its expected value independently from the CORD-03 §1 formula — never by calling the implementation under test — and asserting the implementation matches. Both §1 branches are covered by hand-derived values: the public `group_key("concord/channel", community_root, channel_id, root_epoch).pk` and the private `group_key("concord/channel", channel_key, channel_id, channel_epoch).pk`. The keyless-private case asserts the implementation derives **nothing** rather than asserting it matches the independently-derived public address — the byte-identical collision that *was* H07.
 
-**Plans**: TBD
-**Note**: CHAN-07 (channel-deletion terminality) is blocked on a spec ruling — CORD-03's "deletion is terminal" clause admits a narrow reading around id reuse. Resolve the reading as this phase's first task; it may conclude "no change needed."
+**Plans**: 3 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — Channel-key source-of-truth refactor + CHAN-04 explicit field pick + CHAN-07 sticky-deletion with heads pinning; removes ChannelMetadata.key/.epoch (breaking); spec-derived derivation + fold tests (CHAN-01/03/04/05/07, ROTATE-03, TEST-02 cases 1-3) (wave 1)
+
+**Wave 2** *(depends on 07-01)*
+
+- [ ] 07-02-PLAN.md — CHAN-06 accessible/ChannelView via materialChanged$ reactivity plumbing + hasChannelKey adoption; reactivity test (CHAN-06) (wave 2)
+
+**Wave 3** *(depends on 07-01, 07-02)*
+
+- [ ] 07-03-PLAN.md — CHAN-02 MissingChannelKeyError send guard + client-level ROTATE-03 rotate→send + TEST-02 cases 4-5 (CHAN-02/05, ROTATE-03, TEST-02) (wave 3)
+
+**Note**: CHAN-07 ruling resolved (D-07): CORD-03 §2 "deletion is terminal; the id is never reused" — enforced via a sticky-deleted fold rule with heads pinning (not "no change needed"). Landed in 07-01 alongside the source-of-truth refactor because both rewrite the same foldControl channel loop.
 
 ### Phase 8: Rotation Robustness & Consensus
 
