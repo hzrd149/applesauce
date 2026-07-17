@@ -885,6 +885,7 @@ export class ConcordCommunity {
 
   /** Post a NIP-7D forum thread (kind 11) to a channel. */
   async sendThread(channelId: string, title: string, body = ""): Promise<void> {
+    this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
     const rumor = await bindToChannel(channelId, epoch)(await ForumThreadFactory.create(title, body));
     await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
@@ -892,6 +893,7 @@ export class ConcordCommunity {
 
   /** Reply to a channel thread with a NIP-22 kind 1111 comment (NIP-7D). */
   async replyToThread(channelId: string, thread: { id: string; author: string }, body: string): Promise<void> {
+    this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
     const pointer = { type: "event" as const, id: thread.id, kind: kinds.ForumThread, pubkey: thread.author };
     const rumor = await bindToChannel(channelId, epoch)(await CommentFactory.create(pointer, body));
@@ -899,6 +901,7 @@ export class ConcordCommunity {
   }
 
   async react(channelId: string, target: { id: string; author: string }, reaction: string | Emoji): Promise<void> {
+    this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
     const rumor = await bindToChannel(
       channelId,
@@ -908,12 +911,14 @@ export class ConcordCommunity {
   }
 
   async editMessage(channelId: string, targetId: string, text: string): Promise<void> {
+    this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
     const rumor = await bindToChannel(channelId, epoch)(await EditFactory.create(targetId, text));
     await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
   }
 
   async deleteMessage(channelId: string, targetId: string): Promise<void> {
+    this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
     const rumor = await bindToChannel(channelId, epoch)(await DeleteFactory.fromEvents([targetId]));
     await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
