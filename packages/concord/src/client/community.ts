@@ -7,7 +7,17 @@
 // only derives keys, routes decoded wraps into the right plane store, runs the
 // epoch-atomic sync, and publishes.
 
-import { BehaviorSubject, Observable, Subscription, combineLatest, distinctUntilChanged, map, shareReplay } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  Subject,
+  Subscription,
+  combineLatest,
+  distinctUntilChanged,
+  map,
+  shareReplay,
+  startWith,
+} from "rxjs";
 import { EventStore, RumorStore } from "applesauce-core";
 import { finalizeEvent, kinds, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
@@ -117,6 +127,25 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
   return true;
 }
 
+/** A folded channel plus the client-local `accessible` affordance (CHAN-06):
+ *  `true` for every public channel, and for a private channel iff `material.channels`
+ *  currently holds a key for it. `accessible` is NEVER folded state — it rides only
+ *  this emitted view, never {@link ChannelMetadata} or the control-plane fold. */
+export type ChannelView = ChannelMetadata & { accessible: boolean };
+
+/** Content equality for `channels$`'s emitted `ChannelView[]` — a fresh array is
+ *  mapped on every emission, so reference equality would never suppress a no-op
+ *  re-emission. Mirrors {@link sameSet}'s content-comparator role for `members$`. */
+function sameChannelViews(a: ChannelView[], b: ChannelView[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].channel_id !== b[i].channel_id) return false;
+    if (a[i].accessible !== b[i].accessible) return false;
+  }
+  return true;
+}
+
 function sameStanding(a: Standing, b: Standing): boolean {
   return (
     a.isOwner === b.isOwner &&
@@ -149,8 +178,12 @@ export class ConcordCommunity {
   readonly state$: BehaviorSubject<CommunityState>;
   /** The community's metadata (name, description, icon, banner, relays). */
   readonly metadata$: Observable<CommunityMetadata | undefined>;
-  /** The community's live (non-deleted) channels. */
-  readonly channels$: Observable<ChannelMetadata[]>;
+  /** The community's live (non-deleted) channels, enriched with the client-local
+   *  `accessible` flag (CHAN-06). Reacts to both a control-plane fold AND an
+   *  out-of-band key grant/drop (`receiveChannelKeys`/`persistChannelKey`/
+   *  `dropChannelKey`/`mintChannelKey`), with no simultaneous control-plane fold
+   *  required — the reactivity gap this stream exists to close. */
+  readonly channels$: Observable<ChannelView[]>;
   /** The community's roles, ordered by position (highest authority first). */
   readonly roles$: Observable<Role[]>;
   /** member → role_ids. */
@@ -196,6 +229,11 @@ export class ConcordCommunity {
 
   /** The current key state; rolled forward on a Refounding. */
   private keys: ConcordKeys;
+  /** Emits whenever `this.keys.material.channels` mutates out-of-band (a Direct
+   *  Invite grant, a channel Rekey, a voluntary leave, or a fresh mint) — CHAN-06:
+   *  `channels$` combines this with the control-plane `channels` slice so its
+   *  `accessible` flag reacts to key-holding changes with no simultaneous fold. */
+  private readonly materialChanged$ = new Subject<void>();
   /** planeKey ("control"|"guestbook"|"dissolved"|"rekey"|`channel:<id>`) → store. */
   private readonly stores = new Map<string, ConcordRumorStore>();
   /** channelId → the sub-community engine for each private channel we hold a key for. */
@@ -243,7 +281,21 @@ export class ConcordCommunity {
     const slice = <T>(select: (s: CommunityState) => T): Observable<T> =>
       this.state$.pipe(map(select), distinctUntilChanged());
     this.metadata$ = slice((s) => s.metadata);
-    this.channels$ = slice((s) => s.channels);
+    // CHAN-06: `accessible` is client-local (never folded), and must react to a
+    // key grant/drop ALONE — combineLatest with materialChanged$ so a Direct
+    // Invite delivering a key with no simultaneous control-plane fold still
+    // re-emits (the reactivity gap RESEARCH.md surfaced).
+    this.channels$ = combineLatest([slice((s) => s.channels), this.materialChanged$.pipe(startWith(undefined))]).pipe(
+      map(([channels]) =>
+        channels.map(
+          (c): ChannelView => ({
+            ...c,
+            accessible: !c.private || hasChannelKey(this.material, c.channel_id),
+          }),
+        ),
+      ),
+      distinctUntilChanged(sameChannelViews),
+    );
     this.roles$ = slice((s) => s.roles);
     this.grants$ = slice((s) => s.grants);
     this.banlist$ = slice((s) => s.banlist);
@@ -298,6 +350,7 @@ export class ConcordCommunity {
       mintChannelKey: (channelId, name) => {
         this.keys = addChannelKey(this.keys, channelId, name);
         this.onMaterialChange?.(this.keys.material);
+        this.materialChanged$.next();
       },
     });
 
@@ -606,6 +659,7 @@ export class ConcordCommunity {
     const channels = [...this.material.channels, ...fresh];
     this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
     this.onMaterialChange?.(this.keys.material);
+    this.materialChanged$.next();
     this.reconcilePrivateChannels(this.state$.value.channels);
     return true;
   }
@@ -638,6 +692,7 @@ export class ConcordCommunity {
     const channels = this.material.channels.map((c) => (c.id === channelKey.id ? channelKey : c));
     this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
     this.onMaterialChange?.(this.keys.material);
+    this.materialChanged$.next();
   }
 
   /** A channel Rekey excluded us: drop the sub-engine and our now-stale key (so we
@@ -659,6 +714,7 @@ export class ConcordCommunity {
     const channels = this.material.channels.filter((c) => c.id !== channelId);
     this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
     this.onMaterialChange?.(this.keys.material);
+    this.materialChanged$.next();
   }
 
   /**
