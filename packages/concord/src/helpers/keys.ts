@@ -478,10 +478,20 @@ type ScopedRekeyOutcome =
   | { kind: "none" };
 
 /**
- * The scope-generic core of the rekey read (CORD-06 §2/§3): among AUTHORIZED,
- * continuity-checked rotations to `heldEpoch + 1` for this scope, decrypt our
- * blob (lowest-key-wins convergence) and adopt; a COMPLETE rotation with no blob
- * for us means we were removed. `signer.nip44` must be present (callers guard).
+ * The scope-generic core of the rekey read (CORD-06 §2/§3, D-06/D-10): among
+ * AUTHORIZED, continuity-checked, COMPLETE rotations to `heldEpoch + 1` for this
+ * scope, partition into DECRYPTABLE candidates (blob found at our locator and
+ * decrypted) vs opaque sets we cannot rank — either we hold no blob at all for a
+ * set (a competing fork we cannot rank), or a blob exists at our locator but
+ * decrypting it threw (D-06: positive evidence we ARE in that set, outcome
+ * undetermined — never absence, never removal on its own). The lowest key among
+ * decryptable candidates wins (`lowerKeyWins`), but if ANY opaque set also
+ * exists we cannot prove that candidate is the true global-lowest, so we defer
+ * (`none`, D-10) rather than blindly adopt. With zero decryptable candidates,
+ * a genuine no-blob set means we're excluded from every candidate that exists —
+ * removed, gated by `canRemoveSelf` against that set's rotator (fail-closed, as
+ * before); a decrypt-threw set alone never reaches this branch (D-06).
+ * `signer.nip44` must be present (callers guard).
  */
 async function readRekeyScoped(
   held: ScopedHeld,
@@ -502,31 +512,53 @@ async function readRekeyScoped(
   if (rotations.length === 0) return { kind: "none" };
 
   const targetEpoch = held.heldEpoch + 1;
-  let adopted: { key: Uint8Array; rotator: string } | undefined;
-  let removed = false;
+  const decryptable: { key: Uint8Array; rotator: string }[] = [];
+  const noBlobRotators: string[] = []; // genuinely excluded from these sets — removal candidates
+  let opaqueCompetitor = false; // no-blob OR decrypt-threw set: cannot be ranked
+
   for (const set of rotations) {
     if (!set.complete) continue;
     const blob = findBlob(set, rekeyLocator(set.rotator, self, held.scopeIdHex, set.newEpoch));
-    let adoptedHere = false;
-    if (blob) {
-      try {
-        const plain = await signer.nip44!.decrypt(set.rotator, blob.wrapped);
-        const newKey = decodeWrappedKey(base64ToBytes(plain), held.scopeId, set.newEpoch);
-        if (!adopted || lowerKeyWins(adopted.key, newKey) === newKey) adopted = { key: newKey, rotator: set.rotator };
-        adoptedHere = true;
-      } catch {
-        // undecryptable blob at our locator — treat as absent
-      }
+    if (!blob) {
+      // No blob for us anywhere in this complete authorized+continuity set: a
+      // competing fork we cannot rank, and — if it turns out to be the only
+      // kind of set in play — the classic removal case.
+      opaqueCompetitor = true;
+      noBlobRotators.push(set.rotator);
+      continue;
     }
-    // A complete rotation that handed us no usable key removes us — but only honor
-    // the removal if this rotator is authorized to remove US (CORD-04). An
-    // under-ranked rotator's removal is ignored, and an absent predicate denies
-    // the removal (fail-closed): we keep our current key either way.
-    if (!adoptedHere && held.canRemoveSelf?.(set.rotator) === true) removed = true;
+    try {
+      const plain = await signer.nip44!.decrypt(set.rotator, blob.wrapped);
+      const newKey = decodeWrappedKey(base64ToBytes(plain), held.scopeId, set.newEpoch);
+      decryptable.push({ key: newKey, rotator: set.rotator });
+    } catch {
+      // Blob found at our own locator but decrypt threw (D-06): positive
+      // evidence we're IN this set, outcome undetermined. Contributes ONLY to
+      // the ambiguity check below — never to removal, never to adoption.
+      opaqueCompetitor = true;
+    }
   }
 
-  if (adopted) return { kind: "adopt", newKey: adopted.key, rotator: adopted.rotator, epoch: targetEpoch };
-  if (removed) return { kind: "removed", epoch: targetEpoch };
+  if (decryptable.length > 0) {
+    let winner = decryptable[0];
+    for (const candidate of decryptable.slice(1)) {
+      if (lowerKeyWins(winner.key, candidate.key) === candidate.key) winner = candidate;
+    }
+    // D-10: an opaque competing fork means we cannot prove our decryptable
+    // winner is the true global-lowest — defer rather than adopt a candidate
+    // that might not be the winner.
+    if (opaqueCompetitor) return { kind: "none" };
+    return { kind: "adopt", newKey: winner.key, rotator: winner.rotator, epoch: targetEpoch };
+  }
+
+  // No decryptable candidate at all. A decrypt-threw-only situation is
+  // undetermined (D-06), never removal — only a genuine no-blob set can honor
+  // removal, and only from a rotator authorized to remove US (CORD-04). An
+  // absent/false predicate denies the removal (fail-closed): we keep our
+  // current key either way.
+  for (const rotator of noBlobRotators) {
+    if (held.canRemoveSelf?.(rotator) === true) return { kind: "removed", epoch: targetEpoch };
+  }
   return { kind: "none" };
 }
 
