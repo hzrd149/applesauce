@@ -320,7 +320,15 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
     const s = standing(cand.author);
     if (!s.isOwner && !hasPerm(s.permissions, PERM.BAN)) continue;
     try {
-      for (const pk of JSON.parse(cand.content) as string[]) banlist.add(pk);
+      // D-14: honor an entry only when the signer strictly outranks the
+      // BANNED TARGET's current standing (CORD-04 §3 — equal cannot act on
+      // equal; mirrors AUTH-07's Grant target-rank gate above, applied to a
+      // different entity). This is additive to the author-BAN-bit check
+      // above, not a replacement. The owner (position 0) is unbannable for
+      // free since no signer's position can ever be strictly below 0.
+      for (const pk of JSON.parse(cand.content) as string[]) {
+        if (s.isOwner || s.position < standing(pk).position) banlist.add(pk);
+      }
       heads.set(cand.eid, cand.source);
       break;
     } catch {
