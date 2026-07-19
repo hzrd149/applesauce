@@ -1247,13 +1247,27 @@ export class ConcordCommunity {
       channelRekeys,
     });
 
+    // D-09/D-11/ROTATE-09 (T-08-06): publish acks are the only evidence anyone
+    // else can discover the new epoch, so each root-roll and channel-rekey wrap
+    // must independently clear strict majority of the CONFIGURED relay set
+    // (`relays.length`, not the number of responses received — a relay that
+    // never answers counts against the denominator) before compaction/snapshot
+    // publish or adoption. A sub-majority wrap aborts the whole Refounding
+    // atomically, mirroring D-01's abort-before-further-publish shape — no
+    // unilateral roll-forward onto an undiscoverable epoch.
+    const majorityThreshold = Math.ceil((relays.length + 1) / 2);
+    const requireMajority = async (wrap: NostrEvent, what: string) => {
+      const responses = await this.pool.publish(relays, wrap);
+      const okCount = responses.filter((r) => r.ok === true).length;
+      if (okCount < majorityThreshold)
+        throw new Error(`refounding aborted: ${what} not confirmed by a majority of relays`);
+    };
+
     // Rekey blobs (root + channels) gate convergence, so land them first.
-    for (const wrap of plan.rekeyWraps) {
-      await this.pool.publish(relays, wrap).catch((err) => console.warn("rekey publish failed", err));
-    }
-    for (const wrap of plan.channelRekeyWraps) {
-      await this.pool.publish(relays, wrap).catch((err) => console.warn("channel rekey publish failed", err));
-    }
+    for (const wrap of plan.rekeyWraps) await requireMajority(wrap, "root roll");
+    for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
+
+    // Only after every gated wrap clears majority: compaction/snapshot + adopt.
     for (const wrap of plan.compactionWraps) this.pool.publish(relays, wrap).catch(() => {});
     for (const wrap of plan.snapshotWraps) this.pool.publish(relays, wrap).catch(() => {});
 
