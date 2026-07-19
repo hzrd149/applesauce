@@ -6,14 +6,14 @@ current_phase: 08
 current_phase_name: rotation-robustness-consensus
 status: executing
 stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-07-19T14:18:56.677Z"
+last_updated: "2026-07-19T14:41:16.337Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 40
-  completed_plans: 38
+  completed_plans: 39
   percent: 44
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 08 (rotation-robustness-consensus) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-19 — Phase 08 execution started
 
@@ -59,6 +59,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 08 P02 | 5min | 2 tasks | 2 files |
 | Phase 08 P03 | 21min | 2 tasks | 2 files |
 | Phase 08 P04 | 15min | 2 tasks | 2 files |
+| Phase 08 P05 | 35min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,10 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 08]: 08-03: readRekeyScoped restructured around a decryptable-vs-opaque candidate partition — decrypt-throw and genuine no-blob exclusion tracked as two separate internal signals (opaqueCompetitor ambiguity flag vs noBlobRotators removal-eligible list) so D-06's decrypt-failure-never-contributes-to-removal holds even when both kinds of opaque set coexist; external ScopedRekeyOutcome/RekeyOutcome/ChannelRekeyOutcome unchanged
 - [Phase 08]: 08-04: refound() gated on per-wrap majority (D-11) -- ceil((n+1)/2) of this.relays().length must ack ok:true per rekey/channel-rekey wrap before compaction/snapshot publish or adoptRefounding; a non-responding relay counts against the denominator
 - [Phase 08]: 08-04: test fakePool()/fakePoolWithStatus() default publish mock changed from returning [] to acking ok:true for every relay (okAll), since the new majority gate fails an empty PublishResponse[] for any relay count -- required to keep pre-existing refound() tests green
+- [Phase ?]: 08-05: vac lives on RekeyRotation descriptor (rotation.vac) rather than a separate includeRekeyChunk parameter -- buildRekeyRumors already forwards the whole rotation object
+- [Phase ?]: 08-05: centralized vacVerifier(state, requiredPerm) in helpers/permissions.ts next to refoundAuthority, shared by root (PERM.BAN) and channel (PERM.MANAGE_CHANNELS) scopes rather than duplicating the owner-exempt/grantLocator/hasPerm logic
+- [Phase ?]: 08-05: Rule 2 auto-fix -- extended vac emission to rotateChannel/buildChannelRekey (plan's Task 1 text covered only refound/buildRefounding) since Task 2 wires verifyVac into both root and channel scopes, and omitting channel emission would have regressed every non-owner channel rotation
+- [Phase ?]: 08-05: Rule 1 auto-fix -- extended verifyVac wiring to the live checkRekey() paths in community.ts/private-channel.ts (plan's Task 2 text covered only the sync-walk paths sync.ts/channel-sync.ts), mirroring Phase 06-03's precedent where canRemoveSelf had the same walk-vs-live gap
 
 ### Pending Todos
 
@@ -126,7 +131,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-19T14:18:08.208Z
+Last session: 2026-07-19T14:37:50.346Z
 Stopped at: Completed 08-02-PLAN.md
 Resume file: None
 

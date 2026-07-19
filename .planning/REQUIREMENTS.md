@@ -25,7 +25,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **ROTATE-05**: A transient signer error while decrypting a rekey blob is retried, never interpreted as removal *(H09; a NIP-46 bunker blip currently self-evicts the user permanently)*
 - [x] **ROTATE-06**: Two rotations racing to one epoch converge down-only — a held epoch re-converges to a strictly lower sibling and can never re-fork *(M01; the community currently splits in half silently)*
 - [x] **ROTATE-07**: The winning rotation is computed among all authorized, complete, continuity-checked candidates, not only those carrying our blob *(M02)*
-- [ ] **ROTATE-08**: A rotation cites the Grant it acts under (`vac`) and a receiver verifies it against its folded Roster before honoring it *(M03; a just-demoted admin's rotation is currently honored by any lagging client)*
+- [x] **ROTATE-08**: A rotation cites the Grant it acts under (`vac`) and a receiver verifies it against its folded Roster before honoring it *(M03; a just-demoted admin's rotation is currently honored by any lagging client)*
 - [x] **ROTATE-09**: Compaction and snapshot wraps publish only after the root roll's publication is confirmed, and adoption is gated on it *(M04)*
 - [x] **ROTATE-10**: Rotation chunk sets correlate on `chunkCount`, so a resumed rotation's stale generation cannot complete a set and trigger a false removal *(S03 — verify the resume path can emit a differing `n` before implementing)*
 - [x] **ROTATE-11**: `prevepoch` identity is validated across a rotation's chunks *(L08)*
@@ -135,7 +135,7 @@ Deferred — acknowledged, not in this roadmap.
 | ROTATE-05 | Phase 8 | Complete |
 | ROTATE-06 | Phase 8 | Complete |
 | ROTATE-07 | Phase 8 | Complete |
-| ROTATE-08 | Phase 8 | Pending |
+| ROTATE-08 | Phase 8 | Complete |
 | ROTATE-09 | Phase 8 | Complete |
 | ROTATE-10 | Phase 8 | Pending — blocked on spec ruling |
 | ROTATE-11 | Phase 8 | Complete |
