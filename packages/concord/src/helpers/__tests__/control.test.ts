@@ -88,6 +88,83 @@ describe("control fold", () => {
     expect(state.banlist.has("22".repeat(32))).toBe(false);
   });
 
+  // D-14: the banlist fold must honor a banned pk only when the list
+  // author strictly outranks that pk's CURRENT standing (CORD-04 §3 —
+  // equal cannot act on equal, mirrors AUTH-07's Grant target-rank gate
+  // applied to a different entity in the same file), and the owner
+  // (position 0) must never be added regardless of signer rank (CORD-04
+  // §2, "occupies position 0, and is supreme and unremovable"). Positions
+  // are hand-tabulated per CORD-04 §3, not read from foldControl's own
+  // output: senior=1 (higher authority), junior=5 (lower authority, holds
+  // BAN), bystander is roleless (sentinel 0xffffffff, lowest authority).
+  it("honors a banlist entry only when the signer strictly outranks the target, and the owner is never bannable (D-14)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const cidBytes = hexToBytes(cid);
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const seniorRoleId = "01".repeat(32);
+    const seniorRole = { role_id: seniorRoleId, name: "senior", position: 1, permissions: "0", scope: { kind: "server" }, color: 0 };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: seniorRoleId, version: 1, content: JSON.stringify(seniorRole) }), genesis.material.owner, 2_000));
+
+    const juniorRoleId = "02".repeat(32);
+    const juniorRole = {
+      role_id: juniorRoleId,
+      name: "junior",
+      position: 5,
+      permissions: PERM.BAN.toString(),
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_010));
+
+    const seniorMember = "aa".repeat(32);
+    const juniorMember = "bb".repeat(32);
+    const bystander = "cc".repeat(32); // roleless (0xffffffff) — junior (5) strictly outranks it
+
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: grantLocator(cidBytes, seniorMember),
+          version: 1,
+          content: JSON.stringify({ member: seniorMember, role_ids: [seniorRoleId] }),
+        }),
+        genesis.material.owner,
+        2_100,
+      ),
+    );
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: grantLocator(cidBytes, juniorMember),
+          version: 1,
+          content: JSON.stringify({ member: juniorMember, role_ids: [juniorRoleId] }),
+        }),
+        genesis.material.owner,
+        2_110,
+      ),
+    );
+
+    // Junior (position 5, BAN) publishes a single banlist naming: the
+    // owner (position 0 — must never be added), the senior (position 1 —
+    // 5 is NOT < 1, must not be added), and the bystander (0xffffffff —
+    // 5 < that, must be added).
+    const banlist = await EditionFactory.create({
+      vsk: VSK.BANLIST,
+      eid: banlistLocator(cidBytes),
+      version: 1,
+      content: JSON.stringify([genesis.material.owner, seniorMember, bystander]),
+    });
+    events.push(decoded(banlist, juniorMember, 3_000));
+
+    const state = foldControl(events, genesis.material);
+    expect(state.banlist.has(genesis.material.owner), "owner must never be bannable").toBe(false);
+    expect(state.banlist.has(seniorMember), "junior must not be able to ban a senior").toBe(false);
+    expect(state.banlist.has(bystander), "junior strictly outranks the roleless bystander").toBe(true);
+  });
+
   // AUTH-03: a Grant lives at exactly ONE derived coordinate (grantLocator),
   // mirroring the banlist coordinate gate above. Folding whichever eid group
   // happened to arrive first would let a forged-coordinate Grant for the same
