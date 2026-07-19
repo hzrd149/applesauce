@@ -36,11 +36,11 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 - [x] **AUTH-01**: A root Refounding's removal is honored only from a rotator who strictly outranks the removed target — the receive-path guard denies when absent rather than permitting *(H03a; any BAN holder can currently evict the owner)*
 - [x] **AUTH-02**: `refound()` rejects excluding any target the caller does not strictly outrank, mirroring `rotateChannel()` *(H03b; send-path half of the same hole)*
-- [ ] **AUTH-03**: A Grant edition is folded only at its derived coordinate (`grantLocator`), so the roster is not delivery-order dependent *(M05; the helper exists and is used on the write path but never on the read path)*
-- [ ] **AUTH-04**: A malformed Grant is skipped rather than throwing out of `foldControl` and failing every member's community state *(M06)*
+- [x] **AUTH-03**: A Grant edition is folded only at its derived coordinate (`grantLocator`), so the roster is not delivery-order dependent *(M05; the helper exists and is used on the write path but never on the read path)*
+- [x] **AUTH-04**: A malformed Grant is skipped rather than throwing out of `foldControl` and failing every member's community state *(M06)*
 - [ ] **AUTH-05**: `kick()` and `ban()` reject locally when the caller lacks the bit or the rank, matching `rotateChannel`/`refound` *(L04; no authority is gained today — the read path enforces — but the UI shows a removal that never happened)*
 - [ ] **AUTH-06**: `Role.position` is validated as a positive integer before a role confers permission bits *(L05)*
-- [ ] **AUTH-07**: A Grant that revokes or demotes is gated by a rank comparison against its target member *(S01 — **BLOCKED on ruling**: CORD-04 §2 states the rule as outranking the *roles handed out*, which is what the code implements; whether §3's "strictly outrank its target" also binds the Grant's target is unresolved by the spec text. The permissive reading yields a real privilege-escalation path. Needs a spec reading, possibly upstream clarification)*
+- [x] **AUTH-07**: A Grant that revokes or demotes is gated by a rank comparison against its target member *(S01 — **BLOCKED on ruling**: CORD-04 §2 states the rule as outranking the *roles handed out*, which is what the code implements; whether §3's "strictly outrank its target" also binds the Grant's target is unresolved by the spec text. The permissive reading yields a real privilege-escalation path. Needs a spec reading, possibly upstream clarification)*
 - [ ] **AUTH-08**: A Kick's `vac` is validated against the cited Grant, and `vac` is required for non-owner Kicks *(S02 — **BLOCKED on ruling**: CORD-02 §5 defers the rule to CORD-04 §5; confirm there first)*
 
 ### Channel Keying (CHAN)
@@ -86,7 +86,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 ### Test Methodology (TEST)
 
-- [ ] **TEST-01**: Every key/address derivation the specs define has a regression test asserting against an **independently-derived spec value**, not against implementation output *(the cross-cutting cause: all 189 concord tests passed while 9 HIGH bugs were live because every test compares the implementation to itself; a 4-line spec-derived probe caught the worst one instantly)*
+- [x] **TEST-01**: Every key/address derivation the specs define has a regression test asserting against an **independently-derived spec value**, not against implementation output *(the cross-cutting cause: all 189 concord tests passed while 9 HIGH bugs were live because every test compares the implementation to itself; a 4-line spec-derived probe caught the worst one instantly)*
 - [x] **TEST-02**: The five tests named in the Accordian upstream report are covered *(keyless private metadata derives nothing; public still derives from `community_root`; keyed private still derives from its key; send to a keyless private channel rejects; the direct-invite grant flow still works once key material is folded)*
 
 ## Future Requirements
@@ -141,8 +141,8 @@ Deferred — acknowledged, not in this roadmap.
 | ROTATE-11 | Phase 8 | Complete |
 | ROTATE-12 | Phase 8 | Complete |
 | ROTATE-13 | Phase 8 | Complete |
-| AUTH-03 | Phase 9 | Pending |
-| AUTH-04 | Phase 9 | Pending |
+| AUTH-03 | Phase 9 | Complete |
+| AUTH-04 | Phase 9 | Complete |
 | AUTH-05 | Phase 9 | Pending |
 | AUTH-06 | Phase 9 | Pending |
 | AUTH-07 | Phase 9 | Pending — blocked on spec ruling |

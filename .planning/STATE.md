@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 9
-current_phase_name: Authority & Permission Fold Correctness
+current_phase: 09
+current_phase_name: authority-permission-fold-correctness
 status: executing
 stopped_at: Phase 9 context gathered
-last_updated: "2026-07-19T16:45:56.303Z"
+last_updated: "2026-07-19T17:11:23.950Z"
 last_activity: 2026-07-19
-last_activity_desc: Phase 08 complete, transitioned to Phase 9
+last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 9
   completed_phases: 5
-  total_plans: 40
-  completed_plans: 40
+  total_plans: 45
+  completed_plans: 41
   percent: 56
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 08 — rotation-robustness-consensus
+**Current focus:** Phase 09 — authority-permission-fold-correctness
 
 ## Current Position
 
-Phase: 9 — Authority & Permission Fold Correctness
-Plan: Not started
+Phase: 09 (authority-permission-fold-correctness) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-19 — Phase 08 complete, transitioned to Phase 9
+Last activity: 2026-07-19 — Phase 09 execution started
 
 Progress: [█████████░] 93%
 
@@ -61,6 +61,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 08 P04 | 15min | 2 tasks | 2 files |
 | Phase 08 P05 | 35min | 3 tasks | 11 files |
 | Phase 08 P06 | 17min | 3 tasks | 5 files |
+| Phase 09 P01 | 25min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 08-05: Rule 1 auto-fix -- extended verifyVac wiring to the live checkRekey() paths in community.ts/private-channel.ts (plan's Task 2 text covered only the sync-walk paths sync.ts/channel-sync.ts), mirroring Phase 06-03's precedent where canRemoveSelf had the same walk-vs-live gap
 - [Phase 08-06]: buildRefounding throws (not continue/swallow) on any unfoldable Control head — awaited pre-publish in refound(), so the throw aborts the whole Refounding atomically
 - [Phase 08-06]: held_roots.refounder and buildChain's per-epoch refounder are only ever set when they have a value (never explicit undefined) — applesauce-core's EventStore.model() caches by a value-based hash (hash_sum(args)), and an explicit undefined key changes that hash even though the JSON form is unchanged
+- [Phase 09]: 09-01: cidBytes hoisted to a single declaration above the fixpoint loop; AUTH-04's shape guard placed as an unconditional continue before authorized (not folded into the authorized chain, so owner-signed malformed grants are also caught); AUTH-07's target-rank clause ANDs into the existing roles-outrank .every() rather than replacing it
+- [Phase 09]: 09-01: fixed a pre-existing control.test.ts case that published its Grant at eid=roleId instead of the derived grantLocator coordinate — it only passed before AUTH-03 existed to enforce coordinate binding
 
 ### Pending Todos
 
@@ -134,7 +137,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-19T16:10:16.156Z
+Last session: 2026-07-19T17:10:32.736Z
 Stopped at: Phase 9 context gathered
 Resume file: .planning/phases/09-authority-permission-fold-correctness/09-CONTEXT.md
 
