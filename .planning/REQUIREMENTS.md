@@ -41,7 +41,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [ ] **AUTH-05**: `kick()` and `ban()` reject locally when the caller lacks the bit or the rank, matching `rotateChannel`/`refound` *(L04; no authority is gained today — the read path enforces — but the UI shows a removal that never happened)*
 - [ ] **AUTH-06**: `Role.position` is validated as a positive integer before a role confers permission bits *(L05)*
 - [x] **AUTH-07**: A Grant that revokes or demotes is gated by a rank comparison against its target member *(S01 — **BLOCKED on ruling**: CORD-04 §2 states the rule as outranking the *roles handed out*, which is what the code implements; whether §3's "strictly outrank its target" also binds the Grant's target is unresolved by the spec text. The permissive reading yields a real privilege-escalation path. Needs a spec reading, possibly upstream clarification)*
-- [ ] **AUTH-08**: A Kick's `vac` is validated against the cited Grant, and `vac` is required for non-owner Kicks *(S02 — **BLOCKED on ruling**: CORD-02 §5 defers the rule to CORD-04 §5; confirm there first)*
+- [x] **AUTH-08**: A Kick's `vac` is validated against the cited Grant, and `vac` is required for non-owner Kicks *(S02 — **BLOCKED on ruling**: CORD-02 §5 defers the rule to CORD-04 §5; confirm there first)*
 
 ### Channel Keying (CHAN)
 

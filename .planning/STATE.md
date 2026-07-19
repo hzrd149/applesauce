@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 09
 current_phase_name: authority-permission-fold-correctness
 status: executing
-stopped_at: Phase 9 context gathered
-last_updated: "2026-07-19T17:11:23.950Z"
+stopped_at: Completed 09-03-PLAN.md
+last_updated: "2026-07-19T17:24:39.005Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 45
-  completed_plans: 41
+  completed_plans: 42
   percent: 56
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 09 (authority-permission-fold-correctness) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-19 — Phase 09 execution started
 
@@ -62,6 +62,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 08 P05 | 35min | 3 tasks | 11 files |
 | Phase 08 P06 | 17min | 3 tasks | 5 files |
 | Phase 09 P01 | 25min | 3 tasks | 2 files |
+| Phase 09 P03 | 15min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 08-06]: held_roots.refounder and buildChain's per-epoch refounder are only ever set when they have a value (never explicit undefined) — applesauce-core's EventStore.model() caches by a value-based hash (hash_sum(args)), and an explicit undefined key changes that hash even though the JSON form is unchanged
 - [Phase 09]: 09-01: cidBytes hoisted to a single declaration above the fixpoint loop; AUTH-04's shape guard placed as an unconditional continue before authorized (not folded into the authorized chain, so owner-signed malformed grants are also caught); AUTH-07's target-rank clause ANDs into the existing roles-outrank .every() rather than replacing it
 - [Phase 09]: 09-01: fixed a pre-existing control.test.ts case that published its Grant at eid=roleId instead of the derived grantLocator coordinate — it only passed before AUTH-03 existed to enforce coordinate binding
+- [Phase 09]: 09-03: verifyVac threaded as optional trailing positional param on foldMembers (matching its existing shape), not an options object
+- [Phase 09]: 09-03: client/sync.ts passes vacVerifier(state0, PERM.KICK) inline (not a named local) to avoid colliding with the existing verifyVac local declared later for the root PERM.BAN rekey scope
+- [Phase 09]: 09-03: Kick vac-gate tests isolate the new check from the pre-existing rank-vs-victim check by feeding foldMembers an OLD roster (resolveStanding param) while vacVerifier reads a separate CURRENT/demoted roster
 
 ### Pending Todos
 
@@ -137,9 +141,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-19T17:10:32.736Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-authority-permission-fold-correctness/09-CONTEXT.md
+Last session: 2026-07-19T17:24:38.998Z
+Stopped at: Completed 09-03-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
