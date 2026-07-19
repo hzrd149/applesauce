@@ -198,11 +198,21 @@ export interface RekeyRotationSet {
   chunkCount: number;
   /** chunkIndex → chunk. */
   chunks: Map<number, ParsedRekey>;
+  /**
+   * False when chunks correlated into this bucket disagree on `chunkCount` (n)
+   * or `prevEpoch` — a resumed rotation minting a different keep-list (and thus
+   * a different n) correlates on the SAME (rotator, scope, newEpoch, prevCommit)
+   * key (D-02, unchanged), so agreement must be checked across all chunks
+   * instead of trusting whichever chunk arrived first (ROTATE-10/11).
+   */
+  consistent: boolean;
   complete: boolean;
 }
 
 export function groupRotations(parsed: ParsedRekey[]): RekeyRotationSet[] {
   const byKey = new Map<string, RekeyRotationSet>();
+  const chunkCounts = new Map<string, Set<number>>();
+  const prevEpochs = new Map<string, Set<bigint>>();
   for (const p of parsed) {
     const key = `${p.rotator}:${p.scopeIdHex}:${p.newEpoch}:${p.prevCommit}`;
     let set = byKey.get(key);
@@ -217,13 +227,25 @@ export function groupRotations(parsed: ParsedRekey[]): RekeyRotationSet[] {
           prevCommit: p.prevCommit,
           chunkCount: p.chunkCount,
           chunks: new Map(),
+          consistent: true,
           complete: false,
         }),
       );
+      chunkCounts.set(key, new Set());
+      prevEpochs.set(key, new Set());
     }
-    if (p.chunkCount === set.chunkCount) set.chunks.set(p.chunkIndex, p);
+    chunkCounts.get(key)!.add(p.chunkCount);
+    prevEpochs.get(key)!.add(p.prevEpoch);
+    // Keep every chunk — even one from a disagreeing generation — so the
+    // disagreement is detectable below. Silently dropping a disagreeing chunk
+    // (the old `if (p.chunkCount === set.chunkCount)` guard) is exactly what let
+    // a stale first-arriving generation complete on its own.
+    set.chunks.set(p.chunkIndex, p);
   }
-  for (const set of byKey.values()) set.complete = set.chunks.size >= set.chunkCount;
+  for (const [key, set] of byKey) {
+    set.consistent = chunkCounts.get(key)!.size === 1 && prevEpochs.get(key)!.size === 1;
+    set.complete = set.consistent && set.chunks.size >= set.chunkCount;
+  }
   return [...byKey.values()];
 }
 
