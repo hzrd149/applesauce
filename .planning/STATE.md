@@ -6,14 +6,14 @@ current_phase: 08
 current_phase_name: rotation-robustness-consensus
 status: executing
 stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-07-19T13:58:57.861Z"
+last_updated: "2026-07-19T14:08:49.032Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 40
-  completed_plans: 36
+  completed_plans: 37
   percent: 44
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 08 (rotation-robustness-consensus) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-19 — Phase 08 execution started
 
@@ -57,6 +57,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 07 P04 | 8min | 2 tasks | 2 files |
 | Phase 08 P01 | 18min | 3 tasks | 8 files |
 | Phase 08 P02 | 5min | 2 tasks | 2 files |
+| Phase 08 P03 | 21min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 08]: 08-01: the known-epoch re-read (root) and held-epoch backward pass (channel) only surface/act on an adopt outcome, never reconsidering a removed outcome for a historical epoch — out of this plan's scope (ROTATE-06/07 racing-rotation convergence only), not a removal-reconsideration feature
 - [Phase 08]: 08-01: cascade rebuild is a pure forward-walk regeneration from the corrected root/key, never a retroactive mutation of persisted material/held_roots — matches Pitfall 3's Open Question 2 resolution and the in-memory-only latch decision (A3) — a fresh walk always re-derives correctly from whatever material is passed in
 - [Phase 08]: 08-02: Correlation key stays rotator:scopeIdHex:newEpoch:prevCommit unchanged (D-02); groupRotations gained a consistent flag via per-bucket Set<chunkCount>/Set<prevEpoch> agreement check, closing the first-arrival-wins defect that let a resumed rotation's stale generation complete a set
+- [Phase 08]: 08-03: readRekeyScoped restructured around a decryptable-vs-opaque candidate partition — decrypt-throw and genuine no-blob exclusion tracked as two separate internal signals (opaqueCompetitor ambiguity flag vs noBlobRotators removal-eligible list) so D-06's decrypt-failure-never-contributes-to-removal holds even when both kinds of opaque set coexist; external ScopedRekeyOutcome/RekeyOutcome/ChannelRekeyOutcome unchanged
 
 ### Pending Todos
 
@@ -121,7 +123,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-19T13:58:57.855Z
+Last session: 2026-07-19T14:07:40.247Z
 Stopped at: Completed 08-02-PLAN.md
 Resume file: None
 
