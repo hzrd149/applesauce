@@ -203,6 +203,16 @@ Nearly every finding below is one of four variants of the same mistake:
 
 ---
 
+## Findings recorded after the initial audit
+
+Findings surfaced during Phase 9 execution (authority-fold trace), pulled into scope but distinct from the audit's original 43 enumerated findings — recorded here rather than folded silently into the AUTH-03..08 set.
+
+| ID | Finding | Status | Code |
+|----|---------|--------|------|
+| **D14** | **Read-path banlist fold applies no per-entry rank check, and `foldMembers` deletes a banned member with no owner exemption.** `control.ts`'s banlist fold checks only that the list's author holds `PERM.BAN` — any BAN-holder, regardless of rank, can list an arbitrary pk including the owner or a senior member. `guestbook.ts`'s `foldMembers` then applies `members.delete(banned)` unconditionally against that banlist, with no owner exemption. Same "junior acts on senior" shape as AUTH-07 (S01), applied to bans, plus a missing owner exemption. Same CORD-04 §3/§2 sentences violated: the actor must hold the required bit AND strictly outrank its target. Fixed in Phase 9 (09-02, 09-03): the read-path banlist fold now honors a pk only when `s.isOwner \|\| s.position < standing(pk).position`, additive to the existing author-BAN-bit check (`control.ts`); `foldMembers`' banlist-delete loop gained a defense-in-depth owner-exemption guard (`guestbook.ts`). Tracked as **AUTH-09** in `REQUIREMENTS.md`. | RESOLVED (Phase 9) | `control.ts:288-330` (banlist fold rank gate), `guestbook.ts` (banlist-delete owner exemption) |
+
+---
+
 ## Conflicts between agents (unresolved — needs a ruling)
 
 1. **Compaction silently skipping unfoldable heads** (`keys.ts:345-352`). The **CORD-06 agent** rates this HIGH: the guard and the `catch` silently drop heads and `buildRefounding` returns a partial `compactionWraps` with no error, against CORD-06 §3's "If the Refounder cannot reliably fold all Control events, the Refounding must be aborted." The **CORD-02 agent** rates the same code **correct**: `controlHeadsWithSeals` (`community.ts:1046-1056`) deliberately re-decodes control wraps from the wrap-level `eventStore` to restore seals the RumorStore strips, and calls it well-commented. Both read the same lines. **Not yet adjudicated** — must resolve before scoping a fix.

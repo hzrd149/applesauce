@@ -40,8 +40,9 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **AUTH-04**: A malformed Grant is skipped rather than throwing out of `foldControl` and failing every member's community state *(M06)*
 - [x] **AUTH-05**: `kick()` and `ban()` reject locally when the caller lacks the bit or the rank, matching `rotateChannel`/`refound` *(L04; no authority is gained today — the read path enforces — but the UI shows a removal that never happened)*
 - [x] **AUTH-06**: `Role.position` is validated as a positive integer before a role confers permission bits *(L05)*
-- [x] **AUTH-07**: A Grant that revokes or demotes is gated by a rank comparison against its target member *(S01 — **BLOCKED on ruling**: CORD-04 §2 states the rule as outranking the *roles handed out*, which is what the code implements; whether §3's "strictly outrank its target" also binds the Grant's target is unresolved by the spec text. The permissive reading yields a real privilege-escalation path. Needs a spec reading, possibly upstream clarification)*
-- [x] **AUTH-08**: A Kick's `vac` is validated against the cited Grant, and `vac` is required for non-owner Kicks *(S02 — **BLOCKED on ruling**: CORD-02 §5 defers the rule to CORD-04 §5; confirm there first)*
+- [x] **AUTH-07**: A Grant that revokes or demotes is gated by a rank comparison against its target member *(S01 — **RESOLVED (Phase 9, D-03): strict reading.** §5's "Authorizing an Action" restates §3's "strictly outrank its target" as a numbered step binding every authority action, including a Grant; implemented as an AND'd target-rank clause on top of the existing "outrank every role handed out" check. Self-targeting Grants and grants to a roleless target are exempt. Upstream clarification note filed: `packages/concord/UPSTREAM-NOTES.md`)*
+- [x] **AUTH-08**: A Kick's `vac` is validated against the cited Grant, and `vac` is required for non-owner Kicks *(S02 — **RESOLVED (Phase 9): required + validated.** CORD-02 §5's deferral to CORD-04 §5 confirmed; a non-owner Kick's `vac` is now threaded through `foldMembers` and checked against the current folded roster via `vacVerifier(PERM.KICK)`)*
+- [x] **AUTH-09**: The read-path banlist honors a banned pk only when the list author strictly outranks that pk's current standing, and the owner is never bannable, regardless of the signer's rank *(D-14 — pulled into scope mid-trace during Phase 9's authority-fold trace; a new finding beyond the audit's enumerated AUTH-03..08 set, recorded in `concord-audit.md`)*
 
 ### Channel Keying (CHAN)
 
@@ -145,8 +146,9 @@ Deferred — acknowledged, not in this roadmap.
 | AUTH-04 | Phase 9 | Complete |
 | AUTH-05 | Phase 9 | Complete |
 | AUTH-06 | Phase 9 | Complete |
-| AUTH-07 | Phase 9 | Pending — blocked on spec ruling |
-| AUTH-08 | Phase 9 | Pending — blocked on spec ruling |
+| AUTH-07 | Phase 9 | Complete |
+| AUTH-08 | Phase 9 | Complete |
+| AUTH-09 | Phase 9 | Complete *(NEW — D-14 banlist rider, pulled in mid-trace, beyond the audit's enumerated AUTH-03..08 set)* |
 | INVITE-01 | Phase 10 | Pending |
 | INVITE-02 | Phase 10 | Pending |
 | INVITE-03 | Phase 10 | Pending |
@@ -170,9 +172,9 @@ Deferred — acknowledged, not in this roadmap.
 
 **Coverage:**
 
-- v1.1 requirements: 53 total *(corrected from the "52 total" originally recorded here — a recount of every checklist item above finds 53 distinct REQ-IDs; no requirement content changed)*
-- Mapped to phases: 53/53 ✓
-- Blocked on a spec ruling: 3 (AUTH-07 → Phase 9, AUTH-08 → Phase 9, CHAN-07 → Phase 7) — each phase resolves its ruling(s) as its first task; any may conclude "no change needed". ROTATE-10 (D-02) and ROTATE-13 (D-01) rulings were resolved and implemented in Phase 8.
+- v1.1 requirements: 54 total *(53 from the original 2026-07-15 count, +1 for AUTH-09 — the D-14 banlist rider pulled into scope mid-trace during Phase 9, beyond the audit's enumerated AUTH-03..08 set; no other requirement content changed)*
+- Mapped to phases: 54/54 ✓
+- Blocked on a spec ruling: 1 (CHAN-07 → Phase 7) — each phase resolves its ruling(s) as its first task; any may conclude "no change needed". ROTATE-10 (D-02) and ROTATE-13 (D-01) rulings were resolved and implemented in Phase 8; AUTH-07 (D-03, strict reading) and AUTH-08 (required+validated) rulings were resolved and implemented in Phase 9.
 
 **Cross-cutting standard — TEST-01 (read before closing any phase):**
 TEST-01 is a **standing criterion across Phases 5–12**, not a Phase-5 deliverable. It is listed at Phase 5 for one-requirement-one-phase accounting only; its scope is the whole milestone. It is **not satisfied until Phase 12 completes** and must not be ticked Complete when Phase 5 closes.
