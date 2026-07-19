@@ -7,6 +7,8 @@ import { computeEditionHash } from "../editions.js";
 import { channelKeyFor, createCommunity } from "../community.js";
 import { foldControl } from "../control.js";
 import { banlistLocator, grantLocator, inviteLinksLocator } from "../crypto.js";
+import { resolveStanding } from "../permissions.js";
+import type { Role } from "../../types.js";
 import { decoded } from "./test-utils.js";
 
 const OWNER = "ab".repeat(32);
@@ -489,16 +491,24 @@ describe("control fold", () => {
     );
 
     const state = foldControl(events, genesis.material);
+    const rolesMap = new Map<string, Role>(state.roles.map((r) => [r.role_id, r]));
 
     for (let i = 0; i < badCases.length; i++) {
       const roleId = roleIdFor(i);
       const member = memberFor(i);
       expect(state.roles.some((r) => r.role_id === roleId), `role.position=${badCases[i].label} must be skipped`).toBe(false);
-      expect(state.grants.has(member), `role.position=${badCases[i].label} must confer no grant`).toBe(false);
+      // The owner-signed Grant may still record the (dead) role_id — an
+      // owner's authority to grant is separate from a role's own validity.
+      // What matters is the CONFERRED permission bits: since the role never
+      // folded into `state.roles`, `resolveStanding` skips the missing id
+      // (permissions.ts:56) and the member gains nothing from it.
+      const standing = resolveStanding(member, genesis.material.owner, rolesMap, state.grants);
+      expect(standing.permissions, `role.position=${badCases[i].label} must confer no permission bits`).toBe(0n);
     }
 
     expect(state.roles.some((r) => r.role_id === goodRoleId)).toBe(true);
-    expect(state.grants.get(goodMember)).toEqual([goodRoleId]);
+    const goodStanding = resolveStanding(goodMember, genesis.material.owner, rolesMap, state.grants);
+    expect(goodStanding.permissions).toBe(PERM.MANAGE_METADATA);
   });
 
   it("keeps a deleted role visible in state but strips its authority", async () => {

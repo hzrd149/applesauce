@@ -160,6 +160,12 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
           continue;
         }
         if (!role.role_id) role.role_id = eid;
+        // AUTH-06: position must be a positive integer strictly below the
+        // roleless sentinel (CORD-04 §3, `"position": <u32>`). Inserted
+        // BEFORE the two `<=` checks below — `NaN <= x` is always false and
+        // a float passes an integer-shaped `<=` bound, so those checks alone
+        // let a malformed position slip through and confer permission bits.
+        if (!Number.isInteger(role.position) || role.position <= 0 || role.position >= 0xffffffff) continue;
         // No edition may claim a position at or above its own signer.
         if (!s.isOwner && role.position <= s.position) continue;
         if (role.position <= 0) continue; // position 0 is the owner alone
