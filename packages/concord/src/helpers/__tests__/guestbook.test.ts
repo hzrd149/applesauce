@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { hexToBytes } from "@noble/hashes/utils.js";
 
-import type { Role } from "../../types.js";
+import { PERM } from "../../types.js";
+import type { CommunityState, JoinMaterial, Role } from "../../types.js";
+import { grantLocator } from "../crypto.js";
 import { foldMembers } from "../guestbook.js";
-import { resolveStanding } from "../permissions.js";
+import { resolveStanding, vacVerifier } from "../permissions.js";
 import { decoded } from "./test-utils.js";
 
 describe("guestbook fold", () => {
@@ -107,5 +110,142 @@ describe("guestbook fold", () => {
     const observed = new Map([["frank", 5_000]]);
     const members = foldMembers([], observed, new Set(), standing, 10_000);
     expect(members.has("frank")).toBe(true);
+  });
+});
+
+// AUTH-08 (CORD-04 §5): a non-owner Kick must additionally cite the Grant it
+// acts under — vacVerifier(state, PERM.KICK), reused unchanged from
+// helpers/permissions.ts. Expected vac[0] eids are hand-derived directly from
+// grantLocator (D-12 frozen coordinate formula), never read back from
+// foldMembers/vacVerifier under test.
+describe("AUTH-08 Kick vac gate", () => {
+  const owner = "aa".repeat(32);
+  const communityIdHex = "cc".repeat(32);
+  const cidBytes = hexToBytes(communityIdHex);
+  const actor = "bb".repeat(32);
+  const victim = "dd".repeat(32);
+
+  const kickRole: Role = {
+    role_id: "role1",
+    name: "mod",
+    position: 1,
+    permissions: PERM.KICK.toString(),
+    scope: { kind: "server" },
+    color: 0,
+  };
+
+  // OLD roster: the actor still holds KICK — fed as foldMembers' OWN
+  // `resolveStanding` param, so the retained rank-vs-victim check passes and
+  // the new vac gate (built against a possibly-different CURRENT roster below)
+  // is isolated, mirroring 08-05's isAuthorized/vac independence.
+  const oldRoles = new Map<string, Role>([[kickRole.role_id, kickRole]]);
+  const oldGrants = new Map<string, string[]>([[actor, [kickRole.role_id]]]);
+  const oldStanding = (m: string) => resolveStanding(m, owner, oldRoles, oldGrants);
+
+  const material: JoinMaterial = {
+    community_id: communityIdHex,
+    owner,
+    owner_salt: "s".repeat(64),
+    community_root: "r".repeat(64),
+    root_epoch: 0,
+    channels: [],
+    relays: [],
+    name: "N",
+  };
+
+  // Expected vac[0], hand-derived ONLY from grantLocator — never read back
+  // from foldMembers/vacVerifier.
+  const expectedEid = grantLocator(cidBytes, actor);
+
+  /** CURRENT folded roster passed to vacVerifier. `demoted=true` supersedes the
+   *  actor's Grant (no role), simulating a Grant revoked after the Kick was cited. */
+  function currentState(demoted: boolean): CommunityState {
+    return {
+      material,
+      channels: [],
+      roles: [kickRole],
+      grants: demoted ? new Map<string, string[]>() : oldGrants,
+      banlist: new Set(),
+      inviteLinks: new Set(),
+      members: new Set(),
+      dissolved: false,
+    };
+  }
+
+  const join = (pk: string, ms: number) =>
+    decoded({ kind: 3306, content: "join", tags: [["ms", String(ms % 1000)]] }, pk, ms);
+  const kick = (vac: [string, string, string] | undefined, ms: number, from = actor) =>
+    decoded({ kind: 3309, content: "", tags: [["p", victim], ...(vac ? [["vac", ...vac]] : [])] }, from, ms);
+
+  it("drops a non-owner Kick with no vac tag", () => {
+    const verifyVac = vacVerifier(currentState(false), PERM.KICK);
+    const members = foldMembers(
+      [join(victim, 500), kick(undefined, 1_000)],
+      new Map(),
+      new Set(),
+      oldStanding,
+      10_000,
+      undefined,
+      verifyVac,
+    );
+    expect(members.has(victim)).toBe(true); // Kick dropped — victim stays a member
+  });
+
+  it("drops a non-owner Kick whose vac[0] does not equal grantLocator(cid, actor)", () => {
+    const verifyVac = vacVerifier(currentState(false), PERM.KICK);
+    const members = foldMembers(
+      [join(victim, 500), kick(["00".repeat(32), "1", "22".repeat(32)], 1_000)],
+      new Map(),
+      new Set(),
+      oldStanding,
+      10_000,
+      undefined,
+      verifyVac,
+    );
+    expect(members.has(victim)).toBe(true);
+  });
+
+  it("drops a demoted actor's Kick even with a structurally valid stale vac", () => {
+    // CURRENT roster (fed to vacVerifier) has the actor's Grant superseded —
+    // no role, no PERM.KICK — even though the citation structurally resolves
+    // and the fold's own resolveStanding (oldStanding) still says the actor
+    // outranks the victim (isolating the vac gate from the rank check).
+    const verifyVac = vacVerifier(currentState(true), PERM.KICK);
+    const members = foldMembers(
+      [join(victim, 500), kick([expectedEid, "1", "22".repeat(32)], 1_000)],
+      new Map(),
+      new Set(),
+      oldStanding,
+      10_000,
+      undefined,
+      verifyVac,
+    );
+    expect(members.has(victim)).toBe(true); // dropped despite a structurally valid vac
+  });
+
+  it("non-vacuity: with verifyVac omitted, the same demoted-actor Kick succeeds (reproduces the pre-AUTH-08 gap)", () => {
+    const members = foldMembers(
+      [join(victim, 500), kick([expectedEid, "1", "22".repeat(32)], 1_000)],
+      new Map(),
+      new Set(),
+      oldStanding,
+      10_000,
+      // verifyVac intentionally omitted.
+    );
+    expect(members.has(victim)).toBe(false);
+  });
+
+  it("honors an owner Kick with vac omitted", () => {
+    const verifyVac = vacVerifier(currentState(false), PERM.KICK);
+    const members = foldMembers(
+      [join(victim, 500), kick(undefined, 1_000, owner)],
+      new Map(),
+      new Set(),
+      oldStanding,
+      10_000,
+      undefined,
+      verifyVac,
+    );
+    expect(members.has(victim)).toBe(false); // owner Kick honored
   });
 });
