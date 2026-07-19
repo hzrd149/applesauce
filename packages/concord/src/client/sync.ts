@@ -18,6 +18,7 @@
 
 import { firstValueFrom, toArray } from "rxjs";
 import { createSyncLoader } from "applesauce-loaders/loaders";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
@@ -29,6 +30,7 @@ import { decodeWrapCached, EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../h
 import { foldControl } from "../helpers/control.js";
 import { foldMembers } from "../helpers/guestbook.js";
 import { canActOn, refoundAuthority, resolveStanding } from "../helpers/permissions.js";
+import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import { PERM } from "../types.js";
 import type { CommunityState, DecodedEvent, JoinMaterial, Role } from "../types.js";
 
@@ -42,6 +44,12 @@ export interface EpochResult {
   transition: EpochTransition;
   /** Present when `transition === "adopt"`: the material for the next epoch. */
   adoptedMaterial?: JoinMaterial;
+  /** D-04 re-read (Pitfall 3): present when `transition === "known"` AND this
+   *  epoch's already-fetched rekey plane folds to an "adopt" outcome — a sibling
+   *  rotation the walk hadn't previously reconsidered. `syncEpochs` compares
+   *  `key` against the already-built next-epoch root and cascades the rebuild
+   *  only when it is STRICTLY lower (down-only, never re-fork a settled epoch). */
+  reReadAdopted?: { key: Uint8Array; epoch: number; material: JoinMaterial };
   /** Number of rumors routed while syncing this epoch. */
   rumors: number;
 }
@@ -175,22 +183,47 @@ export async function syncEpoch(
   );
   const state: CommunityState = { ...state0, members };
 
+  // A rotator may only remove US if they also strictly outrank us (CORD-04/
+  // CORD-06 §3 "in both"); no admin instance exists in the sync walk, so build
+  // the predicate directly from the same resolveStanding/canActOn primitives.
+  // Built unconditionally (not just for the tip) since the "known" branch's
+  // re-read below needs it too.
+  const canRemoveSelf = (rotator: string) =>
+    canActOn(
+      resolveStanding(rotator, epochMaterial.owner, rolesMap, state0.grants),
+      resolveStanding(ctx.self, epochMaterial.owner, rolesMap, state0.grants),
+      PERM.BAN,
+    );
+
   let transition: EpochTransition = "tip";
   let adoptedMaterial: JoinMaterial | undefined;
+  let reReadAdopted: EpochResult["reReadAdopted"];
   if (chainHasNext) {
     transition = "known";
+    // D-04 re-read spine (Pitfall 3): this epoch's rekey plane was already
+    // fully fetched above (step 2) — fold it via readRekey instead of
+    // discarding it, so a strictly-lower authorized sibling that arrives late
+    // is still discoverable on a later full walk. This does NOT change the
+    // "known" classification for the normal case; `syncEpochs` decides
+    // whether the winner beats the already-built next epoch and cascades.
+    const outcome = await readRekey(
+      keys,
+      rekey,
+      refoundAuthority(state),
+      ctx.self,
+      ctx.signer,
+      state.channels,
+      canRemoveSelf,
+    );
+    if (outcome.kind === "adopt")
+      reReadAdopted = {
+        key: hexToBytes(outcome.next.material.community_root),
+        epoch: outcome.epoch,
+        material: outcome.next.material,
+      };
   } else if (!ctx.signer.nip44) {
     transition = "cannot-follow";
   } else {
-    // A rotator may only remove US if they also strictly outrank us (CORD-04/
-    // CORD-06 §3 "in both"); no admin instance exists in the sync walk, so build
-    // the predicate directly from the same resolveStanding/canActOn primitives.
-    const canRemoveSelf = (rotator: string) =>
-      canActOn(
-        resolveStanding(rotator, epochMaterial.owner, rolesMap, state0.grants),
-        resolveStanding(ctx.self, epochMaterial.owner, rolesMap, state0.grants),
-        PERM.BAN,
-      );
     const outcome = await readRekey(
       keys,
       rekey,
@@ -208,7 +241,7 @@ export async function syncEpoch(
     }
   }
 
-  return { epoch: epochMaterial.root_epoch, keys, transition, adoptedMaterial, rumors };
+  return { epoch: epochMaterial.root_epoch, keys, transition, adoptedMaterial, reReadAdopted, rumors };
 }
 
 /**
@@ -234,7 +267,23 @@ export async function syncEpochs(ctx: SyncContext, material: JoinMaterial): Prom
       chain = [...chain, result.adoptedMaterial];
       continue;
     }
-    if (result.transition === "known") continue;
+    if (result.transition === "known") {
+      // D-04 cascade (Open Question 2): a strictly-lower re-read winner for this
+      // known epoch beats what `chain[i+1]` already recorded — discard
+      // chain[i+1..] (it was built on the abandoned branch) and rebuild the
+      // continuation from the corrected root; the forward walk regenerates
+      // everything past it from there. An equal-or-higher re-read keeps the
+      // existing chain untouched (down-only — never re-fork a settled epoch).
+      const next = chain[i + 1];
+      if (
+        result.reReadAdopted &&
+        next &&
+        isStrictlyLowerKey(hexToBytes(next.community_root), result.reReadAdopted.key)
+      ) {
+        chain = [...chain.slice(0, i + 1), result.reReadAdopted.material];
+      }
+      continue;
+    }
     // tip / cannot-follow: we still belong here → open live at these keys.
     // removed: a Refounding excluded us → no live subscription.
     if (result.transition === "removed") removed = true;
