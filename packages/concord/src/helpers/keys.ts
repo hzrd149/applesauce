@@ -556,6 +556,7 @@ async function readRekeyScoped(
   const decryptable: { key: Uint8Array; rotator: string }[] = [];
   const noBlobRotators: string[] = []; // genuinely excluded from these sets — removal candidates
   let opaqueCompetitor = false; // no-blob OR decrypt-threw set: cannot be ranked
+  let decryptThrew = false; // a blob at OUR locator decrypted-threw: positive keep-evidence, defer removal (D-06)
 
   for (const set of rotations) {
     if (!set.complete) continue;
@@ -577,6 +578,7 @@ async function readRekeyScoped(
       // evidence we're IN this set, outcome undetermined. Contributes ONLY to
       // the ambiguity check below — never to removal, never to adoption.
       opaqueCompetitor = true;
+      decryptThrew = true;
     }
   }
 
@@ -592,11 +594,15 @@ async function readRekeyScoped(
     return { kind: "adopt", newKey: winner.key, rotator: winner.rotator, epoch: targetEpoch };
   }
 
-  // No decryptable candidate at all. A decrypt-threw-only situation is
-  // undetermined (D-06), never removal — only a genuine no-blob set can honor
-  // removal, and only from a rotator authorized to remove US (CORD-04). An
-  // absent/false predicate denies the removal (fail-closed): we keep our
-  // current key either way.
+  // No decryptable candidate at all. A decrypt-throw at our own locator is
+  // positive evidence we WERE a recipient somewhere (D-06), undetermined but
+  // never absence — so defer even when a competing no-blob removal set also
+  // exists: transient keep-evidence outranks an unproven removal, and the
+  // down-only re-read spine revisits this epoch once the signer recovers.
+  if (decryptThrew) return { kind: "none" };
+  // Only a genuine no-blob set can honor removal, and only from a rotator
+  // authorized to remove US (CORD-04). An absent/false predicate denies the
+  // removal (fail-closed): we keep our current key either way.
   for (const rotator of noBlobRotators) {
     if (held.canRemoveSelf?.(rotator) === true) return { kind: "removed", epoch: targetEpoch };
   }

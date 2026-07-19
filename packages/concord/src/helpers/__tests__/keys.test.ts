@@ -538,6 +538,56 @@ describe("readRekeyScoped convergence — ROTATE-05/06/07 (D-06/D-10)", () => {
     const outcome = await readRekey(droppedKeys, events, () => true, droppedPub, dropped, [], () => true);
     expect(outcome.kind).toBe("removed");
   });
+
+  // CR-01 (ROTATE-05 / D-06): a keep-set whose blob decrypt THREW (transient
+  // signer blip) coexisting with a competing no-blob removal set from an
+  // outranking authorized rotator must STILL defer. The decrypt-throw is
+  // positive keep-evidence and outranks an unproven removal — regression for
+  // the false-eviction gap where the removal path ignored the decrypt-throw
+  // signal and honored the no-blob remover.
+  it("a transient decrypt failure defers even when a competing no-blob removal set exists (ROTATE-05, D-06)", async () => {
+    const { material } = await genesis();
+    const keeper = new PrivateKeySigner(generateSecretKey());
+    const keeperPub = await keeper.getPublicKey();
+    const remover = new PrivateKeySigner(generateSecretKey());
+    const removerPub = await remover.getPublicKey();
+    const victim = new PrivateKeySigner(generateSecretKey());
+    const victimPub = await victim.getPublicKey();
+    const victimKeys = deriveConcordKeys(material, []);
+
+    // Keep-set: keeper rotates and KEEPS the victim → a blob exists at the
+    // victim's locator (its decrypt throws under withThrowingDecrypt).
+    const planKeep = await buildRefounding(deriveConcordKeys(material, []), keeper, {
+      recipients: [keeperPub, victimPub],
+      self: keeperPub,
+      heads: [],
+      channels: [],
+    });
+    // Removal-set: remover rotates and EXCLUDES the victim → no blob, opaque.
+    const planRemove = await buildRefounding(deriveConcordKeys(material, []), remover, {
+      recipients: [removerPub],
+      self: removerPub,
+      heads: [],
+      channels: [],
+    });
+    const isAuthorized = (rotator: string) => rotator === keeperPub || rotator === removerPub;
+    const events = decodeRekey(victimKeys, [...planKeep.rekeyWraps, ...planRemove.rekeyWraps]);
+
+    // EXPECTED: {kind: "none"} — D-06's "a decrypt failure is never absence,
+    // never removal" applied across BOTH sets: the throw at our keep-locator
+    // defers the whole epoch, so the outranking remover's no-blob set cannot
+    // evict us. Hand-derived from the D-06 ruling, never read back from the fold.
+    const outcome = await readRekey(
+      victimKeys,
+      events,
+      isAuthorized,
+      victimPub,
+      withThrowingDecrypt(victim),
+      [],
+      () => true, // remover outranks the victim — must STILL not remove
+    );
+    expect(outcome.kind).toBe("none");
+  });
 });
 
 // D-08/D-12 (ROTATE-08): the receive-side vac gate is a SEPARATE, independent
