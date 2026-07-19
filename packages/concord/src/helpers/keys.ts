@@ -378,11 +378,18 @@ export async function buildRefounding(
   const newControl = controlGroupKey(newRoot, cidBytes, newEpoch);
   const compactionWraps: NostrEvent[] = [];
   for (const head of opts.heads) {
-    if (!head.seal || head.sealKind !== PLAINTEXT_SEAL_KIND) continue;
+    // CORD-06 §3: "If the Refounder cannot reliably fold all Control events, the
+    // Refounding must be aborted." A non-plaintext or un-rewrappable head can't be
+    // safely compacted into the new epoch — abort (throw) BEFORE any wraps are
+    // returned, rather than silently skipping it and shipping a partial
+    // compactionWraps set. buildRefounding is awaited before refound() publishes
+    // anything, so this throw aborts the whole Refounding atomically.
+    if (!head.seal || head.sealKind !== PLAINTEXT_SEAL_KIND)
+      throw new Error("refounding aborted: control head cannot be folded into the new epoch");
     try {
       compactionWraps.push(rewrapSeal(head.seal, newControl.sk, newControl.convKey));
     } catch {
-      /* an encrypted-seal head can't re-wrap; control heads are plaintext by construction */
+      throw new Error("refounding aborted: control head cannot be folded into the new epoch");
     }
   }
 
