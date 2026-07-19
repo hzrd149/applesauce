@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { blankEventTemplate } from "applesauce-core/factories";
 
 import type { RumorTemplate } from "../../types.js";
-import { epochKeyCommitment } from "../crypto.js";
+import { epochKeyCommitment, grantLocator } from "../crypto.js";
+import { includeRekeyChunk } from "../../operations/rekey.js";
 import {
   buildRekeyRumors,
   checkContinuity,
@@ -12,6 +14,7 @@ import {
   parseRekey,
   REKEY_KIND,
   rekeyScopeId,
+  type RekeyRotation,
 } from "../rekey.js";
 import { decoded } from "./test-utils.js";
 
@@ -220,5 +223,47 @@ describe("rekey codec", () => {
     expect(rumors).toHaveLength(1);
     expect(rumors[0].tags).toContainEqual(["chunk", "1", "1"]);
     expect(JSON.parse(rumors[0].content)).toEqual([]);
+  });
+
+  // D-08: a non-owner rotation cites the Grant it acts under (CORD-04 §3 —
+  // "a rotation cites the Grant it acts under like any authority action"),
+  // round-tripped through the wire exactly like includeKickTarget's vac.
+  it("a non-owner rotation's vac citation round-trips through includeRekeyChunk → parseRekey (D-08)", async () => {
+    const rotatorPub = "ab".repeat(32);
+    const communityId = new Uint8Array(32).fill(7);
+    // EXPECTED eid, hand-derived ONLY from grantLocator (CORD-04's member-Grant
+    // coordinate formula) — never read back from includeRekeyChunk/parseRekey.
+    const expectedEid = grantLocator(communityId, rotatorPub);
+    const vac: [string, string, string] = [expectedEid, "3", "dd".repeat(32)];
+    const rotation: RekeyRotation = {
+      scope: { kind: "root" },
+      newEpoch: 5n,
+      prevEpoch: 4n,
+      prevCommit: "ee".repeat(32),
+      vac,
+    };
+    const blobs = [{ locator: "loc1", wrapped: "w1" }];
+    const template = await includeRekeyChunk(rotation, blobs, 1, 1)(blankEventTemplate(REKEY_KIND));
+
+    const parsed = parseRekey(decoded(template as RumorTemplate, rotatorPub));
+    expect(parsed).not.toBeNull();
+    expect(parsed!.vac).toEqual(vac);
+    expect(parsed!.vac?.[0]).toBe(expectedEid);
+  });
+
+  it("an owner rotation (no vac) parses with vac undefined", async () => {
+    const ownerPub = "cd".repeat(32);
+    const rotation: RekeyRotation = {
+      scope: { kind: "root" },
+      newEpoch: 2n,
+      prevEpoch: 1n,
+      prevCommit: "ff".repeat(32),
+      // no vac — owner exemption (D-08).
+    };
+    const template = await includeRekeyChunk(rotation, [], 1, 1)(blankEventTemplate(REKEY_KIND));
+    const parsed = parseRekey(decoded(template as RumorTemplate, ownerPub));
+    expect(parsed).not.toBeNull();
+    expect(parsed!.vac).toBeUndefined();
+    expect(template.tags.some((t) => t[0] === "vac")).toBe(false);
   });
 });

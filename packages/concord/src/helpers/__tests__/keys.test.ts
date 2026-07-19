@@ -19,7 +19,7 @@ import {
   rollForward,
   wrapForTarget,
 } from "../keys.js";
-import { baseRekeyGroupKey, channelGroupKey, controlGroupKey, guestbookGroupKey } from "../crypto.js";
+import { baseRekeyGroupKey, channelGroupKey, controlGroupKey, grantLocator, guestbookGroupKey } from "../crypto.js";
 import { decodeWrap } from "../gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent, JoinMaterial } from "../../types.js";
 
@@ -483,6 +483,130 @@ describe("readRekeyScoped convergence — ROTATE-05/06/07 (D-06/D-10)", () => {
     // EXPECTED: {kind: "removed"} — CORD-06 §2's removal rule, unmodified by
     // D-10 since no opaque competitor exists here.
     const outcome = await readRekey(droppedKeys, events, () => true, droppedPub, dropped, [], () => true);
+    expect(outcome.kind).toBe("removed");
+  });
+});
+
+// D-08/D-12 (ROTATE-08): the receive-side vac gate is a SEPARATE, independent
+// check from `isAuthorized`/`canRemoveSelf` — a rotation the roster-bit check
+// alone would honor is still excluded from candidacy (both adopt and removed)
+// when its vac citation is missing or doesn't structurally resolve. Every
+// `verifyVac` predicate below is hand-rolled in the test (never imported from
+// `helpers/permissions.ts`'s `vacVerifier`), and every expected eid is
+// hand-derived from `grantLocator` — CORD-04 §3's "a rotation cites the Grant
+// it acts under" plus the D-08/D-12 rulings, never read back from the fold
+// under test.
+describe("readRekeyScoped vac verification (D-08/D-12)", () => {
+  /** The hand-rolled vac verifier every test in this block uses: owner exempt,
+   *  otherwise the citation's eid must equal grantLocator(community_id, rotator)
+   *  — a purely structural check, matching D-12 (no live edition re-fetch). */
+  function handRolledVerifyVac(material: JoinMaterial) {
+    const cidBytes = hexToBytes(material.community_id);
+    return (rotator: string, vac: [string, string, string] | undefined): boolean => {
+      if (rotator === material.owner) return true;
+      if (!vac) return false;
+      return vac[0] === grantLocator(cidBytes, rotator);
+    };
+  }
+
+  it("a non-owner rotation whose vac eid does not resolve to grantLocator is rejected — excluded from both adopt and removed", async () => {
+    const { material } = await genesis();
+    const dropped = new PrivateKeySigner(generateSecretKey());
+    const droppedPub = await dropped.getPublicKey();
+    const droppedKeys = deriveConcordKeys(material, []);
+    const rotator = new PrivateKeySigner(generateSecretKey());
+    const rotatorPub = await rotator.getPublicKey();
+
+    // A complete rotation the test's OWN isAuthorized/canRemoveSelf predicates
+    // (both hardcoded true) would otherwise honor as a removal — but its vac
+    // eid is hand-derived to NOT match grantLocator(cid, rotatorPub).
+    const plan = await buildRefounding(deriveConcordKeys(material, []), rotator, {
+      recipients: [rotatorPub],
+      self: rotatorPub,
+      heads: [],
+      channels: [],
+      vac: ["00".repeat(32), "1", "11".repeat(32)],
+    });
+    const events = decodeRekey(droppedKeys, plan.rekeyWraps);
+
+    const outcome = await readRekey(
+      droppedKeys,
+      events,
+      () => true, // isAuthorized: independent of vac, deliberately permissive here
+      droppedPub,
+      dropped,
+      [],
+      () => true, // canRemoveSelf: would honor the removal absent the vac gate
+      handRolledVerifyVac(material),
+    );
+    // EXPECTED: {kind: "none"} — the vac gate excludes this set from candidacy
+    // entirely (D-08), so it contributes to NEITHER removal nor adoption, even
+    // though isAuthorized/canRemoveSelf alone would have honored it.
+    expect(outcome.kind).toBe("none");
+  });
+
+  it("a non-owner rotation whose vac correctly resolves is honored (positive control)", async () => {
+    const { material } = await genesis();
+    const dropped = new PrivateKeySigner(generateSecretKey());
+    const droppedPub = await dropped.getPublicKey();
+    const droppedKeys = deriveConcordKeys(material, []);
+    const rotator = new PrivateKeySigner(generateSecretKey());
+    const rotatorPub = await rotator.getPublicKey();
+
+    // EXPECTED eid, hand-derived ONLY from grantLocator — never read back from
+    // buildRefounding/vacVerifier.
+    const expectedEid = grantLocator(hexToBytes(material.community_id), rotatorPub);
+    const plan = await buildRefounding(deriveConcordKeys(material, []), rotator, {
+      recipients: [rotatorPub],
+      self: rotatorPub,
+      heads: [],
+      channels: [],
+      vac: [expectedEid, "1", "22".repeat(32)],
+    });
+    const events = decodeRekey(droppedKeys, plan.rekeyWraps);
+
+    const outcome = await readRekey(
+      droppedKeys,
+      events,
+      () => true,
+      droppedPub,
+      dropped,
+      [],
+      () => true,
+      handRolledVerifyVac(material),
+    );
+    expect(outcome.kind).toBe("removed");
+  });
+
+  it("the owner's rotation is honored with no vac at all (owner exemption, D-08)", async () => {
+    const { owner, ownerPub, material } = await genesis();
+    const dropped = new PrivateKeySigner(generateSecretKey());
+    const droppedPub = await dropped.getPublicKey();
+    const droppedKeys = deriveConcordKeys(material, []);
+
+    // The owner rotates without a vac at all — buildRefounding/refound never
+    // cite one for the owner (vacFor returns undefined for actor === owner).
+    const plan = await buildRefounding(deriveConcordKeys(material, []), owner, {
+      recipients: [ownerPub],
+      self: ownerPub,
+      heads: [],
+      channels: [],
+    });
+    const events = decodeRekey(droppedKeys, plan.rekeyWraps);
+
+    const outcome = await readRekey(
+      droppedKeys,
+      events,
+      () => true,
+      droppedPub,
+      dropped,
+      [],
+      () => true,
+      handRolledVerifyVac(material),
+    );
+    // EXPECTED: {kind: "removed"} — the owner needs no vac at all (CORD-04/D-08:
+    // inherent authority, not a delegated Grant), matching refoundAuthority/
+    // vacFor's existing ownership model.
     expect(outcome.kind).toBe("removed");
   });
 });
