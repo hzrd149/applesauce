@@ -33,7 +33,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 5.1: Symbol Propagation Redesign (INSERTED)** - Every symbol write becomes non-enumerable and the factory pipeline carries the `PRESERVE_EVENT_SYMBOLS` whitelist explicitly, collapsing the identity-memo/carry-forward taxonomy into one rule and deleting the strip loops (completed 2026-07-16)
 - [x] **Phase 6: Refounding Rotation & Authority Correctness** - A Refounding actually rotates its addresses in-session, drops excluded members from the memberlist, and is honored only from a rotator who outranks every removed target (completed 2026-07-16)
 - [x] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug) (completed 2026-07-17)
-- [ ] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member
+- [x] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member (completed 2026-07-19)
 - [ ] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state
 - [ ] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant
 - [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define
@@ -207,7 +207,7 @@ Plans:
   5. Historical epoch material does not inherit the tip's `refounder`, and a Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction.
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-06 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the continuity math, the `lowerKeyWins` tie-break, and the complete-set gate, each with expected outcomes derived by hand from the §2/§3 rules rather than observed from the implementation.
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans complete
 
 Plans:
 
@@ -227,7 +227,7 @@ Plans:
 
 **Wave 4** *(build/chain hardening on keys.ts + sync.ts, after vac)*
 
-- [ ] 08-06-PLAN.md — buildRefounding abort-on-unfoldable-head + per-epoch refounder de-inheritance (D-01/L01, ROTATE-13/12) (wave 4)
+- [x] 08-06-PLAN.md — buildRefounding abort-on-unfoldable-head + per-epoch refounder de-inheritance (D-01/L01, ROTATE-13/12) (wave 4)
 
 **Note**: Both spec rulings were resolved during discuss/plan (neither "no change"). ROTATE-13 (M-conflict) → D-01: fail-closed abort (08-06). ROTATE-10 (S03) → D-02: consistency-guard, NOT a correlation-key change (08-02). D-10/D-11/D-12 further ruled this planning session (opaque-fork defer; per-wrap majority; folded-Roster structural vac check).
 
@@ -311,7 +311,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete    | 2026-07-16 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
-| 8. Rotation Robustness & Consensus | v1.1 | 5/6 | In Progress|  |
+| 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete   | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 0/TBD | Not started | - |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |

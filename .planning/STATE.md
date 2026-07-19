@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 08
 current_phase_name: rotation-robustness-consensus
-status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-07-19T14:41:16.337Z"
+status: verifying
+stopped_at: Completed 08-06-PLAN.md
+last_updated: "2026-07-19T15:03:22.325Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 9
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 40
-  completed_plans: 39
-  percent: 44
+  completed_plans: 40
+  percent: 56
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 08 (rotation-robustness-consensus) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-19 — Phase 08 execution started
 
 Progress: [█████████░] 93%
@@ -60,6 +60,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 08 P03 | 21min | 2 tasks | 2 files |
 | Phase 08 P04 | 15min | 2 tasks | 2 files |
 | Phase 08 P05 | 35min | 3 tasks | 11 files |
+| Phase 08 P06 | 17min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 08-05: centralized vacVerifier(state, requiredPerm) in helpers/permissions.ts next to refoundAuthority, shared by root (PERM.BAN) and channel (PERM.MANAGE_CHANNELS) scopes rather than duplicating the owner-exempt/grantLocator/hasPerm logic
 - [Phase ?]: 08-05: Rule 2 auto-fix -- extended vac emission to rotateChannel/buildChannelRekey (plan's Task 1 text covered only refound/buildRefounding) since Task 2 wires verifyVac into both root and channel scopes, and omitting channel emission would have regressed every non-owner channel rotation
 - [Phase ?]: 08-05: Rule 1 auto-fix -- extended verifyVac wiring to the live checkRekey() paths in community.ts/private-channel.ts (plan's Task 2 text covered only the sync-walk paths sync.ts/channel-sync.ts), mirroring Phase 06-03's precedent where canRemoveSelf had the same walk-vs-live gap
+- [Phase 08-06]: buildRefounding throws (not continue/swallow) on any unfoldable Control head — awaited pre-publish in refound(), so the throw aborts the whole Refounding atomically
+- [Phase 08-06]: held_roots.refounder and buildChain's per-epoch refounder are only ever set when they have a value (never explicit undefined) — applesauce-core's EventStore.model() caches by a value-based hash (hash_sum(args)), and an explicit undefined key changes that hash even though the JSON form is unchanged
 
 ### Pending Todos
 
@@ -131,8 +134,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-19T14:37:50.346Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-07-19T15:03:22.313Z
+Stopped at: Completed 08-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
