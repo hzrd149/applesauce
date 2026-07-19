@@ -96,6 +96,11 @@ export interface RekeyRotation {
   prevEpoch: bigint;
   /** The epoch-key commitment over the key being replaced (continuity check). */
   prevCommit: string;
+  /** The rotator's own Grant citation (CORD-04 `vac`, D-08): `[eid, version, hash]`
+   *  of the rotator's Grant edition, proving the authority this rotation acts
+   *  under — mirrors `includeKickTarget`/`vacFor`. Omitted for the owner, whose
+   *  authority is proven by the community_id itself, never a delegated Grant. */
+  vac?: [string, string, string];
 }
 
 /**
@@ -133,6 +138,10 @@ export interface ParsedRekey {
   blobs: RekeyBlob[];
   ms: number;
   wrapId: string;
+  /** The rotator's Grant citation (CORD-04 `vac`, D-08), if the `["vac", eid,
+   *  version, hash]` tag is present; absent for the owner (and for a malformed
+   *  tag, treated identically to absence). */
+  vac?: [string, string, string];
 }
 
 /** Parse a decoded rekey stream event into its rotation fields (returns null on malformed). */
@@ -169,6 +178,9 @@ export function parseRekey(d: DecodedEvent): ParsedRekey | null {
   } catch {
     return null;
   }
+  const vacTag = get("vac");
+  const vac: [string, string, string] | undefined =
+    vacTag && vacTag[1] && vacTag[2] && vacTag[3] ? [vacTag[1], vacTag[2], vacTag[3]] : undefined;
   return {
     rotator: d.author,
     scopeIdHex: scope.toLowerCase(),
@@ -180,6 +192,7 @@ export function parseRekey(d: DecodedEvent): ParsedRekey | null {
     blobs,
     ms: d.ms,
     wrapId: d.wrapId,
+    vac,
   };
 }
 
@@ -198,6 +211,11 @@ export interface RekeyRotationSet {
   chunkCount: number;
   /** chunkIndex → chunk. */
   chunks: Map<number, ParsedRekey>;
+  /** The rotator's Grant citation (CORD-04 `vac`, D-08), captured from the FIRST
+   *  chunk that created this bucket — mirrors `chunkCount`'s capture-at-creation
+   *  convention. Cross-chunk vac agreement is out of scope (a mismatch doesn't
+   *  independently ride the `consistent` flag). */
+  vac?: [string, string, string];
   /**
    * False when chunks correlated into this bucket disagree on `chunkCount` (n)
    * or `prevEpoch` — a resumed rotation minting a different keep-list (and thus
@@ -227,6 +245,7 @@ export function groupRotations(parsed: ParsedRekey[]): RekeyRotationSet[] {
           prevCommit: p.prevCommit,
           chunkCount: p.chunkCount,
           chunks: new Map(),
+          vac: p.vac,
           consistent: true,
           complete: false,
         }),

@@ -329,6 +329,10 @@ export async function buildRefounding(
     channelRekeys?: Array<{ channel: ChannelKey; recipients: string[] }>;
     /** Injectable new root (tests); defaults to a fresh random key. */
     newRoot?: Uint8Array;
+    /** The rotator's own Grant citation (CORD-04 `vac`, D-08) — omitted for the
+     *  owner. Rides both the root-roll rumors and any bundled channel rekeys
+     *  (same rotator, same citation). */
+    vac?: [string, string, string];
   },
 ): Promise<RefoundingPlan> {
   if (!signer.nip44) throw new Error("this signer can't rotate keys (NIP-44 unsupported)");
@@ -351,7 +355,7 @@ export async function buildRefounding(
   const rekeyAddr = baseRekeyGroupKey(oldRoot, cidBytes, newEpoch);
   const rekeyWraps: NostrEvent[] = [];
   for (const rumor of buildRekeyRumors(
-    { scope: { kind: "root" }, newEpoch: BigInt(newEpoch), prevEpoch: BigInt(oldEpoch), prevCommit },
+    { scope: { kind: "root" }, newEpoch: BigInt(newEpoch), prevEpoch: BigInt(oldEpoch), prevCommit, vac: opts.vac },
     blobs,
   )) {
     const wrap = await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await rumor);
@@ -365,7 +369,7 @@ export async function buildRefounding(
   //     into `next` — each channel's sub-engine reads its own rekey and persists.
   const channelRekeyWraps: NostrEvent[] = [];
   for (const { channel, recipients } of opts.channelRekeys ?? []) {
-    const cr = await buildChannelRekey(material, channel, signer, { recipients, self: opts.self });
+    const cr = await buildChannelRekey(material, channel, signer, { recipients, self: opts.self, vac: opts.vac });
     channelRekeyWraps.push(...cr.rekeyWraps);
   }
 
@@ -655,7 +659,14 @@ export async function buildChannelRekey(
   material: JoinMaterial,
   channel: ChannelKey,
   signer: ISigner,
-  opts: { recipients: string[]; self: string; newKey?: Uint8Array; priorRoot?: string },
+  opts: {
+    recipients: string[];
+    self: string;
+    newKey?: Uint8Array;
+    priorRoot?: string;
+    /** The rotator's own Grant citation (CORD-04 `vac`, D-08) — omitted for the owner. */
+    vac?: [string, string, string];
+  },
 ): Promise<{ rekeyWraps: NostrEvent[]; next: ChannelKey; newEpoch: number }> {
   if (!signer.nip44) throw new Error("this signer can't rotate keys (NIP-44 unsupported)");
   const channelId = hexToBytes(channel.id);
@@ -674,7 +685,13 @@ export async function buildChannelRekey(
   const rekeyAddr = channelRekeyGroupKey(hexToBytes(opts.priorRoot ?? material.community_root), channelId, newEpoch);
   const rekeyWraps: NostrEvent[] = [];
   for (const rumor of buildRekeyRumors(
-    { scope: { kind: "channel", channelId }, newEpoch: BigInt(newEpoch), prevEpoch: BigInt(oldEpoch), prevCommit },
+    {
+      scope: { kind: "channel", channelId },
+      newEpoch: BigInt(newEpoch),
+      prevEpoch: BigInt(oldEpoch),
+      prevCommit,
+      vac: opts.vac,
+    },
     blobs,
   )) {
     rekeyWraps.push(await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await rumor));

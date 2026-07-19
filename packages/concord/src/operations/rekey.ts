@@ -31,6 +31,9 @@ export function includeRekeyChunk(
     setSingletonTag(["prevcommit", rotation.prevCommit]),
     addNameValueTag(["chunk", String(index), String(count)], false),
     setSingletonTag(["ms", String(ms % 1000)]),
+    // A non-owner rotation cites the Grant it acts under (CORD-04 `vac`, D-08),
+    // mirroring includeKickTarget/vacFor; the owner omits it entirely.
+    rotation.vac ? addNameValueTag(["vac", ...rotation.vac], false) : undefined,
   );
   return async (draft) => ({ ...(await tags(draft)), content: JSON.stringify(blobs) });
 }

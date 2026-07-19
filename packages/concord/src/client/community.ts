@@ -1036,7 +1036,14 @@ export class ConcordCommunity {
 
     const excluded = new Set(opts.exclude ?? []);
     const recipients = [...new Set([this.pubkey, ...opts.keep])].filter((pk) => !excluded.has(pk));
-    const plan = await buildChannelRekey(this.material, channelKey, this.signer, { recipients, self: this.pubkey });
+    // CORD-04/D-08: cite our own Grant (undefined for the owner) so a receiver
+    // can vac-verify this channel rekey against its folded Roster.
+    const vac = await this.admin.vacFor(this.pubkey);
+    const plan = await buildChannelRekey(this.material, channelKey, this.signer, {
+      recipients,
+      self: this.pubkey,
+      vac,
+    });
 
     const relays = this.relays();
     for (const wrap of plan.rekeyWraps)
@@ -1239,12 +1246,17 @@ export class ConcordCommunity {
       return [{ channel, recipients: recips }];
     });
 
+    // CORD-04/D-08: cite our own Grant (undefined for the owner) so a receiver
+    // can vac-verify this Refounding (and any bundled channel rekeys) against
+    // its folded Roster.
+    const vac = await this.admin.vacFor(this.pubkey);
     const plan = await buildRefounding(this.keys, this.signer, {
       recipients,
       self: this.pubkey,
       heads: this.controlHeadsWithSeals(),
       channels: state.channels,
       channelRekeys,
+      vac,
     });
 
     // D-09/D-11/ROTATE-09 (T-08-06): publish acks are the only evidence anyone
