@@ -42,6 +42,7 @@ import {
 } from "../helpers/keys.js";
 import type { GroupKey } from "../helpers/crypto.js";
 import { hasChannelKey } from "../helpers/community.js";
+import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { checkChatBinding } from "../helpers/chat.js";
@@ -262,7 +263,11 @@ export class ConcordCommunity {
   private seenRelays = new Set<string>();
   private liveAuthors = "";
   private rekeyTimer?: ReturnType<typeof setTimeout>;
-  private rekeyHandled = new Set<number>();
+  /** epoch → lowest adopted root key (D-04 down-only anti-refork latch). A
+   *  strictly lower sibling replaces the entry; an equal-or-higher one is
+   *  ignored — a settled epoch can heal DOWN but never re-fork UP. In-memory
+   *  only per engine (not persisted; A3). */
+  private rekeyHandled = new Map<number, Uint8Array>();
   private started = false;
   private disposed = false;
 
@@ -774,10 +779,18 @@ export class ConcordCommunity {
       (rotator) => this.admin.hasPerm(rotator, PERM.BAN, this.standingOf(this.pubkey).position),
     );
     if (outcome.kind === "none" || this.disposed) return;
-    if (this.rekeyHandled.has(outcome.epoch)) return;
-    this.rekeyHandled.add(outcome.epoch);
-    if (outcome.kind === "adopt") this.adoptRefounding(outcome.next);
-    else this.handleRemoved();
+    if (outcome.kind === "removed") {
+      this.handleRemoved();
+      return;
+    }
+    // Down-only latch (D-04): adopt when unlatched, or when the candidate root
+    // key is STRICTLY lower than the latched one; an equal-or-higher sibling is
+    // already-converged and ignored, so a settled epoch can never re-fork.
+    const candidate = hexToBytes(outcome.next.material.community_root);
+    const latched = this.rekeyHandled.get(outcome.epoch);
+    if (latched && !isStrictlyLowerKey(latched, candidate)) return;
+    this.rekeyHandled.set(outcome.epoch, candidate);
+    this.adoptRefounding(outcome.next);
   }
 
   /** Follow a Refounding forward: swap in the rolled-forward key state, reopen the
@@ -1244,7 +1257,7 @@ export class ConcordCommunity {
     for (const wrap of plan.compactionWraps) this.pool.publish(relays, wrap).catch(() => {});
     for (const wrap of plan.snapshotWraps) this.pool.publish(relays, wrap).catch(() => {});
 
-    this.rekeyHandled.add(plan.newEpoch);
+    this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
     this.adoptRefounding(plan.next);
   }
 

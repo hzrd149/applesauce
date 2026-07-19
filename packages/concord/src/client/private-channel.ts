@@ -8,6 +8,7 @@
 // consumers read its `store` with the standard timeline/model API.
 
 import { BehaviorSubject, Observable, Subscription, combineLatest, shareReplay } from "rxjs";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { ISigner } from "applesauce-signers";
@@ -18,6 +19,7 @@ import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo }
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { checkChatBinding } from "../helpers/chat.js";
 import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
+import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import type {
   ChannelKey,
   ConcordPrivateChannelStatus,
@@ -83,7 +85,10 @@ export class ConcordPrivateChannel {
   private seenRelays = new Set<string>();
   private liveAuthors = "";
   private rekeyTimer?: ReturnType<typeof setTimeout>;
-  private rekeyHandled = new Set<number>();
+  /** epoch → lowest adopted channel key (D-04 down-only anti-refork latch). A
+   *  strictly lower sibling replaces the entry; an equal-or-higher one is
+   *  ignored — mirrors community.ts's root-scope latch, in-memory only (A3). */
+  private rekeyHandled = new Map<number, Uint8Array>();
   private started = false;
   private disposed = false;
 
@@ -267,12 +272,17 @@ export class ConcordPrivateChannel {
       this.opts.canRemoveSelf,
     );
     if (outcome.kind === "none" || this.disposed) return;
-    if (this.rekeyHandled.has(outcome.epoch)) return;
-    this.rekeyHandled.add(outcome.epoch);
     if (outcome.kind === "removed") {
       this.handleRemoved();
       return;
     }
+    // Down-only latch (D-04): adopt when unlatched, or when the candidate
+    // channel key is STRICTLY lower than the latched one; an equal-or-higher
+    // sibling is already-converged and ignored (never re-fork a settled epoch).
+    const candidate = hexToBytes(outcome.next.key);
+    const latched = this.rekeyHandled.get(outcome.epoch);
+    if (latched && !isStrictlyLowerKey(latched, candidate)) return;
+    this.rekeyHandled.set(outcome.epoch, candidate);
     // Adopt: roll to the new key, persist, reopen live, and catch up the new
     // epoch's message history (published between the rekey and now).
     this.setChannelKey(outcome.next);

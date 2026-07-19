@@ -262,6 +262,18 @@ export function lowerKeyWins(a: Uint8Array, b: Uint8Array): Uint8Array {
   return bytesToHex(a) <= bytesToHex(b) ? a : b;
 }
 
+/**
+ * D-04's down-only anti-refork test: is `candidate` STRICTLY lower than
+ * `existing` (never equal, never higher)? Built from {@link lowerKeyWins} plus
+ * a byte-inequality check, so a settled epoch's latch can only ever move down,
+ * never sideways or up. Shared by both the root (community.ts) and channel
+ * (private-channel.ts) `checkRekey` latches, and the sync-walk re-read cascade,
+ * so all three agree on exactly the same ordering.
+ */
+export function isStrictlyLowerKey(existing: Uint8Array, candidate: Uint8Array): boolean {
+  return lowerKeyWins(existing, candidate) === candidate && bytesToHex(existing) !== bytesToHex(candidate);
+}
+
 /** Compute a rotation locator from PUBLIC inputs only (bunker-friendly). */
 export function rekeyLocator(rotatorHex: string, recipientHex: string, scopeIdHex: string, newEpoch: bigint): string {
   return recipientLocator(rotatorHex, recipientHex, hexToBytes(scopeIdHex), Number(newEpoch));
