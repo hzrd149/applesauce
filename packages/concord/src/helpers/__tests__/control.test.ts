@@ -419,6 +419,88 @@ describe("control fold", () => {
     expect(state.roles.some((r) => r.role_id === (100).toString(16).padStart(64, "0"))).toBe(false);
   });
 
+  // AUTH-06: Role.position must be a positive integer strictly below the
+  // roleless sentinel (CORD-04 §3, `"position": <u32>`, 0 reserved for the
+  // owner; ROLELESS_POSITION = 0xffffffff, permissions.ts:34). The existing
+  // `role.position <= s.position` / `role.position <= 0` checks alone let a
+  // bad value through: `NaN <= x` is always false (so the guard never
+  // triggers), and a float passes an integer-shaped `<=` bound. Values are
+  // hand-picked from the spec's u32 boundary, not read from foldControl's
+  // own output: a wire-arrived non-numeric "NaN" text, a float (1.5), an
+  // omitted position field (undefined — the project's "hand-rolled literal
+  // drops an optional field" bug class), and the roleless sentinel itself
+  // (0xffffffff, which must never be claimable by an actual role).
+  it("rejects a Role.position that is not a positive integer below the roleless sentinel (AUTH-06)", async () => {
+    const genesis = await newCommunity();
+    const cidBytes = hexToBytes(genesis.material.community_id);
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const badRoleBase = (roleId: string, position: unknown) => {
+      const base: Record<string, unknown> = { role_id: roleId, name: "bad", permissions: "0", scope: { kind: "server" }, color: 0 };
+      if (position !== undefined) base.position = position;
+      return JSON.stringify(base);
+    };
+    const badCases: Array<{ label: string; position: unknown }> = [
+      { label: "NaN", position: "NaN" },
+      { label: "1.5", position: 1.5 },
+      { label: "undefined", position: undefined },
+      { label: "0xffffffff", position: 0xffffffff },
+    ];
+
+    const roleIdFor = (i: number) => (i + 1).toString(16).padStart(64, "0");
+    const memberFor = (i: number) => (0xa0 + i).toString(16).padStart(2, "0").repeat(32);
+
+    for (let i = 0; i < badCases.length; i++) {
+      const roleId = roleIdFor(i);
+      const roleEd = await EditionFactory.create({
+        vsk: VSK.ROLE,
+        eid: roleId,
+        version: 1,
+        content: badRoleBase(roleId, badCases[i].position),
+      });
+      events.push(decoded(roleEd, genesis.material.owner, 2_000 + i));
+
+      const member = memberFor(i);
+      const grant = await EditionFactory.create({
+        vsk: VSK.GRANT,
+        eid: grantLocator(cidBytes, member),
+        version: 1,
+        content: JSON.stringify({ member, role_ids: [roleId] }),
+      });
+      events.push(decoded(grant, genesis.material.owner, 2_500 + i));
+    }
+
+    // A control case: a valid positive-integer position must still fold.
+    const goodRoleId = "0a".repeat(32);
+    const goodMember = "b0".repeat(32);
+    const goodRole = { role_id: goodRoleId, name: "good", position: 7, permissions: PERM.MANAGE_METADATA.toString(), scope: { kind: "server" }, color: 0 };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: goodRoleId, version: 1, content: JSON.stringify(goodRole) }), genesis.material.owner, 2_900));
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: grantLocator(cidBytes, goodMember),
+          version: 1,
+          content: JSON.stringify({ member: goodMember, role_ids: [goodRoleId] }),
+        }),
+        genesis.material.owner,
+        2_950,
+      ),
+    );
+
+    const state = foldControl(events, genesis.material);
+
+    for (let i = 0; i < badCases.length; i++) {
+      const roleId = roleIdFor(i);
+      const member = memberFor(i);
+      expect(state.roles.some((r) => r.role_id === roleId), `role.position=${badCases[i].label} must be skipped`).toBe(false);
+      expect(state.grants.has(member), `role.position=${badCases[i].label} must confer no grant`).toBe(false);
+    }
+
+    expect(state.roles.some((r) => r.role_id === goodRoleId)).toBe(true);
+    expect(state.grants.get(goodMember)).toEqual([goodRoleId]);
+  });
+
   it("keeps a deleted role visible in state but strips its authority", async () => {
     const genesis = await newCommunity();
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
