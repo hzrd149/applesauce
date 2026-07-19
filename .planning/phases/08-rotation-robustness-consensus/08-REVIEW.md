@@ -17,7 +17,9 @@ findings:
   warning: 3
   info: 2
   total: 6
+  critical_resolved: 1
 status: issues_found
+resolution_note: "CR-01 (critical) fixed in commit 920676ee with a spec-derived regression test; 3 warnings + 2 info remain open for triage."
 ---
 
 # Phase 8: Code Review Report
@@ -51,6 +53,9 @@ live path being unable to down-heal an already-adopted epoch) are also called ou
 ## Critical Issues
 
 ### CR-01: Transient decrypt failure causes false removal when a competing no-blob rotation exists
+
+> **RESOLVED** in commit `920676ee` — added a separate `decryptThrew` flag in `readRekeyScoped`; when set with no decryptable winner, the fold returns `{ kind: "none" }` before the removal loop, so a transient decrypt-throw defers even beside an outranking no-blob removal set. Spec-derived regression test added (fails without the fix, passes with it); full concord suite 233/233 green.
+
 
 **File:** `packages/concord/src/helpers/keys.ts:560-603` (`readRekeyScoped`)
 **Issue:**
