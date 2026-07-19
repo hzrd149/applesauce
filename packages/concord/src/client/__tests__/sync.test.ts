@@ -21,7 +21,8 @@ import { buildRefounding, deriveConcordKeys, rollForward, wrapForTarget } from "
 import { grantLocator } from "../../helpers/crypto.js";
 import { computeEditionHash } from "../../helpers/editions.js";
 import { PERM, VSK } from "../../types.js";
-import { syncEpochs, type SyncContext } from "../sync.js";
+import type { JoinMaterial } from "../../types.js";
+import { buildChain, syncEpochs, type SyncContext } from "../sync.js";
 
 // A RelayPool stand-in that serves `events` matching each REQ's authors/kinds and
 // completes (EOSE). No NIP-77, no live subscription — identical shape to
@@ -256,5 +257,56 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
     expect(epoch0Result.reReadAdopted?.key).toEqual(highKey);
     expect(second.tipKeys?.material.root_epoch).toBe(1);
     expect(second.tipKeys?.material.community_root).toBe(bytesToHex(highKey));
+  });
+});
+
+describe("buildChain — per-epoch refounder attribution (ROTATE-12/L01)", () => {
+  it("attributes each synthesized epoch's refounder from its OWN held_roots entry, not the tip's", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const rotatorA = new PrivateKeySigner(generateSecretKey());
+    const rotatorAPub = await rotatorA.getPublicKey();
+    const rotatorB = new PrivateKeySigner(generateSecretKey());
+    const rotatorBPub = await rotatorB.getPublicKey();
+
+    const genesisCommunity = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: ["wss://fake"] });
+    const material0 = genesisCommunity.material;
+
+    // HAND-CONSTRUCTED 4-epoch chain — buildChain is exercised DIRECTLY over a
+    // crafted JoinMaterial (no actual sync/Refounding), each historical epoch
+    // naming a DISTINCT minting refounder, so the current tip's refounder
+    // (rotatorB) provably cannot leak onto a DIFFERENT epoch's entry:
+    //   epoch 0 (genesis) -> no refounder (created, never refounded)
+    //   epoch 1           -> minted by rotatorA
+    //   epoch 2           -> minted by rotatorB (first rotation)
+    //   epoch 3 (tip)     -> minted by rotatorB again (a second, later rotation)
+    const epoch1Root = new Uint8Array(32).fill(0x01);
+    const epoch2Root = new Uint8Array(32).fill(0x02);
+    const epoch3Root = new Uint8Array(32).fill(0x03);
+    const material: JoinMaterial = {
+      ...material0,
+      community_root: bytesToHex(epoch3Root),
+      root_epoch: 3,
+      refounder: rotatorBPub,
+      held_roots: [
+        { epoch: 2, key: bytesToHex(epoch2Root), refounder: rotatorBPub },
+        { epoch: 1, key: bytesToHex(epoch1Root), refounder: rotatorAPub },
+        { epoch: 0, key: material0.community_root },
+      ],
+    };
+
+    const chain = buildChain(material);
+    expect(chain).toHaveLength(4);
+
+    // Hand-derived expected epoch -> refounder mapping, independent of buildChain's
+    // own output — genesis undefined, epoch 1 = rotatorA (NOT the tip's rotatorB),
+    // epochs 2 and 3 both = rotatorB (their own, coincidentally-shared minter).
+    const expected: Record<number, string | undefined> = {
+      0: undefined,
+      1: rotatorAPub,
+      2: rotatorBPub,
+      3: rotatorBPub,
+    };
+    for (const entry of chain) expect(entry.refounder).toBe(expected[entry.root_epoch]);
   });
 });

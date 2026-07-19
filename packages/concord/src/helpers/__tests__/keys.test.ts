@@ -20,7 +20,7 @@ import {
   wrapForTarget,
 } from "../keys.js";
 import { baseRekeyGroupKey, channelGroupKey, controlGroupKey, grantLocator, guestbookGroupKey } from "../crypto.js";
-import { decodeWrap } from "../gift-wrap.js";
+import { decodeWrap, PLAINTEXT_SEAL_KIND } from "../gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent, JoinMaterial } from "../../types.js";
 
 async function genesis(name = "Test") {
@@ -154,6 +154,59 @@ describe("ConcordKeys", () => {
       isOwner,
     );
     expect(droppedOutcome.kind).toBe("removed");
+  });
+
+  it("buildRefounding aborts BEFORE publishing when a Control head can't be re-wrapped (ROTATE-13/D-01)", async () => {
+    const { owner, ownerPub, material } = await genesis();
+    const ownerKeys = deriveConcordKeys(material, []);
+
+    // A head sealed ENCRYPTED (kind != PLAINTEXT_SEAL_KIND) — CORD-06 §3: "If the
+    // Refounder cannot reliably fold all Control events, the Refounding must be
+    // aborted." rewrapSeal only survives plaintext seals; an encrypted-seal head
+    // can't be re-wrapped into the new epoch.
+    const { wrap: encryptedWrap } = await wrapForTarget(
+      ownerKeys,
+      { plane: "control" },
+      owner,
+      { kind: 3302, content: "hi", tags: [] },
+      { plaintext: false },
+    );
+    const encInfo = ownerKeys.planes.get(encryptedWrap.pubkey)!;
+    const unfoldableHead = decodeWrap(encryptedWrap, encInfo.convKey)!;
+    expect(unfoldableHead.sealKind).not.toBe(PLAINTEXT_SEAL_KIND); // sanity: genuinely non-plaintext
+
+    await expect(
+      buildRefounding(ownerKeys, owner, {
+        recipients: [ownerPub],
+        self: ownerPub,
+        heads: [unfoldableHead],
+        channels: [],
+        newRoot: generateSecretKey(),
+      }),
+    ).rejects.toThrow(/refounding aborted/);
+
+    // Positive control: an all-foldable (plaintext) head set compacts cleanly —
+    // proves the abort above is triggered BY the unfoldable head, not by some
+    // other defect in the compaction loop.
+    const { wrap: plaintextWrap } = await wrapForTarget(
+      ownerKeys,
+      { plane: "control" },
+      owner,
+      { kind: 3302, content: "hi", tags: [] },
+      { plaintext: true },
+    );
+    const plainInfo = ownerKeys.planes.get(plaintextWrap.pubkey)!;
+    const foldableHead = decodeWrap(plaintextWrap, plainInfo.convKey)!;
+    expect(foldableHead.sealKind).toBe(PLAINTEXT_SEAL_KIND);
+
+    const plan = await buildRefounding(ownerKeys, owner, {
+      recipients: [ownerPub],
+      self: ownerPub,
+      heads: [foldableHead],
+      channels: [],
+      newRoot: generateSecretKey(),
+    });
+    expect(plan.compactionWraps).toHaveLength(1);
   });
 
   it("readRekey ignores an unauthorized rotator", async () => {
