@@ -212,6 +212,188 @@ describe("control fold", () => {
     expect(revoked.grants.get(member)).toEqual([]);
   });
 
+  // AUTH-07: a non-self Grant folds only when the signer strictly outranks
+  // the target's CURRENT standing (CORD-04 §3 — lower position = higher
+  // authority; equal cannot act on equal). Without this clause the existing
+  // roles-outrank `.every()` is vacuously true for an empty role_ids, so any
+  // MANAGE_ROLES holder could strip/demote ANY other member, including a
+  // senior. Positions are hand-tabulated from CORD-04 §3, not read from
+  // foldControl: senior=1 (higher authority), junior=5 (lower authority).
+  it("rejects a junior member's revoke of a senior member's Grant (AUTH-07)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const cidBytes = hexToBytes(cid);
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const seniorRoleId = "01".repeat(32);
+    const seniorRole = { role_id: seniorRoleId, name: "senior", position: 1, permissions: "0", scope: { kind: "server" }, color: 0 };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: seniorRoleId, version: 1, content: JSON.stringify(seniorRole) }), genesis.material.owner, 2_000));
+
+    const juniorRoleId = "02".repeat(32);
+    const juniorRole = {
+      role_id: juniorRoleId,
+      name: "junior",
+      position: 5,
+      permissions: PERM.MANAGE_ROLES.toString(),
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_010));
+
+    const seniorMember = "aa".repeat(32);
+    const juniorMember = "bb".repeat(32);
+
+    const seniorEid = grantLocator(cidBytes, seniorMember);
+    const seniorGrantContent = JSON.stringify({ member: seniorMember, role_ids: [seniorRoleId] });
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.GRANT, eid: seniorEid, version: 1, content: seniorGrantContent }), genesis.material.owner, 2_100));
+
+    const juniorEid = grantLocator(cidBytes, juniorMember);
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: juniorEid,
+          version: 1,
+          content: JSON.stringify({ member: juniorMember, role_ids: [juniorRoleId] }),
+        }),
+        genesis.material.owner,
+        2_110,
+      ),
+    );
+
+    // Junior (position 5) publishes a chained revoke against the SENIOR's
+    // (position 1) Grant. 5 is NOT < 1, so this must never fold.
+    const seniorPrevHash = computeEditionHash({ vsk: VSK.GRANT, eid: seniorEid, version: 1, content: seniorGrantContent });
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: seniorEid,
+          version: 2,
+          prevHash: seniorPrevHash,
+          content: JSON.stringify({ member: seniorMember, role_ids: [] }),
+        }),
+        juniorMember,
+        3_000,
+      ),
+    );
+
+    const state = foldControl(events, genesis.material);
+    expect(state.grants.get(seniorMember)).toEqual([seniorRoleId]);
+  });
+
+  // Self-targeting is exempt from the target-rank check: without the
+  // exemption, `s.position < targetStanding.position` is always false for a
+  // self-target (equal to itself), so no member could ever revoke/demote
+  // their own Grant. The revoke settles on the self-authored empty grant
+  // after the fixpoint's owner-fallback/self-revoke passes converge — see
+  // the companion non-vacuity check (SUMMARY) which shows the same input
+  // stuck at the ORIGINAL (never-revoked) grant once the exemption is removed.
+  it("still allows a self-targeting Grant despite failing the (non-exempt) target-rank check (AUTH-07)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const cidBytes = hexToBytes(cid);
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const juniorRoleId = "02".repeat(32);
+    const juniorRole = {
+      role_id: juniorRoleId,
+      name: "junior",
+      position: 5,
+      permissions: PERM.MANAGE_ROLES.toString(),
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_000));
+
+    const juniorMember = "bb".repeat(32);
+    const juniorEid = grantLocator(cidBytes, juniorMember);
+    const v1Content = JSON.stringify({ member: juniorMember, role_ids: [juniorRoleId] });
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.GRANT, eid: juniorEid, version: 1, content: v1Content }), genesis.material.owner, 2_100));
+
+    const prevHash = computeEditionHash({ vsk: VSK.GRANT, eid: juniorEid, version: 1, content: v1Content });
+    // Self-targeting: junior revokes their OWN Grant. grant.member===cand.author,
+    // exempt from the rank clause (which would otherwise fail: 5 is not < 5).
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: juniorEid,
+          version: 2,
+          prevHash,
+          content: JSON.stringify({ member: juniorMember, role_ids: [] }),
+        }),
+        juniorMember,
+        3_000,
+      ),
+    );
+
+    const state = foldControl(events, genesis.material);
+    expect(state.grants.get(juniorMember)).toEqual([]);
+  });
+
+  // A roleless target (standing 0xffffffff, CORD-04 §3 sentinel) still
+  // admits an initial grant from anyone who outranks the sentinel — this is
+  // how a brand-new member ever gets their first role. AUTH-07 must not
+  // regress initial grants/promotions of never-granted members.
+  it("still allows granting a role to a roleless (never-granted) target (AUTH-07)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const cidBytes = hexToBytes(cid);
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const juniorRoleId = "02".repeat(32);
+    const juniorRole = {
+      role_id: juniorRoleId,
+      name: "junior",
+      position: 5,
+      permissions: PERM.MANAGE_ROLES.toString(),
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_000));
+
+    const lowRoleId = "03".repeat(32);
+    const lowRole = { role_id: lowRoleId, name: "low", position: 10, permissions: "0", scope: { kind: "server" }, color: 0 };
+    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: lowRoleId, version: 1, content: JSON.stringify(lowRole) }), genesis.material.owner, 2_010));
+
+    const juniorMember = "bb".repeat(32);
+    const juniorEid = grantLocator(cidBytes, juniorMember);
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: juniorEid,
+          version: 1,
+          content: JSON.stringify({ member: juniorMember, role_ids: [juniorRoleId] }),
+        }),
+        genesis.material.owner,
+        2_100,
+      ),
+    );
+
+    // Junior (position 5, MANAGE_ROLES) grants lowRoleId (position 10) to a
+    // brand-new member who has never been granted anything (standing
+    // sentinel 0xffffffff). 5 < 0xffffffff, so this must fold.
+    const newMember = "cc".repeat(32);
+    const newEid = grantLocator(cidBytes, newMember);
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.GRANT,
+          eid: newEid,
+          version: 1,
+          content: JSON.stringify({ member: newMember, role_ids: [lowRoleId] }),
+        }),
+        juniorMember,
+        3_000,
+      ),
+    );
+
+    const state = foldControl(events, genesis.material);
+    expect(state.grants.get(newMember)).toEqual([lowRoleId]);
+  });
+
   it("folds only the 100 lowest role_ids", async () => {
     const genesis = await newCommunity();
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
