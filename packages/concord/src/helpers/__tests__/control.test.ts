@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { hexToBytes } from "@noble/hashes/utils.js";
 
-import { VSK } from "../../types.js";
+import { PERM, VSK } from "../../types.js";
 import { EditionFactory } from "../../factories/control.js";
 import { computeEditionHash } from "../editions.js";
 import { channelKeyFor, createCommunity } from "../community.js";
 import { foldControl } from "../control.js";
-import { banlistLocator, inviteLinksLocator } from "../crypto.js";
+import { banlistLocator, grantLocator, inviteLinksLocator } from "../crypto.js";
 import { decoded } from "./test-utils.js";
 
 const OWNER = "ab".repeat(32);
@@ -84,6 +84,52 @@ describe("control fold", () => {
     const state = foldControl(events, genesis.material);
     expect(state.banlist.has("11".repeat(32))).toBe(true);
     expect(state.banlist.has("22".repeat(32))).toBe(false);
+  });
+
+  // AUTH-03: a Grant lives at exactly ONE derived coordinate (grantLocator),
+  // mirroring the banlist coordinate gate above. Folding whichever eid group
+  // happened to arrive first would let a forged-coordinate Grant for the same
+  // member shadow the real one AND make the fold delivery-order dependent.
+  it("folds a Grant only at its derived coordinate, delivery-order independent (AUTH-03)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const cidBytes = hexToBytes(cid);
+    const baseEvents = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const member = "cd".repeat(32);
+    const roleId = "01".repeat(32);
+    const role = { role_id: roleId, name: "mod", position: 5, permissions: "0", scope: { kind: "server" }, color: 0 };
+    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+
+    const genuineEid = grantLocator(cidBytes, member);
+    const genuine = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid: genuineEid,
+      version: 1,
+      content: JSON.stringify({ member, role_ids: [roleId] }),
+    });
+
+    // A forged-coordinate Grant for the SAME member, owner-signed (authority
+    // alone must not be enough — the coordinate must also match), attempting
+    // to revoke via a bogus eid that != grantLocator(cid, member).
+    const forged = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid: "cc".repeat(32),
+      version: 1,
+      content: JSON.stringify({ member, role_ids: [] }),
+    });
+
+    const genuineDecoded = decoded(genuine, genesis.material.owner, 2_100);
+    const forgedDecoded = decoded(forged, genesis.material.owner, 2_200);
+    const roleDecoded = decoded(roleEd, genesis.material.owner, 2_000);
+
+    const state = foldControl([...baseEvents, roleDecoded, genuineDecoded, forgedDecoded], genesis.material);
+    expect(state.grants.get(member)).toEqual([roleId]);
+
+    // Delivery-order independence: folding the exact same two Grants in the
+    // opposite order converges on the identical result.
+    const reversedState = foldControl([...baseEvents, roleDecoded, forgedDecoded, genuineDecoded], genesis.material);
+    expect(reversedState.grants.get(member)).toEqual([roleId]);
   });
 
   it("folds only the 100 lowest role_ids", async () => {
