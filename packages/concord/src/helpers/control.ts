@@ -195,13 +195,21 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
         // and throw, taking down every member's fold with it. An empty array
         // satisfies this vacuously and is a valid revoke, not malformed (D-08).
         if (!Array.isArray(grant.role_ids) || !grant.role_ids.every((rid) => typeof rid === "string")) continue;
+        // AUTH-07: a non-self Grant folds only when the signer strictly
+        // outranks the TARGET's current standing (CORD-04 §3 — equal cannot
+        // act on equal). Additional to (never a replacement for) the
+        // roles-outrank .every() below — that check is vacuously true for an
+        // empty role_ids, so it alone cannot stop a junior from stripping a
+        // senior. Self-targeting (leave/self-revoke) is exempt.
+        const targetStanding = standing(grant.member);
         const authorized =
           s.isOwner ||
           (hasPerm(s.permissions, PERM.MANAGE_ROLES) &&
             grant.role_ids.every((rid) => {
               const r = roles.get(rid);
               return r ? r.position > s.position : false;
-            }));
+            }) &&
+            (grant.member === cand.author || s.position < targetStanding.position));
         if (!authorized) continue;
         const prevRoles = grants.get(grant.member) ?? [];
         if (prevRoles.join(",") !== grant.role_ids.join(",")) changed = true;
