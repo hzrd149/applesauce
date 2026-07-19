@@ -417,7 +417,7 @@ Use this to build synthetic `DecodedEvent`s for `foldControl`/`foldMembers` test
 
 **If empty:** N/A — see table above. A1 is a carried-forward, already-adjudicated milestone decision (not new to this phase); A2 is a sourcing-method note, not a factual gap.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Exact wording of the upstream clarification note for D-03 (AUTH-07's §2/§3 ambiguity)**
    - What we know: CORD-04 §2 states the Grant-specific rule ("outrank every Role it hands out"); §3's general rule ("strictly outrank its target") is restated as a numbered MUST in §5's "Authorizing an Action" procedure ("Confirms the actor holds the action's required bit and strictly outranks its target, traced to the owner") — which reads as binding on every authority action, Grant included, since a Grant is itself "an authority action" per §1's framing ("Every authority action is an edition on the Control Plane").
