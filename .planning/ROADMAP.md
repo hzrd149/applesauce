@@ -207,13 +207,13 @@ Plans:
   5. Historical epoch material does not inherit the tip's `refounder`, and a Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction.
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-06 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the continuity math, the `lowerKeyWins` tie-break, and the complete-set gate, each with expected outcomes derived by hand from the §2/§3 rules rather than observed from the implementation.
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 
 **Wave 1** *(the re-read spine is the load-bearing prerequisite for ROTATE-05/06/07)*
 
-- [ ] 08-01-PLAN.md — Down-only re-read spine + per-epoch anti-refork latch (D-04): sync/channel-sync re-read of held epochs + cascade rebuild, rekeyHandled Set→Map (ROTATE-06) (wave 1)
+- [x] 08-01-PLAN.md — Down-only re-read spine + per-epoch anti-refork latch (D-04): sync/channel-sync re-read of held epochs + cascade rebuild, rekeyHandled Set→Map (ROTATE-06) (wave 1)
 - [ ] 08-02-PLAN.md — Chunk-set consistency guards: groupRotations multiset check over chunkCount + prevepoch, `consistent` flag (D-02, ROTATE-10/11) (wave 1)
 
 **Wave 2** *(depends on the spine)*
@@ -311,7 +311,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete    | 2026-07-16 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
-| 8. Rotation Robustness & Consensus | v1.1 | 0/TBD | Not started | - |
+| 8. Rotation Robustness & Consensus | v1.1 | 1/6 | In Progress|  |
 | 9. Authority & Permission Fold Correctness | v1.1 | 0/TBD | Not started | - |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |

@@ -23,7 +23,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **ROTATE-03**: A channel Rekey derives the new epoch's message plane — `rollForwardChannel` output addresses the new key/epoch *(H01c; second root cause of H08)*
 - [x] **ROTATE-04**: A Refounding removes excluded members from the Complete Memberlist — the new epoch's Guestbook is seeded only by the snapshot, and prior-epoch entries/observations do not resurrect them *(H02; currently masked by H01 — activates when CACHE-01 lands)*
 - [ ] **ROTATE-05**: A transient signer error while decrypting a rekey blob is retried, never interpreted as removal *(H09; a NIP-46 bunker blip currently self-evicts the user permanently)*
-- [ ] **ROTATE-06**: Two rotations racing to one epoch converge down-only — a held epoch re-converges to a strictly lower sibling and can never re-fork *(M01; the community currently splits in half silently)*
+- [x] **ROTATE-06**: Two rotations racing to one epoch converge down-only — a held epoch re-converges to a strictly lower sibling and can never re-fork *(M01; the community currently splits in half silently)*
 - [ ] **ROTATE-07**: The winning rotation is computed among all authorized, complete, continuity-checked candidates, not only those carrying our blob *(M02)*
 - [ ] **ROTATE-08**: A rotation cites the Grant it acts under (`vac`) and a receiver verifies it against its folded Roster before honoring it *(M03; a just-demoted admin's rotation is currently honored by any lagging client)*
 - [ ] **ROTATE-09**: Compaction and snapshot wraps publish only after the root roll's publication is confirmed, and adoption is gated on it *(M04)*
@@ -133,7 +133,7 @@ Deferred — acknowledged, not in this roadmap.
 | ROTATE-03 | Phase 7 | Complete |
 | TEST-02 | Phase 7 | Complete |
 | ROTATE-05 | Phase 8 | Pending |
-| ROTATE-06 | Phase 8 | Pending |
+| ROTATE-06 | Phase 8 | Complete |
 | ROTATE-07 | Phase 8 | Pending |
 | ROTATE-08 | Phase 8 | Pending |
 | ROTATE-09 | Phase 8 | Pending |
