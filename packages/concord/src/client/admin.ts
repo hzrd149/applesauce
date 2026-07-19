@@ -32,6 +32,7 @@ import { banlistLocator, grantLocator, inviteLinksLocator } from "../helpers/cry
 import { computeEditionHash } from "../helpers/editions.js";
 import { canActOn, resolveStanding, type Standing } from "../helpers/permissions.js";
 import {
+  PERM,
   VSK,
   type BlobPointer,
   type CommunityMetadata,
@@ -255,6 +256,11 @@ export class ConcordCommunityAdmin {
   // ---- banlist (vsk 4) -----------------------------------------------------
 
   async ban(member: string): Promise<void> {
+    // CORD-04/AUTH-05: banning is acting on member — the caller must strictly
+    // outrank them, not merely hold BAN. Mirrors community.ts's rotateChannel
+    // exclude-loop outrank throw, using this class's own canDo/standingOf.
+    if (!this.canDo(PERM.BAN, this.standingOf(member).position))
+      throw new Error(`cannot ban ${member} — you do not outrank them or lack BAN`);
     const current = new Set(this.opts.state().banlist);
     current.add(member);
     await this.publishEdition(VSK.BANLIST, banlistLocator(this.communityIdBytes), JSON.stringify([...current]));
