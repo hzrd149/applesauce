@@ -241,6 +241,70 @@ describe("channel-scoped rekey", () => {
     expect(honored.kind).toBe("removed");
   });
 
+  // D-04 (ROTATE-06/07, channel scope): the same down-only re-heal mechanism the
+  // root scope relies on (client/sync.ts's `syncEpochs` re-read cascade,
+  // client/channel-sync.ts's backward `channel.held` walk) — a later full
+  // read that sees a strictly-lower sibling must converge DOWN to it, never
+  // staying pinned to an already-seen higher candidate.
+  it("re-reading with a late-arriving lower sibling heals down to the CORD-06 §3 minimum (D-04 down-only re-heal)", async () => {
+    const { material } = await genesis();
+    const channel = privateChannel(); // epoch 1
+    const rotatorA = await member(); // e.g. one admin device
+    const rotatorB = await member(); // a second, independently authorized admin
+    const self = await member();
+
+    // HAND-DERIVED ordering (CORD-06 §3's lowest-key-wins rule) — fixed byte
+    // patterns, not random keys, so "LOW < HIGH" holds by construction and this
+    // test's expectations never depend on readChannelRekey/lowerKeyWins (the
+    // code under test) to determine which key SHOULD win:
+    //   lowKey  = 0x01 repeated 32x → hex "0101…01"
+    //   highKey = 0xff repeated 32x → hex "ffff…ff"
+    const lowKey = new Uint8Array(32).fill(0x01);
+    const highKey = new Uint8Array(32).fill(0xff);
+    expect(bytesToHex(lowKey) < bytesToHex(highKey)).toBe(true); // sanity-check the hand derivation itself
+
+    const recipients = [rotatorA.pub, rotatorB.pub, self.pub];
+    const isAuthorized = (r: string) => r === rotatorA.pub || r === rotatorB.pub;
+
+    // rotatorA rotates first (HIGH) — a client reading ONLY this event settles
+    // on HIGH, same as any normal single-rotator adoption.
+    const highPlan = await buildChannelRekey(material, channel, rotatorA.signer, {
+      recipients,
+      self: rotatorA.pub,
+      newKey: highKey,
+    });
+    const firstRead = await readChannelRekey(
+      channel,
+      decodeChannelRekey(material, channel, highPlan.rekeyWraps),
+      isAuthorized,
+      self.pub,
+      self.signer,
+    );
+    expect(firstRead.kind).toBe("adopt");
+    if (firstRead.kind === "adopt") expect(firstRead.next.key).toBe(bytesToHex(highKey));
+
+    // rotatorB's competing rotation (LOW) for the SAME epoch 1→2 slot arrives
+    // LATE. A later full re-read — the mechanism `syncChannelEpochs`'s backward
+    // `channel.held` pass drives (channel-sync.ts) — folds BOTH events together
+    // and must heal DOWN to the strictly lower sibling, never staying pinned to
+    // the already-seen HIGH one.
+    const lowPlan = await buildChannelRekey(material, channel, rotatorB.signer, {
+      recipients,
+      self: rotatorB.pub,
+      newKey: lowKey,
+    });
+    const allEvents = [
+      ...decodeChannelRekey(material, channel, highPlan.rekeyWraps),
+      ...decodeChannelRekey(material, channel, lowPlan.rekeyWraps),
+    ];
+    const secondRead = await readChannelRekey(channel, allEvents, isAuthorized, self.pub, self.signer);
+    expect(secondRead.kind).toBe("adopt");
+    if (secondRead.kind === "adopt") {
+      expect(secondRead.next.key).toBe(bytesToHex(lowKey));
+      expect(secondRead.next.epoch).toBe(2);
+    }
+  });
+
   it("ignores an unauthorized rotator (a removed member forging a rotation)", async () => {
     const { material } = await genesis();
     const attacker = await member();

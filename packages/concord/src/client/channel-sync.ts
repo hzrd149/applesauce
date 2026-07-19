@@ -9,9 +9,11 @@
 // barrier (`syncAuthors` awaits full decrypt) but the "chain" grows forward via
 // rekeys rather than from a pre-known held list.
 
+import { hexToBytes } from "@noble/hashes/utils.js";
 import type { PlaneInfo } from "../helpers/keys.js";
 import { deriveChannelKeys, readChannelRekey } from "../helpers/keys.js";
 import { decodeWrapCached } from "../helpers/gift-wrap.js";
+import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import type { ChannelKey, DecodedEvent, JoinMaterial } from "../types.js";
 import { syncAuthors, type SyncContext } from "./sync.js";
 
@@ -85,12 +87,68 @@ async function syncRekeyAndAdvance(
 }
 
 /**
- * Walk a private channel to its tip: sync every known message plane (current +
- * held) once, then follow forward channel Rekeys — full-syncing each new epoch's
- * message plane before reading the next rekey — until the tip or a removal.
+ * D-04 backward re-read pass (Pitfall 3, channel scope): walk `channel.held`
+ * oldest-first, re-deriving each held epoch's channel keys and re-invoking the
+ * {@link syncRekeyAndAdvance} fold against THAT held epoch's rekey plane — so a
+ * strictly-lower authorized sibling for a PAST channel epoch is discovered on a
+ * later full sync, not just the forward tip (mirrors the root scope's re-read
+ * spine, sync.ts's `syncEpoch`/`syncEpochs`). A strictly-lower re-adoption
+ * discards the forward continuation from that epoch and re-walks FORWARD from
+ * the corrected key — symmetric to the root cascade, regenerating any later
+ * epochs fresh rather than retroactively patching them. An equal-or-higher
+ * re-read is ignored (down-only — the same `isStrictlyLowerKey` gate the root
+ * scope and the live `checkRekey` latch use; a settled epoch never re-forks).
+ */
+async function reReadHeldChannelEpochs(
+  ctx: ChannelSyncContext,
+  channel: ChannelKey,
+): Promise<{ channel: ChannelKey; removed: boolean }> {
+  const held = [...(channel.held ?? [])].sort((a, b) => a.epoch - b.epoch); // oldest-first
+  for (let i = 0; i < held.length; i++) {
+    if (ctx.alive && !ctx.alive()) return { channel, removed: false };
+    const h = held[i];
+    // Re-derive this held epoch as a standalone ChannelKey, carrying forward
+    // its OWN older held history (untouched, since only h.epoch+1-and-later is
+    // ever in question here) so a later correction doesn't lose it.
+    const olderHeld = held
+      .filter((x) => x.epoch < h.epoch)
+      .slice()
+      .reverse(); // newest-first, mirrors rollForwardChannel's convention
+    const heldKey: ChannelKey = { id: channel.id, key: h.key, epoch: h.epoch, name: channel.name, held: olderHeld };
+    const step = await syncRekeyAndAdvance(ctx, heldKey);
+    if (!step.next) continue; // "none"/"removed" for a past epoch: nothing to re-adopt here
+
+    const nextEpoch = h.epoch + 1;
+    const recordedKey = nextEpoch === channel.epoch ? channel.key : held.find((x) => x.epoch === nextEpoch)?.key;
+    if (recordedKey === undefined || !isStrictlyLowerKey(hexToBytes(recordedKey), hexToBytes(step.next.key))) continue;
+
+    // Strictly lower: chain[h.epoch+1..] was built on the abandoned branch —
+    // discard it and re-walk forward from the corrected key exactly like the
+    // normal forward loop below, until the (possibly new) tip or a removal.
+    let current = step.next;
+    for (;;) {
+      if (ctx.alive && !ctx.alive()) return { channel: current, removed: false };
+      const next = await syncRekeyAndAdvance(ctx, current);
+      if (next.removed) return { channel: current, removed: true };
+      if (next.done) return { channel: current, removed: false };
+      if (next.next) current = next.next;
+    }
+  }
+  return { channel, removed: false };
+}
+
+/**
+ * Walk a private channel to its tip: re-read every held epoch's rekey plane
+ * backward for a down-only correction (D-04), sync every known message plane
+ * (current + held) once, then follow forward channel Rekeys — full-syncing each
+ * new epoch's message plane before reading the next rekey — until the tip or a
+ * removal.
  */
 export async function syncChannelEpochs(ctx: ChannelSyncContext, channelKey: ChannelKey): Promise<ChannelWalkResult> {
-  let current = channelKey;
+  const reRead = await reReadHeldChannelEpochs(ctx, channelKey);
+  if (reRead.removed) return { removed: true };
+
+  let current = reRead.channel;
   await syncMessagePlanes(ctx, current);
   for (;;) {
     if (ctx.alive && !ctx.alive()) return { tipKey: current, removed: false };
