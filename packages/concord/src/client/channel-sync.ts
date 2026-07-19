@@ -27,6 +27,9 @@ export interface ChannelSyncContext extends SyncContext {
    *  outranks us (CORD-04/CORD-06 §3 "in both"). Fail-closed when absent —
    *  mirrors {@link ConcordPrivateChannelOptions.canRemoveSelf}'s live-check use. */
   canRemoveSelf?: (rotator: string) => boolean;
+  /** vac verification against the folded Roster (CORD-04 D-08/D-12) — mirrors
+   *  {@link ConcordPrivateChannelOptions.verifyVac}'s live-check use. */
+  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
 }
 
 /** The outcome of walking a private channel to its tip. */
@@ -80,7 +83,15 @@ async function syncRekeyAndAdvance(
       ctx.route(info, decoded); // let the sub-engine retain it for the live check too
     }
   }
-  const outcome = await readChannelRekey(channel, rekeyEvents, ctx.isAuthorized, ctx.self, ctx.signer, ctx.canRemoveSelf);
+  const outcome = await readChannelRekey(
+    channel,
+    rekeyEvents,
+    ctx.isAuthorized,
+    ctx.self,
+    ctx.signer,
+    ctx.canRemoveSelf,
+    ctx.verifyVac,
+  );
   if (outcome.kind === "adopt") return { next: outcome.next, removed: false, done: false };
   if (outcome.kind === "removed") return { removed: true, done: true };
   return { removed: false, done: true }; // "none" → this is the tip

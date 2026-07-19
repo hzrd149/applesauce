@@ -47,7 +47,7 @@ import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../h
 import { foldControl } from "../helpers/control.js";
 import { checkChatBinding } from "../helpers/chat.js";
 import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
-import { refoundAuthority, type Standing } from "../helpers/permissions.js";
+import { refoundAuthority, vacVerifier, type Standing } from "../helpers/permissions.js";
 import type { AttachmentEncryption, MediaAttachment } from "../helpers/imeta.js";
 import { STOCK_RELAYS, buildInviteBundle, buildInviteLink, newInviteToken } from "../helpers/invite-bundle.js";
 import { EditFactory } from "../factories/edit.js";
@@ -702,6 +702,9 @@ export class ConcordCommunity {
       // so an under-ranked channel manager can't rekey a higher-ranked member out.
       canRemoveSelf: (rotator) =>
         this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS, this.standingOf(this.pubkey).position),
+      // D-08/D-12: vac-verify against the CURRENT folded state (rebuilt fresh
+      // per call, mirroring admin.hasPerm's freshness) for MANAGE_CHANNELS.
+      verifyVac: (rotator, vac) => vacVerifier(this.state$.value, PERM.MANAGE_CHANNELS)(rotator, vac),
       onKeyChange: (ck) => this.persistChannelKey(ck),
       onRemoved: (id) => this.onPrivateChannelRemoved(id),
     });
@@ -777,6 +780,9 @@ export class ConcordCommunity {
       // CORD-06 §3 "in both"), so an under-ranked BAN holder can't rotate a
       // higher-ranked member out via a root Refounding (mirrors spawnPrivateChannel).
       (rotator) => this.admin.hasPerm(rotator, PERM.BAN, this.standingOf(this.pubkey).position),
+      // D-08/D-12: vac-verify against this SAME folded state (the live-check
+      // sibling of sync.ts's syncEpoch gate).
+      vacVerifier(state, PERM.BAN),
     );
     if (outcome.kind === "none" || this.disposed) return;
     if (outcome.kind === "removed") {

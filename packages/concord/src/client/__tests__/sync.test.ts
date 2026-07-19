@@ -19,6 +19,7 @@ import { createCommunity } from "../../helpers/community.js";
 import { EditionFactory } from "../../factories/control.js";
 import { buildRefounding, deriveConcordKeys, rollForward, wrapForTarget } from "../../helpers/keys.js";
 import { grantLocator } from "../../helpers/crypto.js";
+import { computeEditionHash } from "../../helpers/editions.js";
 import { PERM, VSK } from "../../types.js";
 import { syncEpochs, type SyncContext } from "../sync.js";
 
@@ -95,13 +96,23 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
     events.push((await wrapForTarget(keys0, { plane: "control" }, owner, roleEd, { plaintext: true })).wrap);
 
     const grantEid = grantLocator(hexToBytes(material0.community_id), memberPub);
+    const grantContent = JSON.stringify({ member: memberPub, role_ids: [roleId] });
     const grantEd = await EditionFactory.create({
       vsk: VSK.GRANT,
       eid: grantEid,
       version: 1,
-      content: JSON.stringify({ member: memberPub, role_ids: [roleId] }),
+      content: grantContent,
     });
     events.push((await wrapForTarget(keys0, { plane: "control" }, owner, grantEd, { plaintext: true })).wrap);
+
+    // D-08/D-12: `member` is a non-owner rotator, so their rotation must cite
+    // this SAME Grant (hand-computed via computeEditionHash, mirroring
+    // admin.vacFor's own recompute) for syncEpoch's vacVerifier gate to honor it.
+    const memberVac: [string, string, string] = [
+      grantEid,
+      "1",
+      computeEditionHash({ eid: grantEid, version: 1, content: grantContent }),
+    ];
 
     // HAND-DERIVED ordering (CORD-06 §3's lowest-key-wins rule) — fixed byte
     // patterns, not random keys, so "LOW < HIGH" holds by construction and this
@@ -152,6 +163,7 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
       heads: [],
       channels: [],
       newRoot: lowKey,
+      vac: memberVac,
     });
     events.push(...memberPlan.rekeyWraps);
 

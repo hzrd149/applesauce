@@ -1,5 +1,7 @@
 // CORD-04 permission / roster resolution.
 
+import { hexToBytes } from "@noble/hashes/utils.js";
+import { grantLocator } from "./crypto.js";
 import { PERM } from "../types.js";
 import type { CommunityState, PermName, Role } from "../types.js";
 
@@ -77,4 +79,33 @@ export function refoundAuthority(state: CommunityState): (rotator: string) => bo
   const rolesMap = new Map<string, Role>(state.roles.map((r) => [r.role_id, r]));
   return (rotator) =>
     rotator === owner || hasPerm(resolveStanding(rotator, owner, rolesMap, state.grants).permissions, PERM.BAN);
+}
+
+/**
+ * Build a vac-verification predicate against `state`'s folded Roster (CORD-04
+ * D-08/D-12) — the receive-side sibling of `canRemoveSelf`, gating whether a
+ * rotator's rekey is honored at all (both adopt and removed), independent of
+ * the existing `isAuthorized` roster-bit check. The owner is exempt (matches
+ * {@link refoundAuthority}/`vacFor`'s ownership model — inherent authority, no
+ * delegated Grant). A non-owner rotation must cite the Grant it acts under: the
+ * citation's eid must structurally equal {@link grantLocator}(community_id,
+ * rotator), AND the CURRENT folded Roster must still grant `rotator`
+ * `requiredPerm`. Pure over folded `CommunityState` — never re-fetches the
+ * cited edition's version/hash against a live control-plane store (D-12).
+ * Shared by the root (`PERM.BAN`) and channel (`PERM.MANAGE_CHANNELS`) scopes,
+ * on both the sync-walk and live-check receive paths.
+ */
+export function vacVerifier(
+  state: CommunityState,
+  requiredPerm: bigint,
+): (rotator: string, vac: [string, string, string] | undefined) => boolean {
+  const owner = state.material.owner;
+  const communityId = hexToBytes(state.material.community_id);
+  const rolesMap = new Map<string, Role>(state.roles.map((r) => [r.role_id, r]));
+  return (rotator, vac) => {
+    if (rotator === owner) return true;
+    if (!vac) return false;
+    if (vac[0] !== grantLocator(communityId, rotator)) return false;
+    return hasPerm(resolveStanding(rotator, owner, rolesMap, state.grants).permissions, requiredPerm);
+  };
 }

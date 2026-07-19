@@ -54,6 +54,12 @@ export interface ConcordPrivateChannelOptions {
    *  outranks us (CORD-04). Gates only the removal outcome, so an under-ranked
    *  manager can't sever us. When omitted, any authorized rotator may remove us. */
   canRemoveSelf?: (rotator: string) => boolean;
+  /** vac verification against the folded Roster (CORD-04 D-08/D-12): a
+   *  non-owner rotation must cite its Grant, structurally resolving to
+   *  `grantLocator` AND still holding `MANAGE_CHANNELS` in the CURRENT folded
+   *  Roster; the owner is exempt. Gates candidacy entirely (both adopt and
+   *  removed), independent of `isAuthorized`. */
+  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
   /** Called when the channel key rolls forward (a Rekey) so the community persists it. */
   onKeyChange?: (channelKey: ChannelKey) => void;
   /** Called when a channel Rekey excludes us from the channel. */
@@ -222,6 +228,7 @@ export class ConcordPrivateChannel {
       material: this.opts.material(),
       isAuthorized: this.opts.isAuthorized,
       canRemoveSelf: this.opts.canRemoveSelf,
+      verifyVac: this.opts.verifyVac,
       route: (info, decoded) => this.route(info, decoded),
       ensureAuth: (relays) => this.ensureAuth(relays),
       alive: () => !this.disposed,
@@ -270,6 +277,7 @@ export class ConcordPrivateChannel {
       this.opts.pubkey,
       this.opts.signer,
       this.opts.canRemoveSelf,
+      this.opts.verifyVac,
     );
     if (outcome.kind === "none" || this.disposed) return;
     if (outcome.kind === "removed") {

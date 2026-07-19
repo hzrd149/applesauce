@@ -29,7 +29,7 @@ import { deriveConcordKeys, readRekey, type ConcordKeys, type PlaneInfo } from "
 import { decodeWrapCached, EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { foldMembers } from "../helpers/guestbook.js";
-import { canActOn, refoundAuthority, resolveStanding } from "../helpers/permissions.js";
+import { canActOn, refoundAuthority, resolveStanding, vacVerifier } from "../helpers/permissions.js";
 import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import { PERM } from "../types.js";
 import type { CommunityState, DecodedEvent, JoinMaterial, Role } from "../types.js";
@@ -195,6 +195,11 @@ export async function syncEpoch(
       PERM.BAN,
     );
 
+  // D-08/D-12: a non-owner rotation must cite the Grant it acts under; the
+  // receiver verifies it against this SAME folded state, independent of the
+  // `refoundAuthority` roster-bit check below (readRekey's `isAuthorized` arg).
+  const verifyVac = vacVerifier(state, PERM.BAN);
+
   let transition: EpochTransition = "tip";
   let adoptedMaterial: JoinMaterial | undefined;
   let reReadAdopted: EpochResult["reReadAdopted"];
@@ -214,6 +219,7 @@ export async function syncEpoch(
       ctx.signer,
       state.channels,
       canRemoveSelf,
+      verifyVac,
     );
     if (outcome.kind === "adopt")
       reReadAdopted = {
@@ -232,6 +238,7 @@ export async function syncEpoch(
       ctx.signer,
       state.channels,
       canRemoveSelf,
+      verifyVac,
     );
     if (outcome.kind === "adopt") {
       transition = "adopt";

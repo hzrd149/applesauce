@@ -420,6 +420,7 @@ export async function readRekey(
   signer: ISigner,
   channels: ChannelMetadata[],
   canRemoveSelf?: (rotator: string) => boolean,
+  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean,
 ): Promise<RekeyOutcome> {
   if (!signer.nip44) return { kind: "none" };
   const scoped = await readRekeyScoped(
@@ -429,6 +430,7 @@ export async function readRekey(
       heldEpoch: keys.material.root_epoch,
       heldKey: hexToBytes(keys.material.community_root),
       canRemoveSelf,
+      verifyVac,
     },
     rekeyEvents,
     isAuthorized,
@@ -474,6 +476,16 @@ interface ScopedHeld {
    * is denied, not permitted, when this is absent.
    */
   canRemoveSelf?: (rotator: string) => boolean;
+  /**
+   * vac verification against the folded Roster (CORD-04 D-08/D-12) — the
+   * receive-side sibling of `canRemoveSelf`, gating whether a rotator is
+   * honored AT ALL (both adopt and removed), independent of the `isAuthorized`
+   * roster-bit check already applied above. Built by {@link vacVerifier}. When
+   * ABSENT, no vac gating happens (opt-in, unlike `canRemoveSelf`'s
+   * fail-closed-on-absence) — every real call site supplies one; tests may omit
+   * it.
+   */
+  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
 }
 
 type ScopedRekeyOutcome =
@@ -511,7 +523,11 @@ async function readRekeyScoped(
       set.scopeIdHex === held.scopeIdHex &&
       set.newEpoch === heldEpoch + 1n &&
       isAuthorized(set.rotator) &&
-      checkContinuity(set, heldEpoch, held.heldKey).ok,
+      checkContinuity(set, heldEpoch, held.heldKey).ok &&
+      // D-08/D-12: a non-owner set whose vac citation fails to verify against
+      // the folded Roster is excluded from candidacy entirely — treated as
+      // unauthorized, so it contributes to neither adopt nor removed.
+      (held.verifyVac === undefined || held.verifyVac(set.rotator, set.vac) === true),
   );
   if (rotations.length === 0) return { kind: "none" };
 
@@ -714,6 +730,7 @@ export async function readChannelRekey(
   self: string,
   signer: ISigner,
   canRemoveSelf?: (rotator: string) => boolean,
+  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean,
 ): Promise<ChannelRekeyOutcome> {
   if (!signer.nip44) return { kind: "none" };
   const scoped = await readRekeyScoped(
@@ -723,6 +740,7 @@ export async function readChannelRekey(
       heldEpoch: channel.epoch,
       heldKey: hexToBytes(channel.key),
       canRemoveSelf,
+      verifyVac,
     },
     rekeyEvents,
     isAuthorized,
