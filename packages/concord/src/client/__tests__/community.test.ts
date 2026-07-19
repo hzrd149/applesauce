@@ -10,7 +10,7 @@ import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
-import type { RelayPool, RelayStatus } from "applesauce-relay";
+import type { PublishResponse, RelayPool, RelayStatus } from "applesauce-relay";
 
 import { getEventHash, kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -31,6 +31,10 @@ import type { ConcordUploader } from "../storage.js";
 // The control fold + sync are debounced/async; let them run before asserting.
 const settle = () => new Promise((r) => setTimeout(r, 200));
 
+// Every relay in the request acks ok:true — the default "everyone is listening"
+// shape, satisfying refound()'s per-wrap majority gate (D-11) for any relay count.
+const okAll = async (relays: string[]): Promise<PublishResponse[]> => relays.map((from) => ({ ok: true, from }));
+
 // A RelayPool stand-in whose per-relay methods are inert (no sockets). The sync
 // loader probes `getSupported` (→ no NIP-77) and pages `request` (→ no events).
 function fakePool(): RelayPool {
@@ -49,7 +53,7 @@ function fakePool(): RelayPool {
     relay: () => relay,
     subscription: () => NEVER,
     request: () => EMPTY,
-    publish: async () => [],
+    publish: okAll,
   } as unknown as RelayPool;
 }
 
@@ -71,7 +75,7 @@ function fakePoolWithStatus(): { pool: RelayPool; status$: BehaviorSubject<Recor
     relay: () => relay,
     subscription: () => NEVER,
     request: () => EMPTY,
-    publish: async () => [],
+    publish: okAll,
   } as unknown as RelayPool;
   return { pool, status$ };
 }
@@ -576,9 +580,9 @@ describe("ConcordCommunity (DI, no network)", () => {
     const pubkey = await signer.getPublicKey();
     const pool = fakePool();
     const published: NostrEvent[] = [];
-    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+    (pool as unknown as { publish: unknown }).publish = async (relays: string[], event: NostrEvent) => {
       published.push(event);
-      return [];
+      return okAll(relays);
     };
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
 
@@ -680,9 +684,9 @@ describe("ConcordCommunity (DI, no network)", () => {
     const pubkey = await signer.getPublicKey();
     const pool = fakePool();
     const published: NostrEvent[] = [];
-    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+    (pool as unknown as { publish: unknown }).publish = async (relays: string[], event: NostrEvent) => {
       published.push(event);
-      return [];
+      return okAll(relays);
     };
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
 
@@ -735,6 +739,69 @@ describe("ConcordCommunity (DI, no network)", () => {
     await community.refound({ keep: [pubkey], channelRekeys: [{ channelId, keep: [pubkey] }] });
     await settle();
     expect(published.some((e) => e.pubkey === channelRekeyAddr2)).toBe(true);
+
+    community.dispose();
+  });
+
+  it("refound() aborts before compaction/adoption when the root-roll wrap misses majority, and succeeds once it clears majority (D-09/D-11, ROTATE-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const relays = ["wss://a", "wss://b", "wss://c"];
+    // n = 3 relays; threshold = ⌈(n+1)/2⌉ = ⌈4/2⌉ = 2 — hand-derived (D-11), never
+    // read back from `refound()`'s own threshold computation.
+    const threshold = 2;
+    const okResponses = (okCount: number): PublishResponse[] =>
+      relays.map((from, i) => (i < okCount ? { ok: true, from } : { ok: false, from, message: "Timeout" }));
+
+    const pool = fakePool();
+    const calls: NostrEvent[] = [];
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      calls.push(event);
+      return responses;
+    };
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays });
+    let refoundedCount = 0;
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays,
+      onRefounded: () => refoundedCount++,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const priorEpoch = community.material.root_epoch;
+    const priorRoot = community.material.community_root;
+
+    // MINORITY (threshold - 1 of 3 ok, including a Timeout not-ok): the single
+    // root-roll wrap (recipients = [pubkey] only) misses the threshold —
+    // refound() must reject BEFORE any compaction/snapshot publish or adoption.
+    responses = okResponses(threshold - 1);
+    calls.length = 0;
+    await expect(community.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
+    expect(calls.length).toBe(1); // only the gated root-roll wrap was attempted
+    expect(community.material.root_epoch).toBe(priorEpoch);
+    expect(community.material.community_root).toBe(priorRoot);
+    expect(refoundedCount).toBe(0);
+
+    // MAJORITY control (exactly `threshold` of 3 ok): the same wrap now clears
+    // the threshold — refound() completes, compaction/snapshot publish, adoption.
+    responses = okResponses(threshold);
+    calls.length = 0;
+    await community.refound({ keep: [pubkey] });
+    expect(calls.length).toBeGreaterThan(1); // gated wrap + compaction/snapshot wraps
+    expect(community.material.root_epoch).toBe(priorEpoch + 1);
+    expect(community.material.community_root).not.toBe(priorRoot);
+    expect(refoundedCount).toBe(1);
 
     community.dispose();
   });
