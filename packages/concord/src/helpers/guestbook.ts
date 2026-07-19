@@ -45,6 +45,11 @@ interface Coalesced {
  * @param resolveStanding  roster lookup used to authorise Kicks
  * @param refounder  the npub whose Refounding minted the current epoch; only its
  *   snapshots (kind 3312) are honored (CORD-02 §5). Omit to honor none.
+ * @param verifyVac  vac verification against the folded Roster (CORD-04 D-08/
+ *   D-12, AUTH-08): a non-owner Kick must cite the Grant it acts under,
+ *   structurally resolving to `grantLocator` AND still holding `PERM.KICK` in
+ *   the CURRENT folded Roster. Additive to (never a replacement for) the
+ *   rank-vs-victim check below (D-05). When omitted, behavior is unchanged.
  */
 export function foldMembers(
   guestbook: DecodedEvent[],
@@ -53,6 +58,7 @@ export function foldMembers(
   resolveStanding: (member: string) => Standing,
   nowMs: number = Date.now(),
   refounder?: string,
+  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean,
 ): Set<string> {
   const state = new Map<string, Coalesced>();
 
@@ -81,6 +87,14 @@ export function foldMembers(
       const actor = resolveStanding(d.author);
       const victim = resolveStanding(target);
       if (hasPerm(actor.permissions, PERM.KICK) && actor.position < victim.position) {
+        // AUTH-08: additive vac gate — a non-owner Kick must cite the Grant it
+        // acts under, and the CURRENT folded Roster must still grant KICK.
+        if (verifyVac) {
+          const vacTag = r.tags.find((t) => t[0] === "vac");
+          const vac: [string, string, string] | undefined =
+            vacTag && vacTag[1] && vacTag[2] && vacTag[3] ? [vacTag[1], vacTag[2], vacTag[3]] : undefined;
+          if (!verifyVac(d.author, vac)) continue;
+        }
         consider(target, false, d);
       }
     } else if (r.kind === SNAPSHOT_KIND) {

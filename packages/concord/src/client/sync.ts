@@ -180,6 +180,7 @@ export async function syncEpoch(
     (m) => resolveStanding(m, epochMaterial.owner, rolesMap, state0.grants),
     Date.now(),
     epochMaterial.refounder,
+    vacVerifier(state0, PERM.KICK),
   );
   const state: CommunityState = { ...state0, members };
 

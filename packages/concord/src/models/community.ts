@@ -8,7 +8,8 @@ import type { Rumor } from "applesauce-core/helpers/event";
 import { combineLatest, map, Observable } from "rxjs";
 
 import { foldMembers, JOIN_LEAVE_KIND, KICK_KIND, SNAPSHOT_KIND } from "../helpers/guestbook.js";
-import { resolveStanding } from "../helpers/permissions.js";
+import { resolveStanding, vacVerifier } from "../helpers/permissions.js";
+import { PERM } from "../types.js";
 import type { CommunityState, JoinMaterial, Role } from "../types.js";
 import { ConcordControlModel } from "./control.js";
 import { ConcordObservedAuthorsModel } from "./observed.js";
@@ -58,6 +59,7 @@ export function ConcordCommunityStateModel(
             standing,
             nowMs,
             material.refounder,
+            vacVerifier(control, PERM.KICK),
           ),
         };
       }),
