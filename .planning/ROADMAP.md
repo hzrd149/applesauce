@@ -361,6 +361,16 @@ Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
+### Phase 999.6: Transport-only extra relays in applesauce-concord (BACKLOG)
+
+**Goal:** [Captured for future planning] Add transport-only support for app-local extra relays in `applesauce-concord`. `ConcordClient` should accept `extraRelays?: string[] | Observable<string[]>` so apps can supply additional local relay endpoints (e.g. `ws://localhost:4869` localhost cache relays) that Concord uses purely for network I/O — never treated as community relays. Extra relays are used as additional transport targets for all Concord-managed traffic (community sync/live subscriptions/publishes, private channel sync/subscriptions/publishes, community-list and invite-list reads/writes, direct invite watching, invite bundle fetch/publish/revoke, and relay auth/connection status as applicable), but are never written into community material, community metadata, invite bundles, invite links, or user-published relay lists, and are never exposed as part of the community's protocol state. When `extraRelays` is an Observable, Concord reacts to updates so future traffic uses the latest relay set; behavior is unchanged when `extraRelays` is omitted or empty. Acceptance: an app can pass a static array or a changing Observable, Concord traffic uses those relays in addition to normal relays, and protocol-visible relay data never includes app-local relays.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
 ### Phase 999.5: Operation-Scoped NIP-42 Auth Hooks (BACKLOG)
 
 **Goal:** [Captured for future planning] Move NIP-42 auth handling out of ambient relay/pool status subscriptions and into the specific operation that receives `auth-required:` — request-like operations (`req`/`request`/`subscription`/`count`/`publish`/`event`/`sync`/negentropy) expose an `onAuthRequired` callback plus `authTimeout`/`authRetries` options, keying off concrete `auth-required:` responses instead of the broad cached `authRequiredForRead$`/`authRequiredForPublish$` flags, so consumers (and Concord) no longer hand-roll status/challenge watchers to authenticate. Behavior change for `applesauce-relay` and `applesauce-loaders`; Concord auth cleanup is a follow-up. Full drafted plan: `operation-scoped-nip-42-auth-hooks-plan.md` in this phase directory.
