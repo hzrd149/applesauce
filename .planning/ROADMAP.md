@@ -207,7 +207,7 @@ Plans:
   5. Historical epoch material does not inherit the tip's `refounder`, and a Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction.
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-06 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the continuity math, the `lowerKeyWins` tie-break, and the complete-set gate, each with expected outcomes derived by hand from the §2/§3 rules rather than observed from the implementation.
 
-**Plans**: 3/6 plans executed
+**Plans**: 4/6 plans executed
 
 Plans:
 
@@ -219,7 +219,7 @@ Plans:
 **Wave 2** *(depends on the spine)*
 
 - [x] 08-03-PLAN.md — readRekeyScoped convergence restructure: transient-decrypt≠removal + decryptable/opaque partition defer (D-06/D-10, ROTATE-05/06/07) (wave 2)
-- [ ] 08-04-PLAN.md — refound() per-wrap majority-confirmed publish gate before adoption/compaction (D-09/D-11, ROTATE-09) (wave 2)
+- [x] 08-04-PLAN.md — refound() per-wrap majority-confirmed publish gate before adoption/compaction (D-09/D-11, ROTATE-09) (wave 2)
 
 **Wave 3** *(vac threads keys/rekey/community/sync — serial after their prior-wave edits)*
 
@@ -311,7 +311,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete    | 2026-07-16 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
-| 8. Rotation Robustness & Consensus | v1.1 | 3/6 | In Progress|  |
+| 8. Rotation Robustness & Consensus | v1.1 | 4/6 | In Progress|  |
 | 9. Authority & Permission Fold Correctness | v1.1 | 0/TBD | Not started | - |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
