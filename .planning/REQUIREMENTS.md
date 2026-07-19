@@ -27,10 +27,10 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **ROTATE-07**: The winning rotation is computed among all authorized, complete, continuity-checked candidates, not only those carrying our blob *(M02)*
 - [x] **ROTATE-08**: A rotation cites the Grant it acts under (`vac`) and a receiver verifies it against its folded Roster before honoring it *(M03; a just-demoted admin's rotation is currently honored by any lagging client)*
 - [x] **ROTATE-09**: Compaction and snapshot wraps publish only after the root roll's publication is confirmed, and adoption is gated on it *(M04)*
-- [x] **ROTATE-10**: Rotation chunk sets correlate on `chunkCount`, so a resumed rotation's stale generation cannot complete a set and trigger a false removal *(S03 — verify the resume path can emit a differing `n` before implementing)*
+- [x] **ROTATE-10**: Rotation chunk sets correlate on `chunkCount`, so a resumed rotation's stale generation cannot complete a set and trigger a false removal *(S03 — resolved via D-02 and implemented in 08-02: an inconsistent `chunkCount`/`prevEpoch` bucket can never complete)*
 - [x] **ROTATE-11**: `prevepoch` identity is validated across a rotation's chunks *(L08)*
 - [x] **ROTATE-12**: Historical epoch material does not inherit the tip's `refounder` — a snapshot is honored only from the npub whose Refounding minted that epoch *(L01; latent today, a forged-roster vector the moment any per-epoch fold is surfaced)*
-- [x] **ROTATE-13**: A Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction *(M-conflict — **BLOCKED on ruling**: the CORD-06 agent read this as a HIGH silent-skip; the CORD-02 agent read the same lines as correct-by-design, since `controlHeadsWithSeals` deliberately re-decodes wraps to restore stripped seals. Adjudicate before implementing; may resolve to "no change needed")*
+- [x] **ROTATE-13**: A Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction *(M-conflict — resolved via D-01 and implemented in 08-06: `buildRefounding` now throws before any publish when a Control head can't be re-wrapped, rather than silently skipping)*
 
 ### Authority & Permissions (AUTH)
 
@@ -137,10 +137,10 @@ Deferred — acknowledged, not in this roadmap.
 | ROTATE-07 | Phase 8 | Complete |
 | ROTATE-08 | Phase 8 | Complete |
 | ROTATE-09 | Phase 8 | Complete |
-| ROTATE-10 | Phase 8 | Pending — blocked on spec ruling |
+| ROTATE-10 | Phase 8 | Complete |
 | ROTATE-11 | Phase 8 | Complete |
 | ROTATE-12 | Phase 8 | Complete |
-| ROTATE-13 | Phase 8 | Pending — blocked on spec ruling |
+| ROTATE-13 | Phase 8 | Complete |
 | AUTH-03 | Phase 9 | Pending |
 | AUTH-04 | Phase 9 | Pending |
 | AUTH-05 | Phase 9 | Pending |
@@ -172,7 +172,7 @@ Deferred — acknowledged, not in this roadmap.
 
 - v1.1 requirements: 53 total *(corrected from the "52 total" originally recorded here — a recount of every checklist item above finds 53 distinct REQ-IDs; no requirement content changed)*
 - Mapped to phases: 53/53 ✓
-- Blocked on a spec ruling: 5 (ROTATE-10 → Phase 8, ROTATE-13 → Phase 8, AUTH-07 → Phase 9, AUTH-08 → Phase 9, CHAN-07 → Phase 7) — each phase resolves its ruling(s) as its first task; any may conclude "no change needed"
+- Blocked on a spec ruling: 3 (AUTH-07 → Phase 9, AUTH-08 → Phase 9, CHAN-07 → Phase 7) — each phase resolves its ruling(s) as its first task; any may conclude "no change needed". ROTATE-10 (D-02) and ROTATE-13 (D-01) rulings were resolved and implemented in Phase 8.
 
 **Cross-cutting standard — TEST-01 (read before closing any phase):**
 TEST-01 is a **standing criterion across Phases 5–12**, not a Phase-5 deliverable. It is listed at Phase 5 for one-requirement-one-phase accounting only; its scope is the whole milestone. It is **not satisfied until Phase 12 completes** and must not be ticked Complete when Phase 5 closes.
