@@ -19,7 +19,7 @@ import type {
 import { hasPerm, resolveStanding } from "./permissions.js";
 import { isHexKey } from "applesauce-core/helpers/string";
 import { hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { banlistLocator, editionHash, inviteLinksLocator } from "./crypto.js";
+import { banlistLocator, editionHash, grantLocator, inviteLinksLocator } from "./crypto.js";
 
 /** Concord control-plane edition kind (CORD-04). */
 export const CONTROL_KIND = 3308;
@@ -143,6 +143,8 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
 
   const standing = (member: string) => resolveStanding(member, owner, roles, grants);
 
+  const cidBytes = hexToBytes(material.community_id);
+
   for (let pass = 0; pass < 4; pass++) {
     let changed = false;
 
@@ -171,7 +173,7 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
     }
 
     // Grants: signer must outrank every role handed out and hold MANAGE_ROLES.
-    for (const [, cands] of grantCandidates) {
+    for (const [eid, cands] of grantCandidates) {
       for (const cand of cands) {
         const s = standing(cand.author);
         let grant: Grant;
@@ -181,6 +183,12 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
           continue;
         }
         if (!grant.member) continue;
+        // AUTH-03: a Grant lives at exactly ONE derived coordinate — an
+        // edition at any other eid is forged, even if signed by an authorized
+        // author. Folding whichever eid group arrived first would both let a
+        // forged edition shadow the real one for the same member and make
+        // the fold delivery-order dependent (mirrors the banlist gate below).
+        if (eid !== grantLocator(cidBytes, grant.member)) continue;
         const authorized =
           s.isOwner ||
           (hasPerm(s.permissions, PERM.MANAGE_ROLES) &&
@@ -281,8 +289,6 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
       break;
     }
   }
-
-  const cidBytes = hexToBytes(material.community_id);
 
   // ---- Banlist (BAN) ------------------------------------------------------
   // The Banlist lives at exactly ONE derived coordinate, so an edition at any other

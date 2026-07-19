@@ -170,7 +170,7 @@ describe("control fold", () => {
     const grant = { member: "cd".repeat(32), role_ids: [roleId] };
     const granted = await EditionFactory.create({
       vsk: VSK.GRANT,
-      eid: roleId,
+      eid: grantLocator(hexToBytes(genesis.material.community_id), grant.member),
       version: 1,
       content: JSON.stringify(grant),
     });
