@@ -282,7 +282,21 @@ export function rollForward(
     community_root: bytesToHex(newRoot),
     root_epoch: newEpoch,
     refounder,
-    held_roots: [{ epoch: keys.material.root_epoch, key: keys.material.community_root }, ...priorRoots],
+    held_roots: [
+      // ROTATE-12: attribute the now-historical OLD epoch to the refounder that
+      // actually minted it (keys.material.refounder), not the new tip — buildChain
+      // reads this per-epoch field instead of inheriting the tip's refounder. The
+      // key is omitted (not set to `undefined`) when there is none, mirroring how
+      // every other optional JoinMaterial field behaves — an explicit `undefined`
+      // property changes the object's shape (Object.keys) even though its JSON
+      // form is identical, which defeats value-based model-cache keys downstream.
+      {
+        epoch: keys.material.root_epoch,
+        key: keys.material.community_root,
+        ...(keys.material.refounder !== undefined ? { refounder: keys.material.refounder } : {}),
+      },
+      ...priorRoots,
+    ],
   };
   return deriveConcordKeys(material, channels, keys);
 }

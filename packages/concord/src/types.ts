@@ -148,8 +148,11 @@ export interface JoinMaterial {
   channels: ChannelKey[];
   relays: string[];
   name: string;
-  /** Retained prior roots `[{epoch, key}]` after a Refounding (CORD-06; armada-compatible). */
-  held_roots?: Array<{ epoch: number; key: string }>;
+  /** Retained prior roots `[{epoch, key, refounder?}]` after a Refounding
+   *  (CORD-06; armada-compatible). `refounder` is the npub whose Refounding
+   *  minted THAT epoch (per-epoch attribution) — undefined for genesis
+   *  (epoch 0) and for entries predating this field. */
+  held_roots?: Array<{ epoch: number; key: string; refounder?: string }>;
   /** The npub whose Refounding minted the current `root_epoch` (CORD-06). */
   refounder?: string;
 }

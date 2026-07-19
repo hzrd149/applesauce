@@ -307,18 +307,32 @@ export async function syncEpochs(ctx: SyncContext, material: JoinMaterial): Prom
  * before that epoch, so `deriveConcordKeys` addresses the right generation.
  */
 export function buildChain(material: JoinMaterial): JoinMaterial[] {
-  const roots = [...(material.held_roots ?? []), { epoch: material.root_epoch, key: material.community_root }].sort(
-    (a, b) => a.epoch - b.epoch,
-  );
+  const roots = [
+    ...(material.held_roots ?? []),
+    // The tip carries ITS OWN refounder already (material.refounder) — not
+    // inherited from anywhere else, so it's used as-is here.
+    { epoch: material.root_epoch, key: material.community_root, refounder: material.refounder },
+  ].sort((a, b) => a.epoch - b.epoch);
   const seen = new Set<number>();
   const uniq = roots.filter((r) => (seen.has(r.epoch) ? false : (seen.add(r.epoch), true)));
+  // Strip the tip's own `refounder` out of the spread base below — every
+  // synthesized epoch attributes its OWN refounder instead (ROTATE-12/L01), so
+  // the tip's must never leak onto a historical entry via `...base`.
+  const { refounder: _tipRefounder, ...base } = material;
   return uniq.map((r) => ({
-    ...material,
+    ...base,
     community_root: r.key,
     root_epoch: r.epoch,
+    // ROTATE-12/L01: attribute EACH synthesized epoch's refounder from its OWN
+    // held_roots entry — genesis (epoch 0) and pre-field entries fall back to
+    // undefined (key omitted, not set to `undefined`, to keep the object shape
+    // stable when there is none) — instead of stamping the TIP's refounder onto
+    // every historical epoch (a forged-roster vector the moment any per-epoch
+    // fold surfaces at foldMembers' snapshot-authorization gate).
+    ...(r.refounder !== undefined ? { refounder: r.refounder } : {}),
     held_roots: uniq
       .filter((o) => o.epoch < r.epoch)
-      .map((o) => ({ epoch: o.epoch, key: o.key }))
+      .map((o) => ({ epoch: o.epoch, key: o.key, ...(o.refounder !== undefined ? { refounder: o.refounder } : {}) }))
       .reverse(),
   }));
 }

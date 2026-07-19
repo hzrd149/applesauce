@@ -202,9 +202,11 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
     expect(second.tipKeys?.material.community_root).toBe(bytesToHex(epoch2Key));
     // held_roots threads through the corrected branch (LOW at epoch 1), proving
     // the abandoned HIGH branch is fully discarded, not merely skipped over.
+    // ROTATE-12: epoch 1's held_roots entry is attributed to the member (who
+    // minted the LOW root via memberVac), epoch 0 (genesis) carries none.
     expect(second.tipKeys?.material.held_roots).toEqual([
-      { epoch: 1, key: bytesToHex(lowKey) },
-      { epoch: 0, key: material0.community_root },
+      { epoch: 1, key: bytesToHex(lowKey), refounder: memberPub },
+      { epoch: 0, key: material0.community_root, refounder: undefined },
     ]);
   });
 
