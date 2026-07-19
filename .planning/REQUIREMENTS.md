@@ -39,7 +39,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **AUTH-03**: A Grant edition is folded only at its derived coordinate (`grantLocator`), so the roster is not delivery-order dependent *(M05; the helper exists and is used on the write path but never on the read path)*
 - [x] **AUTH-04**: A malformed Grant is skipped rather than throwing out of `foldControl` and failing every member's community state *(M06)*
 - [x] **AUTH-05**: `kick()` and `ban()` reject locally when the caller lacks the bit or the rank, matching `rotateChannel`/`refound` *(L04; no authority is gained today — the read path enforces — but the UI shows a removal that never happened)*
-- [ ] **AUTH-06**: `Role.position` is validated as a positive integer before a role confers permission bits *(L05)*
+- [x] **AUTH-06**: `Role.position` is validated as a positive integer before a role confers permission bits *(L05)*
 - [x] **AUTH-07**: A Grant that revokes or demotes is gated by a rank comparison against its target member *(S01 — **BLOCKED on ruling**: CORD-04 §2 states the rule as outranking the *roles handed out*, which is what the code implements; whether §3's "strictly outrank its target" also binds the Grant's target is unresolved by the spec text. The permissive reading yields a real privilege-escalation path. Needs a spec reading, possibly upstream clarification)*
 - [x] **AUTH-08**: A Kick's `vac` is validated against the cited Grant, and `vac` is required for non-owner Kicks *(S02 — **BLOCKED on ruling**: CORD-02 §5 defers the rule to CORD-04 §5; confirm there first)*
 
@@ -144,7 +144,7 @@ Deferred — acknowledged, not in this roadmap.
 | AUTH-03 | Phase 9 | Complete |
 | AUTH-04 | Phase 9 | Complete |
 | AUTH-05 | Phase 9 | Complete |
-| AUTH-06 | Phase 9 | Pending |
+| AUTH-06 | Phase 9 | Complete |
 | AUTH-07 | Phase 9 | Pending — blocked on spec ruling |
 | AUTH-08 | Phase 9 | Pending — blocked on spec ruling |
 | INVITE-01 | Phase 10 | Pending |

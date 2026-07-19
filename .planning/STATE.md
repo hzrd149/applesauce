@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 09
 current_phase_name: authority-permission-fold-correctness
 status: executing
-stopped_at: Completed 09-03-PLAN.md
-last_updated: "2026-07-19T17:37:04.544Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-07-19T17:58:18.610Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 45
-  completed_plans: 43
+  completed_plans: 44
   percent: 56
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 09 (authority-permission-fold-correctness) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-07-19 — Phase 09 execution started
 
-Progress: [█████████░] 93%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 09 P01 | 25min | 3 tasks | 2 files |
 | Phase 09 P03 | 15min | 3 tasks | 5 files |
 | Phase 09 P04 | 9min | 2 tasks | 3 files |
+| Phase 09 P02 | 7min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 09]: 09-03: Kick vac-gate tests isolate the new check from the pre-existing rank-vs-victim check by feeding foldMembers an OLD roster (resolveStanding param) while vacVerifier reads a separate CURRENT/demoted roster
 - [Phase ?]: 09-04: kick()'s guard lands in community.ts, ban()'s in admin.ts's own ban() body — each uses its own class's canDo/standingOf, per PATTERNS' never-hand-roll rule
 - [Phase ?]: 09-04: both rejection tests hand-derive the read-path canActOn decision independently of the guard and assert equality, satisfying TEST-01's topological-match requirement
+- [Phase 09]: 09-02: AUTH-06 guard inserted before both existing role.position <= checks (NaN/1.5/undefined slip past <=); test values chosen to be JSON-wire-representable since a JS NaN cannot survive JSON.stringify/parse round-trip
+- [Phase 09]: 09-02: D-14 banlist fix is a per-pk conditional added inside the existing loop (s.isOwner || s.position < standing(pk).position), additive to the author-BAN-bit check, mirroring AUTH-07's Grant target-rank clause applied to a different entity in the same file
 
 ### Pending Todos
 
@@ -144,8 +147,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-19T17:36:11.404Z
-Stopped at: Completed 09-03-PLAN.md
+Last session: 2026-07-19T17:58:18.598Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

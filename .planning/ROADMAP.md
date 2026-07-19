@@ -245,7 +245,7 @@ Plans:
   5. A Grant that revokes or demotes is gated by a rank comparison against its target member, and a Kick's `vac` is validated against its cited Grant and required for non-owner Kicks (both post-ruling).
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-04 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the `grantLocator` coordinate (derived by hand from the §5 formula, not read back from the write path that produces it) and the union-of-bits/min-position rank outcomes, tabulated from §2 rather than observed.
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 
@@ -257,7 +257,7 @@ Plans:
 
 **Wave 2** *(shares control.ts with 09-01)*
 
-- [ ] 09-02-PLAN.md — control.ts Role + Banlist folds: AUTH-06 position validation + D-14 banlist read-path rank/owner gate, with spec-derived tests (wave 2)
+- [x] 09-02-PLAN.md — control.ts Role + Banlist folds: AUTH-06 position validation + D-14 banlist read-path rank/owner gate, with spec-derived tests (wave 2)
 
 **Wave 3** *(depends on all implementation plans)*
 
@@ -329,7 +329,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
-| 9. Authority & Permission Fold Correctness | v1.1 | 3/5 | In Progress|  |
+| 9. Authority & Permission Fold Correctness | v1.1 | 4/5 | In Progress|  |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
