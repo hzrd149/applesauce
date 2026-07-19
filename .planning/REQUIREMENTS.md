@@ -27,8 +27,8 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [ ] **ROTATE-07**: The winning rotation is computed among all authorized, complete, continuity-checked candidates, not only those carrying our blob *(M02)*
 - [ ] **ROTATE-08**: A rotation cites the Grant it acts under (`vac`) and a receiver verifies it against its folded Roster before honoring it *(M03; a just-demoted admin's rotation is currently honored by any lagging client)*
 - [ ] **ROTATE-09**: Compaction and snapshot wraps publish only after the root roll's publication is confirmed, and adoption is gated on it *(M04)*
-- [ ] **ROTATE-10**: Rotation chunk sets correlate on `chunkCount`, so a resumed rotation's stale generation cannot complete a set and trigger a false removal *(S03 — verify the resume path can emit a differing `n` before implementing)*
-- [ ] **ROTATE-11**: `prevepoch` identity is validated across a rotation's chunks *(L08)*
+- [x] **ROTATE-10**: Rotation chunk sets correlate on `chunkCount`, so a resumed rotation's stale generation cannot complete a set and trigger a false removal *(S03 — verify the resume path can emit a differing `n` before implementing)*
+- [x] **ROTATE-11**: `prevepoch` identity is validated across a rotation's chunks *(L08)*
 - [ ] **ROTATE-12**: Historical epoch material does not inherit the tip's `refounder` — a snapshot is honored only from the npub whose Refounding minted that epoch *(L01; latent today, a forged-roster vector the moment any per-epoch fold is surfaced)*
 - [ ] **ROTATE-13**: A Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction *(M-conflict — **BLOCKED on ruling**: the CORD-06 agent read this as a HIGH silent-skip; the CORD-02 agent read the same lines as correct-by-design, since `controlHeadsWithSeals` deliberately re-decodes wraps to restore stripped seals. Adjudicate before implementing; may resolve to "no change needed")*
 
@@ -138,7 +138,7 @@ Deferred — acknowledged, not in this roadmap.
 | ROTATE-08 | Phase 8 | Pending |
 | ROTATE-09 | Phase 8 | Pending |
 | ROTATE-10 | Phase 8 | Pending — blocked on spec ruling |
-| ROTATE-11 | Phase 8 | Pending |
+| ROTATE-11 | Phase 8 | Complete |
 | ROTATE-12 | Phase 8 | Pending |
 | ROTATE-13 | Phase 8 | Pending — blocked on spec ruling |
 | AUTH-03 | Phase 9 | Pending |
