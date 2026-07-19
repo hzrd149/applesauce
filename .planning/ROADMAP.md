@@ -34,7 +34,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 6: Refounding Rotation & Authority Correctness** - A Refounding actually rotates its addresses in-session, drops excluded members from the memberlist, and is honored only from a rotator who outranks every removed target (completed 2026-07-16)
 - [x] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug) (completed 2026-07-17)
 - [x] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member (completed 2026-07-19)
-- [ ] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state
+- [x] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state (completed 2026-07-19)
 - [ ] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant
 - [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
@@ -245,7 +245,7 @@ Plans:
   5. A Grant that revokes or demotes is gated by a rank comparison against its target member, and a Kick's `vac` is validated against its cited Grant and required for non-owner Kicks (both post-ruling).
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-04 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the `grantLocator` coordinate (derived by hand from the §5 formula, not read back from the write path that produces it) and the union-of-bits/min-position rank outcomes, tabulated from §2 rather than observed.
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans complete
 
 Plans:
 
@@ -261,7 +261,7 @@ Plans:
 
 **Wave 3** *(depends on all implementation plans)*
 
-- [ ] 09-05-PLAN.md — D-03 upstream clarification note + D-14 traceability as a new finding + phase gate (full concord suite + build) (wave 3)
+- [x] 09-05-PLAN.md — D-03 upstream clarification note + D-14 traceability as a new finding + phase gate (full concord suite + build) (wave 3)
 
 **Note**: AUTH-07 (S01) and AUTH-08 (S02) rulings resolved during discuss/plan (see 09-CONTEXT.md). AUTH-07 = "strict": CORD-04 §3's "strictly outrank its target" binds a Grant's target member (D-01/D-02). AUTH-08 = "required + validated": non-owner Kicks require a `vac` validated via `vacVerifier(state, PERM.KICK)`, pure over folded state, no version/hash pinning (D-04). The banlist rider (D-14) is pulled into scope as a new finding.
 
@@ -329,7 +329,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
-| 9. Authority & Permission Fold Correctness | v1.1 | 4/5 | In Progress|  |
+| 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete   | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |

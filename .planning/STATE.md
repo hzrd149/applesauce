@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 09
 current_phase_name: authority-permission-fold-correctness
-status: executing
-stopped_at: Completed 09-02-PLAN.md
-last_updated: "2026-07-19T17:58:18.610Z"
+status: verifying
+stopped_at: Completed 09-05-PLAN.md (phase gate green)
+last_updated: "2026-07-19T18:07:09.279Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 9
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 45
-  completed_plans: 44
-  percent: 56
+  completed_plans: 45
+  percent: 67
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 09 (authority-permission-fold-correctness) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-19 — Phase 09 execution started
 
 Progress: [██████████] 98%
@@ -65,6 +65,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 09 P03 | 15min | 3 tasks | 5 files |
 | Phase 09 P04 | 9min | 2 tasks | 3 files |
 | Phase 09 P02 | 7min | 2 tasks | 2 files |
+| Phase 09 P05 | 20min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 09-04: both rejection tests hand-derive the read-path canActOn decision independently of the guard and assert equality, satisfying TEST-01's topological-match requirement
 - [Phase 09]: 09-02: AUTH-06 guard inserted before both existing role.position <= checks (NaN/1.5/undefined slip past <=); test values chosen to be JSON-wire-representable since a JS NaN cannot survive JSON.stringify/parse round-trip
 - [Phase 09]: 09-02: D-14 banlist fix is a per-pk conditional added inside the existing loop (s.isOwner || s.position < standing(pk).position), additive to the author-BAN-bit check, mirroring AUTH-07's Grant target-rank clause applied to a different entity in the same file
+- [Phase 09]: 09-05: D-03 filed as an in-repo note (packages/concord/UPSTREAM-NOTES.md), not a GitHub issue -- mechanism was executor's discretion; no changeset since concord is unreleased
+- [Phase 09]: 09-05: D-14 tracked under a new requirement AUTH-09 and a new concord-audit.md finding D14, kept distinct from the AUTH-03..08 set per D-13->D-14's explicit no-silent-absorb instruction
 
 ### Pending Todos
 
@@ -147,8 +150,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-19T17:58:18.598Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-07-19T18:07:09.272Z
+Stopped at: Completed 09-05-PLAN.md (phase gate green)
 Resume file: None
 
 ## Operator Next Steps
