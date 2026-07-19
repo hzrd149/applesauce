@@ -245,8 +245,25 @@ Plans:
   5. A Grant that revokes or demotes is gated by a rank comparison against its target member, and a Kick's `vac` is validated against its cited Grant and required for non-owner Kicks (both post-ruling).
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-04 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the `grantLocator` coordinate (derived by hand from the §5 formula, not read back from the write path that produces it) and the union-of-bits/min-position rank outcomes, tabulated from §2 rather than observed.
 
-**Plans**: TBD
-**Note**: AUTH-07 (S01) and AUTH-08 (S02) are blocked on spec rulings, resolved as this phase's first task. AUTH-07: whether CORD-04 §3's "strictly outrank its target" binds a Grant's target member, not just the roles it hands out — the permissive reading is a real privilege-escalation path. AUTH-08: CORD-02 §5 defers Kick's `vac` rule to CORD-04 §5; confirm there first.
+**Plans**: 5 plans
+
+Plans:
+
+**Wave 1** *(file-disjoint — parallel)*
+
+- [ ] 09-01-PLAN.md — control.ts Grant fold: AUTH-03 coordinate check + AUTH-04 malformed-guard + AUTH-07 target-rank gate, each with spec-derived + non-vacuity tests (wave 1)
+- [ ] 09-03-PLAN.md — guestbook.ts foldMembers: AUTH-08 Kick `vac` gate + 3 call-site wiring + D-14 owner-exemption, with spec-derived tests (wave 1)
+- [ ] 09-04-PLAN.md — client write-path: AUTH-05 kick()/ban() local pre-publish rejects, with rejection tests (wave 1)
+
+**Wave 2** *(shares control.ts with 09-01)*
+
+- [ ] 09-02-PLAN.md — control.ts Role + Banlist folds: AUTH-06 position validation + D-14 banlist read-path rank/owner gate, with spec-derived tests (wave 2)
+
+**Wave 3** *(depends on all implementation plans)*
+
+- [ ] 09-05-PLAN.md — D-03 upstream clarification note + D-14 traceability as a new finding + phase gate (full concord suite + build) (wave 3)
+
+**Note**: AUTH-07 (S01) and AUTH-08 (S02) rulings resolved during discuss/plan (see 09-CONTEXT.md). AUTH-07 = "strict": CORD-04 §3's "strictly outrank its target" binds a Grant's target member (D-01/D-02). AUTH-08 = "required + validated": non-owner Kicks require a `vac` validated via `vacVerifier(state, PERM.KICK)`, pure over folded state, no version/hash pinning (D-04). The banlist rider (D-14) is pulled into scope as a new finding.
 
 ### Phase 10: Invite Lifecycle & Event Time Consistency
 
