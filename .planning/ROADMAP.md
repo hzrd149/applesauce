@@ -311,7 +311,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 5.1 Symbol Propagation Redesign (INSERTED) | v1.1 | 13/13 | Complete    | 2026-07-16 |
 | 6. Refounding Rotation & Authority Correctness | v1.1 | 3/3 | Complete    | 2026-07-16 |
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
-| 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete   | 2026-07-19 |
+| 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 0/TBD | Not started | - |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 0/TBD | Not started | - |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
@@ -325,7 +325,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 
 **Goal:** [Captured for future planning] Concord community client and private channel sync need proper debug logging across the board — and most specifically for syncing, so that it is possible to know when synced events fail to decrypt. Today a decryption failure during sync is silent, which makes it impossible to tell "no events" apart from "events arrived but could not be decrypted."
 **Requirements:** TBD
-**Plans:** 4/4 plans complete
+**Plans:** 6/6 plans complete
 
 Plans:
 
