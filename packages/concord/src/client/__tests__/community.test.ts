@@ -23,6 +23,7 @@ import { JoinLeaveFactory, SnapshotFactory } from "../../factories/guestbook.js"
 import { EditionFactory } from "../../factories/control.js";
 import { channelGroupKey, channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
+import { hasPerm } from "../../helpers/permissions.js";
 import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
@@ -1303,6 +1304,83 @@ describe("ConcordCommunity permissions + granular reads", () => {
     await community.unban(target);
     await settle();
     expect(community.state$.value.banlist.has(target)).toBe(false);
+
+    community.dispose();
+  });
+
+  it("kick() rejects locally before any publish when the caller lacks KICK or does not outrank the target (AUTH-05)", async () => {
+    const ownerSigner = new PrivateKeySigner(generateSecretKey());
+    const owner = await ownerSigner.getPublicKey();
+    const memberSigner = new PrivateKeySigner(generateSecretKey());
+    const member = await memberSigner.getPublicKey();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return [];
+    };
+    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer: memberSigner,
+      pubkey: member,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const t of genesis.controlRumors) community.controlStore.add(rumorFromTemplate(t, owner));
+    await settle();
+
+    // Grant the member KICK at position 5 — outranks a roleless member, but never
+    // the owner (position 0, supreme/unremovable per CORD-04 §2).
+    const roleId = "04".repeat(32);
+    const role = {
+      role_id: roleId,
+      name: "Kicker",
+      position: 5,
+      permissions: PERM.KICK.toString(),
+      scope: { kind: "server" },
+      color: 0,
+    };
+    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    community.controlStore.add(rumorFromTemplate(roleEd, owner, 2_000));
+
+    const grantEid = grantLocator(hexToBytes(genesis.material.community_id), member);
+    const grantEd = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid: grantEid,
+      version: 1,
+      content: JSON.stringify({ member, role_ids: [roleId] }),
+    });
+    community.controlStore.add(rumorFromTemplate(grantEd, owner, 3_000));
+    await settle();
+    expect(community.canDo(PERM.KICK)).toBe(true);
+
+    // TEST-01: hand-derive the read-path decision (canActOn's shape — holds the
+    // bit AND strictly outranks the target) independently of the local guard,
+    // and confirm it topologically matches before asserting the throw.
+    const actorStanding = community.standingOf(member);
+    const targetStanding = community.standingOf(owner);
+    const expectedAllowed =
+      actorStanding.isOwner ||
+      (hasPerm(actorStanding.permissions, PERM.KICK) && actorStanding.position < targetStanding.position);
+    expect(expectedAllowed).toBe(false); // position 5 never outranks the owner (position 0)
+
+    // The member (position 5) does not outrank the owner (position 0) — rejected
+    // locally, before any publish (D-09, mirrors AUTH-02's refound() rejection).
+    published.length = 0;
+    await expect(community.kick(owner)).rejects.toThrow(/outrank|KICK/);
+    expect(published).toEqual([]);
+
+    // A roleless third party the mod DOES outrank — kick() proceeds and publishes.
+    const target = "ee".repeat(32);
+    await community.kick(target);
+    await settle();
+    const kicks = await Promise.resolve(community.guestbookStore.getTimeline([{ kinds: [3309] }]));
+    expect(kicks.some((r) => r.tags.some((t) => t[0] === "p" && t[1] === target))).toBe(true);
 
     community.dispose();
   });

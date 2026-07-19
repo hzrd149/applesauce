@@ -1009,6 +1009,11 @@ export class ConcordCommunity {
 
   /** Strip a member's roles (control plane) and publish the Kick (guestbook). */
   async kick(member: string): Promise<void> {
+    // CORD-04/AUTH-05: kicking is acting on member — the caller must strictly
+    // outrank them, not merely hold KICK. Mirrors rotateChannel's exclude-loop
+    // outrank throw (:1039-1041), single target instead of a loop.
+    if (!this.canDo(PERM.KICK, this.standingOf(member).position))
+      throw new Error(`cannot kick ${member} — you do not outrank them or lack KICK`);
     await this.admin.grantRoles(member, []);
     const vac = await this.admin.vacFor(this.pubkey);
     await this.publishToPlane({ plane: "guestbook" }, await KickFactory.create(member, vac), {});
