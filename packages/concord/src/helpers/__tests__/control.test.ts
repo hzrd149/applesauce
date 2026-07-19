@@ -132,6 +132,86 @@ describe("control fold", () => {
     expect(reversedState.grants.get(member)).toEqual([roleId]);
   });
 
+  // AUTH-04: a malformed role_ids must degrade the single candidate to a
+  // skip, never throw out of foldControl — a fold consumed by every member's
+  // client must be total. The guard is unconditional (not folded into the
+  // `authorized` chain), so it must also catch an owner-signed malformed Grant.
+  it("skips a Grant whose role_ids is not an array, without throwing, even when owner-signed (AUTH-04)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const member = "cd".repeat(32);
+    const eid = grantLocator(hexToBytes(cid), member);
+    const malformed = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid,
+      version: 1,
+      content: JSON.stringify({ member, role_ids: "not-an-array" }),
+    });
+    events.push(decoded(malformed, genesis.material.owner, 2_000));
+
+    expect(() => foldControl(events, genesis.material)).not.toThrow();
+    const state = foldControl(events, genesis.material);
+    expect(state.grants.has(member)).toBe(false);
+  });
+
+  it("skips a Grant whose role_ids contains a non-string entry, without throwing (AUTH-04)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const member = "cd".repeat(32);
+    const eid = grantLocator(hexToBytes(cid), member);
+    const malformed = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid,
+      version: 1,
+      content: JSON.stringify({ member, role_ids: ["01".repeat(32), 123] }),
+    });
+    events.push(decoded(malformed, genesis.material.owner, 2_000));
+
+    expect(() => foldControl(events, genesis.material)).not.toThrow();
+    const state = foldControl(events, genesis.material);
+    expect(state.grants.has(member)).toBe(false);
+  });
+
+  // D-08: an empty role_ids is a valid revoke, NOT malformed — it must pass
+  // the shape guard through to authorization (where owner authority admits it).
+  it("treats an empty role_ids as a valid revoke, not malformed (AUTH-04/D-08)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const cidBytes = hexToBytes(cid);
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const member = "cd".repeat(32);
+    const roleId = "01".repeat(32);
+    const role = { role_id: roleId, name: "mod", position: 5, permissions: "0", scope: { kind: "server" }, color: 0 };
+    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    events.push(decoded(roleEd, genesis.material.owner, 2_000));
+
+    const eid = grantLocator(cidBytes, member);
+    const v1Content = JSON.stringify({ member, role_ids: [roleId] });
+    const grant = await EditionFactory.create({ vsk: VSK.GRANT, eid, version: 1, content: v1Content });
+    events.push(decoded(grant, genesis.material.owner, 2_100));
+
+    const granted = foldControl(events, genesis.material);
+    expect(granted.grants.get(member)).toEqual([roleId]);
+
+    const prevHash = computeEditionHash({ vsk: VSK.GRANT, eid, version: 1, content: v1Content });
+    const revoke = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid,
+      version: 2,
+      prevHash,
+      content: JSON.stringify({ member, role_ids: [] }),
+    });
+    events.push(decoded(revoke, genesis.material.owner, 3_000));
+
+    const revoked = foldControl(events, genesis.material);
+    expect(revoked.grants.get(member)).toEqual([]);
+  });
+
   it("folds only the 100 lowest role_ids", async () => {
     const genesis = await newCommunity();
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
