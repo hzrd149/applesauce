@@ -125,6 +125,13 @@ export function foldMembers(
     if (!c || c.present || lastMs > c.ms) members.add(author);
   }
 
-  for (const banned of banlist) members.delete(banned);
+  // D-14 defense-in-depth: the owner is never removable via a banlist, even if
+  // a forged/buggy banlist Set carries their pk this far (CORD-04 §2 — the
+  // owner occupies position 0, supreme and unremovable). Complements 09-02's
+  // read-path banlist rank gate.
+  for (const banned of banlist) {
+    if (resolveStanding(banned).isOwner) continue;
+    members.delete(banned);
+  }
   return members;
 }

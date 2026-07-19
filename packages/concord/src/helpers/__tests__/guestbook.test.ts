@@ -249,3 +249,42 @@ describe("AUTH-08 Kick vac gate", () => {
     expect(members.has(victim)).toBe(false); // owner Kick honored
   });
 });
+
+// D-14 (CORD-04 §2): the owner "occupies position 0, is supreme and
+// unremovable" — a banlist Set that (forged/buggy) carries the owner's pk must
+// not remove them, as defense-in-depth behind 09-02's read-path banlist rank
+// gate. The owner's supremacy is derived by hand (constructed directly as an
+// `isOwner: true` standing), not via foldControl.
+describe("D-14 owner exemption in the banlist-delete loop", () => {
+  const owner = "aa".repeat(32);
+  const nonOwner = "ee".repeat(32);
+
+  const ownerExemptStanding = (m: string) => ({
+    permissions: 0n,
+    position: m === owner ? 0 : 1,
+    isOwner: m === owner,
+    roleIds: [],
+  });
+
+  it("leaves the owner a member when a banlist carries their pk, while still removing a banned non-owner", () => {
+    const join = (pk: string, ms: number) =>
+      decoded({ kind: 3306, content: "join", tags: [["ms", String(ms % 1000)]] }, pk, ms);
+    const members = foldMembers(
+      [join(owner, 1_000), join(nonOwner, 1_000)],
+      new Map(),
+      new Set([owner, nonOwner]),
+      ownerExemptStanding,
+      10_000,
+    );
+    expect(members.has(owner)).toBe(true); // owner survives the banlist
+    expect(members.has(nonOwner)).toBe(false); // non-owner is still removed
+  });
+
+  it("non-vacuity: reverting the exemption (isOwner always false) drops the owner", () => {
+    const join = (pk: string, ms: number) =>
+      decoded({ kind: 3306, content: "join", tags: [["ms", String(ms % 1000)]] }, pk, ms);
+    const neverOwnerStanding = (m: string) => ({ ...ownerExemptStanding(m), isOwner: false });
+    const members = foldMembers([join(owner, 1_000)], new Map(), new Set([owner]), neverOwnerStanding, 10_000);
+    expect(members.has(owner)).toBe(false);
+  });
+});
