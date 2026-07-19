@@ -189,6 +189,12 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
         // forged edition shadow the real one for the same member and make
         // the fold delivery-order dependent (mirrors the banlist gate below).
         if (eid !== grantLocator(cidBytes, grant.member)) continue;
+        // AUTH-04: role_ids shape must be validated unconditionally, BEFORE
+        // `authorized` — an owner-signed malformed Grant short-circuits
+        // `s.isOwner` and would otherwise reach `.every`/`.join` unguarded
+        // and throw, taking down every member's fold with it. An empty array
+        // satisfies this vacuously and is a valid revoke, not malformed (D-08).
+        if (!Array.isArray(grant.role_ids) || !grant.role_ids.every((rid) => typeof rid === "string")) continue;
         const authorized =
           s.isOwner ||
           (hasPerm(s.permissions, PERM.MANAGE_ROLES) &&
