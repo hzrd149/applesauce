@@ -207,8 +207,29 @@ Plans:
   5. Historical epoch material does not inherit the tip's `refounder`, and a Refounding that cannot reliably fold the whole Control Plane aborts rather than publishing a partial compaction.
   6. **(TEST-01, standing)** Every derivation and fold this phase touches has at least one test computing its expected value independently from the CORD-06 spec — never by calling the implementation under test — and asserting the implementation matches. Covers the continuity math, the `lowerKeyWins` tie-break, and the complete-set gate, each with expected outcomes derived by hand from the §2/§3 rules rather than observed from the implementation.
 
-**Plans**: TBD
-**Note**: Two items are blocked on spec rulings, resolved as this phase's first task (either may conclude "no change needed"). ROTATE-10 (S03): confirm the resume path can actually emit a differing `n` before implementing chunkCount correlation. ROTATE-13 (M-conflict): adjudicate whether `controlHeadsWithSeals`'s re-decode of control wraps is a silent-skip bug or correct-by-design before scoping a fix.
+**Plans**: 6 plans
+
+Plans:
+
+**Wave 1** *(the re-read spine is the load-bearing prerequisite for ROTATE-05/06/07)*
+
+- [ ] 08-01-PLAN.md — Down-only re-read spine + per-epoch anti-refork latch (D-04): sync/channel-sync re-read of held epochs + cascade rebuild, rekeyHandled Set→Map (ROTATE-06) (wave 1)
+- [ ] 08-02-PLAN.md — Chunk-set consistency guards: groupRotations multiset check over chunkCount + prevepoch, `consistent` flag (D-02, ROTATE-10/11) (wave 1)
+
+**Wave 2** *(depends on the spine)*
+
+- [ ] 08-03-PLAN.md — readRekeyScoped convergence restructure: transient-decrypt≠removal + decryptable/opaque partition defer (D-06/D-10, ROTATE-05/06/07) (wave 2)
+- [ ] 08-04-PLAN.md — refound() per-wrap majority-confirmed publish gate before adoption/compaction (D-09/D-11, ROTATE-09) (wave 2)
+
+**Wave 3** *(vac threads keys/rekey/community/sync — serial after their prior-wave edits)*
+
+- [ ] 08-05-PLAN.md — vac citation (emit) + first receive-side folded-Roster verification (D-08/D-12, ROTATE-08) (wave 3)
+
+**Wave 4** *(build/chain hardening on keys.ts + sync.ts, after vac)*
+
+- [ ] 08-06-PLAN.md — buildRefounding abort-on-unfoldable-head + per-epoch refounder de-inheritance (D-01/L01, ROTATE-13/12) (wave 4)
+
+**Note**: Both spec rulings were resolved during discuss/plan (neither "no change"). ROTATE-13 (M-conflict) → D-01: fail-closed abort (08-06). ROTATE-10 (S03) → D-02: consistency-guard, NOT a correlation-key change (08-02). D-10/D-11/D-12 further ruled this planning session (opaque-fork defer; per-wrap majority; folded-Roster structural vac check).
 
 ### Phase 9: Authority & Permission Fold Correctness
 
