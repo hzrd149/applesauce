@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
-import { PrivateKeySigner } from "applesauce-signers";
+import { PrivateKeySigner, type ISigner } from "applesauce-signers";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { createCommunity } from "../community.js";
@@ -322,6 +322,168 @@ describe("ConcordKeys", () => {
     // The rotation actually happened — the listen address moved off the old
     // (prior-root) address a removed member could otherwise still derive.
     expect(rolled.nextBaseRekey.key.pk).not.toBe(keys.nextBaseRekey.key.pk);
+  });
+});
+
+// readRekeyScoped convergence — ROTATE-05/06/07 (D-06/D-10). Each expected
+// outcome below is computed by hand from CORD-06 §2 ("a missing chunk is never
+// a removal — the client refetches until the set is complete before concluding
+// anything") and §3 ("the lexicographically lowest new key wins") plus the
+// D-06/D-10 rulings — never read back from readRekeyScoped/readRekey.
+describe("readRekeyScoped convergence — ROTATE-05/06/07 (D-06/D-10)", () => {
+  /** A signer whose nip44.decrypt always throws (simulates a NIP-46 bunker
+   *  blip) — encrypt/signEvent/getPublicKey still delegate to the real signer. */
+  function withThrowingDecrypt(signer: PrivateKeySigner): ISigner {
+    return {
+      getPublicKey: () => signer.getPublicKey(),
+      signEvent: (t) => signer.signEvent(t),
+      nip44: {
+        encrypt: (pk, plaintext) => signer.nip44!.encrypt(pk, plaintext),
+        decrypt: async () => {
+          throw new Error("bunker timeout");
+        },
+      },
+    };
+  }
+
+  // ROTATE-05 / D-06: CORD-06 §2 — "a missing chunk is never a removal — the
+  // client refetches until the set is complete before concluding anything."
+  // A caught decrypt error at OUR OWN locator is positive evidence of
+  // inclusion, undetermined — it must NOT fall through to removal.
+  it("a transient decrypt failure at our own locator yields none, never removed (ROTATE-05, D-06)", async () => {
+    const { owner, ownerPub, material } = await genesis();
+    const victim = new PrivateKeySigner(generateSecretKey());
+    const victimPub = await victim.getPublicKey();
+    const victimKeys = deriveConcordKeys(material, []);
+
+    // Owner rotates, keeping the victim (a blob exists at their locator).
+    const plan = await buildRefounding(deriveConcordKeys(material, []), owner, {
+      recipients: [ownerPub, victimPub],
+      self: ownerPub,
+      heads: [],
+      channels: [],
+    });
+    const events = decodeRekey(victimKeys, plan.rekeyWraps);
+
+    // EXPECTED: {kind: "none"} — CORD-06 §2's refetch-until-complete text plus
+    // D-06's "never absence, never removal" ruling; hand-derived, not read
+    // back from the function under test.
+    const outcome = await readRekey(
+      victimKeys,
+      events,
+      () => true,
+      victimPub,
+      withThrowingDecrypt(victim),
+      [],
+      () => true, // even an outranking rotator must not trigger removal here
+    );
+    expect(outcome.kind).toBe("none");
+  });
+
+  // ROTATE-07 / D-10: two authorized, complete, continuity-matched rotations
+  // race to the same epoch. We can decrypt fork A (we're a recipient) but hold
+  // no blob at all for fork B (a competing fork we cannot rank). Per D-10 we
+  // must defer — neither adopt fork A's key (can't prove it's the true
+  // global-lowest) nor self-evict.
+  it("a decryptable candidate coexisting with an opaque competing fork defers (none), never adopts (ROTATE-07, D-10)", async () => {
+    const { material } = await genesis();
+    const rotatorA = new PrivateKeySigner(generateSecretKey());
+    const rotatorAPub = await rotatorA.getPublicKey();
+    const rotatorB = new PrivateKeySigner(generateSecretKey());
+    const rotatorBPub = await rotatorB.getPublicKey();
+    const victim = new PrivateKeySigner(generateSecretKey());
+    const victimPub = await victim.getPublicKey();
+    const victimKeys = deriveConcordKeys(material, []);
+
+    // Fork A includes the victim — decryptable.
+    const planA = await buildRefounding(deriveConcordKeys(material, []), rotatorA, {
+      recipients: [rotatorAPub, victimPub],
+      self: rotatorAPub,
+      heads: [],
+      channels: [],
+    });
+    // Fork B excludes the victim entirely — no blob, opaque.
+    const planB = await buildRefounding(deriveConcordKeys(material, []), rotatorB, {
+      recipients: [rotatorBPub],
+      self: rotatorBPub,
+      heads: [],
+      channels: [],
+    });
+    const isAuthorized = (rotator: string) => rotator === rotatorAPub || rotator === rotatorBPub;
+    const events = decodeRekey(victimKeys, [...planA.rekeyWraps, ...planB.rekeyWraps]);
+
+    // EXPECTED: {kind: "none"} — D-10's deliberate deferral, not adopt(A) and
+    // not removed.
+    const outcome = await readRekey(victimKeys, events, isAuthorized, victimPub, victim, []);
+    expect(outcome.kind).toBe("none");
+  });
+
+  // ROTATE-06/07 / D-03: two decryptable authorized forks with no opaque
+  // competitor — the lexicographically LOWEST new key wins (CORD-06 §3),
+  // independent of arrival/array order.
+  it("among two decryptable candidates, the lexicographically lowest new key wins (ROTATE-06/07, D-03)", async () => {
+    const { material } = await genesis();
+    const rotatorA = new PrivateKeySigner(generateSecretKey());
+    const rotatorAPub = await rotatorA.getPublicKey();
+    const rotatorB = new PrivateKeySigner(generateSecretKey());
+    const rotatorBPub = await rotatorB.getPublicKey();
+    const victim = new PrivateKeySigner(generateSecretKey());
+    const victimPub = await victim.getPublicKey();
+    const victimKeys = deriveConcordKeys(material, []);
+
+    const keyOne = generateSecretKey();
+    const keyTwo = generateSecretKey();
+    // EXPECTED, independently derived from CORD-06 §3's literal text ("the
+    // lexicographically lowest new key wins") via plain hex comparison — never
+    // via lowerKeyWins/readRekeyScoped themselves.
+    const expectedWinner = bytesToHex(keyOne) <= bytesToHex(keyTwo) ? keyOne : keyTwo;
+
+    const planA = await buildRefounding(deriveConcordKeys(material, []), rotatorA, {
+      recipients: [rotatorAPub, victimPub],
+      self: rotatorAPub,
+      heads: [],
+      channels: [],
+      newRoot: keyOne,
+    });
+    const planB = await buildRefounding(deriveConcordKeys(material, []), rotatorB, {
+      recipients: [rotatorBPub, victimPub],
+      self: rotatorBPub,
+      heads: [],
+      channels: [],
+      newRoot: keyTwo,
+    });
+    const isAuthorized = (rotator: string) => rotator === rotatorAPub || rotator === rotatorBPub;
+    const events = decodeRekey(victimKeys, [...planA.rekeyWraps, ...planB.rekeyWraps]);
+
+    const outcome = await readRekey(victimKeys, events, isAuthorized, victimPub, victim, []);
+    expect(outcome.kind).toBe("adopt");
+    if (outcome.kind === "adopt") expect(outcome.next.material.community_root).toBe(bytesToHex(expectedWinner));
+  });
+
+  // Spec-strict removal control (D-03, unchanged by D-10): when the winner IS
+  // fully decryptable (by other holders) and excludes us — the single
+  // authorized, complete, continuity-matched fork in play, no opaque
+  // competitor to defer against — a caller with an outranking canRemoveSelf
+  // still gets removed. D-10 only widens deferral to the genuinely-ambiguous
+  // opaque-competitor case; it never loosens this case.
+  it("a single complete authorized fork excluding us still removes (spec-strict removal control, D-03)", async () => {
+    const { owner, ownerPub, material } = await genesis();
+    const dropped = new PrivateKeySigner(generateSecretKey());
+    const droppedPub = await dropped.getPublicKey();
+    const droppedKeys = deriveConcordKeys(material, []);
+
+    const plan = await buildRefounding(deriveConcordKeys(material, []), owner, {
+      recipients: [ownerPub], // dropped excluded — no blob for them anywhere
+      self: ownerPub,
+      heads: [],
+      channels: [],
+    });
+    const events = decodeRekey(droppedKeys, plan.rekeyWraps);
+
+    // EXPECTED: {kind: "removed"} — CORD-06 §2's removal rule, unmodified by
+    // D-10 since no opaque competitor exists here.
+    const outcome = await readRekey(droppedKeys, events, () => true, droppedPub, dropped, [], () => true);
+    expect(outcome.kind).toBe("removed");
   });
 });
 
