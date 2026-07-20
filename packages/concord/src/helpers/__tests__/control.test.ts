@@ -255,6 +255,35 @@ describe("control fold", () => {
     expect(state.grants.has(member)).toBe(false);
   });
 
+  // AUTH-03 (hardening): grant.member is untrusted JSON content. The AUTH-03
+  // coordinate gate calls grantLocator(cidBytes, grant.member), whose hexToBytes
+  // throws a RangeError on any non-hex/odd-length string. Reachable by any signed
+  // event from any author, that throw propagates uncaught out of foldControl and
+  // fails every member's fold — the same defect class AUTH-04 guards. A non-hex
+  // member must be skipped, never thrown, BEFORE grantLocator is reached.
+  it("skips a Grant whose member is not a valid hex key, without throwing (AUTH-03)", async () => {
+    const genesis = await newCommunity();
+    const cid = genesis.material.community_id;
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    // 13-char non-hex member reproduces the exact hexToBytes RangeError. Published
+    // at a well-formed grant coordinate so it is classified as a Grant candidate
+    // and reaches the fold loop (eid derived for an unrelated, valid member).
+    const badMember = "not-hex-key13";
+    const eid = grantLocator(hexToBytes(cid), "cd".repeat(32));
+    const malformed = await EditionFactory.create({
+      vsk: VSK.GRANT,
+      eid,
+      version: 1,
+      content: JSON.stringify({ member: badMember, role_ids: ["01".repeat(32)] }),
+    });
+    events.push(decoded(malformed, genesis.material.owner, 2_000));
+
+    expect(() => foldControl(events, genesis.material)).not.toThrow();
+    const state = foldControl(events, genesis.material);
+    expect(state.grants.has(badMember)).toBe(false);
+  });
+
   // D-08: an empty role_ids is a valid revoke, NOT malformed — it must pass
   // the shape guard through to authorization (where owner authority admits it).
   it("treats an empty role_ids as a valid revoke, not malformed (AUTH-04/D-08)", async () => {

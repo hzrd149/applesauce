@@ -188,7 +188,14 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
         } catch {
           continue;
         }
-        if (!grant.member) continue;
+        // AUTH-03 (hardening): grant.member is untrusted JSON content, so it
+        // must be a well-formed xonly hex BEFORE grantLocator is called below —
+        // grantLocator → hexToBytes throws (RangeError) on any non-hex or
+        // odd-length string, and that throw propagates uncaught out of
+        // foldControl, taking down every member's fold. This is the same
+        // "fold must be total" defect AUTH-04 guards one clause below, and
+        // isHexKey mirrors the eid validation already used above.
+        if (!grant.member || !isHexKey(grant.member)) continue;
         // AUTH-03: a Grant lives at exactly ONE derived coordinate — an
         // edition at any other eid is forged, even if signed by an authorized
         // author. Folding whichever eid group arrived first would both let a
