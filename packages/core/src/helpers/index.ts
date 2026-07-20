@@ -1,3 +1,4 @@
+export * from "./beta.js";
 export * from "./cache.js";
 export * from "./contacts.js";
 export * from "./delete.js";
@@ -22,5 +23,6 @@ export * from "./relay-selection.js";
 export * from "./relays.js";
 export * from "./string.js";
 export * from "./tags.js";
+export * from "./thompson.js";
 export * from "./time.js";
 export * from "./url.js";
