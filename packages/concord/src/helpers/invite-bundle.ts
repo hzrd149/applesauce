@@ -220,9 +220,14 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
     return undefined;
   }
   if (expected !== bundle.community_id) return undefined;
-  const channels = bundle.channels ?? [];
+  // INVITE-02/D-10: shape must be validated BEFORE any array method touches it —
+  // same guard-before-array-method ordering as AUTH-04 (control.ts). A non-array
+  // `channels` (e.g. `{a:1}`) would otherwise bypass the length cap below, and a
+  // string `relays` would emerge from `.slice()` as a substring typed `string[]`.
+  if (!Array.isArray(bundle.channels) || !Array.isArray(bundle.relays)) return undefined;
+  const channels = bundle.channels;
   if (channels.length > INVITE_BUNDLE_MAX_CHANNELS) return undefined;
-  const relays = (bundle.relays ?? []).slice(0, INVITE_BUNDLE_RELAY_CAP);
+  const relays = bundle.relays.slice(0, INVITE_BUNDLE_RELAY_CAP);
   // A non-string `refounder` would gate the snapshot fold on a junk comparison; drop it.
   const refounder = typeof bundle.refounder === "string" ? bundle.refounder : undefined;
   return { ...bundle, channels, relays, refounder };
