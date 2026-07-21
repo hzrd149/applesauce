@@ -279,7 +279,15 @@ Plans:
   5. All chunks of one Guestbook snapshot share one timestamp (including `created_at`), and `rumorMs`/`hasMalformedMs` agree on what a valid `ms` tag is, so ordering and membership can never disagree about the same rumor.
   6. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently — never by calling the implementation under test — and asserting the implementation matches. Covers the `inviteBundleKey` derivation and the invite coordinate `(33301, link_signer, "")` (hand-derived from CORD-05 §2), plus the time decomposition asserted against hand-computed `{created_at, ms}` pairs at a chosen instant — including the ≥500ms remainder that produced H04's +1000ms skew.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — Invite bundle fail-closed guards: non-array bounds (INVITE-02), unknown fragment version (INVITE-05), malformed `vsk` deny (INVITE-01/D-04)
+- [ ] 10-02-PLAN.md — Event-time single clock read (`includeMs`) & shared `parseMs` predicate (TIME-01, TIME-03)
+- [ ] 10-03-PLAN.md — Guestbook snapshot shares one timestamp across chunks (TIME-02)
+- [ ] 10-04-PLAN.md — Resilient per-link `refreshInviteBundles` skip-and-continue (INVITE-03)
+- [ ] 10-05-PLAN.md — `joinByLink` collapse-then-tombstone revocation survives relay lag (INVITE-01/D-01/02/03)
+- [ ] 10-06-PLAN.md — `expires_at` seconds end-to-end + UPSTREAM-NOTES contradiction entry (INVITE-04)
 
 ### Phase 11: Messaging Wire Conformance
 
