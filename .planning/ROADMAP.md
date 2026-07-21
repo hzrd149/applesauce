@@ -279,7 +279,7 @@ Plans:
   5. All chunks of one Guestbook snapshot share one timestamp (including `created_at`), and `rumorMs`/`hasMalformedMs` agree on what a valid `ms` tag is, so ordering and membership can never disagree about the same rumor.
   6. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently — never by calling the implementation under test — and asserting the implementation matches. Covers the `inviteBundleKey` derivation and the invite coordinate `(33301, link_signer, "")` (hand-derived from CORD-05 §2), plus the time decomposition asserted against hand-computed `{created_at, ms}` pairs at a chosen instant — including the ≥500ms remainder that produced H04's +1000ms skew.
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -291,7 +291,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 10-05-PLAN.md — `joinByLink` collapse-then-tombstone revocation survives relay lag (INVITE-01/D-01/02/03)
+- [x] 10-05-PLAN.md — `joinByLink` collapse-then-tombstone revocation survives relay lag (INVITE-01/D-01/02/03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -346,7 +346,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
-| 10. Invite Lifecycle & Event Time Consistency | v1.1 | 4/6 | In Progress|  |
+| 10. Invite Lifecycle & Event Time Consistency | v1.1 | 5/6 | In Progress|  |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 

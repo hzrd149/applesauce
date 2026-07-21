@@ -117,3 +117,12 @@ None - no external service configuration required.
 ---
 *Phase: 10-invite-lifecycle-event-time-consistency*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+- FOUND: packages/concord/src/client/client.ts
+- FOUND: packages/concord/src/client/__tests__/client.test.ts
+- FOUND: .planning/phases/10-invite-lifecycle-event-time-consistency/10-05-SUMMARY.md
+- FOUND commit: 48b3e10a
+- FOUND commit: ca37f186
+- FOUND commit: a818fe86

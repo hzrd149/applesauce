@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 10
 current_phase_name: invite-lifecycle-event-time-consistency
 status: executing
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-07-21T14:11:35.034Z"
+stopped_at: Completed 10-05-PLAN.md
+last_updated: "2026-07-21T14:22:48.032Z"
 last_activity: 2026-07-21
 last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 51
-  completed_plans: 49
+  completed_plans: 50
   percent: 67
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 10 (invite-lifecycle-event-time-consistency) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-21 — Phase 10 execution started
 
@@ -70,6 +70,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 10 P02 | 12min | 2 tasks | 4 files |
 | Phase 10 P03 | 6min | 2 tasks | 4 files |
 | Phase 10 P04 | 6min | 2 tasks | 2 files |
+| Phase 10 P05 | 15min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 10-02: includeMs's single splitTime(ms) call overrides both draft.created_at and the ms tag, closing the dual-clock-read / round-vs-floor +1000ms skew; keeps its Date.now()-default signature so bindToChannel and Kick/JoinLeave inherit the fix with no other call-site edits
 - [Phase ?]: 10-04: the per-link try wraps the entire build/sign/store/publish body, reusing the loop's existing console.warn best-effort idiom
 - [Phase ?]: 10-04: regression test triggers the failure via community.leaveChannel (the real CORD-05 voluntary-leave scenario) rather than a hand-constructed malformed link
+- [Phase 10]: 10-05: newestAtCoordinate is a module-local unexported function in client.ts, replicating event-store.ts's NIP-01 winner rule verbatim (no different tie-break) since no store exists pre-join
+- [Phase 10]: 10-05: D-02 covered by two tests -- a filter-spy plus a new filteringAsyncServingPool stand-in that genuinely honors tag filters, since newestAtCoordinate itself has no client-side d-tag check (the request-level #d scope is the sole enforcement point per 10-RESEARCH.md A1)
+- [Phase 10]: 10-05: lagging-relay test's non-vacuity verified empirically (restored pre-fix client.ts via git show HEAD~1, confirmed the new test fails, then restored the fix via git checkout -- <file>) rather than asserted only in a comment
 
 ### Pending Todos
 
@@ -162,8 +166,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-21T14:10:28.322Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-07-21T14:22:48.007Z
+Stopped at: Completed 10-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
