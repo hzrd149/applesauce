@@ -16,6 +16,7 @@
 
 import type { CastRefEventStore } from "applesauce-core/casts";
 import { EventCast } from "applesauce-core/casts";
+import { unixNow } from "applesauce-core/helpers/time";
 import type { DirectInviteRumor } from "../helpers/direct-invite.js";
 import { getDirectInviteBundle, isValidDirectInviteRumor } from "../helpers/direct-invite.js";
 import type { InviteBundle, Rumor } from "../types.js";
@@ -60,13 +61,13 @@ export class ConcordDirectInvite extends EventCast<DirectInviteRumor> {
     return this.bundle?.community_id;
   }
 
-  /** Optional unix-ms expiry; past it the preview still renders but joining refuses (CORD-05 §1). */
+  /** Optional unix-seconds expiry (D-05); past it the preview still renders but joining refuses (CORD-05 §1). */
   get expiresAt(): number | undefined {
     return this.bundle?.expires_at;
   }
 
-  /** Whether the invite has expired as of `now` (unix ms). Always false when no expiry is set. */
-  expired(now = Date.now()): boolean {
+  /** Whether the invite has expired as of `now` (unix seconds). Always false when no expiry is set. */
+  expired(now = unixNow()): boolean {
     const exp = this.expiresAt;
     return exp !== undefined && now > exp;
   }

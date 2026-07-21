@@ -27,6 +27,7 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { castUser, type User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import { setHiddenContentCache } from "applesauce-core/helpers";
+import { unixNow } from "applesauce-core/helpers/time";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
@@ -473,7 +474,10 @@ export class ConcordClient {
    *  already-validated §1 bundle into a joined community (add engine, persist,
    *  publish our attributed Join, republish the list). */
   private async joinFromBundle(bundle: InviteBundle, fallbackRelays: string[]): Promise<ConcordCommunity> {
-    if (bundle.expires_at && Date.now() > bundle.expires_at) throw new Error("invite expired");
+    // INVITE-04/D-05: expires_at is unix SECONDS end-to-end — compare against
+    // unixNow() (seconds), never Date.now() (ms). See helpers/__tests__/invite-bundle.test.ts
+    // for the dual-citation rationale (CORD-05 §1 "unix ms" vs §4 seconds magnitude).
+    if (bundle.expires_at && unixNow() > bundle.expires_at) throw new Error("invite expired");
 
     const material: JoinMaterial = {
       community_id: bundle.community_id,

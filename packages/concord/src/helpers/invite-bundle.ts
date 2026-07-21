@@ -154,7 +154,7 @@ export interface BuildInviteBundleOptions {
   /** Attribution echoed in the joiner's Guestbook Join (CORD-05 §1). */
   creator_npub?: string;
   label?: string;
-  /** Optional unix-ms expiry; past it the preview renders but joining refuses. */
+  /** Optional unix-seconds expiry (D-05); past it the preview renders but joining refuses. */
   expires_at?: number;
   /** Private channels this bundle grants, by channel id. Omit to grant none. */
   channels?: string[];

@@ -43,7 +43,7 @@ export interface ConcordInviteLink {
   channels?: string[];
   /** Unix seconds, matching the CORD-05 Invite List wire field. */
   createdAt: number;
-  /** Unix milliseconds, matching the CommunityInvite bundle field. */
+  /** Unix seconds (D-05), matching the CommunityInvite bundle field. */
   expiresAt?: number;
   revoked: boolean;
 }
@@ -67,7 +67,7 @@ export interface ConcordInviteManagerOptions {
 export interface CreateInviteOptions {
   base: string;
   label?: string;
-  /** Unix milliseconds. */
+  /** Unix seconds (D-05). */
   expiresAt?: number;
   /** Private channels this link grants, by channel id. Omit to grant none. */
   channels?: string[];

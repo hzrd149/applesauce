@@ -204,7 +204,7 @@ export interface InviteListInvite {
   channels?: string[];
   /** Unix seconds the link was minted. */
   created_at: number;
-  /** Optional unix-millisecond expiry. */
+  /** Optional unix-seconds expiry (D-05; CORD-05 §4 magnitude reading). */
   expires_at?: number;
   [k: string]: unknown;
 }
