@@ -5,6 +5,7 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { JOIN_LEAVE_KIND, KICK_KIND, SNAPSHOT_KIND, type JoinLeaveVerb } from "../helpers/guestbook.js";
 import { SNAPSHOT_CHUNK } from "../helpers/guestbook.js";
+import { splitTime } from "../helpers/stream.js";
 import { includeMs } from "../operations/channel.js";
 import {
   includeInviteAttribution,
@@ -70,36 +71,47 @@ export class SnapshotFactory extends EventFactory<typeof SNAPSHOT_KIND> {
     snapshotIdHex: string,
     index: number,
     count: number,
-    ms: number = Date.now(),
+    time: { created_at: number; ms: number } = splitTime(),
   ): SnapshotFactory {
     return new SnapshotFactory((res) => res(blankEventTemplate(SNAPSHOT_KIND))).chunk(
       members,
       snapshotIdHex,
       index,
       count,
-      ms,
+      time,
     );
   }
 
   /** Fills one chunk of the snapshot: present members + the `snap` tag */
-  chunk(members: string[], snapshotIdHex: string, index: number, count: number, ms?: number) {
-    return this.chain(includeSnapshotChunk(members, snapshotIdHex, index, count, ms));
+  chunk(
+    members: string[],
+    snapshotIdHex: string,
+    index: number,
+    count: number,
+    time: { created_at: number; ms: number } = splitTime(),
+  ) {
+    return this.chain(includeSnapshotChunk(members, snapshotIdHex, index, count, time));
   }
 }
 
 /**
  * Refounder-signed snapshot factories seeding a new epoch's Guestbook: present
  * members only, chunked at {@link SNAPSHOT_CHUNK}, all chunks sharing one
- * snapshot id and one timestamp (CORD-02 §5).
+ * snapshot id and one timestamp (CORD-02 §5, TIME-02/D-08). The clock is read
+ * exactly once here via {@link splitTime} and the resulting `{ created_at,
+ * ms }` pair is threaded into every chunk's `SnapshotFactory.create` call, so
+ * all N chunks of one snapshot share one instant and can never straddle a
+ * second boundary.
  */
 export function buildSnapshotFactories(
   members: string[],
   snapshotIdHex: string,
-  ms: number = Date.now(),
+  nowMs: number = Date.now(),
 ): SnapshotFactory[] {
   const chunks: string[][] = [];
   for (let i = 0; i < members.length; i += SNAPSHOT_CHUNK) chunks.push(members.slice(i, i + SNAPSHOT_CHUNK));
   if (chunks.length === 0) chunks.push([]);
   const n = chunks.length;
-  return chunks.map((chunk, i) => SnapshotFactory.create(chunk, snapshotIdHex, i + 1, n, ms));
+  const time = splitTime(nowMs);
+  return chunks.map((chunk, i) => SnapshotFactory.create(chunk, snapshotIdHex, i + 1, n, time));
 }

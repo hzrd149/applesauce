@@ -27,7 +27,9 @@ describe("guestbook operations", () => {
   });
 
   it("includeSnapshotChunk sets members + snap tag", async () => {
-    const snap = await includeSnapshotChunk(["a", "b"], "snapid", 1, 2, 500)(blank(SNAPSHOT_KIND));
+    const snap = await includeSnapshotChunk(["a", "b"], "snapid", 1, 2, { created_at: 12, ms: 500 })(
+      blank(SNAPSHOT_KIND),
+    );
     expect(JSON.parse(snap.content)).toEqual(["a", "b"]);
     expect(snap.tags).toContainEqual(["snap", "snapid", "1", "2"]);
   });

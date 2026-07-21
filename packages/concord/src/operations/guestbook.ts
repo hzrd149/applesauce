@@ -32,18 +32,30 @@ export function includeKickTarget(member: string, vac?: [string, string, string]
   );
 }
 
-/** Fill one chunk of a refounder snapshot: present members + the `snap` tag. */
+/**
+ * Fill one chunk of a refounder snapshot: present members + the `snap` tag.
+ * `time` is a pre-computed `{ created_at, ms }` pair (CORD-02 §4/§5,
+ * TIME-02/D-08) — the caller (`buildSnapshotFactories`) reads the clock
+ * exactly once for the whole snapshot and threads the same pair to every
+ * chunk. This operation stamps `draft.created_at` and the `ms` tag from that
+ * pair and never reads `Date.now()` itself, so N chunks of one snapshot can
+ * never straddle a second boundary.
+ */
 export function includeSnapshotChunk(
   members: string[],
   snapshotIdHex: string,
   index: number,
   count: number,
-  ms: number = Date.now(),
+  time: { created_at: number; ms: number },
 ): EventOperation {
   assertChunkIndex(index, count);
   const tags = modifyPublicTags(
     addNameValueTag(["snap", snapshotIdHex, String(index), String(count)], false),
-    setSingletonTag(["ms", String(ms % 1000)]),
+    setSingletonTag(["ms", String(time.ms)]),
   );
-  return async (draft) => ({ ...(await tags(draft)), content: JSON.stringify(members) });
+  return async (draft) => ({
+    ...(await tags(draft)),
+    created_at: time.created_at,
+    content: JSON.stringify(members),
+  });
 }
