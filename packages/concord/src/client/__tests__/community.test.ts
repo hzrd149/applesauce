@@ -642,6 +642,59 @@ describe("ConcordCommunity (DI, no network)", () => {
     community.dispose();
   });
 
+  it("refreshInviteBundles skips a link that can't rebuild and still refreshes the rest (INVITE-03/D-11)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return okAll(relays);
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const secret = await community.createChannel("secret", { private: true });
+    await settle();
+
+    // Link A grants the private channel; link B grants nothing (always rebuildable).
+    const linkA = await community.createInvite({ base: "https://x.io", label: "A", channels: [secret] });
+    const linkB = await community.createInvite({ base: "https://x.io", label: "B" });
+    await settle();
+
+    // Voluntarily leave the channel: link A now references a channel we no longer
+    // hold a key for, so its rebuild's `buildInviteBundle` throws "not a private
+    // channel we hold a key for" (helpers/invite-bundle.ts:178).
+    await community.leaveChannel(secret);
+
+    published.length = 0;
+    // Non-vacuity: under the OLD unguarded loop, link A's throw aborts the whole
+    // for-loop, so link B (which comes after it) would never be rebuilt/published
+    // either — this call would reject and `refreshedB` below would be undefined.
+    await expect(community.refreshInviteBundles([linkA, linkB])).resolves.toBeUndefined();
+
+    const refreshedA = published.find((e) => e.kind === INVITE_BUNDLE_KIND && e.pubkey === linkA.signerPubkey);
+    const refreshedB = published.find((e) => e.kind === INVITE_BUNDLE_KIND && e.pubkey === linkB.signerPubkey);
+    expect(refreshedA).toBeUndefined();
+    expect(refreshedB).toBeDefined();
+
+    community.dispose();
+  });
+
   it("deleteRole retires a role: still visible in state but confers no authority", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
