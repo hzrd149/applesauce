@@ -17,24 +17,37 @@ export function splitTime(nowMs: number = Date.now()): { created_at: number; ms:
   return { created_at: Math.floor(nowMs / 1000), ms: nowMs % 1000 };
 }
 
+/**
+ * The single predicate for whether a string is a valid `ms` tag value (CORD-02
+ * §5: an integer `0..999`). Returns the parsed number, or `null` if `tag` is
+ * `undefined` or is not the canonical base-10 string of such an integer. The
+ * `String(n) === tag` round-trip is what rejects non-canonical forms that
+ * `Number()` alone would silently accept or misparse: `"007"` (leading zero),
+ * `"0x10"` (hex, `Number` yields `16` but `String(16) !== "0x10"`), `" 5"`
+ * (whitespace), and `"+1"` (explicit sign). Both {@link rumorMs} and
+ * {@link hasMalformedMs} route through this one definition so ordering and
+ * fold-drop can never disagree about the same tag.
+ */
+export function parseMs(tag: string | undefined): number | null {
+  if (tag === undefined) return null;
+  const n = Number(tag);
+  return Number.isInteger(n) && n >= 0 && n <= 999 && String(n) === tag ? n : null;
+}
+
 /** The full millisecond-resolution time of a rumor (CORD-02 §4). */
 export function rumorMs(rumor: Rumor): number {
-  const tag = rumor.tags.find((t) => t[0] === "ms");
-  const ms = tag ? parseInt(tag[1], 10) : 0;
-  const remainder = Number.isFinite(ms) && ms >= 0 && ms <= 999 ? ms : 0;
-  return rumor.created_at * 1000 + remainder;
+  const tag = rumor.tags.find((t) => t[0] === "ms")?.[1];
+  return rumor.created_at * 1000 + (parseMs(tag) ?? 0);
 }
 
 /**
  * Whether a rumor carries an `ms` tag outside the valid `0..999` range (CORD-02
  * §5). Such an entry is *malformed* and must be dropped, not interpreted — the
- * display-ordering clamp in {@link rumorMs} keeps the value sane, but a fold that
- * decides membership must discard the event outright. An absent `ms` tag is not
- * malformed (it simply orders at the second boundary).
+ * display-ordering fallback in {@link rumorMs} keeps the value sane, but a fold
+ * that decides membership must discard the event outright. An absent `ms` tag
+ * is not malformed (it simply orders at the second boundary).
  */
 export function hasMalformedMs(rumor: Rumor): boolean {
-  const tag = rumor.tags.find((t) => t[0] === "ms");
-  if (!tag) return false;
-  const ms = Number(tag[1]);
-  return !Number.isInteger(ms) || ms < 0 || ms > 999;
+  const tag = rumor.tags.find((t) => t[0] === "ms")?.[1];
+  return tag !== undefined && parseMs(tag) === null;
 }
