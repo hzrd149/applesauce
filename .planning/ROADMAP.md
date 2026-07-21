@@ -279,13 +279,13 @@ Plans:
   5. All chunks of one Guestbook snapshot share one timestamp (including `created_at`), and `rumorMs`/`hasMalformedMs` agree on what a valid `ms` tag is, so ordering and membership can never disagree about the same rumor.
   6. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently — never by calling the implementation under test — and asserting the implementation matches. Covers the `inviteBundleKey` derivation and the invite coordinate `(33301, link_signer, "")` (hand-derived from CORD-05 §2), plus the time decomposition asserted against hand-computed `{created_at, ms}` pairs at a chosen instant — including the ≥500ms remainder that produced H04's +1000ms skew.
 
-**Plans**: 1/6 plans executed
+**Plans**: 2/6 plans executed
 
 Plans:
 **Wave 1**
 
 - [x] 10-01-PLAN.md — Invite bundle fail-closed guards: non-array bounds (INVITE-02), unknown fragment version (INVITE-05), malformed `vsk` deny (INVITE-01/D-04)
-- [ ] 10-02-PLAN.md — Event-time single clock read (`includeMs`) & shared `parseMs` predicate (TIME-01, TIME-03)
+- [x] 10-02-PLAN.md — Event-time single clock read (`includeMs`) & shared `parseMs` predicate (TIME-01, TIME-03)
 - [ ] 10-03-PLAN.md — Guestbook snapshot shares one timestamp across chunks (TIME-02)
 - [ ] 10-04-PLAN.md — Resilient per-link `refreshInviteBundles` skip-and-continue (INVITE-03)
 
@@ -346,7 +346,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
-| 10. Invite Lifecycle & Event Time Consistency | v1.1 | 1/6 | In Progress|  |
+| 10. Invite Lifecycle & Event Time Consistency | v1.1 | 2/6 | In Progress|  |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 

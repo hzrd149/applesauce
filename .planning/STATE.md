@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 10
 current_phase_name: invite-lifecycle-event-time-consistency
 status: executing
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-07-21T13:50:44.188Z"
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-07-21T13:58:10.958Z"
 last_activity: 2026-07-21
 last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 51
-  completed_plans: 46
+  completed_plans: 47
   percent: 67
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 10 (invite-lifecycle-event-time-consistency) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-21 — Phase 10 execution started
 
@@ -67,6 +67,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 09 P02 | 7min | 2 tasks | 2 files |
 | Phase 09 P05 | 20min | 3 tasks | 3 files |
 | Phase 10 P01 | 15min | 3 tasks | 2 files |
+| Phase 10 P02 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 09]: 09-05: D-14 tracked under a new requirement AUTH-09 and a new concord-audit.md finding D14, kept distinct from the AUTH-03..08 set per D-13->D-14's explicit no-silent-absorb instruction
 - [Phase 10]: getInviteBundleVsk's malformed-vsk branch returns INVITE_BUNDLE_VSK_REVOKED directly (executor's discretion per D-04), reusing isInviteBundleRevoked's existing === REVOKED predicate with no downstream changes
 - [Phase 10]: 10-01: sequenced Task 2's decodeFragment edit and Task 3's getInviteBundleVsk edit each after the prior task's commit (temporary revert/reapply) so all three tasks land as isolated, git-diff-clean commits despite sharing one source file
+- [Phase ?]: 10-02: parseMs is the single 0..999 canonical-string validator (String(n) === tag round-trip); rumorMs and hasMalformedMs both route through it so ordering and fold-drop can never disagree
+- [Phase ?]: 10-02: includeMs's single splitTime(ms) call overrides both draft.created_at and the ms tag, closing the dual-clock-read / round-vs-floor +1000ms skew; keeps its Date.now()-default signature so bindToChannel and Kick/JoinLeave inherit the fix with no other call-site edits
 
 ### Pending Todos
 
@@ -155,8 +158,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-21T13:49:38.956Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-07-21T13:58:10.944Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

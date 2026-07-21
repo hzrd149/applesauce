@@ -66,9 +66,9 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 ### Time Encoding (TIME)
 
-- [ ] **TIME-01**: An event's `created_at` and `ms` tag are one clock read, so `created_at * 1000 + ms` is a true decomposition of a single instant *(H04; ~50% of all events currently carry +1000ms skew and the inconsistency reorders timelines on every plane. `splitTime` already exists and has zero call sites)*
+- [x] **TIME-01**: An event's `created_at` and `ms` tag are one clock read, so `created_at * 1000 + ms` is a true decomposition of a single instant *(H04; ~50% of all events currently carry +1000ms skew and the inconsistency reorders timelines on every plane. `splitTime` already exists and has zero call sites)*
 - [ ] **TIME-02**: All chunks of one Guestbook snapshot share one timestamp, including `created_at` *(M10)*
-- [ ] **TIME-03**: `rumorMs` and `hasMalformedMs` agree on what a valid `ms` tag is, so ordering and membership cannot disagree about the same rumor *(M11)*
+- [x] **TIME-03**: `rumorMs` and `hasMalformedMs` agree on what a valid `ms` tag is, so ordering and membership cannot disagree about the same rumor *(M11)*
 
 ### Wire Conformance & Caps (WIRE)
 
@@ -154,9 +154,9 @@ Deferred — acknowledged, not in this roadmap.
 | INVITE-03 | Phase 10 | Pending |
 | INVITE-04 | Phase 10 | Pending |
 | INVITE-05 | Phase 10 | Complete |
-| TIME-01 | Phase 10 | Pending |
+| TIME-01 | Phase 10 | Complete |
 | TIME-02 | Phase 10 | Pending |
-| TIME-03 | Phase 10 | Pending |
+| TIME-03 | Phase 10 | Complete |
 | WIRE-01 | Phase 11 | Pending — breaking |
 | WIRE-02 | Phase 11 | Pending |
 | WIRE-03 | Phase 11 | Pending |
