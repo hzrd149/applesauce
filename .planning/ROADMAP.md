@@ -35,7 +35,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 7: Private Channel Keying** - Channel key material derives only from held keys — no public-address fallthrough, no edition-JSON key material, and a first-class access-vs-key-possession distinction (closes the Accordian-blocking bug) (completed 2026-07-17)
 - [x] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member (completed 2026-07-19)
 - [x] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state (completed 2026-07-19)
-- [ ] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant
+- [x] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant (completed 2026-07-21)
 - [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
 
@@ -279,7 +279,7 @@ Plans:
   5. All chunks of one Guestbook snapshot share one timestamp (including `created_at`), and `rumorMs`/`hasMalformedMs` agree on what a valid `ms` tag is, so ordering and membership can never disagree about the same rumor.
   6. **(TEST-01, standing)** Every derivation this phase touches has at least one test computing its expected value independently — never by calling the implementation under test — and asserting the implementation matches. Covers the `inviteBundleKey` derivation and the invite coordinate `(33301, link_signer, "")` (hand-derived from CORD-05 §2), plus the time decomposition asserted against hand-computed `{created_at, ms}` pairs at a chosen instant — including the ≥500ms remainder that produced H04's +1000ms skew.
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -295,7 +295,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 10-06-PLAN.md — `expires_at` seconds end-to-end + UPSTREAM-NOTES contradiction entry (INVITE-04)
+- [x] 10-06-PLAN.md — `expires_at` seconds end-to-end + UPSTREAM-NOTES contradiction entry (INVITE-04)
 
 ### Phase 11: Messaging Wire Conformance
 
@@ -346,7 +346,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 7. Private Channel Keying | v1.1 | 4/4 | Complete    | 2026-07-17 |
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
-| 10. Invite Lifecycle & Event Time Consistency | v1.1 | 5/6 | In Progress|  |
+| 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete   | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 

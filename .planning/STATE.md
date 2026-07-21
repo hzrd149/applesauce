@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 10
 current_phase_name: invite-lifecycle-event-time-consistency
-status: executing
-stopped_at: Completed 10-05-PLAN.md
-last_updated: "2026-07-21T14:22:48.032Z"
+status: verifying
+stopped_at: Completed 10-06-PLAN.md
+last_updated: "2026-07-21T14:36:27.074Z"
 last_activity: 2026-07-21
 last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 51
-  completed_plans: 50
-  percent: 67
+  completed_plans: 51
+  percent: 78
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 10 (invite-lifecycle-event-time-consistency) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-21 — Phase 10 execution started
 
 Progress: [██████████] 98%
@@ -71,6 +71,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 10 P03 | 6min | 2 tasks | 4 files |
 | Phase 10 P04 | 6min | 2 tasks | 2 files |
 | Phase 10 P05 | 15min | 2 tasks | 2 files |
+| Phase 10 P06 | 20min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 10]: 10-05: newestAtCoordinate is a module-local unexported function in client.ts, replicating event-store.ts's NIP-01 winner rule verbatim (no different tie-break) since no store exists pre-join
 - [Phase 10]: 10-05: D-02 covered by two tests -- a filter-spy plus a new filteringAsyncServingPool stand-in that genuinely honors tag filters, since newestAtCoordinate itself has no client-side d-tag check (the request-level #d scope is the sole enforcement point per 10-RESEARCH.md A1)
 - [Phase 10]: 10-05: lagging-relay test's non-vacuity verified empirically (restored pre-fix client.ts via git show HEAD~1, confirmed the new test fails, then restored the fix via git checkout -- <file>) rather than asserted only in a comment
+- [Phase 10]: 10-06: D-05 locked as SECONDS end-to-end for expires_at; the §1/§4 contradiction is recorded in UPSTREAM-NOTES.md rather than re-litigated
+- [Phase 10]: 10-06: reworded client.ts's inline D-05 comment to avoid literal 'unix ms'/'milliseconds' substrings so the production-source grep stays clean; dual-citation text lives only in the test file
+- [Phase 10]: 10-06: community.ts's pass-through expires_at write sites needed no code change -- unit correctness flows from the two comparison sites (client.ts join check, direct-invite.ts expired()) and updated doc-comments
 
 ### Pending Todos
 
@@ -166,8 +170,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-21T14:22:48.007Z
-Stopped at: Completed 10-05-PLAN.md
+Last session: 2026-07-21T14:36:27.067Z
+Stopped at: Completed 10-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

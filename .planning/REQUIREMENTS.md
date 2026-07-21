@@ -61,7 +61,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **INVITE-01**: A revoked invite link is unjoinable even when a lagging relay still serves the old bundle — the coordinate resolves to its newest event first, then the tombstone is evaluated *(H05; revocation is currently weaker than the relay deletion the spec contrasts it against. `ConcordInviteList.bundles$` already does this correctly via `store.replaceable` — reuse that pattern)* *(10-01 closed the D-04 vsk sub-part; D-01/D-02/D-03 joinByLink collapse-then-tombstone land in 10-05)*
 - [x] **INVITE-02**: `validateInviteBundle` fails closed on a bundle whose `channels`/`relays` are not arrays, so the §1 MUST-bounds actually run on attacker input *(M07; same class as the fixed `refounder` bug)*
 - [x] **INVITE-03**: `refreshInviteBundles` skips a link it cannot rebuild and continues, rather than aborting every link after it *(M08; a subset of live links currently keeps serving pre-Refounding keys behind unchanged URLs)*
-- [ ] **INVITE-04**: The Invite List's `expires_at` is written in the unit CORD-05 §4 specifies *(M09 — confirm the unit against the spec first; §4 never annotates it and the inference is from example magnitude)*
+- [x] **INVITE-04**: The Invite List's `expires_at` is written in the unit CORD-05 §4 specifies *(M09 — confirm the unit against the spec first; §4 never annotates it and the inference is from example magnitude)*
 - [x] **INVITE-05**: `decodeFragment` rejects a fragment version it does not know, rather than decoding it against the v4 dictionary *(L06)*
 
 ### Time Encoding (TIME)
@@ -152,7 +152,7 @@ Deferred — acknowledged, not in this roadmap.
 | INVITE-01 | Phase 10 | In Progress *(D-04 closed by 10-01; D-01/D-02/D-03 pending 10-05)* |
 | INVITE-02 | Phase 10 | Complete |
 | INVITE-03 | Phase 10 | Complete |
-| INVITE-04 | Phase 10 | Pending |
+| INVITE-04 | Phase 10 | Complete |
 | INVITE-05 | Phase 10 | Complete |
 | TIME-01 | Phase 10 | Complete |
 | TIME-02 | Phase 10 | Complete |
