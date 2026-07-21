@@ -78,7 +78,10 @@ export function decodeFragment(fragment: string): { token: Uint8Array; relays: s
   const bytes = base64urlnopad.decode(fragment);
   let i = 0;
   const version = bytes[i++];
-  if (version < FRAGMENT_VERSION) throw new Error("legacy invite link, unsupported");
+  // INVITE-05/D-12: reject ANY version not exactly FRAGMENT_VERSION, not just a
+  // lower one — the relay dictionary is designed to grow, so a future higher
+  // version must never be decoded against today's (lower) dictionary table.
+  if (version !== FRAGMENT_VERSION) throw new Error("unsupported invite fragment version");
   const flags = bytes[i++];
   const relays: string[] = [];
   if (flags & FLAG_STOCK_SET) {

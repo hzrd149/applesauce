@@ -4,9 +4,10 @@
 
 import { describe, expect, it } from "vitest";
 import { bytesToHex, randomBytes } from "@noble/hashes/utils.js";
+import { base64urlnopad } from "@scure/base";
 
 import { communityId } from "../crypto.js";
-import { validateInviteBundle } from "../invite-bundle.js";
+import { decodeFragment, encodeFragment, validateInviteBundle } from "../invite-bundle.js";
 import type { InviteBundle } from "../../types.js";
 
 // ── Shared valid owner triple, hand-derived from CORD-02 Appendix A.4 —
@@ -61,5 +62,37 @@ describe("validateInviteBundle (INVITE-02/D-10)", () => {
     expect(result).toBeDefined();
     expect(result?.channels).toEqual([]);
     expect(result?.relays).toEqual(["wss://ok"]);
+  });
+});
+
+describe("decodeFragment (INVITE-05/D-12)", () => {
+  const TOKEN = new Uint8Array(16).fill(7);
+  const RELAYS = ["wss://custom.example.org"];
+
+  function mutateVersionByte(encoded: string, delta: number): string {
+    const raw = base64urlnopad.decode(encoded);
+    const mutated = new Uint8Array(raw);
+    mutated[0] = mutated[0] + delta;
+    return base64urlnopad.encode(mutated);
+  }
+
+  it("throws for a fragment version higher than the encoder's own version", () => {
+    const encoded = encodeFragment(TOKEN, RELAYS);
+    expect(() => decodeFragment(mutateVersionByte(encoded, 1))).toThrow();
+    // Non-vacuity: the pre-fix guard (`version < FRAGMENT_VERSION`) does NOT
+    // throw here — a higher version decodes anyway against the current (lower)
+    // relay dictionary, producing garbage relay URLs. This case pins that hole shut.
+  });
+
+  it("throws for a fragment version lower than the encoder's own version (regression)", () => {
+    const encoded = encodeFragment(TOKEN, RELAYS);
+    expect(() => decodeFragment(mutateVersionByte(encoded, -1))).toThrow();
+  });
+
+  it("decodes successfully at the encoder's own (current) version", () => {
+    const encoded = encodeFragment(TOKEN, RELAYS);
+    const decoded = decodeFragment(encoded);
+    expect(decoded.token).toEqual(TOKEN);
+    expect(decoded.relays).toEqual(RELAYS);
   });
 });
