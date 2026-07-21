@@ -5,16 +5,16 @@ milestone_name: first-fixes
 current_phase: 11
 current_phase_name: Messaging Wire Conformance
 status: verifying
-stopped_at: Completed 10-06-PLAN.md
-last_updated: "2026-07-21T15:07:41.140Z"
+stopped_at: Phase 12.1 context gathered
+last_updated: "2026-07-21T17:09:41.404Z"
 last_activity: 2026-07-21
 last_activity_desc: Phase 10 complete, transitioned to Phase 11
 progress:
-  total_phases: 9
+  total_phases: 12
   completed_phases: 7
   total_plans: 51
   completed_plans: 51
-  percent: 78
+  percent: 58
 ---
 
 # Project State
@@ -152,6 +152,9 @@ None yet.
 
 - Phase 05.1 inserted after Phase 5: Symbol propagation redesign: all symbol writes non-enumerable via setCachedValue; factory pipelines carry PRESERVE_EVENT_SYMBOLS explicitly; gift-wrap symbols move to core; strip loops deleted; supersedes the cache.ts taxonomy
 - 2026-07-16: Phase 5 code review surfaced 5 confirmed blocker bugs (CR-01..05) + 11 warnings in write-sites 05.1 already touches (unlock-guard family returns undefined-as-array; lockAppData leaks plaintext; copySymbols &&/|| fail-open; stamp mutates caller). Decision: fold the fixes into Phase 5.1 rather than a standalone phase. Constraint recorded in 05.1 ROADMAP scope — each behavioral fix gets its own commit + spec-derived regression test, landed before the enumerable→non-enumerable migration rewrites the site, so verification can attribute pass/fail to the fix and not the refactor. Full detail: 05-REVIEW.md.
+- Phase 12.1 inserted after Phase 12: Promoted from backlog 999.3: Concord sync skips ephemeral kind 21059
+- Phase 12.2 inserted after Phase 12: Promoted from backlog 999.1: Concord sync debug logging
+- Phase 12.3 inserted after Phase 12: Promoted from backlog 999.6: Transport-only extra relays in applesauce-concord
 
 ## Deferred Items
 
@@ -170,9 +173,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-21T14:36:27.067Z
-Stopped at: Completed 10-06-PLAN.md
-Resume file: None
+Last session: 2026-07-21T17:09:41.388Z
+Stopped at: Phase 12.1 context gathered
+Resume file: .planning/phases/12.1-concord-sync-skips-ephemeral-kind-21059/12.1-CONTEXT.md
 
 ## Operator Next Steps
 
