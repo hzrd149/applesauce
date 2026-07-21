@@ -29,11 +29,11 @@ export class AndroidNativeAccount<Metadata extends unknown> extends BaseAccount<
   static fromJSON<Metadata extends unknown>(
     json: SerializedAccount<SignerData, Metadata>,
   ): AndroidNativeAccount<Metadata> {
-    const signer = new AndroidNativeSigner(json.signer.packageName);
+    const signer = new AndroidNativeSigner(json.signer.packageName, json.pubkey);
     const account = new AndroidNativeAccount<Metadata>(json.pubkey, signer);
     return super.loadCommonFields(account, json);
   }
-  
+
   static async fromApp<Metadata extends unknown>(app: AppInfo): Promise<AndroidNativeAccount<Metadata>> {
     const signer = new AndroidNativeSigner(app.packageName);
     const pubkey = await signer.getPublicKey();
