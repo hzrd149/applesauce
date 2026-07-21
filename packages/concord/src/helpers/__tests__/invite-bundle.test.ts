@@ -138,6 +138,43 @@ describe("getInviteBundleVsk / isInviteBundleRevoked (INVITE-01/D-04)", () => {
   });
 });
 
+describe("expires_at unit (INVITE-04/D-05, seconds round-trip)", () => {
+  it("round-trips expires_at as SECONDS (10-digit magnitude), not ms (13-digit)", () => {
+    // Binding ruling (2026-07-21, 10-CONTEXT.md's deferred D-05 spec-contradiction
+    // entry): CORD-05 §1's `CommunityInvite` struct comment literally annotates
+    // `expires_at` as "unix ms" -- `expires_at, // optional, unix ms: past it, the
+    // preview still renders, joining refuses` -- which, read alone, would settle
+    // the unit as milliseconds. §4's Invite List example instead gives
+    // `"expires_at": 1722400000` -- a 10-digit value that only makes sense as
+    // SECONDS (as ms it decodes to a moment in January 1970), matching the
+    // magnitude of the adjacent, unambiguously-seconds `created_at` in the same
+    // object. CORD-02 §8 confirms this spec corpus DOES write full 13-digit ms
+    // examples when a field is genuinely ms (`"added_at": 1719800000000, // ms`)
+    // -- a convention §4's `expires_at` does not follow. This codebase implements
+    // SECONDS end-to-end per the locked D-05 ruling (governed by §4, the Invite
+    // List field INVITE-04 targets); the §1-vs-§4 contradiction is recorded
+    // durably in packages/concord/UPSTREAM-NOTES.md, not re-litigated here.
+    const secondsExpiry = 1722400000; // hand-derived from CORD-05 §4's own example value
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: ["wss://ok"],
+      expires_at: secondsExpiry,
+    } as InviteBundle;
+
+    const result = validateInviteBundle(bundle);
+    expect(result?.expires_at).toBe(secondsExpiry);
+    expect(String(secondsExpiry).length).toBe(10);
+
+    // Non-vacuity: the SAME instant expressed in ms is a genuinely different,
+    // 13-digit number -- proving expires_at round-trips as seconds, not silently
+    // reinterpreted or truncated to/from ms anywhere in validateInviteBundle.
+    const msMagnitudeOfSameInstant = secondsExpiry * 1000;
+    expect(String(msMagnitudeOfSameInstant).length).toBe(13);
+    expect(result?.expires_at).not.toBe(msMagnitudeOfSameInstant);
+  });
+});
+
 describe("getInviteBundleLocator coordinate (TEST-01/D-13)", () => {
   it('matches the hand-derived (33301, link_signer, "") coordinate from CORD-05 §2', () => {
     const signerSk = generateSecretKey();

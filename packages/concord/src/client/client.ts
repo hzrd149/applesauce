@@ -475,8 +475,8 @@ export class ConcordClient {
    *  publish our attributed Join, republish the list). */
   private async joinFromBundle(bundle: InviteBundle, fallbackRelays: string[]): Promise<ConcordCommunity> {
     // INVITE-04/D-05: expires_at is unix SECONDS end-to-end — compare against
-    // unixNow() (seconds), never Date.now() (ms). See helpers/__tests__/invite-bundle.test.ts
-    // for the dual-citation rationale (CORD-05 §1 "unix ms" vs §4 seconds magnitude).
+    // unixNow() (seconds), never Date.now() (JS's epoch clock, a different scale).
+    // See helpers/__tests__/invite-bundle.test.ts for the dual-citation spec rationale.
     if (bundle.expires_at && unixNow() > bundle.expires_at) throw new Error("invite expired");
 
     const material: JoinMaterial = {

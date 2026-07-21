@@ -8,6 +8,7 @@ import { BehaviorSubject, EMPTY, NEVER, Subject, delay, filter, firstValueFrom, 
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
+import { unixNow } from "applesauce-core/helpers/time";
 import "applesauce-common/casts";
 import type { RelayPool } from "applesauce-relay";
 import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
@@ -1021,5 +1022,80 @@ describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02
     expect(community.communityId).toBe(cid);
 
     client.stop();
+  });
+});
+
+describe("ConcordClient.joinByLink (INVITE-04 expires_at seconds join-time check, D-05)", () => {
+  async function mintExpiringInviteEvent(expiresAt: number | undefined) {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const genesis = await createCommunity({
+      ownerPubkey: ownerPub,
+      name: "Expiring",
+      description: "expires_at (seconds) join-time check",
+      relays: ["wss://fake"],
+    });
+    const cid = genesis.material.community_id;
+
+    const token = newInviteToken();
+    const linkSk = generateSecretKey();
+    const linkPub = getPublicKey(linkSk);
+    const bundle = buildInviteBundle(genesis.material, { name: "Expiring", creator_npub: ownerPub, expires_at: expiresAt });
+    const template = await InviteBundleFactory.create(bundle, token);
+    const bundleEvent = finalizeEvent(template, linkSk) as NostrEvent;
+    const link = buildInviteLink("https://app.example", linkPub, token, genesis.material.relays);
+    return { cid, bundleEvent, link };
+  }
+
+  // INVITE-04/D-05: joinFromBundle's expiry check must compare unixNow() (seconds)
+  // against bundle.expires_at (seconds) -- a past SECONDS value refuses.
+  it("refuses to join when expires_at (unix seconds) is in the past", async () => {
+    const { bundleEvent, link } = await mintExpiringInviteEvent(unixNow() - 100);
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      pool: asyncServingPool([bundleEvent]),
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+    });
+    await client.start();
+
+    await expect(client.joinByLink(link)).rejects.toThrow(/invite expired/);
+
+    client.stop();
+  });
+
+  // The seconds-vs-seconds sibling of the above: a future SECONDS value joins.
+  it("joins when expires_at (unix seconds) is in the future", async () => {
+    const { cid, bundleEvent, link } = await mintExpiringInviteEvent(unixNow() + 100_000);
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      pool: asyncServingPool([bundleEvent]),
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+    });
+    await client.start();
+
+    const community = await client.joinByLink(link);
+    expect(community.communityId).toBe(cid);
+
+    client.stop();
+  });
+
+  // Non-vacuity (D-13): a correctly-SECONDS-encoded far-future expiry (~10 digits)
+  // is what the pre-fix `Date.now() > bundle.expires_at` (ms vs seconds) comparison
+  // would have misread as already-expired -- Date.now() (~13-digit ms) is always
+  // numerically larger than any 10-digit seconds value, so EVERY seconds-encoded
+  // expiry (past or future) would have refused under the removed ms comparison.
+  // The fixed unixNow() (seconds) vs seconds comparison reads the same value
+  // correctly. This proves the unit fix is not vacuous -- it changes real behavior,
+  // not just documentation.
+  it("demonstrates the unit change is not vacuous: Date.now() (ms) vs a seconds expires_at misreads a valid future expiry as already-past", () => {
+    const futureSeconds = unixNow() + 100_000;
+    expect(Date.now() > futureSeconds).toBe(true); // pre-fix comparison: wrongly "expired"
+    expect(unixNow() > futureSeconds).toBe(false); // fixed comparison: correctly not yet expired
   });
 });
