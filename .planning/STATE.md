@@ -6,14 +6,14 @@ current_phase: 10
 current_phase_name: invite-lifecycle-event-time-consistency
 status: executing
 stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-07-21T14:03:47.015Z"
+last_updated: "2026-07-21T14:11:35.034Z"
 last_activity: 2026-07-21
 last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 51
-  completed_plans: 48
+  completed_plans: 49
   percent: 67
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 10 (invite-lifecycle-event-time-consistency) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-21 — Phase 10 execution started
 
@@ -69,6 +69,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 10 P01 | 15min | 3 tasks | 2 files |
 | Phase 10 P02 | 12min | 2 tasks | 4 files |
 | Phase 10 P03 | 6min | 2 tasks | 4 files |
+| Phase 10 P04 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 10]: 10-01: sequenced Task 2's decodeFragment edit and Task 3's getInviteBundleVsk edit each after the prior task's commit (temporary revert/reapply) so all three tasks land as isolated, git-diff-clean commits despite sharing one source file
 - [Phase ?]: 10-02: parseMs is the single 0..999 canonical-string validator (String(n) === tag round-trip); rumorMs and hasMalformedMs both route through it so ordering and fold-drop can never disagree
 - [Phase ?]: 10-02: includeMs's single splitTime(ms) call overrides both draft.created_at and the ms tag, closing the dual-clock-read / round-vs-floor +1000ms skew; keeps its Date.now()-default signature so bindToChannel and Kick/JoinLeave inherit the fix with no other call-site edits
+- [Phase ?]: 10-04: the per-link try wraps the entire build/sign/store/publish body, reusing the loop's existing console.warn best-effort idiom
+- [Phase ?]: 10-04: regression test triggers the failure via community.leaveChannel (the real CORD-05 voluntary-leave scenario) rather than a hand-constructed malformed link
 
 ### Pending Todos
 
@@ -159,7 +162,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-21T14:03:13.702Z
+Last session: 2026-07-21T14:10:28.322Z
 Stopped at: Completed 10-02-PLAN.md
 Resume file: None
 
