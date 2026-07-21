@@ -149,7 +149,7 @@ Deferred — acknowledged, not in this roadmap.
 | AUTH-07 | Phase 9 | Complete |
 | AUTH-08 | Phase 9 | Complete |
 | AUTH-09 | Phase 9 | Complete *(NEW — D-14 banlist rider, pulled in mid-trace, beyond the audit's enumerated AUTH-03..08 set)* |
-| INVITE-01 | Phase 10 | In Progress *(D-04 closed by 10-01; D-01/D-02/D-03 pending 10-05)* |
+| INVITE-01 | Phase 10 | Complete *(D-04 closed by 10-01; D-01/D-02/D-03 closed by 10-05 collapse-then-tombstone)* |
 | INVITE-02 | Phase 10 | Complete |
 | INVITE-03 | Phase 10 | Complete |
 | INVITE-04 | Phase 10 | Complete |
