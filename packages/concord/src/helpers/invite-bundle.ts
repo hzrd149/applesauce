@@ -254,10 +254,22 @@ export function isValidInviteBundle(event: NostrEvent): event is InviteBundleEve
   return event.kind === INVITE_BUNDLE_KIND;
 }
 
-/** The bundle's `vsk` edition tag (defaults to live, CORD-05 §1). */
+/**
+ * The bundle's `vsk` edition tag. Absent defaults to live (CORD-05 §1); present
+ * but unparseable (D-04) denies rather than defaulting to live — mirrors
+ * `hasMalformedMs`'s absent-vs-malformed two-branch shape (helpers/stream.ts).
+ * `Number("junk")` -> `NaN` used to fall through as a value that never equaled
+ * `INVITE_BUNDLE_VSK_REVOKED`, staying live; this closes that revocation-bypass
+ * hole by returning `INVITE_BUNDLE_VSK_REVOKED` directly so the existing
+ * `=== INVITE_BUNDLE_VSK_REVOKED` predicate in {@link isInviteBundleRevoked}
+ * denies it. A clean numeric non-vocabulary value (e.g. `7`) is neither
+ * malformed nor `9` and stays joinable, unaffected by this branch.
+ */
 export function getInviteBundleVsk(event: NostrEvent): number {
   const raw = event.tags.find((t) => t[0] === "vsk")?.[1];
-  return raw === undefined ? INVITE_BUNDLE_VSK_LIVE : Number(raw);
+  if (raw === undefined) return INVITE_BUNDLE_VSK_LIVE;
+  const n = Number(raw);
+  return Number.isNaN(n) ? INVITE_BUNDLE_VSK_REVOKED : n;
 }
 
 /** Whether the bundle is a revocation tombstone (vsk 9, CORD-05 §2). */

@@ -5,10 +5,19 @@
 import { describe, expect, it } from "vitest";
 import { bytesToHex, randomBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import type { NostrEvent } from "applesauce-core/helpers";
 
 import { communityId } from "../crypto.js";
-import { decodeFragment, encodeFragment, validateInviteBundle } from "../invite-bundle.js";
-import type { InviteBundle } from "../../types.js";
+import {
+  INVITE_BUNDLE_KIND,
+  decodeFragment,
+  encodeFragment,
+  isInviteBundleRevoked,
+  validateInviteBundle,
+} from "../invite-bundle.js";
+import { getInviteBundleLocator } from "../invite-list.js";
+import type { InviteBundle, InviteListInvite } from "../../types.js";
 
 // ── Shared valid owner triple, hand-derived from CORD-02 Appendix A.4 —
 // community_id = sha256("concord/community" || owner_xonly[32] || owner_salt[32]).
@@ -94,5 +103,61 @@ describe("decodeFragment (INVITE-05/D-12)", () => {
     const decoded = decodeFragment(encoded);
     expect(decoded.token).toEqual(TOKEN);
     expect(decoded.relays).toEqual(RELAYS);
+  });
+});
+
+describe("getInviteBundleVsk / isInviteBundleRevoked (INVITE-01/D-04)", () => {
+  function fakeEvent(tags: string[][]): NostrEvent {
+    return {
+      id: "00".repeat(32),
+      pubkey: "11".repeat(32),
+      created_at: 1_700_000_000,
+      kind: INVITE_BUNDLE_KIND,
+      tags,
+      content: "",
+      sig: "00".repeat(64),
+    };
+  }
+
+  it("denies (revoked) when vsk is present but non-numeric junk", () => {
+    expect(isInviteBundleRevoked(fakeEvent([["vsk", "junk"]]))).toBe(true);
+    // Non-vacuity: the pre-fix implementation does `Number("junk")` -> `NaN`,
+    // and `NaN !== 9` -> stays LIVE. This case pins that revocation-bypass hole shut.
+  });
+
+  it("stays live when vsk is absent (CORD-05 §1 default)", () => {
+    expect(isInviteBundleRevoked(fakeEvent([]))).toBe(false);
+  });
+
+  it("stays joinable when vsk is a clean numeric non-vocabulary value (7)", () => {
+    expect(isInviteBundleRevoked(fakeEvent([["vsk", "7"]]))).toBe(false);
+  });
+
+  it("denies when vsk is exactly 9 (regression)", () => {
+    expect(isInviteBundleRevoked(fakeEvent([["vsk", "9"]]))).toBe(true);
+  });
+});
+
+describe("getInviteBundleLocator coordinate (TEST-01/D-13)", () => {
+  it('matches the hand-derived (33301, link_signer, "") coordinate from CORD-05 §2', () => {
+    const signerSk = generateSecretKey();
+    // Hand-derived expected pubkey — computed independently, not read back from
+    // getInviteBundleLocator, per D-13's "never read expected values from the
+    // function under test" rule.
+    const expectedPubkey = getPublicKey(signerSk);
+
+    const invite: InviteListInvite = {
+      token: "tok",
+      signer_sk: bytesToHex(signerSk),
+      community_id: COMMUNITY_ID,
+      url: "https://app.example/invite/naddr1notreal#frag",
+      created_at: 1_700_000_000,
+    };
+
+    const locator = getInviteBundleLocator(invite);
+    // Hand-derived from CORD-05 §2: coordinate is (kind 33301, link_signer, "").
+    expect(locator.kind).toBe(33301);
+    expect(locator.pubkey).toBe(expectedPubkey);
+    expect(locator.identifier).toBe("");
   });
 });
