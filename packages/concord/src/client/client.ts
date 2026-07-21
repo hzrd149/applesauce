@@ -26,7 +26,7 @@ import {
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { castUser, type User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers/event";
-import { setHiddenContentCache } from "applesauce-core/helpers";
+import { getReplaceableIdentifier, setHiddenContentCache } from "applesauce-core/helpers";
 import { unixNow } from "applesauce-core/helpers/time";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
@@ -93,6 +93,22 @@ function newestAtCoordinate(events: NostrEvent[]): NostrEvent | undefined {
       winner = e;
   }
   return winner;
+}
+
+/**
+ * Does `event` actually sit at the invite coordinate `(33301, linkSigner, "")`?
+ * INVITE-01/D-02: the outgoing `pool.request` filter (`authors`, `#d`) is a
+ * REQUEST to relays, not a guarantee — `mapEventsToTimeline` unions whatever
+ * every queried relay returns and never re-checks it against the filter. So a
+ * single misbehaving/compromised relay could otherwise inject a kind-33301
+ * event with an arbitrary author or non-empty `d` tag, win the `created_at`
+ * race in {@link newestAtCoordinate}, and be treated as "the" coordinate's
+ * winner (denying an otherwise-valid join, or shadowing the real newest event).
+ * Enforce the coordinate constraints on the INBOUND events, never trusting the
+ * relay set to have honored the filter.
+ */
+function isAtCoordinate(event: NostrEvent, linkSigner: string): boolean {
+  return event.pubkey === linkSigner && getReplaceableIdentifier(event) === "";
 }
 
 /** Options for constructing the multi-community {@link ConcordClient} manager. */
@@ -448,7 +464,13 @@ export class ConcordClient {
     // included) to the single newest-at-coordinate winner FIRST, then evaluate
     // revocation on that single winner — filtering revoked editions out before
     // sorting would let a lagging relay's stale live bundle win (CORD-05 §2).
-    const winner = newestAtCoordinate(events.filter(isValidInviteBundle));
+    // INVITE-01/D-02: re-enforce the coordinate on inbound events (see
+    // isAtCoordinate) — a misbehaving relay is not trusted to have honored the
+    // outgoing authors/#d filter, so an off-coordinate injected event can never
+    // win the collapse.
+    const winner = newestAtCoordinate(
+      events.filter((e) => isValidInviteBundle(e) && isAtCoordinate(e, parsed.linkSigner)),
+    );
     if (!winner || isInviteBundleRevoked(winner)) throw new Error("invite bundle not found or revoked");
 
     // Bound and self-certify the attacker-crafted bundle (CORD-05 §1).

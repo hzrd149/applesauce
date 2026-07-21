@@ -896,6 +896,34 @@ function filteringAsyncServingPool(events: NostrEvent[]): RelayPool {
   } as unknown as RelayPool;
 }
 
+// A pool stand-in for a MISBEHAVING / compromised relay: it serves every event
+// it holds regardless of the requested `kinds`/`authors`/tag filter. Unlike
+// `asyncServingPool` (which still honors kinds+authors, modeling an honest relay
+// that just lacks server-side tag filtering) this ignores the outgoing filter
+// entirely -- the threat model CR-01 is about: the outgoing filter is a request,
+// not a guarantee, so a bad relay can return an arbitrary-author / arbitrary-tag
+// event and `mapEventsToTimeline` unions it in without re-validation.
+function unfilteredServingPool(events: NostrEvent[]): RelayPool {
+  const serve = () => from(events).pipe(delay(0));
+  const relay = {
+    url: "wss://fake",
+    challenge: null,
+    challenge$: new BehaviorSubject<string | null>(null),
+    isAuthenticated: () => false,
+    authenticate: async () => ({ ok: true, from: "wss://fake" }),
+    getSupported: async () => null,
+    sync: () => EMPTY,
+    request: () => serve(),
+  };
+  return {
+    status$: new Subject(),
+    relay: () => relay,
+    subscription: () => NEVER,
+    request: () => serve(),
+    publish: async () => [],
+  } as unknown as RelayPool;
+}
+
 describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02/D-03)", () => {
   async function mintLinkAndCommunity() {
     const owner = new PrivateKeySigner(generateSecretKey());
@@ -1018,6 +1046,60 @@ describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02
     });
     await client.start();
 
+    const community = await client.joinByLink(link);
+    expect(community.communityId).toBe(cid);
+
+    client.stop();
+  });
+
+  // INVITE-01/D-02 (CR-01): a MISBEHAVING relay that ignores the outgoing
+  // authors/"#d" filter must not be able to inject an off-coordinate event that
+  // wins the collapse and controls the join outcome. The outgoing filter is a
+  // request, not a guarantee -- `asyncServingPool` serves every kind match
+  // regardless of author/tags, modeling exactly the union a relay that ignores
+  // the filter would contribute. Here the injection is a wrong-AUTHOR kind-33301
+  // event with garbage content and a NEWER created_at: under the pre-fix code
+  // (which filtered only by `isValidInviteBundle`, i.e. kind) it would win
+  // `newestAtCoordinate`, then `getInviteBundle`/`validateInviteBundle` would
+  // fail on its garbage content and the join would be DENIED -- one bad relay
+  // unconditionally blocking a valid join, the exact property INVITE-01 exists
+  // to defend. `isAtCoordinate` re-enforces `pubkey === linkSigner && d === ""`
+  // on inbound events, so the injection is dropped before the race.
+  it("ignores an off-coordinate event injected by a filter-ignoring relay, so one bad relay can't deny a join (CR-01)", async () => {
+    const { cid, token, linkSk, linkPub, bundle, link } = await mintLinkAndCommunity();
+    const now = Math.floor(Date.now() / 1000);
+
+    // The real bundle at the correct coordinate (author = link signer, d = "").
+    const liveTemplate = await InviteBundleFactory.create(bundle, token).created(now);
+    const liveEvent = finalizeEvent(liveTemplate, linkSk) as NostrEvent;
+
+    // A wrong-author kind-33301 event with garbage content, minted LATER so it
+    // wins any unguarded created_at race. A misbehaving relay serves it even
+    // though the request scoped `authors: [linkPub], "#d": [""]`.
+    const attackerSk = generateSecretKey();
+    const injected = finalizeEvent(
+      { kind: INVITE_BUNDLE_KIND, created_at: now + 1000, tags: [["d", ""]], content: "not-a-valid-encrypted-bundle" },
+      attackerSk,
+    ) as NostrEvent;
+    expect(injected.pubkey).not.toBe(linkPub);
+    expect(injected.created_at).toBeGreaterThan(liveEvent.created_at);
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      // Misbehaving-relay pool: serves the injected off-coordinate event despite
+      // the scoped `authors`/`#d` request -- a compromised/non-compliant relay is
+      // not trusted to honor the outgoing filter (that is the whole CR-01 threat).
+      pool: unfilteredServingPool([liveEvent, injected]),
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+    });
+    await client.start();
+
+    // Non-vacuity: without `isAtCoordinate` the newer `injected` event wins the
+    // collapse and `getInviteBundle(injected, token)` throws on its garbage
+    // content -> join REJECTED. Asserting the join RESOLVES proves the fix
+    // dropped the off-coordinate injection and let the honest d:"" bundle win.
     const community = await client.joinByLink(link);
     expect(community.communityId).toBe(cid);
 
