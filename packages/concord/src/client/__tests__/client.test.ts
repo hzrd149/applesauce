@@ -847,3 +847,179 @@ describe("ConcordClient.joinByLink (DI, async-served bundle)", () => {
     client.stop();
   });
 });
+
+// A pool stand-in that honors NIP-01 tag filters (e.g. "#d") the way an honest
+// relay would — unlike `asyncServingPool` above, which serves every matching
+// kind/author event regardless of tags (representing "some relay in the pool
+// has this event", the union-forming behavior of a real multi-relay
+// `RelayPool.request`). This stricter variant proves the request-level `#d`
+// scope (D-02) actually withholds a sibling-`d` edition, not merely that the
+// outgoing filter carries the key.
+function filteringAsyncServingPool(events: NostrEvent[]): RelayPool {
+  const matchesFilter = (e: NostrEvent, f: { kinds?: number[]; authors?: string[]; [tag: string]: unknown }) => {
+    if (f.kinds && !f.kinds.includes(e.kind)) return false;
+    if (f.authors && !f.authors.includes(e.pubkey)) return false;
+    for (const key of Object.keys(f)) {
+      if (!key.startsWith("#")) continue;
+      const tagName = key.slice(1);
+      const values = f[key] as string[];
+      if (!e.tags.some((t) => t[0] === tagName && values.includes(t[1]))) return false;
+    }
+    return true;
+  };
+  const serve = (filters: unknown) => {
+    const fs = (Array.isArray(filters) ? filters : [filters]) as Array<{
+      kinds?: number[];
+      authors?: string[];
+      [tag: string]: unknown;
+    }>;
+    const match = events.filter((e) => fs.some((f) => matchesFilter(e, f)));
+    return from(match).pipe(delay(0));
+  };
+  const relay = {
+    url: "wss://fake",
+    challenge: null,
+    challenge$: new BehaviorSubject<string | null>(null),
+    isAuthenticated: () => false,
+    authenticate: async () => ({ ok: true, from: "wss://fake" }),
+    getSupported: async () => null,
+    sync: () => EMPTY,
+    request: (filters: unknown) => serve(filters),
+  };
+  return {
+    status$: new Subject(),
+    relay: () => relay,
+    subscription: () => NEVER,
+    request: (_relays: string[], filters: unknown) => serve(filters),
+    publish: async () => [],
+  } as unknown as RelayPool;
+}
+
+describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02/D-03)", () => {
+  async function mintLinkAndCommunity() {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const genesis = await createCommunity({
+      ownerPubkey: ownerPub,
+      name: "Lagging",
+      description: "revocation must win across a lagging relay",
+      relays: ["wss://fake"],
+    });
+    const cid = genesis.material.community_id;
+
+    const token = newInviteToken();
+    const linkSk = generateSecretKey();
+    const linkPub = getPublicKey(linkSk);
+    const bundle = buildInviteBundle(genesis.material, { name: "Lagging", creator_npub: ownerPub });
+    const link = buildInviteLink("https://app.example", linkPub, token, genesis.material.relays);
+    return { cid, token, linkSk, linkPub, bundle, link };
+  }
+
+  // INVITE-01: a fresher tombstone must close the link even when another relay
+  // still serves a stale live edition at the SAME coordinate (33301, link_signer, "").
+  it("rejects when a fresher tombstone coexists with a stale live bundle from a lagging relay", async () => {
+    const { cid: _cid, token, linkSk, bundle, link } = await mintLinkAndCommunity();
+    const now = Math.floor(Date.now() / 1000);
+
+    // The stale edition a lagging relay is still serving (vsk 6, live, older).
+    const staleLiveTemplate = await InviteBundleFactory.create(bundle, token).created(now - 100);
+    const staleLiveEvent = finalizeEvent(staleLiveTemplate, linkSk) as NostrEvent;
+
+    // The fresher revocation another (honest, caught-up) relay serves at the
+    // same coordinate (vsk 9, newer created_at).
+    const freshTombstoneTemplate = await InviteBundleFactory.modify(staleLiveEvent).revoke().created(now);
+    const freshTombstoneEvent = finalizeEvent(freshTombstoneTemplate, linkSk) as NostrEvent;
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      // `asyncServingPool` models the union RelayPool.request() would already
+      // present from multiple relays — both editions land in one merged timeline.
+      pool: asyncServingPool([staleLiveEvent, freshTombstoneEvent]),
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+    });
+    await client.start();
+
+    // Non-vacuity: under the removed `events.filter(isValidInviteBundle &&
+    // !isInviteBundleRevoked).sort(desc)[0]` inversion, `freshTombstoneEvent`
+    // would have been excluded by the `!isInviteBundleRevoked` predicate BEFORE
+    // sorting, leaving `staleLiveEvent` as the sole survivor -- the stale live
+    // bundle would have won and the join would have SUCCEEDED. The fix instead
+    // collapses the full union to the newest edition (the tombstone) FIRST,
+    // then evaluates revocation on that single winner, so the join is refused.
+    await expect(client.joinByLink(link)).rejects.toThrow(/invite bundle not found or revoked/);
+    expect(client.getCommunity(bundle.community_id)).toBeUndefined();
+
+    client.stop();
+  });
+
+  // INVITE-01/D-02: the pool.request filter must scope to the empty `d` so a
+  // sibling-`d` coordinate can never pollute the union.
+  it("scopes the pool.request filter to the empty d tag", async () => {
+    const { token, linkSk, linkPub, bundle, link } = await mintLinkAndCommunity();
+
+    const template = await InviteBundleFactory.create(bundle, token);
+    const bundleEvent = finalizeEvent(template, linkSk) as NostrEvent;
+
+    const pool = asyncServingPool([bundleEvent]);
+    const requestSpy = vi.spyOn(pool, "request");
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+    });
+    await client.start();
+
+    await client.joinByLink(link);
+
+    expect(requestSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining([expect.objectContaining({ kinds: [INVITE_BUNDLE_KIND], authors: [linkPub], "#d": [""] })]),
+    );
+
+    client.stop();
+  });
+
+  // INVITE-01/D-02: a decoy event at a sibling `d` coordinate (same author+kind,
+  // newer created_at) must be ignored — proven end-to-end against an honest
+  // relay stand-in that actually applies the "#d": [""] scope server-side.
+  it("ignores a newer decoy event carrying a non-empty d tag (D-02)", async () => {
+    const { cid, token, linkSk, bundle, link } = await mintLinkAndCommunity();
+    const now = Math.floor(Date.now() / 1000);
+
+    // The real bundle at the correct coordinate (d: "").
+    const liveTemplate = await InviteBundleFactory.create(bundle, token).created(now);
+    const liveEvent = finalizeEvent(liveTemplate, linkSk) as NostrEvent;
+
+    // A decoy at a SIBLING coordinate (same author+kind, non-empty d), minted
+    // LATER (higher created_at) so an unscoped collapse would incorrectly pick
+    // it as "newest" -- only the request-level `#d` scope keeps it out of the
+    // union at all.
+    const decoyTemplate = await InviteBundleFactory.create(bundle, token).created(now + 1000);
+    const decoyEvent = finalizeEvent(
+      { ...decoyTemplate, tags: decoyTemplate.tags.map((t) => (t[0] === "d" ? ["d", "decoy"] : t)) },
+      linkSk,
+    ) as NostrEvent;
+    expect(decoyEvent.created_at).toBeGreaterThan(liveEvent.created_at);
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      // The stricter, tag-honoring pool stand-in: withholds the decoy server-side
+      // exactly like an honest relay applying "#d": [""] would.
+      pool: filteringAsyncServingPool([liveEvent, decoyEvent]),
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+    });
+    await client.start();
+
+    const community = await client.joinByLink(link);
+    expect(community.communityId).toBe(cid);
+
+    client.stop();
+  });
+});
