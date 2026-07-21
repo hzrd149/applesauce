@@ -1134,18 +1134,24 @@ export class ConcordCommunity {
     const state = this.state$.value;
     const inviteRelays = this.relays();
     for (const link of links) {
-      const bundle = buildInviteBundle(this.material, {
-        name: state.metadata?.name,
-        icon: state.metadata?.icon,
-        creator_npub: this.pubkey,
-        label: link.label,
-        expires_at: link.expiresAt,
-        channels: link.channels,
-      });
-      const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
-      const signed = finalizeEvent(template, hexToBytes(link.signerSk));
-      this.eventStore.add(signed);
-      this.pool.publish(inviteRelays, signed).catch((err) => console.warn("invite bundle refresh publish failed", err));
+      try {
+        const bundle = buildInviteBundle(this.material, {
+          name: state.metadata?.name,
+          icon: state.metadata?.icon,
+          creator_npub: this.pubkey,
+          label: link.label,
+          expires_at: link.expiresAt,
+          channels: link.channels,
+        });
+        const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
+        const signed = finalizeEvent(template, hexToBytes(link.signerSk));
+        this.eventStore.add(signed);
+        this.pool
+          .publish(inviteRelays, signed)
+          .catch((err) => console.warn("invite bundle refresh publish failed", err));
+      } catch (err) {
+        console.warn(`invite refresh skipped for link ${link.token}`, err);
+      }
     }
   }
 
