@@ -123,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-16 — Phase 6 complete (Refounding rotation & authority correctness)*
+*Last updated: 2026-07-21 — Phase 10 complete (Invite lifecycle & event-time consistency; revoked invites survive relay lag, malformed bundles fail closed, created_at/ms is one clock read)*
