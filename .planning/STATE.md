@@ -4,9 +4,9 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 10
 current_phase_name: Invite Lifecycle & Event Time Consistency
-status: verifying
+status: executing
 stopped_at: Phase 10 context gathered
-last_updated: "2026-07-20T07:26:18.988Z"
+last_updated: "2026-07-21T08:53:15.237Z"
 last_activity: 2026-07-19
 last_activity_desc: Phase 09 complete, transitioned to Phase 10
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 10 — Invite Lifecycle & Event Time Consistency
 Plan: Not started
-Status: Phase complete — ready for verification
+Status: Ready to execute
 Last activity: 2026-07-19 — Phase 09 complete, transitioned to Phase 10
 
 Progress: [██████████] 98%
@@ -127,6 +127,7 @@ None yet.
 
 - 5 requirements are blocked on a spec ruling before their implementation task can complete: ROTATE-10, ROTATE-13 (Phase 8); AUTH-07, AUTH-08 (Phase 9); CHAN-07 (Phase 7). Each may resolve to "no change needed" — a planning-time gate for those three phases, not a roadmap risk.
 - Verification standard for this milestone: every fix needs a regression test asserting against an independently-derived spec value, not implementation output — the exact gap that let all 43 findings pass CI before. Plan-phase should hold plans to this explicitly.
+- [Phase 10 plan-phase, 2026-07-21] Decision-coverage gate (13a) OVERRIDDEN — reported `covered=0/11` (false-fail: the `check.decision-coverage-plan` parser chokes on the nested `*emphasis*`/colons inside the `D-NN:` bold labels in 10-CONTEXT.md). Real coverage is complete: all 13 decisions D-01–D-13 are referenced 2–22× each across the 6 plans and the independent gsd-plan-checker traced every one to an implementing task. Proceeded past the gate deliberately; verify-phase should treat decision coverage as satisfied, not re-block on the parser artifact.
 
 ### Roadmap Evolution
 

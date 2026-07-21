@@ -282,11 +282,19 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 10-01-PLAN.md — Invite bundle fail-closed guards: non-array bounds (INVITE-02), unknown fragment version (INVITE-05), malformed `vsk` deny (INVITE-01/D-04)
 - [ ] 10-02-PLAN.md — Event-time single clock read (`includeMs`) & shared `parseMs` predicate (TIME-01, TIME-03)
 - [ ] 10-03-PLAN.md — Guestbook snapshot shares one timestamp across chunks (TIME-02)
 - [ ] 10-04-PLAN.md — Resilient per-link `refreshInviteBundles` skip-and-continue (INVITE-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 10-05-PLAN.md — `joinByLink` collapse-then-tombstone revocation survives relay lag (INVITE-01/D-01/02/03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 10-06-PLAN.md — `expires_at` seconds end-to-end + UPSTREAM-NOTES contradiction entry (INVITE-04)
 
 ### Phase 11: Messaging Wire Conformance
