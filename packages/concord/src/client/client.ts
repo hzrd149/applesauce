@@ -76,6 +76,24 @@ import { ConcordCommunity } from "./community.js";
  *  a single {@link ConcordClient.saveCommunityList} call. */
 const COMMUNITY_LIST_FLUSH_DEBOUNCE_MS = 200;
 
+/**
+ * Collapse a multi-relay union of events at one addressable coordinate to its
+ * single NIP-01 winner (newest `created_at`, tie -> lowest `id`) — replicated
+ * verbatim from `EventStore`'s replaceable-history winner selection
+ * (`event-store.ts:264-267`) since no store exists pre-join (INVITE-01/D-03).
+ * MUST run BEFORE any liveness/revocation check: a tombstone is exactly as
+ * durable as the bundle it replaced (CORD-05 §2) and must compete for
+ * "newest" on equal footing, never be pre-excluded (D-01).
+ */
+function newestAtCoordinate(events: NostrEvent[]): NostrEvent | undefined {
+  let winner: NostrEvent | undefined;
+  for (const e of events) {
+    if (!winner || e.created_at > winner.created_at || (e.created_at === winner.created_at && e.id < winner.id))
+      winner = e;
+  }
+  return winner;
+}
+
 /** Options for constructing the multi-community {@link ConcordClient} manager. */
 export interface ConcordClientOptions {
   /** The logged-in user's signer. */
@@ -416,20 +434,24 @@ export class ConcordClient {
     // `firstValueFrom` would resolve with that synchronous `[]` before any relay
     // replies — the invite bundle would never be fetched. `lastValueFrom` waits for
     // completion and yields the fully-accumulated timeline.
+    // INVITE-01/D-02: scope to the empty `d` identifier so a sibling coordinate
+    // (same author+kind, different `d`) can never pollute the union.
     const events = await lastValueFrom(
       this.pool
-        .request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner] }])
+        .request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner], "#d": [""] }])
         .pipe(mapEventsToTimeline(), timeout(10000)),
       { defaultValue: [] as NostrEvent[] },
     ).catch(() => [] as NostrEvent[]);
 
-    const live = events
-      .filter((e) => isValidInviteBundle(e) && !isInviteBundleRevoked(e))
-      .sort((a, b) => b.created_at - a.created_at)[0];
-    if (!live) throw new Error("invite bundle not found or revoked");
+    // INVITE-01/D-01/D-03: collapse the FULL relay union (all editions, tombstone
+    // included) to the single newest-at-coordinate winner FIRST, then evaluate
+    // revocation on that single winner — filtering revoked editions out before
+    // sorting would let a lagging relay's stale live bundle win (CORD-05 §2).
+    const winner = newestAtCoordinate(events.filter(isValidInviteBundle));
+    if (!winner || isInviteBundleRevoked(winner)) throw new Error("invite bundle not found or revoked");
 
     // Bound and self-certify the attacker-crafted bundle (CORD-05 §1).
-    const bundle = validateInviteBundle(getInviteBundle(live, parsed.token));
+    const bundle = validateInviteBundle(getInviteBundle(winner, parsed.token));
     if (!bundle) throw new Error("invite failed owner verification");
 
     return this.joinFromBundle(bundle, relays);
