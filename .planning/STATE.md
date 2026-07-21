@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
 current_phase: 10
-current_phase_name: Invite Lifecycle & Event Time Consistency
+current_phase_name: invite-lifecycle-event-time-consistency
 status: executing
-stopped_at: Phase 10 context gathered
-last_updated: "2026-07-21T08:53:15.237Z"
-last_activity: 2026-07-19
-last_activity_desc: Phase 09 complete, transitioned to Phase 10
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-07-21T13:50:44.188Z"
+last_activity: 2026-07-21
+last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 9
   completed_phases: 6
-  total_plans: 45
-  completed_plans: 45
+  total_plans: 51
+  completed_plans: 46
   percent: 67
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 09 — authority-permission-fold-correctness
+**Current focus:** Phase 10 — invite-lifecycle-event-time-consistency
 
 ## Current Position
 
-Phase: 10 — Invite Lifecycle & Event Time Consistency
-Plan: Not started
+Phase: 10 (invite-lifecycle-event-time-consistency) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-19 — Phase 09 complete, transitioned to Phase 10
+Last activity: 2026-07-21 — Phase 10 execution started
 
 Progress: [██████████] 98%
 
@@ -66,6 +66,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 09 P04 | 9min | 2 tasks | 3 files |
 | Phase 09 P02 | 7min | 2 tasks | 2 files |
 | Phase 09 P05 | 20min | 3 tasks | 3 files |
+| Phase 10 P01 | 15min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -118,6 +119,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 09]: 09-02: D-14 banlist fix is a per-pk conditional added inside the existing loop (s.isOwner || s.position < standing(pk).position), additive to the author-BAN-bit check, mirroring AUTH-07's Grant target-rank clause applied to a different entity in the same file
 - [Phase 09]: 09-05: D-03 filed as an in-repo note (packages/concord/UPSTREAM-NOTES.md), not a GitHub issue -- mechanism was executor's discretion; no changeset since concord is unreleased
 - [Phase 09]: 09-05: D-14 tracked under a new requirement AUTH-09 and a new concord-audit.md finding D14, kept distinct from the AUTH-03..08 set per D-13->D-14's explicit no-silent-absorb instruction
+- [Phase 10]: getInviteBundleVsk's malformed-vsk branch returns INVITE_BUNDLE_VSK_REVOKED directly (executor's discretion per D-04), reusing isInviteBundleRevoked's existing === REVOKED predicate with no downstream changes
+- [Phase 10]: 10-01: sequenced Task 2's decodeFragment edit and Task 3's getInviteBundleVsk edit each after the prior task's commit (temporary revert/reapply) so all three tasks land as isolated, git-diff-clean commits despite sharing one source file
 
 ### Pending Todos
 
@@ -128,6 +131,7 @@ None yet.
 - 5 requirements are blocked on a spec ruling before their implementation task can complete: ROTATE-10, ROTATE-13 (Phase 8); AUTH-07, AUTH-08 (Phase 9); CHAN-07 (Phase 7). Each may resolve to "no change needed" — a planning-time gate for those three phases, not a roadmap risk.
 - Verification standard for this milestone: every fix needs a regression test asserting against an independently-derived spec value, not implementation output — the exact gap that let all 43 findings pass CI before. Plan-phase should hold plans to this explicitly.
 - [Phase 10 plan-phase, 2026-07-21] Decision-coverage gate (13a) OVERRIDDEN — reported `covered=0/11` (false-fail: the `check.decision-coverage-plan` parser chokes on the nested `*emphasis*`/colons inside the `D-NN:` bold labels in 10-CONTEXT.md). Real coverage is complete: all 13 decisions D-01–D-13 are referenced 2–22× each across the 6 plans and the independent gsd-plan-checker traced every one to an implementing task. Proceeded past the gate deliberately; verify-phase should treat decision coverage as satisfied, not re-block on the parser artifact.
+- INVITE-01 spans two plans (10-01 closed D-04's vsk fail-closed sub-part; D-01/D-02/D-03's joinByLink collapse-then-tombstone rewrite is still pending in 10-05) — do not treat INVITE-01 as fully satisfied until 10-05 lands; REQUIREMENTS.md traceability table reflects this as In Progress, not Complete
 
 ### Roadmap Evolution
 
@@ -151,9 +155,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-20T07:26:18.974Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-invite-lifecycle-event-time-consistency/10-CONTEXT.md
+Last session: 2026-07-21T13:49:38.956Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
