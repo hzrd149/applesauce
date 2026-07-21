@@ -18,6 +18,18 @@ describe("chat operations", () => {
     expect(Number(ms)).toBe(345);
   });
 
+  it("includeMs overrides created_at from the same single clock read (TIME-01)", async () => {
+    // Choke point: bindToChannel/KickFactory/JoinLeaveFactory all chain
+    // includeMs, so this override propagates to every consumer with no
+    // further edits at their call sites.
+    const value = 1_700_000_000_700;
+    const draft = await includeMs(value)(blank(kinds.ChatMessage));
+    const ms = draft.tags.find((t) => t[0] === "ms")![1];
+
+    expect(draft.created_at).toBe(Math.floor(value / 1000));
+    expect(draft.created_at * 1000 + Number(ms)).toBe(value);
+  });
+
   describe("includeMediaEncryption", () => {
     const withImeta = (url: string) => ({
       kind: kinds.ChatMessage,

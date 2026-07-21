@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Rumor } from "applesauce-core/helpers/event";
-import { hasMalformedMs, parseMs, rumorMs } from "../stream.js";
+import { hasMalformedMs, parseMs, rumorMs, splitTime } from "../stream.js";
 
 const rumor = (created_at: number, msTag?: string): Rumor => ({
   id: "id",
@@ -66,5 +66,31 @@ describe("parseMs", () => {
   it("rumorMs is created_at*1000 + parseMs(tag) for a valid tag", () => {
     const r = rumor(1700000000, "700");
     expect(rumorMs(r)).toBe(r.created_at * 1000 + parseMs("700")!);
+  });
+});
+
+describe("splitTime", () => {
+  it("decomposes a >=500ms remainder without rounding up (no +1000ms skew)", () => {
+    // A round-vs-floor bug would push this to created_at: 1700000001. A pure
+    // floor decomposition keeps created_at at 1700000000 regardless of how
+    // large the remainder is.
+    expect(splitTime(1_700_000_000_700)).toEqual({ created_at: 1_700_000_000, ms: 700 });
+  });
+
+  it("orders a …000700 rumor before a …001400 rumor by rumorMs", () => {
+    // Repro: under the old dual-clock-read / round-vs-floor includeMs, a
+    // rumor built from 1700000000700 could stamp created_at as either
+    // 1700000000 or 1700000001 depending on which Date.now() read landed
+    // where, making this comparison flaky. With one splitTime read the
+    // decomposition is exact and the ordering is deterministic.
+    const early = splitTime(1_700_000_000_700);
+    const late = splitTime(1_700_000_001_400);
+
+    const rumorEarly = rumor(early.created_at, String(early.ms));
+    const rumorLate = rumor(late.created_at, String(late.ms));
+
+    expect(rumorMs(rumorEarly)).toBeLessThan(rumorMs(rumorLate));
+    expect(rumorMs(rumorEarly)).toBe(1_700_000_000_700);
+    expect(rumorMs(rumorLate)).toBe(1_700_000_001_400);
   });
 });

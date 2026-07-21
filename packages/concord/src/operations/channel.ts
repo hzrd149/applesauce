@@ -12,15 +12,29 @@ import { eventPipe } from "applesauce-core/helpers";
 import { modifyPublicTags } from "applesauce-core/operations";
 import { setSingletonTag } from "applesauce-core/operations/tag/common";
 import type { AttachmentEncryption } from "../helpers/imeta.js";
+import { splitTime } from "../helpers/stream.js";
 
 /** Bind a chat rumor to its channel + epoch (CORD-03 §3). */
 export function includeChannelBinding(channelId: string, epoch: number): EventOperation {
   return modifyPublicTags(setSingletonTag(["channel", channelId]), setSingletonTag(["epoch", String(epoch)]));
 }
 
-/** Add the millisecond-resolution ordering remainder (CORD-02 §4). */
+/**
+ * Add the millisecond-resolution ordering remainder AND stamp `created_at`
+ * from the same single clock read (CORD-02 §4, TIME-01/D-06/D-07). `ms` is
+ * decomposed exactly once via {@link splitTime}, so `draft.created_at * 1000
+ * + Number(msTag)` is always a true reconstruction of the passed/defaulted
+ * `ms` value — no separate `Date.now()` read and no round-vs-floor skew.
+ * This is the choke point every channel-plane send (`bindToChannel`) and the
+ * Kick/JoinLeave factories funnel through, so the fix propagates to all of
+ * them without further edits.
+ */
 export function includeMs(ms: number = Date.now()): EventOperation {
-  return modifyPublicTags(setSingletonTag(["ms", String(ms % 1000)]));
+  return async (draft) => {
+    const { created_at, ms: remainder } = splitTime(ms);
+    const withTag = await modifyPublicTags(setSingletonTag(["ms", String(remainder)]))(draft);
+    return { ...withTag, created_at };
+  };
 }
 
 /**
