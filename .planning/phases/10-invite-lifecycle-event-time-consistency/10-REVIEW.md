@@ -18,7 +18,12 @@ findings:
   warning: 3
   info: 2
   total: 6
+resolved:
+  - id: CR-01
+    fixed_in: 82ebab35
+    note: "isAtCoordinate(pubkey===linkSigner && d==='') added to joinByLink pre-collapse filter; non-vacuous injection test via filter-ignoring relay pool stand-in"
 status: issues_found
+open_findings: "3 warnings + 2 info (CR-01 critical resolved)"
 ---
 
 # Phase 10: Code Review Report
@@ -36,7 +41,11 @@ However, one finding undercuts the phase's own central claim. `joinByLink`'s new
 
 ## Critical Issues
 
-### CR-01: `joinByLink`'s coordinate collapse never verifies event authorship/`d`-tag, only `kind`
+### CR-01: `joinByLink`'s coordinate collapse never verifies event authorship/`d`-tag, only `kind` — ✅ RESOLVED (82ebab35)
+
+> **Resolution (2026-07-21):** Added `isAtCoordinate(event, linkSigner)` (`pubkey === event.pubkey === linkSigner && getReplaceableIdentifier(event) === ""`) to the pre-collapse filter in `joinByLink`, re-enforcing the coordinate on INBOUND events rather than trusting the outgoing `pool.request` filter. New regression test (`client.test.ts`, "one bad relay can't deny a join") injects a wrong-author garbage kind-33301 event via a new `unfilteredServingPool` stand-in that ignores the outgoing filter entirely — the test passes with the fix and fails without it (non-vacuity verified by reverting the filter line). Full concord suite 287/287 green, `tsc` clean.
+
+
 
 **File:** `packages/concord/src/client/client.ts:89-96, 440-452`
 **Issue:** `newestAtCoordinate`'s docstring claims to "Collapse a multi-relay union of events at one addressable coordinate to its single NIP-01 winner," and `joinByLink` feeds it `events.filter(isValidInviteBundle)` — but `isValidInviteBundle` (`helpers/invite-bundle.ts:253-255`) only checks `event.kind === INVITE_BUNDLE_KIND`. Neither the pre-collapse filter nor `newestAtCoordinate` itself checks `event.pubkey === parsed.linkSigner` or that the event's `d` tag is `""`. The only place those constraints are expressed is the *outgoing* `pool.request` filter (`authors: [parsed.linkSigner], "#d": [""]`, line 442) — which is a request to relays, not a guarantee enforced on what they return. Confirmed by reading `applesauce-relay`'s `Relay`/`RelayPool` request path and `mapEventsToTimeline` (`packages/core/src/observable/map-events-to-timeline.ts`): neither re-validates that an emitted event actually matches the filter that was sent. `lastValueFrom(...pool.request(relays, [...]))` unions responses across every relay in `relays` (which, for a link with no bootstrap relays in its fragment, falls back to `this.defaultRelays` — relays the *app*, not necessarily the *inviter*, configured).
