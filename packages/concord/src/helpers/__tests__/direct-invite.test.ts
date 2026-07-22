@@ -82,9 +82,23 @@ describe("validateInviteBundle", () => {
 
   it("truncates the relay snapshot to the community cap", async () => {
     const { material } = await genesis();
-    const relays = ["wss://1", "wss://2", "wss://3", "wss://4", "wss://5", "wss://6", "wss://7"];
+    const relays = [
+      "wss://relay1.example.com",
+      "wss://relay2.example.com",
+      "wss://relay3.example.com",
+      "wss://relay4.example.com",
+      "wss://relay5.example.com",
+      "wss://relay6.example.com",
+      "wss://relay7.example.com",
+    ];
     const bundle = validateInviteBundle(buildInviteBundle({ ...material, relays }));
-    expect(bundle!.relays).toEqual(["wss://1", "wss://2", "wss://3", "wss://4", "wss://5"]);
+    expect(bundle!.relays).toEqual([
+      "wss://relay1.example.com",
+      "wss://relay2.example.com",
+      "wss://relay3.example.com",
+      "wss://relay4.example.com",
+      "wss://relay5.example.com",
+    ]);
   });
 
   it("returns undefined for garbage input", () => {

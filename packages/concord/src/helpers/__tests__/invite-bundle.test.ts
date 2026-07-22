@@ -11,6 +11,7 @@ import type { NostrEvent } from "applesauce-core/helpers";
 import { communityId } from "../crypto.js";
 import {
   INVITE_BUNDLE_KIND,
+  INVITE_BUNDLE_RELAY_CAP,
   decodeFragment,
   encodeFragment,
   isInviteBundleRevoked,
@@ -65,12 +66,75 @@ describe("validateInviteBundle (INVITE-02/D-10)", () => {
     const bundle = {
       ...validOwnerFields,
       channels: [],
-      relays: ["wss://ok"],
+      relays: ["wss://ok.example.com"],
     } as InviteBundle;
     const result = validateInviteBundle(bundle);
     expect(result).toBeDefined();
     expect(result?.channels).toEqual([]);
-    expect(result?.relays).toEqual(["wss://ok"]);
+    expect(result?.relays).toEqual(["wss://ok.example.com"]);
+  });
+
+  // ── Gap closure (T-12.3-09-04): `relays` entries must be validated as safe
+  // relay URL strings — this array flows into `JoinMaterial.relays` and from
+  // there into the refounding quorum's protocol set (a security-critical
+  // operation), so an unvalidated entry is attacker-reachable input.
+  it("drops non-string relay entries (numbers, null, objects, nested arrays)", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      // @ts-expect-error deliberately hostile shapes for the fail-closed test
+      relays: [123, null, { a: 1 }, ["wss://ok"]],
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.relays).toEqual([]);
+  });
+
+  it("drops an empty-string entry and a non-URL string entry", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: ["", "not-a-relay-url", "wss://valid.example.com"],
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result?.relays).toEqual(["wss://valid.example.com"]);
+  });
+
+  it("drops an http:// entry — only websocket schemes survive", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: ["wss://valid.example.com", "http://example.com/relay"],
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result?.relays).toEqual(["wss://valid.example.com"]);
+  });
+
+  it("returns an entirely-valid relays array intact, in original order and form (no normalization applied here)", () => {
+    const relays = ["wss://a.example.com", "wss://B.EXAMPLE.com/path"];
+    const bundle = { ...validOwnerFields, channels: [], relays } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result?.relays).toEqual(relays);
+  });
+
+  it("validates successfully with an empty relays array when every entry is junk — a junk relay list is not grounds to reject the bundle", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      // @ts-expect-error deliberately hostile shapes for the fail-closed test
+      relays: ["junk1", "junk2", 42],
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.relays).toEqual([]);
+  });
+
+  it("still bounds an oversized relays array to the existing cap", () => {
+    const relays = Array.from({ length: INVITE_BUNDLE_RELAY_CAP + 5 }, (_, i) => `wss://relay-${i}.example.com`);
+    const bundle = { ...validOwnerFields, channels: [], relays } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result?.relays.length).toBe(INVITE_BUNDLE_RELAY_CAP);
+    expect(result?.relays).toEqual(relays.slice(0, INVITE_BUNDLE_RELAY_CAP));
   });
 });
 
