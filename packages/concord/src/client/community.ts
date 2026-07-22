@@ -1209,7 +1209,7 @@ export class ConcordCommunity {
       } catch (err) {
         this.publishLog(
           "invite refresh skipped for link=%s: %s",
-          link.token.slice(0, 8),
+          link.signerPubkey.slice(0, 8),
           (err as Error)?.message ?? err,
         );
         // NEVER log `link.token` — it is the 128-bit secret that keys the

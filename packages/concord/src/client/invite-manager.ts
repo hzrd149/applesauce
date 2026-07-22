@@ -183,7 +183,10 @@ export class ConcordInviteManager {
         ? this.get(inviteOrToken)
         : fromInviteListInvite(toInviteListInvite(inviteOrToken), this.tombstones);
     if (!invite) throw new Error("invite not found");
-    this.log("revoking invite token=%s community=%s", invite.token.slice(0, 8), invite.communityId.slice(0, 8));
+    // Identify the link by its PUBLIC signer pubkey, never by the token — the
+    // token is 128 bits of secret key material, not a public identifier, so the
+    // 8-char truncation convention used for event/community ids does not apply.
+    this.log("revoking invite link=%s community=%s", invite.signerPubkey.slice(0, 8), invite.communityId.slice(0, 8));
     // While we're still a member the community revokes the bundle AND unregisters the public link
     // (CORD-05 §5). Once we've left, the registry — which holds only public link coordinates, never
     // any private material — is neither reachable nor needed: revoke the bundle straight from the
