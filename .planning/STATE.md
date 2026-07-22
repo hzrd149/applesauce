@@ -5,16 +5,16 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Completed 12.3-07-PLAN.md
-last_updated: "2026-07-22T18:30:28.526Z"
+stopped_at: Completed 12.3-08-PLAN.md
+last_updated: "2026-07-22T19:12:21.594Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 14
-  completed_phases: 10
-  total_plans: 63
-  completed_plans: 63
-  percent: 71
+  completed_phases: 9
+  total_plans: 66
+  completed_plans: 64
+  percent: 64
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 7 of 7
+Plan: 2 of 10
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 12.3 execution started
 
@@ -84,6 +84,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P05 | 10min | 2 tasks | 1 files |
 | Phase 12.3 P06 | 13min | 2 tasks | 1 files |
 | Phase 12.3 P07 | 13min | 2 tasks | 3 files |
+| Phase 12.3 P08 | 25min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -174,6 +175,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.3-06: fake pool serves request() from its own growing publish log (kind/authors/#d matching) rather than a static event list, so a second client instance can genuinely fetch the first client's invite bundle through one shared pool
 - [Phase ?]: 12.3-07: refounding quorum tests reuse the pre-existing D-09/D-11 majority-gate test's exact arithmetic shape (3 relays, threshold = ceil((n+1)/2) = 2), on a distinct fixture, to isolate extras' effect from the no-extras control
 - [Phase ?]: 12.3-07: private-channel's no-extras baseline test expects trailing-slash-normalized relay literals since transport()/mergeRelaySets has unconditionally normalized both inputs since plan 02 — pins pre-existing behavior, not a regression
+- [Phase 12.3]: 12.3-08: took VERIFICATION.md's option (a) for D-14 — ExtraRelays.merge gets a genuine identity fast path (return base unchanged when extras are empty) rather than relaxing the roadmap's Success Criteria wording — smaller blast radius, restores the criterion as written verbatim, and is exactly pre-phase behavior
+- [Phase 12.3]: 12.3-08: WR-09 (thread ConcordClient.extras.relays$ into sub-engines) deliberately deferred as a follow-up candidate, not a gap — it is a D-13 threading change and pure optimization rather than a correctness fix, and its cold-source-re-execution risk is already mitigated by Task 1's fail-soft behavior
 
 ### Pending Todos
 
@@ -211,8 +214,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T15:09:05.093Z
-Stopped at: Completed 12.3-07-PLAN.md
+Last session: 2026-07-22T19:12:21.587Z
+Stopped at: Completed 12.3-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
