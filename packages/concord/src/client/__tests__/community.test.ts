@@ -1593,3 +1593,356 @@ describe("ConcordCommunity permissions + granular reads", () => {
     community.dispose();
   });
 });
+
+// Plan 12.3-07: reactivity/churn/auth/refounding-quorum tests for a LIVE extras
+// source. These prove the failure modes the canary suite (plan 06) cannot see:
+// a later extras emission actually reaching live sockets and status observables
+// (D-08/D-09/D-11), a no-op emission not churning them (D-09), extras
+// participating in stream-key AUTH (D-03), and refounding's quorum not moving
+// in either direction (D-06/ROTATE-09).
+describe("ConcordCommunity extras (transport-only relay merge) — reactivity, churn, auth, refounding quorum (D-03/D-06/D-07/D-08/D-09/D-11)", () => {
+  /** Records every `subscription`/`publish`/`relay()` call's relay-TARGET
+   *  argument, so these tests can assert on what was actually dialled rather
+   *  than inferring it from source. Local to this describe block only — the
+   *  shared `fakePool`/`fakePoolWithStatus` helpers above are untouched. */
+  function extrasPool(): {
+    pool: RelayPool;
+    subscriptionTargets: string[][];
+    publishTargets: string[][];
+    relayCalls: string[];
+    setPublishResponses: (fn: (relays: string[]) => PublishResponse[]) => void;
+  } {
+    const subscriptionTargets: string[][] = [];
+    const publishTargets: string[][] = [];
+    const relayCalls: string[] = [];
+    let respond: (relays: string[]) => PublishResponse[] = (relays) => relays.map((from) => ({ ok: true, from }));
+    const relay = {
+      url: "wss://fake",
+      challenge: null,
+      challenge$: new BehaviorSubject<string | null>(null),
+      isAuthenticated: () => false,
+      authenticate: async () => ({ ok: true }),
+      getSupported: async () => null,
+      request: () => EMPTY,
+      sync: () => EMPTY,
+    };
+    const pool = {
+      status$: new Subject(),
+      relay: (url: string) => {
+        relayCalls.push(url);
+        return relay;
+      },
+      subscription: (relays: string[]) => {
+        subscriptionTargets.push([...relays]);
+        return NEVER;
+      },
+      request: () => EMPTY,
+      publish: async (relays: string[]) => {
+        publishTargets.push([...relays]);
+        return respond(relays);
+      },
+    } as unknown as RelayPool;
+    return { pool, subscriptionTargets, publishTargets, relayCalls, setPublishResponses: (fn) => (respond = fn) };
+  }
+
+  // Distinct, non-overlapping hostnames per test group so no assertion can pass
+  // by coincidence (a substring shared between a protocol relay and an extra).
+  const EXTRAS_PROTOCOL_A = "wss://cmty-extras-proto-a.test";
+  const EXTRAS_PROTOCOL_B = "wss://cmty-extras-proto-b.test";
+  const EXTRAS_PROTOCOL_RELAYS = [EXTRAS_PROTOCOL_A, EXTRAS_PROTOCOL_B];
+  const EXTRA_ONE = "wss://cmty-extras-extra-one.test";
+  const EXTRA_TWO = "wss://cmty-extras-extra-two.test";
+
+  it("a second extras emission changes the live subscription's relay target without restarting the engine (D-08/D-09/D-11)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionTargets } = extrasPool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: EXTRAS_PROTOCOL_RELAYS });
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: EXTRAS_PROTOCOL_RELAYS,
+      extraRelays: extras$,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const before = subscriptionTargets.at(-1)!;
+    expect(subscriptionTargets.length).toBeGreaterThan(0);
+    expect(before.some((u) => u.includes("extras-extra-one"))).toBe(true);
+    expect(before.some((u) => u.includes("extras-proto-a"))).toBe(true);
+    expect(before.some((u) => u.includes("extras-proto-b"))).toBe(true);
+
+    // Push a SECOND, DIFFERENT extras value (D-11) — a first-value-only
+    // resolver would leave the target frozen on EXTRA_ONE forever.
+    extras$.next([EXTRA_TWO]);
+    await settle();
+
+    const after = subscriptionTargets.at(-1)!;
+    expect(after).not.toBe(before);
+    expect(after.some((u) => u.includes("extras-extra-two"))).toBe(true);
+    expect(after.some((u) => u.includes("extras-extra-one"))).toBe(false);
+    expect(after.some((u) => u.includes("extras-proto-a"))).toBe(true);
+    expect(after.some((u) => u.includes("extras-proto-b"))).toBe(true);
+
+    community.dispose();
+  });
+
+  it("an equal-content extras re-emission does not open a new live subscription (D-09 churn guard)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionTargets } = extrasPool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: EXTRAS_PROTOCOL_RELAYS });
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE, EXTRA_TWO]);
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: EXTRAS_PROTOCOL_RELAYS,
+      extraRelays: extras$,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const callCountBefore = subscriptionTargets.length;
+    expect(callCountBefore).toBeGreaterThan(0);
+
+    // Same members, different array instance AND order — must not tear down and
+    // reopen the live socket.
+    extras$.next([EXTRA_TWO, EXTRA_ONE]);
+    await settle();
+
+    expect(subscriptionTargets.length).toBe(callCountBefore);
+
+    community.dispose();
+  });
+
+  it("connected$ re-derives against the newly merged set after a second extras emission (D-07/D-08/D-11)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, status$ } = fakePoolWithStatus();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: EXTRAS_PROTOCOL_RELAYS });
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: EXTRAS_PROTOCOL_RELAYS,
+      extraRelays: extras$,
+    });
+
+    const seen: boolean[] = [];
+    const sub = community.connected$.subscribe((v) => seen.push(v));
+    expect(seen.at(-1)).toBe(false);
+
+    // Push a SECOND, different extras value (D-11) — the merged set drops
+    // EXTRA_ONE and picks up EXTRA_TWO.
+    extras$.next([EXTRA_TWO]);
+
+    // The OLD extra (no longer in the merged set) reports up; the protocol
+    // relays stay down. A first-value-only resolver would still be checking
+    // EXTRA_ONE and would read connected — this must stay false, proving the
+    // re-derivation genuinely dropped EXTRA_ONE from the checked set.
+    status$.next({
+      [normalizeURL(EXTRAS_PROTOCOL_A)]: mkStatus({ url: EXTRAS_PROTOCOL_A, connected: false }),
+      [normalizeURL(EXTRAS_PROTOCOL_B)]: mkStatus({ url: EXTRAS_PROTOCOL_B, connected: false }),
+      [normalizeURL(EXTRA_ONE)]: mkStatus({ url: EXTRA_ONE, connected: true }),
+    });
+    expect(seen.at(-1)).toBe(false);
+
+    // The NEW extra alone reports up — D-07's documented any-of consequence: an
+    // always-up app-local extra reports "connected" while every community relay
+    // is down.
+    status$.next({
+      [normalizeURL(EXTRAS_PROTOCOL_A)]: mkStatus({ url: EXTRAS_PROTOCOL_A, connected: false }),
+      [normalizeURL(EXTRAS_PROTOCOL_B)]: mkStatus({ url: EXTRAS_PROTOCOL_B, connected: false }),
+      [normalizeURL(EXTRA_TWO)]: mkStatus({ url: EXTRA_TWO, connected: true }),
+    });
+    expect(seen.at(-1)).toBe(true);
+
+    sub.unsubscribe();
+    community.dispose();
+  });
+
+  it("the per-relay NIP-42 auth driver registration covers the extras endpoint as well as the protocol relays (D-03)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, relayCalls } = extrasPool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: EXTRAS_PROTOCOL_RELAYS });
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: EXTRAS_PROTOCOL_RELAYS,
+      extraRelays: extras$,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // `ensureAuth` is the only observable signal for per-relay auth-driver
+    // registration in this DI harness — assert on which relay handles were
+    // requested (`pool.relay(url)`), which is what `authenticateStreamKeys`
+    // is handed for each one.
+    expect(relayCalls.length).toBeGreaterThan(0);
+    expect(relayCalls.some((u) => u.includes("extras-proto-a"))).toBe(true);
+    expect(relayCalls.some((u) => u.includes("extras-proto-b"))).toBe(true);
+    expect(relayCalls.some((u) => u.includes("extras-extra-one"))).toBe(true);
+
+    community.dispose();
+  });
+
+  // n = 3 relays; threshold = ⌈(n+1)/2⌉ = ⌈4/2⌉ = 2 — hand-derived (D-11),
+  // identical arithmetic to the pre-existing root-roll majority-gate test
+  // above, never read back from refound()'s own threshold computation.
+  const REFOUND_PROTOCOL_A = "wss://cmty-refound-proto-a.test";
+  const REFOUND_PROTOCOL_B = "wss://cmty-refound-proto-b.test";
+  const REFOUND_PROTOCOL_C = "wss://cmty-refound-proto-c.test";
+  const REFOUND_PROTOCOL_RELAYS = [REFOUND_PROTOCOL_A, REFOUND_PROTOCOL_B, REFOUND_PROTOCOL_C];
+  const REFOUND_THRESHOLD = 2;
+  const REFOUND_EXTRA = "wss://cmty-refound-extra.test";
+
+  it("refounding succeeds with the pre-phase-passing protocol ack count while extras also acks — the denominator is not raised by extras (D-06)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], _event: NostrEvent) => responses;
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: REFOUND_PROTOCOL_RELAYS });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: REFOUND_PROTOCOL_RELAYS,
+      extraRelays: [REFOUND_EXTRA],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Exactly `REFOUND_THRESHOLD` of the protocol relays ack, PLUS the extras
+    // endpoint also acks (an always-acking extra). If the denominator had been
+    // widened to include the extra, this SAME protocol ack count would now fall
+    // short of a raised threshold and refound() would incorrectly reject.
+    responses = [
+      ...REFOUND_PROTOCOL_RELAYS.slice(0, REFOUND_THRESHOLD).map((from) => ({ ok: true, from })),
+      ...REFOUND_PROTOCOL_RELAYS.slice(REFOUND_THRESHOLD).map((from) => ({ ok: false, from, message: "Timeout" })),
+      { ok: true, from: REFOUND_EXTRA },
+    ];
+
+    await expect(community.refound({ keep: [pubkey] })).resolves.toBeUndefined();
+
+    community.dispose();
+  });
+
+  it("refounding still throws when protocol acks fall one short of majority even though the extras endpoint acks — extras acks are not counted (D-06)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], _event: NostrEvent) => responses;
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: REFOUND_PROTOCOL_RELAYS });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: REFOUND_PROTOCOL_RELAYS,
+      extraRelays: [REFOUND_EXTRA],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const priorEpoch = community.material.root_epoch;
+
+    // Protocol acks fall ONE short of the threshold, while the extras endpoint
+    // acks — if extras acks counted toward `okCount`, this would incorrectly
+    // reach the threshold and refound() would wrongly succeed.
+    responses = [
+      ...REFOUND_PROTOCOL_RELAYS.slice(0, REFOUND_THRESHOLD - 1).map((from) => ({ ok: true, from })),
+      ...REFOUND_PROTOCOL_RELAYS.slice(REFOUND_THRESHOLD - 1).map((from) => ({ ok: false, from, message: "Timeout" })),
+      { ok: true, from: REFOUND_EXTRA },
+    ];
+
+    await expect(community.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
+    expect(community.material.root_epoch).toBe(priorEpoch);
+
+    community.dispose();
+  });
+
+  it("refounding's gated wraps publish to the merged transport set, including the extras endpoint (D-06 feature half)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, publishTargets, setPublishResponses } = extrasPool();
+    setPublishResponses((relays) => relays.map((from) => ({ ok: true, from })));
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: REFOUND_PROTOCOL_RELAYS });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: REFOUND_PROTOCOL_RELAYS,
+      extraRelays: [REFOUND_EXTRA],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    publishTargets.length = 0;
+    await community.refound({ keep: [pubkey] });
+
+    expect(publishTargets.length).toBeGreaterThan(0);
+    for (const target of publishTargets) {
+      expect(target.some((u) => u.includes("refound-extra"))).toBe(true);
+      expect(target.some((u) => u.includes("refound-proto-a"))).toBe(true);
+      expect(target.some((u) => u.includes("refound-proto-b"))).toBe(true);
+      expect(target.some((u) => u.includes("refound-proto-c"))).toBe(true);
+    }
+
+    community.dispose();
+  });
+});
