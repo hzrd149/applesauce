@@ -204,7 +204,18 @@ export class ConcordPrivateChannel {
     if (!info) return;
     const canonical = (this.opts.eventStore.add(event) as NostrEvent | null) ?? event;
     const decoded = decodeWrapCached(canonical, info.convKey);
-    if (decoded) this.route(info, decoded);
+    if (decoded) {
+      this.route(info, decoded);
+    } else {
+      // Epoch sourced from the enclosing channel's known epoch value —
+      // RESEARCH Pitfall 3.
+      this.log.extend("sync").extend("decode")(
+        "dropped wrap=%s plane=%s epoch=%d",
+        canonical.id.slice(0, 8),
+        info.type,
+        this.channelKey.epoch,
+      );
+    }
   }
 
   private route(info: PlaneInfo, decoded: DecodedEvent): void {

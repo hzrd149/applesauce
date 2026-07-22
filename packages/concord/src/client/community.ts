@@ -540,7 +540,19 @@ export class ConcordCommunity {
     if (!info) return;
     const canonical = (this.eventStore.add(event) as NostrEvent | null) ?? event;
     const decoded = decodeWrapCached(canonical, info.convKey);
-    if (!decoded) return;
+    if (!decoded) {
+      // Epoch sourced from the enclosing scope's known value (channelEpochOf for
+      // channel planes, else the root epoch) — RESEARCH Pitfall 3.
+      const epoch =
+        info.type === "channel" ? channelEpochOf(this.keys, info.channelId!) : this.keys.material.root_epoch;
+      this.log.extend("sync").extend("decode")(
+        "dropped wrap=%s plane=%s epoch=%d",
+        canonical.id.slice(0, 8),
+        info.type,
+        epoch,
+      );
+      return;
+    }
     this.route(info, decoded);
   }
 
