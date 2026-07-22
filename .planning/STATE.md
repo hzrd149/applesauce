@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12.3
-current_phase_name: Transport-Only Extra Relays in applesauce-concord
+current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
 stopped_at: Phase 12.3 context gathered
-last_updated: "2026-07-22T13:35:47.694Z"
+last_updated: "2026-07-22T13:50:46.043Z"
 last_activity: 2026-07-22
-last_activity_desc: Phase 12.2 complete, transitioned to Phase 12.3
+last_activity_desc: Phase 12.3 execution started
 progress:
-  total_phases: 12
+  total_phases: 14
   completed_phases: 9
-  total_plans: 56
-  completed_plans: 56
-  percent: 75
+  total_plans: 63
+  completed_plans: 57
+  percent: 64
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 12.2 — concord-sync-debug-logging
+**Current focus:** Phase 12.3 — transport-only-extra-relays-in-applesauce-concord
 
 ## Current Position
 
-Phase: 12.3 — Transport-Only Extra Relays in applesauce-concord
-Plan: Not started
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-07-22 — Phase 12.2 complete, transitioned to Phase 12.3
+Last activity: 2026-07-22 — Phase 12.3 execution started
 
 Progress: [██████████] 98%
 
@@ -77,6 +77,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.2 P02 | ~25min | 3 tasks | 6 files |
 | Phase 12.2 P03 | 4min | 2 tasks | 3 files |
 | Phase 12.2 P04 | 13min | 3 tasks | 4 files |
+| Phase 12.3 P01 | 6min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -152,6 +153,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12.2-04]: Hoisted client.ts's two repeated this.log.extend("invite") derivations (constructor + ensureInviteWatcher) into a single this.inviteLog field, per the mandatory-convention's additional-cleanup instruction
 - [Phase 12.2-04]: sync-logging.test.ts's spy fixture supplies SyncContext.logger/decodeLogger as two independent spies rather than one spy exposing .extend("decode"), matching the actual current interface after 12.2-02's course-correction rather than the plan's superseded literal text
 - [Phase 12.2-04]: Deliberately-undecryptable test wraps are sealed under the control plane's real convKey but wrapped under a WRONG convKey, so the outer wrap decrypt fails while the plane pubkey/kind stay correct — matching VALIDATION.md's Wave-0 note
+- [Phase 12.3]: 12.3-01: sameRelaySet mirrors client/community.ts's sameSet/sameChannelViews content-comparator convention rather than inventing a new comparison style
+- [Phase 12.3]: 12.3-01: toRelaysObservable's JSDoc paraphrases take(1)/unwrap as prose (never the literal substrings) so the module's own no-take(1)/no-unwrap grep acceptance checks pass against its comments as well as its code
 
 ### Pending Todos
 
@@ -189,7 +192,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T11:39:35.491Z
+Last session: 2026-07-22T13:49:02.444Z
 Stopped at: Phase 12.3 context gathered
 Resume file: .planning/phases/12.3-transport-only-extra-relays-in-applesauce-concord/12.3-CONTEXT.md
 
