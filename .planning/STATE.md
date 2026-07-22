@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Completed 12.3-03-PLAN.md
-last_updated: "2026-07-22T14:14:52.097Z"
+stopped_at: Completed 12.3-04-PLAN.md
+last_updated: "2026-07-22T14:29:00.214Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 14
   completed_phases: 9
   total_plans: 63
-  completed_plans: 59
+  completed_plans: 60
   percent: 64
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 12.3 execution started
 
@@ -80,6 +80,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P01 | 6min | 2 tasks | 3 files |
 | Phase 12.3 P02 | 9min | 1 tasks | 1 files |
 | Phase 12.3 P03 | 9min | 2 tasks | 3 files |
+| Phase 12.3 P04 | 15min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -162,6 +163,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.3-03: ConcordInviteManager has no genuine dispose/teardown path (stop() is a restartable soft-stop), so the extras holder is left for GC rather than inventing a lifecycle hook
 - [Phase ?]: 12.3-03: InviteWatcher.stop() disposes the extras holder and unsubscribes extrasSub per the plan's explicit instruction, unlike invite-manager
 - [Phase ?]: 12.3-03: needsAuth$ recomputes over the merged transport set via extras.relays$ as a trigger, but reads this.extras.current inside transport() rather than the combineLatest's emitted value, keeping transport() the one literal merge point
+- [Phase ?]: 12.3-04: PublishResponse's relay-URL field is `from`, not `origin` as the plan's read_first stated (packages/relay/src/types.ts:78); the refound() ack-attribution filter reads r.from
+- [Phase ?]: 12.3-04: extrasSub guarded with if (this.liveSub), mirroring plan 02/03's precedent, so ExtraRelays's synchronous construction-time emission cannot prematurely open the community's live socket before start()
+- [Phase ?]: 12.3-04: connected$/authenticated$ route their merge through this.transport() inside the switchMap rather than the switchMap's own emitted value, keeping transport() the one literal merge point (D-04)
 
 ### Pending Todos
 
@@ -199,8 +203,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T14:14:52.088Z
-Stopped at: Completed 12.3-03-PLAN.md
+Last session: 2026-07-22T14:29:00.207Z
+Stopped at: Completed 12.3-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
