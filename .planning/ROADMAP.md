@@ -373,7 +373,7 @@ Plans:
 **Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
 **Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
 
-**Plans**: 7/7 plans complete
+**Plans**: 7/10 plans complete (plans 08–10 are gap closure from `12.3-VERIFICATION.md`)
 
 Plans:
 **Wave 1**
@@ -397,6 +397,18 @@ Plans:
 
 - [x] 12.3-06-PLAN.md — lifecycle canary + targeted protocol-write leak assertions
 - [x] 12.3-07-PLAN.md — reactivity, churn-guard, merged-set auth, and refounding-quorum regression tests
+
+**Wave 6** *(gap closure — blocked on Wave 5 completion)*
+
+- [ ] 12.3-08-PLAN.md — ExtraRelays fail-soft on an errored source, correct set comparator, empty-extras identity merge (D-10/D-14/D-09)
+
+**Wave 7** *(gap closure — blocked on Wave 6 completion)*
+
+- [ ] 12.3-09-PLAN.md — refounding quorum derived from one normalized protocol set + invite-bundle relay validation (D-06)
+
+**Wave 8** *(gap closure — blocked on Wave 7 completion)*
+
+- [ ] 12.3-10-PLAN.md — auth-driver pruning, extras holder disposal/restart lifecycle, JSDoc truth pass (WR-04…WR-07)
 
 **Cross-cutting constraints:**
 
@@ -440,7 +452,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
-| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 7/7 | Complete   | 2026-07-22 |
+| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 7/10 | In gap closure | - |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
 
