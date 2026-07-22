@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Phase 12.3 context gathered
-last_updated: "2026-07-22T14:02:25.079Z"
+stopped_at: Completed 12.3-03-PLAN.md
+last_updated: "2026-07-22T14:14:52.097Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 14
   completed_phases: 9
   total_plans: 63
-  completed_plans: 58
+  completed_plans: 59
   percent: 64
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 12.3 execution started
 
@@ -79,6 +79,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.2 P04 | 13min | 3 tasks | 4 files |
 | Phase 12.3 P01 | 6min | 2 tasks | 3 files |
 | Phase 12.3 P02 | 9min | 1 tasks | 1 files |
+| Phase 12.3 P03 | 9min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12.3]: 12.3-01: toRelaysObservable's JSDoc paraphrases take(1)/unwrap as prose (never the literal substrings) so the module's own no-take(1)/no-unwrap grep acceptance checks pass against its comments as well as its code
 - [Phase 12.3]: 12.3-02: extras-driven openLive() re-invocation guarded with if (this.liveSub) rather than unconditional -- ExtraRelays's BehaviorSubject always emits once synchronously at construction, so an unguarded subscribe would open the live socket before start()/walk() ever runs — D-14 requires timing parity, not just relay-set content parity, when no extras are configured
 - [Phase 12.3]: 12.3-02: connected$/authenticated$ route their merge through this.transport() inside the switchMap rather than calling mergeRelaySets directly, keeping transport() the class's single literal merge point (D-04)
+- [Phase ?]: 12.3-03: ConcordInviteManager has no genuine dispose/teardown path (stop() is a restartable soft-stop), so the extras holder is left for GC rather than inventing a lifecycle hook
+- [Phase ?]: 12.3-03: InviteWatcher.stop() disposes the extras holder and unsubscribes extrasSub per the plan's explicit instruction, unlike invite-manager
+- [Phase ?]: 12.3-03: needsAuth$ recomputes over the merged transport set via extras.relays$ as a trigger, but reads this.extras.current inside transport() rather than the combineLatest's emitted value, keeping transport() the one literal merge point
 
 ### Pending Todos
 
@@ -195,9 +199,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T14:00:50.162Z
-Stopped at: Phase 12.3 context gathered
-Resume file: .planning/phases/12.3-transport-only-extra-relays-in-applesauce-concord/12.3-CONTEXT.md
+Last session: 2026-07-22T14:14:52.088Z
+Stopped at: Completed 12.3-03-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
