@@ -370,10 +370,19 @@ Plans:
 
 **Goal**: `ConcordClient` accepts `extraRelays?: string[] | Observable<string[]>` so apps can supply app-local relay endpoints (e.g. `ws://localhost:4869` cache relays) that Concord uses purely for network I/O — as additional transport targets for all Concord-managed traffic (community/channel sync, live subscriptions, publishes, community-list and invite-list reads/writes, direct-invite watching, invite-bundle fetch/publish/revoke, relay auth/connection status) — but are never written into community material/metadata, invite bundles, invite links, or user-published relay lists, and never surfaced as part of the community's protocol state. When `extraRelays` is an Observable, Concord reacts to updates so future traffic uses the latest set; behavior is unchanged when omitted or empty.
 **Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–12)
-**Requirements**: TBD *(promoted from backlog 999.6 — define during /gsd-discuss-phase)*
-**Success Criteria**: TBD *(define during planning)*
+**Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
+**Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 12.3-01-PLAN.md — shared `toRelaysObservable`/`ExtraRelays` helper module + unit suite
+- [ ] 12.3-02-PLAN.md — private-channel engine: transport merge, reactive status, reactive live sub
+- [ ] 12.3-03-PLAN.md — invite manager + invite watcher: per-operation merges and reactive watcher live sub
+- [ ] 12.3-04-PLAN.md — community engine: transport merge, reactive derivations, invite-link split, refounding publish/count split
+- [ ] 12.3-05-PLAN.md — `ConcordClientOptions.extraRelays` public option, pass-through threading, join-path split
+- [ ] 12.3-06-PLAN.md — lifecycle canary + targeted protocol-write leak assertions
+- [ ] 12.3-07-PLAN.md — reactivity, churn-guard, merged-set auth, and refounding-quorum regression tests
 
 ## Progress
 
@@ -397,7 +406,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
-| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 0/TBD | Not started | - |
+| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 0/7 | Planned | - |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
 
