@@ -29,8 +29,9 @@ export class AndroidNativeSigner implements ISigner {
     decrypt: (pubkey: string, ciphertext: string) => Promise<string>;
   };
 
-  constructor(packageName: string) {
+  constructor(packageName: string, pubkey?: string) {
     this.packageName = packageName;
+    this.pubkey = pubkey ?? null;
 
     this.nip04 = {
       encrypt: this.nip04Encrypt.bind(this),
@@ -51,11 +52,13 @@ export class AndroidNativeSigner implements ISigner {
 
     await NostrSignerPlugin.setPackageName(this.packageName);
 
-    const result = await NostrSignerPlugin.getPublicKey(this.packageName, this.permissions);
+    if (!this.pubkey) {
+      const result = await NostrSignerPlugin.getPublicKey(this.packageName, this.permissions);
 
-    const pubkey = normalizeToPubkey(result.npub);
-    if (!pubkey) throw new Error("Invalid public key");
-    this.pubkey = pubkey;
+      const pubkey = normalizeToPubkey(result.npub);
+      if (!pubkey) throw new Error("Invalid public key");
+      this.pubkey = pubkey;
+    }
 
     this.connected = true;
   }
