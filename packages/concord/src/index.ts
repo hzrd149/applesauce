@@ -13,3 +13,8 @@ export * as Models from "./models/index.js";
 
 export * from "./types.js";
 export * from "./client/index.js";
+// The `applesauce:concord` namespace root (D-01) — mirrors applesauce-core's own
+// `export * from "./logger.js"`, so a consumer can `logger.extend("myapp")` and
+// pass the result as `ConcordClientOptions.logger` without hand-constructing the
+// namespace string.
+export * from "./logger.js";

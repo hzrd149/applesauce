@@ -25,6 +25,7 @@ describe("concord exports", () => {
         "VSK",
         "buildChain",
         "channelLiveAuthors",
+        "logger",
         "planeStoreKey",
         "syncAuthors",
         "syncChannelEpochs",
