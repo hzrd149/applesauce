@@ -206,7 +206,15 @@ export async function syncEpoch(
     const d = decodeWrapCached(ev, info.convKey);
     if (!d) {
       channelDropped++;
-      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, epochMaterial.root_epoch);
+      // The channel plane carries its OWN epoch (RESEARCH Pitfall 3) — report it
+      // rather than the root epoch, so this line correlates with the same wrap
+      // dropped by the live subscription (`community.ts`'s `onWrap`).
+      ctx.decodeLogger(
+        "dropped wrap=%s plane=%s epoch=%d",
+        ev.id.slice(0, 8),
+        info.type,
+        info.epoch ?? epochMaterial.root_epoch,
+      );
       continue;
     }
     channelDecodedCount++;

@@ -212,9 +212,16 @@ export class ConcordPrivateChannel {
     if (decoded) {
       this.route(info, decoded);
     } else {
-      // Epoch sourced from the enclosing channel's known epoch value —
-      // RESEARCH Pitfall 3.
-      this.decodeLog("dropped wrap=%s plane=%s epoch=%d", canonical.id.slice(0, 8), info.type, this.channelKey.epoch);
+      // Prefer the PLANE's own epoch (rekey planes address `epoch + 1`), falling
+      // back to the enclosing channel's known epoch — RESEARCH Pitfall 3, and the
+      // same rule `route()` below and the sync walk use, so a wrap dropped live
+      // and the same wrap dropped during sync report the same `epoch=`.
+      this.decodeLog(
+        "dropped wrap=%s plane=%s epoch=%d",
+        canonical.id.slice(0, 8),
+        info.type,
+        info.epoch ?? this.channelKey.epoch,
+      );
     }
   }
 
