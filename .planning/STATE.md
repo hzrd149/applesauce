@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12.2
 current_phase_name: concord-sync-debug-logging
-status: executing
+status: verifying
 stopped_at: Completed 12.2-03-PLAN.md
-last_updated: "2026-07-22T10:23:38.587Z"
+last_updated: "2026-07-22T10:39:52.133Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.2 execution started
 progress:
   total_phases: 12
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 56
-  completed_plans: 55
-  percent: 67
+  completed_plans: 56
+  percent: 75
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 12.2 (concord-sync-debug-logging) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-22 — Phase 12.2 execution started
 
 Progress: [██████████] 98%
@@ -76,6 +76,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.2 P01 | 35min | 3 tasks | 10 files |
 | Phase 12.2 P02 | ~25min | 3 tasks | 6 files |
 | Phase 12.2 P03 | 4min | 2 tasks | 3 files |
+| Phase 12.2 P04 | 13min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12.2]: 12.2-02: epoch for every new sync/decode log line is sourced from the enclosing scope's known value (epochMaterial.root_epoch, channel.epoch, channelEpochOf(...)/this.keys.material.root_epoch, this.channelKey.epoch), never info.epoch (RESEARCH Pitfall 3: control/dissolved lack info.epoch, the base-rekey plane's info.epoch is the NEXT epoch not the one being synced)
 - [Phase ?]: 12.2-03: relay-auth.ts's constructor stays unchanged; auth tracing derives from a single module-level const log = logger.extend("auth") (RESEARCH Open Question 1), never re-extended at any call site
 - [Phase ?]: 12.2-03: all 8 pre-existing console.warn sites across relay-auth.ts/invite-manager.ts/invite-watcher.ts now dual-emit via this.log/module-level log immediately before the unchanged console call (D-09); no console call removed or downgraded
+- [Phase 12.2-04]: Hoisted client.ts's two repeated this.log.extend("invite") derivations (constructor + ensureInviteWatcher) into a single this.inviteLog field, per the mandatory-convention's additional-cleanup instruction
+- [Phase 12.2-04]: sync-logging.test.ts's spy fixture supplies SyncContext.logger/decodeLogger as two independent spies rather than one spy exposing .extend("decode"), matching the actual current interface after 12.2-02's course-correction rather than the plan's superseded literal text
+- [Phase 12.2-04]: Deliberately-undecryptable test wraps are sealed under the control plane's real convKey but wrapped under a WRONG convKey, so the outer wrap decrypt fails while the plane pubkey/kind stay correct — matching VALIDATION.md's Wave-0 note
 
 ### Pending Todos
 
@@ -185,7 +189,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T10:23:38.576Z
+Last session: 2026-07-22T10:39:01.467Z
 Stopped at: Completed 12.2-03-PLAN.md
 Resume file: .planning/phases/12.2-concord-sync-debug-logging/12.2-04-PLAN.md
 

@@ -39,7 +39,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
 - [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog) (completed 2026-07-22)
-- [ ] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog)
+- [x] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog) (completed 2026-07-22)
 - [ ] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog)
 
 ## Phase Details
@@ -352,7 +352,7 @@ Plans:
 **Requirements**: No formal REQ-IDs — CONTEXT.md decisions D-01..D-10 (+ discretionary D-11 test) stand in as requirements.
 **Success Criteria**: With `DEBUG=applesauce:concord:*:sync` a zero-event sync reads `fetched=0` while an arrived-but-undecryptable sync reads `fetched=N decoded=0 dropped=N` plus N per-wrap lines under `:sync:decode`; every existing `console.*` still fires (dual-emit, D-09); concord type-checks and the full suite stays green with no sync-semantics change.
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 **Wave 1**
 
 - [x] 12.2-01-PLAN.md — Logging foundation: debug dep, base logger module, injectable `logger?: Debugger` plumbing, required `SyncContext.logger` (D-01/D-02/D-08/D-10)
@@ -364,7 +364,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 12.2-04-PLAN.md — Client/community/channel sweep + dual-emit + decode-logging regression test (D-03/D-04/D-09/D-11)
+- [x] 12.2-04-PLAN.md — Client/community/channel sweep + dual-emit + decode-logging regression test (D-03/D-04/D-09/D-11)
 
 ### Phase 12.3: Transport-Only Extra Relays in applesauce-concord (INSERTED)
 
@@ -396,7 +396,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
-| 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 3/4 | In Progress|  |
+| 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete   | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 0/TBD | Not started | - |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
