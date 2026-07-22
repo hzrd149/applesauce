@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
-status: executing
-stopped_at: Completed 12.3-04-PLAN.md
-last_updated: "2026-07-22T14:52:32.765Z"
+status: verifying
+stopped_at: Completed 12.3-07-PLAN.md
+last_updated: "2026-07-22T15:09:05.102Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 14
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 63
-  completed_plans: 62
-  percent: 64
+  completed_plans: 63
+  percent: 71
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-22 — Phase 12.3 execution started
 
 Progress: [██████████] 98%
@@ -83,6 +83,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P04 | 15min | 3 tasks | 1 files |
 | Phase 12.3 P05 | 10min | 2 tasks | 1 files |
 | Phase 12.3 P06 | 13min | 2 tasks | 1 files |
+| Phase 12.3 P07 | 13min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12.3]: 12.3-05: ConcordClient.extras is not disposed in stop() since stop() is a restartable soft-stop and extras is a constructor-scoped readonly field with no re-construction path on restart, mirroring plan 03's identical decision for ConcordInviteManager
 - [Phase ?]: 12.3-06: the invite-link fragment is a custom byte-packed, base64url-encoded format -- artifact assertions must decode via parseInviteLink before inspecting, never substring-match the raw URL; discovered via the mandated non-vacuity revert-and-observe step
 - [Phase ?]: 12.3-06: fake pool serves request() from its own growing publish log (kind/authors/#d matching) rather than a static event list, so a second client instance can genuinely fetch the first client's invite bundle through one shared pool
+- [Phase ?]: 12.3-07: refounding quorum tests reuse the pre-existing D-09/D-11 majority-gate test's exact arithmetic shape (3 relays, threshold = ceil((n+1)/2) = 2), on a distinct fixture, to isolate extras' effect from the no-extras control
+- [Phase ?]: 12.3-07: private-channel's no-extras baseline test expects trailing-slash-normalized relay literals since transport()/mergeRelaySets has unconditionally normalized both inputs since plan 02 — pins pre-existing behavior, not a regression
 
 ### Pending Todos
 
@@ -208,8 +211,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T14:51:39.691Z
-Stopped at: Completed 12.3-04-PLAN.md
+Last session: 2026-07-22T15:09:05.093Z
+Stopped at: Completed 12.3-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
