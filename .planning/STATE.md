@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12.2
-current_phase_name: Concord Sync Debug Logging
+current_phase_name: concord-sync-debug-logging
 status: executing
-stopped_at: Phase 12.2 context gathered
-last_updated: "2026-07-22T09:18:18.927Z"
+stopped_at: Phase 12.2 plan 01 complete
+last_updated: "2026-07-22T09:55:59.573Z"
 last_activity: 2026-07-22
-last_activity_desc: Phase 12.1 complete, transitioned to Phase 12.2
+last_activity_desc: Phase 12.2 execution started
 progress:
   total_phases: 12
   completed_phases: 8
-  total_plans: 52
-  completed_plans: 52
+  total_plans: 56
+  completed_plans: 53
   percent: 67
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 12.1 — concord-sync-skips-ephemeral-kind-21059
+**Current focus:** Phase 12.2 — concord-sync-debug-logging
 
 ## Current Position
 
-Phase: 12.2 — Concord Sync Debug Logging
-Plan: Not started
+Phase: 12.2 (concord-sync-debug-logging) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-22 — Phase 12.1 complete, transitioned to Phase 12.2
+Last activity: 2026-07-22 — Phase 12.2 execution started
 
 Progress: [██████████] 98%
 
@@ -73,6 +73,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 10 P05 | 15min | 2 tasks | 2 files |
 | Phase 10 P06 | 20min | 3 tasks | 8 files |
 | Phase 12.1 P01 | 12min | 2 tasks | 4 files |
+| Phase 12.2 P01 | 35min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 10]: 10-06: community.ts's pass-through expires_at write sites needed no code change -- unit correctness flows from the two comparison sites (client.ts join check, direct-invite.ts expired()) and updated doc-comments
 - [Phase ?]: 12.1-01: BACKFILL_KINDS kept as working name; syncAuthors backfill filter routed through it, live sites (community.ts/private-channel.ts) left unchanged per D-02 asymmetry
 - [Phase ?]: 12.1-01: Non-vacuity probe (D-04/TEST-01) confirmed empirically via temporary in-place revert/restore of sync.ts -- RED against pre-fix two-kind filter, GREEN after restoring the fix
+- [Phase 12.2]: 12.2-01: debug/@types/debug added as concord's own direct dependencies (RESEARCH-verified correction to CONTEXT.md D-01's transitive assumption)
+- [Phase 12.2]: 12.2-01: SyncContext.logger/ChannelSyncContext.logger made required (not optional) since syncContext() always constructs a real value
 
 ### Pending Todos
 
@@ -176,9 +179,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T08:48:06.091Z
-Stopped at: Phase 12.2 context gathered
-Resume file: .planning/phases/12.2-concord-sync-debug-logging/12.2-CONTEXT.md
+Last session: 2026-07-22T09:55:59.565Z
+Stopped at: Phase 12.2 plan 01 complete
+Resume file: .planning/phases/12.2-concord-sync-debug-logging/12.2-02-PLAN.md
 
 ## Operator Next Steps
 
