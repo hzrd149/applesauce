@@ -16,8 +16,11 @@
 // second client instance can genuinely fetch the invite bundle the first
 // published, mirroring what a real shared relay would do.
 //
-// This file gains a second describe block (task 2) with per-write targeted
-// equality assertions at each enumerated protocol write.
+// A second describe block below adds per-write TARGETED equality assertions
+// at each of the four enumerated protocol writes (invite-link URL, invite
+// bundle payload, joined material relays, community-list document), so a
+// leak localizes to its own failing test instead of only tripping the
+// broader lifecycle canary above.
 
 import { describe, expect, it } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject, delay, from } from "rxjs";
@@ -27,10 +30,12 @@ import { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { RelayPool } from "applesauce-relay";
 
+import { hexToBytes } from "@noble/hashes/utils.js";
+
 import { ConcordClient } from "../client.js";
 import { memoryStorage } from "../storage.js";
-import { COMMUNITY_LIST_KIND } from "../../helpers/community-list.js";
-import { parseInviteLink } from "../../helpers/invite-bundle.js";
+import { COMMUNITY_LIST_KIND, parseCommunityList } from "../../helpers/community-list.js";
+import { INVITE_BUNDLE_KIND, getInviteBundle, parseInviteLink } from "../../helpers/invite-bundle.js";
 
 // The invite-link fragment is a custom byte-packed, base64url-encoded format
 // (encodeFragment/decodeFragment) — a raw substring check against `invite.url`
@@ -239,6 +244,63 @@ describe("ConcordClient extra-relays lifecycle canary (D-05)", () => {
     expect(listEvent).toBeDefined();
     const listPlaintext = await signer1.nip44!.decrypt(pubkey1, listEvent!.content);
     expect(listPlaintext).not.toContain(CANARY_HOST);
+
+    client1.stop();
+    client2.stop();
+  });
+});
+
+describe("ConcordClient extra-relays targeted per-write assertions (D-05)", () => {
+  it("invite link URL: bootstrap relay list equals exactly the community's protocol relay set", async () => {
+    const { invite, client1, client2 } = await mintInviteAndJoin();
+
+    const parsed = parseInviteLink(invite.url);
+    expect(parsed.bootstrapRelays.length).toBeGreaterThan(0);
+    expect(parsed.bootstrapRelays).toEqual(PROTOCOL_RELAYS);
+
+    client1.stop();
+    client2.stop();
+  });
+
+  it("invite bundle payload: decoded material relays equal exactly the community's protocol relay set", async () => {
+    const { publishes, invite, client1, client2 } = await mintInviteAndJoin();
+
+    const bundleEvent = publishes
+      .map((p) => p.event)
+      .find((e) => e.kind === INVITE_BUNDLE_KIND && e.pubkey === invite.signerPubkey);
+    expect(bundleEvent).toBeDefined();
+    const bundle = getInviteBundle(bundleEvent!, hexToBytes(invite.token));
+    expect(bundle.relays.length).toBeGreaterThan(0);
+    expect(bundle.relays).toEqual(PROTOCOL_RELAYS);
+
+    client1.stop();
+    client2.stop();
+  });
+
+  it("joined material relays equal exactly the bootstrap relay list, canary absent", async () => {
+    const { community2, client1, client2 } = await mintInviteAndJoin();
+
+    expect(community2.material.relays.length).toBeGreaterThan(0);
+    expect(community2.material.relays).toEqual(PROTOCOL_RELAYS);
+
+    client1.stop();
+    client2.stop();
+  });
+
+  it("community-list document entry carries exactly the community's protocol relay list", async () => {
+    const { publishes, signer1, pubkey1, community1, client1, client2 } = await mintInviteAndJoin();
+
+    const listEvent = publishes
+      .map((p) => p.event)
+      .filter((e) => e.kind === COMMUNITY_LIST_KIND && e.pubkey === pubkey1)
+      .at(-1);
+    expect(listEvent).toBeDefined();
+    const plaintext = await signer1.nip44!.decrypt(pubkey1, listEvent!.content);
+    const parsed = parseCommunityList(plaintext);
+    expect(parsed.communities.length).toBeGreaterThan(0);
+    const entry = parsed.communities.find((c) => c.community_id === community1.communityId);
+    expect(entry).toBeDefined();
+    expect(entry!.current.relays).toEqual(PROTOCOL_RELAYS);
 
     client1.stop();
     client2.stop();
