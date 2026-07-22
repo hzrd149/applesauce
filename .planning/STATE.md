@@ -6,14 +6,14 @@ current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
 stopped_at: Completed 12.3-04-PLAN.md
-last_updated: "2026-07-22T14:37:51.617Z"
+last_updated: "2026-07-22T14:52:32.765Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 14
   completed_phases: 9
   total_plans: 63
-  completed_plans: 61
+  completed_plans: 62
   percent: 64
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 12.3 execution started
 
@@ -82,6 +82,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P03 | 9min | 2 tasks | 3 files |
 | Phase 12.3 P04 | 15min | 3 tasks | 1 files |
 | Phase 12.3 P05 | 10min | 2 tasks | 1 files |
+| Phase 12.3 P06 | 13min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.3-04: extrasSub guarded with if (this.liveSub), mirroring plan 02/03's precedent, so ExtraRelays's synchronous construction-time emission cannot prematurely open the community's live socket before start()
 - [Phase ?]: 12.3-04: connected$/authenticated$ route their merge through this.transport() inside the switchMap rather than the switchMap's own emitted value, keeping transport() the one literal merge point (D-04)
 - [Phase 12.3]: 12.3-05: ConcordClient.extras is not disposed in stop() since stop() is a restartable soft-stop and extras is a constructor-scoped readonly field with no re-construction path on restart, mirroring plan 03's identical decision for ConcordInviteManager
+- [Phase ?]: 12.3-06: the invite-link fragment is a custom byte-packed, base64url-encoded format -- artifact assertions must decode via parseInviteLink before inspecting, never substring-match the raw URL; discovered via the mandated non-vacuity revert-and-observe step
+- [Phase ?]: 12.3-06: fake pool serves request() from its own growing publish log (kind/authors/#d matching) rather than a static event list, so a second client instance can genuinely fetch the first client's invite bundle through one shared pool
 
 ### Pending Todos
 
@@ -205,7 +208,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T14:37:11.748Z
+Last session: 2026-07-22T14:51:39.691Z
 Stopped at: Completed 12.3-04-PLAN.md
 Resume file: None
 
