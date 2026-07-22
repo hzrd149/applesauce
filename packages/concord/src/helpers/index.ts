@@ -23,3 +23,4 @@ export * from "./voice.js";
 export * from "./imeta.js";
 export * from "./invite-bundle.js";
 export * from "./direct-invite.js";
+export * from "./relays.js";
