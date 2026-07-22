@@ -453,7 +453,11 @@ export class ConcordClient {
   // ---- creating / joining -------------------------------------------------
 
   async createNewCommunity(name: string, description: string, relays: string[]): Promise<ConcordCommunity> {
-    this.log("creating community name=%s", name);
+    // Never log `name`/`description`: it is unbounded user content in a package
+    // whose premise is that community content is end-to-end encrypted. The
+    // community id is traced below once `createCommunity` resolves, and that is
+    // the stable handle to correlate on.
+    this.log("creating community relays=%d", (relays.length ? relays : this.defaultRelays).length);
     const genesis = await createCommunity({
       ownerPubkey: this.pubkey,
       name,
