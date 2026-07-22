@@ -144,6 +144,7 @@ export class ConcordInviteManager {
   }
 
   async refresh(): Promise<void> {
+    this.log("refreshing invite list");
     if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
     await firstValueFrom(
       this.pool
@@ -168,6 +169,7 @@ export class ConcordInviteManager {
   }
 
   async create(communityId: string, options: CreateInviteOptions): Promise<ConcordInviteLink> {
+    this.log("building invite bundle for community=%s", communityId.slice(0, 8));
     const community = this.getCommunity(communityId);
     if (!community) throw new Error("community not found");
     const invite = await community.admin.createInvite(options);
@@ -181,6 +183,7 @@ export class ConcordInviteManager {
         ? this.get(inviteOrToken)
         : fromInviteListInvite(toInviteListInvite(inviteOrToken), this.tombstones);
     if (!invite) throw new Error("invite not found");
+    this.log("revoking invite token=%s community=%s", invite.token.slice(0, 8), invite.communityId.slice(0, 8));
     // While we're still a member the community revokes the bundle AND unregisters the public link
     // (CORD-05 §5). Once we've left, the registry — which holds only public link coordinates, never
     // any private material — is neither reachable nor needed: revoke the bundle straight from the
@@ -198,9 +201,10 @@ export class ConcordInviteManager {
     const signed = finalizeEvent(await InviteBundleFactory.revoke(), hexToBytes(invite.signerSk));
     this.eventStore.add(signed);
     const relays = parseInviteLink(invite.url).bootstrapRelays;
-    await this.pool
-      .publish(relays.length ? relays : this.relays, signed)
-      .catch((err) => console.warn("bundle revocation publish failed", err));
+    await this.pool.publish(relays.length ? relays : this.relays, signed).catch((err) => {
+      this.log("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("bundle revocation publish failed", err);
+    });
     return { ...invite, revoked: true };
   }
 
@@ -228,6 +232,7 @@ export class ConcordInviteManager {
       return;
     }
     if (!inviteListWithinByteCap(this.invites, this.tombstones)) {
+      this.log("invite list exceeds the NIP-44 byte cap; not publishing");
       console.warn("invite list exceeds the NIP-44 byte cap; not publishing");
       return;
     }
@@ -238,7 +243,10 @@ export class ConcordInviteManager {
     const signed = await this.signer.signEvent({ kind: INVITE_LIST_KIND, content, tags: [], created_at: createdAt });
     setHiddenContentCache(signed, plaintext);
     this.eventStore.add(signed);
-    this.pool.publish(this.relays, signed).catch((err) => console.warn("invite list publish failed", err));
+    this.pool.publish(this.relays, signed).catch((err) => {
+      this.log("invite list publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("invite list publish failed", err);
+    });
     this.publishedFingerprint = fingerprint;
     this.dirty$.next(false);
   }

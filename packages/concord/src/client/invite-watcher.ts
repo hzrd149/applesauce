@@ -182,12 +182,14 @@ export class InviteWatcher {
       try {
         await relay.authenticate(this.signer);
       } catch (err) {
+        this.log("user AUTH to %s failed: %s", url, (err as Error)?.message ?? err);
         console.warn(`user AUTH to ${url} failed`, err);
       }
     }
   }
 
   stop(): void {
+    this.log("stopping direct invite watcher");
     this.started = false;
     this.authSub?.unsubscribe();
     this.authSub = undefined;
@@ -221,6 +223,7 @@ export class InviteWatcher {
     if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
     if (!this.acceptWrap(event)) return;
     const canonical = (this.eventStore.add(event) as NostrEvent | null) ?? event;
+    this.log("received direct invite wrap id=%s", canonical.id.slice(0, 8));
     if (!this.records.has(canonical.id)) this.records.set(canonical.id, { wrap: canonical });
     else this.records.get(canonical.id)!.wrap = canonical;
     this.recompute();
@@ -390,6 +393,7 @@ export class InviteWatcher {
         JSON.stringify({ version: 1, ids: [...this.dismissed$.value] }),
       );
     } catch (err) {
+      this.log("failed to persist dismissed direct invites: %s", (err as Error)?.message ?? err);
       console.warn("failed to persist dismissed direct invites", err);
     }
   }
@@ -410,6 +414,7 @@ export class InviteWatcher {
     try {
       await this.storage.setItem(`${this.storagePrefix()}:cursor`, String(max));
     } catch (err) {
+      this.log("failed to persist direct invite cursor: %s", (err as Error)?.message ?? err);
       console.warn("failed to persist direct invite cursor", err);
     }
   }
