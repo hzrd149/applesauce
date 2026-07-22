@@ -362,11 +362,11 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
     await settle();
 
     expect(subscriptionTargets.length).toBeGreaterThan(0);
-    // `transport()` (`opts.relays` merged with an empty extras snapshot) has
-    // been the class's one merge point since plan 02, so even the no-extras
-    // target is `mergeRelaySets`-normalized (trailing slash) — the exact same
-    // form it produced before this phase.
-    expect(subscriptionTargets.at(-1)).toEqual(CHANNEL_RELAYS.map((u) => `${u}/`));
+    // `ExtraRelays.merge`'s empty-extras identity fast path (12.3-08, D-14)
+    // means transport() returns `opts.relays` completely unchanged when no
+    // extras are configured — no normalization at all — so the no-extras
+    // target is byte-identical to the configured relay constant.
+    expect(subscriptionTargets.at(-1)).toEqual(CHANNEL_RELAYS);
 
     sub.dispose();
   });
