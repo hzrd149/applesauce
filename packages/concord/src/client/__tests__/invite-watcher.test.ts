@@ -285,4 +285,69 @@ describe("InviteWatcher extras (transport-only relay merge) — reactivity, chur
 
     w.stop();
   });
+
+  // Gap closure (WR-05/WR-06): stop() must be pause-only (restartable, extras
+  // reactivity survives a restart) and dispose() must be the only thing that
+  // actually releases the app-supplied extras source.
+  it("stopped then started again is fully reactive to a later extras emission — not merged against a frozen snapshot (WR-06)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, subscriptionTargets } = extrasWatcherPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const w = new InviteWatcher({ signer, pool, inboxRelays: INBOX_RELAYS, extraRelays: extras$ });
+    await w.start();
+    expect(subscriptionTargets.at(-1)!.some((u) => u.includes("extras-extra-one"))).toBe(true);
+
+    w.stop();
+    await w.start();
+
+    const countAfterRestart = subscriptionTargets.length;
+
+    // A later emission AFTER the stop()/start() cycle — a frozen (disposed)
+    // holder would never update `.current`, and the live subscription would
+    // never reopen for it.
+    extras$.next([EXTRA_TWO]);
+
+    expect(subscriptionTargets.length).toBeGreaterThan(countAfterRestart);
+    expect(subscriptionTargets.at(-1)!.some((u) => u.includes("extras-extra-two"))).toBe(true);
+    expect(subscriptionTargets.at(-1)!.some((u) => u.includes("extras-extra-one"))).toBe(false);
+
+    w.dispose();
+  });
+
+  it("disposed does not react to later extras emissions and holds no subscription to the source (WR-05)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, subscriptionTargets } = extrasWatcherPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const w = new InviteWatcher({ signer, pool, inboxRelays: INBOX_RELAYS, extraRelays: extras$ });
+    await w.start();
+    expect(extras$.observed).toBe(true);
+
+    w.dispose();
+
+    expect(extras$.observed).toBe(false);
+
+    const countAfterDispose = subscriptionTargets.length;
+    extras$.next([EXTRA_TWO]);
+    expect(subscriptionTargets.length).toBe(countAfterDispose); // no reopen after dispose
+  });
+
+  it("stop() alone leaves the extras subscription intact (pause-only, not a release)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool } = extrasWatcherPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const w = new InviteWatcher({ signer, pool, inboxRelays: INBOX_RELAYS, extraRelays: extras$ });
+    await w.start();
+    expect(extras$.observed).toBe(true);
+
+    w.stop();
+
+    // stop() must NOT dispose the holder — only dispose() does.
+    expect(extras$.observed).toBe(true);
+
+    w.dispose();
+    expect(extras$.observed).toBe(false);
+  });
 });

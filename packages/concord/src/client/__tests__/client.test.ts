@@ -15,6 +15,7 @@ import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
 import { hexToBytes } from "@noble/hashes/utils.js";
 
 import { ConcordClient } from "../client.js";
+import { ConcordInviteManager } from "../invite-manager.js";
 import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
 import { COMMUNITY_LIST_KIND, mergeCommunities } from "../../helpers/community-list.js";
@@ -1179,5 +1180,116 @@ describe("ConcordClient.joinByLink (INVITE-04 expires_at seconds join-time check
     const futureSeconds = unixNow() + 100_000;
     expect(Date.now() > futureSeconds).toBe(true); // pre-fix comparison: wrongly "expired"
     expect(unixNow() > futureSeconds).toBe(false); // fixed comparison: correctly not yet expired
+  });
+});
+
+// Gap closure (WR-05/WR-06): dispose() must release every engine's
+// subscription to the app-supplied extras source; stop() must be pause-only
+// and leave this client's own holder (and the invite manager's) alive and
+// reactive across a stop()/start() cycle.
+describe("ConcordClient extras lifecycle — dispose() releases the source, stop() is pause-only (WR-05/WR-06)", () => {
+  it("dispose() releases every engine's subscription to the app-supplied extras source — no remaining Concord observer, and a later push changes nothing", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool } = fakePool();
+    const extras$ = new BehaviorSubject<string[]>([]);
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      extraRelays: extras$,
+    });
+    await client.start();
+    await settle();
+
+    // Three engines (client, invite manager, invite watcher) each hold their
+    // own subscription to the SAME app-supplied source by default.
+    expect(extras$.observed).toBe(true);
+
+    client.dispose();
+
+    expect(extras$.observed).toBe(false);
+
+    // A later push must not throw, and must not resurrect a subscriber.
+    extras$.next(["wss://after-dispose.test"]);
+    expect(extras$.observed).toBe(false);
+  });
+
+  it("stop() leaves the client's own extras subscription intact, and a start() after that stop() still reacts to a later extras emission", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const requestTargets: string[][] = [];
+    const pool = {
+      status$: new Subject(),
+      relay: () => ({
+        url: "wss://fake",
+        challenge: null,
+        challenge$: new BehaviorSubject<string | null>(null),
+        isAuthenticated: () => false,
+        authenticate: async () => ({ ok: true }),
+        getSupported: async () => null,
+        request: () => EMPTY,
+        sync: () => EMPTY,
+      }),
+      subscription: () => NEVER,
+      request: (relays: string[]) => {
+        requestTargets.push([...relays]);
+        return EMPTY;
+      },
+      publish: async () => [],
+    } as unknown as RelayPool;
+
+    const extras$ = new BehaviorSubject<string[]>([]);
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      extraRelays: extras$,
+      watchDirectInvites: false,
+    });
+
+    await client.start();
+    await settle();
+    client.stop();
+
+    // stop() must NOT unsubscribe the client's own extras holder (pause-only).
+    expect(extras$.observed).toBe(true);
+
+    // Push a later emission WHILE stopped.
+    extras$.next(["wss://client-extras-after-stop.test"]);
+
+    requestTargets.length = 0;
+    await client.start();
+    await settle();
+
+    // fetchList() (called during start()) reads through `transport()` — a
+    // frozen (disposed) holder would never have picked up the post-stop push.
+    expect(requestTargets.some((t) => t.some((u) => u.includes("client-extras-after-stop")))).toBe(true);
+
+    client.dispose();
+  });
+
+  it("ConcordInviteManager.dispose() releases its own extras subscription", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool } = fakePool();
+    const extras$ = new BehaviorSubject<string[]>([]);
+    const manager = new ConcordInviteManager({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+      extraRelays: extras$,
+      getCommunity: () => undefined,
+    });
+
+    expect(extras$.observed).toBe(true);
+
+    manager.dispose();
+
+    expect(extras$.observed).toBe(false);
+    extras$.next(["wss://after.test"]);
+    expect(extras$.observed).toBe(false);
   });
 });
