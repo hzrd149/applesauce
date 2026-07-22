@@ -151,6 +151,10 @@ export class ConcordInviteManager {
     await this.refresh();
   }
 
+  /** Pause: resets the in-memory list state but leaves the extras holder
+   *  ({@link ExtraRelays}) alive and subscribed to the app-supplied source —
+   *  restartable via {@link start}. To actually release the app's extras
+   *  source, call {@link dispose} instead. */
   stop(): void {
     this.sub?.unsubscribe();
     this.sub = undefined;
@@ -161,6 +165,14 @@ export class ConcordInviteManager {
     this.publishedFingerprint = canonicalJson({ entries: [], tombstones: [] });
     this.emit();
     this.dirty$.next(false);
+  }
+
+  /** Releases this manager's subscription to the app-supplied `extraRelays`
+   *  source (WR-05) — unlike {@link stop} (pause-only, restartable), the
+   *  manager is NOT restartable after `dispose()`. */
+  dispose(): void {
+    this.stop();
+    this.extras.dispose();
   }
 
   async refresh(): Promise<void> {

@@ -133,7 +133,7 @@ export class InviteWatcher {
    *  subscription once one already exists, so a no-op emission before the
    *  watcher has ever gone live cannot prematurely open its socket, and a real
    *  later change re-derives the merged set via `openLive()`'s own churn guard. */
-  private extrasSub: Subscription;
+  private extrasSub!: Subscription;
   /** The signature `openLive()` last opened a subscription for (pubkey plus the
    *  sorted merged transport set) — guards against tearing down and reopening
    *  the socket for a no-op re-emission (D-09/Pitfall 4, mirrors private-channel.ts). */
@@ -174,6 +174,20 @@ export class InviteWatcher {
     this.requestTimeout = options.requestTimeout ?? 10_000;
     this.cursorKey = options.cursorKey;
 
+    this.subscribeExtras();
+  }
+
+  /**
+   * (Re-)establish the reactive extras subscription that reopens the live
+   * subscription on every later `extraRelays` emission (D-08/D-09). Extracted
+   * so {@link start} can re-establish it after {@link stop} closed it —
+   * `stop()` is pause-only and must not leave the watcher frozen on a stale
+   * extras snapshot forever (WR-06); `dispose()` is what actually releases the
+   * holder. Does NOT rebuild `this.extras` itself — `needsAuth$`'s
+   * `combineLatest` is closed over that same holder's stream, so replacing the
+   * object would silently detach that derivation.
+   */
+  private subscribeExtras(): void {
     this.extrasSub = this.extras.relays$.subscribe(() => {
       if (this.liveSub) this.openLive();
     });
@@ -197,6 +211,12 @@ export class InviteWatcher {
     if (this.started) return;
     this.started = true;
     this.log("starting direct invite watcher");
+    // Restart-safe (WR-06): `stop()` closed this subscription (pause-only); a
+    // fresh `start()` after it must re-establish reactivity to LATER
+    // `extraRelays` emissions rather than staying frozen. The very first
+    // `start()` finds it still open (from the constructor) and this is a
+    // no-op.
+    if (this.extrasSub.closed) this.subscribeExtras();
     this.pubkey = await this.signer.getPublicKey();
     this.pubkey$.next(this.pubkey);
     await this.loadDismissed();
@@ -231,6 +251,12 @@ export class InviteWatcher {
     }
   }
 
+  /** Pause: unsubscribes the live/auth/extras-reactivity subscriptions but
+   *  leaves the extras holder ({@link ExtraRelays}) itself alive and
+   *  subscribed to the app-supplied source — restartable via {@link start},
+   *  which re-establishes the extras reactivity `stop()` closed (WR-06). To
+   *  actually release the app's extras source (e.g. before discarding this
+   *  watcher for good), call {@link dispose} instead. */
   stop(): void {
     this.log("stopping direct invite watcher");
     this.started = false;
@@ -239,8 +265,16 @@ export class InviteWatcher {
     this.liveSub?.unsubscribe();
     this.liveSub = undefined;
     this.extrasSub.unsubscribe();
-    this.extras.dispose();
     this.status$.next("");
+  }
+
+  /** Releases this watcher's subscription to the app-supplied `extraRelays`
+   *  source (WR-05) — unlike {@link stop} (pause-only, restartable), the
+   *  watcher is NOT restartable after `dispose()`. */
+  dispose(): void {
+    this.stop();
+    this.extrasSub.unsubscribe();
+    this.extras.dispose();
   }
 
   /** Fetches historical Direct Invite wraps from the current inbox relays. */

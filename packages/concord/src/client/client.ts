@@ -156,6 +156,11 @@ export interface ConcordClientOptions {
    * always-up local relay can keep a community's `connected$` high even while every one of its
    * real community relays is down, and an extra that gates and rejects our stream keys can
    * hold `authenticated$` low.
+   *
+   * To release every engine's subscription to this source (so the app's Observable has no
+   * remaining Concord subscriber), call {@link ConcordClient.dispose} — {@link ConcordClient.stop}
+   * is pause-only and deliberately keeps these subscriptions alive so the client stays reactive
+   * across a stop/start cycle.
    */
   extraRelays?: ExtraRelaysOption;
   /** Per-plane store factory (persistent cache), passed through to every community. */
@@ -423,12 +428,23 @@ export class ConcordClient {
     this.log("start complete communities=%d", this.communities.size);
   }
 
+  /** Pause: tears down the running community engines and the invite watcher
+   *  instance, restartable via {@link start}. This client's OWN extras holder
+   *  ({@link extras}) and the invite manager's ({@link invites}) are
+   *  deliberately left alive and subscribed to the app-supplied
+   *  `extraRelays` source — `stop()` is restartable, so it must not sever
+   *  reactivity a later `start()` would otherwise still expect. The invite
+   *  watcher instance itself IS discarded here (a fresh one is constructed on
+   *  the next `start()`), so it is disposed (not merely stopped), releasing
+   *  its own extras subscription before the discarded instance is dropped. To
+   *  release every remaining extras subscription (this client's own, and the
+   *  invite manager's), call {@link dispose} instead. */
   stop(): void {
     this.listSub?.unsubscribe();
     this.directInviteSub?.unsubscribe();
     this.autoSaveSub?.unsubscribe();
     this.autoSaveSub = undefined;
-    this.inviteWatcher?.stop();
+    this.inviteWatcher?.dispose();
     this.invites.stop();
     this.inviteWatcher = undefined;
     this.directInviteWatcher$.next(undefined);
@@ -440,6 +456,19 @@ export class ConcordClient {
     this.communityListDirty$.next(false);
     this.started = false;
     this.phase$.next("idle");
+  }
+
+  /** Releases every engine's subscription to the app-supplied `extraRelays`
+   *  source (WR-05): this client's own holder, the invite manager's, and the
+   *  invite watcher's (if one is still running — `stop()` already disposes a
+   *  discarded watcher, so this is a defensive no-op in the common case).
+   *  Unlike {@link stop} (pause-only, restartable), the client is NOT
+   *  restartable after `dispose()`. */
+  dispose(): void {
+    this.stop();
+    this.extras.dispose();
+    this.invites.dispose();
+    this.inviteWatcher?.dispose();
   }
 
   /**
