@@ -244,6 +244,14 @@ export class ConcordCommunity {
    *  constructor — never re-`.extend()`d per wrap (that reallocates and
    *  re-runs namespace enable-matching on every call). */
   private readonly decodeLog: Debugger;
+  /** The `:publish` sub-logger (D-03 light operational tracing), derived ONCE
+   *  in the constructor — reused at every publish trace/dual-emit site in this
+   *  engine (channel rekey, invite bundle mint/refresh/revoke, channel grant). */
+  private readonly publishLog: Debugger;
+  /** The `:fold` sub-logger (D-03), derived ONCE in the constructor — light
+   *  tracing at control/member fold outcomes that change the community's
+   *  epoch (a live Refounding adoption or an involuntary removal). */
+  private readonly foldLog: Debugger;
   private readonly pool: RelayPool;
   private readonly relayAuth: ConcordRelayAuth;
   private readonly eventStore: EventStore;
@@ -285,6 +293,8 @@ export class ConcordCommunity {
   constructor(options: ConcordCommunityOptions) {
     this.log = options.logger ?? logger;
     this.decodeLog = this.log.extend("sync").extend("decode");
+    this.publishLog = this.log.extend("publish");
+    this.foldLog = this.log.extend("fold");
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
@@ -435,6 +445,7 @@ export class ConcordCommunity {
     if (this.started || this.disposed) return;
     this.started = true;
     this.phase$.next("syncing");
+    this.log("epoch walk starting");
     try {
       const walk = await syncEpochs(this.syncContext(), this.material);
       if (this.disposed) return;
@@ -453,6 +464,7 @@ export class ConcordCommunity {
       }
       this.error$.next(null);
       this.phase$.next("live");
+      this.log("epoch walk complete tip_epoch=%d", this.keys.material.root_epoch);
     } catch (err) {
       if (this.disposed) return;
       this.error$.next(err instanceof Error ? err.message : String(err));
@@ -570,9 +582,10 @@ export class ConcordCommunity {
     // one. Folded state derives reactively from the store's `insert$` (which fires once the add
     // resolves) and the folds are order-independent, so fire-and-forget is correct here — but
     // surface async-database errors rather than dropping them.
-    Promise.resolve(this.storeFor(planeStoreKey(info)).add(decoded.rumor)).catch((err) =>
-      console.error("[applesauce-concord] Failed to add rumor to plane store:", err),
-    );
+    Promise.resolve(this.storeFor(planeStoreKey(info)).add(decoded.rumor)).catch((err) => {
+      this.log("failed to add rumor to plane store: %s", (err as Error)?.message ?? err);
+      console.error("[applesauce-concord] Failed to add rumor to plane store:", err);
+    });
     if (info.type === "rekey") this.scheduleRekeyCheck();
   }
 
@@ -658,6 +671,7 @@ export class ConcordCommunity {
       .filter(([id]) => publicIds.has(id) && !before.has(id))
       .map(([, k]) => k.pk);
     if (fresh.length > 0) {
+      this.log("catching up %d newly revealed public channel(s)", fresh.length);
       this.relayAuth.registerStreamKeys(this.publicChannelKeys());
       this.ensureAuth(this.relays());
       void syncAuthors(this.syncContext(), fresh).then((events) => {
@@ -809,6 +823,7 @@ export class ConcordCommunity {
     );
     if (outcome.kind === "none" || this.disposed) return;
     if (outcome.kind === "removed") {
+      this.foldLog("rekey fold: removed epoch=%d", outcome.epoch);
       this.handleRemoved();
       return;
     }
@@ -819,6 +834,7 @@ export class ConcordCommunity {
     const latched = this.rekeyHandled.get(outcome.epoch);
     if (latched && !isStrictlyLowerKey(latched, candidate)) return;
     this.rekeyHandled.set(outcome.epoch, candidate);
+    this.foldLog("rekey fold: adopting epoch=%d", outcome.epoch);
     this.adoptRefounding(outcome.next);
   }
 
@@ -840,10 +856,12 @@ export class ConcordCommunity {
     // community_root. Ask the client to re-post them behind their unchanged URLs
     // (CORD-05 §2); it holds the per-link signer secrets, we don't.
     this.onRefounded?.(this.communityId);
+    this.foldLog("refounding adopted epoch=%d", this.keys.material.root_epoch);
   }
 
   private handleRemoved(): void {
     const cid = this.communityId;
+    this.log("community removed cid=%s", cid.slice(0, 8));
     this.phase$.next("removed");
     this.dispose();
     this.onRemoved?.(cid);
@@ -1080,8 +1098,12 @@ export class ConcordCommunity {
     });
 
     const relays = this.relays();
+    this.publishLog("rotating channel=%s", channelId.slice(0, 8));
     for (const wrap of plan.rekeyWraps)
-      await this.pool.publish(relays, wrap).catch((err) => console.warn("channel rekey publish failed", err));
+      await this.pool.publish(relays, wrap).catch((err) => {
+        this.publishLog("channel rekey publish failed: %s", (err as Error)?.message ?? err);
+        console.warn("channel rekey publish failed", err);
+      });
 
     // Optimistically hand the rekey to the channel's sub-engine so it adopts the
     // new key immediately (which persists it via onKeyChange); fall back to
@@ -1124,7 +1146,11 @@ export class ConcordCommunity {
     const signed = finalizeEvent(template, linkSk);
     this.eventStore.add(signed);
     const inviteRelays = this.relays();
-    this.pool.publish(inviteRelays, signed).catch((err) => console.warn("bundle publish failed", err));
+    this.publishLog("publishing invite bundle link=%s", linkPub.slice(0, 8));
+    this.pool.publish(inviteRelays, signed).catch((err) => {
+      this.publishLog("bundle publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("bundle publish failed", err);
+    });
 
     // Register the link into the community (CORD-05 §5) so it counts as Public.
     await this.admin.registerInviteLink(linkPub);
@@ -1156,6 +1182,7 @@ export class ConcordCommunity {
   async refreshInviteBundles(links: ConcordInviteLink[]): Promise<void> {
     const state = this.state$.value;
     const inviteRelays = this.relays();
+    this.publishLog("refreshing %d invite bundle(s)", links.length);
     for (const link of links) {
       try {
         const bundle = buildInviteBundle(this.material, {
@@ -1169,22 +1196,30 @@ export class ConcordCommunity {
         const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
         const signed = finalizeEvent(template, hexToBytes(link.signerSk));
         this.eventStore.add(signed);
-        this.pool
-          .publish(inviteRelays, signed)
-          .catch((err) => console.warn("invite bundle refresh publish failed", err));
+        this.pool.publish(inviteRelays, signed).catch((err) => {
+          this.publishLog("invite bundle refresh publish failed: %s", (err as Error)?.message ?? err);
+          console.warn("invite bundle refresh publish failed", err);
+        });
       } catch (err) {
+        this.publishLog(
+          "invite refresh skipped for link=%s: %s",
+          link.token.slice(0, 8),
+          (err as Error)?.message ?? err,
+        );
         console.warn(`invite refresh skipped for link ${link.token}`, err);
       }
     }
   }
 
   async revokeInvite(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
+    this.publishLog("revoking invite link=%s", invite.signerPubkey.slice(0, 8));
     const template = await InviteBundleFactory.revoke();
     const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
     this.eventStore.add(signed);
-    await this.pool
-      .publish(this.relays(), signed)
-      .catch((err) => console.warn("bundle revocation publish failed", err));
+    await this.pool.publish(this.relays(), signed).catch((err) => {
+      this.publishLog("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("bundle revocation publish failed", err);
+    });
     await this.admin.unregisterInviteLink(invite.signerPubkey);
 
     const revoked = { ...invite, revoked: true };
@@ -1219,7 +1254,11 @@ export class ConcordCommunity {
 
     const wrap = await DirectInviteFactory.create(bundle, member, this.signer);
     this.eventStore.add(wrap);
-    await this.pool.publish(this.relays(), wrap).catch((err) => console.warn("channel grant publish failed", err));
+    this.publishLog("granting channel access channels=%d member=%s", ids.length, member.slice(0, 8));
+    await this.pool.publish(this.relays(), wrap).catch((err) => {
+      this.publishLog("channel grant publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("channel grant publish failed", err);
+    });
   }
 
   // ---- CORD-06 refounding (rekey) -----------------------------------------
@@ -1340,7 +1379,10 @@ export class ConcordCommunity {
     const { wrap, rumorId } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
     // Optimistic local echo first, so the UI updates before relays ack.
     if (!opts.ephemeral) this.onWrap(wrap);
-    this.pool.publish(this.relays(), wrap).catch((err) => console.warn("publish failed", err));
+    this.pool.publish(this.relays(), wrap).catch((err) => {
+      this.publishLog("publish failed plane=%s: %s", target.plane, (err as Error)?.message ?? err);
+      console.warn("publish failed", err);
+    });
     return rumorId;
   }
 

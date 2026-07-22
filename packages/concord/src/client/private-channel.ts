@@ -182,6 +182,7 @@ export class ConcordPrivateChannel {
       }
       this.error$.next(null);
       this.phase$.next("live");
+      this.log("channel epoch walk complete tip_epoch=%d", this.channelKey.epoch);
     } catch (err) {
       if (this.disposed) return;
       this.error$.next(err instanceof Error ? err.message : String(err));
@@ -225,9 +226,10 @@ export class ConcordPrivateChannel {
       if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;
       // `.add` is sync for an in-memory store and a Promise for an async-database-backed one;
       // state derives reactively from `insert$`, so fire-and-forget while surfacing errors.
-      Promise.resolve(this.opts.store.add(decoded.rumor)).catch((err) =>
-        console.error("[applesauce-concord] Failed to add rumor to channel store:", err),
-      );
+      Promise.resolve(this.opts.store.add(decoded.rumor)).catch((err) => {
+        this.log("failed to add rumor to channel store: %s", (err as Error)?.message ?? err);
+        console.error("[applesauce-concord] Failed to add rumor to channel store:", err);
+      });
     } else if (info.type === "rekey") {
       this.rekeyEvents.set(decoded.wrapId, decoded);
       this.scheduleRekeyCheck();
@@ -302,6 +304,7 @@ export class ConcordPrivateChannel {
     );
     if (outcome.kind === "none" || this.disposed) return;
     if (outcome.kind === "removed") {
+      this.log("channel rekey fold: removed epoch=%d", outcome.epoch);
       this.handleRemoved();
       return;
     }
@@ -312,6 +315,7 @@ export class ConcordPrivateChannel {
     const latched = this.rekeyHandled.get(outcome.epoch);
     if (latched && !isStrictlyLowerKey(latched, candidate)) return;
     this.rekeyHandled.set(outcome.epoch, candidate);
+    this.log("channel rekey fold: adopting epoch=%d", outcome.epoch);
     // Adopt: roll to the new key, persist, reopen live, and catch up the new
     // epoch's message history (published between the rekey and now).
     this.setChannelKey(outcome.next);
@@ -327,6 +331,7 @@ export class ConcordPrivateChannel {
 
   private handleRemoved(): void {
     const id = this.channelId;
+    this.log("channel removed id=%s", id.slice(0, 8));
     this.phase$.next("removed");
     this.dispose();
     this.opts.onRemoved?.(id);
