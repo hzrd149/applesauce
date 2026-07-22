@@ -20,14 +20,20 @@ import { EditionFactory } from "../../factories/control.js";
 import { buildRefounding, deriveConcordKeys, rollForward, wrapForTarget } from "../../helpers/keys.js";
 import { grantLocator } from "../../helpers/crypto.js";
 import { computeEditionHash } from "../../helpers/editions.js";
+import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../../helpers/gift-wrap.js";
 import { PERM, VSK } from "../../types.js";
 import type { JoinMaterial } from "../../types.js";
-import { buildChain, syncEpochs, type SyncContext } from "../sync.js";
+import { buildChain, syncAuthors, syncEpochs, type SyncContext } from "../sync.js";
+
+/** A captured relay-level filter (the shape `servingPool`'s `request` receives). */
+type CapturedFilter = { kinds?: number[]; authors?: string[]; since?: number; until?: number };
 
 // A RelayPool stand-in that serves `events` matching each REQ's authors/kinds and
 // completes (EOSE). No NIP-77, no live subscription — identical shape to
-// private-channel.test.ts's `servingPool`.
-function servingPool(events: NostrEvent[]): RelayPool {
+// private-channel.test.ts's `servingPool`. When `capture` is passed, every filter
+// object the relay-level `request` receives is recorded into it — the spy seam
+// for the backfill-direction filter-spy test (D-03).
+function servingPool(events: NostrEvent[], capture?: CapturedFilter[]): RelayPool {
   const relay = {
     url: "wss://fake",
     challenge: null,
@@ -37,12 +43,8 @@ function servingPool(events: NostrEvent[]): RelayPool {
     getSupported: async () => null,
     sync: () => EMPTY,
     request: (filters: unknown) => {
-      const fs = (Array.isArray(filters) ? filters : [filters]) as Array<{
-        kinds?: number[];
-        authors?: string[];
-        since?: number;
-        until?: number;
-      }>;
+      const fs = (Array.isArray(filters) ? filters : [filters]) as CapturedFilter[];
+      capture?.push(...fs);
       const match = events.filter((e) =>
         fs.some(
           (f) =>
@@ -257,6 +259,35 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
     expect(epoch0Result.reReadAdopted?.key).toEqual(highKey);
     expect(second.tipKeys?.material.root_epoch).toBe(1);
     expect(second.tipKeys?.material.community_root).toBe(bytesToHex(highKey));
+  });
+});
+
+describe("syncAuthors — backfill filter requests only the retained kind (D-01/D-03)", () => {
+  it("kinds is [GIFT_WRAP_KIND] — 21059 (EPHEMERAL_GIFT_WRAP_KIND) absent", async () => {
+    const self = new PrivateKeySigner(generateSecretKey());
+    const selfPub = await self.getPublicKey();
+
+    const captured: CapturedFilter[] = [];
+    const pool = servingPool([], captured);
+    const ctx: SyncContext = {
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      signer: self,
+      self: selfPub,
+      relays: ["wss://fake"],
+      route: () => {},
+      ensureAuth: () => {},
+    };
+
+    await syncAuthors(ctx, ["01".repeat(32)]);
+
+    expect(captured.length).toBeGreaterThan(0);
+    // Expected value is derived from the spec constants directly (TEST-01), not
+    // from sync.ts's own BACKFILL_KINDS export, so a pass genuinely attributes to
+    // the fix rather than to the filter-spy merely echoing production's constant.
+    expect(captured[0].kinds).toEqual([GIFT_WRAP_KIND]);
+    expect(captured[0].kinds).not.toContain(EPHEMERAL_GIFT_WRAP_KIND);
   });
 });
 
