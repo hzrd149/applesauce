@@ -26,7 +26,7 @@ import type { NostrEvent } from "applesauce-core/helpers/event";
 
 import type { ConcordRelayAuth } from "./relay-auth.js";
 import { deriveConcordKeys, readRekey, type ConcordKeys, type PlaneInfo } from "../helpers/keys.js";
-import { decodeWrapCached, EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../helpers/gift-wrap.js";
+import { BACKFILL_KINDS, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { foldMembers } from "../helpers/guestbook.js";
 import { canActOn, refoundAuthority, resolveStanding, vacVerifier } from "../helpers/permissions.js";
@@ -97,7 +97,7 @@ export async function syncAuthors(ctx: SyncContext, authors: string[]): Promise<
   const loader = createSyncLoader({ eventStore: ctx.eventStore, pool: ctx.pool });
   const { events$ } = loader({
     relays: ctx.relays,
-    filter: { kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors },
+    filter: { kinds: BACKFILL_KINDS, authors },
     waitForAuth: authors,
   });
   // events$ completes when every relay has finished (completed or errored), so this

@@ -29,6 +29,17 @@ export const ENCRYPTED_SEAL_KIND = 20013;
 export const PLAINTEXT_SEAL_KIND = 20014;
 
 /**
+ * The kinds a historical backfill filter should request. Ephemeral wraps
+ * (`EPHEMERAL_GIFT_WRAP_KIND`, 21059) are never retained by relays under
+ * NIP-01, so a backfill filter for them can only ever return nothing —
+ * wasting a round-trip and producing a misleading "synced" signal. Backfill
+ * (`syncAuthors`) intentionally requests only the retained kind; the two live
+ * subscription sites (`community.ts`, `private-channel.ts`) intentionally
+ * keep requesting both kinds, since ephemeral wraps only ever arrive live.
+ */
+export const BACKFILL_KINDS = [GIFT_WRAP_KIND];
+
+/**
  * Decrypt and verify the seal inside a wrap. Returns `null` when the event is
  * not a wrap, is undecryptable under `convKey`, or carries an invalidly-signed
  * seal. Pure — no memoisation, so a wrap can be probed under multiple keys.
