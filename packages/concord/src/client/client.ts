@@ -58,7 +58,7 @@ import {
   parseInviteLink,
   validateInviteBundle,
 } from "../helpers/invite-bundle.js";
-import type { ExtraRelaysOption } from "../helpers/relays.js";
+import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { joinCommunity, leaveCommunity, refreshCommunity } from "../operations/community-list.js";
 import { JoinLeaveFactory } from "../factories/guestbook.js";
 import { InviteWatcher } from "./invite-watcher.js";
@@ -226,6 +226,10 @@ export class ConcordClient {
    *  watcher, every community) constructs its own reactive holder from the SAME live source
    *  (D-11/D-13) — never a resolved snapshot, which would freeze sub-engine reactivity. */
   private readonly extraRelaysOption?: ExtraRelaysOption;
+  /** The client's own per-operation transport-only extras holder (D-04) — the sole merge
+   *  point for this class's own pool calls, via {@link transport}. Never merged into signed
+   *  or published content. */
+  private readonly extras: ExtraRelays;
   private readonly storeFactory?: ConcordStoreFactory;
   private readonly relayAuth: ConcordRelayAuth;
   private readonly autoUnlock: boolean;
@@ -292,6 +296,7 @@ export class ConcordClient {
     this.uploader = options.uploader;
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
     this.extraRelaysOption = options.extraRelays;
+    this.extras = new ExtraRelays(options.extraRelays);
     this.log("extras configured=%s", options.extraRelays !== undefined);
     this.storeFactory = options.storeFactory;
     this.autoUnlock = options.autoUnlock ?? false;
@@ -346,6 +351,15 @@ export class ConcordClient {
       ),
       shareReplay(1),
     );
+  }
+
+  /** Merges `base` (defaulting to {@link defaultRelays}) with the current extras snapshot
+   *  (D-04) — the ONLY merge point for this class's own transport calls. Every call site here
+   *  is one-shot, so the synchronous {@link ExtraRelays.current} snapshot is the correct
+   *  consumption shape (D-11) — never a first-value-only resolver. The result is a transport
+   *  target set only: it must never be written into signed or published content. */
+  private transport(base?: string[]): string[] {
+    return this.extras.merge(base ?? this.defaultRelays);
   }
 
   /** The logged-in user's hex pubkey. Available after {@link start}. */
@@ -518,6 +532,12 @@ export class ConcordClient {
   async joinByLink(url: string): Promise<ConcordCommunity> {
     const parsed = parseInviteLink(url);
     const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : this.defaultRelays;
+    // D-05 (second leak surface in this file, mirroring plan 04's createInvite protocol/
+    // transport split): `relays` above stays the unmerged bootstrap-or-default selection and
+    // flows on, UNCHANGED, into `joinFromBundle` below — it becomes the joined community's
+    // material relays (protocol state). `requestRelays` is a separate local that only widens
+    // the bundle FETCH to the merged transport set; never substitute it for `relays` above.
+    const requestRelays = this.transport(relays);
     // Collect the whole timeline once the request completes (EOSE), NOT the first
     // emission: `mapEventsToTimeline` seeds an immediate `[]` (via
     // `withImmediateValueOrDefault`) so the pipe never completes empty, which means
@@ -528,7 +548,7 @@ export class ConcordClient {
     // (same author+kind, different `d`) can never pollute the union.
     const events = await lastValueFrom(
       this.pool
-        .request(relays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner], "#d": [""] }])
+        .request(requestRelays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner], "#d": [""] }])
         .pipe(mapEventsToTimeline(), timeout(10000)),
       { defaultValue: [] as NostrEvent[] },
     ).catch(() => [] as NostrEvent[]);
@@ -776,11 +796,13 @@ export class ConcordClient {
   // ---- community list (kind 13302) ----------------------------------------
 
   /** Pipe every version of a self-encrypted list (13302/13303) the relays hold into the
-   *  shared store; the EventStore keeps the newest replaceable, so no manual sort/pick. */
+   *  shared store; the EventStore keeps the newest replaceable, so no manual sort/pick. Reads
+   *  through {@link transport}: only the transport target widens here, while the list's own
+   *  content continues to carry each community's material relays untouched. */
   private fetchList(kind: number): Promise<unknown> {
     return firstValueFrom(
       this.pool
-        .request(this.defaultRelays, [{ kinds: [kind], authors: [this.pubkey] }])
+        .request(this.transport(), [{ kinds: [kind], authors: [this.pubkey] }])
         .pipe(mapEventsToStore(this.eventStore), toArray(), timeout(8000)),
     ).catch(() => [] as NostrEvent[]);
   }
@@ -895,7 +917,17 @@ export class ConcordClient {
         console.warn("community list exceeds the NIP-44 byte cap; not publishing");
         return;
       }
-      this.publishLog("publishing community list entries=%d tombstones=%d", list.length, tombstones.length);
+      // Only the transport target widens here (via {@link transport}) — the list's own content
+      // (`list`/`tombstones`, serialized below) continues to carry each community's material
+      // relays untouched. Computed once and reused for the trace and the publish call so the two
+      // can never disagree.
+      const targets = this.transport();
+      this.publishLog(
+        "publishing community list entries=%d tombstones=%d targets=%d",
+        list.length,
+        tombstones.length,
+        targets.length,
+      );
       const plaintext = JSON.stringify({ entries: list, tombstones });
       const content = await this.signer.nip44.encrypt(this.pubkey, plaintext);
       // 13302 is replaceable: NIP-01 keeps the lowest event id on a created_at tie, so a save
@@ -915,7 +947,7 @@ export class ConcordClient {
       // otherwise auto-unlock would re-issue a redundant user-signer decrypt of a list we just wrote.
       setHiddenContentCache(signed, plaintext);
       this.eventStore.add(signed);
-      this.pool.publish(this.defaultRelays, signed).catch((err) => {
+      this.pool.publish(targets, signed).catch((err) => {
         this.publishLog("list publish failed: %s", (err as Error)?.message ?? err);
         console.warn("list publish failed", err);
       });
