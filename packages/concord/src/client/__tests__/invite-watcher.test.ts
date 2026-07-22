@@ -190,3 +190,99 @@ describe("InviteWatcher", () => {
     w.stop();
   });
 });
+
+// Plan 12.3-07: mirrors community.test.ts's extras describe block (Task 1) —
+// reactivity, churn-guard, and the discovery-surface transport-free proof
+// (D-08/D-09/D-14), plus the D-01 prohibition that extras never leak onto the
+// public discovered-inbox subject.
+describe("InviteWatcher extras (transport-only relay merge) — reactivity, churn, discovery-surface isolation (D-08/D-09/D-14)", () => {
+  /** Records every `subscription` call's relay-TARGET argument. Local to this
+   *  describe block only — the file's other tests are untouched. */
+  function extrasWatcherPool(): { pool: RelayPool; subscriptionTargets: string[][] } {
+    const subscriptionTargets: string[][] = [];
+    const pool = {
+      status$: new BehaviorSubject<Record<string, unknown>>({}),
+      relay: () => ({
+        isAuthenticated: () => true,
+        authenticate: async () => ({ ok: true }),
+      }),
+      request: () => EMPTY,
+      subscription: (relays: string[]) => {
+        subscriptionTargets.push([...relays]);
+        return { subscribe: () => ({ unsubscribe: () => {} }) };
+      },
+    } as unknown as RelayPool;
+    return { pool, subscriptionTargets };
+  }
+
+  // Distinct, non-overlapping hostnames so no assertion can pass by coincidence.
+  const INBOX_RELAYS = ["wss://iw-extras-inbox-a.test", "wss://iw-extras-inbox-b.test"];
+  const EXTRA_ONE = "wss://iw-extras-extra-one.test";
+  const EXTRA_TWO = "wss://iw-extras-extra-two.test";
+
+  it("a second extras emission changes the live subscription's relay target while the discovered inboxes stay present (D-08/D-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, subscriptionTargets } = extrasWatcherPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const w = new InviteWatcher({ signer, pool, inboxRelays: INBOX_RELAYS, extraRelays: extras$ });
+    await w.start();
+
+    const before = subscriptionTargets.at(-1)!;
+    expect(subscriptionTargets.length).toBeGreaterThan(0);
+    expect(before.some((u) => u.includes("extras-extra-one"))).toBe(true);
+    expect(before.some((u) => u.includes("extras-inbox-a"))).toBe(true);
+    expect(before.some((u) => u.includes("extras-inbox-b"))).toBe(true);
+
+    // Push a SECOND, DIFFERENT extras value (D-11) — a first-value-only
+    // resolver would leave the target frozen on EXTRA_ONE forever.
+    extras$.next([EXTRA_TWO]);
+
+    const after = subscriptionTargets.at(-1)!;
+    expect(after).not.toBe(before);
+    expect(after.some((u) => u.includes("extras-extra-two"))).toBe(true);
+    expect(after.some((u) => u.includes("extras-extra-one"))).toBe(false);
+    expect(after.some((u) => u.includes("extras-inbox-a"))).toBe(true);
+    expect(after.some((u) => u.includes("extras-inbox-b"))).toBe(true);
+
+    w.stop();
+  });
+
+  it("an equal-content extras re-emission does not open a new live subscription (D-09 churn guard)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, subscriptionTargets } = extrasWatcherPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE, EXTRA_TWO]);
+
+    const w = new InviteWatcher({ signer, pool, inboxRelays: INBOX_RELAYS, extraRelays: extras$ });
+    await w.start();
+
+    const callCountBefore = subscriptionTargets.length;
+    expect(callCountBefore).toBeGreaterThan(0);
+
+    // Same members, different array instance AND order — must not tear down
+    // and reopen the live socket.
+    extras$.next([EXTRA_TWO, EXTRA_ONE]);
+
+    expect(subscriptionTargets.length).toBe(callCountBefore);
+
+    w.stop();
+  });
+
+  it("relays$ (the public discovered-inbox surface) never reports the extras endpoint, even after extras are configured and pushed (D-01 prohibition)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool } = extrasWatcherPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+
+    const w = new InviteWatcher({ signer, pool, inboxRelays: INBOX_RELAYS, extraRelays: extras$ });
+    await w.start();
+    expect(w.relays$.value).toEqual(INBOX_RELAYS);
+
+    extras$.next([EXTRA_TWO]);
+
+    // Equality (not substring-absence) — this also catches an accidentally
+    // DROPPED discovered inbox, which a substring-absence check would miss.
+    expect(w.relays$.value).toEqual(INBOX_RELAYS);
+
+    w.stop();
+  });
+});

@@ -182,3 +182,192 @@ describe("ConcordPrivateChannel — live subscription requests both retained + e
     sub.dispose();
   });
 });
+
+// Plan 12.3-07: mirrors community.test.ts's extras describe block (Task 1) so a
+// reader recognises all three engines' extras coverage at a glance — reactivity,
+// churn-guard, and the no-extras byte-identical baseline (D-08/D-09/D-14).
+describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivity, churn, no-extras baseline (D-08/D-09/D-14)", () => {
+  /** Records every `subscription`/`relay()` call's relay-TARGET argument, so
+   *  these tests can assert on what was actually dialled. Local to this
+   *  describe block only — `servingPool` above is untouched. */
+  function extrasPrivateChannelPool(): {
+    pool: RelayPool;
+    subscriptionTargets: string[][];
+    relayCalls: string[];
+  } {
+    const subscriptionTargets: string[][] = [];
+    const relayCalls: string[] = [];
+    const relay = {
+      url: "wss://fake",
+      challenge: null,
+      challenge$: new BehaviorSubject<string | null>(null),
+      isAuthenticated: () => false,
+      authenticate: async () => ({ ok: true }),
+      getSupported: async () => null,
+      sync: () => EMPTY,
+      request: () => EMPTY,
+    };
+    const pool = {
+      status$: new Subject(),
+      relay: (url: string) => {
+        relayCalls.push(url);
+        return relay;
+      },
+      subscription: (relays: string[]) => {
+        subscriptionTargets.push([...relays]);
+        return NEVER;
+      },
+      request: () => EMPTY,
+      publish: async () => [],
+    } as unknown as RelayPool;
+    return { pool, subscriptionTargets, relayCalls };
+  }
+
+  // Distinct, non-overlapping hostnames so no assertion can pass by coincidence.
+  const CHANNEL_RELAYS = ["wss://pc-extras-channel-a.test", "wss://pc-extras-channel-b.test"];
+  const EXTRA_ONE = "wss://pc-extras-extra-one.test";
+  const EXTRA_TWO = "wss://pc-extras-extra-two.test";
+
+  function makeChannelKey() {
+    return {
+      id: bytesToHex(generateSecretKey()),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 1,
+      name: "secret",
+    };
+  }
+
+  it("a second extras emission changes the live subscription's relay target and auth registrations, while the channel's own relays stay present (D-08/D-09)", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: CHANNEL_RELAYS });
+    const material = g.material;
+    const channel = makeChannelKey();
+
+    const { pool, subscriptionTargets, relayCalls } = extrasPrivateChannelPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      store,
+      relays: CHANNEL_RELAYS,
+      extraRelays: extras$,
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    const before = subscriptionTargets.at(-1)!;
+    expect(subscriptionTargets.length).toBeGreaterThan(0);
+    expect(before.some((u) => u.includes("extras-extra-one"))).toBe(true);
+    expect(before.some((u) => u.includes("extras-channel-a"))).toBe(true);
+    expect(before.some((u) => u.includes("extras-channel-b"))).toBe(true);
+    expect(relayCalls.some((u) => u.includes("extras-extra-one"))).toBe(true);
+
+    // Push a SECOND, DIFFERENT extras value (D-11) — a first-value-only
+    // resolver would leave the target frozen on EXTRA_ONE forever.
+    extras$.next([EXTRA_TWO]);
+    await settle();
+
+    const after = subscriptionTargets.at(-1)!;
+    expect(after).not.toBe(before);
+    expect(after.some((u) => u.includes("extras-extra-two"))).toBe(true);
+    expect(after.some((u) => u.includes("extras-extra-one"))).toBe(false);
+    expect(after.some((u) => u.includes("extras-channel-a"))).toBe(true);
+    expect(after.some((u) => u.includes("extras-channel-b"))).toBe(true);
+    expect(relayCalls.some((u) => u.includes("extras-extra-two"))).toBe(true);
+
+    sub.dispose();
+  });
+
+  it("an equal-content extras re-emission does not open a new live subscription (D-09 churn guard)", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: CHANNEL_RELAYS });
+    const material = g.material;
+    const channel = makeChannelKey();
+
+    const { pool, subscriptionTargets } = extrasPrivateChannelPool();
+    const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE, EXTRA_TWO]);
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      store,
+      relays: CHANNEL_RELAYS,
+      extraRelays: extras$,
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    const callCountBefore = subscriptionTargets.length;
+    expect(callCountBefore).toBeGreaterThan(0);
+
+    // Same members, different array instance AND order — must not tear down
+    // and reopen the live socket.
+    extras$.next([EXTRA_TWO, EXTRA_ONE]);
+    await settle();
+
+    expect(subscriptionTargets.length).toBe(callCountBefore);
+
+    sub.dispose();
+  });
+
+  it("with no extraRelays configured, the live subscription target equals the channel's own relay set (byte-identical, D-14)", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: CHANNEL_RELAYS });
+    const material = g.material;
+    const channel = makeChannelKey();
+
+    const { pool, subscriptionTargets } = extrasPrivateChannelPool();
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      store,
+      relays: CHANNEL_RELAYS,
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    expect(subscriptionTargets.length).toBeGreaterThan(0);
+    // `transport()` (`opts.relays` merged with an empty extras snapshot) has
+    // been the class's one merge point since plan 02, so even the no-extras
+    // target is `mergeRelaySets`-normalized (trailing slash) — the exact same
+    // form it produced before this phase.
+    expect(subscriptionTargets.at(-1)).toEqual(CHANNEL_RELAYS.map((u) => `${u}/`));
+
+    sub.dispose();
+  });
+});
