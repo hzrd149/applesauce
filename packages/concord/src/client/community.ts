@@ -240,6 +240,11 @@ export class ConcordCommunity {
   /** The community's debug logger — `options.logger` when threaded from the client,
    *  otherwise the `applesauce:concord` module base (D-01/D-02). */
   private readonly log: Debugger;
+  /** The `:sync` sub-logger, derived ONCE in the constructor — handed to every
+   *  {@link SyncContext} this instance builds. `syncContext()` runs once per
+   *  `start()` AND once per `reconcileLive()` batch, so `.extend()`ing there
+   *  would reallocate and re-run namespace enable-matching each time. */
+  private readonly syncLog: Debugger;
   /** The `:sync:decode` per-dropped-wrap logger (D-07), derived ONCE in the
    *  constructor — never re-`.extend()`d per wrap (that reallocates and
    *  re-runs namespace enable-matching on every call). */
@@ -292,7 +297,8 @@ export class ConcordCommunity {
 
   constructor(options: ConcordCommunityOptions) {
     this.log = options.logger ?? logger;
-    this.decodeLog = this.log.extend("sync").extend("decode");
+    this.syncLog = this.log.extend("sync");
+    this.decodeLog = this.syncLog.extend("decode");
     this.publishLog = this.log.extend("publish");
     this.foldLog = this.log.extend("fold");
     this.signer = options.signer;
@@ -606,7 +612,7 @@ export class ConcordCommunity {
       route: (info, decoded) => this.route(info, decoded),
       ensureAuth: (relays) => this.ensureAuth(relays),
       alive: () => !this.disposed,
-      logger: this.log.extend("sync"),
+      logger: this.syncLog,
       decodeLogger: this.decodeLog,
     };
   }
