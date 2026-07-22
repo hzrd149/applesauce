@@ -5,8 +5,8 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: Transport-Only Extra Relays in applesauce-concord
 status: verifying
-stopped_at: Completed 12.2-03-PLAN.md
-last_updated: "2026-07-22T10:48:16.510Z"
+stopped_at: Phase 12.3 context gathered
+last_updated: "2026-07-22T11:39:35.508Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.2 complete, transitioned to Phase 12.3
 progress:
@@ -189,9 +189,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T10:39:01.467Z
-Stopped at: Completed 12.2-03-PLAN.md
-Resume file: .planning/phases/12.2-concord-sync-debug-logging/12.2-04-PLAN.md
+Last session: 2026-07-22T11:39:35.491Z
+Stopped at: Phase 12.3 context gathered
+Resume file: .planning/phases/12.3-transport-only-extra-relays-in-applesauce-concord/12.3-CONTEXT.md
 
 ## Operator Next Steps
 
