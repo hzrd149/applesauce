@@ -145,9 +145,16 @@ export async function syncEpoch(
   const coreFetched = await syncAuthors(ctx, coreAuthors);
   let coreDecoded = 0;
   let coreDropped = 0;
+  // Wraps that never reached the decode boundary at all (no plane matches the
+  // author). Counted so the aggregate always sums: fetched = decoded + dropped
+  // + skipped — otherwise `fetched=10 decoded=0 dropped=0` reads as "all fine".
+  let coreSkipped = 0;
   for (const ev of coreFetched) {
     const info = keys.planes.get(ev.pubkey);
-    if (!info) continue;
+    if (!info) {
+      coreSkipped++;
+      continue;
+    }
     const d = decodeWrapCached(ev, info.convKey);
     if (!d) {
       coreDropped++;
@@ -163,11 +170,12 @@ export async function syncEpoch(
   // D-05 litmus: this MUST fire even when coreFetched.length === 0 — a zero-event
   // sync must read `fetched=0`, distinct from an arrived-but-undecryptable sync.
   ctx.logger(
-    "core planes epoch=%d fetched=%d decoded=%d dropped=%d",
+    "core planes epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
     epochMaterial.root_epoch,
     coreFetched.length,
     coreDecoded,
     coreDropped,
+    coreSkipped,
   );
 
   // 3. Fold control → channels, re-derive to reveal the channel addresses, then
@@ -188,9 +196,13 @@ export async function syncEpoch(
   );
   let channelDecodedCount = 0;
   let channelDropped = 0;
+  let channelSkipped = 0; // never reached the decode boundary (see coreSkipped)
   for (const ev of channelFetched) {
     const info = keys.planes.get(ev.pubkey);
-    if (!info || info.type !== "channel") continue;
+    if (!info || info.type !== "channel") {
+      channelSkipped++;
+      continue;
+    }
     const d = decodeWrapCached(ev, info.convKey);
     if (!d) {
       channelDropped++;
@@ -203,11 +215,12 @@ export async function syncEpoch(
   }
   // D-05 litmus: always-on, even for zero fetched public-channel wraps.
   ctx.logger(
-    "public channels epoch=%d fetched=%d decoded=%d dropped=%d",
+    "public channels epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
     epochMaterial.root_epoch,
     channelFetched.length,
     channelDecodedCount,
     channelDropped,
+    channelSkipped,
   );
 
   // 4. Decide the transition (fold members for standing/authority, exactly as the walk does).

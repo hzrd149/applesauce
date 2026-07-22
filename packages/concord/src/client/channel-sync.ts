@@ -53,9 +53,15 @@ async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): 
   );
   let decodedCount = 0;
   let dropped = 0;
+  // Wraps that never reached the decode boundary (no matching plane). Counted so
+  // the aggregate always sums: fetched = decoded + dropped + skipped.
+  let skipped = 0;
   for (const ev of fetched) {
     const info = keys.planes.get(ev.pubkey);
-    if (!info || info.type !== "channel") continue;
+    if (!info || info.type !== "channel") {
+      skipped++;
+      continue;
+    }
     const decoded = decodeWrapCached(ev, info.convKey);
     if (decoded) {
       decodedCount++;
@@ -67,11 +73,12 @@ async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): 
   }
   // D-05 litmus: always-on, even when fetched.length === 0.
   ctx.logger(
-    "message planes epoch=%d fetched=%d decoded=%d dropped=%d",
+    "message planes epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
     channel.epoch,
     fetched.length,
     decodedCount,
     dropped,
+    skipped,
   );
 }
 
@@ -94,9 +101,15 @@ async function syncRekeyAndAdvance(
   );
   let decodedCount = 0;
   let dropped = 0;
+  // Wraps that never reached the decode boundary (no matching plane). Counted so
+  // the aggregate always sums: fetched = decoded + dropped + skipped.
+  let skipped = 0;
   for (const ev of fetched) {
     const info = keys.planes.get(ev.pubkey);
-    if (!info || info.type !== "rekey") continue;
+    if (!info || info.type !== "rekey") {
+      skipped++;
+      continue;
+    }
     const decoded = decodeWrapCached(ev, info.convKey);
     if (decoded) {
       decodedCount++;
@@ -109,11 +122,12 @@ async function syncRekeyAndAdvance(
   }
   // D-05 litmus: always-on, even when fetched.length === 0.
   ctx.logger(
-    "rekey plane epoch=%d fetched=%d decoded=%d dropped=%d",
+    "rekey plane epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
     channel.epoch,
     fetched.length,
     decodedCount,
     dropped,
+    skipped,
   );
   const outcome = await readChannelRekey(
     channel,
