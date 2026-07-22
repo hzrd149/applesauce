@@ -383,7 +383,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
-| 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete   | 2026-07-22 |
+| 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 0/TBD | Not started | - |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 0/TBD | Not started | - |
 
@@ -395,7 +395,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 
 **Goal:** [Captured for future planning] Review and check concord's file/media encryption and decryption to confirm that media sent in past epochs is decrypted with the correct keys **from that epoch**, not with the latest keys. Suspected failure mode: the decrypt path resolves keys from current epoch state rather than from the epoch the media was encrypted under, which would make historical media undecryptable after a rotation.
 **Requirements:** TBD
-**Plans:** 0 plans
+**Plans:** 1/1 plans complete
 
 Plans:
 
