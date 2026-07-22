@@ -95,6 +95,7 @@
     "@scure/base": "^2.2.0",
     "applesauce-common": "^6.2.0",
     "applesauce-core": "^6.2.0",
+    "debug": "^4.4.3",
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
@@ -104,6 +105,7 @@
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
+    "@types/debug": "^4.1.13",
     "applesauce-loaders": "^6.2.0",
     "applesauce-relay": "^6.2.0",
     "applesauce-signers": "^6.2.0",
