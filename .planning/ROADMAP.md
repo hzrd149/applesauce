@@ -353,9 +353,17 @@ Plans:
 **Success Criteria**: With `DEBUG=applesauce:concord:*:sync` a zero-event sync reads `fetched=0` while an arrived-but-undecryptable sync reads `fetched=N decoded=0 dropped=N` plus N per-wrap lines under `:sync:decode`; every existing `console.*` still fires (dual-emit, D-09); concord type-checks and the full suite stays green with no sync-semantics change.
 
 **Plans**: 4 plans
+**Wave 1**
+
 - [ ] 12.2-01-PLAN.md — Logging foundation: debug dep, base logger module, injectable `logger?: Debugger` plumbing, required `SyncContext.logger` (D-01/D-02/D-08/D-10)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 12.2-02-PLAN.md — Decode-boundary crux: aggregate + per-wrap logging in sync.ts/channel-sync.ts and live onWrap sites (D-05/D-06/D-07)
 - [ ] 12.2-03-PLAN.md — Auth + invite sweep: light tracing + D-09 dual-emit in relay-auth/invite-manager/invite-watcher (D-03/D-04/D-09)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 12.2-04-PLAN.md — Client/community/channel sweep + dual-emit + decode-logging regression test (D-03/D-04/D-09/D-11)
 
 ### Phase 12.3: Transport-Only Extra Relays in applesauce-concord (INSERTED)
