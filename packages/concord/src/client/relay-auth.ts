@@ -25,6 +25,11 @@ import { BehaviorSubject, Observable, Subscription, combineLatest, distinctUntil
 import { normalizeURL } from "applesauce-core/helpers";
 import type { Relay, RelayPool, RelayStatus } from "applesauce-relay";
 import type { GroupKey } from "../helpers/crypto.js";
+import { logger } from "../logger.js";
+
+/** Module-level NIP-42 auth tracer (light operational tracing, D-03). Derived once
+ *  at module scope — never `.extend()`d again at an individual log call site. */
+const log = logger.extend("auth");
 
 // One shared auth driver per relay URL, reference-counted. Both the control and
 // channel gift-wrap subscriptions target the same relays and the same
@@ -141,10 +146,22 @@ export class ConcordRelayAuth {
             let progressed = false;
             for (const { pubkey, signer } of pending) {
               if (relay.isAuthenticated(pubkey)) continue;
+              log("stream-key auth requested pk=%s relay=%s", pubkey.slice(0, 8), relay.url);
               try {
                 const res = await relay.authenticate(signer);
-                if (res.ok) progressed = true;
+                if (res.ok) {
+                  progressed = true;
+                  log("stream-key auth succeeded pk=%s relay=%s", pubkey.slice(0, 8), relay.url);
+                } else {
+                  log("stream-key auth rejected pk=%s relay=%s", pubkey.slice(0, 8), relay.url);
+                }
               } catch (err) {
+                log(
+                  "stream-key AUTH to %s failed pk=%s: %s",
+                  relay.url,
+                  pubkey.slice(0, 8),
+                  (err as Error)?.message ?? err,
+                );
                 console.warn(`stream-key AUTH to ${relay.url} failed`, err);
               }
             }
@@ -190,9 +207,14 @@ export class ConcordRelayAuth {
         const relay = this.pool.relay(url);
         if (relay.isAuthenticated(pubkey) || inflight.has(url)) continue;
         inflight.add(url);
+        log("user auth requested pubkey=%s relay=%s", pubkey.slice(0, 8), url);
         relay
           .authenticate(signer)
-          .catch((err) => console.warn(`user AUTH to ${url} failed`, err))
+          .then(() => log("user auth succeeded pubkey=%s relay=%s", pubkey.slice(0, 8), url))
+          .catch((err) => {
+            log("user AUTH to %s failed pubkey=%s: %s", url, pubkey.slice(0, 8), (err as Error)?.message ?? err);
+            console.warn(`user AUTH to ${url} failed`, err);
+          })
           .finally(() => inflight.delete(url));
       }
     });
