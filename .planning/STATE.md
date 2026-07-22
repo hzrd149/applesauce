@@ -5,8 +5,8 @@ milestone_name: first-fixes
 current_phase: 12.2
 current_phase_name: Concord Sync Debug Logging
 status: verifying
-stopped_at: Phase 12.1 context gathered
-last_updated: "2026-07-22T08:32:55.621Z"
+stopped_at: Phase 12.2 context gathered
+last_updated: "2026-07-22T08:48:06.105Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.1 complete, transitioned to Phase 12.2
 progress:
@@ -176,9 +176,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T08:22:29.182Z
-Stopped at: Phase 12.1 context gathered
-Resume file: .planning/phases/12.1-concord-sync-skips-ephemeral-kind-21059/12.1-CONTEXT.md
+Last session: 2026-07-22T08:48:06.091Z
+Stopped at: Phase 12.2 context gathered
+Resume file: .planning/phases/12.2-concord-sync-debug-logging/12.2-CONTEXT.md
 
 ## Operator Next Steps
 
