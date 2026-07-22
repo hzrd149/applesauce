@@ -110,9 +110,20 @@ export interface ConcordCommunityOptions {
    *  unioned into every request/subscription/publish/auth target this engine
    *  dials (D-12) — but NEVER written into community material, metadata, invite
    *  bundles, invite links, or the user's Community List. Purely additive: with
-   *  no extras configured, every relay set and every arithmetic result in this
-   *  file is byte-identical to pre-phase behavior (D-14); `relays()`'s existing
-   *  material-then-options-then-stock fallback chain is untouched. */
+   *  no extras configured, {@link ExtraRelays.merge}'s identity fast path
+   *  returns `relays()`'s set completely unchanged (D-14); `relays()`'s
+   *  existing material-then-options-then-stock fallback chain is untouched.
+   *  When extras ARE configured, the merged transport set is normalized and
+   *  deduplicated (`mergeRelaySets`), which changes the shape of relay-target
+   *  strings and `pool.status$` lookup keys for that configuration.
+   *
+   *  `refound()`'s majority threshold and ack-attribution set are always
+   *  derived from `relays()` alone (never `extraRelays`) via that same
+   *  normalize-and-deduplicate path, so an always-acking extra can never
+   *  satisfy or inflate the CORD-06 quorum — bit-for-bit identical to the
+   *  pre-phase raw relay-count arithmetic whenever the configured protocol
+   *  relay list is already well-formed and duplicate-free, and fail-soft
+   *  (dropping the offending entry, never crashing) when it is not. */
   extraRelays?: ExtraRelaysOption;
   /** Per-plane store factory (persistent cache). Defaults to in-memory stores. */
   storeFactory?: ConcordStoreFactory;

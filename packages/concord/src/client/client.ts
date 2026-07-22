@@ -142,7 +142,10 @@ export interface ConcordClientOptions {
    * Additive only: extras never suppress or substitute for anything, and the existing
    * material-then-options-then-stock fallback chain (see {@link relays} above) is untouched.
    * An app wanting local-only traffic should set that fallback `relays` option instead, not
-   * this one (D-14).
+   * this one. With no extras configured, {@link ExtraRelays.merge}'s identity fast path returns
+   * the base relay set completely unchanged (D-14); when extras ARE configured, the merged
+   * transport set is normalized and deduplicated (`mergeRelaySets`), which changes the shape of
+   * relay-target strings and `pool.status$` lookup keys for that configuration.
    *
    * Accepts a static array or an `Observable<string[]>`. A not-yet-emitted source resolves to
    * the empty set and never blocks traffic; later emissions take effect for future traffic and

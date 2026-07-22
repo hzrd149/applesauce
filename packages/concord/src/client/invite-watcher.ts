@@ -63,8 +63,11 @@ export interface InviteWatcherOptions {
    *  from both `relays` (fallback inboxes) and `inboxRelays` (an explicit inbox
    *  override): extras are additive transport targets, never a source of
    *  discovered inboxes, and never written into any published content. Purely
-   *  additive: with no extras configured, every relay set this watcher uses is
-   *  identical to what it resolves on its own (D-14). */
+   *  additive: with no extras configured, {@link ExtraRelays.merge}'s identity
+   *  fast path returns whatever this watcher resolves on its own completely
+   *  unchanged (D-14). When extras ARE configured, the merged transport set is
+   *  normalized and deduplicated (`mergeRelaySets`), which changes the shape of
+   *  relay-target strings and `pool.status$` lookup keys for that configuration. */
   extraRelays?: ExtraRelaysOption;
   /** Override the storage namespace for cursors/dismissals. */
   cursorKey?: string;

@@ -67,8 +67,11 @@ export interface ConcordInviteManagerOptions {
     | undefined;
   /** Additional transport-only relays unioned onto every request/publish this
    *  manager performs (D-12). Never written into any published content, and
-   *  purely additive: with no extras configured, every relay set this manager
-   *  uses is identical to `relays` alone (D-14). */
+   *  purely additive: with no extras configured, {@link ExtraRelays.merge}'s
+   *  identity fast path returns `relays` completely unchanged (D-14). When
+   *  extras ARE configured, the merged transport set is normalized and
+   *  deduplicated (`mergeRelaySets`), which changes the shape of relay-target
+   *  strings and `pool.status$` lookup keys for that configuration. */
   extraRelays?: ExtraRelaysOption;
   /** A custom debug logger (defaults to the "applesauce:concord" namespace, extended
    *  with "invite" when threaded from {@link ConcordClient}). */

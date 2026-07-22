@@ -55,9 +55,12 @@ export interface ConcordPrivateChannelOptions {
   /** Additional transport-only relays threaded down from `ConcordClientOptions`
    *  (via the community), unioned into every request/subscription/publish/auth
    *  target this channel engine dials — but never written into any published
-   *  content. Purely additive: with no extras configured, every relay set this
-   *  engine uses is identical to `relays` alone (D-14); it never substitutes
-   *  for `relays`. */
+   *  content. Purely additive: with no extras configured, {@link ExtraRelays.merge}'s
+   *  identity fast path returns `relays` completely unchanged (D-14); it never
+   *  substitutes for `relays`. When extras ARE configured, the merged transport
+   *  set is normalized and deduplicated (`mergeRelaySets`), which changes the
+   *  shape of relay-target strings and `pool.status$` lookup keys for that
+   *  configuration. */
   extraRelays?: ExtraRelaysOption;
   /** May `rotator` rotate this channel at all — holds `MANAGE_CHANNELS` (CORD-04).
    *  Gates adoption and validity. */
