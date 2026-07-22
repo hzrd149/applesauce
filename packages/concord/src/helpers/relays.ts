@@ -1,5 +1,20 @@
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
-import { distinctUntilChanged, isObservable, Observable, of, startWith, Subscription, BehaviorSubject } from "rxjs";
+import {
+  BehaviorSubject,
+  catchError,
+  distinctUntilChanged,
+  isObservable,
+  Observable,
+  of,
+  startWith,
+  Subscription,
+} from "rxjs";
+
+import { logger } from "../logger.js";
+
+/** Module-scope debug logger for this file, derived once from the package
+ *  logger (D-16) — never `.extend()`d again at an individual log call site. */
+const log = logger.extend("extra-relays");
 
 /**
  * The transport-only `extraRelays` option shape every Concord engine's options
@@ -11,15 +26,19 @@ import { distinctUntilChanged, isObservable, Observable, of, startWith, Subscrip
  */
 export type ExtraRelaysOption = string[] | Observable<string[]>;
 
-/** Content equality for relay-URL arrays, order-insensitive. Mirrors the
- *  `sameSet` comparator convention used elsewhere in concord's client layer
- *  (see `packages/concord/src/client/community.ts`), so an array rebuilt with
- *  the same members in a different order/instance does not read as a change. */
+/** Content equality for relay-URL arrays, comparing deduplicated membership
+ *  (order- and multiplicity-insensitive). Mirrors the `sameSet` comparator
+ *  convention used elsewhere in concord's client layer (see
+ *  `packages/concord/src/client/community.ts`), so an array rebuilt with the
+ *  same members in a different order/instance — or with duplicate entries —
+ *  does not read as a change, while a genuine membership difference is never
+ *  masked by a duplicate on either side. */
 export function sameRelaySet(a: string[], b: string[]): boolean {
   if (a === b) return true;
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  for (const value of b) if (!set.has(value)) return false;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  if (setA.size !== setB.size) return false;
+  for (const value of setB) if (!setA.has(value)) return false;
   return true;
 }
 
@@ -38,10 +57,23 @@ export function sameRelaySet(a: string[], b: string[]): boolean {
  * blocks waiting on the app's Observable (D-10). `distinctUntilChanged` collapses
  * re-emissions that carry the same members, so churn-free re-emission holds even
  * across the synthetic `startWith` value.
+ *
+ * An app-supplied source that errors degrades to the empty set rather than
+ * propagating: `catchError` substitutes `of([])` ahead of `startWith`, so a
+ * failure on an arbitrary app-controlled stream never surfaces as an
+ * unhandled error in the host application (D-10's "never blocks Concord
+ * traffic" contract).
  */
 export function toRelaysObservable(option?: ExtraRelaysOption): Observable<string[]> {
   const source = isObservable(option) ? option : of(option ?? []);
-  return source.pipe(startWith([] as string[]), distinctUntilChanged(sameRelaySet));
+  return source.pipe(
+    catchError((error) => {
+      log("extras source errored, degrading to the empty relay set: %o", error);
+      return of([] as string[]);
+    }),
+    startWith([] as string[]),
+    distinctUntilChanged(sameRelaySet),
+  );
 }
 
 /**
@@ -58,7 +90,19 @@ export class ExtraRelays {
   private readonly subscription: Subscription;
 
   constructor(option?: ExtraRelaysOption) {
-    this.subscription = toRelaysObservable(option).subscribe((relays) => this.subject.next(relays));
+    // Defense in depth: `toRelaysObservable` already degrades an errored source
+    // to `of([])` via `catchError`, so this `error` handler should never fire.
+    // It exists so a future refactor that removes the operator-level guard
+    // still leaves this holder degrading instead of crashing the host process.
+    // It must NOT error or complete the internal subject - downstream
+    // consumers must keep receiving values.
+    this.subscription = toRelaysObservable(option).subscribe({
+      next: (relays) => this.subject.next(relays),
+      error: (error) => {
+        log("extras subscription errored unexpectedly, degrading to the empty relay set: %o", error);
+        this.subject.next([]);
+      },
+    });
   }
 
   /** The resolved extras as a continuous stream — every consumer inside this
@@ -80,7 +124,17 @@ export class ExtraRelays {
    * signed or published content.
    */
   merge(base: string[]): string[] {
-    return mergeRelaySets(base, this.current);
+    const merged = mergeRelaySets(base, this.current);
+    const rawUnionSize = new Set([...base, ...this.current]).size;
+    if (merged.length !== rawUnionSize) {
+      log(
+        "merge dropped %d unparseable relay URL(s): raw union had %d distinct entries, merged result has %d",
+        rawUnionSize - merged.length,
+        rawUnionSize,
+        merged.length,
+      );
+    }
+    return merged;
   }
 
   /** Unsubscribes from the source Observable and completes the subject. A
