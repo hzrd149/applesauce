@@ -162,6 +162,16 @@ export class ConcordClient {
    *  `applesauce:concord` module base (D-01/D-02). One client per session, so
    *  no per-instance id suffix at this level (unlike `ConcordCommunity`). */
   private readonly log: Debugger;
+  /** The `:invite` sub-logger, derived ONCE in the constructor and reused at
+   *  every site that hands a logger to the invite manager/watcher — a fixed
+   *  namespace, so a single field replaces what would otherwise be a repeated
+   *  `this.log.extend("invite")` at each construction site (constructor +
+   *  {@link ensureInviteWatcher}). */
+  private readonly inviteLog: Debugger;
+  /** The `:publish` sub-logger (D-03 light operational tracing), derived ONCE
+   *  in the constructor and reused at every community-list publish trace/
+   *  dual-emit site — never re-`.extend()`d per call. */
+  private readonly publishLog: Debugger;
   /** Every joined community's current folded state. */
   readonly communities$ = new BehaviorSubject<CommunityState[]>([]);
   /** `"idle"` before `start()`, `"starting"` during startup, `"ready"` afterward. */
@@ -238,6 +248,8 @@ export class ConcordClient {
 
   constructor(options: ConcordClientOptions) {
     this.log = options.logger ?? logger;
+    this.inviteLog = this.log.extend("invite");
+    this.publishLog = this.log.extend("publish");
     this.signer = options.signer;
     this.pool = options.pool;
     this.eventStore = options.eventStore ?? new EventStore();
@@ -257,7 +269,7 @@ export class ConcordClient {
       relays: this.defaultRelays,
       autoUnlock: this.autoUnlock,
       getCommunity: (communityId) => this.getCommunity(communityId),
-      logger: this.log.extend("invite"),
+      logger: this.inviteLog,
     });
 
     // Aggregate status: fold every community's status$ into a single client snapshot.
@@ -328,6 +340,7 @@ export class ConcordClient {
     if (this.started) return;
     this.started = true;
     this.phase$.next("starting");
+    this.log("start requested");
     if (!this.user$.value) this.user$.next(castUser(await this.signer.getPublicKey(), this.eventStore));
     // Restore memberships from the local mirror first (instant, offline-safe),
     // then reconcile with the relay-published Community List (kind 13302).
@@ -355,6 +368,7 @@ export class ConcordClient {
     // flush themselves. When autoSave is off, nothing here ever publishes.
     if (this.autoSaveCommunityList) this.startAutoSave();
     this.phase$.next("ready");
+    this.log("start complete communities=%d", this.communities.size);
   }
 
   stop(): void {
@@ -406,13 +420,16 @@ export class ConcordClient {
       // drives each explicitly via the exposed watcher (`readPending` / `authenticateUser`).
       autoDecrypt: this.autoUnlock,
       autoAuthenticate: this.autoAuthenticate,
-      logger: this.log.extend("invite"),
+      logger: this.inviteLog,
     });
     this.directInviteSub = this.inviteWatcher.invites$.subscribe((invites) => {
       for (const invite of invites) this.onDirectInvite(invite);
     });
     this.directInviteWatcher$.next(this.inviteWatcher);
-    void this.inviteWatcher.start().catch((err) => console.warn("invite watcher failed to start", err));
+    void this.inviteWatcher.start().catch((err) => {
+      this.inviteLog("invite watcher failed to start: %s", (err as Error)?.message ?? err);
+      console.warn("invite watcher failed to start", err);
+    });
   }
 
   /** Fold a decoded Direct Invite's channel keys into the granting community. Only
@@ -436,6 +453,7 @@ export class ConcordClient {
   // ---- creating / joining -------------------------------------------------
 
   async createNewCommunity(name: string, description: string, relays: string[]): Promise<ConcordCommunity> {
+    this.log("creating community name=%s", name);
     const genesis = await createCommunity({
       ownerPubkey: this.pubkey,
       name,
@@ -450,6 +468,7 @@ export class ConcordClient {
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     // Explicit membership mutation — always publish (independent of autoSaveCommunityList).
     await this.saveCommunityList();
+    this.log("community created id=%s", community.communityId.slice(0, 8));
     return community;
   }
 
@@ -507,6 +526,7 @@ export class ConcordClient {
    *  already-validated §1 bundle into a joined community (add engine, persist,
    *  publish our attributed Join, republish the list). */
   private async joinFromBundle(bundle: InviteBundle, fallbackRelays: string[]): Promise<ConcordCommunity> {
+    this.log("join requested community=%s", bundle.community_id.slice(0, 8));
     // INVITE-04/D-05: expires_at is unix SECONDS end-to-end — compare against
     // unixNow() (seconds), never Date.now() (JS's epoch clock, a different scale).
     // See helpers/__tests__/invite-bundle.test.ts for the dual-citation spec rationale.
@@ -531,7 +551,10 @@ export class ConcordClient {
     };
 
     // If we're already in the community, return the existing community.
-    if (this.communities.has(material.community_id)) return this.communities.get(material.community_id)!;
+    if (this.communities.has(material.community_id)) {
+      this.log("join skipped — already a member community=%s", material.community_id.slice(0, 8));
+      return this.communities.get(material.community_id)!;
+    }
 
     const community = this.recordJoin(material);
     await this.saveMirror();
@@ -542,12 +565,14 @@ export class ConcordClient {
     await community.publishToPlane({ plane: "guestbook" }, joinRumor, {});
     // Accepting an invite is an explicit mutation — always publish the updated list.
     await this.saveCommunityList();
+    this.log("joined community=%s", community.communityId.slice(0, 8));
     return community;
   }
 
   async leave(cid: string): Promise<void> {
     const community = this.communities.get(cid);
     if (!community) return;
+    this.log("leave requested community=%s", cid.slice(0, 8));
     await community.leave();
     this.removeCommunity(cid);
     // Tombstone the membership so the leave propagates across devices/clients
@@ -556,6 +581,7 @@ export class ConcordClient {
     await this.saveMirror();
     // Leaving is an explicit mutation — always publish the tombstoned list.
     await this.saveCommunityList();
+    this.log("left community=%s", cid.slice(0, 8));
   }
 
   // ---- internal: community lifecycle --------------------------------------
@@ -645,7 +671,11 @@ export class ConcordClient {
     if (!community) return;
     const links = this.invites.forCommunity(cid).filter((link) => !link.revoked);
     if (links.length === 0) return;
-    void community.refreshInviteBundles(links).catch((err) => console.warn("invite refresh failed", err));
+    this.publishLog("refreshing %d invite bundle(s) community=%s", links.length, cid.slice(0, 8));
+    void community.refreshInviteBundles(links).catch((err) => {
+      this.publishLog("invite refresh failed community=%s: %s", cid.slice(0, 8), (err as Error)?.message ?? err);
+      console.warn("invite refresh failed", err);
+    });
   }
 
   // ---- local mirror of the community list ----------------------------------
@@ -662,6 +692,7 @@ export class ConcordClient {
       this.list = mergeCommunities(this.list, mirror.communities);
       this.tombstones = mergeCommunityTombstones(this.tombstones, mirror.tombstones);
     } catch (err) {
+      this.log("failed to read the local community mirror: %s", (err as Error)?.message ?? err);
       console.warn("failed to read the local community mirror", err);
     }
   }
@@ -693,6 +724,7 @@ export class ConcordClient {
       // 13302 plaintext stay parseable by the same helper.
       await this.storage.setItem(this.pubkey, JSON.stringify({ entries: this.list, tombstones: this.tombstones }));
     } catch (err) {
+      this.log("failed to mirror communities locally: %s", (err as Error)?.message ?? err);
       console.warn("failed to mirror communities locally", err);
     }
   }
@@ -815,9 +847,11 @@ export class ConcordClient {
         return;
       }
       if (!communityListWithinByteCap(list, tombstones)) {
+        this.publishLog("community list exceeds the NIP-44 byte cap; not publishing");
         console.warn("community list exceeds the NIP-44 byte cap; not publishing");
         return;
       }
+      this.publishLog("publishing community list entries=%d tombstones=%d", list.length, tombstones.length);
       const plaintext = JSON.stringify({ entries: list, tombstones });
       const content = await this.signer.nip44.encrypt(this.pubkey, plaintext);
       // 13302 is replaceable: NIP-01 keeps the lowest event id on a created_at tie, so a save
@@ -837,11 +871,15 @@ export class ConcordClient {
       // otherwise auto-unlock would re-issue a redundant user-signer decrypt of a list we just wrote.
       setHiddenContentCache(signed, plaintext);
       this.eventStore.add(signed);
-      this.pool.publish(this.defaultRelays, signed).catch((err) => console.warn("list publish failed", err));
+      this.pool.publish(this.defaultRelays, signed).catch((err) => {
+        this.publishLog("list publish failed: %s", (err as Error)?.message ?? err);
+        console.warn("list publish failed", err);
+      });
       // Record what we just put on the relay so an immediate re-save (or the echo) is a no-op.
       this.publishedListFingerprint = fingerprint;
       this.clearCommunityListDirty();
     } catch (err) {
+      this.publishLog("failed to save community list: %s", (err as Error)?.message ?? err);
       console.warn("failed to save community list", err);
     }
   }
