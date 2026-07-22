@@ -122,8 +122,13 @@ async function syncRekeyAndAdvance(
   }
   // D-05 litmus: always-on, even when fetched.length === 0.
   ctx.logger(
-    "rekey plane epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
+    // The addresses just synced are `keys.nextRekey` — the rekey plane that
+    // ADVANCES channel.epoch → channel.epoch + 1. Name both epochs so a reader
+    // tracing `reReadHeldChannelEpochs`'s backward pass can tell which rotation
+    // step each line belongs to.
+    "rekey plane from_epoch=%d to_epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
     channel.epoch,
+    channel.epoch + 1,
     fetched.length,
     decodedCount,
     dropped,
