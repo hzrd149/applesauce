@@ -85,6 +85,11 @@ export interface SyncContext {
   /** The sync-scoped debug logger (always a real value — constructed internally by
    *  each instance's own `syncContext()`, never `undefined`; see Pitfall 2). */
   logger: Debugger;
+  /** The `:sync:decode` child logger for per-dropped-wrap detail (D-07), derived
+   *  ONCE by `syncContext()` alongside `logger` — never re-`.extend()`d inside a
+   *  decode loop, since `Debugger.extend()` allocates and re-runs namespace
+   *  enable-matching on every call. */
+  decodeLogger: Debugger;
 }
 
 /**
@@ -146,12 +151,7 @@ export async function syncEpoch(
     const d = decodeWrapCached(ev, info.convKey);
     if (!d) {
       coreDropped++;
-      ctx.logger.extend("decode")(
-        "dropped wrap=%s plane=%s epoch=%d",
-        ev.id.slice(0, 8),
-        info.type,
-        epochMaterial.root_epoch,
-      );
+      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, epochMaterial.root_epoch);
       continue;
     }
     coreDecoded++;
@@ -194,12 +194,7 @@ export async function syncEpoch(
     const d = decodeWrapCached(ev, info.convKey);
     if (!d) {
       channelDropped++;
-      ctx.logger.extend("decode")(
-        "dropped wrap=%s plane=%s epoch=%d",
-        ev.id.slice(0, 8),
-        info.type,
-        epochMaterial.root_epoch,
-      );
+      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, epochMaterial.root_epoch);
       continue;
     }
     channelDecodedCount++;

@@ -95,7 +95,12 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    const roleEd = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(role),
+    });
     events.push((await wrapForTarget(keys0, { plane: "control" }, owner, roleEd, { plaintext: true })).wrap);
 
     const grantEid = grantLocator(hexToBytes(material0.community_id), memberPub);
@@ -151,6 +156,7 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
       route: () => {},
       ensureAuth: () => {},
       logger: logger.extend("test"),
+      decodeLogger: logger.extend("test").extend("decode"),
     };
 
     // First full sync: only the owner's (HIGH) rotation is on the relay.
@@ -246,6 +252,7 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
       route: () => {},
       ensureAuth: () => {},
       logger: logger.extend("test"),
+      decodeLogger: logger.extend("test").extend("decode"),
     };
 
     const first = await syncEpochs(ctx, material0);
@@ -281,6 +288,7 @@ describe("syncAuthors — backfill filter requests only the retained kind (D-01/
       route: () => {},
       ensureAuth: () => {},
       logger: logger.extend("test"),
+      decodeLogger: logger.extend("test").extend("decode"),
     };
 
     await syncAuthors(ctx, ["01".repeat(32)]);

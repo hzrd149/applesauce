@@ -240,6 +240,10 @@ export class ConcordCommunity {
   /** The community's debug logger — `options.logger` when threaded from the client,
    *  otherwise the `applesauce:concord` module base (D-01/D-02). */
   private readonly log: Debugger;
+  /** The `:sync:decode` per-dropped-wrap logger (D-07), derived ONCE in the
+   *  constructor — never re-`.extend()`d per wrap (that reallocates and
+   *  re-runs namespace enable-matching on every call). */
+  private readonly decodeLog: Debugger;
   private readonly pool: RelayPool;
   private readonly relayAuth: ConcordRelayAuth;
   private readonly eventStore: EventStore;
@@ -280,6 +284,7 @@ export class ConcordCommunity {
 
   constructor(options: ConcordCommunityOptions) {
     this.log = options.logger ?? logger;
+    this.decodeLog = this.log.extend("sync").extend("decode");
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
@@ -545,12 +550,7 @@ export class ConcordCommunity {
       // channel planes, else the root epoch) — RESEARCH Pitfall 3.
       const epoch =
         info.type === "channel" ? channelEpochOf(this.keys, info.channelId!) : this.keys.material.root_epoch;
-      this.log.extend("sync").extend("decode")(
-        "dropped wrap=%s plane=%s epoch=%d",
-        canonical.id.slice(0, 8),
-        info.type,
-        epoch,
-      );
+      this.decodeLog("dropped wrap=%s plane=%s epoch=%d", canonical.id.slice(0, 8), info.type, epoch);
       return;
     }
     this.route(info, decoded);
@@ -594,6 +594,7 @@ export class ConcordCommunity {
       ensureAuth: (relays) => this.ensureAuth(relays),
       alive: () => !this.disposed,
       logger: this.log.extend("sync"),
+      decodeLogger: this.decodeLog,
     };
   }
 

@@ -131,6 +131,7 @@ describe("syncChannelEpochs — D-04 backward re-read spine (ROTATE-06, channel 
       material,
       isAuthorized: (r) => r === rotatorAPub || r === rotatorBPub,
       logger: logger.extend("test"),
+      decodeLogger: logger.extend("test").extend("decode"),
     };
 
     // The channel walk STARTS already at epoch 2 (HIGH), epoch 1 held — as if a
@@ -193,6 +194,7 @@ describe("syncChannelEpochs — D-04 backward re-read spine (ROTATE-06, channel 
       material,
       isAuthorized: (r) => r === rotatorAPub,
       logger: logger.extend("test"),
+      decodeLogger: logger.extend("test").extend("decode"),
     };
 
     const channelAtEpoch2: ChannelKey = {

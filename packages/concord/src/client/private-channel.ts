@@ -87,6 +87,9 @@ export class ConcordPrivateChannel {
   /** The channel's debug logger — `options.logger` when threaded from the parent
    *  community, otherwise the `applesauce:concord` module base (D-01/D-02). */
   private readonly log: Debugger;
+  /** The `:sync:decode` per-dropped-wrap logger (D-07), derived ONCE in the
+   *  constructor — never re-`.extend()`d per wrap. */
+  private readonly decodeLog: Debugger;
   private readonly opts: ConcordPrivateChannelOptions;
   private channelKey: ChannelKey;
   private keys: ChannelKeys;
@@ -107,6 +110,7 @@ export class ConcordPrivateChannel {
 
   constructor(options: ConcordPrivateChannelOptions) {
     this.log = options.logger ?? logger;
+    this.decodeLog = this.log.extend("sync").extend("decode");
     this.opts = options;
     this.channelKey = options.channelKey;
     this.keys = deriveChannelKeys(options.material(), options.channelKey);
@@ -209,12 +213,7 @@ export class ConcordPrivateChannel {
     } else {
       // Epoch sourced from the enclosing channel's known epoch value —
       // RESEARCH Pitfall 3.
-      this.log.extend("sync").extend("decode")(
-        "dropped wrap=%s plane=%s epoch=%d",
-        canonical.id.slice(0, 8),
-        info.type,
-        this.channelKey.epoch,
-      );
+      this.decodeLog("dropped wrap=%s plane=%s epoch=%d", canonical.id.slice(0, 8), info.type, this.channelKey.epoch);
     }
   }
 
@@ -253,6 +252,7 @@ export class ConcordPrivateChannel {
       ensureAuth: (relays) => this.ensureAuth(relays),
       alive: () => !this.disposed,
       logger: this.log.extend("sync"),
+      decodeLogger: this.decodeLog,
     };
   }
 
