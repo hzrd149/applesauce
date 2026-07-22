@@ -19,6 +19,7 @@ import { nip44 } from "applesauce-core/helpers/encryption";
 import { getAddressPointerForEvent } from "applesauce-core/helpers/pointers";
 import { decodePointer, naddrEncode } from "applesauce-core/helpers/pointers";
 import { notifyEventUpdate } from "applesauce-core/helpers";
+import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 import type { AddressPointer, KnownEvent, NostrEvent } from "applesauce-core/helpers";
 import { communityId, inviteBundleKey } from "./crypto.js";
 import type { BlobPointer, InviteBundle, JoinMaterial } from "../types.js";
@@ -230,7 +231,19 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
   if (!Array.isArray(bundle.channels) || !Array.isArray(bundle.relays)) return undefined;
   const channels = bundle.channels;
   if (channels.length > INVITE_BUNDLE_MAX_CHANNELS) return undefined;
-  const relays = bundle.relays.slice(0, INVITE_BUNDLE_RELAY_CAP);
+  // T-12.3-09-04: cap FIRST (unchanged allocation bound), then filter entries to
+  // safe relay URL strings. This array flows into `JoinMaterial.relays` and from
+  // there into the refounding quorum's protocol set (community.ts's `refound()`)
+  // — a security-critical operation — so an unvalidated entry (non-string, junk
+  // string, or a non-websocket scheme like `http://`) is attacker-reachable input
+  // and must never survive. A bundle whose relays are entirely junk still
+  // validates (falls back to the joining client's own default relays); dropping
+  // junk relays is not, by itself, grounds to reject the whole bundle. Entries
+  // are NOT normalized here — only filtered — so this function stays a shape
+  // validator, not a rewriter of protocol state (D-01).
+  const relays = bundle.relays
+    .slice(0, INVITE_BUNDLE_RELAY_CAP)
+    .filter((entry): entry is string => typeof entry === "string" && isSafeRelayURL(entry));
   // A non-string `refounder` would gate the snapshot fold on a junk comparison; drop it.
   const refounder = typeof bundle.refounder === "string" ? bundle.refounder : undefined;
   return { ...bundle, channels, relays, refounder };
