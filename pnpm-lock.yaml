@@ -453,6 +453,9 @@ importers:
       applesauce-core:
         specifier: ^6.2.0
         version: link:../core
+      debug:
+        specifier: ^4.4.3
+        version: 4.4.3
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
@@ -460,6 +463,9 @@ importers:
       '@hirez_io/observer-spy':
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
+      '@types/debug':
+        specifier: ^4.1.13
+        version: 4.1.13
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3

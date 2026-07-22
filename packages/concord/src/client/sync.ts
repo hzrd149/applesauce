@@ -16,6 +16,7 @@
 // `createSyncLoader` for the per-plane full sync so NIP-77 negentropy is used
 // when a relay supports it and paginated backward REQ otherwise.
 
+import type { Debugger } from "debug";
 import { firstValueFrom, toArray } from "rxjs";
 import { createSyncLoader } from "applesauce-loaders/loaders";
 import { hexToBytes } from "@noble/hashes/utils.js";
@@ -81,6 +82,9 @@ export interface SyncContext {
   ensureAuth: (relays: string[]) => void;
   /** Cooperative cancellation: return false to abort the walk between epochs. */
   alive?: () => boolean;
+  /** The sync-scoped debug logger (always a real value — constructed internally by
+   *  each instance's own `syncContext()`, never `undefined`; see Pitfall 2). */
+  logger: Debugger;
 }
 
 /**

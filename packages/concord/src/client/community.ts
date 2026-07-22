@@ -581,6 +581,7 @@ export class ConcordCommunity {
       route: (info, decoded) => this.route(info, decoded),
       ensureAuth: (relays) => this.ensureAuth(relays),
       alive: () => !this.disposed,
+      logger: this.log.extend("sync"),
     };
   }
 

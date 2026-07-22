@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject, from } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
-import { EventStore } from "applesauce-core";
+import { EventStore, logger } from "applesauce-core";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { RelayPool } from "applesauce-relay";
@@ -130,6 +130,7 @@ describe("syncChannelEpochs — D-04 backward re-read spine (ROTATE-06, channel 
       ensureAuth: () => {},
       material,
       isAuthorized: (r) => r === rotatorAPub || r === rotatorBPub,
+      logger: logger.extend("test"),
     };
 
     // The channel walk STARTS already at epoch 2 (HIGH), epoch 1 held — as if a
@@ -191,6 +192,7 @@ describe("syncChannelEpochs — D-04 backward re-read spine (ROTATE-06, channel 
       ensureAuth: () => {},
       material,
       isAuthorized: (r) => r === rotatorAPub,
+      logger: logger.extend("test"),
     };
 
     const channelAtEpoch2: ChannelKey = {

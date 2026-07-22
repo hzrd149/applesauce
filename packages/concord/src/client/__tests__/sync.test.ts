@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject, from } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
-import { EventStore } from "applesauce-core";
+import { EventStore, logger } from "applesauce-core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { RelayPool } from "applesauce-relay";
@@ -150,6 +150,7 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
       relays: ["wss://fake"],
       route: () => {},
       ensureAuth: () => {},
+      logger: logger.extend("test"),
     };
 
     // First full sync: only the owner's (HIGH) rotation is on the relay.
@@ -244,6 +245,7 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
       relays: ["wss://fake"],
       route: () => {},
       ensureAuth: () => {},
+      logger: logger.extend("test"),
     };
 
     const first = await syncEpochs(ctx, material0);
@@ -278,6 +280,7 @@ describe("syncAuthors — backfill filter requests only the retained kind (D-01/
       relays: ["wss://fake"],
       route: () => {},
       ensureAuth: () => {},
+      logger: logger.extend("test"),
     };
 
     await syncAuthors(ctx, ["01".repeat(32)]);
