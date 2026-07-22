@@ -349,10 +349,14 @@ Plans:
 
 **Goal**: Concord community-client and private-channel sync emit debug logging across the board — most specifically for syncing — so a decryption failure during sync is observable rather than silent, making it possible to tell "no events" apart from "events arrived but could not be decrypted."
 **Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–12)
-**Requirements**: TBD *(promoted from backlog 999.1 — define during /gsd-discuss-phase)*
-**Success Criteria**: TBD *(define during planning)*
+**Requirements**: No formal REQ-IDs — CONTEXT.md decisions D-01..D-10 (+ discretionary D-11 test) stand in as requirements.
+**Success Criteria**: With `DEBUG=applesauce:concord:*:sync` a zero-event sync reads `fetched=0` while an arrived-but-undecryptable sync reads `fetched=N decoded=0 dropped=N` plus N per-wrap lines under `:sync:decode`; every existing `console.*` still fires (dual-emit, D-09); concord type-checks and the full suite stays green with no sync-semantics change.
 
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 12.2-01-PLAN.md — Logging foundation: debug dep, base logger module, injectable `logger?: Debugger` plumbing, required `SyncContext.logger` (D-01/D-02/D-08/D-10)
+- [ ] 12.2-02-PLAN.md — Decode-boundary crux: aggregate + per-wrap logging in sync.ts/channel-sync.ts and live onWrap sites (D-05/D-06/D-07)
+- [ ] 12.2-03-PLAN.md — Auth + invite sweep: light tracing + D-09 dual-emit in relay-auth/invite-manager/invite-watcher (D-03/D-04/D-09)
+- [ ] 12.2-04-PLAN.md — Client/community/channel sweep + dual-emit + decode-logging regression test (D-03/D-04/D-09/D-11)
 
 ### Phase 12.3: Transport-Only Extra Relays in applesauce-concord (INSERTED)
 
