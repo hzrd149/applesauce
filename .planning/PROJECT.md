@@ -123,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-21 — Phase 10 complete (Invite lifecycle & event-time consistency; revoked invites survive relay lag, malformed bundles fail closed, created_at/ms is one clock read)*
+*Last updated: 2026-07-22 — Phase 12.1 complete (Concord sync skips ephemeral kind 21059; backfill requests only retained kind 1059 via a named `BACKFILL_KINDS` constant, live subscriptions still request both kinds, guarded by a two-directional filter-spy test)*
