@@ -1206,7 +1206,10 @@ export class ConcordCommunity {
           link.token.slice(0, 8),
           (err as Error)?.message ?? err,
         );
-        console.warn(`invite refresh skipped for link ${link.token}`, err);
+        // NEVER log `link.token` — it is the 128-bit secret that keys the
+        // kind-33301 bundle (the only thing guarding `community_root`). The
+        // signer pubkey identifies the same link and is already public on relays.
+        console.warn(`invite refresh skipped for link ${link.signerPubkey}`, err);
       }
     }
   }
