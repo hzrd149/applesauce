@@ -38,6 +38,9 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant (completed 2026-07-21)
 - [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
+- [ ] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
+- [ ] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog)
+- [ ] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog)
 
 ## Phase Details
 
@@ -329,10 +332,40 @@ Plans:
 
 **Plans**: TBD
 
+### Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)
+
+**Goal**: Concord community sync no longer issues historical-fetch/backfill filters for kind 21059 — an ephemeral gift-wrap kind (`EPHEMERAL_GIFT_WRAP_KIND = 21059`, `packages/concord/src/helpers/gift-wrap.ts:25`) that relays never retain under NIP-01, so a sync filter for it can only ever return nothing, wasting round-trips and producing a misleading "synced" signal for events that by definition arrive only via a live subscription.
+**Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–12)
+**Requirements**: TBD *(promoted from backlog 999.3; no concrete REQ-IDs — coverage keys off CONTEXT.md D-01..D-06 + standing TEST-01)*
+**Success Criteria**: Backfill path (`syncAuthors`) requests only retained kind 1059; both live-subscription sites still request 1059 + 21059; a non-vacuous two-directional filter-spy test guards the asymmetry.
+
+**Plans**: 1 plan
+
+Plans:
+- [ ] 12.1-01-PLAN.md — Add `BACKFILL_KINDS` constant, route `syncAuthors` through it, and add a non-vacuous two-directional filter-spy test
+
+### Phase 12.2: Concord Sync Debug Logging (INSERTED)
+
+**Goal**: Concord community-client and private-channel sync emit debug logging across the board — most specifically for syncing — so a decryption failure during sync is observable rather than silent, making it possible to tell "no events" apart from "events arrived but could not be decrypted."
+**Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–12)
+**Requirements**: TBD *(promoted from backlog 999.1 — define during /gsd-discuss-phase)*
+**Success Criteria**: TBD *(define during planning)*
+
+**Plans**: TBD
+
+### Phase 12.3: Transport-Only Extra Relays in applesauce-concord (INSERTED)
+
+**Goal**: `ConcordClient` accepts `extraRelays?: string[] | Observable<string[]>` so apps can supply app-local relay endpoints (e.g. `ws://localhost:4869` cache relays) that Concord uses purely for network I/O — as additional transport targets for all Concord-managed traffic (community/channel sync, live subscriptions, publishes, community-list and invite-list reads/writes, direct-invite watching, invite-bundle fetch/publish/revoke, relay auth/connection status) — but are never written into community material/metadata, invite bundles, invite links, or user-published relay lists, and never surfaced as part of the community's protocol state. When `extraRelays` is an Observable, Concord reacts to updates so future traffic uses the latest set; behavior is unchanged when omitted or empty.
+**Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–12)
+**Requirements**: TBD *(promoted from backlog 999.6 — define during /gsd-discuss-phase)*
+**Success Criteria**: TBD *(define during planning)*
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 12.1 → 12.2 → 12.3
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -349,20 +382,13 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
+| 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 0/TBD | Not started | - |
+| 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 0/TBD | Not started | - |
+| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 0/TBD | Not started | - |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
 
 ## Backlog
-
-### Phase 999.1: Concord sync debug logging (BACKLOG)
-
-**Goal:** [Captured for future planning] Concord community client and private channel sync need proper debug logging across the board — and most specifically for syncing, so that it is possible to know when synced events fail to decrypt. Today a decryption failure during sync is silent, which makes it impossible to tell "no events" apart from "events arrived but could not be decrypted."
-**Requirements:** TBD
-**Plans:** 6/6 plans complete
-
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ### Phase 999.2: Concord media epoch key decryption audit (BACKLOG)
 
@@ -374,29 +400,9 @@ Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.3: Concord sync skips ephemeral kind 21059 (BACKLOG)
-
-**Goal:** [Captured for future planning] Concord community sync should not sync kind 21059 events — they are ephemeral and should only be reached via a live subscription, never a historical fetch/backfill filter. Grounding: `EPHEMERAL_GIFT_WRAP_KIND = 21059` (`packages/concord/src/helpers/gift-wrap.ts:25`); kinds 20000–29999 are ephemeral under NIP-01, so relays do not retain them and a sync filter for 21059 can only ever return nothing — wasted round-trips, and a misleading "synced" signal for events that by definition cannot arrive that way.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog when ready)
-
 ### Phase 999.4: NIP-42 lifecycle debug logging (BACKLOG)
 
 **Goal:** [Captured for future planning] The NIP-42 relay authentication lifecycle needs more debug logging around it — the auth challenge/response/result flow should emit enough diagnostic detail to tell where an auth attempt is in its lifecycle and why it succeeded or failed, so that silent auth stalls or rejections are observable rather than opaque.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog when ready)
-
-### Phase 999.6: Transport-only extra relays in applesauce-concord (BACKLOG)
-
-**Goal:** [Captured for future planning] Add transport-only support for app-local extra relays in `applesauce-concord`. `ConcordClient` should accept `extraRelays?: string[] | Observable<string[]>` so apps can supply additional local relay endpoints (e.g. `ws://localhost:4869` localhost cache relays) that Concord uses purely for network I/O — never treated as community relays. Extra relays are used as additional transport targets for all Concord-managed traffic (community sync/live subscriptions/publishes, private channel sync/subscriptions/publishes, community-list and invite-list reads/writes, direct invite watching, invite bundle fetch/publish/revoke, and relay auth/connection status as applicable), but are never written into community material, community metadata, invite bundles, invite links, or user-published relay lists, and are never exposed as part of the community's protocol state. When `extraRelays` is an Observable, Concord reacts to updates so future traffic uses the latest relay set; behavior is unchanged when `extraRelays` is omitted or empty. Acceptance: an app can pass a static array or a changing Observable, Concord traffic uses those relays in addition to normal relays, and protocol-visible relay data never includes app-local relays.
 **Requirements:** TBD
 **Plans:** 0 plans
 
