@@ -47,15 +47,32 @@ async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): 
   const streamKeys = [keys.current, ...keys.held.map((h) => h.key)];
   ctx.relayAuth.registerStreamKeys(streamKeys);
   ctx.ensureAuth(ctx.relays);
-  for (const ev of await syncAuthors(
+  const fetched = await syncAuthors(
     ctx,
     streamKeys.map((k) => k.pk),
-  )) {
+  );
+  let decodedCount = 0;
+  let dropped = 0;
+  for (const ev of fetched) {
     const info = keys.planes.get(ev.pubkey);
     if (!info || info.type !== "channel") continue;
     const decoded = decodeWrapCached(ev, info.convKey);
-    if (decoded) ctx.route(info, decoded);
+    if (decoded) {
+      decodedCount++;
+      ctx.route(info, decoded);
+    } else {
+      dropped++;
+      ctx.logger.extend("decode")("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), "channel", channel.epoch);
+    }
   }
+  // D-05 litmus: always-on, even when fetched.length === 0.
+  ctx.logger(
+    "message planes epoch=%d fetched=%d decoded=%d dropped=%d",
+    channel.epoch,
+    fetched.length,
+    decodedCount,
+    dropped,
+  );
 }
 
 /**
@@ -71,18 +88,33 @@ async function syncRekeyAndAdvance(
   ctx.relayAuth.registerStreamKeys(keys.nextRekey.map((r) => r.key));
   ctx.ensureAuth(ctx.relays);
   const rekeyEvents: DecodedEvent[] = [];
-  for (const ev of await syncAuthors(
+  const fetched = await syncAuthors(
     ctx,
     keys.nextRekey.map((r) => r.key.pk),
-  )) {
+  );
+  let decodedCount = 0;
+  let dropped = 0;
+  for (const ev of fetched) {
     const info = keys.planes.get(ev.pubkey);
     if (!info || info.type !== "rekey") continue;
     const decoded = decodeWrapCached(ev, info.convKey);
     if (decoded) {
+      decodedCount++;
       rekeyEvents.push(decoded);
       ctx.route(info, decoded); // let the sub-engine retain it for the live check too
+    } else {
+      dropped++;
+      ctx.logger.extend("decode")("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), "channel", channel.epoch);
     }
   }
+  // D-05 litmus: always-on, even when fetched.length === 0.
+  ctx.logger(
+    "rekey plane epoch=%d fetched=%d decoded=%d dropped=%d",
+    channel.epoch,
+    fetched.length,
+    decodedCount,
+    dropped,
+  );
   const outcome = await readChannelRekey(
     channel,
     rekeyEvents,
