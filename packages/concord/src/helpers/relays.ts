@@ -22,7 +22,8 @@ const log = logger.extend("extra-relays");
  * set is NEVER merged into a community's protocol relay set (`material.relays`,
  * `CommunityMetadata.relays`) — it only ever widens which relays an engine
  * additionally *dials* for its own reads/writes (D-01). It is purely additive:
- * with no extras supplied, every merge is an identity over the base set (D-14).
+ * with no extras supplied, {@link ExtraRelays.merge}'s empty-extras identity
+ * fast path returns the base set completely unchanged (D-14).
  */
 export type ExtraRelaysOption = string[] | Observable<string[]>;
 
@@ -118,12 +119,28 @@ export class ExtraRelays {
   }
 
   /**
-   * Merges `base` with the current extras snapshot, routed entirely through
-   * {@link mergeRelaySets} (D-02) — the only place in this module that merges.
+   * Merges `base` with the current extras snapshot.
+   *
+   * With no extras configured (the current snapshot is empty), the result IS
+   * `base` itself, unchanged — no normalization, no deduplication, no new
+   * array. This is what makes the roadmap's omitted-`extraRelays` guarantee
+   * hold literally: a `ConcordClient` constructed with no extras produces
+   * relay-target arrays and `pool.status$` lookup keys byte-identical to
+   * pre-phase (D-14).
+   *
+   * With extras present, the result is the normalized, deduplicated union of
+   * `base` and the extras snapshot, routed entirely through
+   * {@link mergeRelaySets} (D-02) — the only place in this module that
+   * merges. Unparseable entries in either input are silently dropped by
+   * `mergeRelaySets`, which changes the shape of relay-target strings and
+   * `pool.status$` lookup keys for that configuration only.
+   *
    * The result is a transport target set only: it must never be written into
    * signed or published content.
    */
   merge(base: string[]): string[] {
+    if (this.current.length === 0) return base;
+
     const merged = mergeRelaySets(base, this.current);
     const rawUnionSize = new Set([...base, ...this.current]).size;
     if (merged.length !== rawUnionSize) {
