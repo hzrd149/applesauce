@@ -143,6 +143,37 @@ describe("ExtraRelays", () => {
     expect(holder.merge([RELAY_A, RELAY_B])).toEqual([RELAY_A, RELAY_B]);
   });
 
+  it("returns the exact same base array reference when built from undefined (D-14 identity fast path)", () => {
+    const holder = new ExtraRelays(undefined);
+    const base = [RELAY_B_NO_SLASH];
+    // toBe, not toEqual: proves no normalization ran at all, not mere
+    // structural equality - the bare-host URL keeps its un-normalized form.
+    expect(holder.merge(base)).toBe(base);
+    expect(holder.merge(base)).toEqual([RELAY_B_NO_SLASH]);
+  });
+
+  it("returns the base array verbatim (duplicates and an unparseable entry intact) when built from []", () => {
+    const holder = new ExtraRelays([]);
+    const base = ["wss://a.example.com", "wss://a.example.com", "not a url"];
+    expect(holder.merge(base)).toBe(base);
+  });
+
+  it("reverts to the base-verbatim identity fast path once a non-empty extras snapshot goes back to empty", () => {
+    const source = new BehaviorSubject<string[]>([]);
+    const holder = new ExtraRelays(source);
+    const base = [RELAY_B_NO_SLASH];
+
+    expect(holder.merge(base)).toBe(base);
+
+    source.next([RELAY_A]);
+    const mergedWhileNonEmpty = holder.merge(base);
+    expect(mergedWhileNonEmpty).not.toBe(base);
+    expect(mergedWhileNonEmpty).toEqual([RELAY_B, RELAY_A]); // normalized union
+
+    source.next([]);
+    expect(holder.merge(base)).toBe(base);
+  });
+
   it("does not throw and degrades to [] when the source errors after construction", async () => {
     const source = new Subject<string[]>();
     let uncaught: unknown;
