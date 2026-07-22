@@ -352,14 +352,14 @@ Plans:
 **Requirements**: No formal REQ-IDs — CONTEXT.md decisions D-01..D-10 (+ discretionary D-11 test) stand in as requirements.
 **Success Criteria**: With `DEBUG=applesauce:concord:*:sync` a zero-event sync reads `fetched=0` while an arrived-but-undecryptable sync reads `fetched=N decoded=0 dropped=N` plus N per-wrap lines under `:sync:decode`; every existing `console.*` still fires (dual-emit, D-09); concord type-checks and the full suite stays green with no sync-semantics change.
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 **Wave 1**
 
 - [x] 12.2-01-PLAN.md — Logging foundation: debug dep, base logger module, injectable `logger?: Debugger` plumbing, required `SyncContext.logger` (D-01/D-02/D-08/D-10)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 12.2-02-PLAN.md — Decode-boundary crux: aggregate + per-wrap logging in sync.ts/channel-sync.ts and live onWrap sites (D-05/D-06/D-07)
+- [x] 12.2-02-PLAN.md — Decode-boundary crux: aggregate + per-wrap logging in sync.ts/channel-sync.ts and live onWrap sites (D-05/D-06/D-07)
 - [ ] 12.2-03-PLAN.md — Auth + invite sweep: light tracing + D-09 dual-emit in relay-auth/invite-manager/invite-watcher (D-03/D-04/D-09)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -396,7 +396,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
-| 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 1/4 | In Progress|  |
+| 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 2/4 | In Progress|  |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 0/TBD | Not started | - |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.

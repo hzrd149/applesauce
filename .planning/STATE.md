@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12.2
 current_phase_name: concord-sync-debug-logging
 status: executing
-stopped_at: Phase 12.2 plan 01 complete
-last_updated: "2026-07-22T09:55:59.573Z"
+stopped_at: Phase 12.2 plan 02 complete
+last_updated: "2026-07-22T10:16:14.968Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.2 execution started
 progress:
   total_phases: 12
   completed_phases: 8
   total_plans: 56
-  completed_plans: 53
+  completed_plans: 54
   percent: 67
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12.2 (concord-sync-debug-logging) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 12.2 execution started
 
@@ -74,6 +74,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 10 P06 | 20min | 3 tasks | 8 files |
 | Phase 12.1 P01 | 12min | 2 tasks | 4 files |
 | Phase 12.2 P01 | 35min | 3 tasks | 10 files |
+| Phase 12.2 P02 | ~25min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.1-01: Non-vacuity probe (D-04/TEST-01) confirmed empirically via temporary in-place revert/restore of sync.ts -- RED against pre-fix two-kind filter, GREEN after restoring the fix
 - [Phase 12.2]: 12.2-01: debug/@types/debug added as concord's own direct dependencies (RESEARCH-verified correction to CONTEXT.md D-01's transitive assumption)
 - [Phase 12.2]: 12.2-01: SyncContext.logger/ChannelSyncContext.logger made required (not optional) since syncContext() always constructs a real value
+- [Phase 12.2]: 12.2-02: SyncContext/ChannelSyncContext gained a required decodeLogger: Debugger field derived once per syncContext() build (community.ts/private-channel.ts each add a private readonly decodeLog constructor field); decode-loop and onWrap call sites now call the pre-derived logger instead of ctx.logger.extend("decode")/this.log.extend("sync").extend("decode") inline per wrap, per a wave-1 code-review course-correction
+- [Phase 12.2]: 12.2-02: epoch for every new sync/decode log line is sourced from the enclosing scope's known value (epochMaterial.root_epoch, channel.epoch, channelEpochOf(...)/this.keys.material.root_epoch, this.channelKey.epoch), never info.epoch (RESEARCH Pitfall 3: control/dissolved lack info.epoch, the base-rekey plane's info.epoch is the NEXT epoch not the one being synced)
 
 ### Pending Todos
 
@@ -179,9 +182,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T09:55:59.565Z
-Stopped at: Phase 12.2 plan 01 complete
-Resume file: .planning/phases/12.2-concord-sync-debug-logging/12.2-02-PLAN.md
+Last session: 2026-07-22T10:16:14.960Z
+Stopped at: Phase 12.2 plan 02 complete
+Resume file: .planning/phases/12.2-concord-sync-debug-logging/12.2-03-PLAN.md
 
 ## Operator Next Steps
 
