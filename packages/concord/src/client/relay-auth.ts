@@ -210,11 +210,24 @@ export class ConcordRelayAuth {
         log("user auth requested pubkey=%s relay=%s", pubkey.slice(0, 8), url);
         relay
           .authenticate(signer)
-          .then(() => log("user auth succeeded pubkey=%s relay=%s", pubkey.slice(0, 8), url))
-          .catch((err) => {
-            log("user AUTH to %s failed pubkey=%s: %s", url, pubkey.slice(0, 8), (err as Error)?.message ?? err);
-            console.warn(`user AUTH to ${url} failed`, err);
-          })
+          // Two-arg `.then` (not `.then().catch()`): `authenticate` RESOLVES with
+          // `{ ok: false }` when the relay answers `OK false` ("restricted: …"),
+          // so success must be read off the payload — same branch the stream-key
+          // path above takes. The rejection handler is passed here rather than
+          // chained so a throw from the success handler isn't misreported as an
+          // AUTH failure.
+          .then(
+            (res) =>
+              log(
+                res?.ok ? "user auth succeeded pubkey=%s relay=%s" : "user auth rejected pubkey=%s relay=%s",
+                pubkey.slice(0, 8),
+                url,
+              ),
+            (err) => {
+              log("user AUTH to %s failed pubkey=%s: %s", url, pubkey.slice(0, 8), (err as Error)?.message ?? err);
+              console.warn(`user AUTH to ${url} failed`, err);
+            },
+          )
           .finally(() => inflight.delete(url));
       }
     });
