@@ -1945,4 +1945,182 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
 
     community.dispose();
   });
+
+  // ── Gap closure (T-12.3-09-*): refound()'s threshold/attribution must both
+  // derive from ONE deduplicated protocol set, and neither the relay-list
+  // normalization nor the ack-attribution normalization may throw a raw parse
+  // error in place of the intended majority-abort message.
+  const DUP_RELAY = "wss://cmty-refound-dup.test";
+  const DUP_RELAY_TRAILING = "wss://cmty-refound-dup.test/";
+  const MALFORMED_RELAY = "";
+  const MALFORMED_RELAY_2 = "   ";
+
+  it("refound() completes when the protocol relay list has a trailing-slash duplicate and the deduplicated single relay acks (D-06/ROTATE-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const relays = [DUP_RELAY, DUP_RELAY_TRAILING];
+    const pool = fakePool();
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], _event: NostrEvent) => responses;
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Only ONE relay (post-normalization dedupe) acks. The raw array has 2
+    // entries (threshold ⌈3/2⌉=2, unreachable by a single ack); the deduplicated
+    // set has 1 relay (threshold ⌈2/2⌉=1, reachable by this single ack).
+    responses = [{ ok: true, from: DUP_RELAY }];
+
+    await expect(community.refound({ keep: [pubkey] })).resolves.toBeUndefined();
+
+    community.dispose();
+  });
+
+  it("refound() completes when the protocol relay list has an unparseable entry alongside two valid relays that both ack — no URL parse error (D-06/ROTATE-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const relays = [REFOUND_PROTOCOL_A, MALFORMED_RELAY, REFOUND_PROTOCOL_B];
+    const pool = fakePool();
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], _event: NostrEvent) => responses;
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Both valid relays ack; the unparseable entry is silently dropped, never
+    // thrown as a parse error in place of a resolved/rejected refound() call.
+    responses = [
+      { ok: true, from: REFOUND_PROTOCOL_A },
+      { ok: true, from: REFOUND_PROTOCOL_B },
+    ];
+
+    await expect(community.refound({ keep: [pubkey] })).resolves.toBeUndefined();
+
+    community.dispose();
+  });
+
+  it("refound() rejects with the majority-abort message (not a parse error) when the protocol relay list contains ONLY unparseable entries (D-06/ROTATE-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const relays = [MALFORMED_RELAY, MALFORMED_RELAY_2];
+    const pool = fakePool();
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], _event: NostrEvent) => responses;
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // No valid relay can ever ack, so the quorum can never be satisfied — but
+    // the failure MUST be the intended majority-abort message, never a raw
+    // "Invalid URL" parse error surfacing from the relay-list normalization.
+    responses = [];
+
+    await expect(community.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
+
+    community.dispose();
+  });
+
+  it("refound() rejects with the majority-abort message (not a TypeError) when a publish response's `from` is an empty string (D-06/ROTATE-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], _event: NostrEvent) => responses;
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: REFOUND_PROTOCOL_RELAYS });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: REFOUND_PROTOCOL_RELAYS,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Every response carries `from: ""` (a hostile/malformed relay response) —
+    // none can be attributed to the protocol set, so the quorum genuinely misses
+    // majority. The failure must be the intended abort message, not a TypeError
+    // surfacing from the ack-attribution normalization.
+    responses = REFOUND_PROTOCOL_RELAYS.map(() => ({ ok: true, from: "" }));
+
+    await expect(community.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
+
+    community.dispose();
+  });
+
+  it("refound() rejects with the majority-abort message (not a TypeError) when a publish response omits `from` entirely (D-06/ROTATE-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    let responses: PublishResponse[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], _event: NostrEvent) => responses;
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: REFOUND_PROTOCOL_RELAYS });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: REFOUND_PROTOCOL_RELAYS,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // `from` entirely absent (relay-supplied response missing the field).
+    responses = REFOUND_PROTOCOL_RELAYS.map(() => ({ ok: true }) as unknown as PublishResponse);
+
+    await expect(community.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
+
+    community.dispose();
+  });
 });
