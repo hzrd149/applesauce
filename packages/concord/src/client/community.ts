@@ -17,6 +17,7 @@ import {
   map,
   shareReplay,
   startWith,
+  switchMap,
 } from "rxjs";
 import type { Debugger } from "debug";
 import { EventStore, RumorStore } from "applesauce-core";
@@ -233,9 +234,21 @@ export class ConcordCommunity {
   readonly error$ = new BehaviorSubject<string | null>(null);
   /** Whether the owner has dissolved the community. */
   readonly dissolved$: Observable<boolean>;
-  /** Whether any of the community's relays has an open socket. */
+  /** Whether any of the community's relays (plus any configured `extraRelays`) has
+   *  an open socket — derived from the merged transport set, re-deriving on every
+   *  later `extraRelays` emission (D-08). Because this is an any-of check, an
+   *  always-up app-local extra keeps this reporting connected even while every
+   *  community relay is down; UI reading "live" may be reading the local cache —
+   *  an accepted, documented consequence (D-07), not a defect. */
   readonly connected$: Observable<boolean>;
-  /** Whether the community's stream keys are NIP-42-authenticated on every connected relay. */
+  /** Whether the community's stream keys are NIP-42-authenticated on every
+   *  connected relay in the merged transport set, re-deriving on every later
+   *  `extraRelays` emission (D-08). Because this is an all-of check over
+   *  connected relays, an extra that challenges and rejects our stream keys
+   *  holds this flag low indefinitely — an accepted, documented consequence
+   *  (D-07), not a defect. If several engines should share one live extras
+   *  source, pass a hot/shared Observable (D-10) — each engine subscribes its
+   *  own otherwise. */
   readonly authenticated$: Observable<boolean>;
   /** A flat snapshot of the community's status, for UI to react to as one value. */
   readonly status$: Observable<ConcordCommunityStatus>;
@@ -300,6 +313,11 @@ export class ConcordCommunity {
 
   private stateSub?: Subscription;
   private liveSub?: Subscription;
+  /** Reacts to every later `extraRelays` emission (D-08/D-09): re-opens the live
+   *  subscription once one already exists, so a no-op emission before `start()`
+   *  has ever gone live cannot prematurely open a socket, and a real later
+   *  change re-derives the merged set via `openLive()`'s own widened guard. */
+  private extrasSub: Subscription;
   private authDrivers = new Subscription();
   private seenRelays = new Set<string>();
   private liveAuthors = "";
@@ -378,8 +396,15 @@ export class ConcordCommunity {
       distinctUntilChanged(sameSet),
     );
 
-    this.connected$ = this.relayAuth.connected$(this.relays());
-    this.authenticated$ = this.relayAuth.authenticated$(this.relays(), () => this.currentAuthors());
+    // Reactive (D-08): switchMap over the extras holder's relays$ so a later
+    // extraRelays emission re-derives both statuses, rather than freezing at a
+    // construction-time snapshot. Both route their merge through transport()
+    // (not the switchMap's own emitted value) so it stays the class's one
+    // literal merge point (D-04).
+    this.connected$ = this.extras.relays$.pipe(switchMap(() => this.relayAuth.connected$(this.transport())));
+    this.authenticated$ = this.extras.relays$.pipe(
+      switchMap(() => this.relayAuth.authenticated$(this.transport(), () => this.currentAuthors())),
+    );
     this.status$ = combineLatest({
       phase: this.phase$,
       epoch: this.epoch$,
@@ -427,6 +452,15 @@ export class ConcordCommunity {
     });
 
     this.rewireState();
+
+    // D-09: guarded with `if (this.liveSub)` rather than firing unconditionally
+    // — the ExtraRelays holder's internal BehaviorSubject always emits once
+    // synchronously at construction (even with no `extraRelays` configured), and
+    // an unguarded subscribe would open the live socket here, before `start()`
+    // ever runs (a timing regression D-14's byte-identical requirement forbids).
+    this.extrasSub = this.extras.relays$.subscribe(() => {
+      if (!this.disposed && this.liveSub) this.openLive();
+    });
   }
 
   get material(): JoinMaterial {
@@ -503,6 +537,8 @@ export class ConcordCommunity {
     this.disposed = true;
     this.stateSub?.unsubscribe();
     this.liveSub?.unsubscribe();
+    this.extrasSub.unsubscribe();
+    this.extras.dispose();
     this.authDrivers.unsubscribe();
     if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
     for (const engine of this.privateChannels.values()) engine.dispose();
@@ -674,7 +710,13 @@ export class ConcordCommunity {
   /** Open (or reopen) the live subscription at the current epoch's addresses. */
   private openLive(): void {
     const authors = this.currentAuthors();
-    const sig = [...authors].sort().join(",");
+    // Computed ONCE and reused for the guard, the auth registration, and the
+    // subscription target, so the guard can never disagree with what was
+    // dialled (D-09/Pitfall 4). The guard key now covers BOTH the sorted
+    // authors list and the sorted merged transport set, so a no-op extras
+    // re-emission cannot tear down and reopen the live socket.
+    const targets = this.transport();
+    const sig = `${[...authors].sort().join(",")}|${[...targets].sort().join(",")}`;
     if (sig === this.liveAuthors && this.liveSub) return;
     this.liveAuthors = sig;
     this.relayAuth.registerStreamKeys([
@@ -684,13 +726,14 @@ export class ConcordCommunity {
       this.keys.nextBaseRekey.key,
       ...this.publicChannelKeys(),
     ]);
-    this.ensureAuth(this.relays());
+    this.ensureAuth(targets);
     this.liveSub?.unsubscribe();
     this.liveSub = this.pool
-      .subscription(this.relays(), [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
+      .subscription(targets, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
         waitForAuth: authors,
       })
       .subscribe((event) => this.onWrap(event as NostrEvent));
+    this.log("live subscription open targets=%d", targets.length);
   }
 
   /** A live state change may reveal a new channel. Derive every channel address
