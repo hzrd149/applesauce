@@ -30,6 +30,7 @@ import type { RelayPool } from "applesauce-relay";
 
 import { logger } from "../logger.js";
 import type { ConcordRelayAuth } from "./relay-auth.js";
+import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import {
   addChannelKey,
   buildChannelRekey,
@@ -103,6 +104,14 @@ export interface ConcordCommunityOptions {
   uploader?: ConcordUploader;
   /** Fallback relays when the community defines none. */
   relays?: string[];
+  /** Additional transport-only relays threaded down from `ConcordClientOptions`,
+   *  unioned into every request/subscription/publish/auth target this engine
+   *  dials (D-12) — but NEVER written into community material, metadata, invite
+   *  bundles, invite links, or the user's Community List. Purely additive: with
+   *  no extras configured, every relay set and every arithmetic result in this
+   *  file is byte-identical to pre-phase behavior (D-14); `relays()`'s existing
+   *  material-then-options-then-stock fallback chain is untouched. */
+  extraRelays?: ExtraRelaysOption;
   /** Per-plane store factory (persistent cache). Defaults to in-memory stores. */
   storeFactory?: ConcordStoreFactory;
   /** Called whenever `material` changes (a fresh private-channel key, a Refounding)
@@ -268,6 +277,14 @@ export class ConcordCommunity {
   private readonly onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
   private readonly onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
   private readonly onRefounded?: (communityId: string) => void;
+  /** The RAW `extraRelays` option, kept unresolved so {@link spawnPrivateChannel}
+   *  can pass it through to each sub-engine's OWN holder rather than a resolved
+   *  snapshot (D-13) — the sub-engine must stay reactive to its own subscription. */
+  private readonly extraRelaysOption?: ExtraRelaysOption;
+  /** The per-engine transport-only extras holder (D-04) — merges into every
+   *  network target this engine dials via {@link transport}; `relays()` itself
+   *  is never touched. */
+  private readonly extras: ExtraRelays;
 
   /** The current key state; rolled forward on a Refounding. */
   private keys: ConcordKeys;
@@ -314,6 +331,10 @@ export class ConcordCommunity {
     this.onInviteCreated = options.onInviteCreated;
     this.onInviteRevoked = options.onInviteRevoked;
     this.onRefounded = options.onRefounded;
+    this.extraRelaysOption = options.extraRelays;
+    // Constructed BEFORE any observable derivation below so its synchronous
+    // snapshot is already seeded when connected$/authenticated$ build (D-04).
+    this.extras = new ExtraRelays(options.extraRelays);
 
     this.keys = deriveConcordKeys(options.material, []);
     this.state$ = new BehaviorSubject<CommunityState>(emptyState(options.material));
@@ -601,6 +622,15 @@ export class ConcordCommunity {
     return this.material.relays.length ? this.material.relays : this.defaultRelays;
   }
 
+  /** The merged transport target for this community: {@link relays}'s protocol
+   *  set unioned with the current extras snapshot (D-04) — the ONLY merge point
+   *  in this class. `relays()` is the community's protocol relay set and is the
+   *  only thing ever written into published content; `transport()` is the
+   *  network target set and is never written anywhere. */
+  private transport(): string[] {
+    return this.extras.merge(this.relays());
+  }
+
   private syncContext(): SyncContext {
     return {
       pool: this.pool,
@@ -608,7 +638,7 @@ export class ConcordCommunity {
       eventStore: this.eventStore,
       signer: this.signer,
       self: this.pubkey,
-      relays: this.relays(),
+      relays: this.transport(),
       route: (info, decoded) => this.route(info, decoded),
       ensureAuth: (relays) => this.ensureAuth(relays),
       alive: () => !this.disposed,
@@ -679,7 +709,7 @@ export class ConcordCommunity {
     if (fresh.length > 0) {
       this.log("catching up %d newly revealed public channel(s)", fresh.length);
       this.relayAuth.registerStreamKeys(this.publicChannelKeys());
-      this.ensureAuth(this.relays());
+      this.ensureAuth(this.transport());
       void syncAuthors(this.syncContext(), fresh).then((events) => {
         for (const ev of events) this.onWrap(ev);
       });
@@ -739,6 +769,9 @@ export class ConcordCommunity {
       eventStore: this.eventStore,
       store: this.storeFor(`channel:${channelKey.id}`),
       relays: this.relays(),
+      // Pass the ORIGINAL (unresolved) option through — not a resolved snapshot
+      // (D-13) — so the sub-engine builds its own holder and stays reactive.
+      extraRelays: this.extraRelaysOption,
       logger: this.log.extend("channel").extend(channelKey.id.slice(0, 8)),
       isAuthorized: (rotator) => this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS),
       // A rotator may only remove US if they also strictly outrank us (CORD-04),
@@ -1103,7 +1136,7 @@ export class ConcordCommunity {
       vac,
     });
 
-    const relays = this.relays();
+    const relays = this.transport();
     this.publishLog("rotating channel=%s", channelId.slice(0, 8));
     for (const wrap of plan.rekeyWraps)
       await this.pool.publish(relays, wrap).catch((err) => {
@@ -1225,7 +1258,7 @@ export class ConcordCommunity {
     const template = await InviteBundleFactory.revoke();
     const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
     this.eventStore.add(signed);
-    await this.pool.publish(this.relays(), signed).catch((err) => {
+    await this.pool.publish(this.transport(), signed).catch((err) => {
       this.publishLog("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
       console.warn("bundle revocation publish failed", err);
     });
@@ -1264,7 +1297,7 @@ export class ConcordCommunity {
     const wrap = await DirectInviteFactory.create(bundle, member, this.signer);
     this.eventStore.add(wrap);
     this.publishLog("granting channel access channels=%d member=%s", ids.length, member.slice(0, 8));
-    await this.pool.publish(this.relays(), wrap).catch((err) => {
+    await this.pool.publish(this.transport(), wrap).catch((err) => {
       this.publishLog("channel grant publish failed: %s", (err as Error)?.message ?? err);
       console.warn("channel grant publish failed", err);
     });
@@ -1388,7 +1421,7 @@ export class ConcordCommunity {
     const { wrap, rumorId } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
     // Optimistic local echo first, so the UI updates before relays ack.
     if (!opts.ephemeral) this.onWrap(wrap);
-    this.pool.publish(this.relays(), wrap).catch((err) => {
+    this.pool.publish(this.transport(), wrap).catch((err) => {
       this.publishLog("publish failed plane=%s: %s", target.plane, (err as Error)?.message ?? err);
       console.warn("publish failed", err);
     });
