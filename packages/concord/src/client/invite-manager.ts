@@ -21,6 +21,7 @@ import { logger } from "../logger.js";
 import type { ConcordInviteList } from "../casts/index.js";
 import { canonicalJson } from "../helpers/community-list.js";
 import { parseInviteLink } from "../helpers/invite-bundle.js";
+import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { InviteBundleFactory } from "../factories/invite-bundle.js";
 import {
   INVITE_LIST_KIND,
@@ -64,6 +65,11 @@ export interface ConcordInviteManagerOptions {
         };
       }
     | undefined;
+  /** Additional transport-only relays unioned onto every request/publish this
+   *  manager performs (D-12). Never written into any published content, and
+   *  purely additive: with no extras configured, every relay set this manager
+   *  uses is identical to `relays` alone (D-14). */
+  extraRelays?: ExtraRelaysOption;
   /** A custom debug logger (defaults to the "applesauce:concord" namespace, extended
    *  with "invite" when threaded from {@link ConcordClient}). */
   logger?: Debugger;
@@ -95,6 +101,9 @@ export class ConcordInviteManager {
   private readonly relays: string[];
   private readonly autoUnlock: boolean;
   private readonly getCommunity: ConcordInviteManagerOptions["getCommunity"];
+  /** The per-engine transport-only extras holder (D-04) — merges into every
+   *  network target this manager dials; `this.relays` itself is never touched. */
+  private readonly extras: ExtraRelays;
 
   private pubkey?: string;
   private sub?: Subscription;
@@ -111,6 +120,17 @@ export class ConcordInviteManager {
     this.relays = options.relays;
     this.autoUnlock = options.autoUnlock ?? false;
     this.getCommunity = options.getCommunity;
+    this.extras = new ExtraRelays(options.extraRelays);
+  }
+
+  /** The merged transport target for this manager: `base` (defaulting to
+   *  `this.relays`) unioned with the current extras snapshot (D-04) — the ONLY
+   *  merge point in the class. Every call site here is one-shot, so the
+   *  holder's synchronous snapshot is the correct consumption shape (D-11).
+   *  The optional `base` exists for the revoke path, which merges onto the
+   *  link's own bootstrap relays rather than this manager's default set (D-12). */
+  private transport(base?: string[]): string[] {
+    return this.extras.merge(base ?? this.relays);
   }
 
   async start(user: User): Promise<void> {
@@ -148,7 +168,7 @@ export class ConcordInviteManager {
     if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
     await firstValueFrom(
       this.pool
-        .request(this.relays, [{ kinds: [INVITE_LIST_KIND], authors: [this.pubkey] }])
+        .request(this.transport(), [{ kinds: [INVITE_LIST_KIND], authors: [this.pubkey] }])
         .pipe(mapEventsToStore(this.eventStore), toArray(), timeout(8000)),
     ).catch(() => []);
   }
@@ -203,8 +223,12 @@ export class ConcordInviteManager {
   private async revokeBundle(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
     const signed = finalizeEvent(await InviteBundleFactory.revoke(), hexToBytes(invite.signerSk));
     this.eventStore.add(signed);
-    const relays = parseInviteLink(invite.url).bootstrapRelays;
-    await this.pool.publish(relays.length ? relays : this.relays, signed).catch((err) => {
+    // The revoke path merges the extras onto the LINK's own bootstrap relays
+    // (falling back to this manager's default set), never the manager's set
+    // directly (D-12) — the base-vs-merged split is kept visible here.
+    const bootstrapRelays = parseInviteLink(invite.url).bootstrapRelays;
+    const base = bootstrapRelays.length ? bootstrapRelays : this.relays;
+    await this.pool.publish(this.transport(base), signed).catch((err) => {
       this.log("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
       console.warn("bundle revocation publish failed", err);
     });
@@ -246,7 +270,7 @@ export class ConcordInviteManager {
     const signed = await this.signer.signEvent({ kind: INVITE_LIST_KIND, content, tags: [], created_at: createdAt });
     setHiddenContentCache(signed, plaintext);
     this.eventStore.add(signed);
-    this.pool.publish(this.relays, signed).catch((err) => {
+    this.pool.publish(this.transport(), signed).catch((err) => {
       this.log("invite list publish failed: %s", (err as Error)?.message ?? err);
       console.warn("invite list publish failed", err);
     });
