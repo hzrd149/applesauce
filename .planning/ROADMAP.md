@@ -376,13 +376,47 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 12.3-01-PLAN.md — shared `toRelaysObservable`/`ExtraRelays` helper module + unit suite
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 12.3-02-PLAN.md — private-channel engine: transport merge, reactive status, reactive live sub
 - [ ] 12.3-03-PLAN.md — invite manager + invite watcher: per-operation merges and reactive watcher live sub
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 12.3-04-PLAN.md — community engine: transport merge, reactive derivations, invite-link split, refounding publish/count split
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 12.3-05-PLAN.md — `ConcordClientOptions.extraRelays` public option, pass-through threading, join-path split
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 12.3-06-PLAN.md — lifecycle canary + targeted protocol-write leak assertions
 - [ ] 12.3-07-PLAN.md — reactivity, churn-guard, merged-set auth, and refounding-quorum regression tests
+
+**Cross-cutting constraints:**
+
+- `connected### Phase 12.3: Transport-Only Extra Relays in applesauce-concord (INSERTED)
+
+**Goal**: `ConcordClient` accepts `extraRelays?: string[] | Observable<string[]>` so apps can supply app-local relay endpoints (e.g. `ws://localhost:4869` cache relays) that Concord uses purely for network I/O — as additional transport targets for all Concord-managed traffic (community/channel sync, live subscriptions, publishes, community-list and invite-list reads/writes, direct-invite watching, invite-bundle fetch/publish/revoke, relay auth/connection status) — but are never written into community material/metadata, invite bundles, invite links, or user-published relay lists, and never surfaced as part of the community's protocol state. When `extraRelays` is an Observable, Concord reacts to updates so future traffic uses the latest set; behavior is unchanged when omitted or empty.
+**Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–12)
+**Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
+**Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
+
+**Plans**: 7 plans
+ and `authenticated### Phase 12.3: Transport-Only Extra Relays in applesauce-concord (INSERTED)
+
+**Goal**: `ConcordClient` accepts `extraRelays?: string[] | Observable<string[]>` so apps can supply app-local relay endpoints (e.g. `ws://localhost:4869` cache relays) that Concord uses purely for network I/O — as additional transport targets for all Concord-managed traffic (community/channel sync, live subscriptions, publishes, community-list and invite-list reads/writes, direct-invite watching, invite-bundle fetch/publish/revoke, relay auth/connection status) — but are never written into community material/metadata, invite bundles, invite links, or user-published relay lists, and never surfaced as part of the community's protocol state. When `extraRelays` is an Observable, Concord reacts to updates so future traffic uses the latest set; behavior is unchanged when omitted or empty.
+**Depends on**: Phase 5 (workspace-wide stability; otherwise independent of Phases 6–12)
+**Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
+**Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
+
+**Plans**: 7 plans
+ re-derive when the extras Observable emits a new set, without restarting the engine (D-08).
 
 ## Progress
 
