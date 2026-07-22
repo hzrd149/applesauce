@@ -23,7 +23,7 @@ import type { Debugger } from "debug";
 import { EventStore, RumorStore } from "applesauce-core";
 import { finalizeEvent, kinds, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
-import { normalizeRelayUrl } from "applesauce-core/helpers/relays";
+import { mergeRelaySets, normalizeRelayUrl } from "applesauce-core/helpers/relays";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
 import { DeleteFactory, type Emoji } from "applesauce-core/factories";
@@ -1408,11 +1408,15 @@ export class ConcordCommunity {
 
     const excluded = new Set(opts.exclude ?? []);
     const recipients = [...new Set([this.pubkey, ...opts.keep])].filter((pk) => !excluded.has(pk));
-    // D-06: `relays` stays the protocol/counting set — the majority threshold and
-    // the ack attribution below both read ONLY this local. `transportRelays` (the
-    // merged set) is where every wrap is actually published, so the split is
-    // visible in the diff rather than only in a comment.
-    const relays = this.relays();
+    // D-06: `protocolRelays` stays the protocol/counting set — the majority
+    // threshold and the ack attribution below both read ONLY this local, derived
+    // ONCE via `mergeRelaySets` (T-12.3-09-01/02) so a duplicate-by-normalization
+    // entry or an unparseable entry can never make the two halves disagree, and
+    // an unparseable entry can never throw instead of being dropped.
+    // `transportRelays` (the merged set) is where every wrap is actually
+    // published, so the split is visible in the diff rather than only in a
+    // comment.
+    const protocolRelays = mergeRelaySets(this.relays());
     const transportRelays = this.transport();
 
     // Bundle a channel Rekey ONLY for the explicitly-named private channels, each
@@ -1442,25 +1446,46 @@ export class ConcordCommunity {
     // D-09/D-11/ROTATE-09 (T-08-06): publish acks are the only evidence anyone
     // else can discover the new epoch, so each root-roll and channel-rekey wrap
     // must independently clear strict majority of the CONFIGURED relay set
-    // (`relays.length`, not the number of responses received — a relay that
-    // never answers counts against the denominator) before compaction/snapshot
-    // publish or adoption. A sub-majority wrap aborts the whole Refounding
-    // atomically, mirroring D-01's abort-before-further-publish shape — no
-    // unilateral roll-forward onto an undiscoverable epoch.
+    // (`protocolRelays.length`, not the number of responses received — a relay
+    // that never answers counts against the denominator) before
+    // compaction/snapshot publish or adoption. A sub-majority wrap aborts the
+    // whole Refounding atomically, mirroring D-01's abort-before-further-publish
+    // shape — no unilateral roll-forward onto an undiscoverable epoch.
     //
-    // D-06/T-12.3-17/T-12.3-18: publish targets now include transport-only
-    // extras (`transportRelays`), but the denominator above and the ack
-    // attribution below remain the configured protocol set (`relays`) alone —
-    // an always-acking app-local extra must never be able to satisfy the
-    // discoverability quorum by itself, and it must never be able to inflate
-    // the denominator either. Acks are attributed to the protocol set with the
+    // D-06/T-12.3-17/T-12.3-18/T-12.3-09: publish targets now include
+    // transport-only extras (`transportRelays`), but the denominator above and
+    // the ack attribution below remain the normalized, deduplicated protocol set
+    // (`protocolRelays`) alone — an always-acking app-local extra must never be
+    // able to satisfy the discoverability quorum by itself, and it must never be
+    // able to inflate the denominator either. `protocolRelays` is bit-for-bit
+    // identical to the pre-phase raw `this.relays()` length whenever the
+    // configured protocol relay list is already well-formed and duplicate-free;
+    // it fails soft (drops the offending entry) rather than crashing when it is
+    // not (T-12.3-09-01/02). Acks are attributed to the protocol set with the
     // same normalized-URL tolerance `relay-auth.ts`'s status lookup already
-    // applies, since a relay's ack `from` may or may not come back normalized.
-    const majorityThreshold = Math.ceil((relays.length + 1) / 2);
-    const protocolRelaySet = new Set(relays.map(normalizeRelayUrl));
+    // applies, since a relay's ack `from` may or may not come back normalized,
+    // may be absent, or may be malformed — none of which may ever surface as a
+    // parse error in place of the intended majority-abort error (T-12.3-09-03).
+    const majorityThreshold = Math.ceil((protocolRelays.length + 1) / 2);
+    const protocolRelaySet = new Set(protocolRelays);
+    /** Tolerant ack-origin normalization: returns undefined for an absent or
+     *  unparseable `from`, swallowing the parse failure, mirroring the
+     *  established tolerance shape in relay-auth.ts's `lookupStatus`. */
+    const normalizeAckOrigin = (from: string | undefined): string | undefined => {
+      if (!from) return undefined;
+      try {
+        return normalizeRelayUrl(from);
+      } catch {
+        return undefined;
+      }
+    };
     const requireMajority = async (wrap: NostrEvent, what: string) => {
       const responses = await this.pool.publish(transportRelays, wrap);
-      const okCount = responses.filter((r) => r.ok === true && protocolRelaySet.has(normalizeRelayUrl(r.from))).length;
+      const okCount = responses.filter((r) => {
+        if (r.ok !== true) return false;
+        const origin = normalizeAckOrigin(r.from);
+        return origin !== undefined && protocolRelaySet.has(origin);
+      }).length;
       if (okCount < majorityThreshold)
         throw new Error(`refounding aborted: ${what} not confirmed by a majority of relays`);
     };
@@ -1469,7 +1494,11 @@ export class ConcordCommunity {
     for (const wrap of plan.rekeyWraps) await requireMajority(wrap, "root roll");
     for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
 
-    this.publishLog("refounding publish targets=%d protocol=%d", transportRelays.length, relays.length);
+    this.publishLog(
+      "refounding publish targets=%d protocol=%d",
+      transportRelays.length,
+      protocolRelays.length,
+    );
 
     // Only after every gated wrap clears majority: compaction/snapshot + adopt.
     for (const wrap of plan.compactionWraps) this.pool.publish(transportRelays, wrap).catch(() => {});
