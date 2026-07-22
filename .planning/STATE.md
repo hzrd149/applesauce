@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Completed 12.3-08-PLAN.md
-last_updated: "2026-07-22T19:12:21.594Z"
+stopped_at: Completed 12.3-09-PLAN.md
+last_updated: "2026-07-22T19:27:26.403Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 14
   completed_phases: 9
   total_plans: 66
-  completed_plans: 64
+  completed_plans: 65
   percent: 64
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 12.3 execution started
 
@@ -85,6 +85,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P06 | 13min | 2 tasks | 1 files |
 | Phase 12.3 P07 | 13min | 2 tasks | 3 files |
 | Phase 12.3 P08 | 25min | 3 tasks | 3 files |
+| Phase 12.3 P09 | 20min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -177,6 +178,10 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.3-07: private-channel's no-extras baseline test expects trailing-slash-normalized relay literals since transport()/mergeRelaySets has unconditionally normalized both inputs since plan 02 — pins pre-existing behavior, not a regression
 - [Phase 12.3]: 12.3-08: took VERIFICATION.md's option (a) for D-14 — ExtraRelays.merge gets a genuine identity fast path (return base unchanged when extras are empty) rather than relaxing the roadmap's Success Criteria wording — smaller blast radius, restores the criterion as written verbatim, and is exactly pre-phase behavior
 - [Phase 12.3]: 12.3-08: WR-09 (thread ConcordClient.extras.relays$ into sub-engines) deliberately deferred as a follow-up candidate, not a gap — it is a D-13 threading change and pure optimization rather than a correctness fix, and its cold-source-re-execution risk is already mitigated by Task 1's fail-soft behavior
+- [Phase 12.3]: 12.3-09: refound() derives protocolRelays once via mergeRelaySets(this.relays()); both majorityThreshold and protocolRelaySet read only that value, closing the D-06 threshold/attribution split and the crash-on-malformed-entry defect
+- [Phase 12.3]: 12.3-09: ack-origin tolerance implemented as a local normalizeAckOrigin closure (returns undefined on absent/unparseable from) rather than reusing relay-auth.ts's lookupStatus directly, since the shapes differ
+- [Phase 12.3]: 12.3-09: validateInviteBundle filters relays to typeof string + isSafeRelayURL after the existing cap slice (cap-then-filter), never normalizing survivors (D-01); an entirely-junk relays array still validates with an empty array rather than rejecting the bundle
+- [Phase 12.3]: 12.3-09: two pre-existing test fixtures (invite-bundle.test.ts's wss://ok, direct-invite.test.ts's wss://1..wss://7) used non-dotted toy hostnames that fail isSafeRelayURL's regex; fixed to realistic dotted hostnames as an in-scope knock-on regression fix, discovered via the full-suite run
 
 ### Pending Todos
 
@@ -214,8 +219,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T19:12:21.587Z
-Stopped at: Completed 12.3-08-PLAN.md
+Last session: 2026-07-22T19:27:26.396Z
+Stopped at: Completed 12.3-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
