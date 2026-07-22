@@ -137,16 +137,38 @@ export async function syncEpoch(
   const guestbook: DecodedEvent[] = [];
   const dissolved: DecodedEvent[] = [];
   const rekey: DecodedEvent[] = [];
-  for (const ev of await syncAuthors(ctx, coreAuthors)) {
+  const coreFetched = await syncAuthors(ctx, coreAuthors);
+  let coreDecoded = 0;
+  let coreDropped = 0;
+  for (const ev of coreFetched) {
     const info = keys.planes.get(ev.pubkey);
     if (!info) continue;
     const d = decodeWrapCached(ev, info.convKey);
-    if (!d) continue;
+    if (!d) {
+      coreDropped++;
+      ctx.logger.extend("decode")(
+        "dropped wrap=%s plane=%s epoch=%d",
+        ev.id.slice(0, 8),
+        info.type,
+        epochMaterial.root_epoch,
+      );
+      continue;
+    }
+    coreDecoded++;
     if (info.type === "control") (control.push(d), emit(info, d));
     else if (info.type === "guestbook") (guestbook.push(d), emit(info, d));
     else if (info.type === "dissolved") (dissolved.push(d), emit(info, d));
     else if (info.type === "rekey") (rekey.push(d), emit(info, d));
   }
+  // D-05 litmus: this MUST fire even when coreFetched.length === 0 — a zero-event
+  // sync must read `fetched=0`, distinct from an arrived-but-undecryptable sync.
+  ctx.logger(
+    "core planes epoch=%d fetched=%d decoded=%d dropped=%d",
+    epochMaterial.root_epoch,
+    coreFetched.length,
+    coreDecoded,
+    coreDropped,
+  );
 
   // 3. Fold control → channels, re-derive to reveal the channel addresses, then
   //    full-sync only the PUBLIC channel planes. Public channels derive from the
@@ -160,17 +182,38 @@ export async function syncEpoch(
   ctx.relayAuth.registerStreamKeys(publicKeys);
   ctx.ensureAuth(ctx.relays);
   const channelDecoded: DecodedEvent[] = [];
-  for (const ev of await syncAuthors(
+  const channelFetched = await syncAuthors(
     ctx,
     publicKeys.map((k) => k.pk),
-  )) {
+  );
+  let channelDecodedCount = 0;
+  let channelDropped = 0;
+  for (const ev of channelFetched) {
     const info = keys.planes.get(ev.pubkey);
     if (!info || info.type !== "channel") continue;
     const d = decodeWrapCached(ev, info.convKey);
-    if (!d) continue;
+    if (!d) {
+      channelDropped++;
+      ctx.logger.extend("decode")(
+        "dropped wrap=%s plane=%s epoch=%d",
+        ev.id.slice(0, 8),
+        info.type,
+        epochMaterial.root_epoch,
+      );
+      continue;
+    }
+    channelDecodedCount++;
     channelDecoded.push(d);
     emit(info, d);
   }
+  // D-05 litmus: always-on, even for zero fetched public-channel wraps.
+  ctx.logger(
+    "public channels epoch=%d fetched=%d decoded=%d dropped=%d",
+    epochMaterial.root_epoch,
+    channelFetched.length,
+    channelDecodedCount,
+    channelDropped,
+  );
 
   // 4. Decide the transition (fold members for standing/authority, exactly as the walk does).
   const observed = new Map<string, number>();
