@@ -7,6 +7,7 @@
 // follow channel Rekeys — scoped to a single channel. It carries no fold logic:
 // consumers read its `store` with the standard timeline/model API.
 
+import type { Debugger } from "debug";
 import { BehaviorSubject, Observable, Subscription, combineLatest, shareReplay } from "rxjs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";
@@ -14,6 +15,7 @@ import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
 
+import { logger } from "../logger.js";
 import type { ConcordRelayAuth } from "./relay-auth.js";
 import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo } from "../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
@@ -64,6 +66,8 @@ export interface ConcordPrivateChannelOptions {
   onKeyChange?: (channelKey: ChannelKey) => void;
   /** Called when a channel Rekey excludes us from the channel. */
   onRemoved?: (channelId: string) => void;
+  /** A custom debug logger (defaults to the "applesauce:concord" namespace). */
+  logger?: Debugger;
 }
 
 export class ConcordPrivateChannel {
@@ -80,6 +84,9 @@ export class ConcordPrivateChannel {
   /** A flat snapshot of the channel's status, for UI to react to as one value. */
   readonly status$: Observable<ConcordPrivateChannelStatus>;
 
+  /** The channel's debug logger — `options.logger` when threaded from the parent
+   *  community, otherwise the `applesauce:concord` module base (D-01/D-02). */
+  private readonly log: Debugger;
   private readonly opts: ConcordPrivateChannelOptions;
   private channelKey: ChannelKey;
   private keys: ChannelKeys;
@@ -99,6 +106,7 @@ export class ConcordPrivateChannel {
   private disposed = false;
 
   constructor(options: ConcordPrivateChannelOptions) {
+    this.log = options.logger ?? logger;
     this.opts = options;
     this.channelKey = options.channelKey;
     this.keys = deriveChannelKeys(options.material(), options.channelKey);
@@ -133,6 +141,7 @@ export class ConcordPrivateChannel {
   async start(): Promise<void> {
     if (this.started || this.disposed) return;
     this.started = true;
+    this.log("starting channel sync walk");
     await this.walk();
   }
 

@@ -23,6 +23,7 @@ import {
   timeout,
   toArray,
 } from "rxjs";
+import type { Debugger } from "debug";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
 import { castUser, type User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers/event";
@@ -31,6 +32,7 @@ import { unixNow } from "applesauce-core/helpers/time";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
+import { logger } from "../logger.js";
 import { ConcordRelayAuth } from "./relay-auth.js";
 import { defaultStorage, type ConcordStorage, type ConcordStoreFactory, type ConcordUploader } from "./storage.js";
 // Side-effect import: registers the `User.concord*List$` getters used below (the named
@@ -150,10 +152,16 @@ export interface ConcordClientOptions {
    *  signer unless {@link autoUnlock} is on (which gates its auto-decrypt / NIP-42 auth); otherwise
    *  invites stay pending until the app calls {@link InviteWatcher.readPending}. */
   watchDirectInvites?: boolean;
+  /** A custom debug logger (defaults to the "applesauce:concord" namespace). */
+  logger?: Debugger;
 }
 
 export class ConcordClient {
   readonly signer: ISigner;
+  /** The client's debug logger — `options.logger` when injected, otherwise the
+   *  `applesauce:concord` module base (D-01/D-02). One client per session, so
+   *  no per-instance id suffix at this level (unlike `ConcordCommunity`). */
+  private readonly log: Debugger;
   /** Every joined community's current folded state. */
   readonly communities$ = new BehaviorSubject<CommunityState[]>([]);
   /** `"idle"` before `start()`, `"starting"` during startup, `"ready"` afterward. */
@@ -229,6 +237,7 @@ export class ConcordClient {
   private started = false;
 
   constructor(options: ConcordClientOptions) {
+    this.log = options.logger ?? logger;
     this.signer = options.signer;
     this.pool = options.pool;
     this.eventStore = options.eventStore ?? new EventStore();
@@ -248,6 +257,7 @@ export class ConcordClient {
       relays: this.defaultRelays,
       autoUnlock: this.autoUnlock,
       getCommunity: (communityId) => this.getCommunity(communityId),
+      logger: this.log.extend("invite"),
     });
 
     // Aggregate status: fold every community's status$ into a single client snapshot.
@@ -396,6 +406,7 @@ export class ConcordClient {
       // drives each explicitly via the exposed watcher (`readPending` / `authenticateUser`).
       autoDecrypt: this.autoUnlock,
       autoAuthenticate: this.autoAuthenticate,
+      logger: this.log.extend("invite"),
     });
     this.directInviteSub = this.inviteWatcher.invites$.subscribe((invites) => {
       for (const invite of invites) this.onDirectInvite(invite);
@@ -576,6 +587,7 @@ export class ConcordClient {
       storeFactory: this.storeFactory
         ? (_cid, planeKey) => this.storeFactory!(material.community_id, planeKey)
         : undefined,
+      logger: this.log.extend("community").extend(material.community_id.slice(0, 8)),
       onMaterialChange: (changed) => {
         // Fold the engine's new snapshot into the document in place, so the mirror we persist and
         // the list we publish always carry what the engine actually holds. `refreshCommunity`

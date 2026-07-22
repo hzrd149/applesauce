@@ -6,6 +6,7 @@
 // merge remote copies, expose rich app-facing records, and publish only when the
 // plaintext content actually changed.
 
+import type { Debugger } from "debug";
 import { BehaviorSubject, Subscription, firstValueFrom, map, of, switchMap, timeout, toArray } from "rxjs";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import type { User } from "applesauce-core/casts";
@@ -16,6 +17,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
+import { logger } from "../logger.js";
 import type { ConcordInviteList } from "../casts/index.js";
 import { canonicalJson } from "../helpers/community-list.js";
 import { parseInviteLink } from "../helpers/invite-bundle.js";
@@ -62,6 +64,9 @@ export interface ConcordInviteManagerOptions {
         };
       }
     | undefined;
+  /** A custom debug logger (defaults to the "applesauce:concord" namespace, extended
+   *  with "invite" when threaded from {@link ConcordClient}). */
+  logger?: Debugger;
 }
 
 export interface CreateInviteOptions {
@@ -80,6 +85,10 @@ export class ConcordInviteManager {
   readonly revoked$ = new BehaviorSubject<ConcordInviteLink[]>([]);
   readonly dirty$ = new BehaviorSubject<boolean>(false);
 
+  /** The invite manager's debug logger — `options.logger` when threaded from
+   *  {@link ConcordClient}, otherwise the `applesauce:concord:invite` module base
+   *  (D-01/D-02). */
+  private readonly log: Debugger;
   private readonly signer: ISigner;
   private readonly pool: RelayPool;
   private readonly eventStore: EventStore;
@@ -95,6 +104,7 @@ export class ConcordInviteManager {
   private readonly autoUnlocked = new Set<string>();
 
   constructor(options: ConcordInviteManagerOptions) {
+    this.log = options.logger ?? logger.extend("invite");
     this.signer = options.signer;
     this.pool = options.pool;
     this.eventStore = options.eventStore;
@@ -104,6 +114,7 @@ export class ConcordInviteManager {
   }
 
   async start(user: User): Promise<void> {
+    this.log("starting invite manager for %s", user.pubkey.slice(0, 8));
     this.pubkey = user.pubkey;
     this.sub?.unsubscribe();
     this.sub = user.concordInviteList$

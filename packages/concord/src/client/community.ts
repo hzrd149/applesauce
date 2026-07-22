@@ -18,6 +18,7 @@ import {
   shareReplay,
   startWith,
 } from "rxjs";
+import type { Debugger } from "debug";
 import { EventStore, RumorStore } from "applesauce-core";
 import { finalizeEvent, kinds, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
@@ -27,6 +28,7 @@ import { DeleteFactory, type Emoji } from "applesauce-core/factories";
 import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
 
+import { logger } from "../logger.js";
 import type { ConcordRelayAuth } from "./relay-auth.js";
 import {
   addChannelKey,
@@ -118,6 +120,8 @@ export interface ConcordCommunityOptions {
   /** Called after a Refounding rolls the community_root so the owning client can
    *  refresh every live invite bundle behind its unchanged URL (CORD-05 §2). */
   onRefounded?: (communityId: string) => void;
+  /** A custom debug logger (defaults to the "applesauce:concord" namespace). */
+  logger?: Debugger;
 }
 
 /** Content equality for the member/ban sets, which are rebuilt on every fold. */
@@ -233,6 +237,9 @@ export class ConcordCommunity {
    *  for convenience. Nothing in it names a protocol plane. */
   readonly admin: ConcordCommunityAdmin;
 
+  /** The community's debug logger — `options.logger` when threaded from the client,
+   *  otherwise the `applesauce:concord` module base (D-01/D-02). */
+  private readonly log: Debugger;
   private readonly pool: RelayPool;
   private readonly relayAuth: ConcordRelayAuth;
   private readonly eventStore: EventStore;
@@ -272,6 +279,7 @@ export class ConcordCommunity {
   private disposed = false;
 
   constructor(options: ConcordCommunityOptions) {
+    this.log = options.logger ?? logger;
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
@@ -697,6 +705,7 @@ export class ConcordCommunity {
       eventStore: this.eventStore,
       store: this.storeFor(`channel:${channelKey.id}`),
       relays: this.relays(),
+      logger: this.log.extend("channel").extend(channelKey.id.slice(0, 8)),
       isAuthorized: (rotator) => this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS),
       // A rotator may only remove US if they also strictly outrank us (CORD-04),
       // so an under-ranked channel manager can't rekey a higher-ranked member out.

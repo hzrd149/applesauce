@@ -6,6 +6,7 @@
 // fetch/live-subscribe gift wraps, optionally decrypt them, and keep local
 // dismissal state so apps can hide invites without deleting relay data.
 
+import type { Debugger } from "debug";
 import {
   BehaviorSubject,
   Observable,
@@ -25,6 +26,7 @@ import { castUser } from "applesauce-common/casts";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
+import { logger } from "../logger.js";
 import { ConcordDirectInvite } from "../casts/direct-invite.js";
 import {
   directInviteFilter,
@@ -68,6 +70,9 @@ export interface InviteWatcherOptions {
   overlapSeconds?: number;
   /** Timeout for one-shot relay requests. Defaults to 10 seconds. */
   requestTimeout?: number;
+  /** A custom debug logger (defaults to the "applesauce:concord" namespace, extended
+   *  with "invite" when threaded from {@link ConcordClient}). */
+  logger?: Debugger;
 }
 
 /** Watches the user's gift-wrap inbox for Concord Direct Invites. */
@@ -91,6 +96,10 @@ export class InviteWatcher {
   /** Whether any connected inbox relay requires user NIP-42 auth that hasn't been satisfied yet. */
   readonly needsAuth$: Observable<boolean>;
 
+  /** The watcher's debug logger — `options.logger` when threaded from
+   *  {@link ConcordClient}, otherwise the `applesauce:concord:invite` module base
+   *  (D-01/D-02). */
+  private readonly log: Debugger;
   private readonly pool: RelayPool;
   private readonly eventStore: EventStore;
   private readonly storage: ConcordStorage;
@@ -112,6 +121,7 @@ export class InviteWatcher {
   private cursor = 0;
 
   constructor(options: InviteWatcherOptions) {
+    this.log = options.logger ?? logger.extend("invite");
     this.signer = options.signer;
     this.pool = options.pool;
     this.eventStore = options.eventStore ?? new EventStore();
@@ -144,6 +154,7 @@ export class InviteWatcher {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    this.log("starting direct invite watcher");
     this.pubkey = await this.signer.getPublicKey();
     this.pubkey$.next(this.pubkey);
     await this.loadDismissed();
