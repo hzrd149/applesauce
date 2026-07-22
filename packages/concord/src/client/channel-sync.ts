@@ -62,7 +62,7 @@ async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): 
       ctx.route(info, decoded);
     } else {
       dropped++;
-      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), "channel", channel.epoch);
+      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, channel.epoch);
     }
   }
   // D-05 litmus: always-on, even when fetched.length === 0.
@@ -104,7 +104,7 @@ async function syncRekeyAndAdvance(
       ctx.route(info, decoded); // let the sub-engine retain it for the live check too
     } else {
       dropped++;
-      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), "channel", channel.epoch);
+      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, channel.epoch);
     }
   }
   // D-05 litmus: always-on, even when fetched.length === 0.
