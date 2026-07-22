@@ -34,6 +34,7 @@ import {
   lockDirectInvite,
   unlockDirectInvite,
 } from "../helpers/direct-invite.js";
+import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { ConcordRelayAuth } from "./relay-auth.js";
 import { defaultStorage, type ConcordStorage } from "./storage.js";
 
@@ -57,6 +58,14 @@ export interface InviteWatcherOptions {
   relays?: string[];
   /** Explicit inbox relays to read from instead of discovering 10050/NIP-65 relays. */
   inboxRelays?: string[];
+  /** Additional transport-only relays unioned onto every request/subscription this
+   *  watcher performs, and onto the per-relay user-AUTH loop (D-03/D-12). Distinct
+   *  from both `relays` (fallback inboxes) and `inboxRelays` (an explicit inbox
+   *  override): extras are additive transport targets, never a source of
+   *  discovered inboxes, and never written into any published content. Purely
+   *  additive: with no extras configured, every relay set this watcher uses is
+   *  identical to what it resolves on its own (D-14). */
+  extraRelays?: ExtraRelaysOption;
   /** Override the storage namespace for cursors/dismissals. */
   cursorKey?: string;
   /** Decrypt invites as they arrive instead of exposing them via `pending$`. */
@@ -112,10 +121,23 @@ export class InviteWatcher {
   private readonly overlapSeconds: number;
   private readonly requestTimeout: number;
   private readonly cursorKey?: string;
+  /** The per-engine transport-only extras holder (D-04) — merges into every
+   *  network target this watcher dials; the discovered-inbox subject
+   *  (`relays$`) is never fed a merged value (prohibition). */
+  private readonly extras: ExtraRelays;
 
   private readonly records = new Map<string, DirectInviteRecord>();
   private authSub?: Subscription;
   private liveSub?: Subscription;
+  /** Reacts to every later `extraRelays` emission (D-09): re-opens the live
+   *  subscription once one already exists, so a no-op emission before the
+   *  watcher has ever gone live cannot prematurely open its socket, and a real
+   *  later change re-derives the merged set via `openLive()`'s own churn guard. */
+  private extrasSub: Subscription;
+  /** The signature `openLive()` last opened a subscription for (pubkey plus the
+   *  sorted merged transport set) — guards against tearing down and reopening
+   *  the socket for a no-op re-emission (D-09/Pitfall 4, mirrors private-channel.ts). */
+  private liveSignature = "";
   private started = false;
   private pubkey?: string;
   private cursor = 0;
@@ -131,8 +153,16 @@ export class InviteWatcher {
     this.relayAuth = new ConcordRelayAuth(options.pool);
     this.autoDecrypt = options.autoDecrypt ?? false;
     this.autoAuthenticate = options.autoAuthenticate ?? true;
-    this.needsAuth$ = combineLatest([this.relays$, this.pool.status$, this.pubkey$]).pipe(
-      map(([relays, statuses, pubkey]) => this.userNeedsAuth(relays, statuses, pubkey)),
+    // Constructed before needsAuth$ below so its synchronous snapshot is
+    // already seeded when the derivation first builds (D-04).
+    this.extras = new ExtraRelays(options.extraRelays);
+    // Re-derive on every extras emission too (D-11: no first-value-only
+    // operator), computing the merged set locally via `transport()` rather
+    // than widening the public `relays$` subject — a gating extras relay now
+    // factors into needsAuth$ because we authenticate against it (D-03), but
+    // relays$ itself must keep reporting only what discovery found.
+    this.needsAuth$ = combineLatest([this.relays$, this.extras.relays$, this.pool.status$, this.pubkey$]).pipe(
+      map(([relays, , statuses, pubkey]) => this.userNeedsAuth(this.transport(relays), statuses, pubkey)),
       distinctUntilChanged(),
     );
     this.pendingCount$ = this.pending$.pipe(
@@ -143,6 +173,18 @@ export class InviteWatcher {
     this.overlapSeconds = options.overlapSeconds ?? 2 * 60 * 60;
     this.requestTimeout = options.requestTimeout ?? 10_000;
     this.cursorKey = options.cursorKey;
+
+    this.extrasSub = this.extras.relays$.subscribe(() => {
+      if (this.liveSub) this.openLive();
+    });
+  }
+
+  /** The merged transport target for a given base relay set: `base` unioned
+   *  with the current extras snapshot (D-04) — the ONLY merge point in the
+   *  class. Never fed to the public `relays$` discovered-inbox subject, which
+   *  only ever reports what `resolveRelays()` found (prohibition). */
+  private transport(base: string[]): string[] {
+    return this.extras.merge(base);
   }
 
   get eventStoreRef(): EventStore {
@@ -170,7 +212,8 @@ export class InviteWatcher {
   /** NIP-42-authenticate as the user on every connected inbox relay that requires auth. */
   async authenticateUser(): Promise<void> {
     if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
-    const relays = this.relays$.value;
+    // Merged so a gating extras relay also receives the user's AUTH (D-03).
+    const relays = this.transport(this.relays$.value);
     if (relays.length === 0) return;
     const statuses = await firstValueFrom(this.pool.status$);
     for (const url of relays) {
@@ -195,6 +238,8 @@ export class InviteWatcher {
     this.authSub = undefined;
     this.liveSub?.unsubscribe();
     this.liveSub = undefined;
+    this.extrasSub.unsubscribe();
+    this.extras.dispose();
     this.status$.next("");
   }
 
@@ -210,7 +255,7 @@ export class InviteWatcher {
 
     this.status$.next("Fetching direct invites...");
     const events = await firstValueFrom(
-      this.pool.request(relays, requestFilters).pipe(toArray(), timeout(this.requestTimeout)),
+      this.pool.request(this.transport(relays), requestFilters).pipe(toArray(), timeout(this.requestTimeout)),
     ).catch(() => [] as NostrEvent[]);
 
     for (const event of events) await this.ingest(event);
@@ -360,8 +405,16 @@ export class InviteWatcher {
   private openLive(): void {
     const relays = this.relays$.value;
     if (!this.pubkey || relays.length === 0) return;
+    const target = this.transport(relays);
+    // D-09/Pitfall 4: the churn guard's key covers both the pubkey the live
+    // filter targets and the sorted merged transport set, so a no-op
+    // `extraRelays$` re-emission (already de-duped upstream by `ExtraRelays`)
+    // still can't tear down and reopen the live socket if neither changed.
+    const sig = `${this.pubkey}|${[...target].sort().join(",")}`;
+    if (sig === this.liveSignature && this.liveSub) return;
+    this.liveSignature = sig;
     this.liveSub?.unsubscribe();
-    this.liveSub = this.pool.subscription(relays, this.filters()).subscribe((event) => void this.ingest(event));
+    this.liveSub = this.pool.subscription(target, this.filters()).subscribe((event) => void this.ingest(event));
   }
 
   private filters(): Array<{ kinds: number[]; "#p": string[]; "#k"?: string[]; since?: number }> {

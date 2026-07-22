@@ -151,9 +151,13 @@ describe("InviteWatcher", () => {
       getSupported: async () => null,
     };
     const pool = {
+      // Keyed by the normalized URL (trailing slash) — this mirrors RelayPool.relay()'s
+      // real normalizeURL() call, which invite-watcher's transport()-merged relay set
+      // now always passes through (D-03/D-12: the needs-auth check and the per-relay
+      // user-auth loop both operate on the merged, mergeRelaySets-normalized set).
       status$: new BehaviorSubject({
-        "wss://relay.example": {
-          url: "wss://relay.example",
+        "wss://relay.example/": {
+          url: "wss://relay.example/",
           connected: true,
           authenticated: false,
           authenticatedAs: null,
