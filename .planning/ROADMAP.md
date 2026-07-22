@@ -373,7 +373,7 @@ Plans:
 **Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
 **Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
 
-**Plans**: 9/10 plans executed
+**Plans**: 10/10 plans complete
 
 Plans:
 **Wave 1**
@@ -408,7 +408,7 @@ Plans:
 
 **Wave 8** *(gap closure — blocked on Wave 7 completion)*
 
-- [ ] 12.3-10-PLAN.md — auth-driver pruning, extras holder disposal/restart lifecycle, JSDoc truth pass (WR-04…WR-07)
+- [x] 12.3-10-PLAN.md — auth-driver pruning, extras holder disposal/restart lifecycle, JSDoc truth pass (WR-04…WR-07)
 
 **Cross-cutting constraints:**
 
@@ -452,7 +452,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
-| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 9/10 | In Progress|  |
+| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 10/10 | Complete   | 2026-07-22 |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
 

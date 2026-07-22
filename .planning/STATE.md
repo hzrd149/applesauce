@@ -5,16 +5,16 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Completed 12.3-09-PLAN.md
-last_updated: "2026-07-22T19:27:26.403Z"
+stopped_at: "Completed 12.3-10-PLAN.md (phase 12.3 complete: 10/10 plans)"
+last_updated: "2026-07-22T19:52:18.192Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 14
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 66
-  completed_plans: 65
-  percent: 64
+  completed_plans: 66
+  percent: 71
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 3 of 10
-Status: Ready to execute
-Last activity: 2026-07-22 — Phase 12.3 execution started
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — COMPLETE
+Plan: 10 of 10
+Status: All plans executed; phase ready for verification/close-out
+Last activity: 2026-07-22 — Completed 12.3-10-PLAN.md (final gap-closure plan)
 
-Progress: [██████████] 98%
+Progress: [██████████] 71%
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P07 | 13min | 2 tasks | 3 files |
 | Phase 12.3 P08 | 25min | 3 tasks | 3 files |
 | Phase 12.3 P09 | 20min | 2 tasks | 5 files |
+| Phase 12.3 P10 | 30min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -182,6 +183,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12.3]: 12.3-09: ack-origin tolerance implemented as a local normalizeAckOrigin closure (returns undefined on absent/unparseable from) rather than reusing relay-auth.ts's lookupStatus directly, since the shapes differ
 - [Phase 12.3]: 12.3-09: validateInviteBundle filters relays to typeof string + isSafeRelayURL after the existing cap slice (cap-then-filter), never normalizing survivors (D-01); an entirely-junk relays array still validates with an empty array rather than rejecting the bundle
 - [Phase 12.3]: 12.3-09: two pre-existing test fixtures (invite-bundle.test.ts's wss://ok, direct-invite.test.ts's wss://1..wss://7) used non-dotted toy hostnames that fail isSafeRelayURL's regex; fixed to realistic dotted hostnames as an in-scope knock-on regression fix, discovered via the full-suite run
+- [Phase 12.3]: 12.3-10: authDrivers replaced with a per-URL Map<string, Subscription> registry in community.ts/private-channel.ts; ensureAuth() now prunes on transport narrowing and registers a fresh driver on re-add, closing WR-04
+- [Phase 12.3]: 12.3-10: all five Concord engines now share one stop()-is-pause/dispose()-releases lifecycle rule; InviteWatcher's reactive extras subscription is extracted into subscribeExtras() so a restart re-establishes it without ever rebuilding the ExtraRelays holder object, closing WR-05/WR-06
+- [Phase 12.3]: 12.3-10: WR-09 (thread ConcordClient.extras.relays$ into sub-engines) remains deferred per plan 08's rationale, restated in the 12.3-10-SUMMARY — a D-13 threading/optimization change, not a correctness gap, and now further bounded by every holder being releasable
 
 ### Pending Todos
 
@@ -219,8 +223,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T19:27:26.396Z
-Stopped at: Completed 12.3-09-PLAN.md
+Last session: 2026-07-22T19:52:18.184Z
+Stopped at: Completed 12.3-10-PLAN.md (phase 12.3 complete: 10/10 plans)
 Resume file: None
 
 ## Operator Next Steps
