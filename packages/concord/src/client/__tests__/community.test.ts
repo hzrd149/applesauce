@@ -5,7 +5,7 @@
 // is covered by the puppeteer drivers.
 
 import { describe, expect, it, vi } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject, firstValueFrom } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Subject, Subscription, firstValueFrom } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
@@ -2122,5 +2122,185 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
     await expect(community.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
 
     community.dispose();
+  });
+});
+
+// Gap closure (WR-04): the auth-driver registry must PRUNE on every ensureAuth
+// call, not just monotonically append — a relay removed from the extras set
+// must have its NIP-42 driver torn down, and a later re-add must register a
+// genuinely FRESH driver (the old monotonic seen-set masked both defects).
+describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune-and-refresh, no churn on no-op (WR-04)", () => {
+  const AUTH_PROTOCOL = "wss://cmty-auth-protocol.test";
+  const AUTH_PROTOCOL_RELAYS = [AUTH_PROTOCOL];
+  const AUTH_EXTRA = "wss://cmty-auth-extra.test";
+  // `ensureAuth` receives the merged transport set — already normalized by
+  // `mergeRelaySets` (a trailing slash) — so `pool.relay(url)` (and thus the
+  // recorded driver key below) sees the NORMALIZED form, never the raw
+  // literal. Normalize these two constants once for every map lookup below.
+  const AUTH_PROTOCOL_KEY = normalizeURL(AUTH_PROTOCOL);
+  const AUTH_EXTRA_KEY = normalizeURL(AUTH_EXTRA);
+
+  // Distinct relay objects per URL (unlike `extrasPool()` above, which shares
+  // one relay object for every URL) — so `ConcordRelayAuth`'s internal
+  // per-relay driver map (keyed by `relay.url`) genuinely tracks each URL
+  // independently, and spying on `authenticateStreamKeys` lets these tests
+  // assert teardown/re-creation via the returned Subscription's `closed` flag.
+  function authDriverPool(): { pool: RelayPool } {
+    const relays = new Map<string, ReturnType<typeof makeRelay>>();
+    function makeRelay(url: string) {
+      return {
+        url,
+        challenge: null,
+        challenge$: new BehaviorSubject<string | null>(null),
+        isAuthenticated: () => false,
+        authenticate: async () => ({ ok: true }),
+        getSupported: async () => null,
+        request: () => EMPTY,
+        sync: () => EMPTY,
+      };
+    }
+    const pool = {
+      status$: new Subject(),
+      relay: (url: string) => {
+        if (!relays.has(url)) relays.set(url, makeRelay(url));
+        return relays.get(url)!;
+      },
+      subscription: () => NEVER,
+      request: () => EMPTY,
+      publish: okAll,
+    } as unknown as RelayPool;
+    return { pool };
+  }
+
+  /** Spies on `relayAuth.authenticateStreamKeys`, recording every returned
+   *  Subscription keyed by the relay URL it was registered for, so a test can
+   *  assert on `.closed` per call without reaching into `community`'s own
+   *  private `authDrivers` field. */
+  function spyOnDrivers(relayAuth: ConcordRelayAuth): Map<string, Subscription[]> {
+    const driverSubs = new Map<string, Subscription[]>();
+    const original = relayAuth.authenticateStreamKeys.bind(relayAuth);
+    vi.spyOn(relayAuth, "authenticateStreamKeys").mockImplementation((relay) => {
+      const sub = original(relay);
+      const arr = driverSubs.get(relay.url) ?? [];
+      arr.push(sub);
+      driverSubs.set(relay.url, arr);
+      return sub;
+    });
+    return driverSubs;
+  }
+
+  it("removing a relay from the extras set unsubscribes its auth driver, and re-adding it registers a FRESH driver (WR-04)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = authDriverPool();
+    const relayAuth = new ConcordRelayAuth(pool);
+    const driverSubs = spyOnDrivers(relayAuth);
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: AUTH_PROTOCOL_RELAYS });
+    const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth,
+      eventStore: new EventStore(),
+      relays: AUTH_PROTOCOL_RELAYS,
+      extraRelays: extras$,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false);
+
+    // Narrow the extras set — the extra relay leaves the transport.
+    extras$.next([]);
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // torn down (WR-04)
+
+    // Re-add: a FRESH driver must register — the monotonic seen-set previously
+    // suppressed this entirely (WR-04's second half).
+    extras$.next([AUTH_EXTRA]);
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(2);
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![1].closed).toBe(false);
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // the removed one stays torn down
+
+    community.dispose();
+  });
+
+  it("a re-emission with identical membership does not unsubscribe or re-create any existing driver (no churn, D-09)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = authDriverPool();
+    const relayAuth = new ConcordRelayAuth(pool);
+    const driverSubs = spyOnDrivers(relayAuth);
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: AUTH_PROTOCOL_RELAYS });
+    const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth,
+      eventStore: new EventStore(),
+      relays: AUTH_PROTOCOL_RELAYS,
+      extraRelays: extras$,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
+    expect(driverSubs.get(AUTH_PROTOCOL_KEY)?.length).toBe(1);
+
+    // A no-op re-emission — same membership, new array instance.
+    extras$.next([AUTH_EXTRA]);
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1); // no re-create
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false); // no unsubscribe
+    expect(driverSubs.get(AUTH_PROTOCOL_KEY)?.length).toBe(1);
+
+    community.dispose();
+  });
+
+  it("dispose() unsubscribes every registered auth driver", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = authDriverPool();
+    const relayAuth = new ConcordRelayAuth(pool);
+    const driverSubs = spyOnDrivers(relayAuth);
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: AUTH_PROTOCOL_RELAYS });
+    const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth,
+      eventStore: new EventStore(),
+      relays: AUTH_PROTOCOL_RELAYS,
+      extraRelays: extras$,
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    community.dispose();
+
+    for (const subs of driverSubs.values()) for (const sub of subs) expect(sub.closed).toBe(true);
   });
 });

@@ -4,9 +4,10 @@
 // adopted epoch's messages — proving a private channel rotates on its own
 // lifecycle, independent of the community root.
 
-import { describe, expect, it } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject, firstValueFrom, from } from "rxjs";
+import { describe, expect, it, vi } from "vitest";
+import { BehaviorSubject, EMPTY, NEVER, Subject, Subscription, firstValueFrom, from } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { normalizeURL } from "applesauce-core/helpers";
 import { kinds, type NostrEvent } from "applesauce-core/helpers/event";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore, RumorStore } from "applesauce-core";
@@ -369,5 +370,211 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
     expect(subscriptionTargets.at(-1)).toEqual(CHANNEL_RELAYS);
 
     sub.dispose();
+  });
+});
+
+// Gap closure (WR-04): mirrors community.test.ts's identical describe block —
+// the auth-driver registry must PRUNE on every ensureAuth call, not just
+// monotonically append.
+describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — prune-and-refresh, no churn on no-op (WR-04)", () => {
+  const AUTH_CHANNEL_RELAY = "wss://pc-auth-channel.test";
+  const AUTH_CHANNEL_RELAYS = [AUTH_CHANNEL_RELAY];
+  const AUTH_EXTRA = "wss://pc-auth-extra.test";
+  // `ensureAuth` receives the merged transport set — already normalized by
+  // `mergeRelaySets` (a trailing slash) — so `pool.relay(url)` (and thus the
+  // recorded driver key below) sees the NORMALIZED form, never the raw
+  // literal. Normalize once for every map lookup below.
+  const AUTH_CHANNEL_RELAY_KEY = normalizeURL(AUTH_CHANNEL_RELAY);
+  const AUTH_EXTRA_KEY = normalizeURL(AUTH_EXTRA);
+
+  function makeChannelKey() {
+    return {
+      id: bytesToHex(generateSecretKey()),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 1,
+      name: "secret",
+    };
+  }
+
+  // Distinct relay objects per URL (unlike `extrasPrivateChannelPool()` above,
+  // which shares one relay object for every URL) — so `ConcordRelayAuth`'s
+  // internal per-relay driver map (keyed by `relay.url`) genuinely tracks each
+  // URL independently, and spying on `authenticateStreamKeys` lets these tests
+  // assert teardown/re-creation via the returned Subscription's `closed` flag.
+  function authDriverPool(): { pool: RelayPool } {
+    const relays = new Map<string, ReturnType<typeof makeRelay>>();
+    function makeRelay(url: string) {
+      return {
+        url,
+        challenge: null,
+        challenge$: new BehaviorSubject<string | null>(null),
+        isAuthenticated: () => false,
+        authenticate: async () => ({ ok: true }),
+        getSupported: async () => null,
+        request: () => EMPTY,
+        sync: () => EMPTY,
+      };
+    }
+    const pool = {
+      status$: new Subject(),
+      relay: (url: string) => {
+        if (!relays.has(url)) relays.set(url, makeRelay(url));
+        return relays.get(url)!;
+      },
+      subscription: () => NEVER,
+      request: () => EMPTY,
+      publish: async () => [],
+    } as unknown as RelayPool;
+    return { pool };
+  }
+
+  /** Spies on `relayAuth.authenticateStreamKeys`, recording every returned
+   *  Subscription keyed by the (normalized) relay URL it was registered for. */
+  function spyOnDrivers(relayAuth: ConcordRelayAuth): Map<string, Subscription[]> {
+    const driverSubs = new Map<string, Subscription[]>();
+    const original = relayAuth.authenticateStreamKeys.bind(relayAuth);
+    vi.spyOn(relayAuth, "authenticateStreamKeys").mockImplementation((relay) => {
+      const sub = original(relay);
+      const arr = driverSubs.get(relay.url) ?? [];
+      arr.push(sub);
+      driverSubs.set(relay.url, arr);
+      return sub;
+    });
+    return driverSubs;
+  }
+
+  it("removing a relay from the extras set unsubscribes its auth driver, and re-adding it registers a FRESH driver (WR-04)", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: AUTH_CHANNEL_RELAYS });
+    const material = g.material;
+    const channel = makeChannelKey();
+
+    const { pool } = authDriverPool();
+    const relayAuth = new ConcordRelayAuth(pool);
+    const driverSubs = spyOnDrivers(relayAuth);
+    const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth,
+      eventStore: new EventStore(),
+      store,
+      relays: AUTH_CHANNEL_RELAYS,
+      extraRelays: extras$,
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false);
+
+    // Narrow the extras set — the extra relay leaves the transport.
+    extras$.next([]);
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // torn down (WR-04)
+
+    // Re-add: a FRESH driver must register.
+    extras$.next([AUTH_EXTRA]);
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(2);
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![1].closed).toBe(false);
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // the removed one stays torn down
+
+    sub.dispose();
+  });
+
+  it("a re-emission with identical membership does not unsubscribe or re-create any existing driver (no churn, D-09)", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: AUTH_CHANNEL_RELAYS });
+    const material = g.material;
+    const channel = makeChannelKey();
+
+    const { pool } = authDriverPool();
+    const relayAuth = new ConcordRelayAuth(pool);
+    const driverSubs = spyOnDrivers(relayAuth);
+    const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth,
+      eventStore: new EventStore(),
+      store,
+      relays: AUTH_CHANNEL_RELAYS,
+      extraRelays: extras$,
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
+    expect(driverSubs.get(AUTH_CHANNEL_RELAY_KEY)?.length).toBe(1);
+
+    // A no-op re-emission — same membership, new array instance.
+    extras$.next([AUTH_EXTRA]);
+    await settle();
+
+    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1); // no re-create
+    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false); // no unsubscribe
+    expect(driverSubs.get(AUTH_CHANNEL_RELAY_KEY)?.length).toBe(1);
+
+    sub.dispose();
+  });
+
+  it("dispose() unsubscribes every registered auth driver", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: AUTH_CHANNEL_RELAYS });
+    const material = g.material;
+    const channel = makeChannelKey();
+
+    const { pool } = authDriverPool();
+    const relayAuth = new ConcordRelayAuth(pool);
+    const driverSubs = spyOnDrivers(relayAuth);
+    const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth,
+      eventStore: new EventStore(),
+      store,
+      relays: AUTH_CHANNEL_RELAYS,
+      extraRelays: extras$,
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    sub.dispose();
+
+    for (const subs of driverSubs.values()) for (const s of subs) expect(s.closed).toBe(true);
   });
 });
