@@ -319,8 +319,13 @@ export class ConcordCommunity {
    *  has ever gone live cannot prematurely open a socket, and a real later
    *  change re-derives the merged set via `openLive()`'s own widened guard. */
   private extrasSub: Subscription;
-  private authDrivers = new Subscription();
-  private seenRelays = new Set<string>();
+  /** URL → the Subscription {@link relay-auth.js}'s `authenticateStreamKeys`
+   *  returned for it (WR-04). Keyed by URL rather than a single aggregate
+   *  Subscription so {@link ensureAuth} can PRUNE an entry whose relay left the
+   *  transport set — a de-configured relay's driver must actually tear down,
+   *  not just accumulate forever, and a relay re-added after removal must
+   *  register a genuinely fresh driver rather than being silently suppressed. */
+  private authDrivers = new Map<string, Subscription>();
   private liveAuthors = "";
   private rekeyTimer?: ReturnType<typeof setTimeout>;
   /** epoch → lowest adopted root key (D-04 down-only anti-refork latch). A
@@ -540,7 +545,8 @@ export class ConcordCommunity {
     this.liveSub?.unsubscribe();
     this.extrasSub.unsubscribe();
     this.extras.dispose();
-    this.authDrivers.unsubscribe();
+    for (const sub of this.authDrivers.values()) sub.unsubscribe();
+    this.authDrivers.clear();
     if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
     for (const engine of this.privateChannels.values()) engine.dispose();
     this.privateChannels.clear();
@@ -684,12 +690,31 @@ export class ConcordCommunity {
     };
   }
 
-  /** Register the per-relay NIP-42 auth drivers once per relay (idempotent). */
+  /**
+   * Synchronise the per-URL auth-driver registry against `relays` (WR-04): any
+   * registered driver whose URL is no longer in `relays` is unsubscribed and
+   * dropped (so a de-configured relay stops receiving NIP-42 responses driven
+   * by the community's stream keys), and a fresh driver is registered for every
+   * URL in `relays` that has none yet — including a URL that was previously
+   * removed and is now being re-added. An entry already present and still
+   * wanted is left completely untouched (no unsubscribe/re-create), so a
+   * no-op re-emission of an unchanged transport set churns nothing (D-09).
+   *
+   * MUST always be called with the COMPLETE current transport set, never a
+   * subset — every call site (both `syncContext()` callers and both
+   * `openLive()` callers) passes a full transport snapshot, because this now
+   * prunes anything absent from its argument.
+   */
   private ensureAuth(relays: string[]): void {
-    for (const url of relays) {
-      if (this.seenRelays.has(url)) continue;
-      this.seenRelays.add(url);
-      this.authDrivers.add(this.relayAuth.authenticateStreamKeys(this.pool.relay(url)));
+    const wanted = new Set(relays);
+    for (const [url, sub] of this.authDrivers) {
+      if (wanted.has(url)) continue;
+      sub.unsubscribe();
+      this.authDrivers.delete(url);
+    }
+    for (const url of wanted) {
+      if (this.authDrivers.has(url)) continue;
+      this.authDrivers.set(url, this.relayAuth.authenticateStreamKeys(this.pool.relay(url)));
     }
   }
 

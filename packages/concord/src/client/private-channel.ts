@@ -130,8 +130,11 @@ export class ConcordPrivateChannel {
    *  later change re-derives the merged set via `openLive()`'s own widened
    *  churn guard (Pitfall 4). */
   private extrasSub: Subscription;
-  private authDrivers = new Subscription();
-  private seenRelays = new Set<string>();
+  /** URL → the Subscription {@link relay-auth.js}'s `authenticateStreamKeys`
+   *  returned for it (WR-04) — see `community.ts`'s identical field for the
+   *  full rationale (prune on removal, fresh driver on re-add, no churn on an
+   *  unchanged set, D-09). */
+  private authDrivers = new Map<string, Subscription>();
   private liveAuthors = "";
   private rekeyTimer?: ReturnType<typeof setTimeout>;
   /** epoch → lowest adopted channel key (D-04 down-only anti-refork latch). A
@@ -207,7 +210,8 @@ export class ConcordPrivateChannel {
   dispose(): void {
     this.disposed = true;
     this.liveSub?.unsubscribe();
-    this.authDrivers.unsubscribe();
+    for (const sub of this.authDrivers.values()) sub.unsubscribe();
+    this.authDrivers.clear();
     this.extrasSub.unsubscribe();
     this.extras.dispose();
     if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
@@ -323,33 +327,52 @@ export class ConcordPrivateChannel {
     };
   }
 
+  /** Synchronise the per-URL auth-driver registry against `relays` (WR-04) —
+   *  mirrors `community.ts`'s identical method: prune any driver whose URL
+   *  left the set, register a fresh one for anything new (including a re-add
+   *  after removal), and leave an entry untouched if it's still wanted (no
+   *  churn, D-09). MUST always be called with the COMPLETE current transport
+   *  set, never a subset — both call sites below (`syncContext()`,
+   *  `openLive()`) pass a full transport snapshot. */
   private ensureAuth(relays: string[]): void {
-    for (const url of relays) {
-      if (this.seenRelays.has(url)) continue;
-      this.seenRelays.add(url);
-      this.authDrivers.add(this.opts.relayAuth.authenticateStreamKeys(this.opts.pool.relay(url)));
+    const wanted = new Set(relays);
+    for (const [url, sub] of this.authDrivers) {
+      if (wanted.has(url)) continue;
+      sub.unsubscribe();
+      this.authDrivers.delete(url);
+    }
+    for (const url of wanted) {
+      if (this.authDrivers.has(url)) continue;
+      this.authDrivers.set(url, this.opts.relayAuth.authenticateStreamKeys(this.opts.pool.relay(url)));
     }
   }
 
   private openLive(): void {
     this.keys = deriveChannelKeys(this.opts.material(), this.channelKey);
     const { authors } = channelLiveAuthors(this.opts.material(), this.channelKey);
-    // D-09/Pitfall 4: the churn guard's key now covers BOTH the sorted authors
-    // list and the sorted merged transport set, so a no-op `extraRelays$`
-    // re-emission (already de-duped upstream by `ExtraRelays`) still can't
-    // tear down and reopen the live socket if neither actually changed.
-    const sig = `${[...authors].sort().join(",")}|${[...this.transport()].sort().join(",")}`;
+    // Computed ONCE and reused for the guard, the auth registration, the
+    // subscription target, and the debug log's length (mirrors
+    // `community.ts`'s `openLive()` `targets` local verbatim) — the previous
+    // four separate `transport()` calls made the guard agree with what was
+    // actually dialled only by accident, and the fourth allocated a merged
+    // array purely to read its length. D-09/Pitfall 4: the churn guard's key
+    // covers BOTH the sorted authors list and the sorted merged transport set,
+    // so a no-op `extraRelays$` re-emission (already de-duped upstream by
+    // `ExtraRelays`) still can't tear down and reopen the live socket if
+    // neither actually changed.
+    const targets = this.transport();
+    const sig = `${[...authors].sort().join(",")}|${[...targets].sort().join(",")}`;
     if (sig === this.liveAuthors && this.liveSub) return;
     this.liveAuthors = sig;
     this.opts.relayAuth.registerStreamKeys([this.keys.current, ...this.keys.nextRekey.map((r) => r.key)]);
-    this.ensureAuth(this.transport());
+    this.ensureAuth(targets);
     this.liveSub?.unsubscribe();
     this.liveSub = this.opts.pool
-      .subscription(this.transport(), [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
+      .subscription(targets, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
         waitForAuth: authors,
       })
       .subscribe((event) => this.onWrap(event as NostrEvent));
-    this.log("live subscription open targets=%d", this.transport().length);
+    this.log("live subscription open targets=%d", targets.length);
   }
 
   // ---- live channel-rekey adoption ----------------------------------------
