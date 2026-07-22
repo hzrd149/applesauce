@@ -38,7 +38,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant (completed 2026-07-21)
 - [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
-- [ ] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
+- [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog) (completed 2026-07-22)
 - [ ] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog)
 - [ ] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog)
 
@@ -339,10 +339,11 @@ Plans:
 **Requirements**: TBD *(promoted from backlog 999.3; no concrete REQ-IDs — coverage keys off CONTEXT.md D-01..D-06 + standing TEST-01)*
 **Success Criteria**: Backfill path (`syncAuthors`) requests only retained kind 1059; both live-subscription sites still request 1059 + 21059; a non-vacuous two-directional filter-spy test guards the asymmetry.
 
-**Plans**: 1 plan
+**Plans**: 1/1 plans complete
 
 Plans:
-- [ ] 12.1-01-PLAN.md — Add `BACKFILL_KINDS` constant, route `syncAuthors` through it, and add a non-vacuous two-directional filter-spy test
+
+- [x] 12.1-01-PLAN.md — Add `BACKFILL_KINDS` constant, route `syncAuthors` through it, and add a non-vacuous two-directional filter-spy test
 
 ### Phase 12.2: Concord Sync Debug Logging (INSERTED)
 
@@ -382,7 +383,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 0/TBD | Not started | - |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
-| 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 0/TBD | Not started | - |
+| 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete   | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 0/TBD | Not started | - |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 0/TBD | Not started | - |
 

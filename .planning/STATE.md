@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 11
-current_phase_name: Messaging Wire Conformance
-status: executing
+current_phase: 12.1
+current_phase_name: concord-sync-skips-ephemeral-kind-21059
+status: verifying
 stopped_at: Phase 12.1 context gathered
-last_updated: "2026-07-22T08:13:21.237Z"
-last_activity: 2026-07-21
-last_activity_desc: Phase 10 complete, transitioned to Phase 11
+last_updated: "2026-07-22T08:23:27.542Z"
+last_activity: 2026-07-22
+last_activity_desc: Phase 12.1 execution started
 progress:
   total_phases: 12
-  completed_phases: 7
-  total_plans: 51
-  completed_plans: 51
-  percent: 58
+  completed_phases: 8
+  total_plans: 52
+  completed_plans: 52
+  percent: 67
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 10 — invite-lifecycle-event-time-consistency
+**Current focus:** Phase 12.1 — concord-sync-skips-ephemeral-kind-21059
 
 ## Current Position
 
-Phase: 11 — Messaging Wire Conformance
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-21 — Phase 10 complete, transitioned to Phase 11
+Phase: 12.1 (concord-sync-skips-ephemeral-kind-21059) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-07-22 — Phase 12.1 execution started
 
 Progress: [██████████] 98%
 
@@ -72,6 +72,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 10 P04 | 6min | 2 tasks | 2 files |
 | Phase 10 P05 | 15min | 2 tasks | 2 files |
 | Phase 10 P06 | 20min | 3 tasks | 8 files |
+| Phase 12.1 P01 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 10]: 10-06: D-05 locked as SECONDS end-to-end for expires_at; the §1/§4 contradiction is recorded in UPSTREAM-NOTES.md rather than re-litigated
 - [Phase 10]: 10-06: reworded client.ts's inline D-05 comment to avoid literal 'unix ms'/'milliseconds' substrings so the production-source grep stays clean; dual-citation text lives only in the test file
 - [Phase 10]: 10-06: community.ts's pass-through expires_at write sites needed no code change -- unit correctness flows from the two comparison sites (client.ts join check, direct-invite.ts expired()) and updated doc-comments
+- [Phase ?]: 12.1-01: BACKFILL_KINDS kept as working name; syncAuthors backfill filter routed through it, live sites (community.ts/private-channel.ts) left unchanged per D-02 asymmetry
+- [Phase ?]: 12.1-01: Non-vacuity probe (D-04/TEST-01) confirmed empirically via temporary in-place revert/restore of sync.ts -- RED against pre-fix two-kind filter, GREEN after restoring the fix
 
 ### Pending Todos
 
@@ -173,7 +176,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-21T17:09:41.388Z
+Last session: 2026-07-22T08:22:29.182Z
 Stopped at: Phase 12.1 context gathered
 Resume file: .planning/phases/12.1-concord-sync-skips-ephemeral-kind-21059/12.1-CONTEXT.md
 
