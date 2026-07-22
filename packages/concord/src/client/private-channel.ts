@@ -8,7 +8,7 @@
 // consumers read its `store` with the standard timeline/model API.
 
 import type { Debugger } from "debug";
-import { BehaviorSubject, Observable, Subscription, combineLatest, shareReplay } from "rxjs";
+import { BehaviorSubject, Observable, Subscription, combineLatest, shareReplay, switchMap } from "rxjs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
@@ -17,6 +17,7 @@ import type { RelayPool } from "applesauce-relay";
 
 import { logger } from "../logger.js";
 import type { ConcordRelayAuth } from "./relay-auth.js";
+import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo } from "../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { checkChatBinding } from "../helpers/chat.js";
@@ -48,7 +49,16 @@ export interface ConcordPrivateChannelOptions {
   eventStore: EventStore;
   /** The `channel:<id>` rumor store (owned by the community's store factory). */
   store: ConcordRumorStore;
+  /** The channel's protocol relay set. Keeps its exact current meaning — never
+   *  mutated, reassigned, or widened by `extraRelays` (D-14). */
   relays: string[];
+  /** Additional transport-only relays threaded down from `ConcordClientOptions`
+   *  (via the community), unioned into every request/subscription/publish/auth
+   *  target this channel engine dials — but never written into any published
+   *  content. Purely additive: with no extras configured, every relay set this
+   *  engine uses is identical to `relays` alone (D-14); it never substitutes
+   *  for `relays`. */
+  extraRelays?: ExtraRelaysOption;
   /** May `rotator` rotate this channel at all — holds `MANAGE_CHANNELS` (CORD-04).
    *  Gates adoption and validity. */
   isAuthorized: (rotator: string) => boolean;
@@ -77,9 +87,18 @@ export class ConcordPrivateChannel {
   readonly phase$ = new BehaviorSubject<ConcordSyncPhase>("idle");
   /** The last sync error message, or null. */
   readonly error$ = new BehaviorSubject<string | null>(null);
-  /** Whether any of the channel's relays has an open socket. */
+  /** Whether any of the channel's relays (plus any configured `extraRelays`) has
+   *  an open socket — derived from the merged transport set (D-07). Because this
+   *  is an any-of check, an always-up app-local extra keeps this reporting
+   *  connected even when every real channel relay is down; an accepted,
+   *  documented consequence of routing status through the merged set, not a
+   *  defect. */
   readonly connected$: Observable<boolean>;
-  /** Whether the channel's stream keys are NIP-42-authenticated on every connected relay. */
+  /** Whether the channel's stream keys are NIP-42-authenticated on every
+   *  connected relay in the merged transport set (D-07). Because this is an
+   *  all-of check over connected relays, an extra that challenges and rejects
+   *  our stream keys holds this flag low indefinitely; an accepted, documented
+   *  consequence of routing status through the merged set, not a defect. */
   readonly authenticated$: Observable<boolean>;
   /** A flat snapshot of the channel's status, for UI to react to as one value. */
   readonly status$: Observable<ConcordPrivateChannelStatus>;
@@ -96,12 +115,21 @@ export class ConcordPrivateChannel {
    *  constructor — never re-`.extend()`d per wrap. */
   private readonly decodeLog: Debugger;
   private readonly opts: ConcordPrivateChannelOptions;
+  /** The per-engine transport-only extras holder (D-04) — merges into every
+   *  network target this engine dials; `opts.relays` itself is never touched. */
+  private readonly extras: ExtraRelays;
   private channelKey: ChannelKey;
   private keys: ChannelKeys;
   /** Retained channel-rekey events, for the live rotation check. */
   private readonly rekeyEvents = new Map<string, DecodedEvent>();
 
   private liveSub?: Subscription;
+  /** Reacts to every later `extraRelays` emission (D-08/D-09): re-opens the live
+   *  subscription once one already exists, so a no-op emission before the
+   *  channel has ever gone live cannot prematurely open its socket, and a real
+   *  later change re-derives the merged set via `openLive()`'s own widened
+   *  churn guard (Pitfall 4). */
+  private extrasSub: Subscription;
   private authDrivers = new Subscription();
   private seenRelays = new Set<string>();
   private liveAuthors = "";
@@ -118,14 +146,23 @@ export class ConcordPrivateChannel {
     this.syncLog = this.log.extend("sync");
     this.decodeLog = this.syncLog.extend("decode");
     this.opts = options;
+    // Constructed BEFORE the status observables below so their synchronous
+    // snapshot is already seeded when connected$/authenticated$ build (D-04).
+    this.extras = new ExtraRelays(options.extraRelays);
     this.channelKey = options.channelKey;
     this.keys = deriveChannelKeys(options.material(), options.channelKey);
     this.epoch$ = new BehaviorSubject<number>(options.channelKey.epoch);
 
-    this.connected$ = options.relayAuth.connected$(options.relays);
-    this.authenticated$ = options.relayAuth.authenticated$(
-      options.relays,
-      () => channelLiveAuthors(this.opts.material(), this.channelKey).authors,
+    // Re-derive reactively on every extras emission (D-08) rather than once
+    // from a construction-time snapshot — no first-value-only operator here, so
+    // a later change on an `extraRelays` Observable keeps taking effect (D-11).
+    this.connected$ = this.extras.relays$.pipe(switchMap(() => options.relayAuth.connected$(this.transport())));
+    this.authenticated$ = this.extras.relays$.pipe(
+      switchMap(() =>
+        options.relayAuth.authenticated$(this.transport(), () =>
+          channelLiveAuthors(this.opts.material(), this.channelKey).authors,
+        ),
+      ),
     );
     this.status$ = combineLatest({
       phase: this.phase$,
@@ -134,6 +171,10 @@ export class ConcordPrivateChannel {
       authenticated: this.authenticated$,
       error: this.error$,
     }).pipe(shareReplay(1));
+
+    this.extrasSub = this.extras.relays$.subscribe(() => {
+      if (!this.disposed && this.liveSub) this.openLive();
+    });
   }
 
   get channelId(): string {
@@ -167,6 +208,8 @@ export class ConcordPrivateChannel {
     this.disposed = true;
     this.liveSub?.unsubscribe();
     this.authDrivers.unsubscribe();
+    this.extrasSub.unsubscribe();
+    this.extras.dispose();
     if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
     // The store is owned by the community's store factory — not disposed here.
   }
@@ -251,6 +294,15 @@ export class ConcordPrivateChannel {
 
   // ---- sync context / live subscription -----------------------------------
 
+  /** The merged transport target for this channel: `opts.relays` unioned with
+   *  the current extras snapshot (D-04) — the ONLY merge point in the class.
+   *  `opts.relays` itself keeps its exact protocol meaning untouched; this is
+   *  for network targets only (pool subscription/request/publish, auth), never
+   *  for anything written into signed or published content. */
+  private transport(): string[] {
+    return this.extras.merge(this.opts.relays);
+  }
+
   private syncContext(): ChannelSyncContext {
     return {
       pool: this.opts.pool,
@@ -258,7 +310,7 @@ export class ConcordPrivateChannel {
       eventStore: this.opts.eventStore,
       signer: this.opts.signer,
       self: this.opts.pubkey,
-      relays: this.opts.relays,
+      relays: this.transport(),
       material: this.opts.material(),
       isAuthorized: this.opts.isAuthorized,
       canRemoveSelf: this.opts.canRemoveSelf,
@@ -282,17 +334,22 @@ export class ConcordPrivateChannel {
   private openLive(): void {
     this.keys = deriveChannelKeys(this.opts.material(), this.channelKey);
     const { authors } = channelLiveAuthors(this.opts.material(), this.channelKey);
-    const sig = [...authors].sort().join(",");
+    // D-09/Pitfall 4: the churn guard's key now covers BOTH the sorted authors
+    // list and the sorted merged transport set, so a no-op `extraRelays$`
+    // re-emission (already de-duped upstream by `ExtraRelays`) still can't
+    // tear down and reopen the live socket if neither actually changed.
+    const sig = `${[...authors].sort().join(",")}|${[...this.transport()].sort().join(",")}`;
     if (sig === this.liveAuthors && this.liveSub) return;
     this.liveAuthors = sig;
     this.opts.relayAuth.registerStreamKeys([this.keys.current, ...this.keys.nextRekey.map((r) => r.key)]);
-    this.ensureAuth(this.opts.relays);
+    this.ensureAuth(this.transport());
     this.liveSub?.unsubscribe();
     this.liveSub = this.opts.pool
-      .subscription(this.opts.relays, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
+      .subscription(this.transport(), [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
         waitForAuth: authors,
       })
       .subscribe((event) => this.onWrap(event as NostrEvent));
+    this.log("live subscription open targets=%d", this.transport().length);
   }
 
   // ---- live channel-rekey adoption ----------------------------------------
