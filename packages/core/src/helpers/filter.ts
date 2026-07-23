@@ -1,5 +1,5 @@
 import equal from "fast-deep-equal";
-import { Filter as CoreFilter } from "nostr-tools";
+import type { Filter as CoreFilter } from "nostr-tools/filter";
 import { NostrEvent } from "./event.js";
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";

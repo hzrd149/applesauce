@@ -1,4 +1,4 @@
-import { NostrEvent } from "nostr-tools";
+import type { NostrEvent } from "nostr-tools/pure";
 import type { TagOperation } from "../../factories/types.js";
 import {
   createATagFromAddressPointer,
