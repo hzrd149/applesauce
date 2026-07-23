@@ -1,12 +1,6 @@
 // NOTE: import from subpaths only, importing from the "nostr-tools" root pulls in modules that reference `fetch`
 import * as kinds from "nostr-tools/kinds";
-import {
-  isAddressableKind,
-  isEphemeralKind,
-  isKind,
-  isRegularKind,
-  isReplaceableKind,
-} from "nostr-tools/kinds";
+import { isAddressableKind, isEphemeralKind, isKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
 import { EventTemplate, NostrEvent, UnsignedEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
 import { IAsyncEventStore, IEventStore } from "../event-store/interface.js";
 import { getOrComputeCachedValue } from "./cache.js";

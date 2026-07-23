@@ -119,7 +119,7 @@ importers:
         specifier: ^0.12.2
         version: 0.12.2
       applesauce-accounts:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../../packages/accounts
       applesauce-actions:
         specifier: ^6.2.0
@@ -131,22 +131,22 @@ importers:
         specifier: ^6.2.0
         version: link:../../packages/content
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../../packages/core
       applesauce-extra:
         specifier: ^6.2.0
         version: link:../../packages/extra
       applesauce-loaders:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../../packages/loaders
       applesauce-react:
         specifier: ^6.0.0
         version: link:../../packages/react
       applesauce-relay:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../../packages/relay
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../../packages/signers
       applesauce-sqlite:
         specifier: ^6.0.0
@@ -315,10 +315,10 @@ importers:
   packages/accounts:
     dependencies:
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../core
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../signers
       nanoid:
         specifier: ^5.1.5
@@ -557,7 +557,7 @@ importers:
   packages/loaders:
     dependencies:
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -570,7 +570,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../signers
       rimraf:
         specifier: ^6.0.1
@@ -635,7 +635,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -651,7 +651,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@5.9.3)
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../signers
       rimraf:
         specifier: ^6.0.1
@@ -675,7 +675,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^6.3.0
         version: link:../core
       debug:
         specifier: ^4.4.0

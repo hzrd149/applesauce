@@ -1,5 +1,16 @@
 # applesauce-loaders
 
+## 6.3.0
+
+### Minor Changes
+
+- 98875b1: Add `waitForAuth` support to the sync loader so auth-required relays wait for NIP-42 authentication and retry.
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.3.0
+
 ## 6.2.0
 
 ### Minor Changes
