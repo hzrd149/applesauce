@@ -5,7 +5,7 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: "Completed 12.3-11-PLAN.md (phase 12.3 complete: 11/11 plans; CR-01/CR-02 gap closure)"
+stopped_at: "Completed 12.3-11-PLAN.md (11/11 plans executed; code review found 2 new BLOCKERs — phase not complete)"
 last_updated: "2026-07-23T09:33:08.124Z"
 last_activity: 2026-07-23
 last_activity_desc: Completed 12.3-11-PLAN.md
