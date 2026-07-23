@@ -54,6 +54,7 @@ import {
   STOCK_RELAYS,
   getInviteBundle,
   isInviteBundleRevoked,
+  isSafeInviteRelayURL,
   isValidInviteBundle,
   parseInviteLink,
   validateInviteBundle,
@@ -634,7 +635,13 @@ export class ConcordClient {
       community_root: bundle.community_root,
       root_epoch: bundle.root_epoch,
       channels: bundle.channels ?? [],
-      relays: bundle.relays.length ? bundle.relays : fallbackRelays,
+      // CR-01/T-12.3-11: defence-in-depth second gate — the fragment decode
+      // (isSafeInviteRelayURL there) is the primary one. fallbackRelays reaches
+      // here from two callers: joinByLink (attacker-influenced bootstrap relays
+      // parsed from the invite link fragment) and joinByBundle (the client's
+      // own defaultRelays), so filtering here is harmless for the trusted
+      // caller and load-bearing for the hostile one.
+      relays: bundle.relays.length ? bundle.relays : fallbackRelays.filter(isSafeInviteRelayURL),
       name: bundle.name,
       // Canonicalize to [] (invite bundles omit held_roots) so this join material
       // is byte-identical to what the engine's `buildChain` settles on — otherwise

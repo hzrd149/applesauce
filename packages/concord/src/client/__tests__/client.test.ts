@@ -13,6 +13,7 @@ import "applesauce-common/casts";
 import type { RelayPool } from "applesauce-relay";
 import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
 import { hexToBytes } from "@noble/hashes/utils.js";
+import { base64urlnopad } from "@scure/base";
 
 import { ConcordClient } from "../client.js";
 import { ConcordInviteManager } from "../invite-manager.js";
@@ -1103,6 +1104,82 @@ describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02
     // dropped the off-coordinate injection and let the honest d:"" bundle win.
     const community = await client.joinByLink(link);
     expect(community.communityId).toBe(cid);
+
+    client.stop();
+  });
+
+  // Gap closure (CR-01, 12.3-11): a hostile link whose bundle relays are ALL
+  // junk (so validateInviteBundle's own filter empties them, making the
+  // fallback branch reliably reachable) AND whose fragment carries a
+  // plaintext-scheme remote URL plus a non-URL blob must join with NEITHER
+  // hostile value in the resulting community.material.relays — it must fall
+  // back to the client's own default relays instead. Hand-builds the hostile
+  // fragment bytes directly (following invite-bundle.test.ts's byte-surgery
+  // convention), then swaps it into a link minted by buildInviteLink (which
+  // cannot itself emit these hostile entry shapes).
+  it("CR-01: a hostile link (junk bundle relays + hostile fragment) joins with neither an attacker URL nor a junk blob in community.material.relays", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const genesis = await createCommunity({
+      ownerPubkey: ownerPub,
+      name: "Hostile",
+      description: "CR-01 regression",
+      relays: ["wss://fake"],
+    });
+    const cid = genesis.material.community_id;
+
+    const token = newInviteToken();
+    const linkSk = generateSecretKey();
+    const linkPub = getPublicKey(linkSk);
+    // Bundle relays entirely junk — validateInviteBundle's own (pre-existing)
+    // filter drops all of them, which is what makes the fragment-fed fallback
+    // branch reliably reachable: the exact regression condition CR-01 names.
+    const bundle = buildInviteBundle(
+      { ...genesis.material, relays: ["junk1", "junk2"] },
+      { name: "Hostile", creator_npub: ownerPub },
+    );
+    const template = await InviteBundleFactory.create(bundle, token);
+    const bundleEvent = finalizeEvent(template, linkSk) as NostrEvent;
+
+    // Mint a normal link, then replace its fragment with a hand-built hostile
+    // one — FRAGMENT_VERSION hand-derived as `4` (module-private in
+    // invite-bundle.ts), following invite-bundle.test.ts's buildHostileFragment
+    // convention: version byte, zero flags, entry count, then per-entry
+    // lead/length/UTF-8 bytes, then the 16-byte token.
+    const mintedLink = buildInviteLink("https://app.example", linkPub, token, genesis.material.relays);
+    const hostileEntries: Array<{ text: string }> = [
+      { text: "ws://evil.example.com" }, // plaintext-scheme remote URL
+      { text: "not-a-relay-blob" }, // non-URL blob
+    ];
+    const hostileBytes: number[] = [4, 0x00, hostileEntries.length];
+    for (const { text } of hostileEntries) {
+      const enc = Array.from(new TextEncoder().encode(text));
+      hostileBytes.push(0xff, enc.length, ...enc);
+    }
+    hostileBytes.push(...token);
+    const hostileFragment = base64urlnopad.encode(new Uint8Array(hostileBytes));
+    const link = `${mintedLink.slice(0, mintedLink.indexOf("#"))}#${hostileFragment}`;
+
+    const joiner = new PrivateKeySigner(generateSecretKey());
+    const client = new ConcordClient({
+      signer: joiner,
+      pool: asyncServingPool([bundleEvent]),
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://joiner-default.example.com"],
+    });
+    await client.start();
+
+    // Non-vacuity: pre-fix, decodeFragment's terminal filter was
+    // `relays.filter(Boolean)` — both hostile entries are non-empty strings and
+    // would have survived into ParsedInvite.bootstrapRelays, and (since the
+    // bundle's own relays are all junk) from there straight into
+    // JoinMaterial.relays via joinFromBundle's fallback branch.
+    const community = await client.joinByLink(link);
+    expect(community.communityId).toBe(cid);
+    expect(community.material.relays).toEqual(["wss://joiner-default.example.com"]);
+    expect(community.material.relays.some((r) => r.includes("evil"))).toBe(false);
+    expect(community.material.relays.some((r) => r.includes("not-a-relay-blob"))).toBe(false);
 
     client.stop();
   });

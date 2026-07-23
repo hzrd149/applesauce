@@ -12,9 +12,12 @@ import { communityId } from "../crypto.js";
 import {
   INVITE_BUNDLE_KIND,
   INVITE_BUNDLE_RELAY_CAP,
+  RELAY_DICTIONARY,
+  STOCK_RELAYS,
   decodeFragment,
   encodeFragment,
   isInviteBundleRevoked,
+  isSafeInviteRelayURL,
   validateInviteBundle,
 } from "../invite-bundle.js";
 import { getInviteBundleLocator } from "../invite-list.js";
@@ -136,6 +139,48 @@ describe("validateInviteBundle (INVITE-02/D-10)", () => {
     expect(result?.relays.length).toBe(INVITE_BUNDLE_RELAY_CAP);
     expect(result?.relays).toEqual(relays.slice(0, INVITE_BUNDLE_RELAY_CAP));
   });
+
+  // Gap closure (CR-01, WR-01, 12.3-11): the relays filter now delegates to the
+  // shared isSafeInviteRelayURL predicate — a remote plaintext-scheme entry is
+  // dropped exactly like an http:// entry, but a loopback plaintext entry (the
+  // project's own local cache-relay form) survives.
+  it("drops a remote ws:// entry (WR-01) but keeps a loopback ws:// entry", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: ["ws://evil.example.com", "ws://localhost:4869", "wss://legit.example.com"],
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result?.relays).toEqual(["ws://localhost:4869", "wss://legit.example.com"]);
+    // Non-vacuity: pre-fix, the filter body was `typeof entry === "string" &&
+    // isSafeRelayURL(entry)` — isSafeRelayURL admits BOTH websocket schemes for
+    // any host, so the remote plaintext entry would have survived into
+    // JoinMaterial.relays and from there into the refounding quorum's protocol
+    // set. This case pins that hole shut.
+  });
+});
+
+describe("isSafeInviteRelayURL (CR-01/WR-01, 12.3-11)", () => {
+  it("accepts a plaintext ws:// URL only for a loopback host", () => {
+    expect(isSafeInviteRelayURL("ws://localhost:4869")).toBe(true);
+    expect(isSafeInviteRelayURL("ws://127.0.0.1:4869")).toBe(true);
+    expect(isSafeInviteRelayURL("ws://[::1]:4869")).toBe(true);
+  });
+
+  it("rejects a plaintext ws:// URL for a remote host", () => {
+    expect(isSafeInviteRelayURL("ws://evil.example.com")).toBe(false);
+    expect(isSafeInviteRelayURL("ws://relay.example.com:4869")).toBe(false);
+  });
+
+  it("accepts an encrypted wss:// URL for a remote host", () => {
+    expect(isSafeInviteRelayURL("wss://relay.example.com")).toBe(true);
+  });
+
+  it("rejects a non-string entry and a non-URL string", () => {
+    expect(isSafeInviteRelayURL(42)).toBe(false);
+    expect(isSafeInviteRelayURL(null)).toBe(false);
+    expect(isSafeInviteRelayURL("not-a-url")).toBe(false);
+  });
 });
 
 describe("decodeFragment (INVITE-05/D-12)", () => {
@@ -167,6 +212,77 @@ describe("decodeFragment (INVITE-05/D-12)", () => {
     const decoded = decodeFragment(encoded);
     expect(decoded.token).toEqual(TOKEN);
     expect(decoded.relays).toEqual(RELAYS);
+  });
+
+  // ── Gap closure (CR-01, 12.3-11): hand-build hostile fragment bytes directly
+  // — version byte, zero flags, entry count, then per-entry lead/length/UTF-8
+  // bytes, then the 16-byte token — following this describe block's existing
+  // mutateVersionByte byte-surgery convention. Deliberately NOT round-tripped
+  // through encodeFragment, which cannot emit these hostile entry shapes (it
+  // only ever emits a dictionary id, a bare host under the 0x00 lead, or a
+  // wss:// URL under the 0xff lead — never an arbitrary/plaintext-scheme
+  // string). FRAGMENT_VERSION is hand-derived as `4` here (module-private in
+  // invite-bundle.ts; not exported) per TEST-01/D-13.
+  type HostileEntry = { kind: "dict"; id: number } | { kind: "host"; host: string } | { kind: "raw"; text: string };
+
+  function buildHostileFragment(entries: HostileEntry[], token: Uint8Array): string {
+    const bytes: number[] = [4, 0x00, entries.length];
+    for (const entry of entries) {
+      if (entry.kind === "dict") {
+        bytes.push(entry.id);
+      } else if (entry.kind === "host") {
+        const enc = Array.from(new TextEncoder().encode(entry.host));
+        bytes.push(0x00, enc.length, ...enc);
+      } else {
+        const enc = Array.from(new TextEncoder().encode(entry.text));
+        bytes.push(0xff, enc.length, ...enc);
+      }
+    }
+    bytes.push(...token);
+    return base64urlnopad.encode(new Uint8Array(bytes));
+  }
+
+  it("drops a hostile fragment entry carrying a plaintext-scheme remote URL (0xff lead, CR-01)", () => {
+    const token = new Uint8Array(16).fill(9);
+    const encoded = buildHostileFragment([{ kind: "raw", text: "ws://evil.example.com" }], token);
+    const decoded = decodeFragment(encoded);
+    expect(decoded.relays).toEqual([]);
+    expect(decoded.token).toEqual(token);
+    // Non-vacuity: pre-fix, decodeFragment's terminal filter was
+    // `relays.filter(Boolean)`, which keeps any non-empty string — this hostile
+    // URL would have survived straight into ParsedInvite.bootstrapRelays.
+  });
+
+  it("drops a hostile fragment entry carrying a non-URL blob (0xff lead)", () => {
+    const token = new Uint8Array(16).fill(3);
+    const encoded = buildHostileFragment([{ kind: "raw", text: "not-a-relay-at-all" }], token);
+    const decoded = decodeFragment(encoded);
+    expect(decoded.relays).toEqual([]);
+    expect(decoded.token).toEqual(token);
+  });
+
+  it("still returns a legitimate wss:// entry and a dictionary entry unchanged, with the token slice unaffected by the entries filtered out", () => {
+    const token = new Uint8Array(16).fill(5);
+    const encoded = buildHostileFragment(
+      [
+        { kind: "raw", text: "wss://legit.example.com" },
+        { kind: "dict", id: 1 },
+        { kind: "raw", text: "ws://evil.example.com" }, // dropped
+        { kind: "raw", text: "not-a-relay-at-all" }, // dropped
+      ],
+      token,
+    );
+    const decoded = decodeFragment(encoded);
+    expect(decoded.relays).toEqual(["wss://legit.example.com", RELAY_DICTIONARY[1]]);
+    expect(decoded.token).toEqual(token);
+  });
+
+  it("returns the stock relay set unchanged when the stock flag is set, with the token positioned immediately after (no entries)", () => {
+    const token = new Uint8Array(16).fill(2);
+    const encoded = base64urlnopad.encode(new Uint8Array([4, 0x01, ...token]));
+    const decoded = decodeFragment(encoded);
+    expect(decoded.relays).toEqual(STOCK_RELAYS);
+    expect(decoded.token).toEqual(token);
   });
 });
 

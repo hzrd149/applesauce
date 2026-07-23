@@ -75,6 +75,40 @@ export function encodeFragment(token: Uint8Array, relays: string[]): string {
   return base64urlnopad.encode(new Uint8Array(bytes));
 }
 
+/**
+ * WR-01 loopback carve-out for {@link isSafeInviteRelayURL}: `ws://` (plaintext)
+ * is refused everywhere EXCEPT when the host is loopback — `localhost`,
+ * `127.0.0.1`, or `[::1]`, each optionally followed by `:port` and/or a path.
+ * Kept as an anchored regex constant (not inlined in the predicate body) so the
+ * carve-out's shape is independently reviewable.
+ */
+const LOOPBACK_PLAINTEXT_WS = /^ws:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/[-a-zA-Z0-9()@:%_+.~#?&/=]*)?$/;
+
+/**
+ * The single scheme/shape gate for every relay string that can reach
+ * `JoinMaterial.relays` from an attacker-supplied invite — applied at BOTH
+ * boundaries a stranger's bytes can carry a relay string across: the fragment
+ * decode below ({@link decodeFragment}'s `lead === 0xff` and dictionary-miss
+ * branches, CR-01) and the bundle relay filter ({@link validateInviteBundle},
+ * CR-02's neighbour). A `wss://` entry survives when it also passes
+ * {@link isSafeRelayURL}'s general websocket-URL shape check. The plaintext
+ * scheme (`ws://`) is refused UNLESS the host is loopback (WR-01) — checked via
+ * the anchored {@link LOOPBACK_PLAINTEXT_WS} regex independently of
+ * `isSafeRelayURL`, since that general check's hostname pattern does not accept
+ * the bracketed IPv6 loopback literal (`[::1]`) this carve-out must admit.
+ * The loopback carve-out exists because this project's own local cache-relay
+ * form (`ws://localhost:4869`, the Phase 12.3 ROADMAP's motivating example) has
+ * no network observer to protect against, whereas a REMOTE plaintext relay
+ * would expose stream pubkeys, subscription filters, connection metadata, and
+ * the NIP-42 challenge/response flow to anyone on the wire — even though
+ * Concord's own payloads are themselves encrypted.
+ */
+export function isSafeInviteRelayURL(entry: unknown): entry is string {
+  if (typeof entry !== "string") return false;
+  if (LOOPBACK_PLAINTEXT_WS.test(entry)) return true;
+  return entry.startsWith("wss://") && isSafeRelayURL(entry);
+}
+
 export function decodeFragment(fragment: string): { token: Uint8Array; relays: string[] } {
   const bytes = base64urlnopad.decode(fragment);
   let i = 0;
@@ -106,7 +140,15 @@ export function decodeFragment(fragment: string): { token: Uint8Array; relays: s
     }
   }
   const token = bytes.slice(i, i + 16);
-  return { token, relays: relays.filter(Boolean) };
+  // CR-01: filter through the single isSafeInviteRelayURL predicate — not just
+  // truthiness — so the lead === 0xff branch (arbitrary decoded string), the
+  // lead === 0x00 host-reassembly branch, and the dictionary branch's miss-
+  // yields-empty-string case are all covered by one gate before this array
+  // reaches ParsedInvite.bootstrapRelays. Filtering AFTER accumulation (rather
+  // than skipping entries during the decode loop above) is deliberate: the byte
+  // cursor `i` must keep advancing exactly as it does today for every branch,
+  // which is what keeps the trailing 16-byte token slice correctly positioned.
+  return { token, relays: relays.filter(isSafeInviteRelayURL) };
 }
 
 export interface ParsedInvite {
@@ -209,7 +251,9 @@ export function buildInviteBundle(material: JoinMaterial, opts: BuildInviteBundl
  * Bound and self-certify an attacker-crafted bundle (CORD-05 §1): the `owner`
  * and `owner_salt` MUST reproduce the `community_id`, the channel count is capped
  * to refuse an unbounded-allocation link, and the relay snapshot is truncated to
- * the Community's cap. Returns a normalized copy, or `undefined` if the bundle is
+ * the Community's cap and filtered through the single {@link isSafeInviteRelayURL}
+ * predicate (CR-01/WR-01) — the same scheme/shape gate applied at the fragment
+ * decode boundary above. Returns a normalized copy, or `undefined` if the bundle is
  * unusable. `expires_at` is NOT checked here — past expiry the preview still
  * renders, only joining refuses (that check belongs at join time).
  */
@@ -231,19 +275,20 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
   if (!Array.isArray(bundle.channels) || !Array.isArray(bundle.relays)) return undefined;
   const channels = bundle.channels;
   if (channels.length > INVITE_BUNDLE_MAX_CHANNELS) return undefined;
-  // T-12.3-09-04: cap FIRST (unchanged allocation bound), then filter entries to
-  // safe relay URL strings. This array flows into `JoinMaterial.relays` and from
+  // T-12.3-09-04/CR-01: cap FIRST (unchanged allocation bound), then filter
+  // every entry through the single isSafeInviteRelayURL predicate — the shared
+  // scheme/shape gate applied at every boundary a stranger's relay string can
+  // reach JoinMaterial.relays from (see its doc comment for the other call
+  // site, decodeFragment). This array flows into `JoinMaterial.relays` and from
   // there into the refounding quorum's protocol set (community.ts's `refound()`)
   // — a security-critical operation — so an unvalidated entry (non-string, junk
-  // string, or a non-websocket scheme like `http://`) is attacker-reachable input
-  // and must never survive. A bundle whose relays are entirely junk still
-  // validates (falls back to the joining client's own default relays); dropping
-  // junk relays is not, by itself, grounds to reject the whole bundle. Entries
-  // are NOT normalized here — only filtered — so this function stays a shape
-  // validator, not a rewriter of protocol state (D-01).
-  const relays = bundle.relays
-    .slice(0, INVITE_BUNDLE_RELAY_CAP)
-    .filter((entry): entry is string => typeof entry === "string" && isSafeRelayURL(entry));
+  // string, non-websocket scheme, or a remote plaintext scheme) is attacker-
+  // reachable input and must never survive. A bundle whose relays are entirely
+  // junk still validates (falls back to the joining client's own default
+  // relays); dropping junk relays is not, by itself, grounds to reject the
+  // whole bundle. Entries are NOT normalized here — only filtered — so this
+  // function stays a shape validator, not a rewriter of protocol state (D-01).
+  const relays = bundle.relays.slice(0, INVITE_BUNDLE_RELAY_CAP).filter(isSafeInviteRelayURL);
   // A non-string `refounder` would gate the snapshot fold on a junk comparison; drop it.
   const refounder = typeof bundle.refounder === "string" ? bundle.refounder : undefined;
   return { ...bundle, channels, relays, refounder };
