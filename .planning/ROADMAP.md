@@ -373,7 +373,7 @@ Plans:
 **Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
 **Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
 
-**Plans**: 10/10 plans complete
+**Plans**: 10/11 plans complete
 
 Plans:
 **Wave 1**
@@ -409,6 +409,10 @@ Plans:
 **Wave 8** *(gap closure — blocked on Wave 7 completion)*
 
 - [x] 12.3-10-PLAN.md — auth-driver pruning, extras holder disposal/restart lifecycle, JSDoc truth pass (WR-04…WR-07)
+
+**Wave 9** *(gap closure — blocked on Wave 8 completion)*
+
+- [ ] 12.3-11-PLAN.md — invite relay-string filtering at every boundary + complete bundle field validation + atomic join / fault-tolerant reconcile (CR-01, CR-02, WR-01)
 
 **Cross-cutting constraints:**
 
