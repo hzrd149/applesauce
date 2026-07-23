@@ -5,16 +5,16 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Phase 12.3 verification returned gaps_found — 2 blockers (CR-01, CR-02) open
-last_updated: "2026-07-23T08:40:59.111Z"
-last_activity: 2026-07-22
-last_activity_desc: Completed 12.3-10-PLAN.md (final gap-closure plan)
+stopped_at: "Completed 12.3-11-PLAN.md (phase 12.3 complete: 11/11 plans; CR-01/CR-02 gap closure)"
+last_updated: "2026-07-23T09:33:08.124Z"
+last_activity: 2026-07-23
+last_activity_desc: Completed 12.3-11-PLAN.md
 progress:
-  total_phases: 14
+  total_phases: 12
   completed_phases: 10
-  total_plans: 66
-  completed_plans: 66
-  percent: 71
+  total_plans: 67
+  completed_plans: 67
+  percent: 83
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — VERIFICATION GAPS FOUND (10/10 plans executed; 2 blockers open)
-Plan: 10 of 10
-Status: All plans executed; phase ready for verification/close-out
-Last activity: 2026-07-22 — Completed 12.3-10-PLAN.md (final gap-closure plan)
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — COMPLETE (11/11 plans)
+Plan: 11 of 11 (gap-closure plan 12.3-11 closed CR-01/CR-02)
+Status: Phase 12.3 complete, ready for re-verification / next phase
+Last activity: 2026-07-23 — Completed 12.3-11-PLAN.md
 
-Progress: [██████████] 71%
+Progress: [██████████] 83%
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P08 | 25min | 3 tasks | 3 files |
 | Phase 12.3 P09 | 20min | 2 tasks | 5 files |
 | Phase 12.3 P10 | 30min | 3 tasks | 9 files |
+| Phase 12.3 P11 | 26min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -186,6 +187,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12.3]: 12.3-10: authDrivers replaced with a per-URL Map<string, Subscription> registry in community.ts/private-channel.ts; ensureAuth() now prunes on transport narrowing and registers a fresh driver on re-add, closing WR-04
 - [Phase 12.3]: 12.3-10: all five Concord engines now share one stop()-is-pause/dispose()-releases lifecycle rule; InviteWatcher's reactive extras subscription is extracted into subscribeExtras() so a restart re-establishes it without ever rebuilding the ExtraRelays holder object, closing WR-05/WR-06
 - [Phase 12.3]: 12.3-10: WR-09 (thread ConcordClient.extras.relays$ into sub-engines) remains deferred per plan 08's rationale, restated in the 12.3-10-SUMMARY — a D-13 threading/optimization change, not a correctness gap, and now further bounded by every holder being releasable
+- [Phase ?]: 12.3-11: WR-01 loopback carve-out checked independently of isSafeRelayURL (not gated behind it) — its hostname regex rejects bracketed IPv6 [::1], which the carve-out must admit
+- [Phase ?]: 12.3-11: a malformed channels[] entry (or its held keys) is dropped per-entry; a malformed held_roots entry rejects the whole bundle since buildInviteBundle never emits that field
+- [Phase ?]: 12.3-11: recordJoin constructs the engine before mutating this.list (confirmed addCommunity construction never reads this.list); reconcileCommunities skips+logs an unconstructable entry rather than pruning it
 
 ### Pending Todos
 
@@ -223,8 +227,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-22T19:52:18.184Z
-Stopped at: Completed 12.3-10-PLAN.md (phase 12.3 complete: 10/10 plans)
+Last session: 2026-07-23T09:33:08.112Z
+Stopped at: Completed 12.3-11-PLAN.md (phase 12.3 complete: 11/11 plans; CR-01/CR-02 gap closure)
 Resume file: None
 
 ## Operator Next Steps
