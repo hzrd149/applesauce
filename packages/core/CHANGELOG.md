@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 6.3.0
+
+### Patch Changes
+
+- 4f2c1bb: Import from `nostr-tools` subpaths instead of the package root so bundles no longer pull in modules that reference `fetch`
+
 ## 6.2.0
 
 ### Minor Changes

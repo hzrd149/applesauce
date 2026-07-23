@@ -1,5 +1,18 @@
 # applesauce-relay
 
+## 6.3.0
+
+### Minor Changes
+
+- 1899731: Add support for authenticating multiple users on a single relay connection with `authentications$`, `authenticatedPubkeys$`, and `isAuthenticated`
+- 3eed9a5: Add `waitForAuth` support to negentropy sync requests
+- 1899731: Support passing a pubkey or array of pubkeys to the `waitForAuth` option on the `req`, `subscription`, `request`, `count`, `event`, and `publish` methods of `Relay`, `RelayGroup`, and `RelayPool` to wait for specific users to be authenticated
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-core@6.3.0
+
 ## 6.2.1
 
 ### Patch Changes
