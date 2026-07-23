@@ -691,15 +691,29 @@ export class ConcordClient {
   /** Record an **explicit** join (create/accept-invite) in the document and start its engine.
    *  Stamping `added_at` here — at the one moment the user actually opted in — is what lets a
    *  re-join outlive an older tombstone (CORD-02 §8) without the save path having to infer intent
-   *  from the running engine set, which cannot tell a deliberate re-join from a stale engine. */
+   *  from the running engine set, which cannot tell a deliberate re-join from a stale engine.
+   *
+   *  CR-02/T-12.3-11 ordering requirement: the engine is constructed FIRST, and the document
+   *  mutation happens only after that succeeds. `addCommunity` reaches `new ConcordCommunity(...)`
+   *  -> `deriveConcordKeys` -> `baseKeysFor` -> `hexToBytes(material.community_root)`, which can
+   *  throw synchronously on a malformed bundle (one that slipped past `validateInviteBundle`, or
+   *  reached here via `joinByBundle`, which is not itself a validation boundary). With the engine
+   *  constructed first, that throw propagates out of `recordJoin` BEFORE `this.list` is touched, so
+   *  `this.list` stays byte-identical to what it was — nothing phantom for `saveMirror()` /
+   *  `saveCommunityList()` to persist or publish. Confirmed (see 12.3-11-SUMMARY.md) that
+   *  constructing the engine does not itself depend on `this.list` already holding the entry:
+   *  `addCommunity`'s `onMaterialChange` callback writes `this.list` via `refreshCommunity`, but is
+   *  only invoked LATER by the running engine, never during construction. DO NOT restore the
+   *  "document first" order — that is exactly the CR-02 phantom-membership defect. */
   private recordJoin(material: JoinMaterial): ConcordCommunity {
+    const community = this.addCommunity(material);
     this.list = joinCommunity({
       community_id: material.community_id,
       seed: material,
       current: material,
       added_at: Date.now(),
     })(this.list, this.tombstones).communities;
-    return this.addCommunity(material);
+    return community;
   }
 
   private addCommunity(material: JoinMaterial): ConcordCommunity {
@@ -900,7 +914,25 @@ export class ConcordClient {
     }
     for (const [cid, community] of live) {
       if (this.communities.has(cid) || !community.current?.community_id) continue;
-      this.addCommunity(community.current);
+      // CR-02/T-12.3-11: one entry that can't construct (malformed material from
+      // another device's Community List, or predating the invite-bundle validator's
+      // field hardening) must not abort the loop before every OTHER community
+      // starts, nor surface as an unhandled rejection from the `void
+      // this.reconcileCommunities()` call site (watchLists / start). Skipping —
+      // never pruning the entry from `this.list` — is the conservative behavior:
+      // the entry may be legitimate material this client version simply cannot
+      // construct, and silently tombstoning another device's membership would be
+      // a worse failure than leaving it un-started.
+      try {
+        this.addCommunity(community.current);
+      } catch (err) {
+        this.log(
+          "reconcile skipped an unconstructable community=%s: %s",
+          cid.slice(0, 8),
+          (err as Error)?.message ?? err,
+        );
+        continue;
+      }
       changed = true;
     }
     if (changed) await this.saveMirror();

@@ -3,6 +3,7 @@
 // `communityList$`, and `autoUnlock` decides whether the user-signer decryption is
 // issued automatically or left for the app to trigger via the cast's `.unlock()`.
 
+import { format } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject, delay, filter, firstValueFrom, from } from "rxjs";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
@@ -11,6 +12,7 @@ import { EventStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers/time";
 import "applesauce-common/casts";
 import type { RelayPool } from "applesauce-relay";
+import type { Debugger } from "debug";
 import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
@@ -1368,5 +1370,187 @@ describe("ConcordClient extras lifecycle — dispose() releases the source, stop
     expect(extras$.observed).toBe(false);
     extras$.next(["wss://after.test"]);
     expect(extras$.observed).toBe(false);
+  });
+});
+
+/** A callable spy standing in for an injected `Debugger`: records every call's raw
+ *  arguments and supports `.extend()` (returning a logger sharing the SAME
+ *  `calls` array) so the client's constructor-time `this.log.extend("invite")` /
+ *  `.extend("publish")` derivations don't throw. Mirrors sync-logging.test.ts's
+ *  `spyLogger` convention. */
+function spyLogger(): { log: Debugger; calls: unknown[][] } {
+  const calls: unknown[][] = [];
+  const log = ((...args: unknown[]) => {
+    calls.push(args);
+  }) as unknown as Debugger;
+  (log as unknown as Record<string, unknown>).extend = () => log;
+  return { log, calls };
+}
+
+describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap closure 12.3-11)", () => {
+  it("a malformed community_root rejects the join and leaves no residue — a subsequent explicit save publishes no entry for it", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Hostile",
+      description: "CR-02 regression",
+      relays: ["wss://fake"],
+    });
+    // Malformed AFTER validation would run: joinByBundle is the public entry
+    // point for an ALREADY-validated bundle (e.g. from a Direct Invite) — it is
+    // not itself a validation boundary, so this is the exact repro path the
+    // review names for CR-02.
+    const hostileBundle = { ...buildInviteBundle(genesis.material, { name: "Hostile" }), community_root: "not-hex" };
+
+    await expect(client.joinByBundle(hostileBundle)).rejects.toThrow();
+    expect(client.getCommunity(hostileBundle.community_id)).toBeUndefined();
+
+    // Non-vacuity: pre-fix, recordJoin mutates `this.list` BEFORE addCommunity's
+    // `hexToBytes(material.community_root)` throws — since `joinFromBundle`'s
+    // own `await this.saveMirror()` call is skipped (the throw unwinds past it),
+    // the phantom entry stays silent in memory until a LATER operation reads
+    // `this.list` — exactly what this explicit save forces, to surface it.
+    await client.saveCommunityList();
+    const lastList = listPublishes(published).at(-1);
+    const doc = lastList ? JSON.parse(await signer.nip44!.decrypt(pubkey, lastList.content)) : { entries: [] };
+    expect(doc.entries.find((e: any) => e.community_id === hostileBundle.community_id)).toBeUndefined();
+
+    client.stop();
+  });
+
+  it("a subsequent legitimate join succeeds after the rejected join, with the document containing exactly the legitimate entry", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+
+    const genesisHostile = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Hostile",
+      description: "CR-02 regression",
+      relays: ["wss://fake"],
+    });
+    const hostileBundle = {
+      ...buildInviteBundle(genesisHostile.material, { name: "Hostile" }),
+      community_root: "not-hex",
+    };
+    await expect(client.joinByBundle(hostileBundle)).rejects.toThrow();
+
+    const genesisLegit = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Legit",
+      description: "should still join",
+      relays: ["wss://fake"],
+    });
+    const legitBundle = buildInviteBundle(genesisLegit.material, { name: "Legit" });
+    await client.joinByBundle(legitBundle);
+
+    expect(client.getCommunity(legitBundle.community_id)).toBeDefined();
+    const raw = await storage.getItem(pubkey);
+    const mirror = JSON.parse(raw!) as { entries: Array<{ community_id: string }> };
+    expect(mirror.entries.map((e) => e.community_id)).toEqual([legitBundle.community_id]);
+
+    client.stop();
+  });
+
+  it("a Community List entry with malformed material is skipped during reconcile — the legitimate entry still starts, no unhandled rejection, and a log line records the skip", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Legit",
+      description: "should still start",
+      relays: ["wss://fake"],
+    });
+    const legitMaterial: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    const malformedMaterial: JoinMaterial = {
+      ...legitMaterial,
+      community_id: "ff".repeat(32),
+      community_root: "not-hex",
+    };
+
+    const communities = mergeCommunities(
+      [],
+      [
+        { community_id: legitMaterial.community_id, seed: legitMaterial, current: legitMaterial, added_at: 1 },
+        {
+          community_id: malformedMaterial.community_id,
+          seed: malformedMaterial,
+          current: malformedMaterial,
+          added_at: 1,
+        },
+      ],
+    );
+    const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: communities, tombstones: [] }));
+    const listEvent = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: 1 });
+
+    const store = new EventStore();
+    const { pool } = fakePool();
+    const { log, calls } = spyLogger();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+      logger: log,
+    });
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await client.start();
+      store.add(listEvent as NostrEvent);
+      await settle();
+
+      // Non-vacuity: pre-fix, the unguarded `this.addCommunity(community.current)`
+      // in the reconcile loop throws on the malformed entry's `hexToBytes`, which
+      // — for the loop's first-encountered malformed entry — would abort the
+      // whole `for` before the legitimate entry (iterated after it in Map
+      // insertion order) ever starts.
+      expect(client.getCommunity(legitMaterial.community_id)).toBeDefined();
+      expect(client.getCommunity(malformedMaterial.community_id)).toBeUndefined();
+      expect(calls.some((c) => format(...(c as [unknown, ...unknown[]])).includes(malformedMaterial.community_id.slice(0, 8)))).toBe(
+        true,
+      );
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.removeListener("unhandledRejection", onUnhandled);
+      client.stop();
+    }
+  });
+
+  it("the happy-path join still stamps added_at and produces exactly one document entry (recordJoin reordering regression guard)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+
+    const before = Date.now();
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    const after = Date.now();
+
+    const raw = await storage.getItem(pubkey);
+    const mirror = JSON.parse(raw!) as { entries: Array<{ community_id: string; added_at: number }> };
+    expect(mirror.entries.length).toBe(1);
+    const entry = mirror.entries[0];
+    expect(entry.community_id).toBe(community.communityId);
+    expect(entry.added_at).toBeGreaterThanOrEqual(before);
+    expect(entry.added_at).toBeLessThanOrEqual(after);
+
+    client.stop();
   });
 });
