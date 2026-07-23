@@ -20,9 +20,10 @@ import { getAddressPointerForEvent } from "applesauce-core/helpers/pointers";
 import { decodePointer, naddrEncode } from "applesauce-core/helpers/pointers";
 import { notifyEventUpdate } from "applesauce-core/helpers";
 import { isSafeRelayURL } from "applesauce-core/helpers/relays";
+import { isHexKey } from "applesauce-core/helpers/string";
 import type { AddressPointer, KnownEvent, NostrEvent } from "applesauce-core/helpers";
 import { communityId, inviteBundleKey } from "./crypto.js";
-import type { BlobPointer, InviteBundle, JoinMaterial } from "../types.js";
+import type { BlobPointer, ChannelKey, InviteBundle, JoinMaterial } from "../types.js";
 
 /** Concord invite bundle kind (CORD-05 §1). */
 export const INVITE_BUNDLE_KIND = 33301;
@@ -248,14 +249,64 @@ export function buildInviteBundle(material: JoinMaterial, opts: BuildInviteBundl
 }
 
 /**
+ * Shape-checks one `held` key entry (a channel's held prior key, or a bundle's
+ * `held_roots` entry) — both are `{epoch, key}`-shaped and both feed a
+ * `hexToBytes(key)` call inside `deriveChannelKeys` (CR-02).
+ */
+function isValidHeldKeyEntry(h: unknown): h is { epoch: number; key: string } {
+  if (typeof h !== "object" || h === null) return false;
+  const entry = h as Record<string, unknown>;
+  return (
+    typeof entry.key === "string" &&
+    isHexKey(entry.key) &&
+    typeof entry.epoch === "number" &&
+    Number.isSafeInteger(entry.epoch) &&
+    entry.epoch >= 0
+  );
+}
+
+/**
+ * Shape-validates one `channels[]` entry (CR-02): `id`/`key` must be 64-char
+ * hex — both reach `hexToBytes` in `deriveChannelKeys` (keys.ts), and
+ * `addChannelKey` mints both from 32 random bytes — and `epoch` must be a
+ * non-negative safe integer (it feeds `channel.epoch + 1` arithmetic). The
+ * optional `held` array, when present, is validated the same way per entry.
+ * `name` is intentionally left unvalidated: it is display-only, never enters a
+ * key derivation, and coercing it here would turn this shape validator into a
+ * rewriter of protocol state (D-01). A malformed entry is DROPPED by the
+ * caller (this channel is excluded from the validated bundle) rather than
+ * rejecting the whole bundle — mirroring the relay filter's existing
+ * precedent below: one bad grant should not deny every other legitimate one.
+ */
+function isValidChannelEntry(c: unknown): c is ChannelKey {
+  if (typeof c !== "object" || c === null) return false;
+  const entry = c as Record<string, unknown>;
+  if (typeof entry.id !== "string" || !isHexKey(entry.id)) return false;
+  if (typeof entry.key !== "string" || !isHexKey(entry.key)) return false;
+  if (typeof entry.epoch !== "number" || !Number.isSafeInteger(entry.epoch) || entry.epoch < 0) return false;
+  if (entry.held !== undefined && (!Array.isArray(entry.held) || !entry.held.every(isValidHeldKeyEntry))) return false;
+  return true;
+}
+
+/**
  * Bound and self-certify an attacker-crafted bundle (CORD-05 §1): the `owner`
- * and `owner_salt` MUST reproduce the `community_id`, the channel count is capped
- * to refuse an unbounded-allocation link, and the relay snapshot is truncated to
- * the Community's cap and filtered through the single {@link isSafeInviteRelayURL}
- * predicate (CR-01/WR-01) — the same scheme/shape gate applied at the fragment
- * decode boundary above. Returns a normalized copy, or `undefined` if the bundle is
- * unusable. `expires_at` is NOT checked here — past expiry the preview still
- * renders, only joining refuses (that check belongs at join time).
+ * and `owner_salt` MUST reproduce the `community_id`; `community_root` must be
+ * 64-char hex and `root_epoch` a non-negative safe integer — both reach
+ * `baseKeysFor`'s `hexToBytes`/epoch arithmetic (keys.ts:128-140), so a
+ * malformed value here would otherwise throw synchronously deep inside key
+ * derivation instead of being refused at this boundary (CR-02). The channel
+ * count is capped (on the RAW array) to refuse an unbounded-allocation link,
+ * and each surviving `channels[]` entry — id/key/epoch, and any `held` keys —
+ * is shape-checked the same way. An optional `held_roots` is validated
+ * identically when present; `buildInviteBundle` never emits that field, so a
+ * malformed one rejects the WHOLE bundle rather than being dropped. The relay
+ * snapshot is truncated to the Community's cap and filtered through the
+ * single {@link isSafeInviteRelayURL} predicate (CR-01/WR-01). After this
+ * function returns a bundle, no field that reaches a `hexToBytes` call or an
+ * arithmetic epoch expression can be malformed. Returns a normalized copy, or
+ * `undefined` if the bundle is unusable. `expires_at` is NOT checked here —
+ * past expiry the preview still renders, only joining refuses (that check
+ * belongs at join time).
  */
 export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBundle | undefined {
   if (!bundle || typeof bundle !== "object") return undefined;
@@ -268,13 +319,37 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
     return undefined;
   }
   if (expected !== bundle.community_id) return undefined;
+  // CR-02: community_root/root_epoch both reach baseKeysFor's hexToBytes/epoch
+  // arithmetic — malformed here throws synchronously deep inside key
+  // derivation instead of being refused at the boundary. Checked immediately
+  // after the owner proof and before any array method runs, so the "shape must
+  // be validated BEFORE any array method touches it" ordering below stays
+  // accurate for every field this function bounds.
+  if (typeof bundle.community_root !== "string" || !isHexKey(bundle.community_root)) return undefined;
+  if (typeof bundle.root_epoch !== "number" || !Number.isSafeInteger(bundle.root_epoch) || bundle.root_epoch < 0)
+    return undefined;
   // INVITE-02/D-10: shape must be validated BEFORE any array method touches it —
   // same guard-before-array-method ordering as AUTH-04 (control.ts). A non-array
   // `channels` (e.g. `{a:1}`) would otherwise bypass the length cap below, and a
   // string `relays` would emerge from `.slice()` as a substring typed `string[]`.
   if (!Array.isArray(bundle.channels) || !Array.isArray(bundle.relays)) return undefined;
-  const channels = bundle.channels;
-  if (channels.length > INVITE_BUNDLE_MAX_CHANNELS) return undefined;
+  // CR-02: the cap MUST run on the RAW array, before any per-entry filtering —
+  // it is the allocation bound the cap exists to enforce, and an existing test
+  // (direct-invite.test.ts) supplies an over-cap array whose entries are ALL
+  // malformed and requires the whole bundle to be rejected; filtering first
+  // would empty that array below the cap and let the bundle validate. Do not
+  // "simplify" this ordering later.
+  if (bundle.channels.length > INVITE_BUNDLE_MAX_CHANNELS) return undefined;
+  const channels = bundle.channels.filter(isValidChannelEntry);
+  // CR-02: `held_roots` is validated the same way as a channel's `held` keys,
+  // but `buildInviteBundle` deliberately never emits this field (see its own
+  // doc comment) — a bundle carrying one is, by definition, not one we minted,
+  // so a malformed entry rejects the WHOLE bundle rather than being dropped.
+  if (
+    bundle.held_roots !== undefined &&
+    (!Array.isArray(bundle.held_roots) || !bundle.held_roots.every(isValidHeldKeyEntry))
+  )
+    return undefined;
   // T-12.3-09-04/CR-01: cap FIRST (unchanged allocation bound), then filter
   // every entry through the single isSafeInviteRelayURL predicate — the shared
   // scheme/shape gate applied at every boundary a stranger's relay string can

@@ -11,6 +11,7 @@ import type { NostrEvent } from "applesauce-core/helpers";
 import { communityId } from "../crypto.js";
 import {
   INVITE_BUNDLE_KIND,
+  INVITE_BUNDLE_MAX_CHANNELS,
   INVITE_BUNDLE_RELAY_CAP,
   RELAY_DICTIONARY,
   STOCK_RELAYS,
@@ -157,6 +158,94 @@ describe("validateInviteBundle (INVITE-02/D-10)", () => {
     // any host, so the remote plaintext entry would have survived into
     // JoinMaterial.relays and from there into the refounding quorum's protocol
     // set. This case pins that hole shut.
+  });
+});
+
+// ── Gap closure (CR-02, 12.3-11): validateInviteBundle now bounds every field
+// that reaches a hexToBytes call or an arithmetic epoch expression, not just
+// the owner proof + array shapes T-12.3-09-04 covered.
+describe("validateInviteBundle field validation (CR-02, 12.3-11)", () => {
+  const validChannel = { id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "general" };
+
+  it("rejects a bundle whose community_root is a short non-hex string", () => {
+    const bundle = { ...validOwnerFields, community_root: "not-hex", channels: [], relays: [] } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+    // Non-vacuity: pre-fix, community_root was never checked in this function at
+    // all — this exact malformed value instead reaches baseKeysFor's
+    // `hexToBytes(material.community_root)` deep inside key derivation and
+    // throws synchronously (the CR-02 repro the verifier reproduced by hand).
+  });
+
+  it("rejects a bundle with an absent community_root", () => {
+    const { community_root: _drop, ...rest } = validOwnerFields;
+    const bundle = { ...rest, channels: [], relays: [] } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+  });
+
+  it("rejects a bundle whose root_epoch is a non-number", () => {
+    const bundle = { ...validOwnerFields, root_epoch: "0" as unknown as number, channels: [], relays: [] } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+  });
+
+  it("rejects a bundle whose root_epoch is negative", () => {
+    const bundle = { ...validOwnerFields, root_epoch: -1, channels: [], relays: [] } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+  });
+
+  it("rejects a bundle whose root_epoch is a non-integer", () => {
+    const bundle = { ...validOwnerFields, root_epoch: 1.5, channels: [], relays: [] } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+  });
+
+  it("retains only the well-formed channels[] entry when one entry is malformed", () => {
+    const malformed = { id: "zz", key: "short", epoch: -1, name: "bad" };
+    const bundle = { ...validOwnerFields, channels: [validChannel, malformed], relays: [] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.channels).toEqual([validChannel]);
+    // Non-vacuity: pre-fix, `channels` passed through unfiltered — both the
+    // well-formed AND the malformed entry (non-hex id, 5-char key, negative
+    // epoch) would have survived into JoinMaterial.channels and reached
+    // `deriveChannelKeys`'s `hexToBytes(channel.id)` / `hexToBytes(channel.key)`.
+  });
+
+  it("drops a channel entry whose held array carries a malformed entry", () => {
+    const withBadHeld = { ...validChannel, held: [{ epoch: 0, key: "not-hex" }] };
+    const bundle = { ...validOwnerFields, channels: [withBadHeld], relays: [] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    // This validator drops the offending channel entry rather than rejecting the
+    // whole bundle — the same precedent the relay filter already sets: one bad
+    // grant should not deny every OTHER channel this bundle legitimately grants.
+    expect(result).toBeDefined();
+    expect(result?.channels).toEqual([]);
+  });
+
+  it("rejects a bundle carrying a held_roots array with a non-hex key", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: [],
+      held_roots: [{ epoch: 0, key: "not-hex" }],
+    } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+    // buildInviteBundle never emits held_roots (see its own doc comment) — any
+    // bundle carrying one is, by definition, not one we minted, so a malformed
+    // entry here rejects the WHOLE bundle rather than being merely dropped.
+  });
+
+  it("still rejects an over-cap channels array evaluated on the RAW array before per-entry filtering (ordering guard)", () => {
+    const channels = Array.from({ length: INVITE_BUNDLE_MAX_CHANNELS + 1 }, (_, i) => ({
+      id: `bad-${i}`, // non-hex, malformed
+      key: "short",
+      epoch: -1,
+      name: `c${i}`,
+    }));
+    const bundle = { ...validOwnerFields, channels, relays: [] } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+    // Non-vacuity: if the per-entry filter ran BEFORE the cap, every entry here
+    // (all malformed) would be dropped, emptying the array to length 0 — well
+    // under the cap — and the bundle would validate. The cap must run on the
+    // RAW array first.
   });
 });
 
