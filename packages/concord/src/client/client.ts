@@ -42,8 +42,8 @@ import type { ConcordCommunityList, ConcordInviteList } from "../casts/index.js"
 import { createCommunity } from "../helpers/community.js";
 import {
   COMMUNITY_LIST_KIND,
+  LIST_MAX_BYTES,
   canonicalJson,
-  communityListWithinByteCap,
   liveCommunities,
   mergeCommunities,
   mergeCommunityTombstones,
@@ -564,7 +564,15 @@ export class ConcordClient {
 
   async joinByLink(url: string): Promise<ConcordCommunity> {
     const parsed = parseInviteLink(url);
-    const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : this.defaultRelays;
+    // WR-02/WR-03 (12.3-12): this is the defence-in-depth SECOND gate behind
+    // `decodeFragment`'s own terminal filter — `parsed.bootstrapRelays` is the
+    // one genuinely untrusted producer of a relay set on this path (an
+    // attacker-controlled invite link fragment), so the untrusted-relay
+    // predicate belongs here, not on the app's own configured relays below.
+    // Filtering down to nothing falls through to `this.defaultRelays`, exactly
+    // like an absent bootstrap set does today.
+    const safeBootstrapRelays = parsed.bootstrapRelays.filter(isSafeInviteRelayURL);
+    const relays = safeBootstrapRelays.length ? safeBootstrapRelays : this.defaultRelays;
     // D-05 (second leak surface in this file, mirroring plan 04's createInvite protocol/
     // transport split): `relays` above stays the unmerged bootstrap-or-default selection and
     // flows on, UNCHANGED, into `joinFromBundle` below — it becomes the joined community's
@@ -613,9 +621,19 @@ export class ConcordClient {
    * automatically by {@link InviteWatcher}; this drives the full-join flow the
    * watcher deliberately leaves to the app. Returns the existing engine if we are
    * already a member.
+   *
+   * WR-02 (12.3-12): this method is itself the validation boundary — every
+   * field of `bundle` is revalidated via {@link validateInviteBundle} before it
+   * reaches `joinFromBundle`, rather than merely documenting that the caller
+   * must have already validated it. `validateInviteBundle` is idempotent, so a
+   * caller passing an already-validated bundle (e.g. `ConcordDirectInvite.bundle`,
+   * which routes through `getDirectInviteBundle` -> `validateInviteBundle`)
+   * pays nothing extra for the revalidation.
    */
   async joinByBundle(bundle: InviteBundle): Promise<ConcordCommunity> {
-    return this.joinFromBundle(bundle, this.defaultRelays);
+    const validated = validateInviteBundle(bundle);
+    if (!validated) throw new Error("invite failed validation");
+    return this.joinFromBundle(validated, this.defaultRelays);
   }
 
   /** The shared tail of {@link joinByLink} / {@link joinByBundle}: turn an
@@ -635,13 +653,19 @@ export class ConcordClient {
       community_root: bundle.community_root,
       root_epoch: bundle.root_epoch,
       channels: bundle.channels ?? [],
-      // CR-01/T-12.3-11: defence-in-depth second gate — the fragment decode
-      // (isSafeInviteRelayURL there) is the primary one. fallbackRelays reaches
-      // here from two callers: joinByLink (attacker-influenced bootstrap relays
-      // parsed from the invite link fragment) and joinByBundle (the client's
-      // own defaultRelays), so filtering here is harmless for the trusted
-      // caller and load-bearing for the hostile one.
-      relays: bundle.relays.length ? bundle.relays : fallbackRelays.filter(isSafeInviteRelayURL),
+      // WR-02/WR-03 (12.3-12, corrected reachability argument): every value
+      // reaching `fallbackRelays` here is now either the app's OWN configured
+      // `relays` option (trusted local configuration — joinByBundle passes
+      // `this.defaultRelays` directly) or a bootstrap set already gated at BOTH
+      // `decodeFragment`'s terminal filter and `joinByLink`'s own
+      // `isSafeInviteRelayURL` filter (see joinByLink). Neither needs a THIRD
+      // gate here, and filtering the app's own configured relays with an
+      // untrusted-input predicate is itself a bug (WR-03): it would silently
+      // discard a LAN or VPN `ws://` endpoint the app deliberately configured,
+      // publish `material.relays: []`, and make the user's other devices
+      // resolve the community against their own defaults instead of the
+      // intended relay set.
+      relays: bundle.relays.length ? bundle.relays : fallbackRelays,
       name: bundle.name,
       // Canonicalize to [] (invite bundles omit held_roots) so this join material
       // is byte-identical to what the engine's `buildChain` settles on — otherwise
@@ -678,8 +702,29 @@ export class ConcordClient {
     await community.leave();
     this.removeCommunity(cid);
     // Tombstone the membership so the leave propagates across devices/clients
-    // (a bare omission would merge back as still-joined — CORD-02 §8).
+    // (a bare omission would merge back as still-joined — CORD-02 §8). Derived
+    // FIRST, before the prune below — `leaveCommunity` computes the tombstone
+    // from the arguments (cid, timestamp), not from the entry surviving in
+    // `this.list`, so this ordering is safe either way, but deriving the
+    // tombstone first keeps this method's two effects in the order a reader
+    // expects (mark dead, then remove the bytes).
     this.tombstones = leaveCommunity(cid, Date.now())(this.list, this.tombstones).tombstones;
+    // CR-02 recoverability: prune the entry's BYTES from the document, not just
+    // its liveness. Without this, an entry whose serialized bytes have already
+    // pushed the document past `LIST_MAX_BYTES` can never be evicted through
+    // the public API — `saveCommunityList`'s over-cap early return means the
+    // list can never publish again, permanently breaking this user's
+    // Community List sync. The prune is liveness-safe under CORD-02 §8
+    // ("nothing is ever deleted"): the tombstone above is what carries the
+    // leave across devices/clients, stamped with `removed_at = Date.now()` —
+    // the latest timestamp any add can possibly have at this instant. If a
+    // stale peer later reintroduces this entry (its own copy, never having
+    // seen our leave), the reintroduced `added_at` necessarily predates our
+    // `removed_at`, so `isCommunityLive` (added > removed) still derives it
+    // dead — UNLESS a genuine re-join stamps a fresh, later `added_at`
+    // (`recordJoin`), which is the designed resurrection path, not a bug this
+    // prune reopens.
+    this.list = this.list.filter((e) => e.community_id !== cid);
     await this.saveMirror();
     // Leaving is an explicit mutation — always publish the tombstoned list.
     await this.saveCommunityList();
@@ -983,9 +1028,34 @@ export class ConcordClient {
         this.clearCommunityListDirty(); // already in sync with the relay copy
         return;
       }
-      if (!communityListWithinByteCap(list, tombstones)) {
-        this.publishLog("community list exceeds the NIP-44 byte cap; not publishing");
-        console.warn("community list exceeds the NIP-44 byte cap; not publishing");
+      // CR-02 diagnostics: measure the serialized bytes ONCE, here, and reuse
+      // that SAME measurement both for the cap check and (on failure) for the
+      // diagnostic message below — calling `communityListWithinByteCap` AND
+      // independently re-serializing for the message would be two separate
+      // `JSON.stringify` passes over the same data that could in principle
+      // diverge (e.g. a future edit to one call site and not the other), and
+      // the message would then quote a byte count that is not the one the cap
+      // actually rejected.
+      const serializedBytes = new TextEncoder().encode(JSON.stringify({ entries: list, tombstones })).length;
+      if (serializedBytes > LIST_MAX_BYTES) {
+        // Diagnostics on the wedge (CR-02): name the offending entry so a user
+        // stuck here can identify which community to `leave()` to recover.
+        // One detailed report through both existing channels — `this.publishLog`
+        // (never a new logger, never `.extend()` at this call site, project
+        // rule) and the pre-existing `console.warn` — rather than a terse
+        // generic line on one channel and a detailed one on the other.
+        let largestEntryId = "";
+        let largestEntryBytes = -1;
+        for (const entry of list) {
+          const entryBytes = new TextEncoder().encode(JSON.stringify(entry)).length;
+          if (entryBytes > largestEntryBytes) {
+            largestEntryBytes = entryBytes;
+            largestEntryId = entry.community_id;
+          }
+        }
+        const message = `community list exceeds the NIP-44 byte cap (${serializedBytes}/${LIST_MAX_BYTES} bytes, ${list.length} entries); not publishing — largest entry community=${largestEntryId.slice(0, 8)}`;
+        this.publishLog(message);
+        console.warn(message);
         return;
       }
       // Only the transport target widens here (via {@link transport}) — the list's own content

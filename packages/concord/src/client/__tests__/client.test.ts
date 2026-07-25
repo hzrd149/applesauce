@@ -1554,3 +1554,230 @@ describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap c
     client.stop();
   });
 });
+
+// ── Gap closure (WR-02, WR-03, CR-02 half two; 12.3-12): joinByBundle becomes
+// a validation boundary, the untrusted-relay gate moves to joinByLink's own
+// bootstrap selection (never the app's configured relays), and a byte-capped
+// Community List becomes recoverable through leave() alone.
+describe("ConcordClient joinByBundle validation, relay gate relocation, and Community List recovery (12.3-12)", () => {
+  it("joinByBundle rejects a bundle that fails validation, and neither the community set nor the published document is affected", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Hostile",
+      description: "WR-02 regression",
+      relays: ["wss://fake"],
+    });
+    // The same malformed community_root repro CR-02's own describe block uses —
+    // WR-02's fix is that THIS call path now catches it too (joinByBundle was
+    // previously not itself a validation boundary).
+    const hostileBundle = { ...buildInviteBundle(genesis.material, { name: "Hostile" }), community_root: "not-hex" };
+
+    await expect(client.joinByBundle(hostileBundle)).rejects.toThrow(/invite failed validation/);
+    expect(client.getCommunity(hostileBundle.community_id)).toBeUndefined();
+    expect(listPublishes(published).length).toBe(0);
+
+    client.stop();
+  });
+
+  it("joinByBundle given a bundle whose relays are entirely junk strings joins with none of them in material.relays", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://joiner-default.example.com"],
+    });
+    await client.start();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "JunkRelays",
+      description: "WR-02 regression",
+      relays: ["wss://fake"],
+    });
+    const bundle = buildInviteBundle(
+      { ...genesis.material, relays: ["junk1", "junk2"] },
+      { name: "JunkRelays" },
+    );
+
+    // Non-vacuity: pre-fix, joinByBundle handed `bundle` straight to
+    // joinFromBundle unvalidated — `bundle.relays.length` (2 junk strings) is
+    // truthy, so the fallback branch is never reached at all and
+    // material.relays would have been ["junk1", "junk2"] verbatim. Post-fix,
+    // validateInviteBundle empties the junk relays FIRST (bundle.relays.length
+    // becomes 0), which correctly falls through to the client's own default
+    // relays — proving the bundle now passes through the validator on this
+    // path, without asserting an unrealistic "always empty" outcome.
+    const community = await client.joinByBundle(bundle);
+    expect(community.material.relays).toEqual(["wss://joiner-default.example.com"]);
+    expect(community.material.relays.some((r) => r.includes("junk"))).toBe(false);
+
+    client.stop();
+  });
+
+  it("joinByBundle given a valid bundle still joins exactly as before (regression)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    await client.start();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Valid",
+      description: "regression guard",
+      relays: ["wss://fake"],
+    });
+    const bundle = buildInviteBundle(genesis.material, { name: "Valid" });
+    const community = await client.joinByBundle(bundle);
+    expect(community.communityId).toBe(genesis.material.community_id);
+    expect(community.material.relays).toEqual(genesis.material.relays);
+
+    client.stop();
+  });
+
+  // WR-03: the untrusted-invite relay predicate must never filter the app's own
+  // configured `relays` option — a LAN plaintext relay (neither loopback nor
+  // wss://) must survive a join by bundle whose own relays are empty.
+  it("WR-03: a client configured with a LAN plaintext relay joins by bundle with empty bundle relays, and material.relays carries the configured relay", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const lanRelay = "ws://192.168.1.10:4869";
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: [lanRelay],
+    });
+    await client.start();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Lan",
+      description: "WR-03 regression",
+      relays: [lanRelay],
+    });
+    const bundle = { ...buildInviteBundle(genesis.material, { name: "Lan" }), relays: [] };
+
+    // Non-vacuity: pre-fix, joinFromBundle's fallback branch filtered
+    // `fallbackRelays` (here, the client's own configured `relays` option)
+    // through `isSafeInviteRelayURL` — a LAN `ws://` host is neither loopback
+    // nor `wss://`, so it would have been silently dropped, publishing
+    // `material.relays: []`.
+    const community = await client.joinByBundle(bundle);
+    expect(community.material.relays).toEqual([lanRelay]);
+
+    client.stop();
+  });
+
+  it("CR-02 recoverability: an already-wedged Community List cannot publish, but leave() prunes it so a subsequent save publishes with no entry for it", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const storage = memoryStorage();
+    const { log, calls } = spyLogger();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+      logger: log,
+    });
+
+    // Construct the oversized entry by feeding it directly into the client's
+    // local mirror (legacy format: a bare array of materials) rather than via
+    // any bundle-validating join path — Task 1 makes an oversized `name`
+    // impossible to get past `validateInviteBundle`, so this test targets the
+    // RECOVERY property, not the (now-closed) entry route.
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "x".repeat(45_000), // serialized twice per entry (seed + current) — wedges the doc alone
+      description: "CR-02 recovery",
+      relays: ["wss://fake"],
+    });
+    const cid = genesis.material.community_id;
+    const wedgedMaterial: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    await storage.setItem(pubkey, JSON.stringify([wedgedMaterial]));
+
+    await client.start();
+    await settle();
+    // A giant name does not break engine construction — the entry is reachable
+    // via the public API exactly as the plan's fix-shape rationale requires.
+    expect(client.getCommunity(cid)).toBeDefined();
+
+    await client.saveCommunityList();
+    expect(listPublishes(published).length).toBe(0); // wedged: never published
+    expect(
+      calls.some((c) => {
+        const msg = format(...(c as [unknown, ...unknown[]]));
+        return msg.includes("exceeds the NIP-44 byte cap") && msg.includes(cid.slice(0, 8));
+      }),
+    ).toBe(true);
+
+    // leave() prunes the entry's bytes (in addition to tombstoning it) — the
+    // wedge is now recoverable through the public API alone.
+    await client.leave(cid);
+    await settle();
+    expect(listPublishes(published).length).toBe(1); // recovered: publishes now
+    const doc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published)[0].content));
+    expect(doc.entries.find((e: any) => e.community_id === cid)).toBeUndefined();
+    expect(doc.tombstones.find((t: any) => t.community_id === cid)).toBeDefined();
+
+    client.stop();
+  });
+
+  it("an ordinary leave() still tombstones, still publishes, and the membership stays derived-dead after a later merge of a stale remote copy that still holds the entry", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const store = new EventStore();
+    const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), relays: ["wss://fake"] });
+    await client.start();
+
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    const cid = community.communityId;
+    const staleAddedAt = Date.now();
+    await settle();
+
+    await client.leave(cid);
+    await settle();
+    expect(client.getCommunity(cid)).toBeUndefined();
+
+    // A stale device's copy — never having seen our leave — still carries the
+    // entry with its (older) added_at and no tombstone of its own.
+    const staleMaterial: JoinMaterial = { ...community.material, held_roots: community.material.held_roots ?? [] };
+    const staleCommunities = mergeCommunities(
+      [],
+      [{ community_id: cid, seed: staleMaterial, current: staleMaterial, added_at: staleAddedAt }],
+    );
+    const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: staleCommunities, tombstones: [] }));
+    const staleEvent = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: 1 });
+    store.add(staleEvent as NostrEvent);
+    await settleFlush();
+
+    // Our removed_at (stamped at leave-time, after staleAddedAt) still outranks
+    // the stale re-merged add — the membership stays derived-dead.
+    expect(client.getCommunity(cid)).toBeUndefined();
+    expect(listPublishes(published).length).toBeGreaterThanOrEqual(1);
+    const lastDoc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published).at(-1)!.content));
+    const entry = lastDoc.entries.find((e: any) => e.community_id === cid);
+    const tomb = lastDoc.tombstones.find((t: any) => t.community_id === cid);
+    expect(tomb).toBeDefined();
+    expect(entry === undefined || entry.added_at <= tomb.removed_at).toBe(true);
+
+    client.stop();
+  });
+});
