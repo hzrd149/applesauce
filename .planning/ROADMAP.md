@@ -373,7 +373,7 @@ Plans:
 **Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
 **Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
 
-**Plans**: 12/12 plans complete
+**Plans**: 13/13 plans complete
 
 Plans:
 **Wave 1**
@@ -420,7 +420,7 @@ Plans:
 
 **Wave 11** *(gap closure — blocked on Wave 10 completion)*
 
-- [ ] 12.3-13-PLAN.md — replace `validateInviteBundle`'s hand-enumerated checks with four exhaustive rule tables + an allowlist rebuild, so an unbounded bundle field is unrepresentable rather than merely unbounded-this-round; add the aggregate byte-cap chain; make the Community List prune reachable and durable (D-17, CR-01, CR-02, WR-01…WR-08)
+- [x] 12.3-13-PLAN.md — replace `validateInviteBundle`'s hand-enumerated checks with four exhaustive rule tables + an allowlist rebuild, so an unbounded bundle field is unrepresentable rather than merely unbounded-this-round; add the aggregate byte-cap chain; make the Community List prune reachable and durable (D-17, CR-01, CR-02, WR-01…WR-08)
 
 > **Why this wave exists.** Waves 9 and 10 each hand-enumerated the untrusted bundle fields and each missed some: wave 9 missed `held_roots`/`channels[].held` counts and `name` length; wave 10 missed `owner`, `owner_salt`, `refounder`, and `relays[i]` length. While planning wave 11 two further gaps surfaced that neither review had named — `held_roots[i].refounder`, and unknown keys surviving the terminal `{...bundle}` spread. Per **D-17**, wave 11 closes CR-01 as a class: a field with no rule fails `tsc`, and the rule vocabulary has no unbounded pass-through kind. Do not close this by adding more named field checks.
 
@@ -450,7 +450,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
-| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 12/12 | Complete   | 2026-07-25 |
+| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 13/13 | Complete   | 2026-07-25 |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
 

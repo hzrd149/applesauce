@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: "Completed 12.3-12-PLAN.md (12/12 plans executed) — phase NOT complete: third code review found 2 new BLOCKERs (CR-01 unbounded owner/owner_salt/refounder/relays[i]; CR-02 leave() prune unreachable in the wedge case), both verified against source"
-last_updated: "2026-07-25T18:39:19.046Z"
+stopped_at: "Completed 12.3-13-PLAN.md (13/13 plans executed) — D-17 rule-table rewrite of validateInviteBundle, aggregate entry-size ceiling, and the derived-dead-state prune (CR-01/CR-02 both closed structurally); WR-01/05/06/07/08 and IN-01/02/04/05 folded in. A fourth review round is recommended before the phase is marked complete (see 12.3-13-SUMMARY.md's Deviations section: held_roots[i].refounder disposition, WR-08 test-coverage gap)."
+last_updated: "2026-07-25T20:33:56.956Z"
 last_activity: 2026-07-25
-last_activity_desc: Phase 12.3 execution started
+last_activity_desc: Phase 12.3 execution complete (13/13 plans)
 progress:
   total_phases: 12
   completed_phases: 10
-  total_plans: 68
-  completed_plans: 68
+  total_plans: 69
+  completed_plans: 69
   percent: 83
 ---
 
@@ -28,20 +28,23 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — PLANNED (12/13 plans executed)
-Plan: 13 of 13 (gap-closure round 4 planned, not yet executed)
-Status: 12.3-13-PLAN.md written and passed gsd-plan-checker. Closes the 2 BLOCKERs from the
-  third-pass review (12.3-REVIEW.md), both of which I verified against source:
-  CR-01 — validateInviteBundle leaves owner/owner_salt/refounder/relays[i] unbounded; planning
-  also surfaced held_roots[i].refounder and unknown-key survival through the terminal spread,
-  which no review had named. Per D-17 this closes structurally (exhaustive rule tables + allowlist
-  rebuild; a rule-less field fails tsc), NOT by adding more named field checks.
-  CR-02 — leave()'s prune sits behind an early `if (!community) return` so it never runs in the
-  wedge case, and mergeCommunities re-inserts pruned bytes.
-  Next: /gsd-execute-phase 12.3
-Last activity: 2026-07-25 — Planned 12.3-13 (gap closure round 4); plan-checker PASSED
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — 13/13 plans executed
+Plan: 13 of 13 (complete)
+Status: All plans executed — recommend a fourth code review before marking the phase complete
+  Round 4 (12.3-13) closed D-17 structurally: validateInviteBundle rewritten as four exhaustive
+  mapped-type rule tables (INVITE_BUNDLE_FIELD_RULES, CHANNEL_KEY_FIELD_RULES, HELD_KEY_FIELD_RULES,
+  BLOB_POINTER_FIELD_RULES) + a generic rebuild-never-spread walker — a field with no rule fails
+  tsc, demonstrated by hand. CR-01 closed as a class (owner/owner_salt/refounder/relays[i] length,
+  unknown-key survival at any depth) plus its aggregate half (COMMUNITY_LIST_MAX_ENTRY_BYTES at
+  recordJoin). CR-02 closed on both halves via pruneDeadEntries() — reachable with no engine,
+  idempotent against re-merge. WR-01/05/06/07/08 and IN-01/02/04/05 folded in.
+  Two items flagged for the next review round: the held_roots[i].refounder disposition deviates
+  from one <behavior> bullet's prose (see 12.3-13-SUMMARY.md), and WR-08 has no dedicated
+  behavioral test (code-level fix verified by grep + adjacent coverage only).
+  Next: /gsd-code-review (recommended) or /gsd-progress to advance past phase 12.3
+Last activity: 2026-07-25 — Phase 12.3 execution complete (13/13 plans)
 
-Progress: [██████████] 83%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -97,6 +100,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P10 | 30min | 3 tasks | 9 files |
 | Phase 12.3 P11 | 26min | 3 tasks | 4 files |
 | Phase 12.3 P12 | 65min | 3 tasks | 6 files |
+| Phase 12.3 P13 | ~4h | 5 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -204,6 +208,12 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.3-12: joinByBundle now runs validateInviteBundle itself (WR-02); the untrusted-relay gate relocated from joinFromBundle's fallback to joinByLink's bootstrap selection so the app's own configured relays are never filtered (WR-03 folded in)
 - [Phase ?]: 12.3-12: leave() prunes the entry from this.list after tombstoning it, recovering a Community List already wedged past LIST_MAX_BYTES (CR-02 half two)
 - [Phase ?]: 12.3-12: ConcordCommunity's constructor wraps everything after ExtraRelays construction in try/catch (disposes the holder, rethrows); reconcileCommunities fingerprints failed material via canonicalJson so an identical failure is skipped but a corrected entry is retried (WR-01)
+- [Phase ?]: 12.3-13: validateInviteBundle rewritten as four exhaustive mapped-type rule tables (INVITE_BUNDLE_FIELD_RULES, CHANNEL_KEY_FIELD_RULES, HELD_KEY_FIELD_RULES, BLOB_POINTER_FIELD_RULES) + a generic rebuildByRules walker that builds (never spreads) -- a field with no rule fails tsc, demonstrated by hand (D-17)
+- [Phase ?]: 12.3-13: held_roots[i].refounder implemented literally per the rule table (drop/omit, entry survives with refounder stripped) rather than the plan's behavior prose (which separately implied whole-bundle rejection) -- documented as a deviation, flagged for next review
+- [Phase ?]: 12.3-13: COMMUNITY_LIST_MAX_ENTRY_BYTES = floor(LIST_MAX_BYTES / 2) enforced at recordJoin before engine construction or this.list mutation, closing CR-01's structural (aggregate) half
+- [Phase ?]: 12.3-13: pruneDeadEntries() makes the dead-membership byte-prune a property of derived-dead state (never marks dirty, never publishes), called from leave()/handleRemoved/reconcileCommunities; leave()'s guard moved from the engine map to the document, closing CR-02 both halves
+- [Phase ?]: 12.3-13: ExtraRelays.merge's WR-05 fix diverges from the review's own suggested code, which was mathematically dead code -- implemented per-entry parseability checking instead
+- [Phase ?]: 12.3-13: WR-08 (handleRemoved routes through pruneDeadEntries) verified only by grep + adjacent coverage -- a genuine behavioral test needs two-instance live-refound infrastructure that doesn't exist in this suite; flagged for a future plan or explicit acceptance
 
 ### Pending Todos
 
@@ -241,7 +251,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-25T18:39:19.036Z
+Last session: 2026-07-25T20:33:11.189Z
 Stopped at: Completed 12.3-12-PLAN.md (gap closure for CR-01/CR-02/WR-01/WR-02; phase 12.3 all 12 plans executed)
 Resume file: None
 
