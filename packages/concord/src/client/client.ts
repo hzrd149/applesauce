@@ -258,6 +258,15 @@ export class ConcordClient {
    *  instead of the stale engine resurrecting the membership. */
   private list: CommunityListCommunity[] = [];
   private tombstones: CommunityTombstone[] = [];
+  /** WR-01 (12.3-12): community_id -> canonicalJson fingerprint of the `current`
+   *  material whose `addCommunity` construction most recently threw. Retrying an
+   *  entry that fails IDENTICALLY on every Community List cast emission would cost
+   *  a fresh `ConcordCommunity` construction — and therefore a fresh subscription
+   *  to the app's `extraRelays` source — on every emission (the cast re-emits on
+   *  outbox/replaceable churn). Fingerprinting on the MATERIAL, not the id alone,
+   *  is what keeps a genuinely corrected entry retryable: cleared on success or
+   *  on reap (see {@link reconcileCommunities}). */
+  private readonly failedConstructionFingerprint = new Map<string, string>();
   /** Canonical fingerprint of the list content believed to be on the relay. When a save would
    *  produce identical content we skip the encrypt/sign/publish — 13302 is replaceable, so a
    *  spurious republish (new nonce, new signature, new created_at) can clobber a newer copy from
@@ -955,6 +964,10 @@ export class ConcordClient {
     for (const cid of [...this.communities.keys()]) {
       if (live.has(cid)) continue;
       this.removeCommunity(cid);
+      // WR-01 (12.3-12): a reaped community is no longer live, so any recorded
+      // failure fingerprint for it is stale — clear it so a future re-add
+      // (e.g. a genuine re-join) is retried rather than permanently suppressed.
+      this.failedConstructionFingerprint.delete(cid);
       changed = true;
     }
     for (const [cid, community] of live) {
@@ -968,9 +981,22 @@ export class ConcordClient {
       // the entry may be legitimate material this client version simply cannot
       // construct, and silently tombstoning another device's membership would be
       // a worse failure than leaving it un-started.
+      //
+      // WR-01 (12.3-12): the Community List cast re-emits on outbox/replaceable
+      // churn, so this loop runs on every emission — retrying an entry that has
+      // already failed IDENTICALLY costs a fresh `ConcordCommunity` construction,
+      // and therefore a fresh subscription to the app's `extraRelays` source, on
+      // EVERY emission (12.3-11's own skip-and-continue amplified this from a
+      // once-per-reconcile leak into a per-emission one). Fingerprint on the
+      // MATERIAL (not the id alone) so a genuinely updated entry is still
+      // retried; a repeat of the exact same failing material is skipped
+      // silently (no re-log, no construction attempt).
+      const fingerprint = canonicalJson(community.current);
+      if (this.failedConstructionFingerprint.get(cid) === fingerprint) continue;
       try {
         this.addCommunity(community.current);
       } catch (err) {
+        this.failedConstructionFingerprint.set(cid, fingerprint);
         this.log(
           "reconcile skipped an unconstructable community=%s: %s",
           cid.slice(0, 8),
@@ -978,6 +1004,7 @@ export class ConcordClient {
         );
         continue;
       }
+      this.failedConstructionFingerprint.delete(cid);
       changed = true;
     }
     if (changed) await this.saveMirror();

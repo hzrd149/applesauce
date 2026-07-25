@@ -5,7 +5,7 @@
 // is covered by the puppeteer drivers.
 
 import { describe, expect, it, vi } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject, Subscription, firstValueFrom } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, Subscription, firstValueFrom } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
@@ -2302,5 +2302,118 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
     community.dispose();
 
     for (const subs of driverSubs.values()) for (const sub of subs) expect(sub.closed).toBe(true);
+  });
+});
+
+// ── Gap closure (WR-01, 12.3-12): a construction that throws must leave
+// nothing attached to the app-supplied extras source, so the source's own
+// subscriber count — not merely `.observed`'s boolean — must return to
+// exactly zero.
+/** A counting Observable stand-in for `extraRelays`: increments a counter on
+ *  subscribe, delegates to an inner BehaviorSubject, and decrements on
+ *  teardown — so a test can assert an exact hand-derived active-subscriber
+ *  count rather than a boolean (`.observed`). */
+function countingExtrasSource(initial: string[] = []): {
+  source: Observable<string[]>;
+  count: () => number;
+} {
+  const inner = new BehaviorSubject<string[]>(initial);
+  let active = 0;
+  const source = new Observable<string[]>((subscriber) => {
+    active++;
+    const sub = inner.subscribe(subscriber);
+    return () => {
+      active--;
+      sub.unsubscribe();
+    };
+  });
+  return { source, count: () => active };
+}
+
+describe("ConcordCommunity constructor — self-cleaning extras on throw (WR-01, 12.3-12)", () => {
+  it("a construction that throws during key derivation leaves zero subscribers on the extras source; a successful construction leaves exactly one", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Test",
+      description: "hi",
+      relays: ["wss://fake"],
+    });
+
+    // Malformed AFTER buildInviteBundle/validateInviteBundle would run — this
+    // targets the constructor's own tail, not the bundle validator (that's
+    // Task 1's surface). `hexToBytes(material.community_root)` throws
+    // synchronously inside `deriveConcordKeys`, immediately after `this.extras`
+    // is constructed but before any other field exists.
+    const throwingMaterial = { ...genesis.material, community_root: "not-hex" };
+    const { source: throwingExtras, count: throwingCount } = countingExtrasSource([]);
+
+    expect(
+      () =>
+        new ConcordCommunity({
+          material: throwingMaterial,
+          signer,
+          pubkey,
+          pool,
+          relayAuth: new ConcordRelayAuth(pool),
+          eventStore: new EventStore(),
+          relays: ["wss://fake"],
+          extraRelays: throwingExtras,
+        }),
+    ).toThrow();
+    // Non-vacuity: pre-fix, `this.extras = new ExtraRelays(options.extraRelays)`
+    // subscribes to `throwingExtras` BEFORE the throwing `deriveConcordKeys`
+    // call — nothing ever called `.dispose()` on the discarded half-built
+    // instance, so the subscriber count would have stayed at 1 forever.
+    expect(throwingCount()).toBe(0);
+
+    // Non-vacuity guard against the test passing vacuously because the source
+    // is never subscribed at all: a SUCCESSFUL construction against the same
+    // kind of source must leave exactly one active subscriber.
+    const { source: okExtras, count: okCount } = countingExtrasSource([]);
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+      extraRelays: okExtras,
+    });
+    expect(okCount()).toBe(1);
+    community.dispose();
+  });
+
+  it("a successfully constructed community still releases its subscriber on dispose()", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Test",
+      description: "hi",
+      relays: ["wss://fake"],
+    });
+    const { source: extras, count } = countingExtrasSource([]);
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+      extraRelays: extras,
+    });
+    expect(count()).toBe(1);
+
+    community.dispose();
+    // Guards against a regression where the new constructor failure path
+    // double-disposes, or the success path stops disposing on dispose().
+    expect(count()).toBe(0);
   });
 });

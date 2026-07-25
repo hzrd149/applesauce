@@ -369,115 +369,137 @@ export class ConcordCommunity {
     this.extraRelaysOption = options.extraRelays;
     // Constructed BEFORE any observable derivation below so its synchronous
     // snapshot is already seeded when connected$/authenticated$ build (D-04).
+    // Its position here is unchanged (D-04 is load-bearing) — but EVERYTHING
+    // after it, to the end of the constructor, is now wrapped: `ExtraRelays`'s
+    // constructor subscribes to an APP-SUPPLIED source (`options.extraRelays`,
+    // typically a long-lived shared `BehaviorSubject` per this class's own
+    // option docs), so a throw anywhere below — most immediately
+    // `deriveConcordKeys` on malformed material, but this covers every
+    // statement in the tail, not just that one line — would otherwise leave a
+    // PERMANENT subscriber attached to the app's source with no way to release
+    // it: the half-built instance is discarded by the caller, and nothing else
+    // holds a reference to `this.extras` to call `.dispose()` on it (WR-01).
+    // This is invisible with a static `string[]` extras option, since `of(...)`
+    // completes immediately and never actually accumulates a live subscription
+    // — it only bites the reactive-Observable (e.g. `BehaviorSubject`)
+    // configuration this phase was built for. Deliberately NOT calling the
+    // full `dispose()` here: the instance is half-built (fields below this
+    // point may not exist yet), so releasing the ONE subscription already
+    // taken (`this.extras`) is exactly the cleanup this failure path needs —
+    // no more, no less.
     this.extras = new ExtraRelays(options.extraRelays);
+    try {
+      this.keys = deriveConcordKeys(options.material, []);
+      this.state$ = new BehaviorSubject<CommunityState>(emptyState(options.material));
+      this.epoch$ = new BehaviorSubject<number>(options.material.root_epoch);
 
-    this.keys = deriveConcordKeys(options.material, []);
-    this.state$ = new BehaviorSubject<CommunityState>(emptyState(options.material));
-    this.epoch$ = new BehaviorSubject<number>(options.material.root_epoch);
+      this.dissolved$ = this.state$.pipe(
+        map((s) => s.dissolved),
+        distinctUntilChanged(),
+      );
 
-    this.dissolved$ = this.state$.pipe(
-      map((s) => s.dissolved),
-      distinctUntilChanged(),
-    );
+      // Granular reads. Every control-plane slice keeps a STABLE REFERENCE between
+      // control folds — `ConcordCommunityStateModel` spreads `{ ...control, members }`,
+      // so `state$` re-emitting because a chat message moved the observed-authors set
+      // leaves `roles`/`channels`/… pointing at the same objects. Reference identity is
+      // therefore enough to keep these quiet under channel traffic.
+      const slice = <T>(select: (s: CommunityState) => T): Observable<T> =>
+        this.state$.pipe(map(select), distinctUntilChanged());
+      this.metadata$ = slice((s) => s.metadata);
+      // CHAN-06: `accessible` is client-local (never folded), and must react to a
+      // key grant/drop ALONE — combineLatest with materialChanged$ so a Direct
+      // Invite delivering a key with no simultaneous control-plane fold still
+      // re-emits (the reactivity gap RESEARCH.md surfaced).
+      this.channels$ = combineLatest([slice((s) => s.channels), this.materialChanged$.pipe(startWith(undefined))]).pipe(
+        map(([channels]) =>
+          channels.map(
+            (c): ChannelView => ({
+              ...c,
+              accessible: !c.private || hasChannelKey(this.material, c.channel_id),
+            }),
+          ),
+        ),
+        distinctUntilChanged(sameChannelViews),
+      );
+      this.roles$ = slice((s) => s.roles);
+      this.grants$ = slice((s) => s.grants);
+      this.banlist$ = slice((s) => s.banlist);
+      this.inviteLinks$ = slice((s) => s.inviteLinks);
+      // `members` is rebuilt by every guestbook/presence fold, so compare by content.
+      this.members$ = this.state$.pipe(
+        map((s) => s.members),
+        distinctUntilChanged(sameSet),
+      );
 
-    // Granular reads. Every control-plane slice keeps a STABLE REFERENCE between
-    // control folds — `ConcordCommunityStateModel` spreads `{ ...control, members }`,
-    // so `state$` re-emitting because a chat message moved the observed-authors set
-    // leaves `roles`/`channels`/… pointing at the same objects. Reference identity is
-    // therefore enough to keep these quiet under channel traffic.
-    const slice = <T>(select: (s: CommunityState) => T): Observable<T> =>
-      this.state$.pipe(map(select), distinctUntilChanged());
-    this.metadata$ = slice((s) => s.metadata);
-    // CHAN-06: `accessible` is client-local (never folded), and must react to a
-    // key grant/drop ALONE — combineLatest with materialChanged$ so a Direct
-    // Invite delivering a key with no simultaneous control-plane fold still
-    // re-emits (the reactivity gap RESEARCH.md surfaced).
-    this.channels$ = combineLatest([slice((s) => s.channels), this.materialChanged$.pipe(startWith(undefined))]).pipe(
-      map(([channels]) =>
-        channels.map(
-          (c): ChannelView => ({
-            ...c,
-            accessible: !c.private || hasChannelKey(this.material, c.channel_id),
+      // Reactive (D-08): switchMap over the extras holder's relays$ so a later
+      // extraRelays emission re-derives both statuses, rather than freezing at a
+      // construction-time snapshot. Both route their merge through transport()
+      // (not the switchMap's own emitted value) so it stays the class's one
+      // literal merge point (D-04).
+      this.connected$ = this.extras.relays$.pipe(switchMap(() => this.relayAuth.connected$(this.transport())));
+      this.authenticated$ = this.extras.relays$.pipe(
+        switchMap(() => this.relayAuth.authenticated$(this.transport(), () => this.currentAuthors())),
+      );
+      this.status$ = combineLatest({
+        phase: this.phase$,
+        epoch: this.epoch$,
+        dissolved: this.dissolved$,
+        connected: this.connected$,
+        authenticated: this.authenticated$,
+        error: this.error$,
+      }).pipe(
+        map(
+          ({ dissolved, ...s }): ConcordCommunityStatus => ({
+            ...s,
+            phase: dissolved ? "dissolved" : s.phase,
           }),
         ),
-      ),
-      distinctUntilChanged(sameChannelViews),
-    );
-    this.roles$ = slice((s) => s.roles);
-    this.grants$ = slice((s) => s.grants);
-    this.banlist$ = slice((s) => s.banlist);
-    this.inviteLinks$ = slice((s) => s.inviteLinks);
-    // `members` is rebuilt by every guestbook/presence fold, so compare by content.
-    this.members$ = this.state$.pipe(
-      map((s) => s.members),
-      distinctUntilChanged(sameSet),
-    );
+        distinctUntilChanged(
+          (a, b) =>
+            a.phase === b.phase &&
+            a.epoch === b.epoch &&
+            a.connected === b.connected &&
+            a.authenticated === b.authenticated &&
+            a.error === b.error,
+        ),
+        shareReplay(1),
+      );
 
-    // Reactive (D-08): switchMap over the extras holder's relays$ so a later
-    // extraRelays emission re-derives both statuses, rather than freezing at a
-    // construction-time snapshot. Both route their merge through transport()
-    // (not the switchMap's own emitted value) so it stays the class's one
-    // literal merge point (D-04).
-    this.connected$ = this.extras.relays$.pipe(switchMap(() => this.relayAuth.connected$(this.transport())));
-    this.authenticated$ = this.extras.relays$.pipe(
-      switchMap(() => this.relayAuth.authenticated$(this.transport(), () => this.currentAuthors())),
-    );
-    this.status$ = combineLatest({
-      phase: this.phase$,
-      epoch: this.epoch$,
-      dissolved: this.dissolved$,
-      connected: this.connected$,
-      authenticated: this.authenticated$,
-      error: this.error$,
-    }).pipe(
-      map(
-        ({ dissolved, ...s }): ConcordCommunityStatus => ({
-          ...s,
-          phase: dissolved ? "dissolved" : s.phase,
-        }),
-      ),
-      distinctUntilChanged(
-        (a, b) =>
-          a.phase === b.phase &&
-          a.epoch === b.epoch &&
-          a.connected === b.connected &&
-          a.authenticated === b.authenticated &&
-          a.error === b.error,
-      ),
-      shareReplay(1),
-    );
+      // Eagerly create the community planes so the state model has stores to fold
+      // and the (cached) history renders immediately, before sync fills the delta.
+      this.storeFor("control");
+      this.storeFor(this.guestbookPlaneKey());
+      this.storeFor("dissolved");
+      this.storeFor("rekey");
 
-    // Eagerly create the community planes so the state model has stores to fold
-    // and the (cached) history renders immediately, before sync fills the delta.
-    this.storeFor("control");
-    this.storeFor(this.guestbookPlaneKey());
-    this.storeFor("dissolved");
-    this.storeFor("rekey");
+      this.admin = new ConcordCommunityAdmin({
+        community: this,
+        store: this.storeFor("control"),
+        state: () => this.state$.value,
+        pubkey: this.pubkey,
+        uploader: this.uploader,
+        publish: (rumor) => this.publishToPlane({ plane: "control" }, rumor, { plaintext: true }),
+        mintChannelKey: (channelId, name) => {
+          this.keys = addChannelKey(this.keys, channelId, name);
+          this.onMaterialChange?.(this.keys.material);
+          this.materialChanged$.next();
+        },
+      });
 
-    this.admin = new ConcordCommunityAdmin({
-      community: this,
-      store: this.storeFor("control"),
-      state: () => this.state$.value,
-      pubkey: this.pubkey,
-      uploader: this.uploader,
-      publish: (rumor) => this.publishToPlane({ plane: "control" }, rumor, { plaintext: true }),
-      mintChannelKey: (channelId, name) => {
-        this.keys = addChannelKey(this.keys, channelId, name);
-        this.onMaterialChange?.(this.keys.material);
-        this.materialChanged$.next();
-      },
-    });
+      this.rewireState();
 
-    this.rewireState();
-
-    // D-09: guarded with `if (this.liveSub)` rather than firing unconditionally
-    // — the ExtraRelays holder's internal BehaviorSubject always emits once
-    // synchronously at construction (even with no `extraRelays` configured), and
-    // an unguarded subscribe would open the live socket here, before `start()`
-    // ever runs (a timing regression D-14's byte-identical requirement forbids).
-    this.extrasSub = this.extras.relays$.subscribe(() => {
-      if (!this.disposed && this.liveSub) this.openLive();
-    });
+      // D-09: guarded with `if (this.liveSub)` rather than firing unconditionally
+      // — the ExtraRelays holder's internal BehaviorSubject always emits once
+      // synchronously at construction (even with no `extraRelays` configured), and
+      // an unguarded subscribe would open the live socket here, before `start()`
+      // ever runs (a timing regression D-14's byte-identical requirement forbids).
+      this.extrasSub = this.extras.relays$.subscribe(() => {
+        if (!this.disposed && this.liveSub) this.openLive();
+      });
+    } catch (err) {
+      this.extras.dispose();
+      throw err;
+    }
   }
 
   get material(): JoinMaterial {

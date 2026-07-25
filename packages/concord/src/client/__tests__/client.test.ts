@@ -5,7 +5,7 @@
 
 import { format } from "node:util";
 import { describe, expect, it, vi } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject, delay, filter, firstValueFrom, from } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, delay, filter, firstValueFrom, from } from "rxjs";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
@@ -1529,6 +1529,165 @@ describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap c
       process.removeListener("unhandledRejection", onUnhandled);
       client.stop();
     }
+  });
+
+  // ── Gap closure (WR-01, 12.3-12): 12.3-11's own skip-and-continue reconcile
+  // amplified community.ts's constructor leak into a per-emission one — a
+  // repeatedly-failing entry must cost one subscription, not one per emission.
+  /** A counting Observable stand-in for `extraRelays`: increments a counter on
+   *  subscribe, delegates to an inner BehaviorSubject, and decrements on
+   *  teardown — mirrors community.test.ts's identical helper. */
+  function countingExtrasSource(initial: string[] = []): {
+    source: Observable<string[]>;
+    count: () => number;
+  } {
+    const inner = new BehaviorSubject<string[]>(initial);
+    let active = 0;
+    const source = new Observable<string[]>((subscriber) => {
+      active++;
+      const sub = inner.subscribe(subscriber);
+      return () => {
+        active--;
+        sub.unsubscribe();
+      };
+    });
+    return { source, count: () => active };
+  }
+
+  it("a Community List with one unconstructable entry alongside one legitimate entry does not grow the extras subscriber count across several reconcile emissions, and the legitimate community stays started", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Legit",
+      description: "should stay started",
+      relays: ["wss://fake"],
+    });
+    const legitMaterial: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    const malformedMaterial: JoinMaterial = {
+      ...legitMaterial,
+      community_id: "ff".repeat(32),
+      community_root: "not-hex",
+    };
+    const communities = mergeCommunities(
+      [],
+      [
+        { community_id: legitMaterial.community_id, seed: legitMaterial, current: legitMaterial, added_at: 1 },
+        {
+          community_id: malformedMaterial.community_id,
+          seed: malformedMaterial,
+          current: malformedMaterial,
+          added_at: 1,
+        },
+      ],
+    );
+
+    const store = new EventStore();
+    const { pool } = fakePool();
+    const { source: extras, count } = countingExtrasSource([]);
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+      watchDirectInvites: false, // isolate the count to client + invite manager + community engines
+      extraRelays: extras,
+    });
+
+    await client.start();
+    // Baseline: the client itself + its always-constructed invite manager each
+    // hold their own subscription to the same app-supplied source.
+    const baseline = count();
+
+    async function publishListAt(createdAt: number) {
+      const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: communities, tombstones: [] }));
+      const event = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: createdAt });
+      store.add(event as NostrEvent);
+      await settleFlush();
+    }
+
+    await publishListAt(1);
+    expect(client.getCommunity(legitMaterial.community_id)).toBeDefined();
+    expect(client.getCommunity(malformedMaterial.community_id)).toBeUndefined();
+    // One legitimate community engine constructed → +1 over baseline.
+    const afterFirst = count();
+    expect(afterFirst).toBe(baseline + 1);
+
+    // Non-vacuity: pre-fix, EVERY emission below re-attempts
+    // `this.addCommunity(malformedMaterial)`, and `ConcordCommunity`'s
+    // constructor leaks a permanent subscriber on each throw — so the count
+    // would grow by one per emission here. Re-publish the SAME content at
+    // successive `created_at` values to force multiple reconcile passes over
+    // the identically-failing entry.
+    await publishListAt(2);
+    await publishListAt(3);
+    await publishListAt(4);
+
+    expect(count()).toBe(afterFirst); // no growth
+    expect(client.getCommunity(legitMaterial.community_id)).toBeDefined();
+    expect(client.getCommunity(malformedMaterial.community_id)).toBeUndefined();
+
+    client.stop();
+  });
+
+  it("a failed reconcile entry is not retried on every emission, but an entry whose current material changes is retried and starts once corrected", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Fixable",
+      description: "starts once corrected",
+      relays: ["wss://fake"],
+    });
+    const goodMaterial: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    const badMaterial: JoinMaterial = { ...goodMaterial, community_root: "not-hex" };
+    const cid = goodMaterial.community_id;
+
+    const store = new EventStore();
+    const { pool } = fakePool();
+    const { log, calls } = spyLogger();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+      logger: log,
+    });
+    await client.start();
+
+    async function publishEntryAt(createdAt: number, material: JoinMaterial) {
+      const communities = mergeCommunities(
+        [],
+        [{ community_id: cid, seed: material, current: material, added_at: 1 }],
+      );
+      const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: communities, tombstones: [] }));
+      const event = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: createdAt });
+      store.add(event as NostrEvent);
+      await settleFlush();
+    }
+
+    await publishEntryAt(1, badMaterial);
+    expect(client.getCommunity(cid)).toBeUndefined();
+    calls.length = 0; // clear the first-failure log before asserting the suppressed retry below
+
+    // Same failing material again — must be skipped SILENTLY (no re-log, no
+    // construction attempt), not merely "still fails".
+    await publishEntryAt(2, badMaterial);
+    expect(client.getCommunity(cid)).toBeUndefined();
+    expect(calls.some((c) => format(...(c as [unknown, ...unknown[]])).includes(cid.slice(0, 8)))).toBe(false);
+
+    // The material CHANGES (corrected) — this must be retried, not permanently
+    // suppressed by the id-only fingerprint.
+    await publishEntryAt(3, goodMaterial);
+    expect(client.getCommunity(cid)).toBeDefined();
+
+    client.stop();
   });
 
   it("the happy-path join still stamps added_at and produces exactly one document entry (recordJoin reordering regression guard)", async () => {
