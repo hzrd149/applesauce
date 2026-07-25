@@ -93,12 +93,16 @@ and `packages/actions/src/actions/direct-message-relays.ts`
    models, factories, operations) and `packages/actions` (actions), while the reference
    `NutWallet` sits in its own `packages/wallet`. A DM client has no obvious existing
    home — new package vs. `common` is a real decision.
-2. **Does it cover NIP-17 too?** `packages/common/src/models/wrapped-messages.ts` has
-   the identical shape of gap — `WrappedMessagesModel`, `WrappedMessagesGroups`,
-   `WrappedMessagesGroup`, `WrappedMessageThreads`, `WrappedMessageReplies`, models only,
-   no client. Apps generally need legacy and wrapped DMs together, so a legacy-only
-   client risks being the wrong seam. Decide deliberately whether to scope one client
-   over both or to design legacy-first without precluding wrapped.
+2. **Does it cover NIP-17 too?** Wrapped messages are now captured separately as
+   [[SEED-006]], which reads as an intent to keep the two clients distinct — so this
+   question is "confirm the split", not "decide from scratch". Still worth confirming
+   deliberately: `packages/common/src/models/wrapped-messages.ts` has the identical
+   shape of gap (`WrappedMessagesModel`, `WrappedMessagesGroups`, `WrappedMessagesGroup`,
+   `WrappedMessageThreads`, `WrappedMessageReplies` — models only, no client), and apps
+   typically render legacy and wrapped threads in one inbox, so the conversation/thread
+   seam may want to span both even if sync and network layers stay separate. Note the
+   wrapped side has substantially more substrate to build on (gift-wrap unwrap caching,
+   `RumorStore`) — see [[SEED-006]] — so the two are not symmetric in effort.
 3. **What is the Manager's unit?** `AccountManager` manages accounts; the DM Manager's
    equivalent (per-correspondent client? per-identity? one manager owning all threads?)
    is unspecified in the captured idea.
