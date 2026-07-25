@@ -28,15 +28,18 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — BLOCKED (all 12 plans executed)
-Plan: 12 of 12 (gap-closure plan 12.3-12 executed)
-Status: Phase NOT complete — 12.3-REVIEW.md (third pass) records 2 BLOCKERs, both verified against source.
-  CR-01: validateInviteBundle length-bounds name/label/creator_npub/channels[].name but leaves
-  owner, owner_salt, refounder, and relays[i] unbounded — same Community List wedge, different fields.
-  CR-02: leave()'s new byte-prune sits after an early `if (!community) return`, so it cannot run in
-  the wedge case it was written to escape; mergeCommunities can also re-insert pruned bytes.
-  Next: /gsd-plan-phase 12.3 --gaps
-Last activity: 2026-07-25 — Executed 12.3-12; third code review found 2 new blockers
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — PLANNED (12/13 plans executed)
+Plan: 13 of 13 (gap-closure round 4 planned, not yet executed)
+Status: 12.3-13-PLAN.md written and passed gsd-plan-checker. Closes the 2 BLOCKERs from the
+  third-pass review (12.3-REVIEW.md), both of which I verified against source:
+  CR-01 — validateInviteBundle leaves owner/owner_salt/refounder/relays[i] unbounded; planning
+  also surfaced held_roots[i].refounder and unknown-key survival through the terminal spread,
+  which no review had named. Per D-17 this closes structurally (exhaustive rule tables + allowlist
+  rebuild; a rule-less field fails tsc), NOT by adding more named field checks.
+  CR-02 — leave()'s prune sits behind an early `if (!community) return` so it never runs in the
+  wedge case, and mergeCommunities re-inserts pruned bytes.
+  Next: /gsd-execute-phase 12.3
+Last activity: 2026-07-25 — Planned 12.3-13 (gap closure round 4); plan-checker PASSED
 
 Progress: [██████████] 83%
 

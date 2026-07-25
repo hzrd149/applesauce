@@ -418,6 +418,12 @@ Plans:
 
 - [x] 12.3-12-PLAN.md — bundle array cardinality + attacker-string length bounds, validating `joinByBundle` with the relay gate relocated, recoverable Community List, and the `ExtraRelays` construction-failure leak (CR-01, CR-02, WR-01, WR-02)
 
+**Wave 11** *(gap closure — blocked on Wave 10 completion)*
+
+- [ ] 12.3-13-PLAN.md — replace `validateInviteBundle`'s hand-enumerated checks with four exhaustive rule tables + an allowlist rebuild, so an unbounded bundle field is unrepresentable rather than merely unbounded-this-round; add the aggregate byte-cap chain; make the Community List prune reachable and durable (D-17, CR-01, CR-02, WR-01…WR-08)
+
+> **Why this wave exists.** Waves 9 and 10 each hand-enumerated the untrusted bundle fields and each missed some: wave 9 missed `held_roots`/`channels[].held` counts and `name` length; wave 10 missed `owner`, `owner_salt`, `refounder`, and `relays[i]` length. While planning wave 11 two further gaps surfaced that neither review had named — `held_roots[i].refounder`, and unknown keys surviving the terminal `{...bundle}` spread. Per **D-17**, wave 11 closes CR-01 as a class: a field with no rule fails `tsc`, and the rule vocabulary has no unbounded pass-through kind. Do not close this by adding more named field checks.
+
 **Cross-cutting constraints:**
 
 - `connected$` and `authenticated$` re-derive when the extras Observable emits a new set, without restarting the engine (D-08).
