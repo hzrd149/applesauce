@@ -4,7 +4,11 @@ import { PrivateKeySigner } from "applesauce-signers";
 
 import {
   communityListWithinByteCap,
+  communityListByteSize,
+  communityListEntryByteSize,
   COMMUNITY_LIST_KIND,
+  COMMUNITY_LIST_MAX_ENTRY_BYTES,
+  LIST_MAX_BYTES,
   getCommunityList,
   getLiveCommunities,
   isCommunityListUnlocked,
@@ -15,7 +19,7 @@ import {
   unlockCommunityList,
 } from "../community-list.js";
 import { CommunityListFactory } from "../../factories/community-list.js";
-import type { CommunityTombstone, JoinMaterial } from "../../types.js";
+import type { CommunityListCommunity, CommunityTombstone, JoinMaterial } from "../../types.js";
 
 describe("community-list CRDT", () => {
   const mkCommunity = (id: string, epoch: number, at: number) => ({
@@ -67,6 +71,74 @@ describe("community-list CRDT", () => {
     communities = mergeCommunities(communities, [mkCommunity("x", 2, 300)]);
     expect(isCommunityLive(communities, tombstones, "x")).toBe(true);
     expect(communityListWithinByteCap(communities, tombstones)).toBe(true);
+  });
+});
+
+// ── Gap closure (CR-01 structural half, WR-04; 12.3-13): one shared
+// serialized-byte measurement, and the per-entry ceiling it enables.
+describe("communityListByteSize / communityListEntryByteSize / COMMUNITY_LIST_MAX_ENTRY_BYTES (12.3-13)", () => {
+  const mkCommunity = (id: string, epoch: number, at: number): CommunityListCommunity => ({
+    community_id: id,
+    seed: {
+      community_id: id,
+      owner: "o",
+      owner_salt: "s",
+      community_root: "r",
+      root_epoch: epoch,
+      channels: [],
+      relays: [],
+      name: id,
+    },
+    current: {
+      community_id: id,
+      owner: "o",
+      owner_salt: "s",
+      community_root: "r",
+      root_epoch: epoch,
+      channels: [],
+      relays: [],
+      name: id,
+    },
+    added_at: at,
+  });
+
+  it("communityListByteSize returns the exact independently-measured serialized length of the wire document shape", () => {
+    const communities = [mkCommunity("x", 1, 100)];
+    const tombstones: CommunityTombstone[] = [{ community_id: "y", removed_at: 5 }];
+    // Independent measurement of the SAME wire shape — never calling the
+    // helper twice (TEST-01).
+    const expected = new TextEncoder().encode(JSON.stringify({ entries: communities, tombstones })).length;
+    expect(communityListByteSize(communities, tombstones)).toBe(expected);
+  });
+
+  it("communityListWithinByteCap agrees with communityListByteSize exactly at the boundary", () => {
+    // Pad a name to a computed length so the document lands at EXACTLY
+    // LIST_MAX_BYTES, then one byte over — never guessed.
+    const base = mkCommunity("x", 1, 100);
+    const baseline = communityListByteSize([base], []);
+    const padNeeded = LIST_MAX_BYTES - baseline;
+    const atCap = { ...base, seed: { ...base.seed, name: "a".repeat(base.seed.name.length + padNeeded) } };
+    expect(communityListByteSize([atCap], [])).toBe(LIST_MAX_BYTES);
+    expect(communityListWithinByteCap([atCap], [])).toBe(true);
+
+    const overCap = { ...atCap, seed: { ...atCap.seed, name: atCap.seed.name + "a" } };
+    expect(communityListByteSize([overCap], [])).toBe(LIST_MAX_BYTES + 1);
+    expect(communityListWithinByteCap([overCap], [])).toBe(false);
+  });
+
+  it("COMMUNITY_LIST_MAX_ENTRY_BYTES equals half of LIST_MAX_BYTES, expressed as the arithmetic expression", () => {
+    expect(COMMUNITY_LIST_MAX_ENTRY_BYTES).toBe(Math.floor(LIST_MAX_BYTES / 2));
+  });
+
+  it("communityListEntryByteSize measures the entry shape including BOTH material copies (seed and current)", () => {
+    const entry: CommunityListCommunity = mkCommunity("x", 1, 100);
+    const expected = new TextEncoder().encode(JSON.stringify(entry)).length;
+    expect(communityListEntryByteSize(entry)).toBe(expected);
+    // Non-vacuity: the entry's `seed` and `current` are DISTINCT keys in the
+    // serialized shape — an entry-size function that measured only one of
+    // them would undercount by roughly half.
+    const entryBothCopiesRemoved = { ...entry, seed: {} as JoinMaterial, current: {} as JoinMaterial };
+    expect(communityListEntryByteSize(entryBothCopiesRemoved)).toBeLessThan(expected);
   });
 });
 

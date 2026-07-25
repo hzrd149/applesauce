@@ -42,8 +42,11 @@ import type { ConcordCommunityList, ConcordInviteList } from "../casts/index.js"
 import { createCommunity } from "../helpers/community.js";
 import {
   COMMUNITY_LIST_KIND,
+  COMMUNITY_LIST_MAX_ENTRY_BYTES,
   LIST_MAX_BYTES,
   canonicalJson,
+  communityListByteSize,
+  communityListEntryByteSize,
   liveCommunities,
   mergeCommunities,
   mergeCommunityTombstones,
@@ -674,7 +677,12 @@ export class ConcordClient {
       // publish `material.relays: []`, and make the user's other devices
       // resolve the community against their own defaults instead of the
       // intended relay set.
-      relays: bundle.relays.length ? bundle.relays : fallbackRelays,
+      // IN-04: COPY both branches rather than aliasing — `fallbackRelays` is
+      // `this.defaultRelays` on the `joinByBundle` path, so storing it by
+      // reference would make every community sharing the default relays share
+      // ONE array object; nothing mutates it in place today, but a future
+      // in-place mutation at any one community would corrupt every other.
+      relays: bundle.relays.length ? [...bundle.relays] : [...fallbackRelays],
       name: bundle.name,
       // Canonicalize to [] (invite bundles omit held_roots) so this join material
       // is byte-identical to what the engine's `buildChain` settles on — otherwise
@@ -747,26 +755,51 @@ export class ConcordClient {
    *  re-join outlive an older tombstone (CORD-02 §8) without the save path having to infer intent
    *  from the running engine set, which cannot tell a deliberate re-join from a stale engine.
    *
-   *  CR-02/T-12.3-11 ordering requirement: the engine is constructed FIRST, and the document
-   *  mutation happens only after that succeeds. `addCommunity` reaches `new ConcordCommunity(...)`
-   *  -> `deriveConcordKeys` -> `baseKeysFor` -> `hexToBytes(material.community_root)`, which can
-   *  throw synchronously on a malformed bundle (one that slipped past `validateInviteBundle`, or
-   *  reached here via `joinByBundle`, which is not itself a validation boundary). With the engine
-   *  constructed first, that throw propagates out of `recordJoin` BEFORE `this.list` is touched, so
-   *  `this.list` stays byte-identical to what it was — nothing phantom for `saveMirror()` /
-   *  `saveCommunityList()` to persist or publish. Confirmed (see 12.3-11-SUMMARY.md) that
-   *  constructing the engine does not itself depend on `this.list` already holding the entry:
-   *  `addCommunity`'s `onMaterialChange` callback writes `this.list` via `refreshCommunity`, but is
-   *  only invoked LATER by the running engine, never during construction. DO NOT restore the
-   *  "document first" order — that is exactly the CR-02 phantom-membership defect. */
+   *  Two orderings are load-bearing here, and neither weakens the other:
+   *
+   *  1. The size guard runs FIRST, before anything is constructed — it is the cheapest possible
+   *     refusal (CR-01's structural half): per-field caps alone cannot bound the aggregate (up to
+   *     256 channels each carrying up to 64 held keys is legal under every per-field cap and still
+   *     assembles into tens of kilobytes), so a serialized-size ceiling on the PROSPECTIVE entry
+   *     sits here, before `this.list` is touched and before an engine is constructed.
+   *
+   *  2. CR-02/T-12.3-11: once past the size guard, the engine is constructed BEFORE the document
+   *     mutation. `addCommunity` reaches `new ConcordCommunity(...)` -> `deriveConcordKeys` ->
+   *     `baseKeysFor` -> `hexToBytes(material.community_root)`, which can throw synchronously on
+   *     malformed material that reached here via a route this method cannot itself re-validate —
+   *     restored material from ANOTHER DEVICE's Community List never passes through
+   *     `validateInviteBundle` at all (both `joinByLink` and `joinByBundle` validate before
+   *     `recordJoin` is ever entered, so THAT residual case is what this ordering protects, not an
+   *     unvalidated `joinByBundle` — WR-03: `joinByBundle` HAS been a validation boundary since
+   *     12.3-12). With the engine constructed first, a construction throw propagates out of
+   *     `recordJoin` BEFORE `this.list` is touched, so `this.list` stays byte-identical to what it
+   *     was — nothing phantom for `saveMirror()` / `saveCommunityList()` to persist or publish.
+   *     Confirmed (see 12.3-11-SUMMARY.md) that constructing the engine does not itself depend on
+   *     `this.list` already holding the entry: `addCommunity`'s `onMaterialChange` callback writes
+   *     `this.list` via `refreshCommunity`, but is only invoked LATER by the running engine, never
+   *     during construction. DO NOT restore the "document first" order — that is exactly the CR-02
+   *     phantom-membership defect.
+   *
+   *  Why the ceiling sits HERE and not on the merge paths: `loadMirror` and `watchLists` must keep
+   *  merging another device's entries even when they are over-ceiling, because refusing to merge
+   *  would break liveness convergence and silently discard a membership this client did not create.
+   *  An over-ceiling entry that arrives by merge is handled by `pruneDeadEntries()` and by
+   *  `leave()` recovery, not by refusal. */
   private recordJoin(material: JoinMaterial): ConcordCommunity {
-    const community = this.addCommunity(material);
-    this.list = joinCommunity({
+    const addedAt = Date.now();
+    const prospective: CommunityListCommunity = {
       community_id: material.community_id,
       seed: material,
       current: material,
-      added_at: Date.now(),
-    })(this.list, this.tombstones).communities;
+      added_at: addedAt,
+    };
+    const entryBytes = communityListEntryByteSize(prospective);
+    if (entryBytes > COMMUNITY_LIST_MAX_ENTRY_BYTES)
+      throw new Error(
+        `community list entry too large to record (${entryBytes} bytes > ${COMMUNITY_LIST_MAX_ENTRY_BYTES}-byte per-entry ceiling)`,
+      );
+    const community = this.addCommunity(material);
+    this.list = joinCommunity(prospective)(this.list, this.tombstones).communities;
     return community;
   }
 
@@ -1055,32 +1088,36 @@ export class ConcordClient {
         this.clearCommunityListDirty(); // already in sync with the relay copy
         return;
       }
-      // CR-02 diagnostics: measure the serialized bytes ONCE, here, and reuse
-      // that SAME measurement both for the cap check and (on failure) for the
-      // diagnostic message below — calling `communityListWithinByteCap` AND
-      // independently re-serializing for the message would be two separate
-      // `JSON.stringify` passes over the same data that could in principle
-      // diverge (e.g. a future edit to one call site and not the other), and
-      // the message would then quote a byte count that is not the one the cap
-      // actually rejected.
-      const serializedBytes = new TextEncoder().encode(JSON.stringify({ entries: list, tombstones })).length;
+      // CR-02/WR-04 diagnostics: measure the serialized bytes ONCE, through the
+      // SAME shared helper `communityListWithinByteCap` itself delegates to
+      // (`communityListByteSize`), so the publish path and the helper can no
+      // longer drift out of sync — and reuse that one measurement both for the
+      // cap check and (on failure) for the diagnostic message below.
+      const serializedBytes = communityListByteSize(list, tombstones);
       if (serializedBytes > LIST_MAX_BYTES) {
-        // Diagnostics on the wedge (CR-02): name the offending entry so a user
-        // stuck here can identify which community to `leave()` to recover.
-        // One detailed report through both existing channels — `this.publishLog`
-        // (never a new logger, never `.extend()` at this call site, project
-        // rule) and the pre-existing `console.warn` — rather than a terse
-        // generic line on one channel and a detailed one on the other.
+        // Diagnostics on the wedge (CR-02/IN-01): name the offending entry so a
+        // user stuck here can identify which community to `leave()` to
+        // recover. One detailed report through both existing channels —
+        // `this.publishLog` (never a new logger, never `.extend()` at this
+        // call site, project rule) and the pre-existing `console.warn`.
         let largestEntryId = "";
         let largestEntryBytes = -1;
         for (const entry of list) {
-          const entryBytes = new TextEncoder().encode(JSON.stringify(entry)).length;
+          const entryBytes = communityListEntryByteSize(entry);
           if (entryBytes > largestEntryBytes) {
             largestEntryBytes = entryBytes;
             largestEntryId = entry.community_id;
           }
         }
-        const message = `community list exceeds the NIP-44 byte cap (${serializedBytes}/${LIST_MAX_BYTES} bytes, ${list.length} entries); not publishing — largest entry community=${largestEntryId.slice(0, 8)}`;
+        // IN-01: the prior diagnostic ignored tombstone bytes entirely (a
+        // document pushed over cap by tombstones reported a misleading
+        // culprit) and, with an empty `list`, ended with a bare trailing
+        // `community=` — omit the largest-entry clause entirely when there is
+        // no entry to name.
+        const tombstoneBytes = new TextEncoder().encode(JSON.stringify(tombstones)).length;
+        const largestEntryClause =
+          list.length === 0 ? "" : ` — largest entry community=${largestEntryId.slice(0, 8)} (${largestEntryBytes} bytes)`;
+        const message = `community list exceeds the NIP-44 byte cap (${serializedBytes}/${LIST_MAX_BYTES} bytes, ${list.length} entries, ${tombstoneBytes} tombstone bytes); not publishing${largestEntryClause}`;
         this.publishLog(message);
         console.warn(message);
         return;

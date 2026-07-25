@@ -21,7 +21,12 @@ import { ConcordClient } from "../client.js";
 import { ConcordInviteManager } from "../invite-manager.js";
 import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
-import { COMMUNITY_LIST_KIND, mergeCommunities } from "../../helpers/community-list.js";
+import {
+  COMMUNITY_LIST_KIND,
+  COMMUNITY_LIST_MAX_ENTRY_BYTES,
+  communityListEntryByteSize,
+  mergeCommunities,
+} from "../../helpers/community-list.js";
 import { INVITE_LIST_KIND } from "../../helpers/invite-list.js";
 import { createCommunity } from "../../helpers/community.js";
 import {
@@ -1936,6 +1941,127 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
     const tomb = lastDoc.tombstones.find((t: any) => t.community_id === cid);
     expect(tomb).toBeDefined();
     expect(entry === undefined || entry.added_at <= tomb.removed_at).toBe(true);
+
+    client.stop();
+  });
+});
+
+// ── Gap closure (CR-01 structural half, WR-04, IN-01, IN-04; 12.3-13): the
+// aggregate serialized-size ceiling at recordJoin, and two smaller fixes it
+// shares a file edit with.
+describe("ConcordClient recordJoin entry-size guard, and IN-01/IN-04 (12.3-13)", () => {
+  it("createNewCommunity whose prospective entry exceeds the per-entry ceiling REJECTS, the community set stays empty, and a subsequent explicit save publishes nothing for it", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    await client.start();
+
+    // Derive the oversized name length from the exported ceiling, not by
+    // trial and error: measure a baseline entry's bytes, then pad — the name
+    // is serialized TWICE (seed + current), so halve the shortfall.
+    const probe = await createCommunity({ ownerPubkey: pubkey, name: "x", description: "d", relays: ["wss://fake"] });
+    const baselineEntry = {
+      community_id: probe.material.community_id,
+      seed: probe.material,
+      current: probe.material,
+      added_at: Date.now(),
+    };
+    const baselineBytes = communityListEntryByteSize(baselineEntry);
+    const padNeeded = Math.ceil((COMMUNITY_LIST_MAX_ENTRY_BYTES - baselineBytes) / 2) + 100;
+    const oversizedName = "x".repeat(1 + Math.max(padNeeded, 0));
+
+    await expect(client.createNewCommunity(oversizedName, "d", ["wss://fake"])).rejects.toThrow(/too large to record/);
+    expect(client.communities$.value.length).toBe(0);
+
+    await client.saveCommunityList();
+    expect(listPublishes(published).length).toBe(0); // nothing was ever recorded to publish
+
+    client.stop();
+  });
+
+  it("createNewCommunity with an ordinary name still records exactly one entry with a stamped added_at (happy path untouched by the new guard)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+
+    const community = await client.createNewCommunity("Ordinary", "hi", ["wss://fake"]);
+    const raw = await storage.getItem(pubkey);
+    const mirror = JSON.parse(raw!) as { entries: Array<{ community_id: string; added_at: number }> };
+    expect(mirror.entries.length).toBe(1);
+    expect(mirror.entries[0].community_id).toBe(community.communityId);
+    expect(typeof mirror.entries[0].added_at).toBe("number");
+
+    client.stop();
+  });
+
+  it("IN-04: after a join whose bundle carries no relays, material.relays is not the same array reference as the client's configured default relay array", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const defaultRelays = ["wss://joiner-default.example.com"];
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: defaultRelays,
+    });
+    await client.start();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "NoRelays",
+      description: "IN-04 regression",
+      relays: ["wss://fake"],
+    });
+    const bundle = buildInviteBundle({ ...genesis.material, relays: [] }, { name: "NoRelays" });
+    const community = await client.joinByBundle(bundle);
+
+    expect(community.material.relays).toEqual(defaultRelays);
+    // Non-vacuity: pre-fix, `relays: bundle.relays.length ? bundle.relays :
+    // fallbackRelays` stored `this.defaultRelays` by REFERENCE — this asserts
+    // reference inequality, which `toEqual` alone cannot.
+    expect(community.material.relays).not.toBe(defaultRelays);
+
+    client.stop();
+  });
+
+  it("IN-01: the over-cap diagnostic includes the tombstone byte total and omits the largest-entry clause when the entry list is empty", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    const { log, calls } = spyLogger();
+
+    // Enough tombstones ALONE to push the document over LIST_MAX_BYTES, with
+    // an EMPTY entry list — the scenario IN-01 says the pre-fix diagnostic
+    // mis-reported (ignored these bytes, and would have ended with a bare
+    // trailing "community=").
+    const tombstones = Array.from({ length: 2500 }, (_, i) => ({ community_id: `tomb-${i}`, removed_at: i }));
+    await storage.setItem(pubkey, JSON.stringify({ entries: [], tombstones }));
+
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+      logger: log,
+    });
+    await client.start();
+    await settle();
+
+    await client.saveCommunityList();
+    const overCapMessage = calls
+      .map((c) => format(...(c as [unknown, ...unknown[]])))
+      .find((m) => m.includes("exceeds the NIP-44 byte cap"));
+    expect(overCapMessage).toBeDefined();
+    expect(overCapMessage).toMatch(/tombstone bytes/);
+    expect(overCapMessage).not.toContain("largest entry community=");
 
     client.stop();
   });

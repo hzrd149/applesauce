@@ -161,15 +161,48 @@ export function mergeCommunityTombstones(a: CommunityTombstone[], b: CommunityTo
  * the `mergeCommunities`/`mergeCommunityTombstones` primitives above.
  */
 
+/**
+ * The serialized byte size of the wire document (`{entries, tombstones}`) —
+ * the SINGLE measurement shared by {@link communityListWithinByteCap} and
+ * `client.ts`'s `saveCommunityList`, so the publish path and the helper can no
+ * longer drift out of sync (WR-04: the two were previously hand-duplicated,
+ * verified line-for-line identical, with the helper dead in `src`).
+ */
+export function communityListByteSize(
+  communities: CommunityListCommunity[],
+  tombstones: CommunityTombstone[],
+): number {
+  // The wire document keys the array as `entries` (armada-compatible).
+  return new TextEncoder().encode(JSON.stringify({ entries: communities, tombstones })).length;
+}
+
 /** Whether the serialized (JSON) list fits under the NIP-44 plaintext cap. */
 export function communityListWithinByteCap(
   communities: CommunityListCommunity[],
   tombstones: CommunityTombstone[],
 ): boolean {
-  // The wire document keys the array as `entries` (armada-compatible).
-  const bytes = new TextEncoder().encode(JSON.stringify({ entries: communities, tombstones }));
-  return bytes.length <= LIST_MAX_BYTES;
+  return communityListByteSize(communities, tombstones) <= LIST_MAX_BYTES;
 }
+
+/** The serialized byte size of a single {@link CommunityListCommunity} entry —
+ *  its material appears TWICE (`seed` AND `current`), which is the whole
+ *  reason a per-entry ceiling exists below (CR-01's structural half). */
+export function communityListEntryByteSize(entry: CommunityListCommunity): number {
+  return new TextEncoder().encode(JSON.stringify(entry)).length;
+}
+
+/**
+ * Per-entry serialized-size ceiling (CR-01's structural half), derived
+ * arithmetically as half of {@link LIST_MAX_BYTES} rather than a copied
+ * literal: an entry serializes its material TWICE (`seed` and `current`), so
+ * no single membership may occupy more than half the document — otherwise two
+ * ordinary joins alone could exceed the whole-document cap. This is also the
+ * ceiling `INVITE_BUNDLE_MAX_TOTAL_BYTES` (`invite-bundle.ts`) is sized
+ * against: twice that cap fits inside this one, with headroom left for the
+ * entry's envelope (`community_id`/`added_at`) and the organic growth a later
+ * Refounding adds to `current` via `held_roots`.
+ */
+export const COMMUNITY_LIST_MAX_ENTRY_BYTES = Math.floor(LIST_MAX_BYTES / 2);
 
 // ── Event-level helpers (self-encrypted list; hidden-content family) ─────────
 
