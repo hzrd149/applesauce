@@ -5,7 +5,7 @@
 // lifecycle, independent of the community root.
 
 import { describe, expect, it, vi } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Subject, Subscription, firstValueFrom, from } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, Subscription, firstValueFrom, from } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { kinds, type NostrEvent } from "applesauce-core/helpers/event";
@@ -576,5 +576,122 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     sub.dispose();
 
     for (const subs of driverSubs.values()) for (const s of subs) expect(s.closed).toBe(true);
+  });
+});
+
+// ── Gap closure (WR-01, 12.3-13): a construction that throws must leave
+// nothing attached to the app-supplied extras source — mirrors
+// community.test.ts's identical `ConcordCommunity` guard test.
+/** A counting Observable stand-in for `extraRelays`: increments a counter on
+ *  subscribe, delegates to an inner BehaviorSubject, and decrements on
+ *  teardown — so a test can assert an exact hand-derived active-subscriber
+ *  count rather than a boolean. */
+function countingExtrasSource(initial: string[] = []): {
+  source: Observable<string[]>;
+  count: () => number;
+} {
+  const inner = new BehaviorSubject<string[]>(initial);
+  let active = 0;
+  const source = new Observable<string[]>((subscriber) => {
+    active++;
+    const sub = inner.subscribe(subscriber);
+    return () => {
+      active--;
+      sub.unsubscribe();
+    };
+  });
+  return { source, count: () => active };
+}
+
+describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (WR-01, 12.3-13)", () => {
+  it("a construction that throws during channel-key derivation leaves zero subscribers on the extras source; a successful construction leaves exactly one", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: ownerPub, name: "Test", relays: ["wss://fake"] });
+    const pool = servingPool([]);
+
+    // Malformed channel key: `id` is not 64-char hex — `hexToBytes(channel.id)`
+    // inside `deriveChannelKeys` throws synchronously, immediately after
+    // `this.extras` is constructed but before any other field exists. Channel
+    // key material restored from another device's Community List is never
+    // validated (only invite bundles are), so this is genuinely reachable.
+    const throwingChannel: ChannelKey = { id: "not-hex", key: bytesToHex(generateSecretKey()), epoch: 1, name: "x" };
+    const { source: throwingExtras, count: throwingCount } = countingExtrasSource([]);
+
+    expect(
+      () =>
+        new ConcordPrivateChannel({
+          channelKey: throwingChannel,
+          material: () => genesis.material,
+          signer: me,
+          pubkey: myPub,
+          pool,
+          relayAuth: new ConcordRelayAuth(pool),
+          eventStore: new EventStore(),
+          store: new RumorStore(),
+          relays: ["wss://fake"],
+          extraRelays: throwingExtras,
+          isAuthorized: (r) => r === ownerPub,
+        }),
+    ).toThrow();
+    // Non-vacuity: pre-fix, `this.extras = new ExtraRelays(options.extraRelays)`
+    // subscribes to `throwingExtras` BEFORE the throwing `deriveChannelKeys`
+    // call — nothing ever called `.dispose()` on the discarded half-built
+    // instance, so the subscriber count would have stayed at 1 forever.
+    expect(throwingCount()).toBe(0);
+
+    // Non-vacuity guard against the test passing vacuously because the source
+    // is never subscribed at all: a SUCCESSFUL construction against the same
+    // kind of source must leave exactly one active subscriber.
+    const okChannel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1, name: "ok" };
+    const { source: okExtras, count: okCount } = countingExtrasSource([]);
+    const channel = new ConcordPrivateChannel({
+      channelKey: okChannel,
+      material: () => genesis.material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      store: new RumorStore(),
+      relays: ["wss://fake"],
+      extraRelays: okExtras,
+      isAuthorized: (r) => r === ownerPub,
+    });
+    expect(okCount()).toBe(1);
+    channel.dispose();
+  });
+
+  it("a successfully constructed channel still releases its subscriber on dispose()", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: ownerPub, name: "Test", relays: ["wss://fake"] });
+    const pool = servingPool([]);
+    const okChannel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1, name: "ok" };
+    const { source: extras, count } = countingExtrasSource([]);
+
+    const channel = new ConcordPrivateChannel({
+      channelKey: okChannel,
+      material: () => genesis.material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      store: new RumorStore(),
+      relays: ["wss://fake"],
+      extraRelays: extras,
+      isAuthorized: (r) => r === ownerPub,
+    });
+    expect(count()).toBe(1);
+
+    channel.dispose();
+    // Guards against a regression where the new constructor failure path
+    // double-disposes, or the success path stops disposing on dispose().
+    expect(count()).toBe(0);
   });
 });

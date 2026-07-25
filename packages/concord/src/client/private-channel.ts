@@ -154,33 +154,60 @@ export class ConcordPrivateChannel {
     this.opts = options;
     // Constructed BEFORE the status observables below so their synchronous
     // snapshot is already seeded when connected$/authenticated$ build (D-04).
+    // Its position here is unchanged (load-bearing) — but EVERYTHING after it,
+    // to the end of the constructor, is now wrapped: `ExtraRelays`'s
+    // constructor subscribes to an APP-SUPPLIED source (`options.extraRelays`,
+    // typically a long-lived shared `BehaviorSubject` per this package's own
+    // option docs), so a throw anywhere below — most immediately
+    // `deriveChannelKeys`'s `hexToBytes` on malformed hex, but this covers
+    // every statement in the tail — would otherwise leave a PERMANENT
+    // subscriber attached to the app's source with no way to release it: the
+    // half-built instance is discarded by the caller, and nothing else holds a
+    // reference to `this.extras` to call `.dispose()` on it (WR-01). Channel
+    // key material restored from another device's Community List is never
+    // validated (only invite bundles are), and `spawnPrivateChannel` runs from
+    // inside a `state$` subscription, so each throw both leaks a subscriber
+    // and errors that subscription. This is invisible with a static
+    // `string[]` extras option, since `of(...)` completes immediately and
+    // never actually accumulates a live subscription — it only bites the
+    // reactive-Observable (e.g. `BehaviorSubject`) configuration this phase
+    // was built for. Deliberately NOT calling the full `dispose()` here: the
+    // instance is half-built (fields below this point may not exist yet), so
+    // releasing the ONE subscription already taken (`this.extras`) is exactly
+    // the cleanup this failure path needs — no more, no less. Mirrors
+    // `ConcordCommunity`'s identical constructor guard (12.3-12).
     this.extras = new ExtraRelays(options.extraRelays);
-    this.channelKey = options.channelKey;
-    this.keys = deriveChannelKeys(options.material(), options.channelKey);
-    this.epoch$ = new BehaviorSubject<number>(options.channelKey.epoch);
+    try {
+      this.channelKey = options.channelKey;
+      this.keys = deriveChannelKeys(options.material(), options.channelKey);
+      this.epoch$ = new BehaviorSubject<number>(options.channelKey.epoch);
 
-    // Re-derive reactively on every extras emission (D-08) rather than once
-    // from a construction-time snapshot — no first-value-only operator here, so
-    // a later change on an `extraRelays` Observable keeps taking effect (D-11).
-    this.connected$ = this.extras.relays$.pipe(switchMap(() => options.relayAuth.connected$(this.transport())));
-    this.authenticated$ = this.extras.relays$.pipe(
-      switchMap(() =>
-        options.relayAuth.authenticated$(this.transport(), () =>
-          channelLiveAuthors(this.opts.material(), this.channelKey).authors,
+      // Re-derive reactively on every extras emission (D-08) rather than once
+      // from a construction-time snapshot — no first-value-only operator here, so
+      // a later change on an `extraRelays` Observable keeps taking effect (D-11).
+      this.connected$ = this.extras.relays$.pipe(switchMap(() => options.relayAuth.connected$(this.transport())));
+      this.authenticated$ = this.extras.relays$.pipe(
+        switchMap(() =>
+          options.relayAuth.authenticated$(this.transport(), () =>
+            channelLiveAuthors(this.opts.material(), this.channelKey).authors,
+          ),
         ),
-      ),
-    );
-    this.status$ = combineLatest({
-      phase: this.phase$,
-      epoch: this.epoch$,
-      connected: this.connected$,
-      authenticated: this.authenticated$,
-      error: this.error$,
-    }).pipe(shareReplay(1));
+      );
+      this.status$ = combineLatest({
+        phase: this.phase$,
+        epoch: this.epoch$,
+        connected: this.connected$,
+        authenticated: this.authenticated$,
+        error: this.error$,
+      }).pipe(shareReplay(1));
 
-    this.extrasSub = this.extras.relays$.subscribe(() => {
-      if (!this.disposed && this.liveSub) this.openLive();
-    });
+      this.extrasSub = this.extras.relays$.subscribe(() => {
+        if (!this.disposed && this.liveSub) this.openLive();
+      });
+    } catch (err) {
+      this.extras.dispose();
+      throw err;
+    }
   }
 
   get channelId(): string {

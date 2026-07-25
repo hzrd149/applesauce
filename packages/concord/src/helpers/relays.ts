@@ -142,13 +142,24 @@ export class ExtraRelays {
     if (this.current.length === 0) return base;
 
     const merged = mergeRelaySets(base, this.current);
-    const rawUnionSize = new Set([...base, ...this.current]).size;
-    if (merged.length !== rawUnionSize) {
+    // WR-05: count entries that genuinely FAIL TO PARSE, never entries that
+    // merely COLLAPSED with a sibling via normalization (trailing slash, case,
+    // default port). The prior diagnostic compared `merged.length`
+    // (deduplicated) against a Set built from the RAW strings — a pair
+    // differing only by normalization collapses in the former but not the
+    // latter, so a genuine deduplication was misreported as a
+    // dropped-unparseable entry, pointing an operator at the wrong cause
+    // during an incident. `mergeRelaySets` applied to ONE entry at a time
+    // returns a 1-element array when it parses, an empty one when it doesn't
+    // — checking each entry's OWN parseability in isolation, rather than
+    // inferring it from a size mismatch across the whole (deduplicated) set,
+    // cannot conflate a genuine parse failure with a normalization collapse.
+    const unparseable = [...base, ...this.current].filter((entry) => mergeRelaySets(entry).length === 0).length;
+    if (unparseable > 0) {
       log(
-        "merge dropped %d unparseable relay URL(s): raw union had %d distinct entries, merged result has %d",
-        rawUnionSize - merged.length,
-        rawUnionSize,
-        merged.length,
+        "merge dropped %d unparseable relay URL(s) out of %d total entries",
+        unparseable,
+        base.length + this.current.length,
       );
     }
     return merged;

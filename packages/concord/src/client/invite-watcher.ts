@@ -157,27 +157,40 @@ export class InviteWatcher {
     this.autoDecrypt = options.autoDecrypt ?? false;
     this.autoAuthenticate = options.autoAuthenticate ?? true;
     // Constructed before needsAuth$ below so its synchronous snapshot is
-    // already seeded when the derivation first builds (D-04).
+    // already seeded when the derivation first builds (D-04). Its position
+    // here is unchanged (load-bearing) — but EVERYTHING after it, to the end
+    // of the constructor, is now wrapped for shape-consistency with
+    // `ConcordCommunity`'s and `ConcordPrivateChannel`'s identical guards
+    // (WR-01): this tail has no throw site TODAY, but a bare, unguarded
+    // `ExtraRelays` construction here would silently drift out of step with
+    // the other two engines' self-cleaning constructors the next time this
+    // tail gains one. No dedicated behavioral test for this one; the
+    // source-level acceptance criterion covers it.
     this.extras = new ExtraRelays(options.extraRelays);
-    // Re-derive on every extras emission too (D-11: no first-value-only
-    // operator), computing the merged set locally via `transport()` rather
-    // than widening the public `relays$` subject — a gating extras relay now
-    // factors into needsAuth$ because we authenticate against it (D-03), but
-    // relays$ itself must keep reporting only what discovery found.
-    this.needsAuth$ = combineLatest([this.relays$, this.extras.relays$, this.pool.status$, this.pubkey$]).pipe(
-      map(([relays, , statuses, pubkey]) => this.userNeedsAuth(this.transport(relays), statuses, pubkey)),
-      distinctUntilChanged(),
-    );
-    this.pendingCount$ = this.pending$.pipe(
-      map((pending) => pending.length),
-      distinctUntilChanged(),
-    );
-    this.scanUntagged = options.scanUntagged ?? false;
-    this.overlapSeconds = options.overlapSeconds ?? 2 * 60 * 60;
-    this.requestTimeout = options.requestTimeout ?? 10_000;
-    this.cursorKey = options.cursorKey;
+    try {
+      // Re-derive on every extras emission too (D-11: no first-value-only
+      // operator), computing the merged set locally via `transport()` rather
+      // than widening the public `relays$` subject — a gating extras relay now
+      // factors into needsAuth$ because we authenticate against it (D-03), but
+      // relays$ itself must keep reporting only what discovery found.
+      this.needsAuth$ = combineLatest([this.relays$, this.extras.relays$, this.pool.status$, this.pubkey$]).pipe(
+        map(([relays, , statuses, pubkey]) => this.userNeedsAuth(this.transport(relays), statuses, pubkey)),
+        distinctUntilChanged(),
+      );
+      this.pendingCount$ = this.pending$.pipe(
+        map((pending) => pending.length),
+        distinctUntilChanged(),
+      );
+      this.scanUntagged = options.scanUntagged ?? false;
+      this.overlapSeconds = options.overlapSeconds ?? 2 * 60 * 60;
+      this.requestTimeout = options.requestTimeout ?? 10_000;
+      this.cursorKey = options.cursorKey;
 
-    this.subscribeExtras();
+      this.subscribeExtras();
+    } catch (err) {
+      this.extras.dispose();
+      throw err;
+    }
   }
 
   /**

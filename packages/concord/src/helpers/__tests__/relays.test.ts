@@ -1,3 +1,5 @@
+import debugFactory from "debug";
+import { format } from "node:util";
 import { BehaviorSubject, Subject, throwError } from "rxjs";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -225,5 +227,76 @@ describe("ExtraRelays", () => {
     source.next([RELAY_B]);
 
     expect(holder.current).toEqual([RELAY_A]);
+  });
+});
+
+// ── Gap closure (WR-05, 12.3-13): the merge diagnostic must distinguish a
+// genuine parse failure from a normalization collapse. `merge()`'s log call
+// goes through the real `debug` package via a module-level logger (never
+// injected), so these tests capture it at the `debug` package's own level:
+// enable the concrete namespace, override the shared `debug.log` sink for the
+// duration of the test, and render captured calls with `util.format` (the
+// same convention `client.test.ts`'s `spyLogger()` + `format()` pair uses).
+describe("ExtraRelays.merge diagnostic — normalization collapse vs genuinely unparseable (WR-05, 12.3-13)", () => {
+  const NAMESPACE = "applesauce:concord:extra-relays";
+
+  function captureDebugOutput(): { calls: unknown[][]; restore: () => void } {
+    const wasEnabled = debugFactory.enabled(NAMESPACE);
+    debugFactory.enable(NAMESPACE);
+    const originalLog = debugFactory.log;
+    const calls: unknown[][] = [];
+    debugFactory.log = (...args: unknown[]) => {
+      calls.push(args);
+    };
+    return {
+      calls,
+      restore: () => {
+        debugFactory.log = originalLog;
+        if (!wasEnabled) debugFactory.disable();
+      },
+    };
+  }
+
+  function messagesOf(calls: unknown[][]): string[] {
+    return calls.map((c) => format(...(c as [unknown, ...unknown[]])));
+  }
+
+  it("merging a base carrying a URL and extras carrying the same URL differing only by a trailing slash logs NO dropped-unparseable diagnostic", () => {
+    const { calls, restore } = captureDebugOutput();
+    try {
+      const holder = new ExtraRelays([RELAY_B_NO_SLASH]);
+      const merged = holder.merge([RELAY_A, RELAY_B]);
+      expect(messagesOf(calls).some((m) => m.includes("unparseable"))).toBe(false);
+      // The fix is to the reporting, not the merge — unchanged result.
+      expect(merged).toEqual([RELAY_A, RELAY_B]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("merging with a genuinely unparseable entry DOES log a dropped-unparseable diagnostic", () => {
+    const { calls, restore } = captureDebugOutput();
+    try {
+      const holder = new ExtraRelays(["not a url", RELAY_A]);
+      const merged = holder.merge([]);
+      expect(messagesOf(calls).some((m) => m.includes("unparseable"))).toBe(true);
+      // Non-vacuity: pre-fix, the diagnostic compared `merged.length` against
+      // a raw `Set` — for THIS fixture (no normalization collapse at all,
+      // just one genuinely bad entry) both the pre-fix and post-fix
+      // computations agree there IS a drop, so this case alone doesn't
+      // distinguish the fix; the trailing-slash case above is what pins the
+      // false-positive shut. This case pins the true-positive still fires.
+      expect(merged).toEqual([RELAY_A]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("the merge result itself is unchanged by the diagnostic fix in both cases", () => {
+    const holderCollapse = new ExtraRelays([RELAY_B_NO_SLASH]);
+    expect(holderCollapse.merge([RELAY_A, RELAY_B])).toEqual([RELAY_A, RELAY_B]);
+
+    const holderUnparseable = new ExtraRelays(["not a url", RELAY_A]);
+    expect(holderUnparseable.merge([])).toEqual([RELAY_A]);
   });
 });
