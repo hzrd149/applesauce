@@ -190,6 +190,43 @@ export function newInviteToken(): Uint8Array {
 export const INVITE_BUNDLE_MAX_CHANNELS = 256;
 /** Relay-set cap: a bundle's join-time relay snapshot is truncated (CORD-02 §6). */
 export const INVITE_BUNDLE_RELAY_CAP = 5;
+/**
+ * Held-roots count ceiling (CR-01). `held_roots` flows unfiltered into
+ * `JoinMaterial.held_roots` (`client.ts`'s `joinFromBundle`), which
+ * `buildChain` (keys.ts) rebuilds into one chain element per entry (an O(N)
+ * filter per element — O(N^2) total) and `syncEpochs` (sync.ts) then walks
+ * with one full sequential, networked, NIP-42-authenticated epoch sync PER
+ * chain element. Left uncapped, a ~40KB NIP-44-capped bundle fits roughly 800
+ * entries — 800 sequential networked epoch syncs before the joining engine
+ * can ever reach `phase: "live"`, across restarts.
+ */
+export const INVITE_BUNDLE_MAX_HELD_ROOTS = 64;
+/**
+ * Per-channel held-keys count ceiling (CR-01). Each `channels[].held` entry
+ * costs one `channelGroupKey` X25519/ECDH derivation inside
+ * `deriveChannelKeys` (keys.ts). Left uncapped, up to `INVITE_BUNDLE_MAX_CHANNELS`
+ * channels each carrying an unbounded `held` array is a CPU storm on the
+ * private-channel spawn path.
+ */
+export const INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS = 64;
+/**
+ * Text-length ceiling for attacker-controlled display/attribution strings
+ * (CR-02): `name` (bundle-level and per-channel) and `label`/`creator_npub`
+ * are all serialized into a document hard-capped at `LIST_MAX_BYTES`
+ * (community-list.ts) — the bundle-level `name` TWICE per entry (`seed` and
+ * `current`, via `JoinMaterial.name`). The unit is UTF-16 code units
+ * (JavaScript string `.length`); the worst-case UTF-8 expansion is 4 bytes
+ * per 2 code units, so the per-entry worst case stays in the low kilobytes —
+ * dozens of entries still fit comfortably under the 65535-byte publish cap.
+ */
+export const INVITE_BUNDLE_MAX_TEXT_LENGTH = 256;
+
+/** Whether `value` is a string within {@link INVITE_BUNDLE_MAX_TEXT_LENGTH} — the
+ * one predicate every attacker-controlled display/attribution string bound in
+ * this module is checked against, so the rule exists once (CR-02). */
+function isBoundedText(value: unknown): value is string {
+  return typeof value === "string" && value.length <= INVITE_BUNDLE_MAX_TEXT_LENGTH;
+}
 
 export interface BuildInviteBundleOptions {
   /** Preview name; defaults to the material's `name`. */
@@ -270,10 +307,21 @@ function isValidHeldKeyEntry(h: unknown): h is { epoch: number; key: string } {
  * hex — both reach `hexToBytes` in `deriveChannelKeys` (keys.ts), and
  * `addChannelKey` mints both from 32 random bytes — and `epoch` must be a
  * non-negative safe integer (it feeds `channel.epoch + 1` arithmetic). The
- * optional `held` array, when present, is validated the same way per entry.
- * `name` is intentionally left unvalidated: it is display-only, never enters a
- * key derivation, and coercing it here would turn this shape validator into a
- * rewriter of protocol state (D-01). A malformed entry is DROPPED by the
+ * optional `held` array, when present, is COUNT-capped at
+ * {@link INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS} on the RAW array — before any
+ * per-entry work — then validated per entry the same way `held_roots` is
+ * (CR-01): a count check placed AFTER per-entry validation would be defeated
+ * by an array of malformed entries (the same ordering hazard `validateInviteBundle`'s
+ * channel cap already guards against; do not reorder). `name`'s rationale is
+ * corrected from the original "display-only, unvalidated" claim (CR-02): a
+ * channel name never enters a KEY DERIVATION (still true, so it is not
+ * hex-checked), but it IS carried into `JoinMaterial.channels` and therefore
+ * serialized into the byte-capped kind-13302 document — so it IS
+ * length-checked, at {@link INVITE_BUNDLE_MAX_TEXT_LENGTH}. A type predicate
+ * cannot rewrite the value it inspects, so an over-cap `name` makes the whole
+ * ENTRY invalid (drop-the-field is not available here, unlike the top-level
+ * `label`/`creator_npub`), keeping this predicate a shape checker rather than
+ * a rewriter of protocol state (D-01). A malformed entry is DROPPED by the
  * caller (this channel is excluded from the validated bundle) rather than
  * rejecting the whole bundle — mirroring the relay filter's existing
  * precedent below: one bad grant should not deny every other legitimate one.
@@ -284,7 +332,16 @@ function isValidChannelEntry(c: unknown): c is ChannelKey {
   if (typeof entry.id !== "string" || !isHexKey(entry.id)) return false;
   if (typeof entry.key !== "string" || !isHexKey(entry.key)) return false;
   if (typeof entry.epoch !== "number" || !Number.isSafeInteger(entry.epoch) || entry.epoch < 0) return false;
-  if (entry.held !== undefined && (!Array.isArray(entry.held) || !entry.held.every(isValidHeldKeyEntry))) return false;
+  if (entry.name !== undefined && !isBoundedText(entry.name)) return false;
+  if (entry.held !== undefined) {
+    if (!Array.isArray(entry.held)) return false;
+    // CR-01: count check on the RAW array, BEFORE the per-entry `.every` call
+    // below — placed after would be defeated by an over-cap array of entries
+    // that are all individually malformed (each would be filtered out by
+    // `.every` failing fast, never by the count).
+    if (entry.held.length > INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS) return false;
+    if (!entry.held.every(isValidHeldKeyEntry)) return false;
+  }
   return true;
 }
 
@@ -297,16 +354,23 @@ function isValidChannelEntry(c: unknown): c is ChannelKey {
  * derivation instead of being refused at this boundary (CR-02). The channel
  * count is capped (on the RAW array) to refuse an unbounded-allocation link,
  * and each surviving `channels[]` entry — id/key/epoch, and any `held` keys —
- * is shape-checked the same way. An optional `held_roots` is validated
+ * is shape-checked the same way. An optional `held_roots` is COUNT-capped at
+ * {@link INVITE_BUNDLE_MAX_HELD_ROOTS} on the raw array (CR-01, same
+ * ordering-before-per-entry-filtering rule as `channels`) and then validated
  * identically when present; `buildInviteBundle` never emits that field, so a
- * malformed one rejects the WHOLE bundle rather than being dropped. The relay
- * snapshot is truncated to the Community's cap and filtered through the
- * single {@link isSafeInviteRelayURL} predicate (CR-01/WR-01). After this
- * function returns a bundle, no field that reaches a `hexToBytes` call or an
- * arithmetic epoch expression can be malformed. Returns a normalized copy, or
- * `undefined` if the bundle is unusable. `expires_at` is NOT checked here —
- * past expiry the preview still renders, only joining refuses (that check
- * belongs at join time).
+ * malformed or over-cap one rejects the WHOLE bundle rather than being
+ * dropped. The relay snapshot is truncated to the Community's cap and
+ * filtered through the single {@link isSafeInviteRelayURL} predicate
+ * (CR-01/WR-01). After this function returns a bundle, no attacker-controlled
+ * array is count-unbounded and no attacker-controlled string that reaches the
+ * serialized document or a published event is length-unbounded (CR-01/CR-02).
+ * Returns a normalized copy, or `undefined` if the bundle is unusable.
+ * `expires_at` (IN-02) is dropped to `undefined` unless it is a non-negative
+ * safe integer — `joinFromBundle`'s bare relational comparison against
+ * `unixNow()` silently no-ops on a non-number, so a bypassable expiry is worse
+ * than an absent one. `icon` is left untouched: it reaches no protocol write
+ * and no key derivation, and validating a blob pointer requires a URL-scheme
+ * policy that belongs with the blob/upload surface, not this validator.
  */
 export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBundle | undefined {
   if (!bundle || typeof bundle !== "object") return undefined;
@@ -344,12 +408,18 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
   // CR-02: `held_roots` is validated the same way as a channel's `held` keys,
   // but `buildInviteBundle` deliberately never emits this field (see its own
   // doc comment) — a bundle carrying one is, by definition, not one we minted,
-  // so a malformed entry rejects the WHOLE bundle rather than being dropped.
-  if (
-    bundle.held_roots !== undefined &&
-    (!Array.isArray(bundle.held_roots) || !bundle.held_roots.every(isValidHeldKeyEntry))
-  )
-    return undefined;
+  // so a malformed OR over-cap entry rejects the WHOLE bundle rather than
+  // being dropped.
+  if (bundle.held_roots !== undefined) {
+    if (!Array.isArray(bundle.held_roots)) return undefined;
+    // CR-01: count check on the RAW array, BEFORE the per-entry `.every` call
+    // below — the same ordering rule the channels cap already documents. A
+    // count check placed after per-entry validation would be defeated by an
+    // over-cap array whose entries are all malformed (each would already be
+    // filtered by `.every` failing fast, never by the count) — do not reorder.
+    if (bundle.held_roots.length > INVITE_BUNDLE_MAX_HELD_ROOTS) return undefined;
+    if (!bundle.held_roots.every(isValidHeldKeyEntry)) return undefined;
+  }
   // T-12.3-09-04/CR-01: cap FIRST (unchanged allocation bound), then filter
   // every entry through the single isSafeInviteRelayURL predicate — the shared
   // scheme/shape gate applied at every boundary a stranger's relay string can
@@ -366,7 +436,34 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
   const relays = bundle.relays.slice(0, INVITE_BUNDLE_RELAY_CAP).filter(isSafeInviteRelayURL);
   // A non-string `refounder` would gate the snapshot fold on a junk comparison; drop it.
   const refounder = typeof bundle.refounder === "string" ? bundle.refounder : undefined;
-  return { ...bundle, channels, relays, refounder };
+  // CR-02: top-level `name` is REJECTED (whole bundle) when present and either
+  // a non-string or over INVITE_BUNDLE_MAX_TEXT_LENGTH — unlike label/
+  // creator_npub below, `JoinMaterial.name` is a REQUIRED string, so it cannot
+  // be dropped to `undefined` the way an optional field can, and an over-cap
+  // name is by definition not a bundle this codebase minted. When absent,
+  // normalize to an empty string. `name` is serialized TWICE per entry (`seed`
+  // and `current`) into the kind-13302 document (client.ts's `joinFromBundle`),
+  // which is hard-capped at LIST_MAX_BYTES (community-list.ts) — this is the
+  // fix for the reviewed permanent-wedge defect (CR-02).
+  if (bundle.name !== undefined && !isBoundedText(bundle.name)) return undefined;
+  const name = bundle.name ?? "";
+  // `label`/`creator_npub` are optional and both reach a PUBLISHED Guestbook
+  // Join through joinFromBundle's JoinLeaveFactory.create call — DROP to
+  // undefined (mirrors the `refounder` drop-to-undefined precedent above)
+  // rather than rejecting the whole bundle, since both are attribution-only.
+  const label = isBoundedText(bundle.label) ? bundle.label : undefined;
+  const creator_npub = isBoundedText(bundle.creator_npub) ? bundle.creator_npub : undefined;
+  // IN-02: expires_at gates a bare relational comparison against unixNow() in
+  // joinFromBundle — a non-number silently turns that check into a no-op, so
+  // DROP to undefined unless it is a non-negative safe integer.
+  const expires_at =
+    typeof bundle.expires_at === "number" && Number.isSafeInteger(bundle.expires_at) && bundle.expires_at >= 0
+      ? bundle.expires_at
+      : undefined;
+  // `icon` deliberately left untouched: it reaches no protocol write and no key
+  // derivation, and validating a blob pointer requires a URL-scheme policy that
+  // belongs with the blob/upload surface, not this validator.
+  return { ...bundle, channels, relays, refounder, name, label, creator_npub, expires_at };
 }
 
 export function encryptBundle(bundle: InviteBundle, token: Uint8Array): string {

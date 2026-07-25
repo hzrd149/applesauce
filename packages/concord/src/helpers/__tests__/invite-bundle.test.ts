@@ -12,9 +12,13 @@ import { communityId } from "../crypto.js";
 import {
   INVITE_BUNDLE_KIND,
   INVITE_BUNDLE_MAX_CHANNELS,
+  INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS,
+  INVITE_BUNDLE_MAX_HELD_ROOTS,
+  INVITE_BUNDLE_MAX_TEXT_LENGTH,
   INVITE_BUNDLE_RELAY_CAP,
   RELAY_DICTIONARY,
   STOCK_RELAYS,
+  buildInviteBundle,
   decodeFragment,
   encodeFragment,
   isInviteBundleRevoked,
@@ -22,7 +26,7 @@ import {
   validateInviteBundle,
 } from "../invite-bundle.js";
 import { getInviteBundleLocator } from "../invite-list.js";
-import type { InviteBundle, InviteListInvite } from "../../types.js";
+import type { InviteBundle, InviteListInvite, JoinMaterial } from "../../types.js";
 
 // ── Shared valid owner triple, hand-derived from CORD-02 Appendix A.4 —
 // community_id = sha256("concord/community" || owner_xonly[32] || owner_salt[32]).
@@ -246,6 +250,199 @@ describe("validateInviteBundle field validation (CR-02, 12.3-11)", () => {
     // (all malformed) would be dropped, emptying the array to length 0 — well
     // under the cap — and the bundle would validate. The cap must run on the
     // RAW array first.
+  });
+});
+
+// ── Gap closure (CR-01, CR-02, IN-02's expires_at half; 12.3-12): the two
+// attacker-controlled arrays (held_roots, channels[].held) are bounded by
+// COUNT, not just shape, and every attacker-controlled string that reaches
+// the serialized document or a published Guestbook Join is bounded by LENGTH.
+describe("validateInviteBundle cardinality and text bounds (12.3-12)", () => {
+  // Deterministic valid-hex generator — never reads a value back from the
+  // function under test (TEST-01/D-13).
+  function hexKey(n: number): string {
+    return (n % 256).toString(16).padStart(2, "0").repeat(32);
+  }
+
+  it("rejects a bundle whose held_roots array length exceeds the cap, even when every entry is well-formed", () => {
+    const held_roots = Array.from({ length: INVITE_BUNDLE_MAX_HELD_ROOTS + 1 }, (_, i) => ({
+      epoch: i,
+      key: hexKey(i),
+    }));
+    const bundle = { ...validOwnerFields, channels: [], relays: [], held_roots } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+    // Non-vacuity: pre-fix, held_roots was only shape-validated per entry, never
+    // counted — this array (all well-formed entries) would have survived
+    // unchanged into JoinMaterial.held_roots and driven one sequential networked
+    // epoch sync per entry inside syncEpochs.
+  });
+
+  it("validates a held_roots array exactly at the cap, with held_roots surviving unchanged", () => {
+    const held_roots = Array.from({ length: INVITE_BUNDLE_MAX_HELD_ROOTS }, (_, i) => ({
+      epoch: i,
+      key: hexKey(i),
+    }));
+    const bundle = { ...validOwnerFields, channels: [], relays: [], held_roots } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.held_roots).toEqual(held_roots);
+  });
+
+  it("drops a channel entry whose held array length exceeds the cap, while a sibling well-formed channel survives", () => {
+    const oversizedHeld = Array.from({ length: INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS + 1 }, (_, i) => ({
+      epoch: i,
+      key: hexKey(i),
+    }));
+    const overCapChannel = { id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "over-cap", held: oversizedHeld };
+    const okChannel = { id: "33".repeat(32), key: "44".repeat(32), epoch: 0, name: "ok" };
+    const bundle = { ...validOwnerFields, channels: [overCapChannel, okChannel], relays: [] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.channels).toEqual([okChannel]);
+    // Non-vacuity: pre-fix, isValidChannelEntry shape-checked every `held` entry
+    // but never counted the array — the over-cap channel would have survived,
+    // costing one channelGroupKey ECDH derivation per held entry inside
+    // deriveChannelKeys.
+  });
+
+  it("still rejects a channel whose over-cap held array's entries are ALL malformed, evaluated on the raw array before per-entry filtering (ordering guard)", () => {
+    const allMalformedHeld = Array.from({ length: INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS + 1 }, (_, i) => ({
+      epoch: -1,
+      key: `bad-${i}`,
+    }));
+    const channel = { id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "c", held: allMalformedHeld };
+    const bundle = { ...validOwnerFields, channels: [channel], relays: [] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.channels).toEqual([]);
+    // Non-vacuity: if the per-entry filter ran BEFORE the count, every entry
+    // here (all malformed) would fail `.every`, but the count check must ALSO
+    // independently reject this entry — this pins the count being evaluated on
+    // the raw array, not merely as a fallback to per-entry validation.
+  });
+
+  it("rejects a bundle whose name exceeds the text cap", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: [],
+      name: "x".repeat(INVITE_BUNDLE_MAX_TEXT_LENGTH + 1),
+    } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+    // Non-vacuity: pre-fix, `name` was never validated anywhere in this
+    // function — this exact oversized string would have survived unchanged
+    // into JoinMaterial.name, serialized TWICE per entry into the kind-13302
+    // document, permanently wedging the user's Community List past LIST_MAX_BYTES.
+  });
+
+  it("rejects a bundle whose name is a non-string (an object)", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: [],
+      // @ts-expect-error deliberately malformed for the fail-closed test
+      name: { not: "a string" },
+    } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+  });
+
+  it("validates a bundle with no name at all, normalizing name to an empty string", () => {
+    const { name: _drop, ...rest } = validOwnerFields;
+    const bundle = { ...rest, channels: [], relays: [] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.name).toBe("");
+  });
+
+  it("validates with an over-cap or non-string label dropped, rest of the bundle intact", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: [],
+      label: "x".repeat(INVITE_BUNDLE_MAX_TEXT_LENGTH + 1),
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.label).toBeUndefined();
+    expect(result?.community_id).toBe(validOwnerFields.community_id);
+    // Non-vacuity: pre-fix, `label` passed through `{ ...bundle }` unchanged and
+    // reaches a PUBLISHED Guestbook Join via joinFromBundle's JoinLeaveFactory.
+  });
+
+  it("validates with an over-cap or non-string creator_npub dropped, rest of the bundle intact", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: [],
+      // @ts-expect-error deliberately malformed for the fail-closed test
+      creator_npub: 12345,
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.creator_npub).toBeUndefined();
+  });
+
+  it("drops a channel entry whose name exceeds the cap, while a sibling well-formed channel survives", () => {
+    const overCapNameChannel = {
+      id: "11".repeat(32),
+      key: "22".repeat(32),
+      epoch: 0,
+      name: "x".repeat(INVITE_BUNDLE_MAX_TEXT_LENGTH + 1),
+    };
+    const okChannel = { id: "33".repeat(32), key: "44".repeat(32), epoch: 0, name: "ok" };
+    const bundle = { ...validOwnerFields, channels: [overCapNameChannel, okChannel], relays: [] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.channels).toEqual([okChannel]);
+  });
+
+  it("validates with a non-number expires_at dropped to undefined (closing the relational-check bypass, IN-02)", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: [],
+      // @ts-expect-error deliberately malformed for the fail-closed test
+      expires_at: "soon",
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.expires_at).toBeUndefined();
+    // Non-vacuity: pre-fix, a non-number expires_at passed through unchanged;
+    // joinFromBundle's `unixNow() > bundle.expires_at` comparison against a
+    // string is always false, silently bypassing the expiry check.
+  });
+
+  it("validates a legitimate future unix-seconds expires_at unchanged", () => {
+    const futureExpiry = 4_000_000_000; // hand-derived: far future unix-seconds value
+    const bundle = { ...validOwnerFields, channels: [], relays: [], expires_at: futureExpiry } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result?.expires_at).toBe(futureExpiry);
+  });
+
+  it("round-trips a buildInviteBundle-produced bundle carrying a channel with held keys unchanged (no-false-negative guard)", () => {
+    const material: JoinMaterial = {
+      community_id: validOwnerFields.community_id,
+      owner: validOwnerFields.owner,
+      owner_salt: validOwnerFields.owner_salt,
+      community_root: validOwnerFields.community_root,
+      root_epoch: 0,
+      channels: [
+        {
+          id: "11".repeat(32),
+          key: "22".repeat(32),
+          epoch: 2,
+          name: "mods",
+          held: [{ epoch: 1, key: "33".repeat(32) }],
+        },
+      ],
+      relays: ["wss://ok.example.com"],
+      name: "Test Community",
+    };
+    const built = buildInviteBundle(material, { channels: ["11".repeat(32)] });
+    const result = validateInviteBundle(built);
+    expect(result).toBeDefined();
+    expect(result?.channels).toEqual(built.channels);
+    expect(result?.name).toBe(built.name);
   });
 });
 
