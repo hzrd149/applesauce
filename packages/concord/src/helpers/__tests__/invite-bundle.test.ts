@@ -3,7 +3,7 @@
 // read back from the function under test (TEST-01/D-13).
 
 import { describe, expect, it } from "vitest";
-import { bytesToHex, randomBytes } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import type { NostrEvent } from "applesauce-core/helpers";
@@ -14,7 +14,9 @@ import {
   INVITE_BUNDLE_MAX_CHANNELS,
   INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS,
   INVITE_BUNDLE_MAX_HELD_ROOTS,
+  INVITE_BUNDLE_MAX_RELAY_URL_LENGTH,
   INVITE_BUNDLE_MAX_TEXT_LENGTH,
+  INVITE_BUNDLE_MAX_TOTAL_BYTES,
   INVITE_BUNDLE_RELAY_CAP,
   RELAY_DICTIONARY,
   STOCK_RELAYS,
@@ -145,23 +147,23 @@ describe("validateInviteBundle (INVITE-02/D-10)", () => {
     expect(result?.relays).toEqual(relays.slice(0, INVITE_BUNDLE_RELAY_CAP));
   });
 
-  // Gap closure (CR-01, WR-01, 12.3-11): the relays filter now delegates to the
-  // shared isSafeInviteRelayURL predicate — a remote plaintext-scheme entry is
-  // dropped exactly like an http:// entry, but a loopback plaintext entry (the
-  // project's own local cache-relay form) survives.
-  it("drops a remote ws:// entry (WR-01) but keeps a loopback ws:// entry", () => {
+  // Gap closure (WR-02, 12.3-13): the plaintext-loopback carve-out is REMOVED
+  // outright — after 12.3-12 relocated the relay gate off the app's own
+  // configured relays, every isSafeInviteRelayURL call site is
+  // attacker-controlled, so the carve-out only granted a remote invite the
+  // ability to plant a loopback endpoint the client would then dial.
+  it("drops BOTH a remote and a loopback ws:// entry — the carve-out no longer exists (WR-02)", () => {
     const bundle = {
       ...validOwnerFields,
       channels: [],
       relays: ["ws://evil.example.com", "ws://localhost:4869", "wss://legit.example.com"],
     } as InviteBundle;
     const result = validateInviteBundle(bundle);
-    expect(result?.relays).toEqual(["ws://localhost:4869", "wss://legit.example.com"]);
-    // Non-vacuity: pre-fix, the filter body was `typeof entry === "string" &&
-    // isSafeRelayURL(entry)` — isSafeRelayURL admits BOTH websocket schemes for
-    // any host, so the remote plaintext entry would have survived into
-    // JoinMaterial.relays and from there into the refounding quorum's protocol
-    // set. This case pins that hole shut.
+    expect(result?.relays).toEqual(["wss://legit.example.com"]);
+    // Non-vacuity: pre-fix (12.3-11/12.3-12), a loopback ws:// entry survived
+    // this filter via the (now-removed) LOOPBACK_PLAINTEXT_WS carve-out. An
+    // app's own local cache relay is unaffected by this removal: it travels as
+    // a transport-only `extraRelays` entry, which this predicate never sees.
   });
 });
 
@@ -446,11 +448,205 @@ describe("validateInviteBundle cardinality and text bounds (12.3-12)", () => {
   });
 });
 
-describe("isSafeInviteRelayURL (CR-01/WR-01, 12.3-11)", () => {
-  it("accepts a plaintext ws:// URL only for a loopback host", () => {
-    expect(isSafeInviteRelayURL("ws://localhost:4869")).toBe(true);
-    expect(isSafeInviteRelayURL("ws://127.0.0.1:4869")).toBe(true);
-    expect(isSafeInviteRelayURL("ws://[::1]:4869")).toBe(true);
+// ── D-17/CR-01 gap closure (12.3-13): `validateInviteBundle` no longer
+// enumerates fields to bound — it walks four exhaustive rule tables and
+// REBUILDS its output, so a hop no reviewer named (held_roots[i].refounder,
+// unknown per-entry keys) closes for free, and a future field with no rule
+// fails `tsc` rather than shipping unbounded a fifth time.
+describe("validateInviteBundle exhaustive rule tables (D-17/CR-01, 12.3-13)", () => {
+  const HOSTILE_LEN = 60_000;
+  const hostileHex = (len: number) => "a".repeat(len % 2 === 0 ? len : len + 1);
+
+  it("rejects a 60,000-char hex owner even when its community_id genuinely matches (owner proof alone does not bound length)", () => {
+    const salt = randomBytes(32);
+    const hostileOwner = hostileHex(HOSTILE_LEN);
+    const cid = bytesToHex(communityId(hostileOwner, salt));
+    const bundle = {
+      ...validOwnerFields,
+      owner: hostileOwner,
+      owner_salt: bytesToHex(salt),
+      community_id: cid,
+      channels: [],
+      relays: [],
+    } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+
+    // Same fixture SHAPE with a genuine 64-char owner validates — proving the
+    // rejection above is attributable to the length/shape rule, not to a
+    // failed owner proof.
+    const okOwner = "cc".repeat(32);
+    const okCid = bytesToHex(communityId(okOwner, salt));
+    const okBundle = {
+      ...validOwnerFields,
+      owner: okOwner,
+      owner_salt: bytesToHex(salt),
+      community_id: okCid,
+      channels: [],
+      relays: [],
+    } as InviteBundle;
+    expect(validateInviteBundle(okBundle)).toBeDefined();
+  });
+
+  it("rejects a 60,000-char hex owner_salt even when its community_id genuinely matches", () => {
+    const hostileSaltHex = hostileHex(HOSTILE_LEN);
+    const cid = bytesToHex(communityId(validOwnerFields.owner, hexToBytes(hostileSaltHex)));
+    const bundle = {
+      ...validOwnerFields,
+      owner_salt: hostileSaltHex,
+      community_id: cid,
+      channels: [],
+      relays: [],
+    } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+  });
+
+  it("validates with a 60,000-char refounder DROPPED (not a rejection), every other field intact", () => {
+    const bundle = {
+      ...validOwnerFields,
+      channels: [],
+      relays: [],
+      refounder: "f".repeat(HOSTILE_LEN),
+    } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.refounder).toBeUndefined();
+    expect(result?.community_id).toBe(validOwnerFields.community_id);
+  });
+
+  it("validates with a well-formed 64-char hex refounder preserved", () => {
+    const refounder = "12".repeat(32);
+    const bundle = { ...validOwnerFields, channels: [], relays: [], refounder } as InviteBundle;
+    expect(validateInviteBundle(bundle)?.refounder).toBe(refounder);
+  });
+
+  // Deviation from this plan's <behavior> prose, recorded in the 12.3-13
+  // SUMMARY: the SHARED HELD_KEY_FIELD_RULES table's `refounder` rule is
+  // drop/omit (matching both the plan's own literal rule-assignment text and
+  // the top-level `refounder` field's disposition) — a held_roots entry's
+  // malformed `refounder` is DROPPED from that entry rather than rejecting the
+  // whole bundle. held_roots' own key/epoch rules (reject/reject) already
+  // independently enforce the "not a bundle we minted" whole-bundle-reject
+  // policy for any OTHER malformation.
+  it("drops a 60,000-char refounder from a held_roots entry — the entry (and bundle) survive", () => {
+    const held_roots = [{ epoch: 0, key: "22".repeat(32), refounder: "f".repeat(HOSTILE_LEN) }];
+    const bundle = { ...validOwnerFields, channels: [], relays: [], held_roots } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.held_roots).toEqual([{ epoch: 0, key: "22".repeat(32) }]);
+  });
+
+  it("validates a held_roots entry with an extra unknown key holding a 60,000-char value, absent from the rebuilt entry", () => {
+    const held_roots = [{ epoch: 0, key: "22".repeat(32), unknownAttackerKey: "x".repeat(HOSTILE_LEN) }];
+    const bundle = { ...validOwnerFields, channels: [], relays: [], held_roots } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.held_roots).toEqual([{ epoch: 0, key: "22".repeat(32) }]);
+    // Proves entries are REBUILT, not passed through by reference (CR-01).
+    expect(JSON.stringify(result?.held_roots)).not.toContain("unknownAttackerKey");
+  });
+
+  it("validates a channels[] entry with an extra unknown key holding a 60,000-char value, channel present with the unknown key stripped", () => {
+    const channel = {
+      id: "11".repeat(32),
+      key: "22".repeat(32),
+      epoch: 0,
+      name: "general",
+      unknownAttackerKey: "x".repeat(HOSTILE_LEN),
+    };
+    const bundle = { ...validOwnerFields, channels: [channel], relays: [] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.channels).toEqual([{ id: channel.id, key: channel.key, epoch: 0, name: "general" }]);
+  });
+
+  it("validates a bundle with five unknown top-level keys, each holding a 60,000-char value, none present on the returned object", () => {
+    const unknownKeys: Record<string, string> = {};
+    for (let n = 0; n < 5; n++) unknownKeys[`attacker${n}`] = "x".repeat(HOSTILE_LEN);
+    const bundle = { ...validOwnerFields, channels: [], relays: [], ...unknownKeys } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    for (let n = 0; n < 5; n++)
+      expect(Object.prototype.hasOwnProperty.call(result, `attacker${n}`)).toBe(false);
+  });
+
+  it("filters out a syntactically valid wss:// relay entry longer than the new per-URL cap, keeping a sibling short valid entry", () => {
+    const longUrl = "wss://relay.example.com/" + "a".repeat(INVITE_BUNDLE_MAX_RELAY_URL_LENGTH);
+    const shortUrl = "wss://short.example.com";
+    const bundle = { ...validOwnerFields, channels: [], relays: [longUrl, shortUrl] } as InviteBundle;
+    const result = validateInviteBundle(bundle);
+    expect(result?.relays).toEqual([shortUrl]);
+  });
+
+  it("rejects a bundle whose serialized size exceeds the whole-bundle total-bytes cap, built entirely from legal per-field-in-cap channels", () => {
+    // Derive the channel count from the cap arithmetically, not by trial and error.
+    const perChannelBytes = new TextEncoder().encode(
+      JSON.stringify({ id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "c" }),
+    ).length;
+    const channelCount = Math.min(
+      Math.ceil((INVITE_BUNDLE_MAX_TOTAL_BYTES * 2) / perChannelBytes),
+      INVITE_BUNDLE_MAX_CHANNELS,
+    );
+    const channels = Array.from({ length: channelCount }, (_, i) => ({
+      id: "11".repeat(32),
+      key: "22".repeat(32),
+      epoch: 0,
+      name: `c${i}`,
+    }));
+    const bundle = { ...validOwnerFields, channels, relays: [] } as InviteBundle;
+    expect(validateInviteBundle(bundle)).toBeUndefined();
+  });
+
+  it("the returned object has no key whose value is undefined, for both a maximal and a minimal bundle", () => {
+    const maximal = {
+      ...validOwnerFields,
+      channels: [{ id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "general" }],
+      relays: ["wss://ok.example.com"],
+      refounder: "33".repeat(32),
+      label: "label",
+      creator_npub: "44".repeat(32),
+      expires_at: 4_000_000_000,
+      icon: { url: "https://x", key: "k", nonce: "n", hash: "h" },
+    } as InviteBundle;
+    const resultMax = validateInviteBundle(maximal);
+    expect(resultMax).toBeDefined();
+    expect(Object.values(resultMax!).some((v) => v === undefined)).toBe(false);
+
+    const minimal = { ...validOwnerFields, channels: [], relays: [] } as InviteBundle;
+    const resultMin = validateInviteBundle(minimal);
+    expect(resultMin).toBeDefined();
+    expect(Object.values(resultMin!).some((v) => v === undefined)).toBe(false);
+  });
+
+  it("buildInviteBundle itself throws when the assembled bundle would exceed the total-bytes cap", () => {
+    const many = Array.from({ length: INVITE_BUNDLE_MAX_CHANNELS }, (_, i) => ({
+      id: bytesToHex(randomBytes(32)),
+      key: bytesToHex(randomBytes(32)),
+      epoch: 0,
+      name: `channel-${i}`,
+    }));
+    const material: JoinMaterial = {
+      community_id: validOwnerFields.community_id,
+      owner: validOwnerFields.owner,
+      owner_salt: validOwnerFields.owner_salt,
+      community_root: validOwnerFields.community_root,
+      root_epoch: 0,
+      channels: many,
+      relays: ["wss://ok.example.com"],
+      name: "Test Community",
+    };
+    expect(() => buildInviteBundle(material, { channels: many.map((c) => c.id) })).toThrow(/too large to mint/);
+  });
+});
+
+describe("isSafeInviteRelayURL (WR-02, 12.3-13: loopback carve-out removed)", () => {
+  it("rejects a plaintext ws:// URL for a loopback host — the carve-out no longer exists", () => {
+    expect(isSafeInviteRelayURL("ws://localhost:4869")).toBe(false);
+    expect(isSafeInviteRelayURL("ws://127.0.0.1:4869")).toBe(false);
+    expect(isSafeInviteRelayURL("ws://[::1]:4869")).toBe(false);
+    // Non-vacuity: pre-fix (12.3-11/12.3-12), all three returned true via the
+    // now-removed LOOPBACK_PLAINTEXT_WS carve-out. An app's own local cache
+    // relay is unaffected: it travels as a transport-only extra, which this
+    // predicate never sees.
   });
 
   it("rejects a plaintext ws:// URL for a remote host", () => {
@@ -569,6 +765,21 @@ describe("decodeFragment (INVITE-05/D-12)", () => {
     const decoded = decodeFragment(encoded);
     expect(decoded.relays).toEqual(STOCK_RELAYS);
     expect(decoded.token).toEqual(token);
+  });
+
+  // Gap closure (IN-02, 12.3-13): a fragment truncated mid-relay-table (the
+  // byte cursor runs past the buffer) must throw a specific invite-fragment
+  // error rather than silently yielding a zero-length token.
+  it("throws a specific error for a fragment truncated mid-relay-table (IN-02)", () => {
+    // version=4, flags=0x00 (custom relay set), count=1, lead=0x00 (bare host),
+    // len=20 — but NO host bytes and NO token follow, so the byte cursor runs
+    // past the buffer end.
+    const truncated = base64urlnopad.encode(new Uint8Array([4, 0x00, 1, 0x00, 20]));
+    expect(() => decodeFragment(truncated)).toThrow(/truncated/);
+    // Non-vacuity: pre-fix, the indexed reads past the buffer yield `undefined`,
+    // the cursor becomes NaN, and `bytes.slice(NaN, NaN + 16)` silently returns
+    // an empty Uint8Array — a 0-byte token that only failed later, deep inside
+    // nip44.decrypt, with an unrelated message.
   });
 });
 
