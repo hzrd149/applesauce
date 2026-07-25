@@ -5,7 +5,7 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Completed 12.3-12-PLAN.md (gap closure for CR-01/CR-02/WR-01/WR-02; phase 12.3 all 12 plans executed)
+stopped_at: "Completed 12.3-12-PLAN.md (12/12 plans executed) — phase NOT complete: third code review found 2 new BLOCKERs (CR-01 unbounded owner/owner_salt/refounder/relays[i]; CR-02 leave() prune unreachable in the wedge case), both verified against source"
 last_updated: "2026-07-25T18:39:19.046Z"
 last_activity: 2026-07-25
 last_activity_desc: Phase 12.3 execution started
@@ -28,10 +28,15 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 2 of 12
-Status: Ready to execute
-Last activity: 2026-07-25 — Phase 12.3 execution started
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — BLOCKED (all 12 plans executed)
+Plan: 12 of 12 (gap-closure plan 12.3-12 executed)
+Status: Phase NOT complete — 12.3-REVIEW.md (third pass) records 2 BLOCKERs, both verified against source.
+  CR-01: validateInviteBundle length-bounds name/label/creator_npub/channels[].name but leaves
+  owner, owner_salt, refounder, and relays[i] unbounded — same Community List wedge, different fields.
+  CR-02: leave()'s new byte-prune sits after an early `if (!community) return`, so it cannot run in
+  the wedge case it was written to escape; mergeCommunities can also re-insert pruned bytes.
+  Next: /gsd-plan-phase 12.3 --gaps
+Last activity: 2026-07-25 — Executed 12.3-12; third code review found 2 new blockers
 
 Progress: [██████████] 83%
 
