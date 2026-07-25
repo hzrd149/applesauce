@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: "Completed 12.3-11-PLAN.md (11/11 plans executed; code review found 2 new BLOCKERs — phase not complete)"
-last_updated: "2026-07-23T09:33:08.124Z"
-last_activity: 2026-07-23
-last_activity_desc: Completed 12.3-11-PLAN.md
+stopped_at: Completed 12.3-12-PLAN.md (gap closure for CR-01/CR-02/WR-01/WR-02; phase 12.3 all 12 plans executed)
+last_updated: "2026-07-25T18:39:19.046Z"
+last_activity: 2026-07-25
+last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 12
   completed_phases: 10
-  total_plans: 67
-  completed_plans: 67
+  total_plans: 68
+  completed_plans: 68
   percent: 83
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — COMPLETE (11/11 plans)
-Plan: 11 of 11 (gap-closure plan 12.3-11 closed CR-01/CR-02)
-Status: Phase 12.3 complete, ready for re-verification / next phase
-Last activity: 2026-07-23 — Completed 12.3-11-PLAN.md
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
+Plan: 2 of 12
+Status: Ready to execute
+Last activity: 2026-07-25 — Phase 12.3 execution started
 
 Progress: [██████████] 83%
 
@@ -88,6 +88,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P09 | 20min | 2 tasks | 5 files |
 | Phase 12.3 P10 | 30min | 3 tasks | 9 files |
 | Phase 12.3 P11 | 26min | 3 tasks | 4 files |
+| Phase 12.3 P12 | 65min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -190,6 +191,11 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.3-11: WR-01 loopback carve-out checked independently of isSafeRelayURL (not gated behind it) — its hostname regex rejects bracketed IPv6 [::1], which the carve-out must admit
 - [Phase ?]: 12.3-11: a malformed channels[] entry (or its held keys) is dropped per-entry; a malformed held_roots entry rejects the whole bundle since buildInviteBundle never emits that field
 - [Phase ?]: 12.3-11: recordJoin constructs the engine before mutating this.list (confirmed addCommunity construction never reads this.list); reconcileCommunities skips+logs an unconstructable entry rather than pruning it
+- [Phase ?]: 12.3-12: held_roots/channels[].held count-capped at 64 on the raw array before per-entry validation, mirroring the existing channels cap ordering (CR-01)
+- [Phase ?]: 12.3-12: text-length cap (256) added for name/label/creator_npub/channels[].name; top-level name rejects the whole bundle (required field), label/creator_npub/expires_at drop to undefined, channels[].name drops the entry (CR-02)
+- [Phase ?]: 12.3-12: joinByBundle now runs validateInviteBundle itself (WR-02); the untrusted-relay gate relocated from joinFromBundle's fallback to joinByLink's bootstrap selection so the app's own configured relays are never filtered (WR-03 folded in)
+- [Phase ?]: 12.3-12: leave() prunes the entry from this.list after tombstoning it, recovering a Community List already wedged past LIST_MAX_BYTES (CR-02 half two)
+- [Phase ?]: 12.3-12: ConcordCommunity's constructor wraps everything after ExtraRelays construction in try/catch (disposes the holder, rethrows); reconcileCommunities fingerprints failed material via canonicalJson so an identical failure is skipped but a corrected entry is retried (WR-01)
 
 ### Pending Todos
 
@@ -227,8 +233,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-23T09:33:08.112Z
-Stopped at: Completed 12.3-11-PLAN.md (phase 12.3 complete: 11/11 plans; CR-01/CR-02 gap closure)
+Last session: 2026-07-25T18:39:19.036Z
+Stopped at: Completed 12.3-12-PLAN.md (gap closure for CR-01/CR-02/WR-01/WR-02; phase 12.3 all 12 plans executed)
 Resume file: None
 
 ## Operator Next Steps

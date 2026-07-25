@@ -40,7 +40,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
 - [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
 - [x] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog) (completed 2026-07-22)
-- [ ] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog)
+- [x] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog) (completed 2026-07-25)
 
 ## Phase Details
 
@@ -373,7 +373,7 @@ Plans:
 **Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
 **Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
 
-**Plans**: 12 plans (11 complete)
+**Plans**: 12/12 plans complete
 
 Plans:
 **Wave 1**
@@ -416,7 +416,7 @@ Plans:
 
 **Wave 10** *(gap closure — blocked on Wave 9 completion)*
 
-- [ ] 12.3-12-PLAN.md — bundle array cardinality + attacker-string length bounds, validating `joinByBundle` with the relay gate relocated, recoverable Community List, and the `ExtraRelays` construction-failure leak (CR-01, CR-02, WR-01, WR-02)
+- [x] 12.3-12-PLAN.md — bundle array cardinality + attacker-string length bounds, validating `joinByBundle` with the relay gate relocated, recoverable Community List, and the `ExtraRelays` construction-failure leak (CR-01, CR-02, WR-01, WR-02)
 
 **Cross-cutting constraints:**
 
@@ -444,7 +444,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
-| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 11/12 | In Progress | - |
+| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 12/12 | Complete   | 2026-07-25 |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
 
