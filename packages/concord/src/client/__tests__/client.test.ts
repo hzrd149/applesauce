@@ -1393,7 +1393,15 @@ function spyLogger(): { log: Debugger; calls: unknown[][] } {
 }
 
 describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap closure 12.3-11)", () => {
-  it("a malformed community_root rejects the join and leaves no residue — a subsequent explicit save publishes no entry for it", async () => {
+  // Gap closure (WR-06, 12.3-13): renamed and re-commented from "a malformed
+  // community_root rejects the join and leaves no residue" — since 12.3-12,
+  // `joinByBundle` itself calls `validateInviteBundle`, so `not-hex` is
+  // rejected THERE, before `recordJoin`/`addCommunity` is ever entered. This
+  // now covers `joinByBundle`-as-a-validation-boundary (WR-02), not the
+  // engine-first ordering it was originally written to pin — that coverage is
+  // restored below by a separate test using a store factory that throws for
+  // otherwise FULLY VALID material.
+  it("joinByBundle is itself a validation boundary — a malformed community_root is rejected before recordJoin is ever entered, no residue", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool, published } = fakePool();
@@ -1407,20 +1415,11 @@ describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap c
       description: "CR-02 regression",
       relays: ["wss://fake"],
     });
-    // Malformed AFTER validation would run: joinByBundle is the public entry
-    // point for an ALREADY-validated bundle (e.g. from a Direct Invite) — it is
-    // not itself a validation boundary, so this is the exact repro path the
-    // review names for CR-02.
     const hostileBundle = { ...buildInviteBundle(genesis.material, { name: "Hostile" }), community_root: "not-hex" };
 
     await expect(client.joinByBundle(hostileBundle)).rejects.toThrow();
     expect(client.getCommunity(hostileBundle.community_id)).toBeUndefined();
 
-    // Non-vacuity: pre-fix, recordJoin mutates `this.list` BEFORE addCommunity's
-    // `hexToBytes(material.community_root)` throws — since `joinFromBundle`'s
-    // own `await this.saveMirror()` call is skipped (the throw unwinds past it),
-    // the phantom entry stays silent in memory until a LATER operation reads
-    // `this.list` — exactly what this explicit save forces, to surface it.
     await client.saveCommunityList();
     const lastList = listPublishes(published).at(-1);
     const doc = lastList ? JSON.parse(await signer.nip44!.decrypt(pubkey, lastList.content)) : { entries: [] };
@@ -1429,7 +1428,7 @@ describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap c
     client.stop();
   });
 
-  it("a subsequent legitimate join succeeds after the rejected join, with the document containing exactly the legitimate entry", async () => {
+  it("joinByBundle is a validation boundary: a subsequent legitimate join succeeds after the rejected join, with the document containing exactly the legitimate entry", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool } = fakePool();
@@ -1462,6 +1461,53 @@ describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap c
     const raw = await storage.getItem(pubkey);
     const mirror = JSON.parse(raw!) as { entries: Array<{ community_id: string }> };
     expect(mirror.entries.map((e) => e.community_id)).toEqual([legitBundle.community_id]);
+
+    client.stop();
+  });
+
+  // Gap closure (WR-06, 12.3-13): restores the engine-first ordering coverage
+  // the two renamed tests above lost when `joinByBundle` became its own
+  // validation boundary (12.3-12) — driven with a FULLY VALID bundle (the
+  // validator cannot short-circuit this one) and a client-level store factory
+  // that throws, so `addCommunity` -> `new ConcordCommunity(...)` ->
+  // `storeFor("control")` throws INSIDE `recordJoin`, after the entry-size
+  // guard but before `this.list` is touched.
+  it("a construction failure for FULLY VALID material leaves this.list unchanged, asserted through both a subsequent save and the local mirror", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+      storeFactory: () => {
+        throw new Error("store factory boom");
+      },
+    });
+    await client.start();
+
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Valid",
+      description: "WR-06 atomicity",
+      relays: ["wss://fake"],
+    });
+    const validBundle = buildInviteBundle(genesis.material, { name: "Valid" });
+
+    await expect(client.joinByBundle(validBundle)).rejects.toThrow(/store factory boom/);
+    expect(client.getCommunity(validBundle.community_id)).toBeUndefined();
+
+    await client.saveCommunityList();
+    expect(listPublishes(published).length).toBe(0);
+
+    const raw = await storage.getItem(pubkey);
+    if (raw) {
+      const mirror = JSON.parse(raw) as { entries: Array<{ community_id: string }> };
+      expect(mirror.entries.find((e) => e.community_id === validBundle.community_id)).toBeUndefined();
+    }
 
     client.stop();
   });
@@ -1903,44 +1949,239 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
     client.stop();
   });
 
-  it("an ordinary leave() still tombstones, still publishes, and the membership stays derived-dead after a later merge of a stale remote copy that still holds the entry", async () => {
+  // Gap closure (WR-07, 12.3-13): rewritten from "an ordinary leave() still
+  // tombstones, still publishes, and the membership stays derived-dead after
+  // a later merge of a stale remote copy that still holds the entry". The
+  // prior fixture stamped the stale event at `created_at: 1` — strictly OLDER
+  // than our leave-time publication — so kind 13302's replaceable-event
+  // winner selection kept OUR event and the cast never re-emitted the stale
+  // content; `mergeCommunities` was never actually reached with it, and the
+  // final assertion's disjunction (`entry === undefined || ...`) was satisfied
+  // trivially by the `undefined` half. This version stamps the stale event
+  // STRICTLY NEWER (so the merge genuinely happens), carries a SECOND,
+  // never-left entry (the only way to prove the merge ran rather than the
+  // stale event being ignored for some other reason), and splits the old
+  // disjunction into three independently meaningful assertions.
+  it("CR-02(b): a stale remote copy stamped NEWER than our leave-time publication genuinely merges — the never-left sibling is picked up, the left entry's bytes stay absent, and the tombstone outranks the stale add", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool, published } = fakePool();
     const store = new EventStore();
-    const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), relays: ["wss://fake"] });
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
     await client.start();
 
-    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
-    const cid = community.communityId;
+    const left = await client.createNewCommunity("Left", "hi", ["wss://fake"]);
+    const cid = left.communityId;
     const staleAddedAt = Date.now();
     await settle();
 
     await client.leave(cid);
     await settle();
     expect(client.getCommunity(cid)).toBeUndefined();
+    const leaveTimePublication = listPublishes(published).at(-1)!;
 
-    // A stale device's copy — never having seen our leave — still carries the
-    // entry with its (older) added_at and no tombstone of its own.
-    const staleMaterial: JoinMaterial = { ...community.material, held_roots: community.material.held_roots ?? [] };
+    // A second, never-left community — the witness that proves the merge
+    // below genuinely happened (WR-07's non-vacuity requirement).
+    const neverLeft = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "NeverLeft",
+      description: "merge witness",
+      relays: ["wss://fake"],
+    });
+    const neverLeftMaterial: JoinMaterial = { ...neverLeft.material, held_roots: neverLeft.material.held_roots ?? [] };
+    const staleMaterial: JoinMaterial = { ...left.material, held_roots: left.material.held_roots ?? [] };
     const staleCommunities = mergeCommunities(
       [],
-      [{ community_id: cid, seed: staleMaterial, current: staleMaterial, added_at: staleAddedAt }],
+      [
+        { community_id: cid, seed: staleMaterial, current: staleMaterial, added_at: staleAddedAt },
+        {
+          community_id: neverLeftMaterial.community_id,
+          seed: neverLeftMaterial,
+          current: neverLeftMaterial,
+          added_at: staleAddedAt,
+        },
+      ],
     );
     const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: staleCommunities, tombstones: [] }));
-    const staleEvent = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: 1 });
+    // Derived from the SAME strictly-greater stamping rule saveCommunityList
+    // itself uses (client.ts's `Math.max(nowSeconds, (previous?.created_at ??
+    // 0) + 1)`) — never guessed, and comfortably newer than our own publish.
+    const staleEvent = await signer.signEvent({
+      kind: COMMUNITY_LIST_KIND,
+      content,
+      tags: [],
+      created_at: leaveTimePublication.created_at + 60,
+    });
     store.add(staleEvent as NostrEvent);
     await settleFlush();
+    await settle();
 
-    // Our removed_at (stamped at leave-time, after staleAddedAt) still outranks
-    // the stale re-merged add — the membership stays derived-dead.
+    // Fact 1: the merge genuinely happened — the never-left sibling was
+    // picked up and its engine started.
+    expect(client.getCommunity(neverLeftMaterial.community_id)).toBeDefined();
+
+    // Fact 2: the left entry's bytes stay absent from the next published document.
     expect(client.getCommunity(cid)).toBeUndefined();
-    expect(listPublishes(published).length).toBeGreaterThanOrEqual(1);
     const lastDoc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published).at(-1)!.content));
-    const entry = lastDoc.entries.find((e: any) => e.community_id === cid);
+    expect(lastDoc.entries.find((e: any) => e.community_id === cid)).toBeUndefined();
+
+    // Fact 3: the tombstone for the left cid outranks the stale re-merged add.
     const tomb = lastDoc.tombstones.find((t: any) => t.community_id === cid);
     expect(tomb).toBeDefined();
-    expect(entry === undefined || entry.added_at <= tomb.removed_at).toBe(true);
+    expect(tomb.removed_at).toBeGreaterThan(staleAddedAt);
+
+    client.stop();
+  });
+});
+
+// ── Gap closure (CR-02, WR-06 reversal guard, WR-08 deferral note; 12.3-13):
+// engine-less/unknown-cid leave() reachability, and prune idempotence.
+describe("ConcordClient pruneDeadEntries — engine-less leave, unknown-cid no-op, idempotence (12.3-13)", () => {
+  it("CR-02(a): leave() on an entry reconcile skipped as unconstructable (no running engine) still tombstones, prunes, and a subsequent save publishes with no entry for it", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({
+      ownerPubkey: pubkey,
+      name: "Wedge",
+      description: "engine-less leave",
+      relays: ["wss://fake"],
+    });
+    const malformedMaterial: JoinMaterial = {
+      ...genesis.material,
+      held_roots: genesis.material.held_roots ?? [],
+      community_root: "not-hex",
+    };
+    const cid = malformedMaterial.community_id;
+    const communities = mergeCommunities(
+      [],
+      [{ community_id: cid, seed: malformedMaterial, current: malformedMaterial, added_at: 1 }],
+    );
+    // Setup sanity: the fixture genuinely carries the entry (pre-leave state) —
+    // without this, a client that never merged it would ALSO show no engine.
+    expect(communities.some((e) => e.community_id === cid)).toBe(true);
+    const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: communities, tombstones: [] }));
+    const listEvent = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: 1 });
+
+    const store = new EventStore();
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
+    await client.start();
+    store.add(listEvent as NostrEvent);
+    await settle();
+
+    // Pre-leave: no running engine — reconcile skipped construction (its own
+    // `community_root` throws inside `hexToBytes`).
+    expect(client.getCommunity(cid)).toBeUndefined();
+
+    await client.leave(cid);
+    await settle();
+
+    const doc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published).at(-1)!.content));
+    expect(doc.entries.find((e: any) => e.community_id === cid)).toBeUndefined();
+    expect(doc.tombstones.find((t: any) => t.community_id === cid)).toBeDefined();
+
+    client.stop();
+  });
+
+  it("CR-02(a): leave(cid) after stop() — a cid still present in the local mirror with no running engine — still tombstones and prunes, reachable through the public API alone", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+
+    const community = await client.createNewCommunity("StopThenLeave", "hi", ["wss://fake"]);
+    const cid = community.communityId;
+    await settle();
+    expect(client.getCommunity(cid)).toBeDefined(); // sanity: the engine WAS running
+
+    // stop() clears the engine map; this.list/this.tombstones are NOT reset by
+    // stop() (it is pause-only) — the cid is still known to the document.
+    client.stop();
+    expect(client.getCommunity(cid)).toBeUndefined(); // now genuinely engine-less
+
+    await client.leave(cid);
+
+    const doc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published).at(-1)!.content));
+    expect(doc.entries.find((e: any) => e.community_id === cid)).toBeUndefined();
+    expect(doc.tombstones.find((t: any) => t.community_id === cid)).toBeDefined();
+  });
+
+  it("CR-02(a): leave() on a cid the client has never seen adds NO tombstone and triggers no publish", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    await client.start();
+
+    await client.leave("ff".repeat(32));
+    await settle();
+
+    expect(listPublishes(published).length).toBe(0);
+
+    client.stop();
+  });
+
+  it("the prune is idempotent: re-merging the already-published document multiple times leaves a live membership untouched and a dead one still pruned", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const store = new EventStore();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: store,
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+      autoUnlock: true,
+    });
+    await client.start();
+
+    const live = await client.createNewCommunity("Live", "hi", ["wss://fake"]);
+    const dead = await client.createNewCommunity("Dead", "hi", ["wss://fake"]);
+    await client.leave(dead.communityId);
+    await settle();
+
+    const lastEvent = listPublishes(published).at(-1)!;
+    const docBefore = JSON.parse(await signer.nip44!.decrypt(pubkey, lastEvent.content));
+    expect(docBefore.entries.map((e: any) => e.community_id)).toEqual([live.communityId]);
+
+    // Re-merge the SAME already-published content at successive created_at
+    // values, several times — mirrors a stale peer (or the cast itself)
+    // repeatedly re-emitting.
+    for (let n = 0; n < 3; n++) {
+      const content = await signer.nip44!.encrypt(pubkey, JSON.stringify(docBefore));
+      const event = await signer.signEvent({
+        kind: COMMUNITY_LIST_KIND,
+        content,
+        tags: [],
+        created_at: lastEvent.created_at + 10 + n,
+      });
+      store.add(event as NostrEvent);
+      await settleFlush();
+    }
+
+    expect(client.getCommunity(live.communityId)).toBeDefined(); // live membership never pruned
+    expect(client.getCommunity(dead.communityId)).toBeUndefined();
+
+    await client.saveCommunityList();
+    const finalDoc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published).at(-1)!.content));
+    expect(finalDoc.entries.map((e: any) => e.community_id)).toEqual([live.communityId]);
+    expect(finalDoc.tombstones.find((t: any) => t.community_id === dead.communityId)).toBeDefined();
 
     client.stop();
   });

@@ -47,6 +47,7 @@ import {
   canonicalJson,
   communityListByteSize,
   communityListEntryByteSize,
+  isCommunityLive,
   liveCommunities,
   mergeCommunities,
   mergeCommunityTombstones,
@@ -475,16 +476,18 @@ export class ConcordClient {
   }
 
   /** Releases every engine's subscription to the app-supplied `extraRelays`
-   *  source (WR-05): this client's own holder, the invite manager's, and the
-   *  invite watcher's (if one is still running — `stop()` already disposes a
-   *  discarded watcher, so this is a defensive no-op in the common case).
+   *  source (WR-05): this client's own holder and the invite manager's.
    *  Unlike {@link stop} (pause-only, restartable), the client is NOT
    *  restartable after `dispose()`. */
   dispose(): void {
+    // IN-05: `stop()` (above) already sets `this.inviteWatcher = undefined`
+    // after disposing it, so a trailing `this.inviteWatcher?.dispose()` here
+    // could never fire — deleted rather than kept as dead defensive code that
+    // reads as load-bearing and invites a future reader to preserve the wrong
+    // invariant.
     this.stop();
     this.extras.dispose();
     this.invites.dispose();
-    this.inviteWatcher?.dispose();
   }
 
   /**
@@ -712,12 +715,32 @@ export class ConcordClient {
     return community;
   }
 
+  /**
+   * Leave a community: tombstone the membership so the leave propagates
+   * across devices/clients, and prune the derived-dead bytes from the
+   * document (CR-02).
+   *
+   * CR-02(a): the guard reads the DOCUMENT (`this.list.some(...)`), not only
+   * the engine map. The previous guard (`if (!this.communities.get(cid))
+   * return`) keyed on the ENGINE MAP — precisely the state a wedge case
+   * lacks: a fingerprint-suppressed unconstructable entry (skipped by
+   * `reconcileCommunities`, never given an engine), a `leave()` called before
+   * `start()`, or one called after `stop()`. All three had bytes in the
+   * document but no running engine, so the byte-prune below could never run
+   * in the situation it was written for. The guard is NOT simply deleted,
+   * though: without it, `leave()` on a cid this client has never heard of
+   * would append a PERMANENT tombstone for an unknown id — tombstones are
+   * never pruned (CORD-02 §8) — so an unknown cid must stay a documented
+   * no-op.
+   */
   async leave(cid: string): Promise<void> {
-    const community = this.communities.get(cid);
-    if (!community) return;
+    const known = this.communities.has(cid) || this.list.some((e) => e.community_id === cid);
+    if (!known) return;
     this.log("leave requested community=%s", cid.slice(0, 8));
-    await community.leave();
-    this.removeCommunity(cid);
+    // Engine-less membership: still leavable (optional chain — a wedge case
+    // has no engine to await).
+    await this.communities.get(cid)?.leave();
+    this.removeCommunity(cid); // already safe with no engine (every step optional-chained)
     // Tombstone the membership so the leave propagates across devices/clients
     // (a bare omission would merge back as still-joined — CORD-02 §8). Derived
     // FIRST, before the prune below — `leaveCommunity` computes the tombstone
@@ -726,22 +749,10 @@ export class ConcordClient {
     // tombstone first keeps this method's two effects in the order a reader
     // expects (mark dead, then remove the bytes).
     this.tombstones = leaveCommunity(cid, Date.now())(this.list, this.tombstones).tombstones;
-    // CR-02 recoverability: prune the entry's BYTES from the document, not just
-    // its liveness. Without this, an entry whose serialized bytes have already
-    // pushed the document past `LIST_MAX_BYTES` can never be evicted through
-    // the public API — `saveCommunityList`'s over-cap early return means the
-    // list can never publish again, permanently breaking this user's
-    // Community List sync. The prune is liveness-safe under CORD-02 §8
-    // ("nothing is ever deleted"): the tombstone above is what carries the
-    // leave across devices/clients, stamped with `removed_at = Date.now()` —
-    // the latest timestamp any add can possibly have at this instant. If a
-    // stale peer later reintroduces this entry (its own copy, never having
-    // seen our leave), the reintroduced `added_at` necessarily predates our
-    // `removed_at`, so `isCommunityLive` (added > removed) still derives it
-    // dead — UNLESS a genuine re-join stamps a fresh, later `added_at`
-    // (`recordJoin`), which is the designed resurrection path, not a bug this
-    // prune reopens.
-    this.list = this.list.filter((e) => e.community_id !== cid);
+    // CR-02(a)/(b): prune the entry's BYTES from the document, not just its
+    // liveness — see {@link pruneDeadEntries} for the full argument (liveness
+    // safety, idempotence, and why it must not itself mark the list dirty).
+    this.pruneDeadEntries();
     await this.saveMirror();
     // Leaving is an explicit mutation — always publish the tombstoned list.
     await this.saveCommunityList();
@@ -852,14 +863,64 @@ export class ConcordClient {
     this.emitCommunities();
   }
 
-  /** A Refounding excluded us (CORD-06): drop the community and tombstone it. */
+  /** A Refounding excluded us (CORD-06): drop the community and tombstone it.
+   *  WR-08: routes through the same {@link pruneDeadEntries} as `leave()` —
+   *  an involuntary removal is the SAME "membership is now dead" transition,
+   *  and two code paths for one transition with different document effects
+   *  is exactly how the unrecoverable wedge was reached (an over-cap entry
+   *  removed by Refounding has no engine afterward, so `leave()`'s own prune
+   *  could never reach it either). Keeps its existing flag-dirty-rather-than-
+   *  publish behavior unchanged — the prune itself never publishes. */
   private handleRemoved(cid: string): void {
     this.removeCommunity(cid);
     this.tombstones = leaveCommunity(cid, Date.now())(this.list, this.tombstones).tombstones;
+    this.pruneDeadEntries();
     void this.saveMirror();
     // Involuntary removal during sync/live — flag dirty rather than publish inline so a sync stays
     // side-effect-free; the opt-in auto-save (or a later explicit mutation) propagates the tombstone.
     this.markCommunityListDirty();
+  }
+
+  /**
+   * Drop the BYTES of every membership already derived-dead (CR-02, both
+   * halves). Applied on all three paths that make a membership dead —
+   * {@link leave}, {@link handleRemoved}, and the top of
+   * {@link reconcileCommunities} — so the wedge it recovers is reachable with
+   * NO running engine (a) and idempotent against a never-deleting re-merge
+   * (b).
+   *
+   * What it drops and what it never touches: the BYTES of a dead entry, never
+   * a tombstone — tombstones are what carry liveness across devices under
+   * CORD-02 §8 ("nothing is ever deleted") and are themselves never pruned.
+   *
+   * Why it is safe: a stale peer re-inserting an entry through
+   * `mergeCommunities`' never-deleting union keeps that entry's OLDER
+   * `added_at`, which `isCommunityLive` compares against our (newer)
+   * `removed_at` — still derived dead. A genuine re-join stamps a fresh,
+   * later `added_at` in `recordJoin`, which is the designed resurrection path
+   * and is unaffected by this prune.
+   *
+   * Why it must be idempotent: `watchLists`' merge repeats on every cast
+   * emission, so the prune must be a property of the DERIVED state, not a
+   * one-shot side effect of `leave()` alone (CR-02(b) — the exact gap the
+   * third-pass review found: a stale device publishing after our leave
+   * re-inserted the pruned bytes, and by CR-02(a) `leave()` could no longer
+   * reach the reaped, engine-less result to prune it again).
+   *
+   * Why it must NEVER mark the list dirty or publish: its job is only to keep
+   * the array `saveCommunityList` serializes under the cap. If this method
+   * also flagged dirty, a stale peer that republishes a dead entry on every
+   * churn would drive one publish per remote emission between two devices —
+   * pruning silently and letting the NEXT natural save carry the result
+   * avoids that loop while still guaranteeing the document that eventually
+   * publishes is under cap.
+   */
+  private pruneDeadEntries(): void {
+    // Evaluated against a stable snapshot of the pre-filter array — isCommunityLive
+    // maxes added_at across every duplicate community_id in the WHOLE array, so a
+    // partially-rebuilt array fed back into it would give a wrong answer mid-filter.
+    const snapshot = this.list;
+    this.list = snapshot.filter((e) => isCommunityLive(snapshot, this.tombstones, e.community_id));
   }
 
   private emitCommunities(): void {
@@ -990,8 +1051,18 @@ export class ConcordClient {
    *  (CORD-02 §8): start what's live and isn't running, stop what's running and is no longer live.
    *  The reap is the half that makes a leave propagate — without it a membership tombstoned on
    *  another device keeps its engine (and its place in `communities$`) forever, and would be
-   *  republished as live on the next save. */
+   *  republished as live on the next save.
+   *
+   *  CR-02(b): prunes dead entries' BYTES (see {@link pruneDeadEntries}) BEFORE the liveness read
+   *  below — this method is the single synchronous continuation of `watchLists`' merge (an `async`
+   *  method runs synchronously up to its first `await`, and `watchLists` ends with `void
+   *  this.reconcileCommunities()`), so the prune executes inside the SAME turn as the merge, giving
+   *  the durable half of CR-02 with one call site rather than a second one in `watchLists` that
+   *  could drift out of step. Pruning before the liveness read below changes nothing semantically
+   *  — the prune keeps exactly the live set, `liveCommunities` would derive the same set either way
+   *  — it is purely about WHERE the call sits. */
   private async reconcileCommunities(): Promise<void> {
+    this.pruneDeadEntries();
     const live = new Map(liveCommunities(this.list, this.tombstones).map((e) => [e.community_id, e]));
     let changed = false;
     for (const cid of [...this.communities.keys()]) {
