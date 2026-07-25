@@ -4,11 +4,11 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
-status: executing
-stopped_at: "Completed 12.3-13-PLAN.md (13/13 plans executed) — D-17 rule-table rewrite of validateInviteBundle, aggregate entry-size ceiling, and the derived-dead-state prune (CR-01/CR-02 both closed structurally); WR-01/05/06/07/08 and IN-01/02/04/05 folded in. A fourth review round is recommended before the phase is marked complete (see 12.3-13-SUMMARY.md's Deviations section: held_roots[i].refounder disposition, WR-08 test-coverage gap)."
-last_updated: "2026-07-25T20:33:56.956Z"
+status: blocked
+stopped_at: "13/13 plans executed, phase NOT complete — round-4 review found CR4-01 (BLOCKER, defeats controlling ruling D-17). HELD_KEY_FIELD_RULES (invite-bundle.ts:435) is a mapped type over a hand-duplicated local alias `HeldRootEntry` (:354), NOT over the real anonymous inline element types at types.ts:140 (`channels[].held`) and types.ts:155 (`held_roots`). Consequence: adding an unbounded field to either nested type fails NEITHER the build NOR the conformance suite — both of D-17's defenses miss exactly the fields rounds 2 and 3 each missed. Independently reproduced by the orchestrator (probe fields on both types → `pnpm --filter applesauce-concord build` exit 0; schema suite 35/35 green; probe reverted, tree clean). NOT a live leak: `rebuildByRules` builds fresh objects and never spreads, so an unbounded nested field is silently dropped rather than reaching JoinMaterial. Fix shape: export the two element types from types.ts and map the rule table over the real type. Also open: WR-08 (`handleRemoved` → `pruneDeadEntries()`) has no behavioral test — verification status is human_needed, needs two-instance live-Refounding-exclusion infrastructure that does not exist in this suite."
+last_updated: "2026-07-25T21:16:09.993Z"
 last_activity: 2026-07-25
-last_activity_desc: Phase 12.3 execution complete (13/13 plans)
+last_activity_desc: Phase 12.3 blocked on CR4-01 (round-4 review) — 13/13 plans executed
 progress:
   total_phases: 12
   completed_phases: 10
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — 13/13 plans executed
 Plan: 13 of 13 (complete)
-Status: All plans executed — recommend a fourth code review before marking the phase complete
+Status: blocked
   Round 4 (12.3-13) closed D-17 structurally: validateInviteBundle rewritten as four exhaustive
   mapped-type rule tables (INVITE_BUNDLE_FIELD_RULES, CHANNEL_KEY_FIELD_RULES, HELD_KEY_FIELD_RULES,
   BLOB_POINTER_FIELD_RULES) + a generic rebuild-never-spread walker — a field with no rule fails
