@@ -5,7 +5,7 @@ milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
 status: executing
-stopped_at: Completed 12.3-14-PLAN.md — closed CR4-01 as a class, WR4-01, WR4-02. All 14 plans of phase 12.3 now executed.
+stopped_at: All 14 plans of phase 12.3 executed; 12.3-14 closed CR4-01/WR4-01/WR4-02 and was independently re-verified. Phase NOT complete — round-5 review found CR5-01 (BLOCKER), reproduced independently. Next: gap-closure plan for CR5-01.
 last_updated: "2026-07-27T17:34:30.610Z"
 last_activity: 2026-07-27
 last_activity_desc: Phase 12.3 execution started
@@ -239,6 +239,8 @@ None yet.
 - Verification standard for this milestone: every fix needs a regression test asserting against an independently-derived spec value, not implementation output — the exact gap that let all 43 findings pass CI before. Plan-phase should hold plans to this explicitly.
 - [Phase 10 plan-phase, 2026-07-21] Decision-coverage gate (13a) OVERRIDDEN — reported `covered=0/11` (false-fail: the `check.decision-coverage-plan` parser chokes on the nested `*emphasis*`/colons inside the `D-NN:` bold labels in 10-CONTEXT.md). Real coverage is complete: all 13 decisions D-01–D-13 are referenced 2–22× each across the 6 plans and the independent gsd-plan-checker traced every one to an implementing task. Proceeded past the gate deliberately; verify-phase should treat decision coverage as satisfied, not re-block on the parser artifact.
 - INVITE-01 spans two plans (10-01 closed D-04's vsk fail-closed sub-part; D-01/D-02/D-03's joinByLink collapse-then-tombstone rewrite is still pending in 10-05) — do not treat INVITE-01 as fully satisfied until 10-05 lands; REQUIREMENTS.md traceability table reflects this as In Progress, not Complete
+- [Phase 12.3 round-5 review, 2026-07-27] CR5-01 (BLOCKER) — D-17's exhaustiveness mechanism binds WHICH fields a rule table must name, but not WHETHER a rule's `kind` can match the type of the field it names: `ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule }` maps every key to the whole rule union without ever consulting `T[K]`. Reproduced independently at `HELD_KEY_FIELD_RULES.refounder` (a `string` field) given `kind: "safe-integer"` — `pnpm --filter applesauce-concord build` exits 0 and the suite is 471/471 green, so every legitimate `held_roots[i].refounder` is silently stripped. The same mutation on the TOP-LEVEL `refounder` is caught, but only by 2 incidental behavioral tests, not by the mechanism — confirming coverage is field-dependent, the exact property D-17 exists to remove. This is the FIFTH consecutive round where this phase closed a defect and the next round found the same class one hop away; the fix must bind rule kind to field type (a `RuleFor<V>` conditional subsuming the key-set proof), not enumerate the next instance.
+- [Phase 12.3] Phase checkbox was flipped to `[x]` by 12.3-14's executor before verification passed; corrected back to `[ ]` — phase completion belongs to `phase.complete` after the verifier passes, not to a plan executor.
 
 ### Roadmap Evolution
 
