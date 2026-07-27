@@ -4,15 +4,15 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
-status: blocked
-stopped_at: "13/13 plans executed, phase NOT complete — round-4 review found CR4-01 (BLOCKER, defeats controlling ruling D-17). HELD_KEY_FIELD_RULES (invite-bundle.ts:435) is a mapped type over a hand-duplicated local alias `HeldRootEntry` (:354), NOT over the real anonymous inline element types at types.ts:140 (`channels[].held`) and types.ts:155 (`held_roots`). Consequence: adding an unbounded field to either nested type fails NEITHER the build NOR the conformance suite — both of D-17's defenses miss exactly the fields rounds 2 and 3 each missed. Independently reproduced by the orchestrator (probe fields on both types → `pnpm --filter applesauce-concord build` exit 0; schema suite 35/35 green; probe reverted, tree clean). NOT a live leak: `rebuildByRules` builds fresh objects and never spreads, so an unbounded nested field is silently dropped rather than reaching JoinMaterial. Fix shape: export the two element types from types.ts and map the rule table over the real type. Also open: WR-08 (`handleRemoved` → `pruneDeadEntries()`) has no behavioral test — verification status is human_needed, needs two-instance live-Refounding-exclusion infrastructure that does not exist in this suite."
-last_updated: "2026-07-25T21:16:09.993Z"
-last_activity: 2026-07-25
-last_activity_desc: Phase 12.3 blocked on CR4-01 (round-4 review) — 13/13 plans executed
+status: planned
+stopped_at: "Round-5 gap-closure plan 12.3-14 written and verified (gsd-plan-checker: VERIFICATION PASSED); ready to execute. Closes CR4-01 (BLOCKER — D-17's exhaustiveness guarantee did not hold for `held_roots[]`/`channels[].held[]` because HELD_KEY_FIELD_RULES mapped over the hand-duplicated local alias `HeldRootEntry`, not the real anonymous inline element types at types.ts:140/155), WR4-01 (`handleRemoved` → `pruneDeadEntries()` behavioral test), and WR4-02 (held-list comment truth). Plan 14 does NOT take the review's named fix: rule-table subjects become indexed-access paths rooted at `InviteBundle`, the terminal `as unknown as InviteBundle` erasure is removed, both held positions are pinned independently by RULE_TABLE_SUBJECT_PROOF, and a source-level tripwire catches a hand-declared subject independently of the type system. Task 3 EXECUTES six probes (the four required injections plus the round-4 reviewer's own two reproduction edits) and captures failure output verbatim."
+last_updated: "2026-07-27T00:00:00.000Z"
+last_activity: 2026-07-27
+last_activity_desc: Phase 12.3 plan 14 (round-5 gap closure) planned and verified — 13/14 plans executed
 progress:
   total_phases: 12
   completed_phases: 10
-  total_plans: 69
+  total_plans: 70
   completed_plans: 69
   percent: 83
 ---
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — 13/13 plans executed
-Plan: 13 of 13 (complete)
-Status: blocked
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — 13/14 plans executed
+Plan: 14 of 14 (planned, not executed — round-5 gap closure)
+Status: planned — ready to execute plan 14
   Round 4 (12.3-13) closed D-17 structurally: validateInviteBundle rewritten as four exhaustive
   mapped-type rule tables (INVITE_BUNDLE_FIELD_RULES, CHANNEL_KEY_FIELD_RULES, HELD_KEY_FIELD_RULES,
   BLOB_POINTER_FIELD_RULES) + a generic rebuild-never-spread walker — a field with no rule fails
@@ -38,11 +38,21 @@ Status: blocked
   unknown-key survival at any depth) plus its aggregate half (COMMUNITY_LIST_MAX_ENTRY_BYTES at
   recordJoin). CR-02 closed on both halves via pruneDeadEntries() — reachable with no engine,
   idempotent against re-merge. WR-01/05/06/07/08 and IN-01/02/04/05 folded in.
-  Two items flagged for the next review round: the held_roots[i].refounder disposition deviates
-  from one <behavior> bullet's prose (see 12.3-13-SUMMARY.md), and WR-08 has no dedicated
-  behavioral test (code-level fix verified by grep + adjacent coverage only).
-  Next: /gsd-code-review (recommended) or /gsd-progress to advance past phase 12.3
-Last activity: 2026-07-25 — Phase 12.3 execution complete (13/13 plans)
+  Round 4's review (12.3-REVIEW.md) then found CR4-01: D-17's own mechanism has the same class
+  of hole in one of its four tables — HELD_KEY_FIELD_RULES maps over a hand-duplicated local
+  alias, not the real anonymous inline element types. Fails SAFE (rebuildByRules never spreads,
+  so an unruled nested field is dropped, not leaked), but it is a proven failure of the exact
+  guarantee D-17 exists to deliver, on exactly the fields rounds 2 and 3 each missed.
+  Round 5 (plan 12.3-14, planned 2026-07-27, plan-checker PASSED) closes it as a class rather
+  than as the two types the review named: rule-table subjects become indexed-access paths rooted
+  at InviteBundle (a hand-written mirror cannot be substituted for a path), the terminal
+  `as unknown as InviteBundle` erasure that let the duplicate go unchecked is removed,
+  held_roots[] and channels[].held[] are pinned independently, and a source-level tripwire fires
+  even if the type derivation is wrong. Also closes WR4-01 (handleRemoved behavioral test, driven
+  through the real onRemoved wiring — reachability independently confirmed by the plan-checker at
+  client.ts:843 / community.ts:1003-1009) and WR4-02 (comment truth).
+  Next: /gsd-execute-phase 12.3 (plan 14)
+Last activity: 2026-07-27 — Phase 12.3 plan 14 planned and verified (13/14 executed)
 
 Progress: [██████████] 100%
 
@@ -251,8 +261,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-25T20:33:11.189Z
-Stopped at: Completed 12.3-12-PLAN.md (gap closure for CR-01/CR-02/WR-01/WR-02; phase 12.3 all 12 plans executed)
+Last session: 2026-07-26
+Stopped at: Session resumed — phase 12.3 confirmed blocked on CR4-01 (D-17 exhaustiveness hole in HELD_KEY_FIELD_RULES). Proceeding to plan a round-5 gap-closure plan for 12.3 via /gsd-plan-phase 12.3.
 Resume file: None
 
 ## Operator Next Steps
