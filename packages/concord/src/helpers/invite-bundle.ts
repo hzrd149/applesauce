@@ -23,7 +23,7 @@ import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 import { isHexKey } from "applesauce-core/helpers/string";
 import type { AddressPointer, KnownEvent, NostrEvent } from "applesauce-core/helpers";
 import { communityId, inviteBundleKey } from "./crypto.js";
-import type { BlobPointer, ChannelKey, InviteBundle, JoinMaterial } from "../types.js";
+import type { BlobPointer, InviteBundle, JoinMaterial } from "../types.js";
 
 /** Concord invite bundle kind (CORD-05 §1). */
 export const INVITE_BUNDLE_KIND = 33301;
@@ -345,13 +345,46 @@ export type BundleFieldRule =
   | { kind: "held-list"; countCap: number; onInvalid: "reject" | "drop"; onAbsent: "reject" | "omit" }
   | { kind: "blob-pointer"; onInvalid: "drop"; onAbsent: "omit" };
 
-/** One `{epoch, key, refounder?}` held-key entry — a channel's retained prior
- *  key, or a bundle's `held_roots` entry. Both shapes are validated through
- *  the SAME {@link HELD_KEY_FIELD_RULES} table (mirroring the pre-D-17
- *  `isValidHeldKeyEntry`, which was already shared the same way); a channel's
- *  `held` entries simply never carry `refounder`, so that field is always
- *  absent (omitted) there. */
-type HeldRootEntry = { epoch: number; key: string; refounder?: string };
+/**
+ * A rule table exhaustive over every key of `T` (CR4-01). The invariant this
+ * type establishes: a rule table's type parameter must ALWAYS be the type
+ * actually reachable at that position of `InviteBundle` — written as an
+ * indexed-access path (see the four aliases below), never as a shape
+ * declared in this file. A table exhaustive over a hand-declared MIRROR of
+ * the real type is exhaustive over nothing: that mirror can silently drift
+ * from the real element type at `types.ts`'s `ChannelKey.held` /
+ * `JoinMaterial.held_roots` positions with no build or test signal — exactly
+ * the CR4-01 failure (`HELD_KEY_FIELD_RULES` used to be mapped over a local
+ * `HeldRootEntry` alias that was never type-connected to either real
+ * position).
+ */
+export type ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule };
+
+// Derived subject aliases (CR4-01): each is an INDEXED-ACCESS PATH rooted at
+// `InviteBundle`, never an object literal declared in this file. A
+// hand-written shape cannot be substituted for a path — the path IS the real
+// position, by construction.
+type BundleChannel = InviteBundle["channels"][number];
+type BundleChannelHeldEntry = NonNullable<BundleChannel["held"]>[number];
+type BundleHeldRootEntry = NonNullable<InviteBundle["held_roots"]>[number];
+type BundleIcon = NonNullable<InviteBundle["icon"]>;
+
+/**
+ * Resolves to the literal `true` only when `Table`'s key set and `Shape`'s
+ * key set are EXACTLY equal in both directions. When `Table` is missing a key
+ * `Shape` has, resolves to an object naming the `missing` key(s); when
+ * `Table` has an extra key `Shape` lacks, resolves to an object naming the
+ * `extra` key(s) — so the compiler's own error text names the offending key.
+ */
+type RuleTableKeysExactly<Table, Shape> =
+  Exclude<keyof Required<Shape>, keyof Table> extends never
+    ? Exclude<keyof Table, keyof Required<Shape>> extends never
+      ? true
+      : { error: "rule table has a key its subject type does not"; extra: Exclude<keyof Table, keyof Required<Shape>> }
+    : {
+        error: "rule table is missing a key its subject type has";
+        missing: Exclude<keyof Required<Shape>, keyof Table>;
+      };
 
 /**
  * The bundle-level table — a mapped type over EVERY key of `InviteBundle`
@@ -359,7 +392,7 @@ type HeldRootEntry = { epoch: number; key: string; refounder?: string };
  * carries no index signature, so `keyof` here is a finite, closed union — the
  * property that makes this exhaustiveness check possible at all.
  */
-export const INVITE_BUNDLE_FIELD_RULES: { [K in keyof Required<InviteBundle>]: BundleFieldRule } = {
+export const INVITE_BUNDLE_FIELD_RULES: ExhaustiveBundleRules<InviteBundle> = {
   community_id: { kind: "hex-key", onInvalid: "reject", onAbsent: "reject" },
   // owner/owner_salt are the OUTLIERS this task corrects: every other key-shaped
   // field here already goes through isHexKey, but these two only ever passed a
@@ -389,8 +422,14 @@ export const INVITE_BUNDLE_FIELD_RULES: { [K in keyof Required<InviteBundle>]: B
   // whole bundle; an ABSENT one normalizes to "" (unchanged pre-D-17 behavior).
   name: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "empty-string" },
   // buildInviteBundle NEVER emits held_roots (see its own doc comment) — a
-  // bundle carrying one is, by definition, not one this codebase minted, so a
-  // malformed OR over-cap array rejects the WHOLE bundle rather than dropping.
+  // bundle carrying one is, by definition, not one this codebase minted. A
+  // non-array, an over-cap array, or an entry whose identity-bearing
+  // `epoch`/`key` cannot be rebuilt rejects the WHOLE bundle rather than
+  // dropping — but an entry whose `epoch`/`key` are valid and whose
+  // attribution-only `refounder` is malformed is NOT rejected: it is
+  // accepted with `refounder` stripped, per that field's own drop/omit
+  // disposition in HELD_KEY_FIELD_RULES (WR4-02; adjudicated correct as
+  // shipped — round-4 review, Adjudication 1).
   held_roots: {
     kind: "held-list",
     countCap: INVITE_BUNDLE_MAX_HELD_ROOTS,
@@ -411,8 +450,10 @@ export const INVITE_BUNDLE_FIELD_RULES: { [K in keyof Required<InviteBundle>]: B
   icon: { kind: "blob-pointer", onInvalid: "drop", onAbsent: "omit" },
 };
 
-/** The per-`channels[]`-entry table — a mapped type over every key of `ChannelKey`. */
-export const CHANNEL_KEY_FIELD_RULES: { [K in keyof Required<ChannelKey>]: BundleFieldRule } = {
+/** The per-`channels[]`-entry table — a mapped type over every key of the
+ *  real element type of `InviteBundle["channels"]` (`BundleChannel`, an
+ *  indexed-access path — CR4-01). */
+export const CHANNEL_KEY_FIELD_RULES: ExhaustiveBundleRules<BundleChannel> = {
   // id/key both reach hexToBytes in deriveChannelKeys (keys.ts) and are minted
   // from 32 random bytes by addChannelKey — a malformed entry is dropped (this
   // channel excluded), never rejecting every OTHER legitimate grant.
@@ -431,8 +472,13 @@ export const CHANNEL_KEY_FIELD_RULES: { [K in keyof Required<ChannelKey>]: Bundl
 };
 
 /** The shared held-key-entry table (a channel's `held`, or a bundle's
- *  `held_roots`) — see {@link HeldRootEntry}. */
-export const HELD_KEY_FIELD_RULES: { [K in keyof Required<HeldRootEntry>]: BundleFieldRule } = {
+ *  `held_roots`) — its subject is `BundleHeldRootEntry`, the real
+ *  `held_roots[]` element type (an indexed-access path). It ALSO governs
+ *  every `channels[].held[]` entry ({@link BundleChannelHeldEntry}, the real
+ *  element type at that other position) — {@link RULE_TABLE_SUBJECT_PROOF}
+ *  independently pins that the two share an identical key set, so one table
+ *  can validly annotate both positions (CR4-01). */
+export const HELD_KEY_FIELD_RULES: ExhaustiveBundleRules<BundleHeldRootEntry> = {
   epoch: { kind: "safe-integer", onInvalid: "reject", onAbsent: "reject" },
   key: { kind: "hex-key", onInvalid: "reject", onAbsent: "reject" },
   // The hop no prior round inspected at all. Drop (not reject) on invalid,
@@ -441,16 +487,38 @@ export const HELD_KEY_FIELD_RULES: { [K in keyof Required<HeldRootEntry>]: Bundl
   refounder: { kind: "hex-key", onInvalid: "drop", onAbsent: "omit" },
 };
 
-/** The `icon` blob-pointer table — a mapped type over every key of `BlobPointer`.
- *  All four sub-fields are length-only (`bounded-text`); a bad one drops the
- *  whole `icon` (via {@link INVITE_BUNDLE_FIELD_RULES}'s own `icon` rule),
- *  never the containing bundle. */
-export const BLOB_POINTER_FIELD_RULES: { [K in keyof Required<BlobPointer>]: BundleFieldRule } = {
+/** The `icon` blob-pointer table — a mapped type over every key of
+ *  `BundleIcon`, the real `InviteBundle["icon"]` type (an indexed-access
+ *  path — CR4-01). All four sub-fields are length-only (`bounded-text`); a
+ *  bad one drops the whole `icon` (via {@link INVITE_BUNDLE_FIELD_RULES}'s
+ *  own `icon` rule), never the containing bundle. */
+export const BLOB_POINTER_FIELD_RULES: ExhaustiveBundleRules<BundleIcon> = {
   url: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
   key: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
   nonce: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
   hash: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
 };
+
+/**
+ * Compile-time proof (CR4-01) that all five positions of `InviteBundle` are
+ * governed by a table whose key set exactly matches the real type at that
+ * position — belt to the annotations above's braces. Entries 3 and 4 are the
+ * reason this proof exists at all: `HELD_KEY_FIELD_RULES` is ONE shared table
+ * governing TWO real positions (`held_roots[]` and `channels[].held[]`); if a
+ * future author re-inlines either position and lets it drift from the other,
+ * entry 3 or entry 4 fails to resolve to `true` even though each table's own
+ * single-subject annotation above is still individually satisfied. Written
+ * as full indexed-access paths (not via the derived aliases above) so this
+ * reads as an independent statement about the real document shape, not a
+ * restatement of the annotations it is proving.
+ */
+export const RULE_TABLE_SUBJECT_PROOF: [
+  RuleTableKeysExactly<typeof INVITE_BUNDLE_FIELD_RULES, InviteBundle>,
+  RuleTableKeysExactly<typeof CHANNEL_KEY_FIELD_RULES, InviteBundle["channels"][number]>,
+  RuleTableKeysExactly<typeof HELD_KEY_FIELD_RULES, NonNullable<InviteBundle["held_roots"]>[number]>,
+  RuleTableKeysExactly<typeof HELD_KEY_FIELD_RULES, NonNullable<InviteBundle["channels"][number]["held"]>[number]>,
+  RuleTableKeysExactly<typeof BLOB_POINTER_FIELD_RULES, NonNullable<InviteBundle["icon"]>>,
+] = [true, true, true, true, true];
 
 /** One field rule's outcome against a raw value: a value to write, an
  *  instruction to omit the key entirely, or "reject" (the containing object
@@ -496,9 +564,9 @@ function checkKind(rule: BundleFieldRule, raw: unknown): { valid: true; value: u
       // channel-list DROPS an invalid entry (per-entry policy) rather than
       // invalidating the whole array — one bad grant should not deny every
       // other legitimate one.
-      const entries: ChannelKey[] = [];
+      const entries: BundleChannel[] = [];
       for (const item of raw) {
-        const built = rebuildByRules<ChannelKey>(CHANNEL_KEY_FIELD_RULES, item);
+        const built = rebuildByRules<BundleChannel>(CHANNEL_KEY_FIELD_RULES, item);
         if (built) entries.push(built);
       }
       return { valid: true, value: entries };
@@ -507,21 +575,25 @@ function checkKind(rule: BundleFieldRule, raw: unknown): { valid: true; value: u
       // Same count-before-per-entry ordering as channel-list, above.
       if (!Array.isArray(raw)) return { valid: false };
       if (raw.length > rule.countCap) return { valid: false };
-      // held-list REJECTS the containing object on ANY malformed entry
-      // (whole-bundle/whole-channel policy) rather than dropping just that
-      // entry — the asymmetry with channel-list is pre-existing and
-      // deliberate: a `held_roots`/`held` array is either exactly what a
-      // legitimate device produced, or it is not one this codebase minted.
-      const entries: HeldRootEntry[] = [];
+      // held-list rejects the containing object when an entry's
+      // identity-bearing fields (`epoch`/`key`, both reject-disposition in
+      // HELD_KEY_FIELD_RULES) cannot be rebuilt — not on any malformed
+      // sub-field; a drop-disposition sub-field (`refounder`) is stripped
+      // from the entry instead, per that field's own rule (WR4-02). The
+      // asymmetry with channel-list's per-entry-drop policy is pre-existing
+      // and deliberate: a `held_roots`/`held` array whose identity cannot be
+      // rebuilt is either exactly what a legitimate device produced, or it
+      // is not one this codebase minted.
+      const entries: BundleHeldRootEntry[] = [];
       for (const item of raw) {
-        const built = rebuildByRules<HeldRootEntry>(HELD_KEY_FIELD_RULES, item);
+        const built = rebuildByRules<BundleHeldRootEntry>(HELD_KEY_FIELD_RULES, item);
         if (!built) return { valid: false };
         entries.push(built);
       }
       return { valid: true, value: entries };
     }
     case "blob-pointer": {
-      const built = rebuildByRules<BlobPointer>(BLOB_POINTER_FIELD_RULES, raw);
+      const built = rebuildByRules<BundleIcon>(BLOB_POINTER_FIELD_RULES, raw);
       return built ? { valid: true, value: built } : { valid: false };
     }
     default: {
@@ -566,13 +638,21 @@ function applyFieldRule(rule: BundleFieldRule, raw: unknown): FieldOutcome {
  *   the Phase 08-06 value-hash convention: `EventStore.model()` caches on a
  *   value-based hash, and an explicit-`undefined` key changes that hash even
  *   though the JSON form is identical.
+ *
+ * `rules`' parameter type is deliberately the NARROW `ExhaustiveBundleRules<T>`
+ * (CR4-01), not a bare `Record<string, BundleFieldRule>`: that narrowness IS
+ * the enforcement — a caller cannot pass a table that is not exhaustive over
+ * `T`. The one remaining erasure is the WIDENING to a `Record` for the local
+ * `rules` below, contained deliberately to this single line so the walker
+ * body can still iterate by string key.
  */
-export function rebuildByRules<T>(rules: Record<string, BundleFieldRule>, value: unknown): T | undefined {
+export function rebuildByRules<T>(rules: ExhaustiveBundleRules<T>, value: unknown): T | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const src = value as Record<string, unknown>;
+  const table = rules as Record<string, BundleFieldRule>;
   const out: Record<string, unknown> = {};
-  for (const key of Object.keys(rules)) {
-    const result = applyFieldRule(rules[key]!, src[key]);
+  for (const key of Object.keys(table)) {
+    const result = applyFieldRule(table[key]!, src[key]);
     if (result.outcome === "reject") return undefined;
     if (result.outcome === "value") out[key] = result.value;
     // "omit": write nothing — never `out[key] = undefined`.
@@ -592,16 +672,21 @@ export function rebuildByRules<T>(rules: Record<string, BundleFieldRule>, value:
  * per-field cap and still assembles into tens of kilobytes). Returns the
  * rebuilt object, or `undefined` if the bundle is unusable.
  *
- * The single type assertion at the return is acceptable and expected: the
- * mapped-type tables above carry the EXHAUSTIVENESS guarantee (a field with no
- * rule fails `tsc`) and `invite-bundle-schema.test.ts` carries the BEHAVIORAL
- * one (a rule that does not actually bound its field fails a generated
- * probe). Do not "fix" this assertion by reintroducing a hand-written
- * field-by-field literal — that literal is the defect D-17 exists to remove.
+ * The return is now DIRECTLY typed as `InviteBundle` — no terminal assertion.
+ * The remaining single erasure lives inside {@link rebuildByRules} (its
+ * narrow-parameter/wide-local widening), and the enforcement that this
+ * function's contract is sound is threefold (CR4-01): the mapped-type
+ * tables above (a field with no rule fails `tsc`), {@link
+ * RULE_TABLE_SUBJECT_PROOF} (a table whose key set has drifted from the
+ * real position it governs fails `tsc`), and the conformance suite
+ * (`invite-bundle-schema.test.ts` — a rule that does not actually bound its
+ * field, or a table governed by a hand-declared shape, fails a test). Do not
+ * "fix" this design by reintroducing a hand-written field-by-field literal —
+ * that literal is the defect D-17/CR4-01 exist to remove.
  */
 export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBundle | undefined {
   if (!bundle || typeof bundle !== "object") return undefined;
-  const rebuilt = rebuildByRules<Record<string, unknown>>(INVITE_BUNDLE_FIELD_RULES, bundle);
+  const rebuilt = rebuildByRules<InviteBundle>(INVITE_BUNDLE_FIELD_RULES, bundle);
   if (!rebuilt) return undefined;
   // Owner proof: community_id == sha256(owner || salt) (CORD-02). Both
   // operands are already known to be exactly-64-char hex (the `hex-key` rule
@@ -609,7 +694,7 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
   // depth only.
   let expected: string;
   try {
-    expected = bytesToHex(communityId(rebuilt.owner as string, hexToBytes(rebuilt.owner_salt as string)));
+    expected = bytesToHex(communityId(rebuilt.owner, hexToBytes(rebuilt.owner_salt)));
   } catch {
     return undefined;
   }
@@ -619,7 +704,7 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
   // already shrunk (junk relays filtered, unknown keys stripped).
   const bytes = new TextEncoder().encode(JSON.stringify(rebuilt)).length;
   if (bytes > INVITE_BUNDLE_MAX_TOTAL_BYTES) return undefined;
-  return rebuilt as unknown as InviteBundle;
+  return rebuilt;
 }
 
 export function encryptBundle(bundle: InviteBundle, token: Uint8Array): string {

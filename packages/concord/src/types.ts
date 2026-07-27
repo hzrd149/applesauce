@@ -129,15 +129,35 @@ export interface Grant {
 }
 
 // ---- Community membership material (invite subset, CORD-05 §1) ------------
+/**
+ * One retained held-key entry: the element type of BOTH {@link ChannelKey.held}
+ * and {@link JoinMaterial.held_roots}. The two positions share this ONE named
+ * type deliberately — `HELD_KEY_FIELD_RULES` in `helpers/invite-bundle.ts` is a
+ * single rule table that must be exhaustive over both (CR4-01: before this
+ * type existed, that table was mapped over a hand-duplicated local shape that
+ * silently drifted from the two real anonymous element types at this file's
+ * `held?`/`held_roots?` positions).
+ *
+ * `refounder` is per-epoch attribution — the npub whose Refounding minted
+ * THAT epoch — and is therefore only ever populated on `held_roots` entries;
+ * a channel's retained keys never carry it.
+ */
+export interface HeldKeyEntry {
+  epoch: number;
+  key: string;
+  refounder?: string;
+}
+
 export interface ChannelKey {
   id: string;
   key: string; // hex
   epoch: number;
   name: string;
-  /** Retained prior channel keys `[{epoch, key}]` after a channel-scoped Rekey
-   *  (CORD-06), newest-first — so messages under prior channel epochs still
-   *  decode. Mirrors {@link JoinMaterial.held_roots} for the community root. */
-  held?: Array<{ epoch: number; key: string }>;
+  /** Retained prior channel keys ({@link HeldKeyEntry}) after a channel-scoped
+   *  Rekey (CORD-06), newest-first — so messages under prior channel epochs
+   *  still decode. Mirrors {@link JoinMaterial.held_roots} for the community
+   *  root. */
+  held?: HeldKeyEntry[];
 }
 export interface JoinMaterial {
   community_id: string;
@@ -148,11 +168,11 @@ export interface JoinMaterial {
   channels: ChannelKey[];
   relays: string[];
   name: string;
-  /** Retained prior roots `[{epoch, key, refounder?}]` after a Refounding
-   *  (CORD-06; armada-compatible). `refounder` is the npub whose Refounding
-   *  minted THAT epoch (per-epoch attribution) — undefined for genesis
-   *  (epoch 0) and for entries predating this field. */
-  held_roots?: Array<{ epoch: number; key: string; refounder?: string }>;
+  /** Retained prior roots ({@link HeldKeyEntry}) after a Refounding (CORD-06;
+   *  armada-compatible). `refounder` is the npub whose Refounding minted THAT
+   *  epoch (per-epoch attribution) — undefined for genesis (epoch 0) and for
+   *  entries predating this field. */
+  held_roots?: HeldKeyEntry[];
   /** The npub whose Refounding minted the current `root_epoch` (CORD-06). */
   refounder?: string;
 }
