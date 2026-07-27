@@ -2307,3 +2307,80 @@ describe("ConcordClient recordJoin entry-size guard, and IN-01/IN-04 (12.3-13)",
     client.stop();
   });
 });
+
+// ── Gap closure (WR4-01, 12.3-14): a behavioral test that ConcordClient.handleRemoved's
+// prune fires, at that position, on the real onRemoved wiring, rather than being pinned
+// only by grep/adjacent coverage (12.3-13-SUMMARY.md's WR-08 note). Reachability
+// confirmed by reading the source directly before writing this test: client.ts wires
+// `onRemoved: (removed) => this.handleRemoved(removed)` into ConcordCommunity's option
+// bag (addCommunity); ConcordCommunity.handleRemoved() is what invokes that callback;
+// and both real exclusion paths — start()'s `walk.removed` branch and the live rekey
+// fold's "removed" outcome — call that same method. Everything downstream of the
+// synthetic trigger below (phase$, dispose(), onRemoved, ConcordClient.handleRemoved,
+// pruneDeadEntries, saveMirror) is therefore the unmodified production path.
+describe("ConcordClient handleRemoved — an involuntary removal prunes the dead entry's bytes (WR4-01, 12.3-14)", () => {
+  it("an engine's own removal handler drives the client's prune: the dead entry's BYTES leave the mirror and the published document, while the surviving membership is untouched", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const storage = memoryStorage();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+
+    const surviving = await client.createNewCommunity("Surviving", "hi", ["wss://fake"]);
+    const doomed = await client.createNewCommunity("Doomed", "hi", ["wss://fake"]);
+    const survivingCid = surviving.communityId;
+    const doomedCid = doomed.communityId;
+    await settle();
+
+    // Setup sanity BEFORE the removal, so the test cannot pass by never having
+    // wired anything: both lookups are defined, and the last published 13302's
+    // decrypted entries map to exactly the two ids the test itself created —
+    // derived from the two `communityId` values, never from reading back what
+    // the client happens to hold.
+    expect(client.getCommunity(survivingCid)).toBeDefined();
+    expect(client.getCommunity(doomedCid)).toBeDefined();
+    const preDoc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published).at(-1)!.content));
+    expect(new Set(preDoc.entries.map((e: { community_id: string }) => e.community_id))).toEqual(
+      new Set([survivingCid, doomedCid]),
+    );
+
+    const publishCountBefore = listPublishes(published).length;
+
+    // Drive the removal through the real wiring: this is the exact method
+    // community.ts:553 (start()'s walk.removed branch) and community.ts:968
+    // (the live rekey fold's "removed" outcome) both call.
+    const doomedCommunity = client.getCommunity(doomedCid)!;
+    (doomedCommunity as unknown as { handleRemoved: () => void }).handleRemoved();
+
+    // handleRemoved flags dirty rather than publishing inline (its own doc
+    // comment states this; the auto-save debounce is 200ms) — assert this
+    // SYNCHRONOUSLY, before any await, so it cannot race the debounce.
+    expect(listPublishes(published).length).toBe(publishCountBefore);
+
+    await settle();
+
+    // Mirror assertion: pins the prune's POSITION (before saveMirror) — the
+    // specific property WR4-01 says is untested.
+    const mirrorRaw = await storage.getItem(pubkey);
+    const mirror = JSON.parse(mirrorRaw!) as {
+      entries: Array<{ community_id: string }>;
+      tombstones: Array<{ community_id: string }>;
+    };
+    expect(mirror.entries.map((e) => e.community_id)).toEqual([survivingCid]);
+    expect(mirror.tombstones.some((t) => t.community_id === doomedCid)).toBe(true);
+    expect(JSON.stringify(mirror.entries)).not.toContain(doomedCid);
+    expect(client.getCommunity(doomedCid)).toBeUndefined();
+    expect(client.getCommunity(survivingCid)).toBeDefined();
+
+    // After an explicit saveCommunityList(), the published document carries
+    // the same three facts.
+    await client.saveCommunityList();
+    const finalDoc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published).at(-1)!.content));
+    expect(finalDoc.entries.map((e: { community_id: string }) => e.community_id)).toEqual([survivingCid]);
+    expect(JSON.stringify(finalDoc.entries)).not.toContain(doomedCid);
+    expect(finalDoc.tombstones.some((t: { community_id: string }) => t.community_id === doomedCid)).toBe(true);
+
+    client.stop();
+  });
+});
