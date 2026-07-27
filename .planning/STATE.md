@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12.3
 current_phase_name: transport-only-extra-relays-in-applesauce-concord
-status: planned
-stopped_at: "Round-5 gap-closure plan 12.3-14 written and verified (gsd-plan-checker: VERIFICATION PASSED); ready to execute. Closes CR4-01 (BLOCKER — D-17's exhaustiveness guarantee did not hold for `held_roots[]`/`channels[].held[]` because HELD_KEY_FIELD_RULES mapped over the hand-duplicated local alias `HeldRootEntry`, not the real anonymous inline element types at types.ts:140/155), WR4-01 (`handleRemoved` → `pruneDeadEntries()` behavioral test), and WR4-02 (held-list comment truth). Plan 14 does NOT take the review's named fix: rule-table subjects become indexed-access paths rooted at `InviteBundle`, the terminal `as unknown as InviteBundle` erasure is removed, both held positions are pinned independently by RULE_TABLE_SUBJECT_PROOF, and a source-level tripwire catches a hand-declared subject independently of the type system. Task 3 EXECUTES six probes (the four required injections plus the round-4 reviewer's own two reproduction edits) and captures failure output verbatim."
-last_updated: "2026-07-27T00:00:00.000Z"
+status: executing
+stopped_at: Completed 12.3-14-PLAN.md — closed CR4-01 as a class, WR4-01, WR4-02. All 14 plans of phase 12.3 now executed.
+last_updated: "2026-07-27T17:34:30.610Z"
 last_activity: 2026-07-27
-last_activity_desc: Phase 12.3 plan 14 (round-5 gap closure) planned and verified — 13/14 plans executed
+last_activity_desc: Phase 12.3 execution started
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 70
-  completed_plans: 69
+  completed_plans: 70
   percent: 83
 ---
 
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — 13/14 plans executed
-Plan: 14 of 14 (planned, not executed — round-5 gap closure)
-Status: planned — ready to execute plan 14
+Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
+Plan: 2 of 14
+Status: Ready to execute
   Round 4 (12.3-13) closed D-17 structurally: validateInviteBundle rewritten as four exhaustive
   mapped-type rule tables (INVITE_BUNDLE_FIELD_RULES, CHANNEL_KEY_FIELD_RULES, HELD_KEY_FIELD_RULES,
   BLOB_POINTER_FIELD_RULES) + a generic rebuild-never-spread walker — a field with no rule fails
@@ -52,7 +52,7 @@ Status: planned — ready to execute plan 14
   through the real onRemoved wiring — reachability independently confirmed by the plan-checker at
   client.ts:843 / community.ts:1003-1009) and WR4-02 (comment truth).
   Next: /gsd-execute-phase 12.3 (plan 14)
-Last activity: 2026-07-27 — Phase 12.3 plan 14 planned and verified (13/14 executed)
+Last activity: 2026-07-27 — Phase 12.3 execution started
 
 Progress: [██████████] 100%
 
@@ -111,6 +111,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P11 | 26min | 3 tasks | 4 files |
 | Phase 12.3 P12 | 65min | 3 tasks | 6 files |
 | Phase 12.3 P13 | ~4h | 5 tasks | 11 files |
+| Phase 12.3 P14 | 35min | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -224,6 +225,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12.3-13: pruneDeadEntries() makes the dead-membership byte-prune a property of derived-dead state (never marks dirty, never publishes), called from leave()/handleRemoved/reconcileCommunities; leave()'s guard moved from the engine map to the document, closing CR-02 both halves
 - [Phase ?]: 12.3-13: ExtraRelays.merge's WR-05 fix diverges from the review's own suggested code, which was mathematically dead code -- implemented per-entry parseability checking instead
 - [Phase ?]: 12.3-13: WR-08 (handleRemoved routes through pruneDeadEntries) verified only by grep + adjacent coverage -- a genuine behavioral test needs two-instance live-refound infrastructure that doesn't exist in this suite; flagged for a future plan or explicit acceptance
+- [Phase 12.3]: 12.3-14: rule-table subjects become indexed-access paths rooted at InviteBundle (ExhaustiveBundleRules<T>), not the review's named fix of exporting the two element types alone — Closes CR4-01 as a CLASS rather than the two named instances — a hand-written shape cannot be substituted for a path
+- [Phase 12.3]: 12.3-14: RULE_TABLE_SUBJECT_PROOF pins held_roots[] and channels[].held[] independently (entries 3 and 4), and a source-level meta-test (2e) is a third, independent tripwire beside the two type-level mechanisms — Probe 5/6a demonstrated the two held positions can diverge from each other even when each table's own single-subject annotation is satisfied; probe 6b demonstrated the type system alone can be defeated by a key-set-identical hand-declared shape
+- [Phase 12.3]: 12.3-14: WR4-01's handleRemoved behavioral test drives the real private handleRemoved() method via the suite's established as-unknown-as convention; only the trigger is synthetic, not any downstream effect (pruneDeadEntries/saveMirror ordering) — Reachability was verified against source (client.ts:843, community.ts:1003-1009, and both real callers at community.ts:553/968) before writing the test, per the plan's explicit instruction
 
 ### Pending Todos
 
@@ -261,8 +265,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-26
-Stopped at: Session resumed — phase 12.3 confirmed blocked on CR4-01 (D-17 exhaustiveness hole in HELD_KEY_FIELD_RULES). Proceeding to plan a round-5 gap-closure plan for 12.3 via /gsd-plan-phase 12.3.
+Last session: 2026-07-27T17:34:30.601Z
+Stopped at: Completed 12.3-14-PLAN.md — closed CR4-01 as a class, WR4-01, WR4-02. All 14 plans of phase 12.3 now executed.
 Resume file: None
 
 ## Operator Next Steps
