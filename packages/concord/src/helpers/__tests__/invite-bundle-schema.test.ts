@@ -8,6 +8,8 @@
 // tables later is probed automatically, and a field with no rule at all fails
 // `pnpm --filter applesauce-concord build` instead of reaching this suite.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { bytesToHex, randomBytes } from "@noble/hashes/utils.js";
 
@@ -285,4 +287,183 @@ it("the cap chain is arithmetically closed: 2x the bundle total-bytes cap fits t
   const perEntryCeiling = Math.floor(LIST_MAX_BYTES / 2);
   expect(2 * INVITE_BUNDLE_MAX_TOTAL_BYTES).toBeLessThanOrEqual(perEntryCeiling);
   expect(2 * perEntryCeiling).toBeLessThanOrEqual(LIST_MAX_BYTES);
+});
+
+// ── CR4-01 gap closure (12.3-14): four tests that keep firing even if the
+// compile-time derivation in invite-bundle.ts is later weakened — the exact
+// failure mode round 4 shipped. Layer 2's per-field probes above only ever
+// mutate ONE field at the top level (or one channel/held-root entry); none of
+// them descend into `channels[].held[]`, nor independently verify that a rule
+// table's TYPE ANNOTATION (not merely its runtime behavior) is derived from
+// `InviteBundle`. These four tests close both gaps.
+
+/**
+ * The rule table governing the CHILD objects a rule of `kind` produces, or
+ * `undefined` for a leaf kind. Mirrors `checkKind`'s own dispatch exactly.
+ * The `default` branch is LOAD-BEARING (D-17/CR4-01): a new `BundleFieldRule`
+ * kind with no case here fails `tsc` via the `never` assignment before it
+ * could ever reach this throw at runtime — this must never be softened into
+ * a skip.
+ */
+function childTableForKind(kind: BundleFieldRule["kind"]): Record<string, BundleFieldRule> | undefined {
+  switch (kind) {
+    case "channel-list":
+      return CHANNEL_KEY_FIELD_RULES;
+    case "held-list":
+      return HELD_KEY_FIELD_RULES;
+    case "blob-pointer":
+      return BLOB_POINTER_FIELD_RULES;
+    case "hex-key":
+    case "bounded-text":
+    case "safe-integer":
+    case "relay-list":
+      return undefined;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(
+        `invite-bundle-schema.test.ts's childTableForKind has no case for rule kind '${exhaustive}' — add one; this throw is load-bearing and must never be softened into a skip (CR4-01)`,
+      );
+    }
+  }
+}
+
+/**
+ * Recursively asserts every own key of `value` has an own property in
+ * `rules` (the table governing `value`'s level), then descends into any key
+ * whose rule kind has a child table — arrays element-by-element (index
+ * appended to `path`), plain objects directly. Returns the number of key
+ * checks performed, so callers can assert non-zero (indeed, deeper-than-top-
+ * level) coverage — the guard against a walk that silently never descends.
+ */
+function assertRuleCoverage(value: unknown, rules: Record<string, BundleFieldRule>, path: string): number {
+  if (typeof value !== "object" || value === null) return 0;
+  let count = 0;
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    expect(
+      Object.prototype.hasOwnProperty.call(rules, key),
+      `${path}.${key} has no rule in the table governing ${path} (CR4-01: a nested field with no rule)`,
+    ).toBe(true);
+    count++;
+    const rule = rules[key];
+    if (!rule) continue;
+    const childTable = childTableForKind(rule.kind);
+    if (!childTable) continue;
+    const raw = (value as Record<string, unknown>)[key];
+    if (Array.isArray(raw)) {
+      raw.forEach((item, i) => {
+        count += assertRuleCoverage(item, childTable, `${path}.${key}[${i}]`);
+      });
+    } else if (raw && typeof raw === "object") {
+      count += assertRuleCoverage(raw, childTable, `${path}.${key}`);
+    }
+  }
+  return count;
+}
+
+it("every key at every level of a validated maximal bundle has a rule in the table governing that level (nested rule coverage)", () => {
+  const result = validateInviteBundle(baselineBundle());
+  expect(result).toBeDefined();
+  const checkCount = assertRuleCoverage(result, INVITE_BUNDLE_FIELD_RULES, "bundle");
+  // Non-vacuity: if the walk stopped at depth 0, checkCount would equal the
+  // number of top-level keys exactly — it must be strictly greater, proving
+  // the walk genuinely descended into channels[]/channels[].held[]/held_roots[]/icon.
+  expect(checkCount).toBeGreaterThan(Object.keys(result as object).length);
+});
+
+it("every key a genuine buildInviteBundle output carries at every level has a rule in the table governing that level (nested builder coverage)", async () => {
+  const genesis = await createCommunity({
+    ownerPubkey: OWNER,
+    name: "Nested Builder Coverage",
+    relays: ["wss://ok.example.com"],
+  });
+  const material = {
+    ...genesis.material,
+    channels: [
+      {
+        id: "11".repeat(32),
+        key: "22".repeat(32),
+        epoch: 1,
+        name: "general",
+        // buildInviteBundle carries `held` through when present — this is the
+        // ONLY way a built bundle ever carries a nested `channels[].held[]`
+        // entry (buildInviteBundle never emits `held_roots` at all — see its
+        // own doc comment — which is why this test and the one above it are
+        // BOTH needed to reach every nested position: 2b (a validated
+        // bundle) reaches `held_roots[]`, 2c (a built bundle) reaches
+        // `channels[].held[]`).
+        held: [{ epoch: 0, key: "33".repeat(32) }],
+      },
+    ],
+  };
+  const built = buildInviteBundle(material, {
+    channels: ["11".repeat(32)],
+    icon: { url: "https://x.example.com", key: "k", nonce: "n", hash: "h" },
+    creator_npub: "dd".repeat(32),
+    label: "Reddit",
+    expires_at: 4_000_000_000,
+  });
+  const checkCount = assertRuleCoverage(built, INVITE_BUNDLE_FIELD_RULES, "built");
+  expect(checkCount).toBeGreaterThan(Object.keys(built as object).length);
+  // No false negative: the genuine built bundle itself validates unchanged.
+  expect(validateInviteBundle(built)).toBeDefined();
+});
+
+it("an unknown attacker key injected at every nested position is absent from the validated output", () => {
+  const ATTACKER_KEY = "__cr4_01_attacker_key__";
+  const bundle = baselineBundle();
+  const injected = {
+    ...bundle,
+    channels: [{ ...bundle.channels[0], [ATTACKER_KEY]: "x", held: [{ ...bundle.channels[0]!.held![0], [ATTACKER_KEY]: "x" }] }],
+    held_roots: [{ ...bundle.held_roots![0], [ATTACKER_KEY]: "x" }],
+    icon: { ...bundle.icon, [ATTACKER_KEY]: "x" },
+  };
+  const result = validateInviteBundle(injected as unknown as InviteBundle);
+  expect(result).toBeDefined();
+  // Derived from rebuildByRules's own doc comment (it builds a fresh object
+  // and never spreads its input) — not by reading validateInviteBundle's
+  // actual output.
+  expect(Object.prototype.hasOwnProperty.call(result?.channels[0], ATTACKER_KEY)).toBe(false);
+  expect(Object.prototype.hasOwnProperty.call(result?.channels[0]?.held?.[0], ATTACKER_KEY)).toBe(false);
+  expect(Object.prototype.hasOwnProperty.call(result?.held_roots?.[0], ATTACKER_KEY)).toBe(false);
+  expect(Object.prototype.hasOwnProperty.call(result?.icon, ATTACKER_KEY)).toBe(false);
+  expect(JSON.stringify(result)).not.toContain(ATTACKER_KEY);
+});
+
+it("every exported *_FIELD_RULES table in invite-bundle.ts is annotated ExhaustiveBundleRules<> over a subject derived from InviteBundle", () => {
+  const sourcePath = fileURLToPath(new URL("../invite-bundle.ts", import.meta.url));
+  const source = readFileSync(sourcePath, "utf8");
+  // Collapse all whitespace runs to single spaces so prettier's line-wrapping
+  // cannot break the match.
+  const collapsed = source.replace(/\s+/g, " ");
+
+  const tableRegex = /export const (\w+_FIELD_RULES): ([^=]+?) = /g;
+  const discovered: { name: string; subject: string }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = tableRegex.exec(collapsed))) {
+    const name = match[1]!;
+    const annotation = match[2]!.trim();
+    expect(
+      annotation.startsWith("ExhaustiveBundleRules<"),
+      `${name} must be annotated ExhaustiveBundleRules<...> over a subject derived from InviteBundle (CR4-01) — found "${annotation}"`,
+    ).toBe(true);
+    const subject = annotation.slice(annotation.indexOf("<") + 1, annotation.lastIndexOf(">")).trim();
+    discovered.push({ name, subject });
+  }
+
+  // Without this guard, a regex that silently stops matching would make the
+  // whole test vacuous.
+  expect(discovered.length).toBeGreaterThanOrEqual(4);
+
+  for (const { name, subject } of discovered) {
+    const directlyRootedInInviteBundle = subject.includes("InviteBundle");
+    let aliasRootedInInviteBundle = false;
+    if (!directlyRootedInInviteBundle && /^\w+$/.test(subject)) {
+      const aliasMatch = new RegExp(`type ${subject} = ([^;]+);`).exec(collapsed);
+      aliasRootedInInviteBundle = !!aliasMatch && aliasMatch[1]!.includes("InviteBundle");
+    }
+    expect(
+      directlyRootedInInviteBundle || aliasRootedInInviteBundle,
+      `${name}'s subject "${subject}" must be InviteBundle itself, or a derived alias whose right-hand side is an indexed-access path rooted at InviteBundle (CR4-01) — a rule table exhaustive over a hand-declared mirror of the real type is exhaustive over nothing`,
+    ).toBe(true);
+  }
 });
