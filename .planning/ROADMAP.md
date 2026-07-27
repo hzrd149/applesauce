@@ -373,7 +373,7 @@ Plans:
 **Requirements**: D-01…D-16 in `12.3-CONTEXT.md` (no formal REQ-IDs — promoted from backlog 999.6; the locked decisions are the acceptance criteria)
 **Success Criteria**: `extraRelays` unions into every Concord pool call, request, subscription, publish and NIP-42 auth target (D-03/D-12); zero appearances in any published event payload or returned artifact across the full lifecycle, proven by a canary suite plus per-protocol-write targeted assertions (D-05); the refounding majority denominator and ack attribution stay bound to the protocol relay set (D-06/ROTATE-09); later emissions of an `extraRelays` Observable reach live sockets and status observables, while equal-content re-emissions cause no socket churn (D-08/D-09/D-11); behavior byte-identical when the option is omitted (D-14).
 
-**Plans**: 13/13 plans executed — phase NOT complete: round-4 review (`12.3-REVIEW.md`) found CR4-01, a BLOCKER against the controlling ruling D-17
+**Plans**: 14 plans — 13/14 executed. Wave 12 (plan 14) closes the round-4 review's CR4-01 BLOCKER, plus WR4-01 and WR4-02
 
 Plans:
 **Wave 1**
@@ -423,6 +423,12 @@ Plans:
 - [x] 12.3-13-PLAN.md — replace `validateInviteBundle`'s hand-enumerated checks with four exhaustive rule tables + an allowlist rebuild, so an unbounded bundle field is unrepresentable rather than merely unbounded-this-round; add the aggregate byte-cap chain; make the Community List prune reachable and durable (D-17, CR-01, CR-02, WR-01…WR-08)
 
 > **Why this wave exists.** Waves 9 and 10 each hand-enumerated the untrusted bundle fields and each missed some: wave 9 missed `held_roots`/`channels[].held` counts and `name` length; wave 10 missed `owner`, `owner_salt`, `refounder`, and `relays[i]` length. While planning wave 11 two further gaps surfaced that neither review had named — `held_roots[i].refounder`, and unknown keys surviving the terminal `{...bundle}` spread. Per **D-17**, wave 11 closes CR-01 as a class: a field with no rule fails `tsc`, and the rule vocabulary has no unbounded pass-through kind. Do not close this by adding more named field checks.
+
+**Wave 12** *(gap closure — blocked on Wave 11 completion)*
+
+- [ ] 12.3-14-PLAN.md — bind every bundle rule table to the real shape it guards (indexed-access subjects rooted at `InviteBundle`, a five-position compile-time proof, and a walker that refuses a non-exhaustive table), add nested coverage/unknown-key/source tripwires, demonstrate all six exhaustiveness probes, and give `handleRemoved`'s prune a behavioral test (CR4-01, WR4-01, WR4-02)
+
+> **Why this wave exists.** Wave 11 built D-17's mechanism and it works — for three of its four rule tables. `HELD_KEY_FIELD_RULES` is mapped over a shape **hand-declared inside `invite-bundle.ts`** that mirrors, but is never type-connected to, the real anonymous inline element types at `types.ts:140`/`types.ts:155`; the round-4 reviewer added a field to each and got a clean build (CR4-01, BLOCKER). That is the same defect class one hop away, for the fourth consecutive round, on exactly the two shapes waves 9 and 10 each missed. Wave 12 therefore closes the class — *"a rule table is exhaustive over a type that is not the real type it validates"* — not the two types the review named: table subjects become indexed-access paths rooted at `InviteBundle` (a hand-written mirror cannot be substituted for a path), a five-entry compile-time proof pins both held positions independently, and an independent source-level test tripwire fires even if the type derivation is later weakened. Every probe is executed and its failure transcribed, not asserted.
 
 **Cross-cutting constraints:**
 
