@@ -40,7 +40,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
 - [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
 - [x] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog) (completed 2026-07-22)
-- [ ] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog) (all 14 plans executed; round-4 CR4-01 closed by 12.3-14 and independently re-verified — in gap closure on round-5 CR5-01 BLOCKER: `ExhaustiveBundleRules<T>` binds which fields a rule table names but not whether a rule's `kind` can match the field it names, reproduced with a `safe-integer` rule on `HeldKeyEntry.refounder` at build exit 0 and 471/471 green; WR-08 still behaviorally unverified)
+- [x] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog) (14/14 plans; verification passed 17/17 D-01…D-17; 2 accepted overrides — WR-08 trigger unproven as verification debt, CR5-01 guardrail hardening backlogged as 999.9 with zero live defect) (completed 2026-07-28)
 
 ## Phase Details
 
@@ -456,7 +456,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
-| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | In Progress | 2026-07-25 |
+| 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete    | 2026-07-25 |
 
 **TEST-01 closure rule:** TEST-01 is not satisfied until Phase 12 completes. Do not mark it Complete at Phase 5 — its anchor phase is an accounting convenience, not its scope. Each phase's `(TEST-01, standing)` criterion is verified by that phase's own verification step; the requirement closes only when all eight have passed.
 
@@ -466,7 +466,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 
 **Goal:** [Captured for future planning] Review and check concord's file/media encryption and decryption to confirm that media sent in past epochs is decrypted with the correct keys **from that epoch**, not with the latest keys. Suspected failure mode: the decrypt path resolves keys from current epoch state rather than from the epoch the media was encrypted under, which would make historical media undecryptable after a rotation.
 **Requirements:** TBD
-**Plans:** 4/4 plans complete
+**Plans:** 14/14 plans complete
 
 Plans:
 

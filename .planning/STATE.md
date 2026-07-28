@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 12.3
-current_phase_name: transport-only-extra-relays-in-applesauce-concord
-status: executing
-stopped_at: All 14 plans of phase 12.3 executed; 12.3-14 closed CR4-01/WR4-01/WR4-02 and was independently re-verified. Phase NOT complete — round-5 review found CR5-01 (BLOCKER), reproduced independently. Next: gap-closure plan for CR5-01.
-last_updated: "2026-07-27T17:34:30.610Z"
-last_activity: 2026-07-27
-last_activity_desc: Phase 12.3 execution started
+current_phase: 11
+current_phase_name: messaging-wire-conformance
+status: ready
+stopped_at: Phase 12.3 COMPLETE — 14/14 plans, verification passed 17/17 D-01…D-17, UAT closed. Two accepted overrides, both recorded in 12.3-VERIFICATION.md's Acknowledged Gaps: WR-08 (live two-instance Refounding trigger never executed — verification debt) and CR5-01 (guardrail-only, zero live defect, backlogged as 999.9). Next scheduled work: Phase 11 Messaging Wire Conformance. NOTE: phase.complete auto-advanced to 999.2, a BACKLOG placeholder — corrected to 11.
+last_updated: "2026-07-28T08:14:41.648Z"
+last_activity: 2026-07-28
+last_activity_desc: Phase 12.3 complete, transitioned to Phase 999.2
 progress:
   total_phases: 12
   completed_phases: 10
@@ -24,35 +24,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 12.3 — transport-only-extra-relays-in-applesauce-concord
+**Current focus:** Phase 11 — messaging-wire-conformance (Phase 12.3 closed 2026-07-28)
 
 ## Current Position
 
-Phase: 12.3 (transport-only-extra-relays-in-applesauce-concord) — EXECUTING
-Plan: 2 of 14
-Status: Ready to execute
-  Round 4 (12.3-13) closed D-17 structurally: validateInviteBundle rewritten as four exhaustive
-  mapped-type rule tables (INVITE_BUNDLE_FIELD_RULES, CHANNEL_KEY_FIELD_RULES, HELD_KEY_FIELD_RULES,
-  BLOB_POINTER_FIELD_RULES) + a generic rebuild-never-spread walker — a field with no rule fails
-  tsc, demonstrated by hand. CR-01 closed as a class (owner/owner_salt/refounder/relays[i] length,
-  unknown-key survival at any depth) plus its aggregate half (COMMUNITY_LIST_MAX_ENTRY_BYTES at
-  recordJoin). CR-02 closed on both halves via pruneDeadEntries() — reachable with no engine,
-  idempotent against re-merge. WR-01/05/06/07/08 and IN-01/02/04/05 folded in.
-  Round 4's review (12.3-REVIEW.md) then found CR4-01: D-17's own mechanism has the same class
-  of hole in one of its four tables — HELD_KEY_FIELD_RULES maps over a hand-duplicated local
-  alias, not the real anonymous inline element types. Fails SAFE (rebuildByRules never spreads,
-  so an unruled nested field is dropped, not leaked), but it is a proven failure of the exact
-  guarantee D-17 exists to deliver, on exactly the fields rounds 2 and 3 each missed.
-  Round 5 (plan 12.3-14, planned 2026-07-27, plan-checker PASSED) closes it as a class rather
-  than as the two types the review named: rule-table subjects become indexed-access paths rooted
-  at InviteBundle (a hand-written mirror cannot be substituted for a path), the terminal
-  `as unknown as InviteBundle` erasure that let the duplicate go unchecked is removed,
-  held_roots[] and channels[].held[] are pinned independently, and a source-level tripwire fires
-  even if the type derivation is wrong. Also closes WR4-01 (handleRemoved behavioral test, driven
-  through the real onRemoved wiring — reachability independently confirmed by the plan-checker at
-  client.ts:843 / community.ts:1003-1009) and WR4-02 (comment truth).
-  Next: /gsd-execute-phase 12.3 (plan 14)
-Last activity: 2026-07-27 — Phase 12.3 execution started
+Phase: 11 — Messaging Wire Conformance
+Plan: Not started
+Status: Ready to discuss/plan
+  Phase 12.3 closed 2026-07-28 after 14 plans and five review rounds. Final state: the
+  transport-only extra-relays contract (D-01…D-16) is implemented and verified 17/17 —
+  `relays()`/`transport()` is the sole merge boundary, the refounding quorum denominator is
+  provably distinct from the publish target, and extras never reach community material,
+  invite bundles, invite links, or published relay lists. D-17 (bundle-validation
+  exhaustiveness, added mid-phase by review round 3) closed CR-01/CR-02 as classes; round 4's
+  CR4-01 (a rule table mapped over a hand-declared mirror instead of the real type) was closed
+  as a class by plan 12.3-14 and independently re-verified — adding a field to `HeldKeyEntry`
+  now fails the build naming `HELD_KEY_FIELD_RULES`, where round 4 exited 0.
+  Two items carried forward deliberately, both in 12.3-VERIFICATION.md's Acknowledged Gaps:
+  WR-08 (the two-instance live-Refounding trigger was never executed — the downstream prune
+  path IS proven behaviorally; only the trigger is synthetic) and CR5-01 (rule `kind` is not
+  type-bound to field type; all 26 shipped rules audited correct, so guardrail-only — backlogged
+  as 999.9 rather than triggering a sixth gap round).
+  Also still open in v1.1: Phase 5 (CACHE-02, reduced round-3 scope) and Phase 12.
+  Next: /gsd-discuss-phase 11
+Last activity: 2026-07-28 — Phase 12.3 complete; next scheduled phase is 11 (999.2 is backlog, not scheduled)
 
 Progress: [██████████] 100%
 
@@ -239,8 +234,8 @@ None yet.
 - Verification standard for this milestone: every fix needs a regression test asserting against an independently-derived spec value, not implementation output — the exact gap that let all 43 findings pass CI before. Plan-phase should hold plans to this explicitly.
 - [Phase 10 plan-phase, 2026-07-21] Decision-coverage gate (13a) OVERRIDDEN — reported `covered=0/11` (false-fail: the `check.decision-coverage-plan` parser chokes on the nested `*emphasis*`/colons inside the `D-NN:` bold labels in 10-CONTEXT.md). Real coverage is complete: all 13 decisions D-01–D-13 are referenced 2–22× each across the 6 plans and the independent gsd-plan-checker traced every one to an implementing task. Proceeded past the gate deliberately; verify-phase should treat decision coverage as satisfied, not re-block on the parser artifact.
 - INVITE-01 spans two plans (10-01 closed D-04's vsk fail-closed sub-part; D-01/D-02/D-03's joinByLink collapse-then-tombstone rewrite is still pending in 10-05) — do not treat INVITE-01 as fully satisfied until 10-05 lands; REQUIREMENTS.md traceability table reflects this as In Progress, not Complete
-- [Phase 12.3 round-5 review, 2026-07-27] CR5-01 (BLOCKER) — D-17's exhaustiveness mechanism binds WHICH fields a rule table must name, but not WHETHER a rule's `kind` can match the type of the field it names: `ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule }` maps every key to the whole rule union without ever consulting `T[K]`. Reproduced independently at `HELD_KEY_FIELD_RULES.refounder` (a `string` field) given `kind: "safe-integer"` — `pnpm --filter applesauce-concord build` exits 0 and the suite is 471/471 green, so every legitimate `held_roots[i].refounder` is silently stripped. The same mutation on the TOP-LEVEL `refounder` is caught, but only by 2 incidental behavioral tests, not by the mechanism — confirming coverage is field-dependent, the exact property D-17 exists to remove. This is the FIFTH consecutive round where this phase closed a defect and the next round found the same class one hop away; the fix must bind rule kind to field type (a `RuleFor<V>` conditional subsuming the key-set proof), not enumerate the next instance.
-- [Phase 12.3] Phase checkbox was flipped to `[x]` by 12.3-14's executor before verification passed; corrected back to `[ ]` — phase completion belongs to `phase.complete` after the verifier passes, not to a plan executor.
+- [Phase 12.3 CLOSED, 2026-07-27] CR5-01 — D-17's exhaustiveness mechanism binds WHICH fields a rule table must name, but not WHETHER a rule's `kind` matches the type of the field it names: `ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule }` never consults `T[K]`. Reproduced at `HELD_KEY_FIELD_RULES.refounder` (a `string`) given `kind: "safe-integer"` — build exit 0, 471/471 green. Review labelled it BLOCKER; DOWNGRADED on audit: all 26 shipped rules across the four tables were checked against their declared field types and are correct, so there is NO live defect — this is a latent guardrail gap only. Deferred to backlog 999.9 by explicit user decision. Rationale: rounds 3/4/5 each closed a defect and the next round found the same class one META-LEVEL up (missing fields → fake table subjects → unbound rule kinds), and the invite-bundle validator entered 12.3's scope via review rounds, not via its own D-01…D-16 acceptance criteria. Stopping the regress at a natural boundary was the call; the fix when promoted is `RuleFor<V>` (subsumes the key-set proof), not another enumerated patch. Reinforces [[prefer-structural-over-enumerated-fixes]].
+- [Phase 12.3] LESSON: 12.3-14's executor flipped the PHASE checkbox to `[x]` before verification ran, leaving a self-contradictory ROADMAP line reading both "in gap closure — BLOCKER" and "(completed)". Phase completion belongs to `phase.complete` after the verifier passes — a plan executor may only mark its OWN plan. Watch for this in future phase runs.
 
 ### Roadmap Evolution
 
