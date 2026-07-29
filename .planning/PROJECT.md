@@ -123,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-22 — Phase 12.1 complete (Concord sync skips ephemeral kind 21059; backfill requests only retained kind 1059 via a named `BACKFILL_KINDS` constant, live subscriptions still request both kinds, guarded by a two-directional filter-spy test)*
+*Last updated: 2026-07-29 — Phase 11 complete (reactions, threaded replies, deletes, and voice presence carry the CORD-01/03/07 wire shape; `react`/`replyToThread`/`deleteMessage` now take a full `Rumor` so `k`/`p` tags bind to the target's real kind and pubkey. UAT surfaced one live doc defect, fixed in-phase, and one deferred finding: voice-presence beacons can resurrect a kicked or departed member through the observed-authors fold — backlogged to `todos/pending/11-verify-followups.md`)*

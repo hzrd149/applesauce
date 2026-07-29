@@ -36,7 +36,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member (completed 2026-07-19)
 - [x] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state (completed 2026-07-19)
 - [x] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant (completed 2026-07-21)
-- [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define (6/6 plans executed; verification 6/6 must-haves but status human_needed — 2 UAT decisions open in 11-UAT.md)
+- [x] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define (6/6 plans executed; verification passed 6/6 must-haves; 2/2 UAT decisions resolved — stale docs fixed in-phase, voice-presence roster resurrection backlogged to todos/pending/11-verify-followups.md) (completed 2026-07-29)
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
 - [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
 - [x] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog) (completed 2026-07-22)
@@ -473,7 +473,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
-| 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete   | 2026-07-29 |
+| 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete    | 2026-07-29 |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
@@ -487,7 +487,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 
 **Goal:** [Captured for future planning] Review and check concord's file/media encryption and decryption to confirm that media sent in past epochs is decrypted with the correct keys **from that epoch**, not with the latest keys. Suspected failure mode: the decrypt path resolves keys from current epoch state rather than from the epoch the media was encrypted under, which would make historical media undecryptable after a rotation.
 **Requirements:** TBD
-**Plans:** 14/14 plans complete
+**Plans:** 0 plans
 
 Plans:
 

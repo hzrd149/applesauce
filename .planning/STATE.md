@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 11
-current_phase_name: messaging-wire-conformance
-status: verifying
-stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-07-29T11:21:44.403Z"
+current_phase: 12
+current_phase_name: Document & Caps Conformance
+status: ready to plan
+stopped_at: Phase 11 complete (UAT 2/2 passed), ready to plan Phase 12
+last_updated: "2026-07-29T12:06:12.827Z"
 last_activity: 2026-07-29
-last_activity_desc: Phase 11 execution started
+last_activity_desc: Phase 11 complete (UAT 2/2 passed), transitioned to Phase 12
 progress:
   total_phases: 12
   completed_phases: 11
@@ -24,26 +24,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 11 — messaging-wire-conformance
+**Current focus:** Phase 12 — document-and-caps-conformance
 
 ## Current Position
 
-Phase: 11 (messaging-wire-conformance) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-  Planned 2026-07-29: 6 plans / 14 tasks / 4 waves, plan-checker VERIFICATION PASSED on
-  iteration 1. Waves are imposed by file ownership, not logic — three plans touch
-  `client/community.ts`. Three corrections landed in the plans that CONTEXT.md did not
-  have: (1) D-02's conclusion holds (zero upstream factory edits) but its mechanism was
-  wrong — a Concord `Rumor` has no `sig`, so `isEvent()` is false and
-  `DeleteFactory.fromEvents([rumor])` would silently skip `k`; the fix passes `target.id`
-  and applies `ensureKTag` explicitly. (2) WIRE-01's sweep extends outside `packages/` to
-  `apps/examples` + `apps/docs`, and root `pnpm test` never builds `apps/*`, so criterion 1
-  is gated on an unfiltered `pnpm build`. (3) `packages/concord/tsconfig.json` excludes test
-  files and no `typecheck` script exists workspace-wide — test-file type staleness is
-  invisible to both build and tests, so plan 11-04's target reshape is gated on source
-  assertions rather than a compiler error.
-  Next: /gsd-execute-phase 11
+Phase: 12 — Document & Caps Conformance
+Plan: Not started
+Status: Ready to plan
+  Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
+  INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
+  next unchecked phase in ROADMAP.md is 12, not 12.1 — `phase.complete` reported
+  `next_phase: 12.1` by numeric adjacency and was corrected here.
+
+  Prior context — Phase 11 closed 2026-07-29. 6/6 plans, verification passed 6/6 must-haves,
+  UAT 2/2. Test 1 (stale `react()`/`replyToThread()`/`deleteMessage()` examples in
+  `apps/docs/concord/community.md`) was verified real and fixed in-phase; `editMessage()` and
+  `sendMessage()`'s `replyTo` were confirmed NOT stale and left alone. Test 2 (voice-presence
+  beacons resurrecting a kicked or departed member through the observed-authors fold) was
+  verified real via a `foldMembers` probe — departed and kicked members are both re-added,
+  banned members are not — and backlogged to `.planning/todos/pending/11-verify-followups.md`
+  rather than widened into Phase 11's scope, since no plan there claimed the roster fold.
+  Next: /gsd-discuss-phase 12
 
   Prior context — Phase 12.3 closed 2026-07-28 after 14 plans and five review rounds. Final state: the
   transport-only extra-relays contract (D-01…D-16) is implemented and verified 17/17 —
@@ -60,7 +61,7 @@ Status: Phase complete — ready for verification
   type-bound to field type; all 26 shipped rules audited correct, so guardrail-only — backlogged
   as 999.9 rather than triggering a sixth gap round).
   Also still open in v1.1: Phase 5 (CACHE-02, reduced round-3 scope) and Phase 12.
-Last activity: 2026-07-29 — Phase 11 execution started
+Last activity: 2026-07-29 — Phase 11 complete, transitioned to Phase 12.1
 
 Progress: [██████████] 100%
 
@@ -296,11 +297,11 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-29T11:20:05.903Z
-Stopped at: Completed 11-03-PLAN.md
+Last session: 2026-07-29
+Stopped at: Phase 11 complete, ready to plan Phase 12
 Resume file: None
 
 ## Operator Next Steps
 
-- Review the roadmap draft: `.planning/ROADMAP.md` (Phases 5–12)
-- Start planning the first phase: `/gsd-plan-phase 5`
+- Discuss the next phase: `/gsd-discuss-phase 12`
+- Or plan directly: `/gsd-plan-phase 12`
