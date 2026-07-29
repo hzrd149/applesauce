@@ -6,14 +6,14 @@ current_phase: 11
 current_phase_name: messaging-wire-conformance
 status: executing
 stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-07-29T10:33:46.819Z"
+last_updated: "2026-07-29T10:42:02.197Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 76
-  completed_plans: 73
+  completed_plans: 74
   percent: 83
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 11 (messaging-wire-conformance) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
   Planned 2026-07-29: 6 plans / 14 tasks / 4 waves, plan-checker VERIFICATION PASSED on
   iteration 1. Waves are imposed by file ownership, not logic — three plans touch
@@ -123,6 +123,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 11 P01 | 4min | 2 tasks | 2 files |
 | Phase 11 P02 | 5min | 2 tasks | 5 files |
 | Phase 11 P03 | 4min | 2 tasks | 4 files |
+| Phase 11 P04 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -246,6 +247,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 11]: 11-02: Left a pre-existing, unrelated applesauce-examples build failure (9 files, StoredEvent/NostrEvent sig mismatch) undisturbed and logged to deferred-items.md, per the Scope Boundary rule — confirmed admin-management.tsx contributes zero build errors
 - [Phase ?]: 11-03: GiftWrapOptions/rewrapSeal deliberately untouched (D-07) — ephemeralSk only reaches the app-level entry point sendEvent, not giftWrap's public signature or compaction re-wraps
 - [Phase ?]: 11-03: getPublicKey from nostr-tools already returns a hex string — test's expected-value computation uses getPublicKey(sk) directly, no bytesToHex wrapping (wrapping throws a type error at runtime)
+- [Phase ?]: 11-04: D-02's stated deleteMessage mechanism corrected — a Concord Rumor has no sig, so DeleteFactory.fromEvents([target]) would silently skip k; fix passes target.id and applies ensureKTag explicitly on the awaited template (D-02's zero-upstream-edits conclusion still holds)
+- [Phase ?]: 11-04: react/replyToThread/deleteMessage now take the full target Rumor, deleting the hand-built identity object / pointer entirely, so the hardcoded-kind wrong path is unrepresentable — no upstream factory in packages/core or packages/common touched, no changeset per D-09
 
 ### Pending Todos
 
@@ -287,7 +290,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-29T10:33:46.810Z
+Last session: 2026-07-29T10:41:19.595Z
 Stopped at: Completed 11-03-PLAN.md
 Resume file: None
 

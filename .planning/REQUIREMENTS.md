@@ -159,9 +159,9 @@ Deferred — acknowledged, not in this roadmap.
 | TIME-03 | Phase 10 | Complete |
 | WIRE-01 | Phase 11 | Complete *(11-02 — hard removal per D-06/D-09, no changeset since concord is unreleased)* |
 | WIRE-02 | Phase 11 | In Progress — fixtures vendored (11-01), receive-path landing in 11-06 |
-| WIRE-03 | Phase 11 | In Progress — fixtures vendored (11-01), behavior landing in 11-04/11-05 |
-| WIRE-04 | Phase 11 | In Progress — fixtures vendored (11-01), behavior landing in 11-04/11-05 |
-| WIRE-05 | Phase 11 | In Progress — fixtures vendored (11-01), behavior landing in 11-04/11-05 |
+| WIRE-03 | Phase 11 | In Progress — fixtures vendored (11-01), routing/behavior landed (11-04), fixture-anchored assertions landing in 11-05 |
+| WIRE-04 | Phase 11 | In Progress — fixtures vendored (11-01), routing/behavior landed (11-04), fixture-anchored assertions landing in 11-05 |
+| WIRE-05 | Phase 11 | In Progress — fixtures vendored (11-01), routing/behavior landed (11-04), fixture-anchored assertions landing in 11-05 |
 | WIRE-11 | Phase 11 | Complete |
 | WIRE-06 | Phase 12 | Pending |
 | WIRE-07 | Phase 12 | Pending |
