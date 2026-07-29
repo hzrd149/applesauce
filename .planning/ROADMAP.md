@@ -316,7 +316,7 @@ Plans:
 
 > **Criterion 1 scoring note (D-09 override):** score criterion 1 on the **field removal alone**. concord is unreleased, so no changeset is created for either the `voice` removal or D-01's `react`/`replyToThread`/`deleteMessage` signature break. `verify-phase` must not re-block on the missing changeset.
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -331,7 +331,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 11-05-PLAN.md — Fixture-anchored conformance tests: non-9 reaction, depth-2 reply, sig-less delete target (TEST-01; wave 3)
+- [x] 11-05-PLAN.md — Fixture-anchored conformance tests: non-9 reaction, depth-2 reply, sig-less delete target (TEST-01; wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -473,7 +473,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
-| 11. Messaging Wire Conformance | v1.1 | 4/6 | In Progress|  |
+| 11. Messaging Wire Conformance | v1.1 | 5/6 | In Progress|  |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |

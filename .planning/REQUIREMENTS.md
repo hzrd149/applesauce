@@ -74,9 +74,9 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 
 - [x] **WIRE-01**: `ChannelMetadata.voice` is removed — every channel is callable and no per-channel voice flag exists *(M13 — **BREAKING**; needs a changeset and migration note)*
 - [ ] **WIRE-02**: Kind 23313 voice presence reaches consumers instead of being silently dropped at the receive funnel, so a client can implement CORD-07 §4 *(M14)*
-- [ ] **WIRE-03**: A reaction's `k` tag names its target's actual kind rather than a hardcoded 9 *(M15)*
-- [ ] **WIRE-04**: A threaded reply inherits its parent's root tags verbatim and derives `K`/`k` from the real target kind, so replies off a kind-9 message and nesting beyond depth 1 are expressible *(M16)*
-- [ ] **WIRE-05**: A delete carries the `k` tag naming its target's kind *(L03)*
+- [x] **WIRE-03**: A reaction's `k` tag names its target's actual kind rather than a hardcoded 9 *(M15)*
+- [x] **WIRE-04**: A threaded reply inherits its parent's root tags verbatim and derives `K`/`k` from the real target kind, so replies off a kind-9 message and nesting beyond depth 1 are expressible *(M16)*
+- [x] **WIRE-05**: A delete carries the `k` tag naming its target's kind *(L03)*
 - [ ] **WIRE-06**: A channel `name` is capped at 64 **bytes** (UTF-8, not UTF-16 units) on write, and defensively on read *(M17)*
 - [ ] **WIRE-07**: Community `name` (64B) and `description` (10000B) byte caps are enforced *(L09)*
 - [ ] **WIRE-08**: The Community List enforces the 50-membership protocol constant alongside the already-enforced byte cap *(M12)*
@@ -159,9 +159,9 @@ Deferred — acknowledged, not in this roadmap.
 | TIME-03 | Phase 10 | Complete |
 | WIRE-01 | Phase 11 | Complete *(11-02 — hard removal per D-06/D-09, no changeset since concord is unreleased)* |
 | WIRE-02 | Phase 11 | In Progress — fixtures vendored (11-01), receive-path landing in 11-06 |
-| WIRE-03 | Phase 11 | In Progress — fixtures vendored (11-01), routing/behavior landed (11-04), fixture-anchored assertions landing in 11-05 |
-| WIRE-04 | Phase 11 | In Progress — fixtures vendored (11-01), routing/behavior landed (11-04), fixture-anchored assertions landing in 11-05 |
-| WIRE-05 | Phase 11 | In Progress — fixtures vendored (11-01), routing/behavior landed (11-04), fixture-anchored assertions landing in 11-05 |
+| WIRE-03 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
+| WIRE-04 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
+| WIRE-05 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
 | WIRE-11 | Phase 11 | Complete |
 | WIRE-06 | Phase 12 | Pending |
 | WIRE-07 | Phase 12 | Pending |

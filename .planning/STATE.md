@@ -6,14 +6,14 @@ current_phase: 11
 current_phase_name: messaging-wire-conformance
 status: executing
 stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-07-29T10:42:02.197Z"
+last_updated: "2026-07-29T11:00:48.318Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 76
-  completed_plans: 74
+  completed_plans: 75
   percent: 83
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 11 (messaging-wire-conformance) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
   Planned 2026-07-29: 6 plans / 14 tasks / 4 waves, plan-checker VERIFICATION PASSED on
   iteration 1. Waves are imposed by file ownership, not logic — three plans touch
@@ -124,6 +124,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 11 P02 | 5min | 2 tasks | 5 files |
 | Phase 11 P03 | 4min | 2 tasks | 4 files |
 | Phase 11 P04 | 10min | 2 tasks | 2 files |
+| Phase 11 P05 | 16min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -249,6 +250,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 11-03: getPublicKey from nostr-tools already returns a hex string — test's expected-value computation uses getPublicKey(sk) directly, no bytesToHex wrapping (wrapping throws a type error at runtime)
 - [Phase ?]: 11-04: D-02's stated deleteMessage mechanism corrected — a Concord Rumor has no sig, so DeleteFactory.fromEvents([target]) would silently skip k; fix passes target.id and applies ensureKTag explicitly on the awaited template (D-02's zero-upstream-edits conclusion still holds)
 - [Phase ?]: 11-04: react/replyToThread/deleteMessage now take the full target Rumor, deleting the hand-built identity object / pointer entirely, so the hardcoded-kind wrong path is unrepresentable — no upstream factory in packages/core or packages/common touched, no changeset per D-09
+- [Phase ?]: 11-05: setupWireConformance's pool.publish mock captures published wraps so WIRE-05's delete cases can decode a kind-5 rumor that EventStore.add() routes into DeleteManager instead of the queryable store, rather than reading it back via getTimeline
+- [Phase ?]: 11-05: Task 3 probe 2 (whole target object into DeleteFactory.fromEvents) throws inside wrapForTarget's getEventHash rather than producing the plan-predicted stringified-object e tag; both cases still observably RED, non-vacuity requirement satisfied via a harder crash than anticipated
 
 ### Pending Todos
 
@@ -290,7 +293,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-29T10:41:19.595Z
+Last session: 2026-07-29T11:00:28.995Z
 Stopped at: Completed 11-03-PLAN.md
 Resume file: None
 
