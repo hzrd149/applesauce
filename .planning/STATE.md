@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 11
 current_phase_name: messaging-wire-conformance
-status: executing
+status: verifying
 stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-07-29T11:00:48.318Z"
+last_updated: "2026-07-29T11:21:44.403Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 12
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 76
-  completed_plans: 75
-  percent: 83
+  completed_plans: 76
+  percent: 92
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 11 (messaging-wire-conformance) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
   Planned 2026-07-29: 6 plans / 14 tasks / 4 waves, plan-checker VERIFICATION PASSED on
   iteration 1. Waves are imposed by file ownership, not logic — three plans touch
   `client/community.ts`. Three corrections landed in the plans that CONTEXT.md did not
@@ -125,6 +125,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 11 P03 | 4min | 2 tasks | 4 files |
 | Phase 11 P04 | 10min | 2 tasks | 2 files |
 | Phase 11 P05 | 16min | 3 tasks | 1 files |
+| Phase 11 P06 | 15min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -252,6 +253,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 11-04: react/replyToThread/deleteMessage now take the full target Rumor, deleting the hand-built identity object / pointer entirely, so the hardcoded-kind wrong path is unrepresentable — no upstream factory in packages/core or packages/common touched, no changeset per D-09
 - [Phase ?]: 11-05: setupWireConformance's pool.publish mock captures published wraps so WIRE-05's delete cases can decode a kind-5 rumor that EventStore.add() routes into DeleteManager instead of the queryable store, rather than reading it back via getTimeline
 - [Phase ?]: 11-05: Task 3 probe 2 (whole target object into DeleteFactory.fromEvents) throws inside wrapForTarget's getEventHash rather than producing the plan-predicted stringified-object e tag; both cases still observably RED, non-vacuity requirement satisfied via a harder crash than anticipated
+- [Phase ?]: 11-06: Both engines' now-unused VOICE_PRESENCE_KIND imports removed while the constant and its helpers/index.ts re-export were deliberately left intact — public surface a consumer needs to filter for presence
+- [Phase ?]: 11-06: Task 3's private-channel test uses a fresh ChannelKey at epoch 0 (not epoch 1) so the fixture's literal 'epoch' tag value ('0') matches verbatim without needing a non-placeholder substitution mechanism
 
 ### Pending Todos
 
@@ -265,7 +268,7 @@ None yet.
 - INVITE-01 spans two plans (10-01 closed D-04's vsk fail-closed sub-part; D-01/D-02/D-03's joinByLink collapse-then-tombstone rewrite is still pending in 10-05) — do not treat INVITE-01 as fully satisfied until 10-05 lands; REQUIREMENTS.md traceability table reflects this as In Progress, not Complete
 - [Phase 12.3 CLOSED, 2026-07-27] CR5-01 — D-17's exhaustiveness mechanism binds WHICH fields a rule table must name, but not WHETHER a rule's `kind` matches the type of the field it names: `ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule }` never consults `T[K]`. Reproduced at `HELD_KEY_FIELD_RULES.refounder` (a `string`) given `kind: "safe-integer"` — build exit 0, 471/471 green. Review labelled it BLOCKER; DOWNGRADED on audit: all 26 shipped rules across the four tables were checked against their declared field types and are correct, so there is NO live defect — this is a latent guardrail gap only. Deferred to backlog 999.9 by explicit user decision. Rationale: rounds 3/4/5 each closed a defect and the next round found the same class one META-LEVEL up (missing fields → fake table subjects → unbound rule kinds), and the invite-bundle validator entered 12.3's scope via review rounds, not via its own D-01…D-16 acceptance criteria. Stopping the regress at a natural boundary was the call; the fix when promoted is `RuleFor<V>` (subsumes the key-set proof), not another enumerated patch. Reinforces [[prefer-structural-over-enumerated-fixes]].
 - [Phase 12.3] LESSON: 12.3-14's executor flipped the PHASE checkbox to `[x]` before verification ran, leaving a self-contradictory ROADMAP line reading both "in gap closure — BLOCKER" and "(completed)". Phase completion belongs to `phase.complete` after the verifier passes — a plan executor may only mark its OWN plan. Watch for this in future phase runs.
-- WIRE-02/03/04/05 span plans 11-01/04/05/06 (11-01 closed only the vendored-fixture sub-part) — do not treat them as satisfied until 11-04/05/06 land; REQUIREMENTS.md traceability reflects this as In Progress, not Complete
+- [RESOLVED 2026-07-29] WIRE-02/03/04/05 spanned plans 11-01/04/05/06 (11-01 closed only the vendored-fixture sub-part) — 11-06 landed the last of these (WIRE-02); REQUIREMENTS.md traceability now reflects all four as Complete
 - 11-02: applesauce-examples unfiltered pnpm build is red due to 9 pre-existing, unrelated StoredEvent/NostrEvent sig-mismatch files (not concord/voice-flag related) — see deferred-items.md; a future plan should fix these cache-request call sites
 
 ### Roadmap Evolution
@@ -293,7 +296,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-29T11:00:28.995Z
+Last session: 2026-07-29T11:20:05.903Z
 Stopped at: Completed 11-03-PLAN.md
 Resume file: None
 

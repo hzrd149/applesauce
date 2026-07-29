@@ -36,7 +36,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 8: Rotation Robustness & Consensus** - Racing rotations, transient signer errors, and malformed/partial chunk sets converge correctly instead of forking the community or falsely evicting a member (completed 2026-07-19)
 - [x] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state (completed 2026-07-19)
 - [x] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant (completed 2026-07-21)
-- [ ] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define
+- [x] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define (completed 2026-07-29)
 - [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
 - [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
 - [x] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog) (completed 2026-07-22)
@@ -316,7 +316,7 @@ Plans:
 
 > **Criterion 1 scoring note (D-09 override):** score criterion 1 on the **field removal alone**. concord is unreleased, so no changeset is created for either the `voice` removal or D-01's `react`/`replyToThread`/`deleteMessage` signature break. `verify-phase` must not re-block on the missing changeset.
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -335,7 +335,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 11-06-PLAN.md — Kind 23313 reaches both receive funnels; four stale comments corrected (WIRE-02/D-04/D-05; wave 4)
+- [x] 11-06-PLAN.md — Kind 23313 reaches both receive funnels; four stale comments corrected (WIRE-02/D-04/D-05; wave 4)
 
 ### Phase 12: Document & Caps Conformance
 
@@ -473,7 +473,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 8. Rotation Robustness & Consensus | v1.1 | 6/6 | Complete    | 2026-07-19 |
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
-| 11. Messaging Wire Conformance | v1.1 | 5/6 | In Progress|  |
+| 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete   | 2026-07-29 |
 | 12. Document & Caps Conformance | v1.1 | 0/TBD | Not started | - |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |

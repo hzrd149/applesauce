@@ -73,7 +73,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 ### Wire Conformance & Caps (WIRE)
 
 - [x] **WIRE-01**: `ChannelMetadata.voice` is removed — every channel is callable and no per-channel voice flag exists *(M13 — **BREAKING**; needs a changeset and migration note)*
-- [ ] **WIRE-02**: Kind 23313 voice presence reaches consumers instead of being silently dropped at the receive funnel, so a client can implement CORD-07 §4 *(M14)*
+- [x] **WIRE-02**: Kind 23313 voice presence reaches consumers instead of being silently dropped at the receive funnel, so a client can implement CORD-07 §4 *(M14)*
 - [x] **WIRE-03**: A reaction's `k` tag names its target's actual kind rather than a hardcoded 9 *(M15)*
 - [x] **WIRE-04**: A threaded reply inherits its parent's root tags verbatim and derives `K`/`k` from the real target kind, so replies off a kind-9 message and nesting beyond depth 1 are expressible *(M16)*
 - [x] **WIRE-05**: A delete carries the `k` tag naming its target's kind *(L03)*
@@ -158,7 +158,7 @@ Deferred — acknowledged, not in this roadmap.
 | TIME-02 | Phase 10 | Complete |
 | TIME-03 | Phase 10 | Complete |
 | WIRE-01 | Phase 11 | Complete *(11-02 — hard removal per D-06/D-09, no changeset since concord is unreleased)* |
-| WIRE-02 | Phase 11 | In Progress — fixtures vendored (11-01), receive-path landing in 11-06 |
+| WIRE-02 | Phase 11 | Complete *(11-01 vendored fixtures, 11-06 deletes both receive-funnel drops, corrects stale comments, adds receive-path + anti-replay-control tests)* |
 | WIRE-03 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
 | WIRE-04 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
 | WIRE-05 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
