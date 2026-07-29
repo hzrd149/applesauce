@@ -117,8 +117,6 @@ export interface ChannelMetadata {
   name: string;
   private: boolean;
   deleted?: boolean;
-  /** CORD-07 §1: a voice/video Channel. Folds like any other channel property. */
-  voice?: boolean;
   custom?: Record<string, unknown>;
 }
 

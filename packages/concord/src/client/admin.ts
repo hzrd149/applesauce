@@ -52,8 +52,6 @@ import type { ConcordRumorStore, ConcordUploader } from "./storage.js";
 export interface CreateChannelOptions {
   /** Create a private (key-gated, invite-only) channel. Defaults to `false` — a public channel. */
   private?: boolean;
-  /** Mark the channel as voice. Defaults to `false`. */
-  voice?: boolean;
 }
 
 /** An entity's current head edition — what the next version must chain to. */
@@ -185,7 +183,6 @@ export class ConcordCommunityAdmin {
     const channelId = bytesToHex(generateSecretKey());
     if (isPrivate) this.opts.mintChannelKey(channelId, name);
     const content: Record<string, unknown> = { name, private: isPrivate };
-    if (options.voice) content.voice = true;
     await this.publishEdition(VSK.CHANNEL, channelId, JSON.stringify(content));
     return channelId;
   }

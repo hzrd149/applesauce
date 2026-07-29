@@ -308,7 +308,6 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
         name: raw.name,
         private: raw.private,
         ...(typeof raw.deleted === "boolean" ? { deleted: raw.deleted } : {}),
-        ...(typeof raw.voice === "boolean" ? { voice: raw.voice } : {}),
         ...(raw.custom !== null && typeof raw.custom === "object" ? { custom: raw.custom as Record<string, unknown> } : {}),
       };
       heads.set(eid, cand.source);
