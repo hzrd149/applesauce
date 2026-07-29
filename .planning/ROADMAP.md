@@ -314,7 +314,18 @@ Plans:
   5. A client can retain a wrap's ephemeral key so it can NIP-09-delete its own giftwrap by `p` tag.
   6. **(TEST-01, standing — fixture-anchored)** This phase has no crypto derivations, so its spec-derived obligation binds to the **`examples.md` fixtures**: every wire shape this phase touches has at least one test asserting the emitted event against the expected tag set transcribed from the `examples.md` fixture (or the CORD-01/03/07 spec text) — never against a snapshot of our own output. Covers the reaction `k` tag, the threaded-reply `K`/`k` and inherited root tags, and the delete `k` tag.
 
-**Plans**: TBD
+> **Criterion 1 scoring note (D-09 override):** score criterion 1 on the **field removal alone**. concord is unreleased, so no changeset is created for either the `voice` removal or D-01's `react`/`replyToThread`/`deleteMessage` signature break. `verify-phase` must not re-block on the missing changeset.
+
+**Plans**: 6 plans
+
+Plans:
+
+- [ ] 11-01-PLAN.md — Vendored CORD wire fixtures + non-vacuity helpers (D-10; wave 1)
+- [ ] 11-02-PLAN.md — `voice` flag hard removal across package, example app, and docs (WIRE-01/D-06; wave 1)
+- [ ] 11-03-PLAN.md — `ephemeralSk` threaded through `WrapOptions` → `wrapForTarget` → `publishToPlane` → `sendEvent` (WIRE-11/D-07/D-08; wave 1)
+- [ ] 11-04-PLAN.md — `react`/`replyToThread`/`deleteMessage` take the full target `Rumor`; explicit `ensureKTag` on the delete path (WIRE-03/04/05, D-01/D-02/D-03; wave 2)
+- [ ] 11-05-PLAN.md — Fixture-anchored conformance tests: non-9 reaction, depth-2 reply, sig-less delete target (TEST-01; wave 3)
+- [ ] 11-06-PLAN.md — Kind 23313 reaches both receive funnels; four stale comments corrected (WIRE-02/D-04/D-05; wave 4)
 
 ### Phase 12: Document & Caps Conformance
 
