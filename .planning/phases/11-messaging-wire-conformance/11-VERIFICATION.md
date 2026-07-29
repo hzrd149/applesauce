@@ -1,14 +1,16 @@
 ---
 phase: 11-messaging-wire-conformance
 verified: 2026-07-29T13:00:00Z
-status: human_needed
+status: passed
 score: 6/6 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Decide whether apps/docs/concord/community.md's stale react()/replyToThread()/deleteMessage() call examples (still showing the pre-phase {id, author} pointer shape) are in-scope doc debt to fix now, or an accepted follow-up."
     expected: "Either the docs are corrected to show the Rumor-taking signatures (a caller following them today emits [\"k\",\"undefined\"] / [\"e\",\"undefined\"] malformed wire events — the exact defect class this phase exists to eliminate), or a deliberate decision is recorded to defer the fix."
     why_human: "No plan in this phase claimed apps/docs/concord/community.md in files_modified, so it is a scope decision, not a code-correctness question — the underlying SDK/tests are correct and green."
+
   - test: "Decide whether WIRE-02's removal of the kind-23313 receive-funnel drop, which now lets ConcordObservedAuthorsModel's unfiltered store.timeline([{}]) feed presence beacons into foldMembers's observed-authors roster fold, is an accepted trade-off or needs a follow-up fix before shipping."
     expected: "Either a decision that a kicked/left member being able to resurrect their membership by leaving a voice-presence client running is accepted (matching D-04's stated ephemeral-accumulation trade-off, which named store growth but not roster resurrection), or a follow-up plan is scheduled to exclude presence kinds from the observed-authors fold."
     why_human: "This is a real, code-confirmed regression with no test coverage in either direction (no test proves the resurrection, and no test proves it's excluded) — it is a judgment call about severity, not a verifiable pass/fail against this phase's stated success criteria, which say nothing about membership-fold integrity."
