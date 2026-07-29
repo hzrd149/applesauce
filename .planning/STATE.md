@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 11
 current_phase_name: messaging-wire-conformance
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-07-29T10:12:46.755Z"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-07-29T10:23:27.902Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 76
-  completed_plans: 71
+  completed_plans: 72
   percent: 83
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 11 (messaging-wire-conformance) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
   Planned 2026-07-29: 6 plans / 14 tasks / 4 waves, plan-checker VERIFICATION PASSED on
   iteration 1. Waves are imposed by file ownership, not logic — three plans touch
@@ -121,6 +121,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P13 | ~4h | 5 tasks | 11 files |
 | Phase 12.3 P14 | 35min | 4 tasks | 4 files |
 | Phase 11 P01 | 4min | 2 tasks | 2 files |
+| Phase 11 P02 | 5min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -239,6 +240,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12.3]: 12.3-14: WR4-01's handleRemoved behavioral test drives the real private handleRemoved() method via the suite's established as-unknown-as convention; only the trigger is synthetic, not any downstream effect (pruneDeadEntries/saveMirror ordering) — Reachability was verified against source (client.ts:843, community.ts:1003-1009, and both real callers at community.ts:553/968) before writing the test, per the plan's explicit instruction
 - [Phase ?]: 11-01: Cited CORD repo branch main (RESEARCH.md's GitHub-API-verified default branch), not master as CONTEXT.md's canonical-refs section states
 - [Phase ?]: 11-01: cord-wire-fixtures.ts is dependency-free (no vitest import, no concord source import) so it stays importable from any test file without cycles; missingFixtureTags is deliberately order- and extras-independent since bindToChannel appends binding tags after the factory's own tags
+- [Phase 11]: 11-02: Hard-deleted ChannelMetadata.voice/CreateChannelOptions.voice from all four in-package sites plus both out-of-package consumers (example app, docs), per D-06 — no tombstone comment, no routing into custom (WIRE-10's Phase-12 scope)
+- [Phase 11]: 11-02: No changeset created, per D-09 (concord unreleased)
+- [Phase 11]: 11-02: Left a pre-existing, unrelated applesauce-examples build failure (9 files, StoredEvent/NostrEvent sig mismatch) undisturbed and logged to deferred-items.md, per the Scope Boundary rule — confirmed admin-management.tsx contributes zero build errors
 
 ### Pending Todos
 
@@ -253,6 +257,7 @@ None yet.
 - [Phase 12.3 CLOSED, 2026-07-27] CR5-01 — D-17's exhaustiveness mechanism binds WHICH fields a rule table must name, but not WHETHER a rule's `kind` matches the type of the field it names: `ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule }` never consults `T[K]`. Reproduced at `HELD_KEY_FIELD_RULES.refounder` (a `string`) given `kind: "safe-integer"` — build exit 0, 471/471 green. Review labelled it BLOCKER; DOWNGRADED on audit: all 26 shipped rules across the four tables were checked against their declared field types and are correct, so there is NO live defect — this is a latent guardrail gap only. Deferred to backlog 999.9 by explicit user decision. Rationale: rounds 3/4/5 each closed a defect and the next round found the same class one META-LEVEL up (missing fields → fake table subjects → unbound rule kinds), and the invite-bundle validator entered 12.3's scope via review rounds, not via its own D-01…D-16 acceptance criteria. Stopping the regress at a natural boundary was the call; the fix when promoted is `RuleFor<V>` (subsumes the key-set proof), not another enumerated patch. Reinforces [[prefer-structural-over-enumerated-fixes]].
 - [Phase 12.3] LESSON: 12.3-14's executor flipped the PHASE checkbox to `[x]` before verification ran, leaving a self-contradictory ROADMAP line reading both "in gap closure — BLOCKER" and "(completed)". Phase completion belongs to `phase.complete` after the verifier passes — a plan executor may only mark its OWN plan. Watch for this in future phase runs.
 - WIRE-02/03/04/05 span plans 11-01/04/05/06 (11-01 closed only the vendored-fixture sub-part) — do not treat them as satisfied until 11-04/05/06 land; REQUIREMENTS.md traceability reflects this as In Progress, not Complete
+- 11-02: applesauce-examples unfiltered pnpm build is red due to 9 pre-existing, unrelated StoredEvent/NostrEvent sig-mismatch files (not concord/voice-flag related) — see deferred-items.md; a future plan should fix these cache-request call sites
 
 ### Roadmap Evolution
 
@@ -279,8 +284,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-29T10:11:43.210Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-07-29T10:23:27.892Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
