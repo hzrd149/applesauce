@@ -28,6 +28,14 @@ import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
 import type { ConcordUploader } from "../storage.js";
+import {
+  DELETE_KIND5_EXAMPLE,
+  REACTION_KIND7_EXAMPLE,
+  THREADED_REPLY_KIND1111_EXAMPLE,
+  missingFixtureTags,
+  substituteFixtureTags,
+  tagValues,
+} from "../../__tests__/cord-wire-fixtures.js";
 
 // The control fold + sync are debounced/async; let them run before asserting.
 const settle = () => new Promise((r) => setTimeout(r, 200));
@@ -1224,6 +1232,129 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(snap?.authenticated).toBe(true);
 
     sub.unsubscribe();
+    community.dispose();
+  });
+});
+
+// TEST-01 (ROADMAP Phase 11 success criterion 6): every assertion in this block
+// binds to the vendored `cord-wire-fixtures.ts` module — never to a snapshot of
+// our own output. See 11-05-PLAN.md's non-vacuity traps: WIRE-03 must exercise a
+// NON-9 reaction target, WIRE-04 needs a depth-2 chain, WIRE-05's delete target
+// must be a genuine sig-less Rumor.
+describe("wire conformance", () => {
+  // Shared fixture: a fresh community with one public "general" channel, ready
+  // to publish channel-plane rumors into. Every case below starts from this
+  // exact setup rather than duplicating it inline.
+  async function setupWireConformance() {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    // Sync walks every epoch against the empty relays, then opens live at the tip.
+    await community.start();
+
+    // Seed genesis control editions (plaintext) + owner Join via optimistic echo.
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const channelId = community.state$.value.channels.find((c) => c.name === "general")!.channel_id;
+    const rootEpoch = community.material.root_epoch;
+    return { community, channelId, pubkey, rootEpoch };
+  }
+
+  // The newest rumor of `kind` in `channelId`'s store. `getTimeline` returns a
+  // descending (newest-first) list, so index 0 is the just-published rumor —
+  // correct as long as at most one rumor of that kind exists at that point.
+  function newestOfKind(community: ConcordCommunity, channelId: string, kind: number): Rumor {
+    const [newest] = community.channelStore(channelId).getTimeline([{ kinds: [kind] }]);
+    if (!newest) throw new Error(`no rumor of kind ${kind} found in channel ${channelId}`);
+    return newest;
+  }
+
+  // Selects by content where two rumors of the same kind coexist (same-second
+  // created_at ties make newest-first ordering alone ambiguous).
+  function rumorWithContent(community: ConcordCommunity, channelId: string, kind: number, content: string): Rumor {
+    const match = community
+      .channelStore(channelId)
+      .getTimeline([{ kinds: [kind] }])
+      .find((r) => r.content === content);
+    if (!match) throw new Error(`no rumor of kind ${kind} with content ${JSON.stringify(content)}`);
+    return match;
+  }
+
+  // ---- WIRE-03: reaction "k" tag names the TARGET's real kind -----------
+
+  it("WIRE-03: a reaction to a threaded reply names the reply's real kind (1111), not a hardcoded 9 (non-vacuous)", async () => {
+    const { community, channelId } = await setupWireConformance();
+
+    await community.sendMessage(channelId, "hello world");
+    await settle();
+    const message = newestOfKind(community, channelId, kinds.ChatMessage);
+
+    await community.replyToThread(channelId, message, "replying in the thread");
+    await settle();
+    const reply = newestOfKind(community, channelId, kinds.Comment);
+
+    // CORD_TARGET_KIND_RULE (cord-wire-fixtures.ts): the k tag a reaction
+    // carries names the TARGET's kind — here the reply's 1111, not the
+    // message's 9. A kind-9-target-only test cannot distinguish this from the
+    // pre-fix hardcoded-9 behavior; see the Case B fixture-shape test below
+    // for the divergence.
+    await community.react(channelId, reply, "🔥");
+    await settle();
+    const reaction = newestOfKind(community, channelId, kinds.Reaction);
+
+    const kValues = tagValues(reaction.tags, "k");
+    expect(kValues).toHaveLength(1);
+    expect(kValues[0]).toBe("1111");
+    expect(tagValues(reaction.tags, "e")).toEqual([reply.id]);
+    expect(tagValues(reaction.tags, "p")).toEqual([reply.pubkey]);
+
+    community.dispose();
+  });
+
+  it("WIRE-03: a reaction to a kind-9 message matches examples.md §2.3 verbatim", async () => {
+    const { community, channelId, rootEpoch } = await setupWireConformance();
+    // A fresh community's root epoch is 0, matching the fixture's literal
+    // "epoch" tag value verbatim — no substitution needed for that entry.
+    expect(rootEpoch).toBe(0);
+
+    await community.sendMessage(channelId, "hello world");
+    await settle();
+    const message = newestOfKind(community, channelId, kinds.ChatMessage);
+
+    // Content is fixture-sourced on both sides of the comparison.
+    await community.react(channelId, message, REACTION_KIND7_EXAMPLE.content);
+    await settle();
+    const reaction = newestOfKind(community, channelId, kinds.Reaction);
+
+    // Only the "ms" entry is filtered out (a runtime clock remainder no
+    // fixture can pin) — "channel"/"epoch" stay, bound to the real values.
+    const expected = substituteFixtureTags(REACTION_KIND7_EXAMPLE.tags, {
+      "<channel_id>": channelId,
+      "<message rumor id>": message.id,
+      "<message author>": message.pubkey,
+    }).filter((tag) => tag[0] !== "ms");
+
+    // Order-independent: bindToChannel appends channel/epoch/ms AFTER the
+    // factory's own tags, so a positional whole-array comparison would pin
+    // our own composition order rather than the (non-normative) spec.
+    expect(missingFixtureTags(reaction.tags, expected)).toEqual([]);
+    expect(reaction.kind).toBe(REACTION_KIND7_EXAMPLE.kind);
+    expect(reaction.content).toBe(REACTION_KIND7_EXAMPLE.content);
+
     community.dispose();
   });
 });
