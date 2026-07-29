@@ -52,7 +52,6 @@ import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { checkChatBinding } from "../helpers/chat.js";
-import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
 import { refoundAuthority, vacVerifier, type Standing } from "../helpers/permissions.js";
 import type { AttachmentEncryption, MediaAttachment } from "../helpers/imeta.js";
 import { STOCK_RELAYS, buildInviteBundle, buildInviteLink, newInviteToken } from "../helpers/invite-bundle.js";
@@ -673,15 +672,14 @@ export class ConcordCommunity {
     this.route(info, decoded);
   }
 
-  /** The single funnel: apply the CORD-03 receive binding + voice filter, then
-   *  add the rumor to its plane store. Shared by sync and the live subscription. */
+  /** The single funnel: apply the CORD-03 receive binding, then add the rumor
+   *  to its plane store. Shared by sync and the live subscription. */
   private route(info: PlaneInfo, decoded: DecodedEvent): void {
     if (info.type === "channel") {
       const epoch = info.epoch ?? channelEpochOf(this.keys, info.channelId!);
       // CORD-03 §44: drop any rumor whose channel/epoch binding doesn't match the
-      // key that opened the wrap (anti-replay), and voice presence (not chat).
+      // key that opened the wrap (anti-replay).
       if (!checkChatBinding(decoded.rumor.tags, info.channelId!, epoch)) return;
-      if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;
     }
     // `.add` is synchronous for an in-memory store and a Promise for an async-database-backed
     // one. Folded state derives reactively from the store's `insert$` (which fires once the add

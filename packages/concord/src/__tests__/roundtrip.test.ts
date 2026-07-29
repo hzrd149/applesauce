@@ -1,7 +1,10 @@
 // Full envelope round-trip over the extracted Concord core (CORD-01..05):
 // genesis → wrap/seal → decode → fold → chat → invite → tamper detection.
-// Ported from the app's scripts/selftest.ts (§1-7); §8 stream-auth and §9 voice
-// are covered later / deferred with their phases.
+// Ported from the app's scripts/selftest.ts (§1-7). §8 stream-auth remains
+// deferred with its phase. §9 voice presence delivery (kind 23313 reaching
+// consumers via the receive funnel) is covered by
+// client/__tests__/community.test.ts and client/__tests__/private-channel.test.ts;
+// CORD-07's broker/media/rendezvous transport remains deferred as FUT-02.
 
 import { describe, expect, it } from "vitest";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";

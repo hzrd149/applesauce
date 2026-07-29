@@ -76,7 +76,7 @@ export interface SyncContext {
   self: string;
   relays: string[];
   /** Route one decoded plane event into its plane's RumorStore (the community applies
-   *  the CORD-03 channel binding + voice-presence filters). */
+   *  the CORD-03 channel binding). */
   route: (info: PlaneInfo, decoded: DecodedEvent) => void;
   /** Register the per-relay NIP-42 auth drivers for the currently-held stream keys. */
   ensureAuth: (relays: string[]) => void;

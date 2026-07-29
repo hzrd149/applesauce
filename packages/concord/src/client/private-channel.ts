@@ -21,7 +21,6 @@ import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo } from "../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { checkChatBinding } from "../helpers/chat.js";
-import { VOICE_PRESENCE_KIND } from "../helpers/voice.js";
 import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import type {
   ChannelKey,
@@ -311,9 +310,8 @@ export class ConcordPrivateChannel {
   private route(info: PlaneInfo, decoded: DecodedEvent): void {
     if (info.type === "channel") {
       // CORD-03 §44: drop any rumor whose channel/epoch binding doesn't match the
-      // key that opened it, and voice presence (not chat).
+      // key that opened it.
       if (!checkChatBinding(decoded.rumor.tags, this.channelId, info.epoch ?? this.channelKey.epoch)) return;
-      if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;
       // `.add` is sync for an in-memory store and a Promise for an async-database-backed one;
       // state derives reactively from `insert$`, so fire-and-forget while surfacing errors.
       Promise.resolve(this.opts.store.add(decoded.rumor)).catch((err) => {
