@@ -25,6 +25,7 @@ import { channelGroupKey, channelRekeyGroupKey, controlGroupKey, grantLocator } 
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { hasPerm } from "../../helpers/permissions.js";
 import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
+import { bindToChannel } from "../../operations/channel.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
 import type { ConcordUploader } from "../storage.js";
@@ -32,6 +33,8 @@ import {
   DELETE_KIND5_EXAMPLE,
   REACTION_KIND7_EXAMPLE,
   THREADED_REPLY_KIND1111_EXAMPLE,
+  VOICE_PRESENCE_JOINED_EXAMPLE,
+  VOICE_PRESENCE_LEFT_EXAMPLE,
   missingFixtureTags,
   substituteFixtureTags,
   tagValues,
@@ -1533,6 +1536,93 @@ describe("wire conformance", () => {
     const kValues = tagValues(deleteRumor.tags, "k");
     expect(kValues).toHaveLength(1);
     expect(kValues[0]).toBe("1111");
+
+    community.dispose();
+  });
+
+  // ---- WIRE-02: voice presence (kind 23313) reaches the community receive path ----
+
+  it("WIRE-02: voice presence (kind 23313) is readable from the channel store and matches examples.md §2.8 (non-vacuous)", async () => {
+    const { community, channelId } = await setupWireConformance();
+
+    // The non-binding entries of each fixture — channel/epoch/ms are excluded
+    // because bindToChannel (inside sendEvent) stamps those itself.
+    const joinedTags = VOICE_PRESENCE_JOINED_EXAMPLE.tags
+      .filter((t) => !["channel", "epoch", "ms"].includes(t[0]!))
+      .map((t) => [...t]);
+    const leftTags = VOICE_PRESENCE_LEFT_EXAMPLE.tags
+      .filter((t) => !["channel", "epoch", "ms"].includes(t[0]!))
+      .map((t) => [...t]);
+
+    await community.sendEvent(
+      channelId,
+      { kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind, content: VOICE_PRESENCE_JOINED_EXAMPLE.content, tags: joinedTags, created_at: 0 },
+      {},
+    );
+    // CORD-07 §4's joined and left forms carry different tag counts (left has
+    // no identity/broker entries) — exercised alongside joined.
+    await community.sendEvent(
+      channelId,
+      { kind: VOICE_PRESENCE_LEFT_EXAMPLE.kind, content: VOICE_PRESENCE_LEFT_EXAMPLE.content, tags: leftTags, created_at: 0 },
+      {},
+    );
+    await settle();
+
+    const presence = community.channelStore(channelId).getTimeline([{ kinds: [23313] }]);
+    expect(presence).toHaveLength(2);
+    expect(presence.map((r) => r.content).sort()).toEqual(["joined", "left"]);
+
+    // Transit-integrity control: the stored "joined" rumor's tags still match
+    // the fixture. Our own template carried the fixture's identity/broker
+    // entries through unmodified (including the literal placeholder text), so
+    // the SFU-identity placeholder binds to itself here — only channel_id is a
+    // genuine runtime value.
+    const joined = rumorWithContent(community, channelId, 23313, VOICE_PRESENCE_JOINED_EXAMPLE.content);
+    const expected = substituteFixtureTags(VOICE_PRESENCE_JOINED_EXAMPLE.tags, {
+      "<channel_id>": channelId,
+      "<SFU identity>": "<SFU identity>",
+    }).filter((tag) => tag[0] !== "ms");
+    expect(missingFixtureTags(joined.tags, expected)).toEqual([]);
+
+    community.dispose();
+  });
+
+  it("WIRE-02: a voice-presence rumor bound to a DIFFERENT channel is dropped by the anti-replay binding guard (non-vacuous)", async () => {
+    const { community, channelId, rootEpoch } = await setupWireConformance();
+
+    // A legitimate presence rumor on the target channel — the control this
+    // case proves the binding guard leaves untouched.
+    const joinedTags = VOICE_PRESENCE_JOINED_EXAMPLE.tags
+      .filter((t) => !["channel", "epoch", "ms"].includes(t[0]!))
+      .map((t) => [...t]);
+    await community.sendEvent(
+      channelId,
+      { kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind, content: VOICE_PRESENCE_JOINED_EXAMPLE.content, tags: joinedTags, created_at: 0 },
+      {},
+    );
+    await settle();
+
+    // A second, genuinely distinct channel on the same community.
+    const otherChannelId = await community.createChannel("voice-other");
+    await settle();
+
+    // Bound to the OTHER channel, then published (via the raw publishToPlane
+    // path, which applies no binding of its own) onto the FIRST channel's
+    // plane — the wrap lands on channelId while the rumor's own tags name
+    // otherChannelId, which is exactly the cross-channel-replay shape the
+    // CORD-03 checkChatBinding guard exists to catch.
+    const mismatchedRumor = await bindToChannel(
+      otherChannelId,
+      rootEpoch,
+    )({ kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind, content: VOICE_PRESENCE_JOINED_EXAMPLE.content, tags: [], created_at: 0 });
+    await community.publishToPlane({ plane: "channel", channelId }, mismatchedRumor, {});
+    await settle();
+
+    // Only the legitimate rumor survived; the mismatched one was dropped.
+    const presence = community.channelStore(channelId).getTimeline([{ kinds: [23313] }]);
+    expect(presence).toHaveLength(1);
+    expect(presence[0]!.content).toBe(VOICE_PRESENCE_JOINED_EXAMPLE.content);
+    expect(tagValues(presence[0]!.tags, "channel")).toEqual([channelId]);
 
     community.dispose();
   });
