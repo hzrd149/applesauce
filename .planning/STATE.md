@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
 current_phase: 11
-current_phase_name: messaging-wire-conformance
+current_phase_name: Messaging Wire Conformance
 status: ready
-stopped_at: Phase 12.3 COMPLETE — 14/14 plans, verification passed 17/17 D-01…D-17, UAT closed. Two accepted overrides, both recorded in 12.3-VERIFICATION.md's Acknowledged Gaps: WR-08 (live two-instance Refounding trigger never executed — verification debt) and CR5-01 (guardrail-only, zero live defect, backlogged as 999.9). Next scheduled work: Phase 11 Messaging Wire Conformance. NOTE: phase.complete auto-advanced to 999.2, a BACKLOG placeholder — corrected to 11.
-last_updated: "2026-07-28T08:14:41.648Z"
+stopped_at: Phase 11 context gathered
+last_updated: "2026-07-29T08:47:28.140Z"
 last_activity: 2026-07-28
-last_activity_desc: Phase 12.3 complete, transitioned to Phase 999.2
+last_activity_desc: Phase 12.3 complete; next scheduled phase is 11 (999.2 is backlog, not scheduled)
 progress:
   total_phases: 12
   completed_phases: 10
@@ -262,9 +262,9 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-27T17:34:30.601Z
-Stopped at: Completed 12.3-14-PLAN.md — closed CR4-01 as a class, WR4-01, WR4-02. All 14 plans of phase 12.3 now executed.
-Resume file: None
+Last session: 2026-07-29T08:47:28.128Z
+Stopped at: Phase 11 context gathered
+Resume file: .planning/phases/11-messaging-wire-conformance/11-CONTEXT.md
 
 ## Operator Next Steps
 
