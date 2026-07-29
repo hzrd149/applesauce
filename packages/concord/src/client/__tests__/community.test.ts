@@ -36,6 +36,7 @@ import {
   substituteFixtureTags,
   tagValues,
 } from "../../__tests__/cord-wire-fixtures.js";
+import { decodeWrap } from "../../helpers/gift-wrap.js";
 
 // The control fold + sync are debounced/async; let them run before asserting.
 const settle = () => new Promise((r) => setTimeout(r, 200));
@@ -1249,6 +1250,14 @@ describe("wire conformance", () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const pool = fakePool();
+    // Captures every published wrap (kind-5 delete rumors are intercepted by
+    // EventStore.add's delete-tracking branch and never land in a queryable
+    // timeline, so WIRE-05's cases decode the wrap directly instead).
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return okAll(relays);
+    };
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
 
     const community = new ConcordCommunity({
@@ -1271,7 +1280,7 @@ describe("wire conformance", () => {
 
     const channelId = community.state$.value.channels.find((c) => c.name === "general")!.channel_id;
     const rootEpoch = community.material.root_epoch;
-    return { community, channelId, pubkey, rootEpoch };
+    return { community, channelId, pubkey, rootEpoch, published };
   }
 
   // The newest rumor of `kind` in `channelId`'s store. `getTimeline` returns a
@@ -1432,6 +1441,98 @@ describe("wire conformance", () => {
     for (const name of ["E", "K", "P", "e", "k", "p"]) {
       expect(reply2.tags.filter((t) => t[0] === name), `${name} tag count`).toHaveLength(1);
     }
+
+    community.dispose();
+  });
+
+  // ---- WIRE-05: delete "k" tag against a genuine sig-less Rumor ----------
+
+  // kind-5 delete rumors are intercepted by EventStore.add's delete-tracking
+  // branch (they are recorded in the store's internal DeleteManager, not
+  // added to the queryable timeline) — decode the published wrap directly.
+  // The general channel is public, so its plane key is deterministic from
+  // community_root/root_epoch (CORD-03 §1), independent of anything this
+  // test's target rumor derives from.
+  function decodedChannelDelete(
+    community: ConcordCommunity,
+    channelId: string,
+    published: readonly NostrEvent[],
+  ): Rumor {
+    const channelKey = channelGroupKey(
+      hexToBytes(community.material.community_root),
+      hexToBytes(channelId),
+      community.material.root_epoch,
+    );
+    const wrap = published.find((e) => e.pubkey === channelKey.pk);
+    if (!wrap) throw new Error("no channel-plane wrap found in published events");
+    const decoded = decodeWrap(wrap, channelKey.convKey);
+    if (!decoded) throw new Error("channel-plane wrap failed to decode");
+    return decoded.rumor;
+  }
+
+  it("WIRE-05: delete of a genuine sig-less Rumor matches examples.md §2.4, with a real 64-hex e tag", async () => {
+    const { community, channelId, published } = await setupWireConformance();
+
+    await community.sendMessage(channelId, "hello world");
+    await settle();
+    const message = newestOfKind(community, channelId, kinds.ChatMessage);
+
+    // Precondition WIRE-05 rests on (RESEARCH.md Pitfall 1): the target read
+    // back from the store is a genuine Rumor with no `sig`. A target carrying
+    // a `sig` would satisfy `isEvent` and route through `setDeleteEvents`'s
+    // own `ensureKTag` branch, masking the very defect WIRE-05 closes.
+    expect(typeof message.id).toBe("string");
+    expect(typeof message.pubkey).toBe("string");
+    expect(message.kind).toBe(kinds.ChatMessage);
+    expect(Array.isArray(message.tags)).toBe(true);
+    expect("sig" in message).toBe(false);
+
+    published.length = 0;
+    await community.deleteMessage(channelId, message);
+    await settle();
+    const deleteRumor = decodedChannelDelete(community, channelId, published);
+
+    const expected = substituteFixtureTags(DELETE_KIND5_EXAMPLE.tags, {
+      "<channel_id>": channelId,
+      "<own message rumor id>": message.id,
+    }).filter((tag) => tag[0] !== "ms");
+
+    expect(missingFixtureTags(deleteRumor.tags, expected)).toEqual([]);
+    expect(deleteRumor.kind).toBe(DELETE_KIND5_EXAMPLE.kind);
+    expect(deleteRumor.content).toBe(DELETE_KIND5_EXAMPLE.content);
+
+    // T-11-11 catch: an "e" tag built from a stringified whole-rumor object
+    // (rather than `target.id`) would not be a bare 64-hex id.
+    const eValues = tagValues(deleteRumor.tags, "e");
+    expect(eValues).toHaveLength(1);
+    expect(eValues[0]).toBe(message.id);
+    expect(eValues[0]).toHaveLength(64);
+
+    community.dispose();
+  });
+
+  it("WIRE-05: delete of a kind-1111 reply names the reply's real kind, not the message's (CORD_TARGET_KIND_RULE)", async () => {
+    const { community, channelId, published } = await setupWireConformance();
+
+    await community.sendMessage(channelId, "hello world");
+    await settle();
+    const message = newestOfKind(community, channelId, kinds.ChatMessage);
+
+    await community.replyToThread(channelId, message, "a reply to delete");
+    await settle();
+    const reply = newestOfKind(community, channelId, kinds.Comment);
+    expect("sig" in reply).toBe(false);
+
+    // CORD_TARGET_KIND_RULE (cord-wire-fixtures.ts): the k tag a delete
+    // carries names the target's real kind — 1111 for a reply, not 9.
+    published.length = 0;
+    await community.deleteMessage(channelId, reply);
+    await settle();
+    const deleteRumor = decodedChannelDelete(community, channelId, published);
+
+    const kValues = tagValues(deleteRumor.tags, "k");
+    expect(kValues).toHaveLength(1);
+    expect(kValues[0]).toBe("1111");
 
     community.dispose();
   });
