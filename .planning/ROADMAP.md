@@ -544,3 +544,20 @@ Plans:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.10: applesauce-core expiration timer overflow (BACKLOG)
+
+**Goal:** [Captured for future planning] `ExpirationManager` schedules a native `setTimeout()` using the full delta to a NIP-40 `expiration` tag, so any event expiring more than ~24.8 days out exceeds Node's 32-bit timer limit — Node clamps the delay to `1ms` and emits `TimeoutOverflowWarning`, which then fires repeatedly. Reported against `applesauce-core@6.2.0` with a one-liner reproduction (add a single event with an expiration 365 days out; no relay, websocket, or reconnect code involved). Explicitly **not** caused by `reconnect: Infinity` in `applesauce-relay` — that setting is documented and should stay.
+
+**Verified against live source 2026-07-29** (the report's claims hold): `packages/core/src/event-store/expiration-manager.ts` has two uncapped `setTimeout(..., timeout * 1000 + 10)` sites, at **line 54** (`track()`) and **line 124** (`emitNotifications()`). The proposed fix — clamp each delay to `MAX_TIMER_DELAY = 2_147_483_647` via a shared private `scheduleNextCheck()`, letting a capped early fire re-derive the next target — is genuinely semantics-preserving: `emitNotifications()` (lines 98-128) recomputes `nextExpiration` as the min over all remaining entries on every fire and expires nothing when nothing is due, so an early wake is a no-op that simply reschedules. Keeping `nextCheck` set to the true target expiration (not the capped wake time) also preserves the `track()` early-exit guard at line 46. A regression test asserting the capped delay belongs in the existing `packages/core/src/event-store/__tests__/expiration-manager.test.ts`.
+
+**Secondary observation for whoever promotes this** (pre-existing, not introduced by the fix, same few lines): when the last tracked expiration is `forget()`-ten before its timer fires, `emitNotifications()` skips the `nextExpiration !== Infinity` branch entirely and leaves `this.timer`/`this.nextCheck` stale from the already-fired timer — worth clearing in the same pass.
+
+Full report with reproduction, observed warnings, patch shape, and reporter's validation run: `expiration-report.md` in this phase directory. Note the reporter's `pnpm --filter applesauce-core test -- <path>` ran the whole core suite rather than the single file (586 tests, all green) — the filter syntax is worth sorting out at promotion.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
