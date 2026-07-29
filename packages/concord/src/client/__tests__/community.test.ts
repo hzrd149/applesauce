@@ -351,11 +351,25 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(community.material.channels.some((c) => c.id === channelId)).toBe(false);
     expect(community.state$.value.channels.some((c) => c.channel_id === channelId)).toBe(true);
 
-    const target = { id: "0".repeat(64), author: pubkey };
+    // A genuine, sig-less Rumor: react/replyToThread/deleteMessage now all take the
+    // full target rumor (WIRE-03/04/05), so a stale `{ id, author }` fixture here
+    // would silently stop exercising the shape those methods require — neither
+    // `tsc` (this file is excluded from typechecking) nor this test's own runtime
+    // path (the guard throws before the factory runs) would catch that regression.
+    // Non-9 kind + non-empty tags so the fixture is also a genuine `"tags" in parent`
+    // discriminant for `setParent`.
+    const target: Rumor = {
+      id: "0".repeat(64),
+      pubkey,
+      kind: 1111,
+      content: "",
+      tags: [["e", "1".repeat(64)]],
+      created_at: Math.floor(Date.now() / 1000),
+    };
     const invocations: Array<[string, () => Promise<void>]> = [
       ["react", () => community.react(channelId, target, "+")],
       ["editMessage", () => community.editMessage(channelId, target.id, "x")],
-      ["deleteMessage", () => community.deleteMessage(channelId, target.id)],
+      ["deleteMessage", () => community.deleteMessage(channelId, target)],
       ["sendThread", () => community.sendThread(channelId, "t", "b")],
       ["replyToThread", () => community.replyToThread(channelId, target, "b")],
     ];
