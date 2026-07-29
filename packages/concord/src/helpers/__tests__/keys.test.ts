@@ -3,7 +3,7 @@
 // (a kept member adopts the new root; an excluded member detects removal).
 
 import { describe, expect, it } from "vitest";
-import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner, type ISigner } from "applesauce-signers";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
@@ -78,6 +78,63 @@ describe("ConcordKeys", () => {
 
     // A wrong plane can't open it.
     expect(decodeWrap(wrap, planeKeyFor(keys, { plane: "guestbook" }).convKey)).toBeNull();
+  });
+
+  it("wrapForTarget ephemeralSk round-trips to the p tag and never leaks (WIRE-11)", async () => {
+    const { owner, material } = await genesis();
+    const keys = deriveConcordKeys(material, []);
+    const sk = generateSecretKey();
+    const expectedPk = getPublicKey(sk);
+
+    // CORD-01 §Deletions: "They can also delete their own giftwraps by `p` tag
+    // (on NIP-59-supporting relays) if the client saved the ephemeral key."
+    const { wrap } = await wrapForTarget(
+      keys,
+      { plane: "control" },
+      owner,
+      { kind: 3302, content: "hi", tags: [] },
+      { plaintext: true, ephemeralSk: sk },
+    );
+    const pTag = wrap.tags.find((t) => t[0] === "p")?.[1];
+    expect(pTag).toBe(expectedPk);
+
+    // Non-leakage (T-11-07): the SECRET key must never appear anywhere in the
+    // serialized wrap — tags, content, or any other field.
+    const secretHex = bytesToHex(sk);
+    expect(JSON.stringify(wrap)).not.toContain(secretHex);
+  });
+
+  it("wrapForTarget ephemeralSk: default path stays fresh per call, supplied key is deterministic", async () => {
+    const { owner, material } = await genesis();
+    const keys = deriveConcordKeys(material, []);
+    const rumor = { kind: 3302, content: "hi", tags: [] };
+
+    // Non-vacuity control: two default-path (no key supplied) wraps carry
+    // DIFFERENT decoy p tags — the default privacy property is unchanged.
+    const { wrap: wrapA } = await wrapForTarget(keys, { plane: "control" }, owner, rumor, { plaintext: true });
+    const { wrap: wrapB } = await wrapForTarget(keys, { plane: "control" }, owner, rumor, { plaintext: true });
+    const pTagA = wrapA.tags.find((t) => t[0] === "p")?.[1];
+    const pTagB = wrapB.tags.find((t) => t[0] === "p")?.[1];
+    expect(pTagA).not.toBe(pTagB);
+
+    const sk = generateSecretKey();
+    const expectedPk = getPublicKey(sk);
+    expect(pTagA).not.toBe(expectedPk);
+    expect(pTagB).not.toBe(expectedPk);
+
+    // Determinism: the same supplied key produces the same decoy p tag across calls.
+    const { wrap: wrapC } = await wrapForTarget(keys, { plane: "control" }, owner, rumor, {
+      plaintext: true,
+      ephemeralSk: sk,
+    });
+    const { wrap: wrapD } = await wrapForTarget(keys, { plane: "control" }, owner, rumor, {
+      plaintext: true,
+      ephemeralSk: sk,
+    });
+    const pTagC = wrapC.tags.find((t) => t[0] === "p")?.[1];
+    const pTagD = wrapD.tags.find((t) => t[0] === "p")?.[1];
+    expect(pTagC).toBe(expectedPk);
+    expect(pTagD).toBe(expectedPk);
   });
 
   it("addChannelKey appends a private-channel key immutably", async () => {
