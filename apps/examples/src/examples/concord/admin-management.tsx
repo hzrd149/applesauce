@@ -685,13 +685,12 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
   const canManageChannels = use$(() => community.can$(PERM.MANAGE_CHANNELS), [community]) ?? false;
   const [name, setName] = useState("");
   const [isPrivate, setPrivate] = useState(false);
-  const [voice, setVoice] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function createChannel() {
     setBusy(true);
     try {
-      await community.admin.createChannel(name.trim() || "new-channel", { private: isPrivate, voice });
+      await community.admin.createChannel(name.trim() || "new-channel", { private: isPrivate });
       setName("");
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to create channel");
@@ -730,15 +729,6 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
           />{" "}
           Private
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="checkbox checkbox-sm"
-            checked={voice}
-            onChange={(e) => setVoice(e.target.checked)}
-          />{" "}
-          Voice
-        </label>
         <button className="btn btn-primary" disabled={!canManageChannels || busy} onClick={createChannel}>
           Create channel
         </button>
@@ -756,7 +746,6 @@ function ChannelsTab({ community, onError }: { community: ConcordCommunity; onEr
                 <div className="font-medium">#{channel.name}</div>
                 <div className="text-xs opacity-60">
                   {channel.private ? "private" : "public"}
-                  {channel.voice ? " · voice" : ""}
                   {channel.deleted ? " · deleted" : ""}
                 </div>
               </div>

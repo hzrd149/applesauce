@@ -10,9 +10,6 @@ const channelId = await community.admin.createChannel("general");
 
 // A private text channel
 const privateId = await community.admin.createChannel("mods-only", { private: true });
-
-// A voice channel
-const voiceId = await community.admin.createChannel("lounge", { voice: true });
 ```
 
 Creating a private channel mints and persists its key locally. Requires `MANAGE_CHANNELS` — see [Moderation](/concord/moderation).
