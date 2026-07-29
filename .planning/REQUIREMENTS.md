@@ -158,10 +158,10 @@ Deferred — acknowledged, not in this roadmap.
 | TIME-02 | Phase 10 | Complete |
 | TIME-03 | Phase 10 | Complete |
 | WIRE-01 | Phase 11 | Pending — breaking |
-| WIRE-02 | Phase 11 | Pending |
-| WIRE-03 | Phase 11 | Pending |
-| WIRE-04 | Phase 11 | Pending |
-| WIRE-05 | Phase 11 | Pending |
+| WIRE-02 | Phase 11 | In Progress — fixtures vendored (11-01), receive-path landing in 11-06 |
+| WIRE-03 | Phase 11 | In Progress — fixtures vendored (11-01), behavior landing in 11-04/11-05 |
+| WIRE-04 | Phase 11 | In Progress — fixtures vendored (11-01), behavior landing in 11-04/11-05 |
+| WIRE-05 | Phase 11 | In Progress — fixtures vendored (11-01), behavior landing in 11-04/11-05 |
 | WIRE-11 | Phase 11 | Pending |
 | WIRE-06 | Phase 12 | Pending |
 | WIRE-07 | Phase 12 | Pending |
