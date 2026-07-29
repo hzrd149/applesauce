@@ -1357,6 +1357,84 @@ describe("wire conformance", () => {
 
     community.dispose();
   });
+
+  // ---- WIRE-04: threaded reply root/parent tags --------------------------
+
+  it("WIRE-04: a depth-1 reply to a kind-9 message matches examples.md §2.2 verbatim", async () => {
+    const { community, channelId } = await setupWireConformance();
+
+    await community.sendMessage(channelId, "hello world");
+    await settle();
+    const message = newestOfKind(community, channelId, kinds.ChatMessage);
+
+    await community.replyToThread(channelId, message, THREADED_REPLY_KIND1111_EXAMPLE.content);
+    await settle();
+    const reply1 = newestOfKind(community, channelId, kinds.Comment);
+
+    // At depth 1 the immediate parent IS the root, so BOTH placeholder pairs
+    // bind to the same message id/author. This also proves WIRE-04's "a reply
+    // off a kind-9 message is expressible" half: before the fix, the hand-built
+    // pointer hardcoded the forum-thread kind, so the uppercase K could never
+    // equal the fixture's 9.
+    const expected = substituteFixtureTags(THREADED_REPLY_KIND1111_EXAMPLE.tags, {
+      "<channel_id>": channelId,
+      "<thread root rumor id>": message.id,
+      "<root author>": message.pubkey,
+      "<immediate parent rumor id>": message.id,
+      "<parent author>": message.pubkey,
+    }).filter((tag) => tag[0] !== "ms");
+
+    expect(missingFixtureTags(reply1.tags, expected)).toEqual([]);
+    expect(reply1.kind).toBe(THREADED_REPLY_KIND1111_EXAMPLE.kind);
+    expect(reply1.content).toBe(THREADED_REPLY_KIND1111_EXAMPLE.content);
+
+    community.dispose();
+  });
+
+  it("WIRE-04: a depth-2 reply inherits the ROOT from the message, not from its immediate parent (D-03, non-vacuous)", async () => {
+    const { community, channelId } = await setupWireConformance();
+
+    await community.sendMessage(channelId, "hello world");
+    await settle();
+    const message = newestOfKind(community, channelId, kinds.ChatMessage);
+
+    await community.replyToThread(channelId, message, "first reply");
+    await settle();
+    const reply1 = rumorWithContent(community, channelId, kinds.Comment, "first reply");
+
+    await community.replyToThread(channelId, reply1, "second reply");
+    await settle();
+    const reply2 = rumorWithContent(community, channelId, kinds.Comment, "second reply");
+
+    // CORD_REPLY_ROOT_INHERITANCE_RULE (cord-wire-fixtures.ts): "When the
+    // parent is itself a reply, its uppercase root tags are inherited
+    // verbatim, so the root stays stable at any nesting depth." reply1's own
+    // root tags were themselves asserted against the §2.2 fixture above, so
+    // this is not a self-assertion — comparing full tag ARRAYS (not just
+    // index-1 values) so the four-element E tag's empty relay slot is included.
+    const tagArray = (rumor: Rumor, name: string) => rumor.tags.find((t) => t[0] === name);
+    expect(tagArray(reply2, "E")).toEqual(tagArray(reply1, "E"));
+    expect(tagArray(reply2, "K")).toEqual(tagArray(reply1, "K"));
+    expect(tagArray(reply2, "P")).toEqual(tagArray(reply1, "P"));
+
+    // The root did NOT move to reply1 — both the positive identity and the
+    // negative inequality. The negative is the assertion that fails under the
+    // pre-fix silent re-rooting.
+    expect(tagValues(reply2.tags, "E")).toEqual([message.id]);
+    expect(tagValues(reply2.tags, "E")[0]).not.toBe(reply1.id);
+    expect(tagValues(reply2.tags, "K")).toEqual(["9"]); // the ROOT's kind, not the parent's
+
+    // Lowercase tags name the IMMEDIATE parent (reply1), never the root.
+    expect(tagValues(reply2.tags, "e")).toEqual([reply1.id]);
+    expect(tagValues(reply2.tags, "p")).toEqual([reply1.pubkey]);
+    expect(tagValues(reply2.tags, "k")).toEqual(["1111"]);
+
+    for (const name of ["E", "K", "P", "e", "k", "p"]) {
+      expect(reply2.tags.filter((t) => t[0] === name), `${name} tag count`).toHaveLength(1);
+    }
+
+    community.dispose();
+  });
 });
 
 // A rumor authored by `pubkey`, so owner-signed control editions can be fed into a
