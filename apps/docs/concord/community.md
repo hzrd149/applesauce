@@ -91,10 +91,13 @@ await community.sendMessage(channelId, text, undefined, files, emojis, {
 
 ### Reactions, edits, deletes
 
+`react` and `deleteMessage` take the full message Rumor you read from the channel store — they
+need its `kind` and `pubkey` to emit correct NIP-25 / NIP-09 tags. `editMessage` takes just the id.
+
 ```ts
-await community.react(channelId, { id, author }, "🔥");
-await community.editMessage(channelId, messageId, "fixed typo");
-await community.deleteMessage(channelId, messageId);
+await community.react(channelId, message, "🔥");
+await community.editMessage(channelId, message.id, "fixed typo");
+await community.deleteMessage(channelId, message);
 ```
 
 ### Threads
@@ -103,8 +106,10 @@ Concord speaks [NIP-7D](https://github.com/nostr-protocol/nips/blob/master/7D.md
 
 ```ts
 await community.sendThread(channelId, "Feature ideas", "Drop your suggestions here");
-await community.replyToThread(channelId, { id: threadId, author }, "How about dark mode?");
+await community.replyToThread(channelId, thread, "How about dark mode?");
 ```
+
+`replyToThread` also takes the parent Rumor — a thread from the store, or another reply to nest deeper.
 
 ### Anything else
 
