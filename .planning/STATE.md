@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 11
 current_phase_name: messaging-wire-conformance
 status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-07-29T10:23:27.902Z"
+stopped_at: Completed 11-03-PLAN.md
+last_updated: "2026-07-29T10:33:46.819Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 76
-  completed_plans: 72
+  completed_plans: 73
   percent: 83
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 11 (messaging-wire-conformance) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
   Planned 2026-07-29: 6 plans / 14 tasks / 4 waves, plan-checker VERIFICATION PASSED on
   iteration 1. Waves are imposed by file ownership, not logic — three plans touch
@@ -122,6 +122,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12.3 P14 | 35min | 4 tasks | 4 files |
 | Phase 11 P01 | 4min | 2 tasks | 2 files |
 | Phase 11 P02 | 5min | 2 tasks | 5 files |
+| Phase 11 P03 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -243,6 +244,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 11]: 11-02: Hard-deleted ChannelMetadata.voice/CreateChannelOptions.voice from all four in-package sites plus both out-of-package consumers (example app, docs), per D-06 — no tombstone comment, no routing into custom (WIRE-10's Phase-12 scope)
 - [Phase 11]: 11-02: No changeset created, per D-09 (concord unreleased)
 - [Phase 11]: 11-02: Left a pre-existing, unrelated applesauce-examples build failure (9 files, StoredEvent/NostrEvent sig mismatch) undisturbed and logged to deferred-items.md, per the Scope Boundary rule — confirmed admin-management.tsx contributes zero build errors
+- [Phase ?]: 11-03: GiftWrapOptions/rewrapSeal deliberately untouched (D-07) — ephemeralSk only reaches the app-level entry point sendEvent, not giftWrap's public signature or compaction re-wraps
+- [Phase ?]: 11-03: getPublicKey from nostr-tools already returns a hex string — test's expected-value computation uses getPublicKey(sk) directly, no bytesToHex wrapping (wrapping throws a type error at runtime)
 
 ### Pending Todos
 
@@ -284,8 +287,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-29T10:23:27.892Z
-Stopped at: Completed 11-02-PLAN.md
+Last session: 2026-07-29T10:33:46.810Z
+Stopped at: Completed 11-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
