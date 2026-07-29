@@ -36,7 +36,19 @@ import {
 export const toRumor = GiftWrap.toRumor;
 
 export type SealOptions = { plaintext?: boolean };
-export type WrapOptions = { ephemeral?: boolean; created_at?: number };
+export type WrapOptions = {
+  ephemeral?: boolean;
+  created_at?: number;
+  /**
+   * Supply the wrap's decoy `p` tag secret key instead of generating a fresh one.
+   * Letting a caller retain this value lets it predict the wrap's decoy `p` tag
+   * so it can later delete its own giftwrap by that tag (CORD-01 §Deletions,
+   * NIP-09, on NIP-59-supporting relays). Obtain the value from
+   * `generateSecretKey()`. When omitted, a fresh key is generated per call, as
+   * before.
+   */
+  ephemeralSk?: Uint8Array;
+};
 export type GiftWrapOptions = SealOptions & Pick<WrapOptions, "ephemeral">;
 
 /**
@@ -64,7 +76,8 @@ export function sealRumor(
 
 /** Build a wrap synchronously — shared by the {@link wrapSeal} op and {@link rewrapSeal}. */
 function buildWrap(seal: NostrEvent, streamSk: Uint8Array, convKey: Uint8Array, opts: WrapOptions): NostrEvent {
-  const decoyPubkey = getPublicKey(generateSecretKey());
+  const decoySk = opts.ephemeralSk ?? generateSecretKey();
+  const decoyPubkey = getPublicKey(decoySk);
   return finalizeEvent(
     {
       kind: opts.ephemeral ? EPHEMERAL_GIFT_WRAP_KIND : GIFT_WRAP_KIND,

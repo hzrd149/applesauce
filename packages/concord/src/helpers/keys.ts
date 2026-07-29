@@ -234,7 +234,7 @@ export async function wrapForTarget(
   target: WrapTarget,
   author: ISigner,
   rumor: RumorTemplate,
-  opts: { plaintext?: boolean; ephemeral?: boolean } = {},
+  opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
 ): Promise<{ wrap: NostrEvent; rumorId: string }> {
   const key = planeKeyFor(keys, target);
   // Drop any build-time created_at and re-stamp at wrap time (CORD-02). Build the
@@ -242,7 +242,7 @@ export async function wrapForTarget(
   const { created_at: _publishTime, ...template } = rumor;
   const stamped = await toRumor(author)({ ...template, created_at: unixNow() });
   const seal = await sealRumor(key.convKey, author, { plaintext: opts.plaintext })(stamped);
-  const wrap = await wrapSeal(key.sk, key.convKey, { ephemeral: opts.ephemeral })(seal);
+  const wrap = await wrapSeal(key.sk, key.convKey, { ephemeral: opts.ephemeral, ephemeralSk: opts.ephemeralSk })(seal);
   return { wrap, rumorId: stamped.id };
 }
 

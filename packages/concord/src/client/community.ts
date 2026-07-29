@@ -1031,7 +1031,7 @@ export class ConcordCommunity {
   async sendEvent(
     channelId: string,
     source: PromiseLike<EventTemplate> | EventTemplate,
-    opts: { plaintext?: boolean; ephemeral?: boolean } = {},
+    opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
   ): Promise<string> {
     this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
@@ -1574,7 +1574,7 @@ export class ConcordCommunity {
   async publishToPlane(
     target: WrapTarget,
     rumor: { kind: number; content: string; tags: string[][]; created_at?: number },
-    opts: { plaintext?: boolean; ephemeral?: boolean } = {},
+    opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
   ): Promise<string> {
     const { wrap, rumorId } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
     // Optimistic local echo first, so the UI updates before relays ack.
