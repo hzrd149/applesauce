@@ -319,12 +319,22 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 11-01-PLAN.md — Vendored CORD wire fixtures + non-vacuity helpers (D-10; wave 1)
 - [ ] 11-02-PLAN.md — `voice` flag hard removal across package, example app, and docs (WIRE-01/D-06; wave 1)
 - [ ] 11-03-PLAN.md — `ephemeralSk` threaded through `WrapOptions` → `wrapForTarget` → `publishToPlane` → `sendEvent` (WIRE-11/D-07/D-08; wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 11-04-PLAN.md — `react`/`replyToThread`/`deleteMessage` take the full target `Rumor`; explicit `ensureKTag` on the delete path (WIRE-03/04/05, D-01/D-02/D-03; wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 11-05-PLAN.md — Fixture-anchored conformance tests: non-9 reaction, depth-2 reply, sig-less delete target (TEST-01; wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 11-06-PLAN.md — Kind 23313 reaches both receive funnels; four stale comments corrected (WIRE-02/D-04/D-05; wave 4)
 
 ### Phase 12: Document & Caps Conformance

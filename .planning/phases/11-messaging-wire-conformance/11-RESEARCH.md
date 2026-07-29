@@ -653,9 +653,10 @@ recommendation under Claude's Discretion, not as a factual claim.
 **If this table is empty:** All claims in this research were verified or cited — no
 user confirmation needed.
 
-## Open Questions
+## Open Questions (both RESOLVED at planning — see resolution notes)
 
-1. **Is fixing `apps/examples`/`apps/docs`'s `voice` usages in-scope for this phase's
+1. **(RESOLVED — recommendation adopted; Plan 11-02 includes the sweep.)** **Is fixing
+   `apps/examples`/`apps/docs`'s `voice` usages in-scope for this phase's
    plans, or a follow-up?**
    - What we know: they will fail `tsc -b`/`vite build` once the field is removed;
      they are NOT caught by `pnpm test`'s filtered build.
@@ -668,7 +669,8 @@ user confirmation needed.
      broken defeats D-09's own "removing the field is itself the structural guard"
      reasoning (the guard is meaningless if the workspace no longer builds clean).
 
-2. **`Rumor` vs. a narrower structural type for D-01's three signatures.**
+2. **(RESOLVED — recommendation adopted; Plan 11-04 uses `Rumor` as-is.)** **`Rumor`
+   vs. a narrower structural type for D-01's three signatures.**
    - What we know: `Rumor = UnsignedEvent & { id: string }` is already the type
      `channelStore(...).timeline(...)` returns, already imported in `types.ts`
      (re-exported from `applesauce-common/helpers`), and already accepted by

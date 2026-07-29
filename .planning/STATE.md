@@ -5,10 +5,10 @@ milestone_name: first-fixes
 current_phase: 11
 current_phase_name: Messaging Wire Conformance
 status: ready
-stopped_at: Phase 11 context gathered
+stopped_at: Phase 11 planned — 6 plans in 4 waves, plan-checker passed
 last_updated: "2026-07-29T08:47:28.140Z"
-last_activity: 2026-07-28
-last_activity_desc: Phase 12.3 complete; next scheduled phase is 11 (999.2 is backlog, not scheduled)
+last_activity: 2026-07-29
+last_activity_desc: Phase 11 planned — 6 plans, 14 tasks, 4 waves; verification passed on iteration 1
 progress:
   total_phases: 12
   completed_phases: 10
@@ -29,9 +29,23 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 11 — Messaging Wire Conformance
-Plan: Not started
-Status: Ready to discuss/plan
-  Phase 12.3 closed 2026-07-28 after 14 plans and five review rounds. Final state: the
+Plan: 0/6 complete
+Status: Ready to execute
+  Planned 2026-07-29: 6 plans / 14 tasks / 4 waves, plan-checker VERIFICATION PASSED on
+  iteration 1. Waves are imposed by file ownership, not logic — three plans touch
+  `client/community.ts`. Three corrections landed in the plans that CONTEXT.md did not
+  have: (1) D-02's conclusion holds (zero upstream factory edits) but its mechanism was
+  wrong — a Concord `Rumor` has no `sig`, so `isEvent()` is false and
+  `DeleteFactory.fromEvents([rumor])` would silently skip `k`; the fix passes `target.id`
+  and applies `ensureKTag` explicitly. (2) WIRE-01's sweep extends outside `packages/` to
+  `apps/examples` + `apps/docs`, and root `pnpm test` never builds `apps/*`, so criterion 1
+  is gated on an unfiltered `pnpm build`. (3) `packages/concord/tsconfig.json` excludes test
+  files and no `typecheck` script exists workspace-wide — test-file type staleness is
+  invisible to both build and tests, so plan 11-04's target reshape is gated on source
+  assertions rather than a compiler error.
+  Next: /gsd-execute-phase 11
+
+  Prior context — Phase 12.3 closed 2026-07-28 after 14 plans and five review rounds. Final state: the
   transport-only extra-relays contract (D-01…D-16) is implemented and verified 17/17 —
   `relays()`/`transport()` is the sole merge boundary, the refounding quorum denominator is
   provably distinct from the publish target, and extras never reach community material,
@@ -46,8 +60,7 @@ Status: Ready to discuss/plan
   type-bound to field type; all 26 shipped rules audited correct, so guardrail-only — backlogged
   as 999.9 rather than triggering a sixth gap round).
   Also still open in v1.1: Phase 5 (CACHE-02, reduced round-3 scope) and Phase 12.
-  Next: /gsd-discuss-phase 11
-Last activity: 2026-07-28 — Phase 12.3 complete; next scheduled phase is 11 (999.2 is backlog, not scheduled)
+Last activity: 2026-07-29 — Phase 11 planned (6 plans, 14 tasks, 4 waves; verification passed)
 
 Progress: [██████████] 100%
 
