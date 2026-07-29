@@ -23,6 +23,7 @@ import { giftWrap } from "../../operations/gift-wrap.js";
 import { bindToChannel } from "../../operations/channel.js";
 import type { ChannelKey } from "../../types.js";
 import { ConcordPrivateChannel } from "../private-channel.js";
+import { VOICE_PRESENCE_JOINED_EXAMPLE, missingFixtureTags, substituteFixtureTags } from "../../__tests__/cord-wire-fixtures.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
 
@@ -133,6 +134,88 @@ describe("ConcordPrivateChannel (DI, served wraps)", () => {
     expect(sub.phase$.value).toBe("live");
     const snap = await firstValueFrom(sub.status$);
     expect(snap).toMatchObject({ phase: "live", epoch: 2, connected: false, error: null });
+
+    sub.dispose();
+  });
+
+  it("delivers a kind-23313 voice-presence rumor into the injected store alongside a chat control (WIRE-02, non-vacuous)", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: ["wss://fake"] });
+    const material = g.material;
+
+    // Epoch 0 so the fixture's literal "epoch" tag value ("0") matches
+    // verbatim, mirroring 11-05/06's community-side convention of using a
+    // root epoch that is already 0 rather than substituting a non-placeholder.
+    const channel: ChannelKey = {
+      id: bytesToHex(generateSecretKey()),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 0,
+      name: "secret",
+    };
+    const k1 = deriveChannelKeys(material, channel);
+
+    // Control: a chat message, proving the funnel works at all in this fixture.
+    const chatRumor = await bindToChannel(channel.id, 0)(await ChatMessageFactory.create("control message"));
+
+    // The rumor under test: kind 23313, non-binding tags only (channel/epoch/ms
+    // are stamped by bindToChannel itself).
+    const presenceTags = VOICE_PRESENCE_JOINED_EXAMPLE.tags
+      .filter((t) => !["channel", "epoch", "ms"].includes(t[0]!))
+      .map((t) => [...t]);
+    const presenceRumor = await bindToChannel(
+      channel.id,
+      0,
+    )({
+      kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind,
+      content: VOICE_PRESENCE_JOINED_EXAMPLE.content,
+      tags: presenceTags,
+      created_at: 0,
+    });
+
+    const wraps: NostrEvent[] = [
+      await giftWrap(k1.current.sk, k1.current.convKey, me)(chatRumor),
+      await giftWrap(k1.current.sk, k1.current.convKey, me)(presenceRumor),
+    ];
+
+    const pool = servingPool(wraps);
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      store,
+      relays: ["wss://fake"],
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    // The chat control landed — distinguishes a fixture-wiring mistake from a
+    // genuine drop of the presence rumor.
+    const chatMsgs = store.getTimeline([{ kinds: [kinds.ChatMessage] }]).map((m) => m.content);
+    expect(chatMsgs).toEqual(["control message"]);
+
+    const presence = store.getTimeline([{ kinds: [23313] }]);
+    expect(presence).toHaveLength(1);
+    expect(presence[0]!.content).toBe(VOICE_PRESENCE_JOINED_EXAMPLE.content);
+
+    // Transit-integrity control against the fixture, mirroring the community
+    // engine's WIRE-02 test: the SFU-identity placeholder binds to itself
+    // since our own template carried the fixture's tags through unmodified.
+    const expected = substituteFixtureTags(VOICE_PRESENCE_JOINED_EXAMPLE.tags, {
+      "<channel_id>": channel.id,
+      "<SFU identity>": "<SFU identity>",
+    }).filter((tag) => tag[0] !== "ms");
+    expect(missingFixtureTags(presence[0]!.tags, expected)).toEqual([]);
 
     sub.dispose();
   });
