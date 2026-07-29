@@ -21,7 +21,8 @@ import {
 } from "rxjs";
 import type { Debugger } from "debug";
 import { EventStore, RumorStore } from "applesauce-core";
-import { finalizeEvent, kinds, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
+import { finalizeEvent, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
+import { ensureKTag } from "applesauce-core/helpers/factory";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { mergeRelaySets, normalizeRelayUrl } from "applesauce-core/helpers/relays";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -76,6 +77,7 @@ import {
   type JoinMaterial,
   type Role,
   type RoleScope,
+  type Rumor,
 } from "../types.js";
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
 import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
@@ -1093,21 +1095,17 @@ export class ConcordCommunity {
   }
 
   /** Reply to a channel thread with a NIP-22 kind 1111 comment (NIP-7D). */
-  async replyToThread(channelId: string, thread: { id: string; author: string }, body: string): Promise<void> {
+  async replyToThread(channelId: string, parent: Rumor, body: string): Promise<void> {
     this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
-    const pointer = { type: "event" as const, id: thread.id, kind: kinds.ForumThread, pubkey: thread.author };
-    const rumor = await bindToChannel(channelId, epoch)(await CommentFactory.create(pointer, body));
+    const rumor = await bindToChannel(channelId, epoch)(await CommentFactory.create(parent, body));
     await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
   }
 
-  async react(channelId: string, target: { id: string; author: string }, reaction: string | Emoji): Promise<void> {
+  async react(channelId: string, target: Rumor, reaction: string | Emoji): Promise<void> {
     this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
-    const rumor = await bindToChannel(
-      channelId,
-      epoch,
-    )(await ReactionFactory.create({ id: target.id, pubkey: target.author, kind: kinds.ChatMessage }, reaction));
+    const rumor = await bindToChannel(channelId, epoch)(await ReactionFactory.create(target, reaction));
     await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
   }
 
@@ -1118,10 +1116,16 @@ export class ConcordCommunity {
     await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
   }
 
-  async deleteMessage(channelId: string, targetId: string): Promise<void> {
+  async deleteMessage(channelId: string, target: Rumor): Promise<void> {
     this.requireChannelKey(channelId);
     const epoch = this.channelEpoch(channelId);
-    const rumor = await bindToChannel(channelId, epoch)(await DeleteFactory.fromEvents([targetId]));
+    // A Concord Rumor never carries a `sig`, so `setDeleteEvents`' `isEvent(event)`
+    // branch never fires for it and no "k" tag would be emitted. Pass only the id
+    // (the bare-string branch) and apply `ensureKTag` explicitly with the target's
+    // real kind on the awaited template before binding it to the channel.
+    const template = await DeleteFactory.fromEvents([target.id]);
+    const withKTag = { ...template, tags: ensureKTag(template.tags, target.kind) };
+    const rumor = await bindToChannel(channelId, epoch)(withKTag);
     await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
   }
 
