@@ -38,12 +38,14 @@
  *     in development) will see a throw where they previously saw silent
  *     degradation. `getExpirationTimestamp` routes through
  *     `getOrComputeCachedValue`, and both `EventStore.add` and
- *     `AsyncEventStore.add` call it unconditionally before any kind or
- *     replaceable branching — the throw is therefore NOT limited to
- *     replaceable events; an ordinary regular-kind event (e.g. a kind-1 note)
- *     reaches it on a normal insert. The one carve-out: both stores return
- *     early for `kinds.EventDeletion` before reaching that call, so a
- *     deletion event does not trigger it via this path.
+ *     `AsyncEventStore.add` call it before any *replaceable* branching — the
+ *     throw is therefore NOT limited to replaceable events; an ordinary
+ *     regular-kind event (e.g. a kind-1 note) reaches it on a normal insert.
+ *     Two early returns do precede the call in both stores, and an event
+ *     taking either one never reaches it via this path: the
+ *     `kinds.EventDeletion` kind check, and the separate
+ *     `this.deletes.check(event)` tombstone check (so a kind-1 note that was
+ *     already deleted returns early too).
  */
 export function getCachedValue<T extends unknown>(event: any, symbol: symbol): T | undefined {
   return Reflect.get(event, symbol);

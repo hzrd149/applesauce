@@ -1,8 +1,10 @@
 ---
 phase: 05-cache-identity-memo-fix
 verified: 2026-07-16T05:30:00Z
-status: gaps_found
-score: 4/5 must-haves verified
+status: passed
+score: 5/5 must-haves verified
+closed: 2026-07-29
+closure_note: "See Closure Addendum at end of file — CACHE-02 closed by supersession (Phase 5.1 D-06); the residual cache.ts frozen-throw carve-out disclosure corrected 2026-07-29. The gaps_remaining entry below is historical."
 behavior_unverified: 0
 overrides_applied: 0
 overrides: []
@@ -147,3 +149,37 @@ Given the narrow, single-paragraph scope of the remaining defect and the demonst
 
 _Verified: 2026-07-16T05:30:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Closure Addendum — 2026-07-29
+
+Phase 5 is **closed**. The single `gaps_remaining` entry above (the `cache.ts` frozen-throw
+carve-out disclosure) was corrected today, and CACHE-02 itself resolved by supersession in
+Phase 5.1, not by a fourth Phase 5 gap round.
+
+**What changed since the 2026-07-16 report:**
+
+1. **CACHE-02 — closed by supersession (Phase 5.1, D-06).** 5.1 replaced `cache.ts`'s
+   three-category taxonomy with the one-rule doc block; the memo-vs-carry-forward distinction
+   this requirement asked to *document* is now met *structurally* (every symbol write
+   non-enumerable via `setCachedValue`; carry-forward performed explicitly by the pipe against
+   `PRESERVE_EVENT_SYMBOLS`). `05.1-VERIFICATION.md` truth 9 verified this. The report above
+   recommended reverting `REQUIREMENTS.md`'s `[x]` to Pending — that recommendation is
+   **superseded**: the row now reads "Superseded by Phase 5.1 — see cache.ts one-rule doc
+   block", which is an accurate record of a deliberate decision, not the unjustified
+   automated `[x]` the report objected to.
+
+2. **The residual frozen-throw falsehood — fixed.** The disclosure survived the taxonomy
+   rewrite (now `cache.ts:32-46`) and still shipped the false "the one carve-out" claim.
+   Re-confirmed live at this HEAD before fixing: `event-store.ts:236` / `:242` and
+   `async-event-store.ts:204` / `:210` each contain **two** early returns preceding
+   `getExpirationTimestamp` (`kinds.EventDeletion` and `this.deletes.check(event)`). The
+   comment now names both, and the self-contradictory "before any kind or replaceable
+   branching" framing is narrowed to "before any *replaceable* branching" — the claim that is
+   actually true.
+
+**Final score: 5/5 must-haves.** Comment-only change; no runtime behavior touched, no new
+changeset (the phase's existing `cache-frozen-event-throws.md` covers the disclosed behavior).
+
+_Closed: 2026-07-29_

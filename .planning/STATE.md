@@ -5,13 +5,13 @@ milestone_name: first-fixes
 current_phase: 12
 current_phase_name: Document & Caps Conformance
 status: ready to plan
-stopped_at: Phase 11 complete (UAT 2/2 passed), ready to plan Phase 12
+stopped_at: Phase 5 closed (5/5); ready to plan Phase 12
 last_updated: "2026-07-29T12:06:12.827Z"
 last_activity: 2026-07-29
-last_activity_desc: Phase 11 complete (UAT 2/2 passed), transitioned to Phase 12
+last_activity_desc: Phase 5 closed — residual cache.ts carve-out disclosure fixed, CACHE-02 superseded by 5.1
 progress:
   total_phases: 12
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 76
   completed_plans: 76
   percent: 92
@@ -60,7 +60,11 @@ Status: Ready to plan
   path IS proven behaviorally; only the trigger is synthetic) and CR5-01 (rule `kind` is not
   type-bound to field type; all 26 shipped rules audited correct, so guardrail-only — backlogged
   as 999.9 rather than triggering a sixth gap round).
-  Also still open in v1.1: Phase 5 (CACHE-02, reduced round-3 scope) and Phase 12.
+  Also still open in v1.1: Phase 12 only. (Phase 5 closed 2026-07-29 at 5/5 — CACHE-02 resolved
+  by supersession in Phase 5.1 D-06, and the residual `cache.ts` frozen-throw disclosure, which
+  named only one of the two early returns preceding `getExpirationTimestamp`, was corrected to
+  name both `kinds.EventDeletion` and `this.deletes.check`. Comment-only; see 05-VERIFICATION.md
+  Closure Addendum.)
 Last activity: 2026-07-29 — Phase 11 complete, transitioned to Phase 12.1
 
 Progress: [██████████] 100%
