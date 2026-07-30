@@ -4,9 +4,9 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12
 current_phase_name: Document & Caps Conformance
-status: ready to plan
+status: executing
 stopped_at: Phase 12 context gathered
-last_updated: "2026-07-29T17:36:13.410Z"
+last_updated: "2026-07-30T09:32:58.640Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 11 complete, transitioned to Phase 12.1
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 12 — Document & Caps Conformance
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
   next unchecked phase in ROADMAP.md is 12, not 12.1 — `phase.complete` reported

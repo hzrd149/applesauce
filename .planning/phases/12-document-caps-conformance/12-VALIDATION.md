@@ -1,10 +1,11 @@
 ---
 phase: 12
 slug: document-caps-conformance
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-29
+updated: 2026-07-30
 ---
 
 # Phase 12 — Validation Strategy
@@ -74,16 +75,23 @@ text or the `examples.md` fixture — **never** to the implementation's own cons
 
 ## Wave 0 Requirements
 
-- [ ] New cross-cutting suite — recommended `packages/concord/src/__tests__/document-caps-conformance.test.ts`,
-      sibling to `cord-wire-fixtures.ts` — homes the two client-tier round-trip proofs and the D-16
-      structural guard. (Resolves the test-organization discretion item as **hybrid**: narrow
-      per-file assertions extend existing suites; cross-cutting proofs get one new suite.)
-- [ ] Confirm the test home for `admin.ts`'s `createChannel` / `editMetadata` / `deleteChannel`
-      (`client.test.ts`, `community.test.ts`, or a new `admin.test.ts`) before adding cap tests.
-- [ ] Hostile-edition-with-`key`-field regression test (Pitfall 3).
-- [ ] Multi-byte UTF-8 fixture string helper per the Anchoring Contract above.
-- [ ] **Rewrite, do not delete**, the tests asserting removed constants (Pitfall 5):
-      `helpers/__tests__/invite-bundle-schema.test.ts:280-289` (cap-chain arithmetic),
+Every gap below is assigned to a plan. `wave_0_complete` flips to `true` when those tasks execute
+and the files exist on disk — assignment is not completion.
+
+- [ ] **Cross-cutting suites** → **plan 12-09** (`document-caps-conformance.test.ts`, the client-tier
+      WIRE-09 proofs) and **plan 12-06** (the D-16 citation guard, its own sibling suite).
+      *Planning deviation, accepted:* this bullet originally proposed **one** new file for both
+      proofs, but the Per-Task Verification Map above already gives WIRE-12 the filter `-- citations`
+      and WIRE-09 `-- document-caps-conformance`. One shared file would force two different-wave
+      plans (Wave 2 and Wave 4) to edit it. Two sibling suites; rationale recorded in 12-06's
+      objective.
+- [x] **`admin.ts` test home resolved** → `client/__tests__/community.test.ts`, which already drives
+      `createChannel` at 14 sites and `admin.editMetadata` directly. No new `admin.test.ts`.
+- [ ] **Hostile-edition-with-`key`-field regression test** (Pitfall 3 / D-22) → **plan 12-08**,
+      Test B.
+- [ ] **Multi-byte UTF-8 fixture helper** per the Anchoring Contract above → **plan 12-01**.
+- [ ] **Rewrite, do not delete**, the tests asserting removed constants (Pitfall 5) → **plan 12-03**,
+      Task 3: `helpers/__tests__/invite-bundle-schema.test.ts:280-289` (cap-chain arithmetic),
       `helpers/__tests__/community-list.test.ts:116-130`, `client/__tests__/client.test.ts:2212,2281`,
       `helpers/__tests__/invite-bundle.test.ts:586`. Several currently assert a **throw**; the
       D-07/D-08 behavior is "measures and logs, does not throw."
@@ -100,12 +108,18 @@ text or the `examples.md` fixture — **never** to the implementation's own cons
 
 ## Validation Sign-Off
 
-- [ ] All tasks have automated verify or a Wave 0 dependency
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all ❌ MISSING references above
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] Every cap assertion is spec-anchored, not constant-anchored (TEST-01 / D-21)
-- [ ] `nyquist_compliant: true` set in frontmatter
+Signed off against the 9 plans (12-01…12-09) after `gsd-plan-checker` returned
+`## VERIFICATION PASSED`.
 
-**Approval:** pending
+- [x] All tasks have automated verify or a Wave 0 dependency
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all ❌ MISSING references above — each assigned to a plan
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] Every cap assertion is spec-anchored, not constant-anchored (TEST-01 / D-21) — verified: cap
+      plans import expected values from `cord-wire-fixtures.ts` (`CORD_METADATA_CAPS`,
+      `CORD_COMMUNITY_LIST_MEMBERSHIP_CAP`), never from `helpers/caps.ts` or `helpers/community-list.ts`
+- [x] `nyquist_compliant: true` set in frontmatter
+- [ ] `wave_0_complete: true` — flips during execution, once the assigned test files exist
+
+**Approval:** approved 2026-07-30 (plan-phase; plan-checker PASSED, 0 blockers)

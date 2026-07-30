@@ -692,8 +692,14 @@ what you don't understand."
 
 ## Open Questions
 
+> **All three resolved during plan-phase, 2026-07-30.** Resolutions are recorded as CONTEXT.md
+> amendment **D-25** and implemented in the plans named below. Annotated inline so a future reader
+> of this file standalone sees the outcome.
+
 1. **Does `INVITE_BUNDLE_MAX_TOTAL_BYTES` the constant get deleted, or only its two enforcement
-   sites?**
+   sites?** — **RESOLVED: deleted entirely** (constant + both sites), per **D-25**. The
+   recommendation below was accepted. Implemented in plan **12-03**. `LIST_MAX_BYTES` survives only
+   as a diagnostic reference per D-08, with the "exceeds the cap" framing dropped from its message.
    - What we know: D-07 lists it among constants to "remove," at "both its sites" (mint throw,
      validator gate). D-08's "keep the diagnostic" treatment is stated only for
      `LIST_MAX_BYTES`/`saveCommunityList`, not extended to invite bundles.
@@ -709,6 +715,8 @@ what you don't understand."
 
 2. **Should the local community-list mirror (`saveMirror`/`loadMirror`/`parseMirror`,
    `client.ts:~962-991`) also carry `documentExtras`, or is the relay-fetched copy sufficient?**
+   — **RESOLVED: yes, the mirror carries extras too**, as an in-phase lower-priority task rather
+   than a blocker, per **D-25**. Implemented in plan **12-09** (Task 1).
    - What we know: The mirror is client-local disk persistence, re-synced against the relay copy
      on every `watchLists()` emission. `parseMirror`'s legacy-format branch already constructs a
      closed `{communities, tombstones}` shape independent of `parseCommunityList`'s return type.
@@ -723,7 +731,10 @@ what you don't understand."
 
 3. **Does the CORD-03 §2 comment "name ≤ 64 bytes, the protocol-wide cap (CORD-04)" (in the spec's
    own example JSON comment) indicate the cap should also be cited as CORD-04 somewhere in
-   concord's code, or is this a spec-authoring inconsistency to ignore?**
+   concord's code, or is this a spec-authoring inconsistency to ignore?** — **RESOLVED: ignore it
+   and cite CORD-02 §6 for all cap comments**, per D-05's locked citation. The recommendation below
+   was accepted. It affects none of the 12 citation-replacement sites. Worth reporting upstream
+   alongside the CORD-02-vs-NIP-44 divergence already in CONTEXT.md's Deferred Ideas.
    - What we know: CORD-02 §6 is unambiguous that IT defines the 64-byte cap ("uniform across the
      protocol"). CORD-03 §2's inline comment cites CORD-04 instead, which is about Roles/
      Permissions, not the cap itself.
