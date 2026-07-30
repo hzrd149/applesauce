@@ -196,11 +196,7 @@ export function communityListEntryByteSize(entry: CommunityListCommunity): numbe
  * arithmetically as half of {@link LIST_MAX_BYTES} rather than a copied
  * literal: an entry serializes its material TWICE (`seed` and `current`), so
  * no single membership may occupy more than half the document — otherwise two
- * ordinary joins alone could exceed the whole-document cap. This is also the
- * ceiling `INVITE_BUNDLE_MAX_TOTAL_BYTES` (`invite-bundle.ts`) is sized
- * against: twice that cap fits inside this one, with headroom left for the
- * entry's envelope (`community_id`/`added_at`) and the organic growth a later
- * Refounding adds to `current` via `held_roots`.
+ * ordinary joins alone could exceed the whole-document cap.
  */
 export const COMMUNITY_LIST_MAX_ENTRY_BYTES = Math.floor(LIST_MAX_BYTES / 2);
 

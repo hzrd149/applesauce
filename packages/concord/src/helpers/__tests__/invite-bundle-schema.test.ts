@@ -15,13 +15,17 @@ import { bytesToHex, randomBytes } from "@noble/hashes/utils.js";
 
 import { communityId } from "../crypto.js";
 import { createCommunity } from "../community.js";
-import { LIST_MAX_BYTES } from "../community-list.js";
+import * as InviteBundleModule from "../invite-bundle.js";
 import {
   BLOB_POINTER_FIELD_RULES,
   CHANNEL_KEY_FIELD_RULES,
   HELD_KEY_FIELD_RULES,
   INVITE_BUNDLE_FIELD_RULES,
-  INVITE_BUNDLE_MAX_TOTAL_BYTES,
+  INVITE_BUNDLE_MAX_CHANNELS,
+  INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS,
+  INVITE_BUNDLE_MAX_HELD_ROOTS,
+  INVITE_BUNDLE_MAX_RELAY_URL_LENGTH,
+  INVITE_BUNDLE_MAX_TEXT_LENGTH,
   buildInviteBundle,
   validateInviteBundle,
   type BundleFieldRule,
@@ -277,16 +281,20 @@ it("every key a genuine buildInviteBundle output carries has a rule in the bundl
   expect(validateInviteBundle(built)).toBeDefined();
 });
 
-it("the cap chain is arithmetically closed: 2x the bundle total-bytes cap fits the per-entry ceiling, and 2x that ceiling fits LIST_MAX_BYTES", () => {
-  // COMMUNITY_LIST_MAX_ENTRY_BYTES is Task 3's export (community-list.ts),
-  // sequenced after this task — computed here via the SAME arithmetic
-  // expression (half of LIST_MAX_BYTES) rather than importing a symbol that
-  // does not exist yet at this task's commit. Task 3's own suite
-  // (community-list.test.ts) independently pins the real exported constant to
-  // this identical expression, so the chain stays closed once Task 3 lands.
-  const perEntryCeiling = Math.floor(LIST_MAX_BYTES / 2);
-  expect(2 * INVITE_BUNDLE_MAX_TOTAL_BYTES).toBeLessThanOrEqual(perEntryCeiling);
-  expect(2 * perEntryCeiling).toBeLessThanOrEqual(LIST_MAX_BYTES);
+it("the removed aggregate-byte-cap symbol is permanently gone from the module's export surface (D-07/D-25), and every surviving bound is an independent literal (D-09)", () => {
+  // Structural guard: this symbol must never reappear. A future re-add of
+  // INVITE_BUNDLE_MAX_TOTAL_BYTES (or any replacement aggregate bound) fails
+  // this assertion even if every other test in this file stays green.
+  expect(Object.keys(InviteBundleModule)).not.toContain("INVITE_BUNDLE_MAX_TOTAL_BYTES");
+
+  // D-09: these five bounds are independent literals with no arithmetic tie
+  // to any byte figure or to each other — a future reader must not re-derive
+  // one from another, the way the deleted cap-chain test used to.
+  expect(INVITE_BUNDLE_MAX_CHANNELS).toBe(256);
+  expect(INVITE_BUNDLE_MAX_HELD_ROOTS).toBe(64);
+  expect(INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS).toBe(64);
+  expect(INVITE_BUNDLE_MAX_TEXT_LENGTH).toBe(256);
+  expect(INVITE_BUNDLE_MAX_RELAY_URL_LENGTH).toBe(512);
 });
 
 // ── CR4-01 gap closure (12.3-14): four tests that keep firing even if the

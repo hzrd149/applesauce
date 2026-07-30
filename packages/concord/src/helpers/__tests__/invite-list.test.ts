@@ -6,7 +6,6 @@ import {
   getInviteList,
   getLiveInvites,
   INVITE_LIST_KIND,
-  inviteListWithinByteCap,
   isInviteListUnlocked,
   isInviteLive,
   isValidInviteList,
@@ -49,7 +48,6 @@ describe("invite-list CRDT", () => {
     invites = mergeInvites(invites, [mkEntry("x")]);
     expect(isInviteLive(invites, tombstones, "x")).toBe(false);
     expect(liveInviteEntries(invites, tombstones)).toHaveLength(0);
-    expect(inviteListWithinByteCap(invites, tombstones)).toBe(true);
   });
 
   it("revoke unions tombstones idempotently", () => {

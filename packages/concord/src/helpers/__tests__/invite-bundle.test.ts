@@ -16,7 +16,6 @@ import {
   INVITE_BUNDLE_MAX_HELD_ROOTS,
   INVITE_BUNDLE_MAX_RELAY_URL_LENGTH,
   INVITE_BUNDLE_MAX_TEXT_LENGTH,
-  INVITE_BUNDLE_MAX_TOTAL_BYTES,
   INVITE_BUNDLE_RELAY_CAP,
   RELAY_DICTIONARY,
   STOCK_RELAYS,
@@ -333,8 +332,8 @@ describe("validateInviteBundle cardinality and text bounds (12.3-12)", () => {
     expect(validateInviteBundle(bundle)).toBeUndefined();
     // Non-vacuity: pre-fix, `name` was never validated anywhere in this
     // function — this exact oversized string would have survived unchanged
-    // into JoinMaterial.name, serialized TWICE per entry into the kind-13302
-    // document, permanently wedging the user's Community List past LIST_MAX_BYTES.
+    // into JoinMaterial.name, reaching every joiner that renders it, and
+    // serialized TWICE per Community List entry (`seed` and `current`, D-07).
   });
 
   it("rejects a bundle whose name is a non-string (an object)", () => {
@@ -577,23 +576,32 @@ describe("validateInviteBundle exhaustive rule tables (D-17/CR-01, 12.3-13)", ()
     expect(result?.relays).toEqual([shortUrl]);
   });
 
-  it("rejects a bundle whose serialized size exceeds the whole-bundle total-bytes cap, built entirely from legal per-field-in-cap channels", () => {
-    // Derive the channel count from the cap arithmetically, not by trial and error.
-    const perChannelBytes = new TextEncoder().encode(
-      JSON.stringify({ id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "c" }),
-    ).length;
-    const channelCount = Math.min(
-      Math.ceil((INVITE_BUNDLE_MAX_TOTAL_BYTES * 2) / perChannelBytes),
-      INVITE_BUNDLE_MAX_CHANNELS,
-    );
-    const channels = Array.from({ length: channelCount }, (_, i) => ({
+  it("no longer rejects a bundle for aggregate serialized size — the whole-bundle byte cap is gone (D-07); the channel COUNT cap still fires (D-09)", () => {
+    // A legal-per-field channel set large enough to exceed the FORMER
+    // 8192-byte aggregate ceiling by a wide margin, at exactly the surviving
+    // count cap — validateInviteBundle must accept it now.
+    const channels = Array.from({ length: INVITE_BUNDLE_MAX_CHANNELS }, (_, i) => ({
       id: "11".repeat(32),
       key: "22".repeat(32),
       epoch: 0,
       name: `c${i}`,
     }));
     const bundle = { ...validOwnerFields, channels, relays: [] } as InviteBundle;
-    expect(validateInviteBundle(bundle)).toBeUndefined();
+    const result = validateInviteBundle(bundle);
+    expect(result).toBeDefined();
+    expect(result?.channels).toHaveLength(INVITE_BUNDLE_MAX_CHANNELS);
+
+    // The count bound is untouched: one more channel than the cap still
+    // rejects the whole bundle, proving the byte-cap removal did not disarm
+    // D-09's boundary.
+    const overCap = Array.from({ length: INVITE_BUNDLE_MAX_CHANNELS + 1 }, (_, i) => ({
+      id: "11".repeat(32),
+      key: "22".repeat(32),
+      epoch: 0,
+      name: `c${i}`,
+    }));
+    const overCapBundle = { ...validOwnerFields, channels: overCap, relays: [] } as InviteBundle;
+    expect(validateInviteBundle(overCapBundle)).toBeUndefined();
   });
 
   it("the returned object has no key whose value is undefined, for both a maximal and a minimal bundle", () => {
@@ -617,7 +625,7 @@ describe("validateInviteBundle exhaustive rule tables (D-17/CR-01, 12.3-13)", ()
     expect(Object.values(resultMin!).some((v) => v === undefined)).toBe(false);
   });
 
-  it("buildInviteBundle itself throws when the assembled bundle would exceed the total-bytes cap", () => {
+  it("buildInviteBundle no longer throws when the assembled bundle would exceed the former total-bytes cap (D-07/D-25)", () => {
     const many = Array.from({ length: INVITE_BUNDLE_MAX_CHANNELS }, (_, i) => ({
       id: bytesToHex(randomBytes(32)),
       key: bytesToHex(randomBytes(32)),
@@ -634,7 +642,11 @@ describe("validateInviteBundle exhaustive rule tables (D-17/CR-01, 12.3-13)", ()
       relays: ["wss://ok.example.com"],
       name: "Test Community",
     };
-    expect(() => buildInviteBundle(material, { channels: many.map((c) => c.id) })).toThrow(/too large to mint/);
+    let bundle: InviteBundle | undefined;
+    expect(() => {
+      bundle = buildInviteBundle(material, { channels: many.map((c) => c.id) });
+    }).not.toThrow();
+    expect(bundle!.channels).toHaveLength(many.length);
   });
 });
 
