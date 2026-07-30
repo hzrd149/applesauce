@@ -46,6 +46,7 @@ import {
   canonicalJson,
   communityListByteSize,
   communityListEntryByteSize,
+  getCommunityList,
   isCommunityLive,
   liveCommunities,
   mergeCommunities,
@@ -262,6 +263,28 @@ export class ConcordClient {
    *  instead of the stale engine resurrecting the membership. */
   private list: CommunityListCommunity[] = [];
   private tombstones: CommunityTombstone[] = [];
+  /** Every top-level key of the Community List document OTHER than `entries`/`tombstones` —
+   *  captured on read ({@link watchLists}, {@link loadMirror}) and spread back at every write
+   *  site ({@link saveCommunityList}, {@link saveMirror}), so an unrecognized field survives a
+   *  full read -> merge -> mutate -> publish cycle (WIRE-09/D-23; CORD-02 §6's round-trip MUST).
+   *
+   *  This is NOT the carrier D-12 rejected. D-12 rejected a bolted-on carrier at the PARSE
+   *  layer (`parseCommunityList`), because there the root itself could be opened and the
+   *  reconstruction deleted outright — a carrier there would have kept the reconstruction
+   *  alive as a patch. At THIS tier the situation is structurally different: `ConcordClient`'s
+   *  state is genuinely a reduced projection (the two merged arrays above, plus the derived
+   *  `communities` engine map) — the wire document is never held in memory here, so there is no
+   *  reconstruction to delete. `list`/`tombstones` ARE the authoritative merged state; this
+   *  field is what lets the publish echo back the rest of a document it never fully materializes,
+   *  rather than inventing one. D-13's spec nuance: a top-level key outside `custom` is a
+   *  forward-compatible protocol field (CORD-02 §6), while a key nested inside `custom` is
+   *  another client's extension data — both are opaque to this field and both survive.
+   *
+   *  Deliberately excluded from the {@link publishedListFingerprint} dirty check (see
+   *  {@link saveCommunityList}): a value captured here was just read off the same document the
+   *  fingerprint believes is on the relay, so its presence alone should never force a fresh
+   *  encrypt/sign/publish — it already travels on the next save triggered for any other reason. */
+  private documentExtras: Record<string, unknown> = {};
   /** WR-01 (12.3-12): community_id -> canonicalJson fingerprint of the `current`
    *  material whose `addCommunity` construction most recently threw. Retrying an
    *  entry that fails IDENTICALLY on every Community List cast emission would cost
@@ -963,6 +986,13 @@ export class ConcordClient {
       const mirror = this.parseMirror(raw);
       this.list = mergeCommunities(this.list, mirror.entries);
       this.tombstones = mergeCommunityTombstones(this.tombstones, mirror.tombstones);
+      // Carry a mirror-only extras key forward too (D-25's lower-priority in-phase item): a
+      // client that has not fetched the relay copy this session and publishes from mirror-only
+      // state would otherwise drop a key it read in a previous session. Same existing-first-
+      // then-new spread order as `watchLists`; the legacy (bare-array) branch of `parseMirror`
+      // contributes no extras keys at all.
+      const { entries: _entries, tombstones: _tombstones, ...extras } = mirror;
+      this.documentExtras = { ...this.documentExtras, ...extras };
     } catch (err) {
       this.log("failed to read the local community mirror: %s", (err as Error)?.message ?? err);
       console.warn("failed to read the local community mirror", err);
@@ -993,8 +1023,12 @@ export class ConcordClient {
   private async saveMirror(): Promise<void> {
     try {
       // Keyed as `entries` to match the wire document (armada-compatible), so the mirror and the
-      // 13302 plaintext stay parseable by the same helper.
-      await this.storage.setItem(this.pubkey, JSON.stringify({ entries: this.list, tombstones: this.tombstones }));
+      // 13302 plaintext stay parseable by the same helper. Carrier spread FIRST, `entries`/
+      // `tombstones` assigned AFTER — same load-bearing ordering as `saveCommunityList` (WIRE-09/D-23).
+      await this.storage.setItem(
+        this.pubkey,
+        JSON.stringify({ ...this.documentExtras, entries: this.list, tombstones: this.tombstones }),
+      );
     } catch (err) {
       this.log("failed to mirror communities locally: %s", (err as Error)?.message ?? err);
       console.warn("failed to mirror communities locally", err);
@@ -1033,6 +1067,16 @@ export class ConcordClient {
         // Merge into our arrays rather than replace (CORD-02 §8).
         this.list = mergeCommunities(this.list, communities);
         this.tombstones = mergeCommunityTombstones(this.tombstones, cast.tombstones ?? []);
+        // Capture the document's other top-level keys (WIRE-09/D-23). The cast exposes no
+        // whole-document accessor by design — its public surface is unwidened — so read the
+        // parsed document off the cast's own event via the helper instead. Existing-first-
+        // then-new spread order: a key read earlier this session survives an emission that
+        // happens not to carry it, while the freshest read for any given key wins.
+        const document = getCommunityList(cast.event);
+        if (document) {
+          const { entries: _entries, tombstones: _tombstones, ...extras } = document;
+          this.documentExtras = { ...this.documentExtras, ...extras };
+        }
         // Seed the fingerprint from the REMOTE-only content (not the merged `this.list`) so a
         // genuine local-only addition can still publish, but a save that would reproduce exactly
         // what the relay already holds is skipped. A self-published event echoing back here
@@ -1210,7 +1254,12 @@ export class ConcordClient {
         tombstones.length,
         targets.length,
       );
-      const plaintext = JSON.stringify({ entries: list, tombstones });
+      // Spread the carrier FIRST, `entries`/`tombstones` assigned AFTER (WIRE-09/D-23). This
+      // ordering is load-bearing: written the other way, a document carrying a stale `entries`
+      // key would override the client's own merged state and publish the wrong memberships.
+      // `documentExtras` is deliberately excluded from `publishedListFingerprint` above — see
+      // the field's doc comment for why (D-23's dirty-check shape decision).
+      const plaintext = JSON.stringify({ ...this.documentExtras, entries: list, tombstones });
       const content = await this.signer.nip44.encrypt(this.pubkey, plaintext);
       // 13302 is replaceable: NIP-01 keeps the lowest event id on a created_at tie, so a save
       // within the same second as the edition already on the relay could lose that tie and be
