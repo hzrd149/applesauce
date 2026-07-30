@@ -30,9 +30,6 @@ import { INVITE_BUNDLE_KIND, parseInviteLink } from "./invite-bundle.js";
 /** Concord invite list kind (CORD-05 §4). */
 export const INVITE_LIST_KIND = 13303;
 
-/** The NIP-44 plaintext cap the serialized list must fit under (CORD-02 §8, shared constant). */
-export const INVITE_LIST_MAX_BYTES = 65_535;
-
 /**
  * Whether an invite link is live: it has an entry and no tombstone (CORD-05 §4).
  * A tombstone is terminal — unlike a Community List leave, a revoked link never
@@ -82,12 +79,6 @@ export function mergeTombstones(a: InviteListTombstone[], b: InviteListTombstone
  * `InviteListOperation`s in ../operations/invite-list.js; they are built on the
  * `mergeInvites`/`mergeTombstones` primitives above.
  */
-
-/** Whether the serialized (JSON) list fits under the NIP-44 plaintext cap. */
-export function inviteListWithinByteCap(invites: InviteListInvite[], tombstones: InviteListTombstone[]): boolean {
-  const bytes = new TextEncoder().encode(JSON.stringify({ entries: invites, tombstones }));
-  return bytes.length <= INVITE_LIST_MAX_BYTES;
-}
 
 // ── Event-level helpers (self-encrypted list; hidden-content family) ─────────
 

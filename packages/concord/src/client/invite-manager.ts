@@ -23,13 +23,7 @@ import { canonicalJson } from "../helpers/community-list.js";
 import { parseInviteLink } from "../helpers/invite-bundle.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { InviteBundleFactory } from "../factories/invite-bundle.js";
-import {
-  INVITE_LIST_KIND,
-  inviteListWithinByteCap,
-  liveInviteEntries,
-  mergeInvites,
-  mergeTombstones,
-} from "../helpers/invite-list.js";
+import { INVITE_LIST_KIND, liveInviteEntries, mergeInvites, mergeTombstones } from "../helpers/invite-list.js";
 import type { InviteListInvite, InviteListTombstone } from "../types.js";
 
 export interface ConcordInviteLink {
@@ -271,11 +265,6 @@ export class ConcordInviteManager {
     const fingerprint = canonicalJson({ entries: this.invites, tombstones: this.tombstones });
     if (fingerprint === this.publishedFingerprint) {
       this.dirty$.next(false);
-      return;
-    }
-    if (!inviteListWithinByteCap(this.invites, this.tombstones)) {
-      this.log("invite list exceeds the NIP-44 byte cap; not publishing");
-      console.warn("invite list exceeds the NIP-44 byte cap; not publishing");
       return;
     }
     const plaintext = JSON.stringify({ entries: this.invites, tombstones: this.tombstones });
