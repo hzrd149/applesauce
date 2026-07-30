@@ -357,7 +357,7 @@ Plans:
 - Criterion 2's "already-enforced byte cap included" parenthetical is **overridden by D-07** — every serialized-byte cap in `packages/concord` is removed, because NIP-44 now specifies `max_plaintext_size` = 4294967295 and CORD-02 §8/Appendix B reason from a 65,535 ceiling that no longer exists upstream. Score criterion 2 on the 50-membership constant plus the name/description caps.
 - Criterion 4's rationale is **obsolete and corrected by D-14** — `ChannelMetadata` no longer carries `key`/`epoch`, so a naive spread cannot leak `ch.key` via our own code. Score criterion 4 on the preserved fields and the absence of key material, not on the presence of a spread operator. D-22's fold denylist guards the value-level case.
 
-**Plans**: 6/9 plans executed
+**Plans**: 7/9 plans executed
 
 Plans:
 
@@ -375,7 +375,7 @@ Plans:
 
 **Wave 3** *(depends on wave 2)*
 
-- [ ] 12-07-PLAN.md — Open document root: both `Parsed*` types carry the wire shape with an index signature, both reconstruction literals deleted (WIRE-09; D-01/D-12/D-15)
+- [x] 12-07-PLAN.md — Open document root: both `Parsed*` types carry the wire shape with an index signature, both reconstruction literals deleted (WIRE-09; D-01/D-12/D-15)
 - [ ] 12-08-PLAN.md — Channel-edition fold denylist-then-spread, `deleteChannel` destructure-and-spread, and the metadata fold proven correct without changing it (WIRE-09/WIRE-10; D-13/D-14/D-15/D-22/D-24)
 
 **Wave 4** *(depends on 12-07)*
@@ -503,7 +503,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete    | 2026-07-29 |
-| 12. Document & Caps Conformance | v1.1 | 6/9 | In Progress|  |
+| 12. Document & Caps Conformance | v1.1 | 7/9 | In Progress|  |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete    | 2026-07-25 |

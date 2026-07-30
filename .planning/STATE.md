@@ -6,14 +6,14 @@ current_phase: 12
 current_phase_name: document-caps-conformance
 status: executing
 stopped_at: Completed 12-05-PLAN.md
-last_updated: "2026-07-30T11:44:46.003Z"
+last_updated: "2026-07-30T12:04:46.394Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 85
-  completed_plans: 82
+  completed_plans: 83
   percent: 92
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12 (document-caps-conformance) — EXECUTING
-Plan: 7 of 9
+Plan: 8 of 9
 Status: Ready to execute
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
@@ -137,6 +137,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P04 | 20min | 3 tasks | 7 files |
 | Phase 12 P05 | 24min | 3 tasks | 4 files |
 | Phase 12 P06 | 20min | 2 tasks | 6 files |
+| Phase 12 P07 | 15min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -281,6 +282,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12]: 12-06: Fixed a citationsOutsideRegistry over-matching bug in cord-wire-fixtures.ts (owned by 12-01) blocking a clean RED -- numeric section citations followed by capitalized prose (e.g. CORD-05 section 6 Direct Invites) were being swept into the token; split the pattern into a numeric-no-continuation alternative and a letter-led named-section-with-continuation alternative
 - [Phase 12]: 12-06: Deleted (not inverted) 12-01's reciprocal invalid-set-non-empty test in cord-wire-fixtures.test.ts -- an inverted now-clean assertion would merely duplicate a subset of the new package-wide cord-citations.test.ts guard
 - [Phase 12]: 12-06: Excluded cord-wire-fixtures.test.ts from the new citation guard's file walk -- its own unit tests embed deliberately-invalid citation strings as literals, textually indistinguishable from real citations to a whole-file scan
+- [Phase 12]: 12-07: Task 2 also re-pointed casts/__tests__/community-list.test.ts and casts/__tests__/invite-list.test.ts (not in the plan's declared files_modified) since their .unlock() resolves.toEqual assertions compare against the renamed field shape and the compiler's structural typing couldn't flag them -- required for a green suite (Rule 3)
 
 ### Pending Todos
 
@@ -299,6 +301,7 @@ None yet.
 - Plan 12-01's frontmatter lists requirements WIRE-06/07/08/12, but 12-01 only builds the spec-anchored test substrate (cap literals, section registry, citation scanner) those plans' tests will assert against — the actual behavior (cap enforcement in helpers/caps.ts/admin.ts/client.ts for WIRE-06/07/08, the citation sweep for WIRE-12) lands in plans 12-04/12-05/12-06. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the INVITE-01 precedent; mark these Complete only when their respective implementing plans land.
 - Plan 12-02's frontmatter lists requirement WIRE-08, but 12-02 only supplies the runtime evidence that the byte-cap ceiling moved upstream (nostr-tools bump + round-trip test). WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - Plan 12-03's frontmatter lists requirement WIRE-08, but 12-03 only retires the invite-side half of the byte-cap removal (INVITE_LIST_MAX_BYTES/inviteListWithinByteCap, INVITE_BUNDLE_MAX_TOTAL_BYTES) per D-07. WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05, which handles the Community List half. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02 precedent; mark WIRE-08 Complete only when 12-05 lands.
+- Plan 12-07's frontmatter lists requirement WIRE-09, but 12-07 only closes it at the helper/cast/operations tier (parseCommunityList/parseInviteList open roots, modifyCommunityList/modifyInviteList spread-serialize). The client publish tier -- saveCommunityList and invite-manager.save(), which hand-roll the document from reduced arrays -- is plan 12-09 per D-23. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02/12-03 precedent; mark WIRE-09 Complete only when 12-09 lands.
 
 ### Roadmap Evolution
 
@@ -325,7 +328,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T11:43:46.110Z
+Last session: 2026-07-30T12:01:47.269Z
 Stopped at: Completed 12-05-PLAN.md
 Resume file: None
 
