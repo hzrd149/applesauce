@@ -22,6 +22,7 @@ import { createCommunity } from "../../helpers/community.js";
 import { JoinLeaveFactory, SnapshotFactory } from "../../factories/guestbook.js";
 import { EditionFactory } from "../../factories/control.js";
 import { channelGroupKey, channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
+import { computeEditionHash } from "../../helpers/editions.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { hasPerm } from "../../helpers/permissions.js";
 import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
@@ -30,14 +31,17 @@ import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
 import type { ConcordUploader } from "../storage.js";
 import {
+  CORD_METADATA_CAPS,
   DELETE_KIND5_EXAMPLE,
   REACTION_KIND7_EXAMPLE,
   THREADED_REPLY_KIND1111_EXAMPLE,
   VOICE_PRESENCE_JOINED_EXAMPLE,
   VOICE_PRESENCE_LEFT_EXAMPLE,
   missingFixtureTags,
+  multiByteStringOverBytes,
   substituteFixtureTags,
   tagValues,
+  utf8Bytes,
 } from "../../__tests__/cord-wire-fixtures.js";
 import { decodeWrap } from "../../helpers/gift-wrap.js";
 
@@ -225,6 +229,50 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(wrap!.pubkey).not.toBe(expectedEpoch1.pk);
 
     sub.unsubscribe();
+    community.dispose();
+  });
+
+  it("createChannel rejects an over-cap multi-byte name before minting a key or publishing an edition (WIRE-06/D-02)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      published.push(event);
+      return [];
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+    published.length = 0;
+
+    // Cap number sourced from CORD_METADATA_CAPS (CORD-02 §6), never from
+    // `helpers/caps.ts`'s own NAME_MAX_BYTES (D-21/TEST-01).
+    const overCapName = multiByteStringOverBytes(CORD_METADATA_CAPS.nameBytes);
+    await expect(community.createChannel(overCapName, { private: true })).rejects.toThrow(
+      new RegExp(`${utf8Bytes(overCapName)}\\D+${CORD_METADATA_CAPS.nameBytes}`),
+    );
+    await settle();
+
+    // No channel key was minted for the rejected channel.
+    expect(community.material.channels).toHaveLength(0);
+    // No channel edition was published as a result.
+    expect(published.length).toBe(0);
+    expect(community.state$.value.channels.some((c) => c.name === overCapName)).toBe(false);
+
     community.dispose();
   });
 
@@ -1771,6 +1819,111 @@ describe("ConcordCommunity permissions + granular reads", () => {
     await community.unban(target);
     await settle();
     expect(community.state$.value.banlist.has(target)).toBe(false);
+
+    community.dispose();
+  });
+
+  it("editMetadata rejects an icon-only patch when the current (pre-existing) name is already over cap — the merge bypass D-03 names", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const owner = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey: owner,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Seed a LEGACY over-cap `name` directly into folded control state — the
+    // way a document minted before this plan's write-side cap existed (or by
+    // another implementation) could still arrive on the wire. `createCommunity`
+    // itself now refuses to construct this, so the suite's established
+    // controlStore.add(rumorFromTemplate(...)) seeding route is used instead
+    // (mirrors this file's role/grant seeding above), chained to the genesis
+    // METADATA edition's hash so the fold's contiguous-chain walk adopts it.
+    const overCapName = multiByteStringOverBytes(CORD_METADATA_CAPS.nameBytes);
+    const v1Content = JSON.stringify({ name: "Test", relays: ["wss://fake"] });
+    const prevHash = computeEditionHash({
+      vsk: VSK.METADATA,
+      eid: genesis.material.community_id,
+      version: 1,
+      content: v1Content,
+    });
+    const legacyEdition = await EditionFactory.create({
+      vsk: VSK.METADATA,
+      eid: genesis.material.community_id,
+      version: 2,
+      prevHash,
+      content: JSON.stringify({ name: overCapName, relays: ["wss://fake"] }),
+    });
+    community.controlStore.add(rumorFromTemplate(legacyEdition, owner, 2_000));
+    await settle();
+    expect(community.state$.value.metadata?.name).toBe(overCapName);
+
+    // The icon-only patch re-publishes the MERGED document, which still
+    // carries the pre-existing over-cap `name` — asserting against `patch`
+    // alone would miss this; asserting against the merged `next` catches it.
+    await expect(
+      community.admin.editMetadata({ icon: { url: "https://x", key: "k", nonce: "n", hash: "h" } }),
+    ).rejects.toThrow(new RegExp(`${utf8Bytes(overCapName)}\\D+${CORD_METADATA_CAPS.nameBytes}`));
+
+    community.dispose();
+  });
+
+  it("an over-cap channel name arriving via an authorized edition still folds into channel state verbatim — D-04's deliberate read-path non-guarantee", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const owner = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: owner, name: "Test", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey: owner,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // This is D-04's DELIBERATE override of ROADMAP criterion 1's "and
+    // defensively on read" clause: the fold's only rejection idiom is
+    // `continue`, and applying it to an over-cap name would drop the channel
+    // entirely, converting a caps bug into a channel-availability bug — the
+    // fold is the sole source of channel state. Truncating on read was also
+    // rejected, since it would make two clients disagree about a channel's
+    // name. verify-phase scores WIRE-06/criterion-1 on write-side enforcement
+    // alone (Task 2), not on an absent read guard. `createChannel` cannot be
+    // used to construct this fixture (it now enforces the cap itself), so an
+    // authorized CHANNEL edition is fed directly into `controlStore`,
+    // bypassing the write path exactly like Test 7's legacy metadata edition.
+    const overCapName = multiByteStringOverBytes(CORD_METADATA_CAPS.nameBytes);
+    const channelId = "cd".repeat(32);
+    const channelEdition = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: channelId,
+      version: 1,
+      content: JSON.stringify({ name: overCapName, private: false }),
+    });
+    community.controlStore.add(rumorFromTemplate(channelEdition, owner, 2_000));
+    await settle();
+
+    const folded = community.state$.value.channels.find((c) => c.channel_id === channelId);
+    expect(folded).toBeDefined();
+    expect(folded!.name).toBe(overCapName);
 
     community.dispose();
   });
