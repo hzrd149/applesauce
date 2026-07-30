@@ -112,13 +112,15 @@ export class ConcordInviteManager {
   private sub?: Subscription;
   private invites: InviteListInvite[] = [];
   private tombstones: InviteListTombstone[] = [];
-  /** Every top-level key of the Invite List document OTHER than `entries`/`tombstones`,
-   *  captured on read ({@link reconcile}) and spread back on {@link save} (WIRE-09/D-23) —
-   *  mirrors {@link ConcordClient}'s `documentExtras` field verbatim (`client.ts`'s doc
-   *  comment carries the fuller explanation, including why this is not the carrier D-12
-   *  rejected: no whole document is ever held in memory by either engine). Cleared on
-   *  {@link stop} alongside `invites`/`tombstones`/`publishedFingerprint`, so a restart
-   *  cannot replay a previous session's extras onto a document this session never read. */
+  /** A snapshot of the last-read Invite List document (every top-level key, INCLUDING its own
+   *  `entries`/`tombstones` as of that read), captured on read ({@link reconcile}) and spread
+   *  back FIRST in {@link save}, before `entries`/`tombstones` are assigned from this manager's
+   *  own state (WIRE-09/D-23) — mirrors {@link ConcordClient}'s `documentExtras` field verbatim
+   *  (`client.ts`'s doc comment carries the fuller explanation, including why this is not the
+   *  carrier D-12 rejected: no whole document is ever held in memory by either engine beyond
+   *  this snapshot). Cleared on {@link stop} alongside `invites`/`tombstones`/
+   *  `publishedFingerprint`, so a restart cannot replay a previous session's snapshot onto a
+   *  document this session never read. */
   private documentExtras: Record<string, unknown> = {};
   private publishedFingerprint: string | null = canonicalJson({ entries: [], tombstones: [] });
   private readonly autoUnlocked = new Set<string>();
@@ -305,14 +307,13 @@ export class ConcordInviteManager {
     if (!invites) return;
     this.invites = mergeInvites(this.invites, invites);
     this.tombstones = mergeTombstones(this.tombstones, cast.tombstones ?? []);
-    // Capture the document's other top-level keys (WIRE-09/D-23), mirroring
-    // ConcordClient.watchLists — read off the cast's own event since ConcordInviteList adds
-    // no whole-document accessor. Existing-first-then-new spread order.
+    // Snapshot the document's top-level keys (WIRE-09/D-23), INCLUDING its own `entries`/
+    // `tombstones` as of this read — mirroring ConcordClient.watchLists. `save()` always
+    // assigns this manager's own merged state AFTER spreading this snapshot, so a stale
+    // `entries`/`tombstones` sitting in it can never win. Read off the cast's own event since
+    // ConcordInviteList adds no whole-document accessor. Existing-first-then-new spread order.
     const document = getInviteList(cast.event);
-    if (document) {
-      const { entries: _entries, tombstones: _tombstones, ...extras } = document;
-      this.documentExtras = { ...this.documentExtras, ...extras };
-    }
+    if (document) this.documentExtras = { ...this.documentExtras, ...document };
     this.publishedFingerprint = canonicalJson({
       entries: mergeInvites([], invites),
       tombstones: mergeTombstones([], cast.tombstones ?? []),
