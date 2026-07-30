@@ -37,7 +37,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state (completed 2026-07-19)
 - [x] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant (completed 2026-07-21)
 - [x] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define (6/6 plans executed; verification passed 6/6 must-haves; 2/2 UAT decisions resolved — stale docs fixed in-phase, voice-presence roster resurrection backlogged to todos/pending/11-verify-followups.md) (completed 2026-07-29)
-- [x] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields (completed 2026-07-30)
+- [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields (9/9 plans executed; verification gaps_found — CR-01 channel-fold type-validation regression)
 - [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
 - [x] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog) (completed 2026-07-22)
 - [x] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog) (14/14 plans; verification passed 17/17 D-01…D-17; 2 accepted overrides — WR-08 trigger unproven as verification debt, CR5-01 guardrail hardening backlogged as 999.9 with zero live defect) (completed 2026-07-28)
@@ -503,7 +503,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete    | 2026-07-29 |
-| 12. Document & Caps Conformance | v1.1 | 9/9 | Complete   | 2026-07-30 |
+| 12. Document & Caps Conformance | v1.1 | 9/9 | Gaps Found   | — |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete    | 2026-07-25 |
