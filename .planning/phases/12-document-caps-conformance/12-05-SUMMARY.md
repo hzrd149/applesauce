@@ -194,3 +194,7 @@ After each mutation-and-revert, `npx tsc --noEmit -p packages/concord/tsconfig.j
 ---
 *Phase: 12-document-caps-conformance*
 *Completed: 2026-07-30*
+
+## Self-Check: PASSED
+
+All modified files exist on disk (`packages/concord/src/helpers/community-list.ts`, `packages/concord/src/client/client.ts`, `packages/concord/src/helpers/__tests__/community-list.test.ts`, `packages/concord/src/client/__tests__/client.test.ts`) and all four commit hashes (`5e3b1b34`, `8d01d669`, `a9569254`, `792d26c1`) are present in `git log`.

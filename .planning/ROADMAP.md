@@ -357,7 +357,7 @@ Plans:
 - Criterion 2's "already-enforced byte cap included" parenthetical is **overridden by D-07** — every serialized-byte cap in `packages/concord` is removed, because NIP-44 now specifies `max_plaintext_size` = 4294967295 and CORD-02 §8/Appendix B reason from a 65,535 ceiling that no longer exists upstream. Score criterion 2 on the 50-membership constant plus the name/description caps.
 - Criterion 4's rationale is **obsolete and corrected by D-14** — `ChannelMetadata` no longer carries `key`/`epoch`, so a naive spread cannot leak `ch.key` via our own code. Score criterion 4 on the preserved fields and the absence of key material, not on the presence of a spread operator. D-22's fold denylist guards the value-level case.
 
-**Plans**: 4/9 plans executed
+**Plans**: 5/9 plans executed
 
 Plans:
 
@@ -370,7 +370,7 @@ Plans:
 **Wave 2** *(depends on 12-01)*
 
 - [x] 12-04-PLAN.md — `helpers/caps.ts` plus name/description cap enforcement in `createCommunity`, `createChannel`, and `editMetadata`'s post-merge document (WIRE-06/WIRE-07; D-02/D-03/D-04/D-05)
-- [ ] 12-05-PLAN.md — Community List: byte caps out, 50-membership protocol constant in at `recordJoin`; `saveCommunityList` keeps its diagnostic and drops its refusal (WIRE-08; D-06/D-07/D-08/D-10/D-20/D-25)
+- [x] 12-05-PLAN.md — Community List: byte caps out, 50-membership protocol constant in at `recordJoin`; `saveCommunityList` keeps its diagnostic and drops its refusal (WIRE-08; D-06/D-07/D-08/D-10/D-20/D-25)
 - [ ] 12-06-PLAN.md — Structural citation guard plus the twelve-site sweep: `CORD-06 §94` → `§3`, `CORD-03 §44` → `§3` (WIRE-12; D-16/D-17)
 
 **Wave 3** *(depends on wave 2)*
@@ -503,7 +503,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete    | 2026-07-29 |
-| 12. Document & Caps Conformance | v1.1 | 4/9 | In Progress|  |
+| 12. Document & Caps Conformance | v1.1 | 5/9 | In Progress|  |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete    | 2026-07-25 |

@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
 status: executing
-stopped_at: Completed 12-04-PLAN.md
-last_updated: "2026-07-30T10:46:09.099Z"
+stopped_at: Completed 12-05-PLAN.md
+last_updated: "2026-07-30T11:17:33.712Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 85
-  completed_plans: 80
+  completed_plans: 81
   percent: 92
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12 (document-caps-conformance) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
@@ -135,6 +135,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P02 | 5min | 2 tasks | 5 files |
 | Phase 12 P03 | 10min | 3 tasks | 7 files |
 | Phase 12 P04 | 20min | 3 tasks | 7 files |
+| Phase 12 P05 | 24min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -273,6 +274,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 12-04: helpers/caps.ts has zero imports so it sits at the bottom of the dependency graph, reachable from both helpers/community.ts and client/admin.ts without crossing the one-way helpers->client import boundary
 - [Phase ?]: 12-04: editMetadata asserts against the merged next, never patch -- proven necessary by a seeded-legacy-document test plus a mutation probe
 - [Phase ?]: 12-04: two pre-existing client.test.ts fixtures (12.3-12/12.3-13) repointed to pad an oversized Community List entry via the unbounded relays field instead of name, since the new write-side cap now rejects an over-cap name before either fixture's own target code path is reached
+- [Phase 12]: 12-05: LIST_MAX_BYTES reworded to a diagnostic-only reference figure (D-08) rather than deleted, carrying the D-21 warning that NIP-44's max_plaintext_size is now 4294967295
+- [Phase 12]: 12-05: Test F (D-06 live-only counting) needed duplicate raw entries alongside tombstones to be non-vacuous, since mergeCommunities' dedup plus pruneDeadEntries on every death transition makes this.list.length and liveCommunities(...).length structurally equal in every publicly-reachable state; added a white-box test writing the private list field directly to pin the implementation choice
+- [Phase 12]: 12-05: rewrote (not deleted) the pre-existing CR-02 recoverability test whose 'an already-wedged list cannot publish' premise was falsified by this plan's D-07/D-08 change
 
 ### Pending Todos
 
@@ -317,8 +321,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T10:46:09.088Z
-Stopped at: Completed 12-04-PLAN.md
+Last session: 2026-07-30T11:17:33.702Z
+Stopped at: Completed 12-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
