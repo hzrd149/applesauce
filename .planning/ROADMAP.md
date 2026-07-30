@@ -351,7 +351,36 @@ Plans:
   5. Code comments cite real, existing spec sections (no more `CORD-06 §94`, a line number mistaken for a section).
   6. **(TEST-01, standing — constant- and fixture-anchored)** Every cap and document rule this phase touches is asserted against the value transcribed from the spec text or the `examples.md` fixture — never against the implementation's own constant. Each cap test names its literal spec value (64B, 10000B, 50 entries) independently of the source constant, so renaming or mis-setting that constant fails the test; the byte caps are exercised with a multi-byte UTF-8 string whose UTF-16 `.length` and UTF-8 byte length differ.
 
-**Plans**: TBD
+**Deliberate criterion overrides** (from `12-CONTEXT.md`; `verify-phase` must score the decision, not the criterion's literal wording):
+
+- Criterion 1's "and defensively on read" clause is **overridden by D-04** — write-side enforcement only. `helpers/control.ts`'s channel fold has exactly one rejection idiom (`continue`), so a read-side cap converts a caps bug into a channel-availability bug. Score criterion 1 on write-side enforcement alone.
+- Criterion 2's "already-enforced byte cap included" parenthetical is **overridden by D-07** — every serialized-byte cap in `packages/concord` is removed, because NIP-44 now specifies `max_plaintext_size` = 4294967295 and CORD-02 §8/Appendix B reason from a 65,535 ceiling that no longer exists upstream. Score criterion 2 on the 50-membership constant plus the name/description caps.
+- Criterion 4's rationale is **obsolete and corrected by D-14** — `ChannelMetadata` no longer carries `key`/`epoch`, so a naive spread cannot leak `ch.key` via our own code. Score criterion 4 on the preserved fields and the absence of key material, not on the presence of a spread operator. D-22's fold denylist guards the value-level case.
+
+**Plans**: 9 plans
+
+Plans:
+
+**Wave 1** *(no dependencies — fully parallel)*
+
+- [ ] 12-01-PLAN.md — Spec-anchored fixture registry: CORD section registry, the 64/10000/50 cap literals with their verbatim source sentences, multi-byte UTF-8 generators, and the citation scanner (WIRE-06/07/08/12; D-05/D-06/D-16/D-17/D-21)
+- [ ] 12-02-PLAN.md — `nostr-tools` bumped to `^2.24` in core/common/relay, with a behavioral test proving a >65,535-byte NIP-44 plaintext round-trips (WIRE-08 folded scope; D-11/D-25)
+- [ ] 12-03-PLAN.md — Invite-list and invite-bundle serialized-byte caps removed at all sites, dependent comments rewritten, four tests rewritten rather than deleted (WIRE-08 folded scope; D-07/D-09/D-10/D-18/D-25)
+
+**Wave 2** *(depends on 12-01)*
+
+- [ ] 12-04-PLAN.md — `helpers/caps.ts` plus name/description cap enforcement in `createCommunity`, `createChannel`, and `editMetadata`'s post-merge document (WIRE-06/WIRE-07; D-02/D-03/D-04/D-05)
+- [ ] 12-05-PLAN.md — Community List: byte caps out, 50-membership protocol constant in at `recordJoin`; `saveCommunityList` keeps its diagnostic and drops its refusal (WIRE-08; D-06/D-07/D-08/D-10/D-20/D-25)
+- [ ] 12-06-PLAN.md — Structural citation guard plus the twelve-site sweep: `CORD-06 §94` → `§3`, `CORD-03 §44` → `§3` (WIRE-12; D-16/D-17)
+
+**Wave 3** *(depends on wave 2)*
+
+- [ ] 12-07-PLAN.md — Open document root: both `Parsed*` types carry the wire shape with an index signature, both reconstruction literals deleted (WIRE-09; D-01/D-12/D-15)
+- [ ] 12-08-PLAN.md — Channel-edition fold denylist-then-spread, `deleteChannel` destructure-and-spread, and the metadata fold proven correct without changing it (WIRE-09/WIRE-10; D-13/D-14/D-15/D-22/D-24)
+
+**Wave 4** *(depends on 12-07)*
+
+- [ ] 12-09-PLAN.md — Client-tier document-extras carrier in `ConcordClient` and `ConcordInviteManager`, plus the cross-cutting conformance suite proving WIRE-09 end to end through the shipped publish path (WIRE-09; D-13/D-23/D-25)
 
 ### Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)
 
