@@ -10,6 +10,7 @@ import {
   voiceMediaKey,
 } from "./crypto.js";
 import type { GroupKey } from "./crypto.js";
+import { assertByteCap, DESCRIPTION_MAX_BYTES, NAME_MAX_BYTES } from "./caps.js";
 import { EditionFactory } from "../factories/control.js";
 import { JoinLeaveFactory } from "../factories/guestbook.js";
 import type { RumorTemplate } from "../types.js";
@@ -117,6 +118,13 @@ export async function createCommunity(opts: {
   description?: string;
   relays: string[];
 }): Promise<Genesis> {
+  // D-02/D-03/D-05: enforced here, at the top of the public helper, so a
+  // client-only gate can never be bypassed — this is reachable with no
+  // client at all. Before any secret is minted or edition built, so a
+  // rejected input costs no key generation and leaves no partial genesis.
+  assertByteCap(opts.name, NAME_MAX_BYTES, "community name");
+  if (opts.description !== undefined) assertByteCap(opts.description, DESCRIPTION_MAX_BYTES, "community description");
+
   const ownerSalt = randomBytes(32);
   const communityRoot = randomBytes(32);
   const cid = bytesToHex(communityId(opts.ownerPubkey, ownerSalt));

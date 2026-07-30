@@ -1911,12 +1911,15 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
     // local mirror (legacy format: a bare array of materials) rather than via
     // any bundle-validating join path — Task 1 makes an oversized `name`
     // impossible to get past `validateInviteBundle`, so this test targets the
-    // RECOVERY property, not the (now-closed) entry route.
+    // RECOVERY property, not the (now-closed) entry route. Plan 12-04's
+    // write-side byte-cap assertion also makes an oversized `name` impossible
+    // to get past `createCommunity` itself now, so the wedge is padded via
+    // `relays` (unbounded) instead of `name` (capped at 64 bytes).
     const genesis = await createCommunity({
       ownerPubkey: pubkey,
-      name: "x".repeat(45_000), // serialized twice per entry (seed + current) — wedges the doc alone
+      name: "x",
       description: "CR-02 recovery",
-      relays: ["wss://fake"],
+      relays: [`wss://${"x".repeat(45_000)}`], // serialized twice per entry (seed + current) — wedges the doc alone
     });
     const cid = genesis.material.community_id;
     const wedgedMaterial: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
@@ -2198,9 +2201,13 @@ describe("ConcordClient recordJoin entry-size guard, and IN-01/IN-04 (12.3-13)",
     const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
     await client.start();
 
-    // Derive the oversized name length from the exported ceiling, not by
-    // trial and error: measure a baseline entry's bytes, then pad — the name
-    // is serialized TWICE (seed + current), so halve the shortfall.
+    // Derive the oversized field length from the exported ceiling, not by
+    // trial and error: measure a baseline entry's bytes, then pad. Padding via
+    // `relays` (unbounded) rather than `name`: plan 12-04's write-side
+    // byte-cap assertion now rejects any name over 64 bytes before
+    // `createCommunity` even builds material, so `name` can no longer be the
+    // padding vector here — the relays array is still serialized TWICE per
+    // entry (seed + current), so halve the shortfall exactly as before.
     const probe = await createCommunity({ ownerPubkey: pubkey, name: "x", description: "d", relays: ["wss://fake"] });
     const baselineEntry = {
       community_id: probe.material.community_id,
@@ -2210,9 +2217,9 @@ describe("ConcordClient recordJoin entry-size guard, and IN-01/IN-04 (12.3-13)",
     };
     const baselineBytes = communityListEntryByteSize(baselineEntry);
     const padNeeded = Math.ceil((COMMUNITY_LIST_MAX_ENTRY_BYTES - baselineBytes) / 2) + 100;
-    const oversizedName = "x".repeat(1 + Math.max(padNeeded, 0));
+    const oversizedRelays = ["wss://fake", `wss://${"x".repeat(1 + Math.max(padNeeded, 0))}.example`];
 
-    await expect(client.createNewCommunity(oversizedName, "d", ["wss://fake"])).rejects.toThrow(/too large to record/);
+    await expect(client.createNewCommunity("x", "d", oversizedRelays)).rejects.toThrow(/too large to record/);
     expect(client.communities$.value.length).toBe(0);
 
     await client.saveCommunityList();

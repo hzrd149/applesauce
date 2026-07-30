@@ -27,6 +27,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 
 import { EditionFactory } from "../factories/control.js";
+import { assertByteCap, DESCRIPTION_MAX_BYTES, NAME_MAX_BYTES } from "../helpers/caps.js";
 import { CONTROL_KIND } from "../helpers/control.js";
 import { banlistLocator, grantLocator, inviteLinksLocator } from "../helpers/crypto.js";
 import { computeEditionHash } from "../helpers/editions.js";
@@ -154,6 +155,13 @@ export class ConcordCommunityAdmin {
     const material = this.material;
     const current = this.opts.state().metadata ?? { name: material.name, relays: material.relays };
     const next: CommunityMetadata = { ...current, ...patch };
+    // D-03: asserted against the MERGED `next`, not `patch` — `patch` alone
+    // would leave a bypass, since setCommunityImage/removeCommunityImage
+    // below call this with a patch that only touches an image field, and the
+    // merge can re-publish a pre-existing over-cap `name` that predates the
+    // cap even though the patch itself never mentioned it.
+    assertByteCap(next.name, NAME_MAX_BYTES, "community name");
+    if (next.description !== undefined) assertByteCap(next.description, DESCRIPTION_MAX_BYTES, "community description");
     await this.publishEdition(VSK.METADATA, material.community_id, JSON.stringify(next));
   }
 
@@ -179,6 +187,9 @@ export class ConcordCommunityAdmin {
   // ---- channels (vsk 2) ----------------------------------------------------
 
   async createChannel(name: string, options: CreateChannelOptions = {}): Promise<string> {
+    // WIRE-06/D-02: asserted first — before `mintChannelKey`'s side effect,
+    // so a rejected channel name never mints a key that is then orphaned.
+    assertByteCap(name, NAME_MAX_BYTES, "channel name");
     const isPrivate = options.private ?? false;
     const channelId = bytesToHex(generateSecretKey());
     if (isPrivate) this.opts.mintChannelKey(channelId, name);
