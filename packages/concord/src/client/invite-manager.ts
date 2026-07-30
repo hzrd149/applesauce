@@ -23,7 +23,13 @@ import { canonicalJson } from "../helpers/community-list.js";
 import { parseInviteLink } from "../helpers/invite-bundle.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { InviteBundleFactory } from "../factories/invite-bundle.js";
-import { INVITE_LIST_KIND, liveInviteEntries, mergeInvites, mergeTombstones } from "../helpers/invite-list.js";
+import {
+  INVITE_LIST_KIND,
+  getInviteList,
+  liveInviteEntries,
+  mergeInvites,
+  mergeTombstones,
+} from "../helpers/invite-list.js";
 import type { InviteListInvite, InviteListTombstone } from "../types.js";
 
 export interface ConcordInviteLink {
@@ -106,6 +112,14 @@ export class ConcordInviteManager {
   private sub?: Subscription;
   private invites: InviteListInvite[] = [];
   private tombstones: InviteListTombstone[] = [];
+  /** Every top-level key of the Invite List document OTHER than `entries`/`tombstones`,
+   *  captured on read ({@link reconcile}) and spread back on {@link save} (WIRE-09/D-23) —
+   *  mirrors {@link ConcordClient}'s `documentExtras` field verbatim (`client.ts`'s doc
+   *  comment carries the fuller explanation, including why this is not the carrier D-12
+   *  rejected: no whole document is ever held in memory by either engine). Cleared on
+   *  {@link stop} alongside `invites`/`tombstones`/`publishedFingerprint`, so a restart
+   *  cannot replay a previous session's extras onto a document this session never read. */
+  private documentExtras: Record<string, unknown> = {};
   private publishedFingerprint: string | null = canonicalJson({ entries: [], tombstones: [] });
   private readonly autoUnlocked = new Set<string>();
 
@@ -159,6 +173,7 @@ export class ConcordInviteManager {
     this.event$.next(undefined);
     this.invites = [];
     this.tombstones = [];
+    this.documentExtras = {};
     this.publishedFingerprint = canonicalJson({ entries: [], tombstones: [] });
     this.emit();
     this.dirty$.next(false);
@@ -267,7 +282,10 @@ export class ConcordInviteManager {
       this.dirty$.next(false);
       return;
     }
-    const plaintext = JSON.stringify({ entries: this.invites, tombstones: this.tombstones });
+    // Carrier spread FIRST, `entries`/`tombstones` assigned AFTER — same load-bearing ordering
+    // as ConcordClient.saveCommunityList (WIRE-09/D-23): a document carrying a stale `entries`
+    // key must never override this manager's own merged state.
+    const plaintext = JSON.stringify({ ...this.documentExtras, entries: this.invites, tombstones: this.tombstones });
     const content = await this.signer.nip44.encrypt(this.pubkey, plaintext);
     const previous = this.eventStore.getReplaceable(INVITE_LIST_KIND, this.pubkey);
     const createdAt = Math.max(Math.floor(Date.now() / 1000), (previous?.created_at ?? 0) + 1);
@@ -287,6 +305,14 @@ export class ConcordInviteManager {
     if (!invites) return;
     this.invites = mergeInvites(this.invites, invites);
     this.tombstones = mergeTombstones(this.tombstones, cast.tombstones ?? []);
+    // Capture the document's other top-level keys (WIRE-09/D-23), mirroring
+    // ConcordClient.watchLists — read off the cast's own event since ConcordInviteList adds
+    // no whole-document accessor. Existing-first-then-new spread order.
+    const document = getInviteList(cast.event);
+    if (document) {
+      const { entries: _entries, tombstones: _tombstones, ...extras } = document;
+      this.documentExtras = { ...this.documentExtras, ...extras };
+    }
     this.publishedFingerprint = canonicalJson({
       entries: mergeInvites([], invites),
       tombstones: mergeTombstones([], cast.tombstones ?? []),
