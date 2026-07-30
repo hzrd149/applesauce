@@ -25,7 +25,7 @@ describe("community list cast", () => {
         },
       ],
     );
-    // The wire document keys the array as `entries`; the parsed result exposes `communities`.
+    // The wire document keys the array as `entries` (D-12: the parsed value IS the wire document).
     const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: communities, tombstones: [] }));
     const event = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: 1 });
 
@@ -35,7 +35,7 @@ describe("community list cast", () => {
     const communityList = await user.concordCommunityList$.$first();
 
     expect(communityList.unlocked).toBe(false);
-    await expect(communityList.unlock(signer)).resolves.toEqual({ communities, tombstones: [] });
+    await expect(communityList.unlock(signer)).resolves.toEqual({ entries: communities, tombstones: [] });
     expect(communityList.unlocked).toBe(true);
     expect(communityList.communities?.map((community) => community.community_id)).toEqual(["community-1"]);
     expect(communityList.tombstones).toEqual([]);

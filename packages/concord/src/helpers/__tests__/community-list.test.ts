@@ -220,7 +220,7 @@ describe("community-list event helpers", () => {
     expect(isCommunityListUnlocked(event)).toBe(false);
     const parsed = await unlockCommunityList(event, signer);
     expect(isCommunityListUnlocked(event)).toBe(true);
-    expect(parsed.communities.map((e) => e.community_id).sort()).toEqual(["a", "b"]);
+    expect(parsed.entries.map((e) => e.community_id).sort()).toEqual(["a", "b"]);
     expect(parsed.tombstones.map((t) => t.community_id)).toEqual(["a"]);
 
     // "a" was left then re-joined (resurrects), "b" is a plain join.

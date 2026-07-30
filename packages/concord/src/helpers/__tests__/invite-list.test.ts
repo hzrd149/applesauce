@@ -113,7 +113,7 @@ describe("invite-list event helpers", () => {
     expect(isInviteListUnlocked(event)).toBe(false);
     const parsed = await unlockInviteList(event, signer);
     expect(isInviteListUnlocked(event)).toBe(true);
-    expect(parsed.invites.map((e) => e.token).sort()).toEqual(["x", "y"]);
+    expect(parsed.entries.map((e) => e.token).sort()).toEqual(["x", "y"]);
     expect(parsed.tombstones.map((t) => t.token)).toEqual(["x"]);
 
     // "x" was revoked terminally, so only "y" is live.

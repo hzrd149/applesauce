@@ -68,9 +68,15 @@ export function modifyInviteList(apply: InviteListOperation, signer?: EventSigne
       json = await decrypt(await signer.getPublicKey(), draft.content);
     }
 
-    const { invites, tombstones } = parseInviteList(json);
-    const next = apply(invites, tombstones);
-    const document = JSON.stringify({ entries: next.invites, tombstones: next.tombstones });
+    const parsed = parseInviteList(json);
+    const next = apply(parsed.entries, parsed.tombstones);
+    // Serialize the WHOLE parsed document, only replacing `entries`/`tombstones` with the
+    // applied result — any top-level key this client version does not recognize is carried
+    // through unmodified, per CORD-05 §4's restatement of CORD-02 §6's round-trip discipline for
+    // two clients sharing one document (D-01/D-12). The reconstruction this replaces — rebuilding
+    // a bare `{entries, tombstones}` literal from the two applied arrays — was the defect itself
+    // (L07): do not "tidy" this spread back into an explicit literal.
+    const document = JSON.stringify({ ...parsed, entries: next.invites, tombstones: next.tombstones });
     return setHiddenContent(document, signer)(draft);
   };
 }

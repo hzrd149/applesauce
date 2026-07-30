@@ -81,10 +81,16 @@ export function modifyCommunityList(apply: CommunityListOperation, signer?: Even
       json = await decrypt(await signer.getPublicKey(), draft.content);
     }
 
-    const { communities, tombstones } = parseCommunityList(json);
-    const next = apply(communities, tombstones);
-    // The wire document keys the array as `entries` (armada-compatible).
-    const document = JSON.stringify({ entries: next.communities, tombstones: next.tombstones });
+    const parsed = parseCommunityList(json);
+    const next = apply(parsed.entries, parsed.tombstones);
+    // Serialize the WHOLE parsed document, only replacing `entries`/`tombstones` with the
+    // applied result — any top-level key this client version does not recognize is carried
+    // through unmodified, because CORD-02 §6 requires an editor to round-trip fields it does
+    // not understand and §8 restates that discipline for this document (D-01/D-12). The
+    // reconstruction this replaces — rebuilding a bare `{entries, tombstones}` literal from the
+    // two applied arrays — was the defect itself (L07): do not "tidy" this spread back into an
+    // explicit literal.
+    const document = JSON.stringify({ ...parsed, entries: next.communities, tombstones: next.tombstones });
     return setHiddenContent(document, signer)(draft);
   };
 }

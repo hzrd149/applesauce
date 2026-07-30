@@ -297,8 +297,8 @@ describe("ConcordClient extra-relays targeted per-write assertions (D-05)", () =
     expect(listEvent).toBeDefined();
     const plaintext = await signer1.nip44!.decrypt(pubkey1, listEvent!.content);
     const parsed = parseCommunityList(plaintext);
-    expect(parsed.communities.length).toBeGreaterThan(0);
-    const entry = parsed.communities.find((c) => c.community_id === community1.communityId);
+    expect(parsed.entries.length).toBeGreaterThan(0);
+    const entry = parsed.entries.find((c) => c.community_id === community1.communityId);
     expect(entry).toBeDefined();
     expect(entry!.current.relays).toEqual(PROTOCOL_RELAYS);
 

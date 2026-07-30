@@ -29,9 +29,11 @@ export class ConcordCommunityList extends EventCast {
     return isCommunityListUnlocked(this.event);
   }
 
-  /** The decrypted membership communities, if the event has been unlocked. */
+  /** The decrypted membership communities, if the event has been unlocked. This getter's name is
+   *  the package's public vocabulary; the document's key is the wire's `entries` (D-12 aligned the
+   *  parsed type to the wire without breaking this cast surface). */
   get communities(): CommunityListCommunity[] | undefined {
-    return getCommunityList(this.event)?.communities;
+    return getCommunityList(this.event)?.entries;
   }
 
   /** The decrypted tombstones (left communities), if the event has been unlocked. */
@@ -49,7 +51,8 @@ export class ConcordCommunityList extends EventCast {
     return this.$$ref("communities$", (store) =>
       of(this.event).pipe(
         watchEventUpdates(store),
-        map((event) => event && getCommunityList(event)?.communities),
+        // The getter name is the package's public vocabulary; the document's key is the wire's.
+        map((event) => event && getCommunityList(event)?.entries),
       ),
     );
   }

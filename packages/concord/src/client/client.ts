@@ -51,6 +51,7 @@ import {
   mergeCommunities,
   mergeCommunityTombstones,
   parseCommunityList,
+  type ParsedCommunityList,
 } from "../helpers/community-list.js";
 import {
   INVITE_BUNDLE_KIND,
@@ -960,7 +961,7 @@ export class ConcordClient {
       const raw = await this.storage.getItem(this.pubkey);
       if (!raw) return;
       const mirror = this.parseMirror(raw);
-      this.list = mergeCommunities(this.list, mirror.communities);
+      this.list = mergeCommunities(this.list, mirror.entries);
       this.tombstones = mergeCommunityTombstones(this.tombstones, mirror.tombstones);
     } catch (err) {
       this.log("failed to read the local community mirror: %s", (err as Error)?.message ?? err);
@@ -973,11 +974,11 @@ export class ConcordClient {
    *  any tombstone the relay copy carries outranks them: a device whose mirror predates this format
    *  must not undo a leave it never witnessed. An unpublished legacy join still survives, because
    *  liveness only consults `added_at` when a tombstone exists at all. */
-  private parseMirror(raw: string): { communities: CommunityListCommunity[]; tombstones: CommunityTombstone[] } {
+  private parseMirror(raw: string): ParsedCommunityList {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return parseCommunityList(raw);
     return {
-      communities: (parsed as JoinMaterial[])
+      entries: (parsed as JoinMaterial[])
         .filter((material) => typeof material?.community_id === "string")
         .map((material) => ({
           community_id: material.community_id,

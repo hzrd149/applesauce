@@ -38,7 +38,7 @@ describe("invite list cast", () => {
     const inviteList = await user.concordInviteList$.$first();
 
     expect(inviteList.unlocked).toBe(false);
-    await expect(inviteList.unlock(signer)).resolves.toEqual({ invites, tombstones: [] });
+    await expect(inviteList.unlock(signer)).resolves.toEqual({ entries: invites, tombstones: [] });
     expect(inviteList.unlocked).toBe(true);
     expect(inviteList.invites?.map((entry) => entry.token)).toEqual(["token-1"]);
     expect(inviteList.tombstones).toEqual([]);

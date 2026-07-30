@@ -39,9 +39,11 @@ export class ConcordInviteList extends EventCast {
     return isInviteListUnlocked(this.event);
   }
 
-  /** The decrypted invite entries, if the event has been unlocked. */
+  /** The decrypted invite entries, if the event has been unlocked. This getter's name is the
+   *  package's public vocabulary; the document's key is the wire's `entries` (D-12 aligned the
+   *  parsed type to the wire without breaking this cast surface). */
   get invites(): InviteListInvite[] | undefined {
-    return getInviteList(this.event)?.invites;
+    return getInviteList(this.event)?.entries;
   }
 
   /** The decrypted tombstones (revoked links), if the event has been unlocked. */
@@ -59,7 +61,8 @@ export class ConcordInviteList extends EventCast {
     return this.$$ref("invites$", (store) =>
       of(this.event).pipe(
         watchEventUpdates(store),
-        map((event) => event && getInviteList(event)?.invites),
+        // The getter name is the package's public vocabulary; the document's key is the wire's.
+        map((event) => event && getInviteList(event)?.entries),
       ),
     );
   }
