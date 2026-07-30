@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
-status: executing
-stopped_at: Completed 12-08-PLAN.md
-last_updated: "2026-07-30T12:30:08.757Z"
+status: verifying
+stopped_at: Completed 12-09-PLAN.md
+last_updated: "2026-07-30T15:11:12.386Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 85
-  completed_plans: 84
-  percent: 92
+  completed_plans: 85
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 12 (document-caps-conformance) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
   next unchecked phase in ROADMAP.md is 12, not 12.1 — `phase.complete` reported
@@ -139,6 +139,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P06 | 20min | 2 tasks | 6 files |
 | Phase 12 P07 | 15min | 3 tasks | 12 files |
 | Phase 12 P08 | 21min | 3 tasks | 5 files |
+| Phase 12 P09 | 151min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -287,6 +288,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12-08]: channel fold's key-material denylist destructures key/epoch out by name and spreads the rest, spread-first field ordering, per D-22
 - [Phase 12-08]: deleteChannel destructures out channel_id and spreads the rest with deleted:true, matching deleteRole's preserve-plus-terminal-flag idiom
 - [Phase 12-08]: Test E chains a v2 metadata edition onto genesis's own v1 via computeEditionHash/prevHash (mirroring the CHAN-07 test's linking pattern) so the fold's contiguous-chain walk actually adopts it, proving D-24 with zero source change to the metadata fold
+- [Phase ?]: 12-09: documentExtras snapshots the whole last-read document (including entries/tombstones), not a stripped extras-only object — the only design under which spread-first/assign-after ordering at the write sites is a real, testable shadow-protection rather than a no-op
+- [Phase ?]: 12-09: documentExtras excluded from both publishedListFingerprint and publishedFingerprint dirty checks — a value captured there was just read off the document the fingerprint believes is already on the relay, so its presence alone never forces an extra publish
 
 ### Pending Todos
 
@@ -305,8 +308,7 @@ None yet.
 - Plan 12-01's frontmatter lists requirements WIRE-06/07/08/12, but 12-01 only builds the spec-anchored test substrate (cap literals, section registry, citation scanner) those plans' tests will assert against — the actual behavior (cap enforcement in helpers/caps.ts/admin.ts/client.ts for WIRE-06/07/08, the citation sweep for WIRE-12) lands in plans 12-04/12-05/12-06. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the INVITE-01 precedent; mark these Complete only when their respective implementing plans land.
 - Plan 12-02's frontmatter lists requirement WIRE-08, but 12-02 only supplies the runtime evidence that the byte-cap ceiling moved upstream (nostr-tools bump + round-trip test). WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - Plan 12-03's frontmatter lists requirement WIRE-08, but 12-03 only retires the invite-side half of the byte-cap removal (INVITE_LIST_MAX_BYTES/inviteListWithinByteCap, INVITE_BUNDLE_MAX_TOTAL_BYTES) per D-07. WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05, which handles the Community List half. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02 precedent; mark WIRE-08 Complete only when 12-05 lands.
-- Plan 12-07's frontmatter lists requirement WIRE-09, but 12-07 only closes it at the helper/cast/operations tier (parseCommunityList/parseInviteList open roots, modifyCommunityList/modifyInviteList spread-serialize). The client publish tier -- saveCommunityList and invite-manager.save(), which hand-roll the document from reduced arrays -- is plan 12-09 per D-23. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02/12-03 precedent; mark WIRE-09 Complete only when 12-09 lands.
-- Plan 12-08's frontmatter lists requirement WIRE-09, but 12-08 only closes item 3 (the channel-fold half) of WIRE-09's concord-audit L07 finding. WIRE-09's own REQUIREMENTS.md text (Community List/Invite List round-trip) and its client-publish-tier closure land in plan 12-09 per D-23. Left REQUIREMENTS.md's WIRE-09 unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02/12-03/12-07 precedent; mark WIRE-09 Complete only when 12-09 lands. WIRE-10 is marked Complete now -- deleteChannel's preserve-custom-exclude-key-material fix is wholly this plan's scope.
+- [RESOLVED 2026-07-30] Plans 12-07/12-08 both deferred WIRE-09's completion, noting the client-publish-tier closure (saveCommunityList/invite-manager.save() hand-rolling the document from reduced arrays) was plan 12-09's scope per D-23 -- 12-09 landed a `documentExtras` snapshot in both ConcordClient and ConcordInviteManager (spread-first, assign-after at every write site), proven via a six-test cross-cutting suite (document-caps-conformance.test.ts) with three mandatory non-vacuity mutations observed RED at the exact pre-phase defect sites. WIRE-09 marked Complete in REQUIREMENTS.md.
 
 ### Roadmap Evolution
 
@@ -333,8 +335,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T12:28:52.092Z
-Stopped at: Completed 12-08-PLAN.md
+Last session: 2026-07-30T15:11:12.369Z
+Stopped at: Completed 12-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

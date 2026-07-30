@@ -37,7 +37,7 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 - [x] **Phase 9: Authority & Permission Fold Correctness** - Grant, Kick, Ban, and Role folds enforce rank comparisons and reject malformed input without failing every member's community state (completed 2026-07-19)
 - [x] **Phase 10: Invite Lifecycle & Event Time Consistency** - A revoked invite stays unjoinable under a lagging relay, and an event's timestamp and `ms` tag compose into one true instant (completed 2026-07-21)
 - [x] **Phase 11: Messaging Wire Conformance** - Reactions, threaded replies, deletes, and voice presence carry the wire shape CORD-01/03/07 define (6/6 plans executed; verification passed 6/6 must-haves; 2/2 UAT decisions resolved — stale docs fixed in-phase, voice-presence roster resurrection backlogged to todos/pending/11-verify-followups.md) (completed 2026-07-29)
-- [ ] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields
+- [x] **Phase 12: Document & Caps Conformance** - Community and channel documents respect protocol byte/membership caps and round-trip unknown fields (completed 2026-07-30)
 - [x] **Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)** - Community sync stops issuing historical-fetch filters for ephemeral kind 21059, which relays never retain (promoted from backlog)
 - [x] **Phase 12.2: Concord Sync Debug Logging (INSERTED)** - Sync emits debug logging that distinguishes "no events" from "events arrived but failed to decrypt" (promoted from backlog) (completed 2026-07-22)
 - [x] **Phase 12.3: Transport-Only Extra Relays (INSERTED)** - ConcordClient accepts app-local `extraRelays` used purely as transport, never written into community/protocol state (promoted from backlog) (14/14 plans; verification passed 17/17 D-01…D-17; 2 accepted overrides — WR-08 trigger unproven as verification debt, CR5-01 guardrail hardening backlogged as 999.9 with zero live defect) (completed 2026-07-28)
@@ -357,7 +357,7 @@ Plans:
 - Criterion 2's "already-enforced byte cap included" parenthetical is **overridden by D-07** — every serialized-byte cap in `packages/concord` is removed, because NIP-44 now specifies `max_plaintext_size` = 4294967295 and CORD-02 §8/Appendix B reason from a 65,535 ceiling that no longer exists upstream. Score criterion 2 on the 50-membership constant plus the name/description caps.
 - Criterion 4's rationale is **obsolete and corrected by D-14** — `ChannelMetadata` no longer carries `key`/`epoch`, so a naive spread cannot leak `ch.key` via our own code. Score criterion 4 on the preserved fields and the absence of key material, not on the presence of a spread operator. D-22's fold denylist guards the value-level case.
 
-**Plans**: 8/9 plans executed
+**Plans**: 9/9 plans complete
 
 Plans:
 
@@ -380,7 +380,7 @@ Plans:
 
 **Wave 4** *(depends on 12-07)*
 
-- [ ] 12-09-PLAN.md — Client-tier document-extras carrier in `ConcordClient` and `ConcordInviteManager`, plus the cross-cutting conformance suite proving WIRE-09 end to end through the shipped publish path (WIRE-09; D-13/D-23/D-25)
+- [x] 12-09-PLAN.md — Client-tier document-extras carrier in `ConcordClient` and `ConcordInviteManager`, plus the cross-cutting conformance suite proving WIRE-09 end to end through the shipped publish path (WIRE-09; D-13/D-23/D-25)
 
 ### Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)
 
@@ -503,7 +503,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete    | 2026-07-29 |
-| 12. Document & Caps Conformance | v1.1 | 8/9 | In Progress|  |
+| 12. Document & Caps Conformance | v1.1 | 9/9 | Complete   | 2026-07-30 |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete    | 2026-07-25 |
