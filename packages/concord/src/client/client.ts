@@ -42,8 +42,7 @@ import type { ConcordCommunityList, ConcordInviteList } from "../casts/index.js"
 import { createCommunity } from "../helpers/community.js";
 import {
   COMMUNITY_LIST_KIND,
-  COMMUNITY_LIST_MAX_ENTRY_BYTES,
-  LIST_MAX_BYTES,
+  COMMUNITY_LIST_MAX_MEMBERSHIPS,
   canonicalJson,
   communityListByteSize,
   communityListEntryByteSize,
@@ -768,13 +767,14 @@ export class ConcordClient {
    *
    *  Two orderings are load-bearing here, and neither weakens the other:
    *
-   *  1. The size guard runs FIRST, before anything is constructed — it is the cheapest possible
-   *     refusal (CR-01's structural half): per-field caps alone cannot bound the aggregate (up to
-   *     256 channels each carrying up to 64 held keys is legal under every per-field cap and still
-   *     assembles into tens of kilobytes), so a serialized-size ceiling on the PROSPECTIVE entry
-   *     sits here, before `this.list` is touched and before an engine is constructed.
+   *  1. The membership-count guard runs FIRST, before anything is constructed — it is the cheapest
+   *     possible refusal, and the ONLY enforcement point for `COMMUNITY_LIST_MAX_MEMBERSHIPS`
+   *     (WIRE-08/D-06): `loadMirror`, `watchLists`, `mergeCommunities`, and `reconcileCommunities`
+   *     stay refusal-free on purpose (see below), so this is the one place a 51st live membership
+   *     can be turned away, and it runs before `this.list` is touched and before an engine is
+   *     constructed.
    *
-   *  2. CR-02/T-12.3-11: once past the size guard, the engine is constructed BEFORE the document
+   *  2. CR-02/T-12.3-11: once past the count guard, the engine is constructed BEFORE the document
    *     mutation. `addCommunity` reaches `new ConcordCommunity(...)` -> `deriveConcordKeys` ->
    *     `baseKeysFor` -> `hexToBytes(material.community_root)`, which can throw synchronously on
    *     malformed material that reached here via a route this method cannot itself re-validate —
@@ -791,12 +791,21 @@ export class ConcordClient {
    *     during construction. DO NOT restore the "document first" order — that is exactly the CR-02
    *     phantom-membership defect.
    *
-   *  Why the ceiling sits HERE and not on the merge paths: `loadMirror` and `watchLists` must keep
-   *  merging another device's entries even when they are over-ceiling, because refusing to merge
-   *  would break liveness convergence and silently discard a membership this client did not create.
-   *  An over-ceiling entry that arrives by merge is handled by `pruneDeadEntries()` and by
-   *  `leave()` recovery, not by refusal. */
+   *  Why the cap sits HERE and not on the merge paths: `recordJoin` is the ONLY enforcement point.
+   *  `loadMirror` and `watchLists` must keep merging another device's entries even past 50, because
+   *  refusing to merge would break liveness convergence and silently discard a membership this
+   *  client did not create (CORD-02 §8, D-06's documented asymmetry). An over-cap state reached by
+   *  merge is resolved by `leave()`, not by refusal. */
   private recordJoin(material: JoinMaterial): ConcordCommunity {
+    // Count BEFORE the prospective entry is folded in, so the guard refuses the join that would be
+    // the 51st live membership and admits the one that would be the 50th. `liveCommunities`, never
+    // `this.list.length` — the array holds duplicate `community_id`s across re-joins and entries
+    // whose tombstone outranks them, so its raw length is not the membership count D-06 defines.
+    const liveCount = liveCommunities(this.list, this.tombstones).length;
+    if (liveCount + 1 > COMMUNITY_LIST_MAX_MEMBERSHIPS)
+      throw new Error(
+        `community list join refused (${liveCount} live memberships, would exceed the ${COMMUNITY_LIST_MAX_MEMBERSHIPS}-membership cap)`,
+      );
     const addedAt = Date.now();
     const prospective: CommunityListCommunity = {
       community_id: material.community_id,
@@ -804,11 +813,6 @@ export class ConcordClient {
       current: material,
       added_at: addedAt,
     };
-    const entryBytes = communityListEntryByteSize(prospective);
-    if (entryBytes > COMMUNITY_LIST_MAX_ENTRY_BYTES)
-      throw new Error(
-        `community list entry too large to record (${entryBytes} bytes > ${COMMUNITY_LIST_MAX_ENTRY_BYTES}-byte per-entry ceiling)`,
-      );
     const community = this.addCommunity(material);
     this.list = joinCommunity(prospective)(this.list, this.tombstones).communities;
     return community;
@@ -907,13 +911,15 @@ export class ConcordClient {
    * re-inserted the pruned bytes, and by CR-02(a) `leave()` could no longer
    * reach the reaped, engine-less result to prune it again).
    *
-   * Why it must NEVER mark the list dirty or publish: its job is only to keep
-   * the array `saveCommunityList` serializes under the cap. If this method
-   * also flagged dirty, a stale peer that republishes a dead entry on every
-   * churn would drive one publish per remote emission between two devices —
-   * pruning silently and letting the NEXT natural save carry the result
-   * avoids that loop while still guaranteeing the document that eventually
-   * publishes is under cap.
+   * Why it must NEVER mark the list dirty or publish: its surviving purpose is
+   * keeping derived-dead memberships out of the published document and out of
+   * the live count `recordJoin`'s `COMMUNITY_LIST_MAX_MEMBERSHIPS` guard
+   * consults (D-06) — not enforcing a serialized-byte ceiling, which D-07
+   * removed. If this method also flagged dirty, a stale peer that republishes
+   * a dead entry on every churn would drive one publish per remote emission
+   * between two devices — pruning silently and letting the NEXT natural save
+   * carry the result avoids that loop while still keeping the live count
+   * accurate.
    */
   private pruneDeadEntries(): void {
     // Evaluated against a stable snapshot of the pre-filter array — isCommunityLive
@@ -1159,40 +1165,39 @@ export class ConcordClient {
         this.clearCommunityListDirty(); // already in sync with the relay copy
         return;
       }
-      // CR-02/WR-04 diagnostics: measure the serialized bytes ONCE, through the
-      // SAME shared helper `communityListWithinByteCap` itself delegates to
-      // (`communityListByteSize`), so the publish path and the helper can no
-      // longer drift out of sync — and reuse that one measurement both for the
-      // cap check and (on failure) for the diagnostic message below.
+      // D-07/D-08: nothing in this package enforces a serialized-byte ceiling on the Community
+      // List anymore — the 50-membership count at `recordJoin` is the only bound (D-06). This
+      // measurement is now a plain, unconditional size trace rather than a gate: it always runs,
+      // through the same shared helper (`communityListByteSize`) that measured the old cap, so a
+      // future reader still has one honest place to look when a document grows large.
       const serializedBytes = communityListByteSize(list, tombstones);
-      if (serializedBytes > LIST_MAX_BYTES) {
-        // Diagnostics on the wedge (CR-02/IN-01): name the offending entry so a
-        // user stuck here can identify which community to `leave()` to
-        // recover. One detailed report through both existing channels —
-        // `this.publishLog` (never a new logger, never `.extend()` at this
-        // call site, project rule) and the pre-existing `console.warn`.
-        let largestEntryId = "";
-        let largestEntryBytes = -1;
-        for (const entry of list) {
-          const entryBytes = communityListEntryByteSize(entry);
-          if (entryBytes > largestEntryBytes) {
-            largestEntryBytes = entryBytes;
-            largestEntryId = entry.community_id;
-          }
+      // Name the largest entry so an operator can identify which community dominates the
+      // document's size — informational only, never a refusal reason (CR-02/IN-01 heritage).
+      let largestEntryId = "";
+      let largestEntryBytes = -1;
+      for (const entry of list) {
+        const entryBytes = communityListEntryByteSize(entry);
+        if (entryBytes > largestEntryBytes) {
+          largestEntryBytes = entryBytes;
+          largestEntryId = entry.community_id;
         }
-        // IN-01: the prior diagnostic ignored tombstone bytes entirely (a
-        // document pushed over cap by tombstones reported a misleading
-        // culprit) and, with an empty `list`, ended with a bare trailing
-        // `community=` — omit the largest-entry clause entirely when there is
-        // no entry to name.
-        const tombstoneBytes = new TextEncoder().encode(JSON.stringify(tombstones)).length;
-        const largestEntryClause =
-          list.length === 0 ? "" : ` — largest entry community=${largestEntryId.slice(0, 8)} (${largestEntryBytes} bytes)`;
-        const message = `community list exceeds the NIP-44 byte cap (${serializedBytes}/${LIST_MAX_BYTES} bytes, ${list.length} entries, ${tombstoneBytes} tombstone bytes); not publishing${largestEntryClause}`;
-        this.publishLog(message);
-        console.warn(message);
-        return;
       }
+      // IN-01: report tombstone bytes explicitly (a document whose size is dominated by
+      // tombstones would otherwise misdirect an operator toward the wrong culprit) and, with an
+      // empty `list`, omit the largest-entry clause entirely rather than end with a bare trailing
+      // `community=`.
+      const tombstoneBytes = new TextEncoder().encode(JSON.stringify(tombstones)).length;
+      const largestEntryClause =
+        list.length === 0 ? "" : ` — largest entry community=${largestEntryId.slice(0, 8)} (${largestEntryBytes} bytes)`;
+      // Reused `this.publishLog` (never a new logger, never `.extend()` at this call site,
+      // project rule / D-20) — no `console.warn`: there is no refusal left to surface.
+      this.publishLog(
+        "community list size trace: %d bytes, %d entries, %d tombstone bytes%s",
+        serializedBytes,
+        list.length,
+        tombstoneBytes,
+        largestEntryClause,
+      );
       // Only the transport target widens here (via {@link transport}) — the list's own content
       // (`list`/`tombstones`, serialized below) continues to carry each community's material
       // relays untouched. Computed once and reused for the trace and the publish call so the two
