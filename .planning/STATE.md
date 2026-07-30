@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
 status: executing
-stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-07-30T10:21:06.547Z"
+stopped_at: Completed 12-04-PLAN.md
+last_updated: "2026-07-30T10:46:09.099Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 85
-  completed_plans: 79
+  completed_plans: 80
   percent: 92
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12 (document-caps-conformance) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
@@ -134,6 +134,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P01 | 15min | 2 tasks | 2 files |
 | Phase 12 P02 | 5min | 2 tasks | 5 files |
 | Phase 12 P03 | 10min | 3 tasks | 7 files |
+| Phase 12 P04 | 20min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -269,6 +270,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: NIP-44 ceiling test placed in packages/core (not concord) since concord has no direct nostr-tools dependency and reaches nip44 only through core's re-export
 - [Phase ?]: D-25 correction applied: the maxPlaintextSize fix landed in nostr-tools 2.23.4, not 2.24.0; the ^2.24 target range is unchanged
 - [Phase 12-03]: Rewrote community-list.ts's COMMUNITY_LIST_MAX_ENTRY_BYTES doc comment (outside 12-03's declared files_modified) to drop its dangling citation of the deleted INVITE_BUNDLE_MAX_TOTAL_BYTES, per D-10 and this plan's own verification requiring zero surviving occurrences of the removed symbol name outside the structural test guard; the constant and its enforcement are untouched, still plan 12-05's scope
+- [Phase ?]: 12-04: helpers/caps.ts has zero imports so it sits at the bottom of the dependency graph, reachable from both helpers/community.ts and client/admin.ts without crossing the one-way helpers->client import boundary
+- [Phase ?]: 12-04: editMetadata asserts against the merged next, never patch -- proven necessary by a seeded-legacy-document test plus a mutation probe
+- [Phase ?]: 12-04: two pre-existing client.test.ts fixtures (12.3-12/12.3-13) repointed to pad an oversized Community List entry via the unbounded relays field instead of name, since the new write-side cap now rejects an over-cap name before either fixture's own target code path is reached
 
 ### Pending Todos
 
@@ -313,8 +317,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T10:19:20.730Z
-Stopped at: Completed 12-02-PLAN.md
+Last session: 2026-07-30T10:46:09.088Z
+Stopped at: Completed 12-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

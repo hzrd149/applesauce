@@ -77,8 +77,8 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **WIRE-03**: A reaction's `k` tag names its target's actual kind rather than a hardcoded 9 *(M15)*
 - [x] **WIRE-04**: A threaded reply inherits its parent's root tags verbatim and derives `K`/`k` from the real target kind, so replies off a kind-9 message and nesting beyond depth 1 are expressible *(M16)*
 - [x] **WIRE-05**: A delete carries the `k` tag naming its target's kind *(L03)*
-- [ ] **WIRE-06**: A channel `name` is capped at 64 **bytes** (UTF-8, not UTF-16 units) on write, and defensively on read *(M17)*
-- [ ] **WIRE-07**: Community `name` (64B) and `description` (10000B) byte caps are enforced *(L09)*
+- [x] **WIRE-06**: A channel `name` is capped at 64 **bytes** (UTF-8, not UTF-16 units) on write, and defensively on read *(M17)*
+- [x] **WIRE-07**: Community `name` (64B) and `description` (10000B) byte caps are enforced *(L09)*
 - [ ] **WIRE-08**: The Community List enforces the 50-membership protocol constant alongside the already-enforced byte cap *(M12)*
 - [ ] **WIRE-09**: The Community List and Invite List round-trip unknown **top-level** document fields, so two clients sharing one npub cannot wipe each other's data *(L07; per-entry unknowns already survive)*
 - [ ] **WIRE-10**: A `deleteChannel` edition preserves `custom` while still explicitly excluding client-only key material *(L02; the hand-roll is partly deliberate and correct — a naive spread would leak `ch.key`, so the fix is an explicit destructure, not a spread)*
@@ -163,8 +163,8 @@ Deferred — acknowledged, not in this roadmap.
 | WIRE-04 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
 | WIRE-05 | Phase 11 | Complete *(11-01 vendored fixtures, 11-04 routing/behavior, 11-05 fixture-anchored assertions)* |
 | WIRE-11 | Phase 11 | Complete |
-| WIRE-06 | Phase 12 | Pending |
-| WIRE-07 | Phase 12 | Pending |
+| WIRE-06 | Phase 12 | Complete |
+| WIRE-07 | Phase 12 | Complete |
 | WIRE-08 | Phase 12 | Pending |
 | WIRE-09 | Phase 12 | Pending |
 | WIRE-10 | Phase 12 | Pending |
