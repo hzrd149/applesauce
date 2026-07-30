@@ -281,6 +281,65 @@ Not derivations, not tag shapes — those closed in Phases 5–11.
   **fail today** — NIP-44's value is now 4294967295. Any byte-related assertion must cite
   CORD-02, not NIP-44.
 
+### Amendments from research (plan-phase, 2026-07-29)
+
+Four corrections surfaced by `12-RESEARCH.md`. D-22 is a user ruling; D-23 through D-25 are
+orchestrator rulings on questions the research left open.
+
+- **D-22:** Denylist-then-spread resolves the D-13 / D-14 collision in the channel fold.
+  **User ruling, 2026-07-29.** D-13 item 3 requires the channel-edition fold
+  (`helpers/control.ts:296-316`) to preserve unknown top-level keys. D-14 accepts a plain
+  `{...content}` spread in `deleteChannel` because `tsc` rejects `ch.key`. Those collide —
+  `tsc` stops *our code* from reading an undeclared property but does nothing to stop a
+  hostile edition's raw JSON from *containing* one, so a blind spread in the fold would let
+  a `MANAGE_CHANNELS` holder's `key` field survive at the value level and round-trip back
+  out through D-14's spread, reopening the leak CHAN-04 closes today.
+
+  The fold therefore destructures key-material field names out explicitly and spreads the
+  rest:
+
+  ```ts
+  const { key: _key, epoch: _epoch, name, private: isPrivate, ...rest } = raw;
+  if (typeof name !== "string" || typeof isPrivate !== "boolean") continue;
+  const meta: ChannelMetadata = { ...rest, channel_id: eid, name, private: isPrivate };
+  ```
+
+  Rejected — keeping explicit field-picking (leaves D-13 item 3 unmet for channel editions,
+  so a future protocol field on an edition is still wiped) and per-field allowlist validation
+  (strictest, but the most logic in the hot fold path for a threat the denylist already
+  covers). The denylist carries a comment citing both D-13 and CHAN-04, because a future
+  reader adding a sensitive field to `ChannelKey` / `JoinMaterial` must extend it. A
+  hostile-edition-with-`key`-field regression test proves the exclusion holds.
+
+- **D-23:** WIRE-09's in-scope sites include the client publish tier, not only the operations
+  files D-12 names. `CommunityListFactory` / `modifyCommunityList` have zero call sites under
+  `client/*.ts` (grep-confirmed), so the exercised publish path is `client/client.ts`'s
+  `saveCommunityList` (line ~1207) and `client/invite-manager.ts`'s `save()` (line ~281),
+  both hand-rolling `JSON.stringify({entries, tombstones})` from reduced in-memory arrays.
+  `concord-audit.md`'s L07 already names these sites — D-12's prose under-enumerated them.
+  Not new scope. A round-trip test driven through the factory layer alone would pass while
+  the shipped client stayed lossy, so the WIRE-09 regression test must drive
+  `ConcordClient` end-to-end.
+
+- **D-24:** The community-metadata fold is already correct — prove it, do not fix it.
+  D-13 item 2 characterises `editMetadata`'s `current` as coming from a narrow fold, but
+  `helpers/control.ts:239-250` is a blind `as CommunityMetadata` cast, and a TypeScript cast
+  never strips runtime properties. Unknown top-level keys already survive that path today.
+  The phase spends a regression test proving preservation holds (satisfying D-21), with zero
+  source change to that fold. Byte-cap enforcement on the metadata path (D-02 / D-03 / D-05)
+  is orthogonal and still required.
+
+- **D-25:** `INVITE_BUNDLE_MAX_TOTAL_BYTES` is removed entirely — the constant declaration
+  plus both call sites — not just its two enforcement sites. D-08's keep-the-diagnostic
+  carve-out is written only for `saveCommunityList`, and D-09 states that only the two count
+  bounds survive. `LIST_MAX_BYTES` keeps a diagnostic role per D-08, but its message drops
+  the "exceeds the cap" framing, which becomes false once nothing is enforced. Also noted —
+  `nostr-tools` shipped the `maxPlaintextSize` change in 2.23.4 rather than 2.24.0; this
+  corrects D-11's rationale without moving its locked `^2.24` target. The local
+  community-list mirror carrying extras (`saveMirror` / `loadMirror` / `parseMirror`) is a
+  lower-priority follow-up task within this phase, not a blocker, since any client able to
+  publish has read some copy of the list at least once.
+
 ### Claude's Discretion
 
 - Whether the shared byte-length check (D-03) is a standalone helper, a small module, or
