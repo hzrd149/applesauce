@@ -677,7 +677,7 @@ export class ConcordCommunity {
   private route(info: PlaneInfo, decoded: DecodedEvent): void {
     if (info.type === "channel") {
       const epoch = info.epoch ?? channelEpochOf(this.keys, info.channelId!);
-      // CORD-03 §44: drop any rumor whose channel/epoch binding doesn't match the
+      // CORD-03 §3: drop any rumor whose channel/epoch binding doesn't match the
       // key that opened the wrap (anti-replay).
       if (!checkChatBinding(decoded.rumor.tags, info.channelId!, epoch)) return;
     }
@@ -982,7 +982,7 @@ export class ConcordCommunity {
   /** Follow a Refounding forward: swap in the rolled-forward key state, reopen the
    *  live subscription at the new epoch's addresses, and re-walk each private
    *  channel — a Refounding may bundle a channel Rekey sealed under the prior root
-   *  (CORD-06 §94) and the channel-rekey address keys on the (now-changed) root. */
+   *  (CORD-06 §3) and the channel-rekey address keys on the (now-changed) root. */
   private adoptRefounding(next: ConcordKeys): void {
     this.keys = next;
     this.trimStaleGuestbookStores();
@@ -1445,7 +1445,7 @@ export class ConcordCommunity {
     keep: string[];
     exclude?: string[];
     /**
-     * Per-private-channel keep lists (CORD-06 §94). ONLY the named channels are
+     * Per-private-channel keep lists (CORD-06 §3). ONLY the named channels are
      * rotated, and each new channel key is delivered ONLY to its own `keep` set —
      * pass a channel's actual membership, never the community-wide keep set, or a
      * member who was never in the channel would be granted its key. Unnamed
@@ -1480,7 +1480,7 @@ export class ConcordCommunity {
     const transportRelays = this.transport();
 
     // Bundle a channel Rekey ONLY for the explicitly-named private channels, each
-    // delivered to that channel's own membership (CORD-06 §94). Delivering to the
+    // delivered to that channel's own membership (CORD-06 §3). Delivering to the
     // community keep set would over-grant — a kept member who was never in a
     // private channel would receive its key — so scoping is the caller's to supply.
     const channelRekeys = (opts.channelRekeys ?? []).flatMap(({ channelId, keep }) => {

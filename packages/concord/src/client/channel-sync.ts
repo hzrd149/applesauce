@@ -85,7 +85,7 @@ async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): 
 /**
  * Full-sync the channel-rekey address(es) for `channel`'s next epoch and decide
  * whether to advance. Reads the rekey blobs sealed under the current root and
- * each held root (CORD-06 §94), then folds them with {@link readChannelRekey}.
+ * each held root (CORD-06 §3), then folds them with {@link readChannelRekey}.
  */
 async function syncRekeyAndAdvance(
   ctx: ChannelSyncContext,

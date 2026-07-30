@@ -305,7 +305,7 @@ export function rollForward(
 export interface RefoundingPlan {
   /** Per-recipient rekey blobs at the base-rekey address — publish (await) first. */
   rekeyWraps: NostrEvent[];
-  /** Channel-scoped rekey blobs for the bundled private channels (CORD-06 §94),
+  /** Channel-scoped rekey blobs for the bundled private channels (CORD-06 §3),
    *  sealed under the PRIOR root — publish (await) alongside `rekeyWraps`. Empty
    *  unless `channelRekeys` was passed. */
   channelRekeyWraps: NostrEvent[];
@@ -338,7 +338,7 @@ export async function buildRefounding(
     heads: Iterable<DecodedEvent>;
     /** The current folded channels, for re-deriving the rolled key state. */
     channels: ChannelMetadata[];
-    /** Private channels to ALSO rekey (CORD-06 §94), each to its own recipients —
+    /** Private channels to ALSO rekey (CORD-06 §3), each to its own recipients —
      *  sealed under the prior root so the blob is openable on either base fork. */
     channelRekeys?: Array<{ channel: ChannelKey; recipients: string[] }>;
     /** Injectable new root (tests); defaults to a fresh random key. */
@@ -376,7 +376,7 @@ export async function buildRefounding(
     rekeyWraps.push(wrap);
   }
 
-  // 1b. Channel rekeys (CORD-06 §94): rotate each named Private Channel, delivering
+  // 1b. Channel rekeys (CORD-06 §3): rotate each named Private Channel, delivering
   //     its new key only to that channel's kept members. Sealed under the PRIOR
   //     root (buildChannelRekey's default) so the blob stays openable on either
   //     base fork under a racing Refounding. The rolled channel keys are NOT baked
@@ -640,7 +640,7 @@ export interface ChannelKeys {
   held: Array<{ epoch: number; key: GroupKey }>;
   /** The next channel-epoch's rekey listen address, derived once per community
    *  root we hold — the current root (a standalone Rekey) and each held root (a
-   *  Refounding-bundled channel rekey is sealed under the PRIOR root, CORD-06 §94). */
+   *  Refounding-bundled channel rekey is sealed under the PRIOR root, CORD-06 §3). */
   nextRekey: Array<{ key: GroupKey; epoch: number }>;
   /** Decrypt-side lookup: stream pubkey → plane info (message planes + rekey addresses). */
   planes: Map<string, PlaneInfo>;
@@ -694,7 +694,7 @@ export function deriveChannelKeys(material: JoinMaterial, channel: ChannelKey): 
  * channel epoch and deliver it to `recipients` as per-recipient channel-scoped
  * blobs at the channel-rekey address. Sealed under `priorRoot` (default: the
  * current community_root — a standalone Rekey; a Refounding passes the prior root
- * so the blob is openable on either base fork, CORD-06 §94). No compaction: a
+ * so the blob is openable on either base fork, CORD-06 §3). No compaction: a
  * channel is just chat, so prior messages stay readable under the held key.
  * Returns the wraps + the rolled-forward channel key. Requires a NIP-44 signer.
  */

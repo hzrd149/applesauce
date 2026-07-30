@@ -230,7 +230,7 @@ export class ConcordPrivateChannel {
 
   /** Re-walk after the community root rotated: the channel-rekey address keys on
    *  the root, and a Refounding may bundle a channel Rekey sealed under the prior
-   *  root (CORD-06 §94). Called by {@link ConcordCommunity} on adopt. */
+   *  root (CORD-06 §3). Called by {@link ConcordCommunity} on adopt. */
   async refreshForCommunityEpoch(): Promise<void> {
     if (!this.started || this.disposed) return;
     await this.walk();
@@ -309,7 +309,7 @@ export class ConcordPrivateChannel {
 
   private route(info: PlaneInfo, decoded: DecodedEvent): void {
     if (info.type === "channel") {
-      // CORD-03 §44: drop any rumor whose channel/epoch binding doesn't match the
+      // CORD-03 §3: drop any rumor whose channel/epoch binding doesn't match the
       // key that opened it.
       if (!checkChatBinding(decoded.rumor.tags, this.channelId, info.epoch ?? this.channelKey.epoch)) return;
       // `.add` is sync for an in-memory store and a Promise for an async-database-backed one;

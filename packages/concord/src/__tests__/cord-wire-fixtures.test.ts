@@ -3,12 +3,12 @@
 // order-independent so downstream WIRE-02/03/04/05 assertions are not
 // pinned to our own composition order (T-11-01 caveat). Also proves the
 // TEST-01/D-21 anchoring contract: the cap literals match the numbers
-// parsed back out of their own verbatim source sentences (T-12-04), and the
-// citation scanner is non-vacuous against real, live source (T-12-05).
-
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+// parsed back out of their own verbatim source sentences (T-12-04), and
+// exercises the citation scanner's own classification rules directly
+// (T-12-05). The scanner's non-vacuity against real, live source is now
+// proven by `__tests__/cord-citations.test.ts`'s package-wide guard (D-16),
+// not by this file — see the note at the end of the `citationsOutsideRegistry`
+// describe block below.
 
 import { describe, expect, it } from "vitest";
 
@@ -206,29 +206,16 @@ describe("citationsOutsideRegistry", () => {
     expect(citationsOutsideRegistry("CORD-06 §7: not a real section")).toEqual(["CORD-06 §7"]);
   });
 
-  // Non-vacuity against live source (D-16 non-vacuity requirement): scans the
-  // four files that carry this phase's twelve invalid CORD-06 §94 / CORD-03
-  // §44 citations. This test asserts the invalid set is currently
-  // non-empty — the reciprocal of the guard plan 12-06 adds in its own
-  // `__tests__/cord-citations.test.ts` (asserting an empty set across all of
-  // `src/`, once the sweep lands). Plan 12-06 is responsible for deleting or
-  // inverting THIS test in the same commit as the sweep. It exists so the
-  // scanner is proven non-vacuous against real source before anything is
-  // edited.
-  it("reports both live invalid citation forms found in real source today", () => {
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const files = [
-      join(dir, "..", "client", "private-channel.ts"),
-      join(dir, "..", "client", "channel-sync.ts"),
-      join(dir, "..", "client", "community.ts"),
-      join(dir, "..", "helpers", "keys.ts"),
-    ];
-    const text = files.map((file) => readFileSync(file, "utf8")).join("\n");
-
-    const invalid = citationsOutsideRegistry(text);
-
-    expect(invalid.length).toBeGreaterThan(0);
-    expect(invalid).toContain("CORD-06 §94");
-    expect(invalid).toContain("CORD-03 §44");
-  });
+  // The non-vacuity test that lived here (D-16 requirement) scanned the four
+  // files carrying this phase's twelve invalid `CORD-06 §94` / `CORD-03 §44`
+  // citations and asserted the invalid set was non-empty — proof the scanner
+  // was non-vacuous against real source before plan 12-06's sweep edited
+  // anything. Plan 12-06 swept all twelve sites (now `CORD-06 §3` /
+  // `CORD-03 §3`) and removed this test rather than inverting it: an
+  // inverted "these four files are now clean" assertion would merely
+  // duplicate a subset of `__tests__/cord-citations.test.ts`'s package-wide
+  // guard, which now asserts the same emptiness across all of
+  // `packages/concord/src` (including these four files) permanently. The
+  // guard's own file-count and valid-citation anti-vacuity assertions are
+  // this suite's non-vacuity proof now.
 });
