@@ -83,7 +83,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [ ] **WIRE-09**: The Community List and Invite List round-trip unknown **top-level** document fields, so two clients sharing one npub cannot wipe each other's data *(L07; per-entry unknowns already survive)*
 - [ ] **WIRE-10**: A `deleteChannel` edition preserves `custom` while still explicitly excluding client-only key material *(L02; the hand-roll is partly deliberate and correct — a naive spread would leak `ch.key`, so the fix is an explicit destructure, not a spread)*
 - [x] **WIRE-11**: A client can retain a wrap's ephemeral key so it can NIP-09-delete its own giftwrap by `p` tag *(L10)*
-- [ ] **WIRE-12**: Code comments cite real spec sections — `CORD-06 §94` does not exist (CORD-06 has 3 sections; 94 is a line number) *(L11)*
+- [x] **WIRE-12**: Code comments cite real spec sections — `CORD-06 §94` does not exist (CORD-06 has 3 sections; 94 is a line number) *(L11)*
 
 ### Test Methodology (TEST)
 
@@ -168,7 +168,7 @@ Deferred — acknowledged, not in this roadmap.
 | WIRE-08 | Phase 12 | Complete |
 | WIRE-09 | Phase 12 | Pending |
 | WIRE-10 | Phase 12 | Pending |
-| WIRE-12 | Phase 12 | Pending |
+| WIRE-12 | Phase 12 | Complete |
 
 **Coverage:**
 

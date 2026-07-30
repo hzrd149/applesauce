@@ -6,14 +6,14 @@ current_phase: 12
 current_phase_name: document-caps-conformance
 status: executing
 stopped_at: Completed 12-05-PLAN.md
-last_updated: "2026-07-30T11:17:33.712Z"
+last_updated: "2026-07-30T11:44:46.003Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 85
-  completed_plans: 81
+  completed_plans: 82
   percent: 92
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12 (document-caps-conformance) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
@@ -136,6 +136,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P03 | 10min | 3 tasks | 7 files |
 | Phase 12 P04 | 20min | 3 tasks | 7 files |
 | Phase 12 P05 | 24min | 3 tasks | 4 files |
+| Phase 12 P06 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -277,6 +278,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12]: 12-05: LIST_MAX_BYTES reworded to a diagnostic-only reference figure (D-08) rather than deleted, carrying the D-21 warning that NIP-44's max_plaintext_size is now 4294967295
 - [Phase 12]: 12-05: Test F (D-06 live-only counting) needed duplicate raw entries alongside tombstones to be non-vacuous, since mergeCommunities' dedup plus pruneDeadEntries on every death transition makes this.list.length and liveCommunities(...).length structurally equal in every publicly-reachable state; added a white-box test writing the private list field directly to pin the implementation choice
 - [Phase 12]: 12-05: rewrote (not deleted) the pre-existing CR-02 recoverability test whose 'an already-wedged list cannot publish' premise was falsified by this plan's D-07/D-08 change
+- [Phase 12]: 12-06: Fixed a citationsOutsideRegistry over-matching bug in cord-wire-fixtures.ts (owned by 12-01) blocking a clean RED -- numeric section citations followed by capitalized prose (e.g. CORD-05 section 6 Direct Invites) were being swept into the token; split the pattern into a numeric-no-continuation alternative and a letter-led named-section-with-continuation alternative
+- [Phase 12]: 12-06: Deleted (not inverted) 12-01's reciprocal invalid-set-non-empty test in cord-wire-fixtures.test.ts -- an inverted now-clean assertion would merely duplicate a subset of the new package-wide cord-citations.test.ts guard
+- [Phase 12]: 12-06: Excluded cord-wire-fixtures.test.ts from the new citation guard's file walk -- its own unit tests embed deliberately-invalid citation strings as literals, textually indistinguishable from real citations to a whole-file scan
 
 ### Pending Todos
 
@@ -321,7 +325,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T11:17:33.702Z
+Last session: 2026-07-30T11:43:46.110Z
 Stopped at: Completed 12-05-PLAN.md
 Resume file: None
 
