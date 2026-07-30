@@ -16,6 +16,7 @@ import {
   isValidCommunityList,
   mergeCommunities,
   mergeCommunityTombstones,
+  parseCommunityList,
   unlockCommunityList,
 } from "../community-list.js";
 import { CommunityListFactory } from "../../factories/community-list.js";
@@ -23,6 +24,7 @@ import type { CommunityListCommunity, CommunityTombstone, JoinMaterial } from ".
 import {
   CORD_COMMUNITY_LIST_CAP_SENTENCE,
   CORD_COMMUNITY_LIST_MEMBERSHIP_CAP,
+  CORD_ROUND_TRIP_SENTENCE,
 } from "../../__tests__/cord-wire-fixtures.js";
 
 describe("community-list CRDT", () => {
@@ -228,5 +230,71 @@ describe("community-list event helpers", () => {
     expect(live.map((e) => e.community_id).sort()).toEqual(["a", "b"]);
     // getCommunityList returns the cached parse after unlock.
     expect(getCommunityList(event)).toEqual(parsed);
+  });
+
+  // WIRE-09/D-12: the parsed document IS the wire document, so an unrecognized top-level key
+  // survives parse -> mutate -> serialize. Authority: CORD-02 §6's round-trip MUST, restated by
+  // §8, as vendored verbatim in CORD_ROUND_TRIP_SENTENCE (cord-wire-fixtures.ts) — quoted below
+  // rather than asserted against, since the property under test is preservation of hand-written
+  // unrecognized keys, not a numeric spec constant (D-21/TEST-01).
+  //
+  // See `CORD_ROUND_TRIP_SENTENCE` (imported below) for the exact vendored text.
+  describe("WIRE-09 round-trip: unrecognized top-level keys survive parse/mutate/serialize", () => {
+    it("cites CORD_ROUND_TRIP_SENTENCE (CORD-02 §6) as the round-trip authority", () => {
+      expect(CORD_ROUND_TRIP_SENTENCE).toContain("round-trip fields it doesn't understand");
+    });
+
+    it("parseCommunityList preserves unrecognized top-level keys — a scalar and a nested object — alongside entries/tombstones", () => {
+      // `future_protocol_field` stands in for a real future protocol field this client version
+      // does not know (CORD-02 §6: top-level fields outside `custom` are reserved for the
+      // protocol). `custom` is another client's extension data. Both must survive, for different
+      // reasons (D-13).
+      const custom = { schema_version: 3, flags: ["a", "b"] };
+      const doc = {
+        entries: [{ community_id: "a", seed: material("a"), current: material("a"), added_at: 1 }],
+        tombstones: [],
+        future_protocol_field: "not-junk-a-real-future-field",
+        custom,
+      };
+      const parsed = parseCommunityList(JSON.stringify(doc));
+      expect(parsed.future_protocol_field).toBe("not-junk-a-real-future-field");
+      expect(parsed.custom).toEqual(custom);
+      expect(parsed.entries).toHaveLength(1);
+    });
+
+    it("a document carrying ONLY an unrecognized top-level key still defaults entries/tombstones to empty arrays", () => {
+      const parsed = parseCommunityList(JSON.stringify({ custom: { a: 1 } }));
+      expect(parsed.entries).toEqual([]);
+      expect(parsed.tombstones).toEqual([]);
+      expect(parsed.custom).toEqual({ a: 1 });
+    });
+
+    it("modifyCommunityList (via CommunityListFactory) round-trips an unrecognized top-level key through a join, asserted on the raw re-serialized plaintext", async () => {
+      const signer = new PrivateKeySigner(generateSecretKey());
+      const pubkey = await signer.getPublicKey();
+      const custom = { schema_version: 3, flags: ["a", "b"] };
+      const plaintext = JSON.stringify({
+        entries: [],
+        tombstones: [],
+        future_protocol_field: "not-junk-a-real-future-field",
+        custom,
+      });
+      const content = await signer.nip44!.encrypt(pubkey, plaintext);
+      const seed = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: 1 });
+
+      const joined = await CommunityListFactory.modify(seed)
+        .join({ community_id: "a", seed: material("a"), current: material("a"), added_at: 1 })
+        .sign(signer);
+
+      // Assert on the RAW re-serialized plaintext (never by re-reading through parseCommunityList,
+      // which would let a rename hide from this test) — the wire key set and both unrecognized
+      // keys must survive.
+      const rawPlaintext = await signer.nip44!.decrypt(pubkey, joined.content);
+      const raw = JSON.parse(rawPlaintext) as Record<string, unknown>;
+      expect(Object.keys(raw).sort()).toEqual(["custom", "entries", "future_protocol_field", "tombstones"]);
+      expect(raw.future_protocol_field).toBe("not-junk-a-real-future-field");
+      expect(raw.custom).toEqual(custom);
+      expect((raw.entries as { community_id: string }[]).map((e) => e.community_id)).toEqual(["a"]);
+    });
   });
 });
