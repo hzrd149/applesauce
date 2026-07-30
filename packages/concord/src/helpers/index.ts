@@ -6,6 +6,7 @@
 export * from "./stream.js";
 export * from "./crypto.js";
 export * from "./gift-wrap.js";
+export * from "./caps.js";
 export * from "./permissions.js";
 export * from "./control.js";
 export * from "./guestbook.js";
