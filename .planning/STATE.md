@@ -8,13 +8,13 @@ status: verifying
 stopped_at: Completed 12-09-PLAN.md
 last_updated: "2026-07-30T15:11:12.386Z"
 last_activity: 2026-07-30
-last_activity_desc: Phase 12 execution started
+last_activity_desc: Phase 12 executed 9/9 plans; verification found gaps (CR-01)
 progress:
   total_phases: 12
-  completed_phases: 12
+  completed_phases: 11
   total_plans: 85
   completed_plans: 85
-  percent: 100
+  percent: 92
 ---
 
 # Project State
@@ -30,7 +30,9 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 Phase: 12 (document-caps-conformance) — EXECUTING
 Plan: 9 of 9
-Status: Phase complete — ready for verification
+Status: 9/9 plans executed; verification ran and returned gaps_found — 1 blocking gap (CR-01,
+  channel-fold type-validation regression introduced by plan 12-08). Phase is NOT complete.
+  Next: /gsd-plan-phase 12 --gaps
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
   next unchecked phase in ROADMAP.md is 12, not 12.1 — `phase.complete` reported
@@ -67,7 +69,7 @@ Status: Phase complete — ready for verification
   Closure Addendum.)
 Last activity: 2026-07-30 — Phase 12 execution started
 
-Progress: [██████████] 100%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
