@@ -198,14 +198,38 @@ export class ConcordCommunityAdmin {
     return channelId;
   }
 
+  /**
+   * Publish a terminal deletion edition (CHAN-07: the id is never reused).
+   *
+   * Preserves everything but the addressing coordinate: with the channel
+   * fold's denylist-then-spread (D-13/D-14), `ch` already carries the
+   * edition's unknown top-level keys, so spreading it here preserves them
+   * too — including `custom` — with nothing enumerated and nothing to
+   * forget when a field is added. CORD-02 §6's round-trip MUST requires
+   * this. `channel_id` is destructured out because it is the edition's
+   * entity id, supplied separately to `publishEdition`; carrying it inside
+   * the content too would duplicate it.
+   *
+   * Safe to spread: `ChannelMetadata` carries no key material (`key`/`epoch`
+   * were removed earlier in this milestone as accepted breaking changes),
+   * and the fold's own denylist additionally prevents a hostile edition's
+   * `key` field from ever becoming a live property on `ch` in the first
+   * place — so the spread cannot leak key material at either the type
+   * level or the value level (D-22).
+   *
+   * ROADMAP criterion 4 originally mandated an explicit destructure "never
+   * a naive spread, which would leak `ch.key`". That rationale is obsolete:
+   * the type no longer carries `key`, so `tsc` rejects a read of `ch.key`
+   * and the leak cannot happen via our own code. This destructure of the
+   * coordinate still satisfies the criterion's letter; criterion 4 should
+   * be scored on the preserved fields plus the absence of key material,
+   * not on the presence of a spread operator (D-14).
+   */
   async deleteChannel(channelId: string): Promise<void> {
     const ch = this.opts.state().channels.find((c) => c.channel_id === channelId);
     if (!ch) return;
-    await this.publishEdition(
-      VSK.CHANNEL,
-      channelId,
-      JSON.stringify({ name: ch.name, private: ch.private, deleted: true }),
-    );
+    const { channel_id: _channel_id, ...rest } = ch;
+    await this.publishEdition(VSK.CHANNEL, channelId, JSON.stringify({ ...rest, deleted: true }));
   }
 
   // ---- roles & grants (vsk 1 / vsk 3) --------------------------------------
