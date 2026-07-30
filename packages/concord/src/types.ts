@@ -112,12 +112,31 @@ export interface Role {
 }
 
 // ---- Channel metadata (vsk 2) ---------------------------------------------
+/**
+ * CORD-02 §6 reserves top-level fields outside `custom` for the protocol, and
+ * CORD-03 permits the same `custom` object on a channel edition that
+ * `CommunityMetadata` carries. An unrecognized top-level key on a channel
+ * edition is therefore a future protocol field this client version does not
+ * yet know, and D-13 requires it to survive the fold — hence the index
+ * signature below, matching the open-object idiom used elsewhere in this file
+ * (e.g. {@link CommunityListCommunity}, {@link InviteListInvite}).
+ *
+ * Deliberate asymmetry with {@link CommunityMetadata}, which stays CLOSED
+ * (D-24): the metadata fold is a blind `as CommunityMetadata` cast, and a
+ * TypeScript cast never strips runtime properties, so unknown top-level keys
+ * already survive that path at the value level with no index signature
+ * needed. Opening `CommunityMetadata` too would additionally widen
+ * `editMetadata`'s `Partial<CommunityMetadata>` patch parameter to accept any
+ * key at all, silently disabling typo detection on a public API for no
+ * preservation benefit. Do not "fix" this asymmetry.
+ */
 export interface ChannelMetadata {
   channel_id: string;
   name: string;
   private: boolean;
   deleted?: boolean;
   custom?: Record<string, unknown>;
+  [k: string]: unknown;
 }
 
 // ---- Grant (vsk 3) --------------------------------------------------------

@@ -250,9 +250,21 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
   }
 
   // ---- Channels (MANAGE_CHANNELS) -----------------------------------------
-  // CHAN-04: fields are picked explicitly with type validation — never a blind
-  // `JSON.parse(...) as ChannelMetadata` cast, and key material is NEVER read
-  // from edition JSON (D-01: `material.channels` is the sole source of truth).
+  // CHAN-04/D-13/D-22: unknown top-level keys on a channel edition are
+  // preserved by spreading the rest of the parsed object — D-13 requires
+  // folds and editors to preserve what they do not understand, and CORD-02
+  // §6 makes it a MUST. This is NOT a blind spread: `tsc` prevents our own
+  // code from reading a property `ChannelMetadata` does not declare, but it
+  // does nothing to stop a hostile edition's raw JSON from CONTAINING one. A
+  // `MANAGE_CHANNELS` holder could put a `key` field on an edition; a blind
+  // spread would make it a live property on the folded object, and
+  // `deleteChannel`'s spread would then round-trip it back out — reopening
+  // exactly the leak CHAN-04 closes. So the two key-material field names are
+  // destructured out by name before the rest is spread, and key material is
+  // still NEVER read from edition JSON (D-01: `material.channels` is the sole
+  // source of truth for channel key material, unchanged). A future
+  // contributor who adds a new sensitive field to `ChannelKey` or
+  // `JoinMaterial` must extend this denylist.
   // CHAN-07: deletion is terminal (CORD-03 §2, "the id is never reused") — if
   // ANY authorized candidate for this entity is deleted:true, the channel is
   // permanently dropped AND `heads` is pinned to that deleting edition (not
@@ -291,8 +303,10 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
       continue; // never push — permanently dead, id never reused
     }
 
-    // Otherwise take the first parseable authorized candidate, picking fields
-    // EXPLICITLY with type validation — never key/epoch from the edition.
+    // Otherwise take the first parseable authorized candidate. Denylist the
+    // two key-material field names out by name, keep type validation on the
+    // two validated fields, and spread the rest — see the CHAN-04/D-22
+    // comment above.
     for (const cand of authorized) {
       let parsed: unknown;
       try {
@@ -301,15 +315,12 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
         continue;
       }
       if (parsed === null || typeof parsed !== "object") continue;
-      const raw = parsed as Record<string, unknown>;
-      if (typeof raw.name !== "string" || typeof raw.private !== "boolean") continue;
-      const meta: ChannelMetadata = {
-        channel_id: eid,
-        name: raw.name,
-        private: raw.private,
-        ...(typeof raw.deleted === "boolean" ? { deleted: raw.deleted } : {}),
-        ...(raw.custom !== null && typeof raw.custom === "object" ? { custom: raw.custom as Record<string, unknown> } : {}),
-      };
+      const { key: _key, epoch: _epoch, name, private: isPrivate, ...rest } = parsed as Record<string, unknown>;
+      if (typeof name !== "string" || typeof isPrivate !== "boolean") continue;
+      // Spread FIRST, assigned fields LAST: a raw edition carrying its own
+      // `channel_id` must not overwrite the entity id derived from the
+      // coordinate (D-22).
+      const meta: ChannelMetadata = { ...rest, channel_id: eid, name, private: isPrivate };
       heads.set(eid, cand.source);
       channels.push(meta);
       break;
