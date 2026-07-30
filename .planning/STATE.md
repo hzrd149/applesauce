@@ -6,14 +6,14 @@ current_phase: 12
 current_phase_name: document-caps-conformance
 status: executing
 stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-07-30T10:07:22.401Z"
+last_updated: "2026-07-30T10:21:06.547Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 85
-  completed_plans: 78
+  completed_plans: 79
   percent: 92
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12 (document-caps-conformance) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
@@ -133,6 +133,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 11 P06 | 15min | 3 tasks | 6 files |
 | Phase 12 P01 | 15min | 2 tasks | 2 files |
 | Phase 12 P02 | 5min | 2 tasks | 5 files |
+| Phase 12 P03 | 10min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -267,6 +268,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: All three manifests moved to identical ^2.24 in one commit so pnpm dedupes to a single installed nostr-tools instance
 - [Phase ?]: NIP-44 ceiling test placed in packages/core (not concord) since concord has no direct nostr-tools dependency and reaches nip44 only through core's re-export
 - [Phase ?]: D-25 correction applied: the maxPlaintextSize fix landed in nostr-tools 2.23.4, not 2.24.0; the ^2.24 target range is unchanged
+- [Phase 12-03]: Rewrote community-list.ts's COMMUNITY_LIST_MAX_ENTRY_BYTES doc comment (outside 12-03's declared files_modified) to drop its dangling citation of the deleted INVITE_BUNDLE_MAX_TOTAL_BYTES, per D-10 and this plan's own verification requiring zero surviving occurrences of the removed symbol name outside the structural test guard; the constant and its enforcement are untouched, still plan 12-05's scope
 
 ### Pending Todos
 
@@ -284,6 +286,7 @@ None yet.
 - 11-02: applesauce-examples unfiltered pnpm build is red due to 9 pre-existing, unrelated StoredEvent/NostrEvent sig-mismatch files (not concord/voice-flag related) — see deferred-items.md; a future plan should fix these cache-request call sites
 - Plan 12-01's frontmatter lists requirements WIRE-06/07/08/12, but 12-01 only builds the spec-anchored test substrate (cap literals, section registry, citation scanner) those plans' tests will assert against — the actual behavior (cap enforcement in helpers/caps.ts/admin.ts/client.ts for WIRE-06/07/08, the citation sweep for WIRE-12) lands in plans 12-04/12-05/12-06. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the INVITE-01 precedent; mark these Complete only when their respective implementing plans land.
 - Plan 12-02's frontmatter lists requirement WIRE-08, but 12-02 only supplies the runtime evidence that the byte-cap ceiling moved upstream (nostr-tools bump + round-trip test). WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01 precedent; mark WIRE-08 Complete only when 12-05 lands.
+- Plan 12-03's frontmatter lists requirement WIRE-08, but 12-03 only retires the invite-side half of the byte-cap removal (INVITE_LIST_MAX_BYTES/inviteListWithinByteCap, INVITE_BUNDLE_MAX_TOTAL_BYTES) per D-07. WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05, which handles the Community List half. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02 precedent; mark WIRE-08 Complete only when 12-05 lands.
 
 ### Roadmap Evolution
 
@@ -310,7 +313,7 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T10:06:44.813Z
+Last session: 2026-07-30T10:19:20.730Z
 Stopped at: Completed 12-02-PLAN.md
 Resume file: None
 
