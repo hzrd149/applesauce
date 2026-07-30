@@ -211,12 +211,11 @@ export const INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS = 64;
 /**
  * Text-length ceiling for attacker-controlled display/attribution strings
  * (CR-02): `name` (bundle-level and per-channel) and `label`/`creator_npub`
- * are all serialized into a document hard-capped at `LIST_MAX_BYTES`
- * (community-list.ts) — the bundle-level `name` TWICE per entry (`seed` and
- * `current`, via `JoinMaterial.name`). The unit is UTF-16 code units
- * (JavaScript string `.length`); the worst-case UTF-8 expansion is 4 bytes
- * per 2 code units, so the per-entry worst case stays in the low kilobytes —
- * dozens of entries still fit comfortably under the 65535-byte publish cap.
+ * bound strings a joiner renders. The bundle-level `name` reaches
+ * `JoinMaterial.name`, which a Community List entry serializes TWICE (`seed`
+ * and `current`, via `client.ts`'s `recordJoin`). The unit is UTF-16 code
+ * units (JavaScript string `.length`); the worst-case UTF-8 expansion is 4
+ * bytes per 2 code units.
  */
 export const INVITE_BUNDLE_MAX_TEXT_LENGTH = 256;
 /**
@@ -228,20 +227,6 @@ export const INVITE_BUNDLE_MAX_TEXT_LENGTH = 256;
  * closing the hop the shape check alone cannot.
  */
 export const INVITE_BUNDLE_MAX_RELAY_URL_LENGTH = 512;
-/**
- * Whole-bundle serialized-size ceiling, in UTF-8 bytes (D-17/CR-01's
- * structural half). Per-field caps ALONE cannot bound the aggregate: up to
- * {@link INVITE_BUNDLE_MAX_CHANNELS} channels, each carrying up to
- * {@link INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS} held keys, is legal under every
- * per-field cap and still assembles into tens of kilobytes. The material a
- * bundle produces is serialized TWICE per Community-List entry (`seed` and
- * `current`, `client.ts`'s `recordJoin`) — so twice this value MUST stay inside
- * `COMMUNITY_LIST_MAX_ENTRY_BYTES` (`community-list.ts`, itself half of
- * `LIST_MAX_BYTES`). The remaining headroom (this cap is well under half of
- * that ceiling) absorbs the entry's envelope (`community_id`/`added_at`) and
- * the organic growth a later Refounding adds to `current` via `held_roots`.
- */
-export const INVITE_BUNDLE_MAX_TOTAL_BYTES = 8192;
 
 export interface BuildInviteBundleOptions {
   /** Preview name; defaults to the material's `name`. */
@@ -298,15 +283,6 @@ export function buildInviteBundle(material: JoinMaterial, opts: BuildInviteBundl
     label: opts.label,
     expires_at: opts.expires_at,
   };
-  // D-17/CR-01: fail at MINT time, not at every joiner's validator — an inviter
-  // who grants a very large channel set (or a huge held-key set) otherwise
-  // ships a link that `validateInviteBundle` refuses for every recipient.
-  // Measured the same way the validator measures its rebuilt output.
-  const bytes = new TextEncoder().encode(JSON.stringify(bundle)).length;
-  if (bytes > INVITE_BUNDLE_MAX_TOTAL_BYTES)
-    throw new Error(
-      `invite bundle too large to mint (${bytes} bytes > ${INVITE_BUNDLE_MAX_TOTAL_BYTES}-byte cap, ${channels.length} channel(s))`,
-    );
   return bundle;
 }
 
@@ -664,13 +640,9 @@ export function rebuildByRules<T>(rules: ExhaustiveBundleRules<T>, value: unknow
  * Bound and self-certify an attacker-crafted bundle (CORD-05 §1, D-17). Walks
  * {@link INVITE_BUNDLE_FIELD_RULES} to rebuild the bundle (every field bounded
  * or stripped by construction — see {@link rebuildByRules}), then applies the
- * two cross-field checks a per-field rule cannot express: the owner proof
- * (`community_id == sha256(owner || salt)`, CORD-02) and the aggregate
- * serialized-size cap (CR-01's structural half — per-field caps alone cannot
- * bound the total: up to `INVITE_BUNDLE_MAX_CHANNELS` channels each carrying
- * up to `INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS` held keys is legal under every
- * per-field cap and still assembles into tens of kilobytes). Returns the
- * rebuilt object, or `undefined` if the bundle is unusable.
+ * one cross-field check a per-field rule cannot express: the owner proof
+ * (`community_id == sha256(owner || salt)`, CORD-02). Returns the rebuilt
+ * object, or `undefined` if the bundle is unusable.
  *
  * The return is now DIRECTLY typed as `InviteBundle` — no terminal assertion.
  * The remaining single erasure lives inside {@link rebuildByRules} (its
@@ -699,11 +671,6 @@ export function validateInviteBundle(bundle: InviteBundle | undefined): InviteBu
     return undefined;
   }
   if (expected !== rebuilt.community_id) return undefined;
-  // Aggregate size cap (CR-01's structural half), measured on the REBUILT
-  // object — never on the untrusted input, which the walk above may have
-  // already shrunk (junk relays filtered, unknown keys stripped).
-  const bytes = new TextEncoder().encode(JSON.stringify(rebuilt)).length;
-  if (bytes > INVITE_BUNDLE_MAX_TOTAL_BYTES) return undefined;
   return rebuilt;
 }
 
