@@ -80,9 +80,33 @@ export function liveCommunities(
   return [...live.values()];
 }
 
+/**
+ * "The List caps at 50 memberships... the cap is a protocol constant, not
+ * client taste" (CORD-02 §8). Counts LIVE memberships only, exactly as
+ * {@link liveCommunities} derives them — a tombstoned entry does not consume
+ * this budget, because the spec's own word is "memberships", not "entries".
+ * This is a transcribed spec literal, not a derived constant (unlike
+ * {@link LIST_MAX_BYTES}'s survivors below), so the derived-constants-carry-
+ * a-rationale convention elsewhere in this file does not apply here (D-21).
+ * With D-07 removing every serialized-byte cap on this document, this is now
+ * the ONLY bound the Community List has.
+ */
+export const COMMUNITY_LIST_MAX_MEMBERSHIPS = 50;
+
 // ── Merge + mutation (CORD-02 §8, mirrors armada communityList.ts) ───────────
 
-/** The NIP-44 plaintext cap the serialized list must fit under (CORD-02 §8). */
+/**
+ * The historical NIP-44 plaintext ceiling (CORD-02 §8), retained only as a
+ * reference figure in the Community List size trace — nothing in this
+ * package enforces it (D-07/D-08; the enforcement gate this constant used to
+ * feed lived in `client.ts`'s `saveCommunityList` and is gone). Its premise
+ * moved upstream: NIP-44 now specifies a plaintext maximum of 4294967295 and
+ * demotes 65536 to an `extended_prefix_threshold`, so both CORD-02 §8 and
+ * Appendix B reason from a ceiling that no longer exists. D-21: no assertion
+ * in this package may anchor 65535 to a NIP-44 spec value — that assertion
+ * fails against today's NIP-44 — byte-related assertions cite CORD-02
+ * instead.
+ */
 export const LIST_MAX_BYTES = 65_535;
 
 /** JSON with recursively-sorted keys — a total order for equal-epoch tiebreaks. */
@@ -163,10 +187,10 @@ export function mergeCommunityTombstones(a: CommunityTombstone[], b: CommunityTo
 
 /**
  * The serialized byte size of the wire document (`{entries, tombstones}`) —
- * the SINGLE measurement shared by {@link communityListWithinByteCap} and
- * `client.ts`'s `saveCommunityList`, so the publish path and the helper can no
- * longer drift out of sync (WR-04: the two were previously hand-duplicated,
- * verified line-for-line identical, with the helper dead in `src`).
+ * the SINGLE measurement `client.ts`'s `saveCommunityList` diagnostic
+ * consumes, so the publish path and any future reader of this figure can
+ * never drift apart on how the document is measured (WR-04's original
+ * dedup rationale; D-08's retained size trace is why this survives).
  */
 export function communityListByteSize(
   communities: CommunityListCommunity[],
@@ -176,29 +200,13 @@ export function communityListByteSize(
   return new TextEncoder().encode(JSON.stringify({ entries: communities, tombstones })).length;
 }
 
-/** Whether the serialized (JSON) list fits under the NIP-44 plaintext cap. */
-export function communityListWithinByteCap(
-  communities: CommunityListCommunity[],
-  tombstones: CommunityTombstone[],
-): boolean {
-  return communityListByteSize(communities, tombstones) <= LIST_MAX_BYTES;
-}
-
 /** The serialized byte size of a single {@link CommunityListCommunity} entry —
- *  its material appears TWICE (`seed` AND `current`), which is the whole
- *  reason a per-entry ceiling exists below (CR-01's structural half). */
+ *  its material appears TWICE (`seed` AND `current`), roughly doubling its
+ *  footprint versus a naive single-copy estimate. Used by `saveCommunityList`'s
+ *  diagnostic to name the largest entry in the size trace (D-08). */
 export function communityListEntryByteSize(entry: CommunityListCommunity): number {
   return new TextEncoder().encode(JSON.stringify(entry)).length;
 }
-
-/**
- * Per-entry serialized-size ceiling (CR-01's structural half), derived
- * arithmetically as half of {@link LIST_MAX_BYTES} rather than a copied
- * literal: an entry serializes its material TWICE (`seed` and `current`), so
- * no single membership may occupy more than half the document — otherwise two
- * ordinary joins alone could exceed the whole-document cap.
- */
-export const COMMUNITY_LIST_MAX_ENTRY_BYTES = Math.floor(LIST_MAX_BYTES / 2);
 
 // ── Event-level helpers (self-encrypted list; hidden-content family) ─────────
 
