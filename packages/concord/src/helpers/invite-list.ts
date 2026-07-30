@@ -93,21 +93,36 @@ export function isValidInviteList(event: NostrEvent): event is InviteListEvent {
 /** Symbol for caching the parsed (decrypted) invite list on an event. */
 export const InviteListSymbol = Symbol.for("concord-invite-list");
 
-/** The decrypted invite list split into its two independent arrays. */
+/**
+ * The decrypted invite list document — the parsed value IS the wire
+ * document, not a reconstruction of it. `entries` and `tombstones` are
+ * guaranteed present (defaulted to `[]` when absent), and every other
+ * top-level key the JSON carried is preserved verbatim on the returned
+ * object via the index signature below — the same open-object idiom
+ * {@link InviteListInvite} and {@link InviteListTombstone} already use one
+ * level down in `types.ts`. CORD-05 §4 restates CORD-02 §6's round-trip
+ * MUST for this document; a named carrier field for "the rest" would keep
+ * the reconstruction and rely on every future write site remembering to
+ * spread it, which D-12 rejected as an enumerated patch rather than a
+ * structural fix (D-01/D-12).
+ */
 export interface ParsedInviteList {
-  invites: InviteListInvite[];
+  entries: InviteListInvite[];
   tombstones: InviteListTombstone[];
+  [k: string]: unknown;
 }
 
 /**
- * Parse the self-encrypted invite list JSON into its two arrays (empty on
- * absent/blank). The stored document keys the entries as `entries`; the parsed
- * object exposes them as `invites`.
+ * Parse the self-encrypted invite list JSON into the open wire document
+ * (empty arrays on absent/blank). The returned value is the parsed document
+ * spread as-is, with only `entries` and `tombstones` defaulted to `[]` when
+ * absent — every other top-level key present in the JSON survives unmodified
+ * (D-01/D-12).
  */
 export function parseInviteList(json: string | undefined): ParsedInviteList {
-  if (!json) return { invites: [], tombstones: [] };
-  const doc = JSON.parse(json) as { entries?: InviteListInvite[]; tombstones?: InviteListTombstone[] };
-  return { invites: doc.entries ?? [], tombstones: doc.tombstones ?? [] };
+  if (!json) return { entries: [], tombstones: [] };
+  const doc = JSON.parse(json) as ParsedInviteList;
+  return { ...doc, entries: doc.entries ?? [], tombstones: doc.tombstones ?? [] };
 }
 
 /** Whether the self-encrypted invite list plaintext is unlocked on the event. */
@@ -125,7 +140,7 @@ export function getInviteList(event: NostrEvent): ParsedInviteList | undefined {
 /** The live invite links derived from the unlocked list, or undefined if locked. */
 export function getLiveInvites(event: NostrEvent): InviteListInvite[] | undefined {
   const parsed = getInviteList(event);
-  return parsed && liveInviteEntries(parsed.invites, parsed.tombstones);
+  return parsed && liveInviteEntries(parsed.entries, parsed.tombstones);
 }
 
 /**
@@ -155,5 +170,5 @@ export async function unlockInviteList(event: NostrEvent, signer: HiddenContentS
     await unlockHiddenContent(event, signer);
     notifyEventUpdate(event);
   }
-  return getInviteList(event) ?? { invites: [], tombstones: [] };
+  return getInviteList(event) ?? { entries: [], tombstones: [] };
 }

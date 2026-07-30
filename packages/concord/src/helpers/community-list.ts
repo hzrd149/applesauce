@@ -221,21 +221,37 @@ export function isValidCommunityList(event: NostrEvent): event is CommunityListE
 /** Symbol for caching the parsed (decrypted) community list on an event. */
 export const CommunityListSymbol = Symbol.for("concord-community-list");
 
-/** The decrypted community list split into its two independent arrays. */
+/**
+ * The decrypted community list document — the parsed value IS the wire
+ * document, not a reconstruction of it. `entries` and `tombstones` are
+ * guaranteed present (defaulted to `[]` when absent), and every other
+ * top-level key the JSON carried is preserved verbatim on the returned
+ * object via the index signature below — the same open-object idiom
+ * {@link CommunityListCommunity} and {@link CommunityTombstone} already use
+ * one level down in `types.ts`. CORD-02 §6's round-trip MUST (restated by
+ * §8 for this document) requires an editor to carry forward fields it does
+ * not understand; a named carrier field for "the rest" would keep the
+ * reconstruction and rely on every future write site remembering to spread
+ * it, which D-12 rejected as an enumerated patch rather than a structural
+ * fix (D-01/D-12).
+ */
 export interface ParsedCommunityList {
-  communities: CommunityListCommunity[];
+  entries: CommunityListCommunity[];
   tombstones: CommunityTombstone[];
+  [k: string]: unknown;
 }
 
 /**
- * Parse the self-encrypted community list JSON into its two arrays (empty on
- * absent/blank). The stored document keys the array as `entries`; the parsed
- * object exposes it as `communities`.
+ * Parse the self-encrypted community list JSON into the open wire document
+ * (empty arrays on absent/blank). The returned value is the parsed document
+ * spread as-is, with only `entries` and `tombstones` defaulted to `[]` when
+ * absent — every other top-level key present in the JSON survives unmodified
+ * (D-01/D-12).
  */
 export function parseCommunityList(json: string | undefined): ParsedCommunityList {
-  if (!json) return { communities: [], tombstones: [] };
-  const doc = JSON.parse(json) as { entries?: CommunityListCommunity[]; tombstones?: CommunityTombstone[] };
-  return { communities: doc.entries ?? [], tombstones: doc.tombstones ?? [] };
+  if (!json) return { entries: [], tombstones: [] };
+  const doc = JSON.parse(json) as ParsedCommunityList;
+  return { ...doc, entries: doc.entries ?? [], tombstones: doc.tombstones ?? [] };
 }
 
 /** Whether the self-encrypted community list plaintext is unlocked on the event. */
@@ -253,7 +269,7 @@ export function getCommunityList(event: NostrEvent): ParsedCommunityList | undef
 /** The live community memberships derived from the unlocked list, or undefined if locked. */
 export function getLiveCommunities(event: NostrEvent): CommunityListCommunity[] | undefined {
   const parsed = getCommunityList(event);
-  return parsed && liveCommunities(parsed.communities, parsed.tombstones);
+  return parsed && liveCommunities(parsed.entries, parsed.tombstones);
 }
 
 /** Unlocks and parses the self-encrypted community list using the owning user's signer. */
@@ -265,5 +281,5 @@ export async function unlockCommunityList(
     await unlockHiddenContent(event, signer);
     notifyEventUpdate(event);
   }
-  return getCommunityList(event) ?? { communities: [], tombstones: [] };
+  return getCommunityList(event) ?? { entries: [], tombstones: [] };
 }
