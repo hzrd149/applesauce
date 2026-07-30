@@ -357,14 +357,14 @@ Plans:
 - Criterion 2's "already-enforced byte cap included" parenthetical is **overridden by D-07** — every serialized-byte cap in `packages/concord` is removed, because NIP-44 now specifies `max_plaintext_size` = 4294967295 and CORD-02 §8/Appendix B reason from a 65,535 ceiling that no longer exists upstream. Score criterion 2 on the 50-membership constant plus the name/description caps.
 - Criterion 4's rationale is **obsolete and corrected by D-14** — `ChannelMetadata` no longer carries `key`/`epoch`, so a naive spread cannot leak `ch.key` via our own code. Score criterion 4 on the preserved fields and the absence of key material, not on the presence of a spread operator. D-22's fold denylist guards the value-level case.
 
-**Plans**: 1/9 plans executed
+**Plans**: 2/9 plans executed
 
 Plans:
 
 **Wave 1** *(no dependencies — fully parallel)*
 
 - [x] 12-01-PLAN.md — Spec-anchored fixture registry: CORD section registry, the 64/10000/50 cap literals with their verbatim source sentences, multi-byte UTF-8 generators, and the citation scanner (WIRE-06/07/08/12; D-05/D-06/D-16/D-17/D-21)
-- [ ] 12-02-PLAN.md — `nostr-tools` bumped to `^2.24` in core/common/relay, with a behavioral test proving a >65,535-byte NIP-44 plaintext round-trips (WIRE-08 folded scope; D-11/D-25)
+- [x] 12-02-PLAN.md — `nostr-tools` bumped to `^2.24` in core/common/relay, with a behavioral test proving a >65,535-byte NIP-44 plaintext round-trips (WIRE-08 folded scope; D-11/D-25)
 - [ ] 12-03-PLAN.md — Invite-list and invite-bundle serialized-byte caps removed at all sites, dependent comments rewritten, four tests rewritten rather than deleted (WIRE-08 folded scope; D-07/D-09/D-10/D-18/D-25)
 
 **Wave 2** *(depends on 12-01)*
@@ -503,7 +503,7 @@ Phases execute in numeric order: 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11
 | 9. Authority & Permission Fold Correctness | v1.1 | 5/5 | Complete    | 2026-07-19 |
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete    | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete    | 2026-07-29 |
-| 12. Document & Caps Conformance | v1.1 | 1/9 | In Progress|  |
+| 12. Document & Caps Conformance | v1.1 | 2/9 | In Progress|  |
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete    | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete    | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete    | 2026-07-25 |
