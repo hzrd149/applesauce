@@ -81,7 +81,7 @@ Each requirement is phrased as the behavior the SDK must exhibit. "Client" = a N
 - [x] **WIRE-07**: Community `name` (64B) and `description` (10000B) byte caps are enforced *(L09)*
 - [x] **WIRE-08**: The Community List enforces the 50-membership protocol constant, counting live memberships only at the one join-time enforcement point, with merged overflow tolerated *(M12; D-07 supersedes this requirement's original "alongside the already-enforced byte cap" clause — the byte cap's NIP-44 premise moved upstream, so the 50-membership count is now the document's only bound)*
 - [ ] **WIRE-09**: The Community List and Invite List round-trip unknown **top-level** document fields, so two clients sharing one npub cannot wipe each other's data *(L07; per-entry unknowns already survive)*
-- [ ] **WIRE-10**: A `deleteChannel` edition preserves `custom` while still explicitly excluding client-only key material *(L02; the hand-roll is partly deliberate and correct — a naive spread would leak `ch.key`, so the fix is an explicit destructure, not a spread)*
+- [x] **WIRE-10**: A `deleteChannel` edition preserves `custom` while still explicitly excluding client-only key material *(L02; the hand-roll is partly deliberate and correct — a naive spread would leak `ch.key`, so the fix is an explicit destructure, not a spread)*
 - [x] **WIRE-11**: A client can retain a wrap's ephemeral key so it can NIP-09-delete its own giftwrap by `p` tag *(L10)*
 - [x] **WIRE-12**: Code comments cite real spec sections — `CORD-06 §94` does not exist (CORD-06 has 3 sections; 94 is a line number) *(L11)*
 
@@ -167,7 +167,7 @@ Deferred — acknowledged, not in this roadmap.
 | WIRE-07 | Phase 12 | Complete |
 | WIRE-08 | Phase 12 | Complete |
 | WIRE-09 | Phase 12 | Pending |
-| WIRE-10 | Phase 12 | Pending |
+| WIRE-10 | Phase 12 | Complete |
 | WIRE-12 | Phase 12 | Complete |
 
 **Coverage:**

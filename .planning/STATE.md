@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
 status: executing
-stopped_at: Completed 12-05-PLAN.md
-last_updated: "2026-07-30T12:04:46.394Z"
+stopped_at: Completed 12-08-PLAN.md
+last_updated: "2026-07-30T12:30:08.757Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 85
-  completed_plans: 83
+  completed_plans: 84
   percent: 92
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12 (document-caps-conformance) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
   Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
   INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
@@ -138,6 +138,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P05 | 24min | 3 tasks | 4 files |
 | Phase 12 P06 | 20min | 2 tasks | 6 files |
 | Phase 12 P07 | 15min | 3 tasks | 12 files |
+| Phase 12 P08 | 21min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -283,6 +284,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12]: 12-06: Deleted (not inverted) 12-01's reciprocal invalid-set-non-empty test in cord-wire-fixtures.test.ts -- an inverted now-clean assertion would merely duplicate a subset of the new package-wide cord-citations.test.ts guard
 - [Phase 12]: 12-06: Excluded cord-wire-fixtures.test.ts from the new citation guard's file walk -- its own unit tests embed deliberately-invalid citation strings as literals, textually indistinguishable from real citations to a whole-file scan
 - [Phase 12]: 12-07: Task 2 also re-pointed casts/__tests__/community-list.test.ts and casts/__tests__/invite-list.test.ts (not in the plan's declared files_modified) since their .unlock() resolves.toEqual assertions compare against the renamed field shape and the compiler's structural typing couldn't flag them -- required for a green suite (Rule 3)
+- [Phase 12-08]: channel fold's key-material denylist destructures key/epoch out by name and spreads the rest, spread-first field ordering, per D-22
+- [Phase 12-08]: deleteChannel destructures out channel_id and spreads the rest with deleted:true, matching deleteRole's preserve-plus-terminal-flag idiom
+- [Phase 12-08]: Test E chains a v2 metadata edition onto genesis's own v1 via computeEditionHash/prevHash (mirroring the CHAN-07 test's linking pattern) so the fold's contiguous-chain walk actually adopts it, proving D-24 with zero source change to the metadata fold
 
 ### Pending Todos
 
@@ -302,6 +306,7 @@ None yet.
 - Plan 12-02's frontmatter lists requirement WIRE-08, but 12-02 only supplies the runtime evidence that the byte-cap ceiling moved upstream (nostr-tools bump + round-trip test). WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - Plan 12-03's frontmatter lists requirement WIRE-08, but 12-03 only retires the invite-side half of the byte-cap removal (INVITE_LIST_MAX_BYTES/inviteListWithinByteCap, INVITE_BUNDLE_MAX_TOTAL_BYTES) per D-07. WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05, which handles the Community List half. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - Plan 12-07's frontmatter lists requirement WIRE-09, but 12-07 only closes it at the helper/cast/operations tier (parseCommunityList/parseInviteList open roots, modifyCommunityList/modifyInviteList spread-serialize). The client publish tier -- saveCommunityList and invite-manager.save(), which hand-roll the document from reduced arrays -- is plan 12-09 per D-23. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02/12-03 precedent; mark WIRE-09 Complete only when 12-09 lands.
+- Plan 12-08's frontmatter lists requirement WIRE-09, but 12-08 only closes item 3 (the channel-fold half) of WIRE-09's concord-audit L07 finding. WIRE-09's own REQUIREMENTS.md text (Community List/Invite List round-trip) and its client-publish-tier closure land in plan 12-09 per D-23. Left REQUIREMENTS.md's WIRE-09 unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02/12-03/12-07 precedent; mark WIRE-09 Complete only when 12-09 lands. WIRE-10 is marked Complete now -- deleteChannel's preserve-custom-exclude-key-material fix is wholly this plan's scope.
 
 ### Roadmap Evolution
 
@@ -328,8 +333,8 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T12:01:47.269Z
-Stopped at: Completed 12-05-PLAN.md
+Last session: 2026-07-30T12:28:52.092Z
+Stopped at: Completed 12-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
