@@ -307,15 +307,35 @@ export function multiByteStringOverBytes(n: number): string {
 }
 
 /**
- * Matches a `CORD-NN §token` citation. The token is a first "word" of
- * letters/digits/hyphens (covering both a bare section number and a
- * hyphenated range like `1-2`), optionally followed by further
- * capitalized-initial words (covering a named, multi-word section like
- * `Appendix B`). Trailing punctuation immediately after the token (a colon,
- * comma, period, closing paren, semicolon, or quote) is excluded from the
- * character class by construction, not matched at all.
+ * Matches a `CORD-NN §token` citation. Two alternative token shapes, tried in
+ * order:
+ *
+ * 1. A bare numeric section or a hyphenated numeric range (`94`, `1-2`) —
+ *    matched greedily as digits-only, with NO multi-word continuation. A
+ *    numeric citation is always exactly one token; prose commonly follows it
+ *    in source comments (e.g. `CORD-05 §6 Direct Invites`), and that prose
+ *    must never be swept into the token.
+ * 2. A named, unnumbered section starting with a letter (`Deletions`,
+ *    `Appendix B`, `Removing Participants`), optionally followed by further
+ *    capitalized-initial words — this is CORD-01's shape, and CORD-02's two
+ *    lettered appendices.
+ *
+ * (Plan 12-06 discovered and fixed a bug in an earlier version of this
+ * pattern: allowing the capitalized-continuation clause after a NUMERIC
+ * token too caused every `CORD-NN §<digit> <Capitalized prose>` comment in
+ * the codebase — e.g. `CORD-05 §6 Direct Invite`, `CORD-02 §8 Community
+ * List`, `CORD-02 §5 Guestbook`, `CORD-05 §4 Invite List` — to be swept in as
+ * part of the section token and reported as a false-positive invalid
+ * citation. Splitting the numeric and named cases into separate alternatives
+ * closes that class without touching the named-section behavior it exists
+ * for.)
+ *
+ * Trailing punctuation immediately after the token (a colon, comma, period,
+ * closing paren, semicolon, or quote) is excluded from the character class by
+ * construction, not matched at all.
  */
-const CITATION_PATTERN = /CORD-(\d{2}) §([A-Za-z0-9][A-Za-z0-9-]*(?: [A-Z][A-Za-z0-9-]*)*)/g;
+const CITATION_PATTERN =
+  /CORD-(\d{2}) §(\d+(?:-\d+)?|[A-Za-z][A-Za-z0-9-]*(?: [A-Z][A-Za-z0-9-]*)*)/g;
 
 /**
  * Strips any trailing punctuation a looser upstream capture might sweep in
