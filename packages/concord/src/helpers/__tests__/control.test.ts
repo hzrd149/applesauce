@@ -10,6 +10,7 @@ import { banlistLocator, grantLocator, inviteLinksLocator } from "../crypto.js";
 import { resolveStanding } from "../permissions.js";
 import type { Role } from "../../types.js";
 import { decoded } from "./test-utils.js";
+import { CORD_ROUND_TRIP_SENTENCE } from "../../__tests__/cord-wire-fixtures.js";
 
 const OWNER = "ab".repeat(32);
 const newCommunity = () => createCommunity({ ownerPubkey: OWNER, name: "Test", description: "d", relays: ["wss://r"] });
@@ -768,5 +769,158 @@ describe("control fold", () => {
     // channel. Because heads is pinned to v2, the sticky-delete scan still finds
     // the deletion even with no other history present.
     expect(freshJoinerFold.channels.some((c) => c.channel_id === channelId)).toBe(false);
+  });
+});
+
+// WIRE-09 item 3 / WIRE-10 / D-22 denylist: the channel fold's round-trip
+// obligation, its selective exclusion of key material, and the pre-existing
+// D-24 preservation guarantee on the community-metadata fold.
+//
+// Authority: CORD_ROUND_TRIP_SENTENCE (CORD-02 §6) — "An editor MUST
+// round-trip fields it doesn't understand... Top-level fields outside
+// `custom` are reserved for the protocol. The same object is permitted on
+// ChannelMetadata (CORD-03)." See ../../__tests__/cord-wire-fixtures.ts.
+describe("control fold — unknown-key round-trip (WIRE-09/WIRE-10/D-22/D-24)", () => {
+  it("Test A: an unrecognized top-level key and a custom object both survive the channel fold", async () => {
+    // The authority for every preservation assertion in this describe block.
+    expect(CORD_ROUND_TRIP_SENTENCE).toContain("MUST round-trip fields it doesn't understand");
+
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const channelId = "88".repeat(32);
+    // `future_flag` reads as a plausible future protocol field (top-level,
+    // outside `custom` — CORD-02 §6 reserves that space for the protocol).
+    // `custom.extension` is another client's extension data, permitted by
+    // CORD-03 on ChannelMetadata. Both must survive, for different reasons
+    // (D-13's spec nuance); D-15 means neither gets special handling.
+    const content = JSON.stringify({
+      name: "roadmap",
+      private: false,
+      future_flag: "unknown-to-this-client",
+      custom: { extension: { nested: true } },
+    });
+    const ed = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content });
+    events.push(decoded(ed, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+    const folded = state.channels.find((c) => c.channel_id === channelId);
+    expect(folded).toBeDefined();
+    expect(folded!.channel_id).toBe(channelId);
+    expect(folded!.name).toBe("roadmap");
+    expect(folded!.private).toBe(false);
+    expect(folded!.future_flag).toBe("unknown-to-this-client");
+    expect(folded!.custom).toEqual({ extension: { nested: true } });
+  });
+
+  it("Test B: hostile key/epoch fields do NOT survive the fold, while an unrelated unknown key does", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const channelId = "89".repeat(32);
+    const content = JSON.stringify({
+      name: "roadmap",
+      private: false,
+      future_flag: "unknown-to-this-client",
+      key: "aa".repeat(32),
+      epoch: 99,
+    });
+    const ed = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content });
+    events.push(decoded(ed, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+    const folded = state.channels.find((c) => c.channel_id === channelId);
+    expect(folded).toBeDefined();
+    // hasOwnProperty, not truthiness — a property present with an `undefined`
+    // value would pass a truthiness check and is exactly the shape a
+    // careless spread produces.
+    expect(Object.prototype.hasOwnProperty.call(folded!, "key")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(folded!, "epoch")).toBe(false);
+    // Pairing matters: proves the denylist is selective, not that the spread
+    // is absent entirely.
+    expect(Object.prototype.hasOwnProperty.call(folded!, "future_flag")).toBe(true);
+    expect(folded!.future_flag).toBe("unknown-to-this-client");
+  });
+
+  it("Test C: a hostile edition's own channel_id cannot shadow the entity id (spread-first ordering)", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const channelId = "8a".repeat(32);
+    const content = JSON.stringify({
+      name: "roadmap",
+      private: false,
+      channel_id: "ff".repeat(32), // hostile: differs from the entity id
+    });
+    const ed = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content });
+    events.push(decoded(ed, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+    const folded = state.channels.find((c) => c.channel_id === channelId);
+    expect(folded).toBeDefined();
+    expect(folded!.channel_id).toBe(channelId); // the ENTITY id wins, not the raw edition's
+  });
+
+  it("Test D: the fold's type validation is unchanged — a non-string name or non-boolean private is skipped, not thrown", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const badNameId = "8b".repeat(32);
+    const badName = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: badNameId,
+      version: 1,
+      content: JSON.stringify({ name: 123, private: false }),
+    });
+    events.push(decoded(badName, genesis.material.owner, 2_000));
+
+    const badPrivateId = "8c".repeat(32);
+    const badPrivate = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: badPrivateId,
+      version: 1,
+      content: JSON.stringify({ name: "ok", private: "yes" }),
+    });
+    events.push(decoded(badPrivate, genesis.material.owner, 2_100));
+
+    expect(() => foldControl(events, genesis.material)).not.toThrow();
+    const state = foldControl(events, genesis.material);
+    expect(state.channels.some((c) => c.channel_id === badNameId)).toBe(false);
+    expect(state.channels.some((c) => c.channel_id === badPrivateId)).toBe(false);
+  });
+
+  // D-24: helpers/control.ts's metadata fold is a blind `as CommunityMetadata`
+  // cast, and a TypeScript cast never strips runtime properties, so
+  // preservation already holds here — this phase spends a test PROVING it,
+  // not a task fixing it (zero source change to that fold). A failure here
+  // means D-24's premise is wrong and the finding must be re-opened, not
+  // patched around.
+  it("Test E (D-24): the community-metadata fold already preserves unrecognized top-level keys, with zero source change", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    // Chain a v2 metadata edition onto genesis's own v1 (mirroring the CHAN-07
+    // test's linking pattern) so the fold's contiguous-chain walk actually
+    // adopts it as the head, rather than falling back to the genesis v1.
+    const v1Content = JSON.stringify({ name: "Test", description: "d", relays: ["wss://r"] });
+    const v1Hash = computeEditionHash({ vsk: VSK.METADATA, eid: genesis.material.community_id, version: 1, content: v1Content });
+    const ed = await EditionFactory.create({
+      vsk: VSK.METADATA,
+      eid: genesis.material.community_id,
+      version: 2,
+      prevHash: v1Hash,
+      content: JSON.stringify({
+        name: "Test",
+        relays: ["wss://r"],
+        future_flag: "unknown-to-this-client",
+        custom: { extension: { nested: true } },
+      }),
+    });
+    events.push(decoded(ed, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+    expect(state.metadata?.name).toBe("Test");
+    expect((state.metadata as Record<string, unknown>).future_flag).toBe("unknown-to-this-client");
+    expect(state.metadata?.custom).toEqual({ extension: { nested: true } });
   });
 });

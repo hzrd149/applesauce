@@ -1674,6 +1674,68 @@ describe("wire conformance", () => {
 
     community.dispose();
   });
+
+  it("WIRE-10/D-14: deleteChannel preserves custom + an unrecognized top-level key on the RAW published edition, excluding channel_id/key/epoch", async () => {
+    const { community, published } = await setupWireConformance();
+
+    // A fresh public channel — `createChannel`'s options do not expose
+    // arbitrary/`custom` fields, so a v2 edition carrying them is published
+    // directly onto the control plane, chained to the v1 head.
+    const channelId = await community.createChannel("temp");
+    await settle();
+
+    const v1Content = JSON.stringify({ name: "temp", private: false });
+    const v1Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content: v1Content });
+    const v2Content = JSON.stringify({
+      name: "temp",
+      private: false,
+      custom: { extension: { nested: true } },
+      future_flag: "unknown-to-this-client",
+    });
+    const v2 = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+    await community.publishToPlane({ plane: "control" }, v2, { plaintext: true });
+    await settle();
+
+    // Confirm the fold actually adopted v2 before deleting — otherwise the
+    // rest of this test would only prove the fold's preservation again, not
+    // deleteChannel's.
+    const folded = community.state$.value.channels.find((c) => c.channel_id === channelId);
+    expect(folded?.custom).toEqual({ extension: { nested: true } });
+    expect(folded?.future_flag).toBe("unknown-to-this-client");
+
+    published.length = 0;
+    await community.deleteChannel(channelId);
+    await settle();
+
+    // Decode the published deletion edition's RAW content — not read back
+    // through the fold, which would let the denylist mask a wire leak (the
+    // fold would strip a `key` field the edition genuinely carried, and the
+    // test would pass while the wire document leaked).
+    const rootEpoch = community.material.root_epoch;
+    const controlConvKey = controlGroupKey(
+      hexToBytes(community.material.community_root),
+      hexToBytes(community.material.community_id),
+      rootEpoch,
+    ).convKey;
+    const decodedEditions = published
+      .map((w) => decodeWrap(w, controlConvKey))
+      .filter((d): d is NonNullable<typeof d> => d !== null)
+      .filter((d) => tagValues(d.rumor.tags, "vsk").includes(String(VSK.CHANNEL)) && tagValues(d.rumor.tags, "eid").includes(channelId));
+    expect(decodedEditions).toHaveLength(1);
+    const raw = JSON.parse(decodedEditions[0]!.rumor.content) as Record<string, unknown>;
+    const keys = Object.keys(raw);
+
+    expect(raw.deleted).toBe(true);
+    expect(raw.custom).toEqual({ extension: { nested: true } });
+    expect(raw.future_flag).toBe("unknown-to-this-client");
+    expect(raw.name).toBe("temp");
+    expect(raw.private).toBe(false);
+    expect(keys).not.toContain("channel_id");
+    expect(keys).not.toContain("key");
+    expect(keys).not.toContain("epoch");
+
+    community.dispose();
+  });
 });
 
 // A rumor authored by `pubkey`, so owner-signed control editions can be fed into a
