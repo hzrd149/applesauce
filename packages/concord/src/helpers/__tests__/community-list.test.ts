@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 
+import * as CommunityListModule from "../community-list.js";
 import {
-  communityListWithinByteCap,
   communityListByteSize,
   communityListEntryByteSize,
   COMMUNITY_LIST_KIND,
-  COMMUNITY_LIST_MAX_ENTRY_BYTES,
+  COMMUNITY_LIST_MAX_MEMBERSHIPS,
   LIST_MAX_BYTES,
   getCommunityList,
   getLiveCommunities,
@@ -20,6 +20,10 @@ import {
 } from "../community-list.js";
 import { CommunityListFactory } from "../../factories/community-list.js";
 import type { CommunityListCommunity, CommunityTombstone, JoinMaterial } from "../../types.js";
+import {
+  CORD_COMMUNITY_LIST_CAP_SENTENCE,
+  CORD_COMMUNITY_LIST_MEMBERSHIP_CAP,
+} from "../../__tests__/cord-wire-fixtures.js";
 
 describe("community-list CRDT", () => {
   const mkCommunity = (id: string, epoch: number, at: number) => ({
@@ -70,13 +74,17 @@ describe("community-list CRDT", () => {
     expect(isCommunityLive(communities, tombstones, "x")).toBe(false);
     communities = mergeCommunities(communities, [mkCommunity("x", 2, 300)]);
     expect(isCommunityLive(communities, tombstones, "x")).toBe(true);
-    expect(communityListWithinByteCap(communities, tombstones)).toBe(true);
+    // D-07: no serialized-byte cap is enforced anymore — this small fixture is
+    // still comfortably under the historical reference figure, which is all
+    // that remains to check here.
+    expect(communityListByteSize(communities, tombstones)).toBeLessThanOrEqual(LIST_MAX_BYTES);
   });
 });
 
-// ── Gap closure (CR-01 structural half, WR-04; 12.3-13): one shared
-// serialized-byte measurement, and the per-entry ceiling it enables.
-describe("communityListByteSize / communityListEntryByteSize / COMMUNITY_LIST_MAX_ENTRY_BYTES (12.3-13)", () => {
+// ── Gap closure (WR-04, D-06, D-07, D-08; 12.3-13 -> 12-05): one shared
+// serialized-byte measurement (diagnostic-only, D-08) and the 50-membership
+// protocol constant that is now the document's ONLY bound (D-06/D-07).
+describe("communityListByteSize / communityListEntryByteSize / COMMUNITY_LIST_MAX_MEMBERSHIPS (12-05)", () => {
   const mkCommunity = (id: string, epoch: number, at: number): CommunityListCommunity => ({
     community_id: id,
     seed: {
@@ -111,23 +119,30 @@ describe("communityListByteSize / communityListEntryByteSize / COMMUNITY_LIST_MA
     expect(communityListByteSize(communities, tombstones)).toBe(expected);
   });
 
-  it("communityListWithinByteCap agrees with communityListByteSize exactly at the boundary", () => {
-    // Pad a name to a computed length so the document lands at EXACTLY
-    // LIST_MAX_BYTES, then one byte over — never guessed.
-    const base = mkCommunity("x", 1, 100);
-    const baseline = communityListByteSize([base], []);
-    const padNeeded = LIST_MAX_BYTES - baseline;
-    const atCap = { ...base, seed: { ...base.seed, name: "a".repeat(base.seed.name.length + padNeeded) } };
-    expect(communityListByteSize([atCap], [])).toBe(LIST_MAX_BYTES);
-    expect(communityListWithinByteCap([atCap], [])).toBe(true);
-
-    const overCap = { ...atCap, seed: { ...atCap.seed, name: atCap.seed.name + "a" } };
-    expect(communityListByteSize([overCap], [])).toBe(LIST_MAX_BYTES + 1);
-    expect(communityListWithinByteCap([overCap], [])).toBe(false);
+  // D-07/D-10: the removal must be permanent, not just a passing test suite that
+  // happens not to call the deleted symbols. A structural guard over the module's
+  // own export key set means a future reader cannot reintroduce a serialized-byte
+  // gate by restoring `communityListWithinByteCap` or `COMMUNITY_LIST_MAX_ENTRY_BYTES`
+  // without this test failing — and D-08's carve-out (LIST_MAX_BYTES plus both
+  // measurement helpers survive, diagnostics only) is pinned in the same assertion.
+  it("the module's exports no longer include a within-cap predicate or a per-entry ceiling, but still expose the diagnostic-only measurement helpers", () => {
+    const keys = Object.keys(CommunityListModule);
+    expect(keys).not.toContain("communityListWithinByteCap");
+    expect(keys).not.toContain("COMMUNITY_LIST_MAX_ENTRY_BYTES");
+    expect(keys).toContain("communityListByteSize");
+    expect(keys).toContain("communityListEntryByteSize");
+    expect(keys).toContain("LIST_MAX_BYTES");
+    expect(keys).toContain("COMMUNITY_LIST_MAX_MEMBERSHIPS");
   });
 
-  it("COMMUNITY_LIST_MAX_ENTRY_BYTES equals half of LIST_MAX_BYTES, expressed as the arithmetic expression", () => {
-    expect(COMMUNITY_LIST_MAX_ENTRY_BYTES).toBe(Math.floor(LIST_MAX_BYTES / 2));
+  // D-06/D-21/TEST-01: transcribed spec literal, asserted against the vendored
+  // fixture transcription — never against the source constant's own expression.
+  it("COMMUNITY_LIST_MAX_MEMBERSHIPS equals the vendored CORD-02 §8 transcription", () => {
+    // CORD_COMMUNITY_LIST_CAP_SENTENCE is the verbatim spec passage this cap is
+    // transcribed from; CORD_COMMUNITY_LIST_MEMBERSHIP_CAP is the `50` parsed
+    // back out of it by cord-wire-fixtures.test.ts's own self-test.
+    expect(CORD_COMMUNITY_LIST_CAP_SENTENCE).toContain("50 memberships");
+    expect(COMMUNITY_LIST_MAX_MEMBERSHIPS).toBe(CORD_COMMUNITY_LIST_MEMBERSHIP_CAP);
   });
 
   it("communityListEntryByteSize measures the entry shape including BOTH material copies (seed and current)", () => {

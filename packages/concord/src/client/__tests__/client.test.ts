@@ -23,10 +23,11 @@ import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
 import {
   COMMUNITY_LIST_KIND,
-  COMMUNITY_LIST_MAX_ENTRY_BYTES,
-  communityListEntryByteSize,
+  LIST_MAX_BYTES,
+  communityListByteSize,
   mergeCommunities,
 } from "../../helpers/community-list.js";
+import { CORD_COMMUNITY_LIST_MEMBERSHIP_CAP } from "../../__tests__/cord-wire-fixtures.js";
 import { INVITE_LIST_KIND } from "../../helpers/invite-list.js";
 import { createCommunity } from "../../helpers/community.js";
 import {
@@ -37,7 +38,7 @@ import {
   newInviteToken,
 } from "../../helpers/invite-bundle.js";
 import { InviteBundleFactory } from "../../factories/invite-bundle.js";
-import type { ConcordClientStatus, JoinMaterial } from "../../types.js";
+import type { CommunityListCommunity, ConcordClientStatus, JoinMaterial } from "../../types.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
 // Longer than the client's post-sync auto-save debounce, so a single flush has fired.
@@ -1892,7 +1893,7 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
     client.stop();
   });
 
-  it("CR-02 recoverability: an already-wedged Community List cannot publish, but leave() prunes it so a subsequent save publishes with no entry for it", async () => {
+  it("D-07/D-08 supersedes CR-02's old wedge: an oversized entry publishes immediately (with the size trace naming it), and leave() still prunes its bytes from the document afterward", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool, published } = fakePool();
@@ -1913,17 +1914,17 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
     // impossible to get past `validateInviteBundle`, so this test targets the
     // RECOVERY property, not the (now-closed) entry route. Plan 12-04's
     // write-side byte-cap assertion also makes an oversized `name` impossible
-    // to get past `createCommunity` itself now, so the wedge is padded via
-    // `relays` (unbounded) instead of `name` (capped at 64 bytes).
+    // to get past `createCommunity` itself now, so the giant entry is padded
+    // via `relays` (unbounded) instead of `name` (capped at 64 bytes).
     const genesis = await createCommunity({
       ownerPubkey: pubkey,
       name: "x",
-      description: "CR-02 recovery",
-      relays: [`wss://${"x".repeat(45_000)}`], // serialized twice per entry (seed + current) — wedges the doc alone
+      description: "CR-02 heritage",
+      relays: [`wss://${"x".repeat(45_000)}`], // serialized twice per entry (seed + current) — historically wedged the doc alone
     });
     const cid = genesis.material.community_id;
-    const wedgedMaterial: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
-    await storage.setItem(pubkey, JSON.stringify([wedgedMaterial]));
+    const giantMaterial: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    await storage.setItem(pubkey, JSON.stringify([giantMaterial]));
 
     await client.start();
     await settle();
@@ -1932,20 +1933,22 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
     expect(client.getCommunity(cid)).toBeDefined();
 
     await client.saveCommunityList();
-    expect(listPublishes(published).length).toBe(0); // wedged: never published
+    // D-07/D-08: nothing withholds this publish anymore — the size trace still
+    // names the offending entry, but as information, not a refusal reason.
+    expect(listPublishes(published).length).toBe(1);
     expect(
       calls.some((c) => {
         const msg = format(...(c as [unknown, ...unknown[]]));
-        return msg.includes("exceeds the NIP-44 byte cap") && msg.includes(cid.slice(0, 8));
+        return msg.includes("community list size trace") && msg.includes(cid.slice(0, 8));
       }),
     ).toBe(true);
 
-    // leave() prunes the entry's bytes (in addition to tombstoning it) — the
-    // wedge is now recoverable through the public API alone.
+    // leave() still prunes the entry's bytes (in addition to tombstoning it) —
+    // now a hygiene property of the document, not a stuck-publish recovery.
     await client.leave(cid);
     await settle();
-    expect(listPublishes(published).length).toBe(1); // recovered: publishes now
-    const doc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published)[0].content));
+    expect(listPublishes(published).length).toBe(2); // a second publish carries the tombstone + prune
+    const doc = JSON.parse(await signer.nip44!.decrypt(pubkey, listPublishes(published)[1].content));
     expect(doc.entries.find((e: any) => e.community_id === cid)).toBeUndefined();
     expect(doc.tombstones.find((t: any) => t.community_id === cid)).toBeDefined();
 
@@ -2193,37 +2196,27 @@ describe("ConcordClient pruneDeadEntries — engine-less leave, unknown-cid no-o
 // ── Gap closure (CR-01 structural half, WR-04, IN-01, IN-04; 12.3-13): the
 // aggregate serialized-size ceiling at recordJoin, and two smaller fixes it
 // shares a file edit with.
-describe("ConcordClient recordJoin entry-size guard, and IN-01/IN-04 (12.3-13)", () => {
-  it("createNewCommunity whose prospective entry exceeds the per-entry ceiling REJECTS, the community set stays empty, and a subsequent explicit save publishes nothing for it", async () => {
+describe("ConcordClient recordJoin — D-07 byte ceiling removed, IN-01/IN-04 (12.3-13 -> 12-05)", () => {
+  it("D-07: a community whose prospective entry would previously have exceeded the deleted per-entry ceiling now records successfully, appears in communities$, and a subsequent explicit save publishes it", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool, published } = fakePool();
     const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
     await client.start();
 
-    // Derive the oversized field length from the exported ceiling, not by
-    // trial and error: measure a baseline entry's bytes, then pad. Padding via
-    // `relays` (unbounded) rather than `name`: plan 12-04's write-side
-    // byte-cap assertion now rejects any name over 64 bytes before
-    // `createCommunity` even builds material, so `name` can no longer be the
-    // padding vector here — the relays array is still serialized TWICE per
-    // entry (seed + current), so halve the shortfall exactly as before.
-    const probe = await createCommunity({ ownerPubkey: pubkey, name: "x", description: "d", relays: ["wss://fake"] });
-    const baselineEntry = {
-      community_id: probe.material.community_id,
-      seed: probe.material,
-      current: probe.material,
-      added_at: Date.now(),
-    };
-    const baselineBytes = communityListEntryByteSize(baselineEntry);
-    const padNeeded = Math.ceil((COMMUNITY_LIST_MAX_ENTRY_BYTES - baselineBytes) / 2) + 100;
-    const oversizedRelays = ["wss://fake", `wss://${"x".repeat(1 + Math.max(padNeeded, 0))}.example`];
+    // A plain literal oversized field — no per-entry ceiling constant survives
+    // to derive this from (D-07/D-10 deleted it outright). Padding via
+    // `relays` (unbounded) rather than `name`: plan 12-04's
+    // write-side byte-cap assertion rejects any name over 64 bytes before
+    // `createCommunity` even builds material.
+    const oversizedRelays = ["wss://fake", `wss://${"x".repeat(40_000)}.example`];
 
-    await expect(client.createNewCommunity("x", "d", oversizedRelays)).rejects.toThrow(/too large to record/);
-    expect(client.communities$.value.length).toBe(0);
+    const community = await client.createNewCommunity("x", "d", oversizedRelays);
+    expect(client.communities$.value.length).toBe(1);
+    expect(client.communities$.value[0].material.community_id).toBe(community.communityId);
 
     await client.saveCommunityList();
-    expect(listPublishes(published).length).toBe(0); // nothing was ever recorded to publish
+    expect(listPublishes(published).length).toBe(1); // publishes; nothing withheld
 
     client.stop();
   });
@@ -2278,17 +2271,17 @@ describe("ConcordClient recordJoin entry-size guard, and IN-01/IN-04 (12.3-13)",
     client.stop();
   });
 
-  it("IN-01: the over-cap diagnostic includes the tombstone byte total and omits the largest-entry clause when the entry list is empty", async () => {
+  it("IN-01: the size trace includes the tombstone byte total and omits the largest-entry clause when the entry list is empty — and the list still publishes (D-08)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
-    const { pool } = fakePool();
+    const { pool, published } = fakePool();
     const storage = memoryStorage();
     const { log, calls } = spyLogger();
 
-    // Enough tombstones ALONE to push the document over LIST_MAX_BYTES, with
-    // an EMPTY entry list — the scenario IN-01 says the pre-fix diagnostic
-    // mis-reported (ignored these bytes, and would have ended with a bare
-    // trailing "community=").
+    // Enough tombstones ALONE to push the document over the historical
+    // LIST_MAX_BYTES reference figure, with an EMPTY entry list — the
+    // scenario IN-01 says the pre-fix diagnostic mis-reported (ignored these
+    // bytes, and would have ended with a bare trailing "community=").
     const tombstones = Array.from({ length: 2500 }, (_, i) => ({ community_id: `tomb-${i}`, removed_at: i }));
     await storage.setItem(pubkey, JSON.stringify({ entries: [], tombstones }));
 
@@ -2304,12 +2297,221 @@ describe("ConcordClient recordJoin entry-size guard, and IN-01/IN-04 (12.3-13)",
     await settle();
 
     await client.saveCommunityList();
-    const overCapMessage = calls
+    // Match by the facts the trace must carry (byte count, entry count,
+    // tombstone-bytes phrase) rather than the full sentence, so a future
+    // rewording doesn't break this suite while a missing fact still does.
+    const sizeTraceMessage = calls
       .map((c) => format(...(c as [unknown, ...unknown[]])))
-      .find((m) => m.includes("exceeds the NIP-44 byte cap"));
-    expect(overCapMessage).toBeDefined();
-    expect(overCapMessage).toMatch(/tombstone bytes/);
-    expect(overCapMessage).not.toContain("largest entry community=");
+      .find((m) => m.includes("community list size trace"));
+    expect(sizeTraceMessage).toBeDefined();
+    expect(sizeTraceMessage).toMatch(/\d+ bytes/);
+    expect(sizeTraceMessage).toMatch(/0 entries/);
+    expect(sizeTraceMessage).toMatch(/tombstone bytes/);
+    expect(sizeTraceMessage).not.toContain("largest entry community=");
+    // D-08: the diagnostic is not a refusal — an over-figure document still publishes.
+    expect(listPublishes(published).length).toBe(1);
+
+    client.stop();
+  });
+});
+
+// ── Gap closure (WIRE-08, D-06; 12-05): the 50-membership protocol constant
+// (CORD-02 §8) is now the Community List's ONLY bound (D-07 removed every
+// serialized-byte cap). Every "50" below is spec-anchored to the vendored
+// transcription `CORD_COMMUNITY_LIST_MEMBERSHIP_CAP` — never to the
+// implementation's own membership-cap constant (D-21/TEST-01).
+describe("ConcordClient recordJoin — 50-membership cap enforcement (WIRE-08, D-06, 12-05)", () => {
+  /** Build `count` real, independently-constructible live memberships for `ownerPubkey`, seeded
+   *  through the local mirror shape `loadMirror`/`parseMirror` reads — never by calling
+   *  `recordJoin` repeatedly, since the guard under test would refuse the 51st+ call and the
+   *  setup would become the assertion. */
+  async function mkLiveEntries(ownerPubkey: string, count: number): Promise<CommunityListCommunity[]> {
+    const entries: CommunityListCommunity[] = [];
+    for (let i = 0; i < count; i++) {
+      const genesis = await createCommunity({ ownerPubkey, name: `c${i}`, relays: ["wss://fake"] });
+      entries.push({
+        community_id: genesis.material.community_id,
+        seed: genesis.material,
+        current: genesis.material,
+        added_at: i,
+      });
+    }
+    return entries;
+  }
+
+  /** A minimal, non-constructible-engine `CommunityListCommunity` — used only to populate the
+   *  internal list directly (bypassing `mergeCommunities`/`pruneDeadEntries`, see below), never to
+   *  start a real `ConcordCommunity`. */
+  function mkFakeEntry(id: string, addedAt: number): CommunityListCommunity {
+    const material: JoinMaterial = {
+      community_id: id,
+      owner: "o",
+      owner_salt: "s",
+      community_root: "r",
+      root_epoch: 0,
+      channels: [],
+      relays: [],
+      name: id,
+    };
+    return { community_id: id, seed: material, current: material, added_at: addedAt };
+  }
+
+  it("recordJoin's guard reads the DERIVED live count, not this.list's raw array length — every public mutation path (mergeCommunities' dedup, pruneDeadEntries on every death transition) keeps the two equal by construction, so this pins the implementation choice by directly corrupting the private list past what those invariants would ever let it hold", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    await client.start();
+
+    // 49 live memberships, each duplicated (raw array length 98) — a shape
+    // `mergeCommunities` would never itself produce (it dedupes by
+    // community_id on every write path), reachable here only by writing the
+    // private field directly.
+    const distinct = Array.from({ length: CORD_COMMUNITY_LIST_MEMBERSHIP_CAP - 1 }, (_, i) =>
+      mkFakeEntry(`fake-${i}`, i),
+    );
+    (client as any).list = [...distinct, ...distinct];
+
+    // Under the correct implementation (liveCommunities(this.list, this.tombstones).length), the
+    // derived live count is still 49, so the join that would be the cap-th succeeds despite the
+    // corrupted raw array holding 98 entries.
+    await expect(client.createNewCommunity("boundary", "d", ["wss://fake"])).resolves.toBeDefined();
+
+    client.stop();
+  });
+
+  it("refuses the 51st live membership, naming the live count and the cap, and communities$ still holds 50", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    const entries = await mkLiveEntries(pubkey, CORD_COMMUNITY_LIST_MEMBERSHIP_CAP);
+    await storage.setItem(pubkey, JSON.stringify({ entries, tombstones: [] }));
+
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+    expect(client.communities$.value.length).toBe(CORD_COMMUNITY_LIST_MEMBERSHIP_CAP);
+
+    await expect(client.createNewCommunity("one-too-many", "d", ["wss://fake"])).rejects.toThrow(
+      new RegExp(`${CORD_COMMUNITY_LIST_MEMBERSHIP_CAP} live memberships.*${CORD_COMMUNITY_LIST_MEMBERSHIP_CAP}-membership cap`),
+    );
+    expect(client.communities$.value.length).toBe(CORD_COMMUNITY_LIST_MEMBERSHIP_CAP);
+
+    client.stop();
+  }, 30_000);
+
+  it("admits the membership that would be the cap-th (the 50th), the boundary the refusal above sits one past", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    const entries = await mkLiveEntries(pubkey, CORD_COMMUNITY_LIST_MEMBERSHIP_CAP - 1);
+    await storage.setItem(pubkey, JSON.stringify({ entries, tombstones: [] }));
+
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+    expect(client.communities$.value.length).toBe(CORD_COMMUNITY_LIST_MEMBERSHIP_CAP - 1);
+
+    const community = await client.createNewCommunity("the-cap-th", "d", ["wss://fake"]);
+    expect(client.communities$.value.length).toBe(CORD_COMMUNITY_LIST_MEMBERSHIP_CAP);
+    expect(client.communities$.value.map((c) => c.material.community_id)).toContain(community.communityId);
+
+    client.stop();
+  }, 30_000);
+
+  it("D-06: the cap counts LIVE memberships only — neither tombstoned entries nor duplicate raw array entries for an already-counted live community consume the budget, so a document with a raw entry count AT the cap but only 40 DISTINCT live memberships still admits a new join", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    // 40 DISTINCT live communities — well under the cap on its own (40+1 <=
+    // 50). Two ways the raw `entries` array can outgrow the true membership
+    // count without adding a new membership, both deliberately present so
+    // this test is non-vacuous against `this.list.length` as a stand-in for
+    // `liveCommunities(...).length` (a raw-length guard would wrongly refuse
+    // here): (a) 10 of the 40 carry a SECOND raw entry (a re-join history —
+    // `liveCommunities` dedupes by community_id, keeping the newest), and
+    // (b) 15 separate communities are tombstoned dead (pruned from `this.list`
+    // during `reconcileCommunities` before `recordJoin` is ever reached, but
+    // still present in the raw document `loadMirror` first merges).
+    const liveEntries = await mkLiveEntries(pubkey, 40);
+    const duplicated = liveEntries.slice(0, 10).map((e) => ({ ...e, added_at: e.added_at + 1 }));
+    const deadEntries = await mkLiveEntries(pubkey, 15);
+    const tombstones = deadEntries.map((e) => ({ community_id: e.community_id, removed_at: Date.now() + 1 }));
+    const entries = [...liveEntries, ...duplicated, ...deadEntries];
+    await storage.setItem(pubkey, JSON.stringify({ entries, tombstones }));
+
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    await client.start();
+    // 40 distinct live engines started; the 10 duplicates collapse to their
+    // one community_id each, and the 15 dead communities never get an engine.
+    expect(client.communities$.value.length).toBe(40);
+
+    const community = await client.createNewCommunity("still-room", "d", ["wss://fake"]);
+    expect(client.communities$.value.map((c) => c.material.community_id)).toContain(community.communityId);
+
+    client.stop();
+  }, 30_000);
+
+  it("D-06: merged overflow from another device is TOLERATED — loadMirror merges a document already past the cap, neither throwing nor discarding an entry", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool } = fakePool();
+    const storage = memoryStorage();
+    const overCapCount = CORD_COMMUNITY_LIST_MEMBERSHIP_CAP + 5;
+    const entries = await mkLiveEntries(pubkey, overCapCount);
+    await storage.setItem(pubkey, JSON.stringify({ entries, tombstones: [] }));
+
+    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
+    // start() must not throw and must not silently drop any of the merged, over-cap memberships.
+    await expect(client.start()).resolves.toBeUndefined();
+    expect(client.communities$.value.length).toBe(overCapCount);
+
+    client.stop();
+  }, 30_000);
+});
+
+// ── Gap closure (D-07/D-08; 12-05): the Community List's whole-document byte
+// figure (LIST_MAX_BYTES) is now a diagnostic reference only — an oversized
+// document publishes rather than being withheld.
+describe("ConcordClient saveCommunityList — an oversized Community List publishes (D-07/D-08, 12-05)", () => {
+  it("a document whose serialized size exceeds the historical reference figure still publishes, with the size trace still emitted", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, published } = fakePool();
+    const storage = memoryStorage();
+    const { log, calls } = spyLogger();
+
+    // Enough tombstones alone to push the serialized document past LIST_MAX_BYTES — derived from
+    // the surviving reference constant, never guessed, and never anchored to a NIP-44 spec value
+    // (D-21): LIST_MAX_BYTES is a historical CORD-02 §8 figure, not today's NIP-44 ceiling.
+    const baseline = communityListByteSize([], []);
+    const perTombstoneBytes = communityListByteSize([], [{ community_id: "x".repeat(64), removed_at: 1 }]) - baseline;
+    const tombstoneCount = Math.ceil((LIST_MAX_BYTES - baseline) / perTombstoneBytes) + 10;
+    const tombstones = Array.from({ length: tombstoneCount }, (_, i) => ({
+      community_id: `${"t".repeat(60)}${i}`,
+      removed_at: i,
+    }));
+    expect(communityListByteSize([], tombstones)).toBeGreaterThan(LIST_MAX_BYTES);
+    await storage.setItem(pubkey, JSON.stringify({ entries: [], tombstones }));
+
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+      logger: log,
+    });
+    await client.start();
+    await settle();
+    await client.saveCommunityList();
+
+    expect(listPublishes(published).length).toBe(1);
+    const sizeTraceMessage = calls
+      .map((c) => format(...(c as [unknown, ...unknown[]])))
+      .find((m) => m.includes("community list size trace"));
+    expect(sizeTraceMessage).toBeDefined();
 
     client.stop();
   });
