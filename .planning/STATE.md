@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 ## Current Position
 
 Phase: 12 (document-caps-conformance) — EXECUTING GAP WAVE
-Plan: 10 of 11 (12-10 tasks 1-2 committed, task 3 in progress; 12-11 not yet started)
+Plan: 10 of 11 complete (12-10 landed 2026-08-01; 12-11 next)
 Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blocking gap (CR-01,
   channel-fold type-validation regression introduced by plan 12-08). Phase is NOT complete.
   Gap wave planned 2026-08-01: 12-10 (wave 5, depends on 12-08) replaces the fold's
@@ -309,6 +309,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12-08]: deleteChannel destructures out channel_id and spreads the rest with deleted:true, matching deleteRole's preserve-plus-terminal-flag idiom
 - [Phase 12-08]: Test E chains a v2 metadata edition onto genesis's own v1 via computeEditionHash/prevHash (mirroring the CHAN-07 test's linking pattern) so the fold's contiguous-chain walk actually adopts it, proving D-24 with zero source change to the metadata fold
 - [Phase ?]: 12-09: documentExtras snapshots the whole last-read document (including entries/tombstones), not a stripped extras-only object — the only design under which spread-first/assign-after ordering at the write sites is a real, testable shadow-protection rather than a no-op
+- [Phase 12]: 12-10: the channel fold's strip set is DERIVED from a total `CHANNEL_KEY_FOLD_DISPOSITION` classification over every `ChannelKey` field, not restated by hand — so `id` joins the stripped set structurally (nobody added it), closing WR-01's `held` omission as a class rather than by enumeration
+- [Phase 12]: 12-10: `isCustomRecord` rejects arrays (`!Array.isArray`), not merely non-objects — a bare `typeof === "object"` accepts an array, the identical type-lie CR-01 named for a string `custom`
+- [Phase 12]: 12-10: P2's index-signature probe needed the FACTORED-ALIAS form (`type X = keyof Required<ChannelMetadata>; type Rules = {[K in X]: ...}`) to reproduce the degenerate case — the plan's literal inline form is *homomorphic*, and TS 5.9.3 preserves literal members there regardless of the index signature, so it exits 2 not 0; `DeclaredKeysOf` is load-bearing against the factored form only
 - [Phase ?]: 12-09: documentExtras excluded from both publishedListFingerprint and publishedFingerprint dirty checks — a value captured there was just read off the document the fingerprint believes is already on the relay, so its presence alone never forces an extra publish
 
 ### Pending Todos
