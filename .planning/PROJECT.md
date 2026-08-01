@@ -42,6 +42,8 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 - ✓ A Refounding rotates every plane address and the epoch walk addresses each held epoch distinctly — Validated in Phase 6 (ROTATE-01/02)
 - ✓ A Refounding removes excluded members from the Complete Memberlist — Validated in Phase 6 (ROTATE-04)
 - ✓ A root Refounding is honored only from a rotator who strictly outranks every removed target, on both the send and receive paths — Validated in Phase 6 (AUTH-01/02)
+- ✓ Protocol caps, tag shapes, and unknown-field round-trip discipline match the specs — Validated in Phase 12: Document & Caps Conformance (WIRE-06/07/08/09/10/12). Channel/community `name` (64B) and `description` (10000B) are capped by UTF-8 byte length on write; the Community List enforces the 50-membership protocol constant; both self-encrypted list documents round-trip unknown **top-level** fields, so two clients sharing one npub cannot wipe each other's data; the channel-edition fold validates every declared field through type-derived rule tables, so a hostile non-boolean `deleted` cannot yield a visible-but-silently-dead channel
+- ✓ Regression tests assert against independently-derived spec values, not against implementation output — Validated in Phase 12 (TEST-01, standing across Phases 5–12; closed once all eight passed their own verification)
 
 ### Active
 
@@ -54,8 +56,7 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 - Revocation must survive a lagging relay: an invite coordinate resolves before its tombstone is evaluated
 - Event time must be one clock read: `created_at * 1000 + ms` is a true decomposition of a single instant
 - Attacker-crafted invite bundles must fail closed at the validation boundary
-- Protocol caps, tag shapes, and unknown-field round-trip discipline must match the specs
-- Regression tests must assert against independently-derived spec values, not against implementation output
+*(All v1.1 Active items above are now delivered — every phase 5–12 is complete and verified. The remaining entries stay listed here until `/gsd-complete-milestone` formally closes v1.1.)*
 
 ### Out of Scope
 
@@ -123,4 +124,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-29 — Phase 11 complete (reactions, threaded replies, deletes, and voice presence carry the CORD-01/03/07 wire shape; `react`/`replyToThread`/`deleteMessage` now take a full `Rumor` so `k`/`p` tags bind to the target's real kind and pubkey. UAT surfaced one live doc defect, fixed in-phase, and one deferred finding: voice-presence beacons can resurrect a kicked or departed member through the observed-authors fold — backlogged to `todos/pending/11-verify-followups.md`)*
+*Last updated: 2026-08-01 — Phase 12 complete (document & caps conformance; re-verification passed 7/7 after a gap wave closed CR-01, the channel-fold type-validation regression, as a class via type-derived rule tables rather than by enumeration). This was the last unchecked phase in v1.1 — the milestone is fully executed and ready for `/gsd-complete-milestone`. Carried as verification debt, all guardrail-only with no reachable defect: WR-02/03/04/05/06 in `12-REVIEW.md`.*
+
+*Prior: 2026-07-29 — Phase 11 complete (reactions, threaded replies, deletes, and voice presence carry the CORD-01/03/07 wire shape; `react`/`replyToThread`/`deleteMessage` now take a full `Rumor` so `k`/`p` tags bind to the target's real kind and pubkey. UAT surfaced one live doc defect, fixed in-phase, and one deferred finding: voice-presence beacons can resurrect a kicked or departed member through the observed-authors fold — backlogged to `todos/pending/11-verify-followups.md`)*
