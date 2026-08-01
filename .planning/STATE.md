@@ -4,15 +4,15 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
-status: verifying
-stopped_at: Completed 12-09-PLAN.md
-last_updated: "2026-07-30T15:11:12.386Z"
-last_activity: 2026-07-30
-last_activity_desc: Phase 12 executed 9/9 plans; verification found gaps (CR-01)
+status: ready_to_execute
+stopped_at: Planned 12-10-PLAN.md, 12-11-PLAN.md (gap closure)
+last_updated: "2026-08-01T00:00:00.000Z"
+last_activity: 2026-08-01
+last_activity_desc: Phase 12 gap wave planned — 12-10/12-11 close CR-01 + WR-01 + WR-09
 progress:
   total_phases: 12
   completed_phases: 11
-  total_plans: 85
+  total_plans: 87
   completed_plans: 85
   percent: 92
 ---
@@ -28,15 +28,33 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12 (document-caps-conformance) — EXECUTING
-Plan: 9 of 9
-Status: 9/9 plans executed; verification ran and returned gaps_found — 1 blocking gap (CR-01,
+Phase: 12 (document-caps-conformance) — GAP WAVE PLANNED, READY TO EXECUTE
+Plan: 9 of 11 executed (12-10, 12-11 planned, not yet executed)
+Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blocking gap (CR-01,
   channel-fold type-validation regression introduced by plan 12-08). Phase is NOT complete.
-  Next: /gsd-plan-phase 12 --gaps
-  Phase 12 is unplanned and has no directory on disk. Note that phases 12.1/12.2/12.3 were
-  INSERTED phases (promoted from backlog) and were executed ahead of Phase 12 itself, so the
-  next unchecked phase in ROADMAP.md is 12, not 12.1 — `phase.complete` reported
-  `next_phase: 12.1` by numeric adjacency and was corrected here.
+  Gap wave planned 2026-08-01: 12-10 (wave 5, depends on 12-08) replaces the fold's
+  hand-maintained denylist with two total, type-derived rule tables — closing CR-01
+  (`deleted`/`custom` validation), WR-01 (`held` omitted from the denylist), and WR-09
+  (no test coverage) as a class rather than by enumeration, per the 12.3-14
+  `HELD_KEY_FIELD_RULES` precedent. 12-11 (wave 6) proves downstream that a hostile
+  non-boolean `deleted` cannot produce a visible-but-silently-dead channel.
+  Plan-checker passed with no BLOCKER or WARNING; it independently confirmed the plans'
+  type-system claims against `types.ts`/`control.ts` and the 546-test baseline.
+  Two design notes worth carrying: (a) `ChannelMetadata`'s `[k: string]: unknown` (added by
+  12-08) makes a naive mapped type unenforcing — the plans use a key-remapping alias and
+  require a probe proving the mechanism fails *without* it; (b) 12.3's CR5-01 (rule `kind`
+  not type-bound to field type, backlogged as 999.9) is closed here rather than inherited,
+  via `(v: unknown) => v is <declared field type>` guards.
+  Deliberately OUT of the gap wave, still open as non-blocking: WR-03 (monotonic extras
+  merge — a removed field can ping-pong back), WR-04 (`stop()` never clears
+  `documentExtras`), WR-06 (no root-shape guard on the document spread), WR-08 (three
+  vacuous self-referential `it()` blocks), WR-13 (`apps/examples` still pins nostr-tools
+  ~2.19). CR-02 and the D-04/D-14 overrides are settled by locked user decisions.
+  Next: /gsd-execute-phase 12
+  Note that phases 12.1/12.2/12.3 were INSERTED phases (promoted from backlog) and were
+  executed ahead of Phase 12 itself, so the next unchecked phase in ROADMAP.md is 12, not
+  12.1 — `phase.complete` reported `next_phase: 12.1` by numeric adjacency and was
+  corrected here.
 
   Prior context — Phase 11 closed 2026-07-29. 6/6 plans, verification passed 6/6 must-haves,
   UAT 2/2. Test 1 (stale `react()`/`replyToThread()`/`deleteMessage()` examples in
