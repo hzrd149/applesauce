@@ -1736,6 +1736,99 @@ describe("wire conformance", () => {
 
     community.dispose();
   });
+
+  it("CR-01: a public channel whose edition carries a non-boolean deleted is still registered as a live stream key, not silently dropped from sync", async () => {
+    // Three of `client/community.ts`'s `deleted` consumers share the same
+    // loose-truthiness predicate (`!c.deleted`): `publicChannelKeys()` (:757),
+    // `reconcileLive`'s `publicIds` (:807), and `reconcilePrivateChannels`
+    // (:830, exercised by the next test). The fourth, `channels$` (:414-424),
+    // applies NO `deleted` filter at all — that divergence is CR-01's impact.
+    // Only `publicChannelKeys()`/`currentAuthors()` are driven directly here;
+    // `reconcileLive`'s predicate is the identical expression over the same
+    // folded value. The guarantee that makes all three gates correct lives in
+    // the fold (12-10's rule tables — `deleted` is boolean-or-absent on every
+    // folded `ChannelMetadata`), deliberately NOT duplicated into the gates
+    // themselves by tightening them to `=== true` (see 12-11-SUMMARY.md).
+    const { community, rootEpoch } = await setupWireConformance();
+
+    // Created through the real API so each channel mints real key material —
+    // a missing pubkey later cannot be blamed on absent key material.
+    const hostileName = "hostile-cr01";
+    const deadName = "dead-cr01";
+    const liveName = "live-cr01";
+    const hostileId = await community.createChannel(hostileName);
+    const deadId = await community.createChannel(deadName);
+    const liveId = await community.createChannel(liveName);
+    await settle();
+
+    async function publishV2(channelId: string, name: string, deleted: unknown): Promise<void> {
+      const v1Content = JSON.stringify({ name, private: false });
+      const v1Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content: v1Content });
+      const v2Content = JSON.stringify({ name, private: false, deleted });
+      const v2 = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+      await community.publishToPlane({ plane: "control" }, v2, { plaintext: true });
+    }
+
+    // HOSTILE: the exact reproduction from 12-REVIEW.md — a truthy non-`true`
+    // string. DEAD: a genuine terminal deletion (the discriminating control).
+    // LIVE: left at v1, untouched — the baseline.
+    await publishV2(hostileId, hostileName, "false");
+    await publishV2(deadId, deadName, true);
+    await settle();
+
+    // 1. Fold-level shape, briefly — the premise the rest of the test rests on.
+    // Confirms v2 was actually adopted for HOSTILE before anything else is asserted.
+    const foldedHostile = community.state$.value.channels.find((c) => c.channel_id === hostileId);
+    expect(foldedHostile).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(foldedHostile!, "deleted")).toBe(false);
+    expect(community.state$.value.channels.some((c) => c.channel_id === deadId)).toBe(false);
+    expect(community.state$.value.channels.some((c) => c.channel_id === liveId)).toBe(true);
+
+    // 2. Render parity — `channels$` applies no `deleted` filter (:414-424).
+    let views: { channel_id: string }[] = [];
+    const viewSub = community.channels$.subscribe((v) => (views = v));
+    viewSub.unsubscribe();
+    expect(views.some((c) => c.channel_id === hostileId)).toBe(true);
+    expect(views.some((c) => c.channel_id === liveId)).toBe(true);
+    expect(views.some((c) => c.channel_id === deadId)).toBe(false);
+
+    // 3. The gate the contract names. Expected pubkeys are read off the
+    // derived channel-key map (`this.keys.channels`) — a DIFFERENT code path
+    // than `publicChannelKeys()` itself, so this cannot compare the
+    // implementation to itself.
+    const keysAccess = community as unknown as { keys: { channels: Map<string, { pk: string }> } };
+    const gateAccess = community as unknown as {
+      publicChannelKeys: () => { pk: string }[];
+      currentAuthors: () => string[];
+    };
+    const expectedHostilePk = keysAccess.keys.channels.get(hostileId)!.pk;
+    const expectedLivePk = keysAccess.keys.channels.get(liveId)!.pk;
+    const registeredPks = gateAccess.publicChannelKeys().map((k) => k.pk);
+    expect(registeredPks).toContain(expectedHostilePk);
+    expect(registeredPks).toContain(expectedLivePk);
+
+    // 4. The subscription actually covers it — `currentAuthors()` is exactly
+    // what `openLive()` dials and registers with `relayAuth` for NIP-42.
+    const authors = gateAccess.currentAuthors();
+    expect(authors).toContain(expectedHostilePk);
+
+    // 5. The genuine-deletion control. This is what stops the test from
+    // passing on a build that achieved reachability by ignoring `deleted`
+    // altogether, which would resurrect a deleted channel and violate
+    // CHAN-07. DEAD never gets a derived key at all (excluded before
+    // `deriveConcordKeys` even sees it), so its would-be pubkey is computed
+    // independently via `channelGroupKey` over the public derivation
+    // (community_root/epoch) rather than read off any map.
+    expect(keysAccess.keys.channels.has(deadId)).toBe(false);
+    const expectedDeadPk = channelGroupKey(
+      hexToBytes(community.material.community_root),
+      hexToBytes(deadId),
+      rootEpoch,
+    ).pk;
+    expect(authors).not.toContain(expectedDeadPk);
+
+    community.dispose();
+  });
 });
 
 // A rumor authored by `pubkey`, so owner-signed control editions can be fed into a
