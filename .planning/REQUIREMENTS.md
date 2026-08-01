@@ -118,7 +118,7 @@ Deferred — acknowledged, not in this roadmap.
 | CACHE-01 | Phase 5 | Complete |
 | CACHE-02 | Phase 5 | Superseded by Phase 5.1 — see cache.ts one-rule doc block |
 | CACHE-03 | Phase 5 | Complete |
-| TEST-01 | Phase 5–12 (standing) | Pending — **cross-cutting; does NOT close at Phase 5** |
+| TEST-01 | Phase 5–12 (standing) | Complete — all eight standing phases (5, 6, 7, 8, 9, 10, 11, 12) passed their own verification; closed at Phase 12's re-verification 2026-08-01 |
 | ROTATE-01 | Phase 6 | Complete |
 | ROTATE-02 | Phase 6 | Complete |
 | ROTATE-04 | Phase 6 | Complete |

@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
-status: executing
-stopped_at: Completed 12-11-PLAN.md — CR-01 downstream non-vacuity proven (public + private channel reachability)
-last_updated: "2026-08-01T13:52:13.452Z"
+status: milestone_complete
+stopped_at: Phase 12 verified 7/7 and closed — v1.1 has no remaining unchecked phases
+last_updated: "2026-08-01T14:55:47.115Z"
 last_activity: 2026-08-01
-last_activity_desc: 12-11 executed — CR-01 downstream non-vacuity proven, Phase 12 gap wave plans complete (re-verification pending)
+last_activity_desc: Phase 12 complete (re-verification passed 7/7) — v1.1 fully executed, ready for /gsd-complete-milestone
 progress:
   total_phases: 12
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 87
   completed_plans: 87
-  percent: 92
+  percent: 100
 ---
 
 # Project State
@@ -28,8 +28,9 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12 (document-caps-conformance) — GAP WAVE PLANS COMPLETE, RE-VERIFICATION PENDING
-Plan: 11 of 11 complete (12-10 landed 2026-08-01; 12-11 landed 2026-08-01)
+Phase: 12 (document-caps-conformance) — COMPLETE 2026-08-01. v1.1 has no remaining unchecked
+  phases; next step is `/gsd-complete-milestone`, NOT phase 12.1 (already closed 2026-07-22).
+Plan: 11 of 11 complete
 Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blocking gap (CR-01,
   channel-fold type-validation regression introduced by plan 12-08). Phase was NOT complete
   at that verification pass.
@@ -61,11 +62,32 @@ Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blo
   `documentExtras`), WR-06 (no root-shape guard on the document spread), WR-08 (three
   vacuous self-referential `it()` blocks), WR-13 (`apps/examples` still pins nostr-tools
   ~2.19). CR-02 and the D-04/D-14 overrides are settled by locked user decisions.
-  Next: re-verify Phase 12 against this gap wave (12-10/12-11), then close the phase if it passes.
+  RESOLVED 2026-08-01: re-verification ran and PASSED 7/7 must-haves (2 scored by locked
+  overrides D-04/D-14, 0 present-but-unverified). The verifier read `helpers/control.ts`
+  directly rather than trusting SUMMARY claims and confirmed CR-01 is closed AS A CLASS:
+  `CHANNEL_METADATA_FOLD_RULES` is a total `Required<>`-wrapped map over `ChannelMetadata`'s
+  declared fields (omitting a rule is TS1360) and `CHANNEL_KEY_STRIPPED_FIELDS` is DERIVED
+  from `CHANNEL_KEY_FOLD_DISPOSITION` rather than a parallel literal, so `held` (WR-01) and
+  `id` are stripped structurally. Tests J/K are generated from the exported tables, so future
+  fields inherit coverage. Gap-wave code review: 0 BLOCKER / 6 WARNING / 3 INFO.
+  Carried forward as VERIFICATION DEBT (guardrail-only, no reachable defect — do NOT treat as
+  a new gap round): WR-04 (12-10's doc comment gives a FALSE rationale for `DeclaredKeysOf` —
+  the abstraction is load-bearing in `ChannelKeyFoldDisposition`'s conditional, which the
+  comment never mentions; someone who checks the stated reason, finds it wrong and
+  "simplifies" opens a key-material leak); WR-05 (12-11's two downstream tests are
+  non-vacuous only by an unasserted byte-match coincidence — one added field in the
+  hand-rebuilt v1 content string turns both into always-green no-ops; one-line fix is to give
+  v2 a distinct `name` and assert it); WR-06 (the "adding a field fails the build" claim is
+  held by nothing automated — both test files sit in `tsconfig.json`'s `exclude`); WR-02
+  (`ChannelKeyFoldDisposition` accepts `name: "strip"` with no compile error while the runtime
+  `declared` loop re-adds it — type says strip wins, runtime says declared wins); WR-03 (all
+  three tables are package-public mutable objects; `readonly` erases at runtime).
   Note that phases 12.1/12.2/12.3 were INSERTED phases (promoted from backlog) and were
-  executed ahead of Phase 12 itself, so the next unchecked phase in ROADMAP.md is 12, not
-  12.1 — `phase.complete` reported `next_phase: 12.1` by numeric adjacency and was
-  corrected here.
+  executed ahead of Phase 12 itself. `phase.complete` again reported `next_phase: 12.1` and
+  `is_last_phase: false` by numeric adjacency — BOTH WRONG, 12.1 closed 2026-07-22 and Phase 12
+  was the last unchecked phase in v1.1. Corrected here. It also wrote Phase 12's plan count
+  into backlog Phase 999.2's `**Plans:**` line (restored to `0 plans`) — always `git diff`
+  ROADMAP.md after a phase transition.
 
   Prior context — Phase 11 closed 2026-07-29. 6/6 plans, verification passed 6/6 must-haves,
   UAT 2/2. Test 1 (stale `react()`/`replyToThread()`/`deleteMessage()` examples in
@@ -96,7 +118,7 @@ Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blo
   named only one of the two early returns preceding `getExpirationTimestamp`, was corrected to
   name both `kinds.EventDeletion` and `this.deletes.check`. Comment-only; see 05-VERIFICATION.md
   Closure Addendum.)
-Last activity: 2026-08-01 — 12-11 executed (CR-01 downstream non-vacuity, gap wave plans complete)
+Last activity: 2026-08-01 — Phase 12 complete, transitioned to Phase 12.1
 
 Progress: [█████████░] 92% (by phase; all 87/87 plans across 12 phases are now landed — Phase 12 itself is not counted complete until re-verification passes)
 
@@ -321,6 +343,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12-08]: deleteChannel destructures out channel_id and spreads the rest with deleted:true, matching deleteRole's preserve-plus-terminal-flag idiom
 - [Phase 12-08]: Test E chains a v2 metadata edition onto genesis's own v1 via computeEditionHash/prevHash (mirroring the CHAN-07 test's linking pattern) so the fold's contiguous-chain walk actually adopts it, proving D-24 with zero source change to the metadata fold
 - [Phase ?]: 12-09: documentExtras snapshots the whole last-read document (including entries/tombstones), not a stripped extras-only object — the only design under which spread-first/assign-after ordering at the write sites is a real, testable shadow-protection rather than a no-op
+- [Phase 12]: 12-11: both downstream reachability tests drive the real `client/community.ts` gates (`publicChannelKeys()`, `currentAuthors()`, `channels$`, private sub-engine retention) end-to-end rather than asserting on the fold's output shape — CR-01 was a live defect precisely because the shape flowed downstream, so the proof has to follow it there
 - [Phase 12]: 12-10: the channel fold's strip set is DERIVED from a total `CHANNEL_KEY_FOLD_DISPOSITION` classification over every `ChannelKey` field, not restated by hand — so `id` joins the stripped set structurally (nobody added it), closing WR-01's `held` omission as a class rather than by enumeration
 - [Phase 12]: 12-10: `isCustomRecord` rejects arrays (`!Array.isArray`), not merely non-objects — a bare `typeof === "object"` accepts an array, the identical type-lie CR-01 named for a string `custom`
 - [Phase 12]: 12-10: P2's index-signature probe needed the FACTORED-ALIAS form (`type X = keyof Required<ChannelMetadata>; type Rules = {[K in X]: ...}`) to reproduce the degenerate case — the plan's literal inline form is *homomorphic*, and TS 5.9.3 preserves literal members there regardless of the index signature, so it exits 2 not 0; `DeclaredKeysOf` is load-bearing against the factored form only
