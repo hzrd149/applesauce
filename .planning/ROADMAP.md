@@ -357,7 +357,7 @@ Plans:
 - Criterion 2's "already-enforced byte cap included" parenthetical is **overridden by D-07** — every serialized-byte cap in `packages/concord` is removed, because NIP-44 now specifies `max_plaintext_size` = 4294967295 and CORD-02 §8/Appendix B reason from a 65,535 ceiling that no longer exists upstream. Score criterion 2 on the 50-membership constant plus the name/description caps.
 - Criterion 4's rationale is **obsolete and corrected by D-14** — `ChannelMetadata` no longer carries `key`/`epoch`, so a naive spread cannot leak `ch.key` via our own code. Score criterion 4 on the preserved fields and the absence of key material, not on the presence of a spread operator. D-22's fold denylist guards the value-level case.
 
-**Plans**: 9/9 plans complete
+**Plans**: 11 plans (9/11 complete — gap closure in progress)
 
 Plans:
 
@@ -381,6 +381,11 @@ Plans:
 **Wave 4** *(depends on 12-07)*
 
 - [x] 12-09-PLAN.md — Client-tier document-extras carrier in `ConcordClient` and `ConcordInviteManager`, plus the cross-cutting conformance suite proving WIRE-09 end to end through the shipped publish path (WIRE-09; D-13/D-23/D-25)
+
+**Wave 5** *(gap closure — depends on 12-08; closes CR-01 BLOCKER + WR-01 + WR-09 from 12-VERIFICATION.md)*
+
+- [ ] 12-10-PLAN.md — Replace the channel fold's hand-maintained denylist with two total, type-derived rule tables (`CHANNEL_KEY_FOLD_DISPOSITION` over `ChannelKey`, `CHANNEL_METADATA_FOLD_RULES` over `ChannelMetadata`'s declared keys with type-bound guards), restoring `deleted`/`custom` validation and covering `held`, with generated regression probes and five executed compile-break transcripts (WIRE-09/WIRE-10/TEST-01; D-01/D-13/D-15/D-21/D-22)
+- [ ] 12-11-PLAN.md — Downstream proof that a hostile non-boolean `deleted` leaves the channel registered by `publicChannelKeys()`/`currentAuthors()` and keeps its private sub-engine, with genuine-deletion controls and a mandatory revert/RED/restore/GREEN probe (WIRE-09/WIRE-10/TEST-01)
 
 ### Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED)
 
