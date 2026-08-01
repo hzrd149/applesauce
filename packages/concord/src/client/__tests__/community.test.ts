@@ -1829,6 +1829,56 @@ describe("wire conformance", () => {
 
     community.dispose();
   });
+
+  it("CR-01: a private channel whose edition carries a non-boolean deleted keeps its sub-engine, while a genuine deletion disposes it", async () => {
+    const { community } = await setupWireConformance();
+
+    const hostileName = "hostile-private-cr01";
+    const deadName = "dead-private-cr01";
+    const hostileId = await community.createChannel(hostileName, { private: true });
+    const deadId = await community.createChannel(deadName, { private: true });
+    await settle();
+
+    // Setup precondition: both private channels must already have a live
+    // sub-engine before either v2 edition is published — otherwise the rest
+    // of this test proves nothing.
+    const engineAccess = community as unknown as { privateChannels: Map<string, unknown> };
+    expect(engineAccess.privateChannels.has(hostileId)).toBe(true);
+    expect(engineAccess.privateChannels.has(deadId)).toBe(true);
+
+    async function publishV2(channelId: string, name: string, deleted: unknown): Promise<void> {
+      const v1Content = JSON.stringify({ name, private: true });
+      const v1Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content: v1Content });
+      const v2Content = JSON.stringify({ name, private: true, deleted });
+      const v2 = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+      await community.publishToPlane({ plane: "control" }, v2, { plaintext: true });
+    }
+
+    // HOSTILE: a truthy non-`true` string `deleted` on a private channel's edition.
+    await publishV2(hostileId, hostileName, "false");
+    await settle();
+
+    // Confirm v2 adopted — the fold-level premise and the adoption signal.
+    const foldedHostile = community.state$.value.channels.find((c) => c.channel_id === hostileId);
+    expect(foldedHostile).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(foldedHostile!, "deleted")).toBe(false);
+
+    // The gate CR-01's third path names: with a truthy string `deleted`,
+    // `reconcilePrivateChannels` (:830) would `continue` past the channel,
+    // its id would drop out of the live set, and the existing engine would be
+    // disposed — the private-channel half of "silently dead".
+    expect(engineAccess.privateChannels.has(hostileId)).toBe(true);
+
+    // DEAD: a genuine terminal deletion — the discriminating control, proving
+    // the fix did not achieve engine retention by disabling deletion handling.
+    await publishV2(deadId, deadName, true);
+    await settle();
+
+    expect(engineAccess.privateChannels.has(deadId)).toBe(false);
+    expect(community.state$.value.channels.some((c) => c.channel_id === deadId)).toBe(false);
+
+    community.dispose();
+  });
 });
 
 // A rumor authored by `pubkey`, so owner-signed control editions can be fed into a
