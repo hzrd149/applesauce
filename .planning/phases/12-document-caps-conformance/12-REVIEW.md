@@ -1,531 +1,347 @@
 ---
 phase: 12-document-caps-conformance
-reviewed: 2026-07-30T16:30:00Z
+reviewed: 2026-08-01T14:47:29Z
 depth: standard
-files_reviewed: 38
+round: 2 (gap wave — plans 12-10 / 12-11 only; round 1 preserved in git at 53d6d39c)
+diff_base: 48debd59
+files_reviewed: 3
 files_reviewed_list:
-  - packages/common/package.json
-  - packages/concord/src/__tests__/cord-citations.test.ts
-  - packages/concord/src/__tests__/cord-wire-fixtures.test.ts
-  - packages/concord/src/__tests__/cord-wire-fixtures.ts
-  - packages/concord/src/__tests__/document-caps-conformance.test.ts
-  - packages/concord/src/casts/__tests__/community-list.test.ts
-  - packages/concord/src/casts/__tests__/invite-list.test.ts
-  - packages/concord/src/casts/community-list.ts
-  - packages/concord/src/casts/invite-list.ts
-  - packages/concord/src/client/__tests__/client.test.ts
-  - packages/concord/src/client/__tests__/community.test.ts
-  - packages/concord/src/client/__tests__/extra-relays.test.ts
-  - packages/concord/src/client/admin.ts
-  - packages/concord/src/client/channel-sync.ts
-  - packages/concord/src/client/client.ts
-  - packages/concord/src/client/community.ts
-  - packages/concord/src/client/invite-manager.ts
-  - packages/concord/src/client/private-channel.ts
-  - packages/concord/src/helpers/__tests__/community-list.test.ts
-  - packages/concord/src/helpers/__tests__/community.test.ts
-  - packages/concord/src/helpers/__tests__/control.test.ts
-  - packages/concord/src/helpers/__tests__/invite-bundle-schema.test.ts
-  - packages/concord/src/helpers/__tests__/invite-bundle.test.ts
-  - packages/concord/src/helpers/__tests__/invite-list.test.ts
-  - packages/concord/src/helpers/caps.ts
-  - packages/concord/src/helpers/community-list.ts
-  - packages/concord/src/helpers/community.ts
   - packages/concord/src/helpers/control.ts
-  - packages/concord/src/helpers/index.ts
-  - packages/concord/src/helpers/invite-bundle.ts
-  - packages/concord/src/helpers/invite-list.ts
-  - packages/concord/src/helpers/keys.ts
-  - packages/concord/src/operations/community-list.ts
-  - packages/concord/src/operations/invite-list.ts
-  - packages/concord/src/types.ts
-  - packages/core/package.json
-  - packages/core/src/helpers/__tests__/encryption.test.ts
-  - packages/relay/package.json
+  - packages/concord/src/helpers/__tests__/control.test.ts
+  - packages/concord/src/client/__tests__/community.test.ts
 findings:
-  critical: 2
-  warning: 14
-  info: 0
-  total: 16
+  critical: 0
+  warning: 6
+  info: 3
+  total: 9
 status: issues_found
 ---
 
-# Phase 12: Code Review Report
+# Phase 12 (gap wave): Code Review Report
 
-**Reviewed:** 2026-07-30T16:30:00Z
+**Reviewed:** 2026-08-01T14:47:29Z
 **Depth:** standard
-**Files Reviewed:** 38
-**Status:** issues_found
+**Files Reviewed:** 3
+**Status:** issues_found (0 BLOCKER, 6 WARNING, 3 INFO)
 
 ## Summary
 
-The phase's five stated intents are mostly implemented as described: the byte caps are gone from
-the list documents, `helpers/caps.ts` exists and is wired into `createCommunity` / `createChannel`
-/ `editMetadata` (with `editMetadata` correctly asserting the MERGED result), the 50-membership
-cap sits at exactly one enforcement point in `recordJoin` counting derived-live memberships, the
-document roots are opened with index signatures, and the citation guard exists and passes.
-
-Two things did NOT survive scrutiny.
-
-First, the D-22 channel-fold refactor is a **net regression, not a net hardening**. Replacing the
-explicit field pick with denylist-then-spread removed the type validation that used to guard
-`deleted` and `custom`. I proved by execution that a channel edition carrying
-`{"deleted":"false","custom":"not-an-object","held":[{"epoch":1,"key":"aa…"}]}` now folds into
-`CommunityState.channels` with all three properties intact. `deleted:"false"` is truthy, and three
-downstream call sites in `client/community.ts` gate on `!c.deleted` — so an authorized-but-hostile
-`MANAGE_CHANNELS` holder (the exact actor the CHAN-04 comment names) can make a channel render in
-`channels$` while it is silently never synced, never subscribed, and never given a private
-sub-engine. The old code dropped a non-boolean `deleted` on the floor. Separately, the denylist is
-already incomplete against its own written contract: `held` is a `ChannelKey` field whose entries
-carry `key` hex, and it is not denied — the comment's "a future contributor who adds a new
-sensitive field to `ChannelKey` … must extend this denylist" describes a field that exists today.
-
-Second, plan 12-03 deleted `INVITE_BUNDLE_MAX_TOTAL_BYTES` — which was **not** a cap on an
-encrypted list document, and therefore not within D-07's stated scope. It was the only aggregate
-bound on attacker-crafted invite-bundle input. With it gone, a bundle at exactly the surviving
-per-field caps (256 channels × 64 held keys) is ~2.5 MB and is now explicitly asserted to
-validate. That material is written into `JoinMaterial`, serialized twice per Community List entry,
-and drives one ECDH per held key. Worse, the Direct-Invite path reaches it with no user action.
-A new structural test permanently forbids re-adding the symbol, which locks the regression in.
-
-Beyond those, the `documentExtras` carriers behave correctly at every publish site I checked
-(spread first, authoritative arrays last, at all four write sites), but their monotonic
-existing-first merge makes a deliberately-removed protocol field unremovable, and the client-side
-carrier retains left memberships' key material in memory forever, contradicting `pruneDeadEntries`'s
-own stated purpose. Test quality is generally strong (spec-anchored fixtures, raw-plaintext
-assertions, non-vacuity guards) with three exceptions noted below — including three genuinely
-vacuous self-referential assertions of exactly the class this phase exists to eliminate, and zero
-coverage of the two fields the fold refactor stopped validating.
-
-## Narrative Findings (AI reviewer)
-
-## Critical Issues
-
-### CR-01: Channel fold silently accepts a non-boolean `deleted`, letting an authorized actor make a channel visible-but-dead on every client
-
-**File:** `packages/concord/src/helpers/control.ts:318-323`
-**Issue:**
-The denylist-then-spread rewrite dropped the type validation the explicit pick used to apply:
-
-```ts
-// BEFORE (deleted by this phase)
-...(typeof raw.deleted === "boolean" ? { deleted: raw.deleted } : {}),
-...(raw.custom !== null && typeof raw.custom === "object" ? { custom: raw.custom } : {}),
-
-// AFTER
-const { key: _key, epoch: _epoch, name, private: isPrivate, ...rest } = parsed as Record<string, unknown>;
-if (typeof name !== "string" || typeof isPrivate !== "boolean") continue;
-const meta: ChannelMetadata = { ...rest, channel_id: eid, name, private: isPrivate };
-```
-
-`deleted` and `custom` now ride through `...rest` at any runtime type. I verified this by
-executing `foldControl` against an edition with `{"name":"general","private":false,
-"deleted":"false","custom":"not-an-object"}`: the folded object has `deleted === "false"` and
-`custom === "not-an-object"`.
-
-The sticky-deletion scan at :292-299 tests `deleted === true`, so a truthy non-`true` value is
-NOT treated as a deletion and the channel IS pushed into `state.channels`. But three downstream
-gates use loose truthiness:
-
-- `client/community.ts:757` — `publicChannelKeys()` filters `!c.private && !c.deleted`, so no
-  stream key is registered and NIP-42 auth never covers the channel.
-- `client/community.ts:807` — `reconcileLive()`'s `publicIds` excludes it, so it is never caught up.
-- `client/community.ts:830` — `reconcilePrivateChannels()` `continue`s, so no sub-engine spawns.
-
-Meanwhile `channels$` (`client/community.ts:414-424`) applies no `deleted` filter, so the channel
-still renders. Net effect: any `MANAGE_CHANNELS` holder — the threat actor the CHAN-04 comment at
-:252-267 explicitly models — publishes one edition and makes a channel permanently
-visible-but-silent on every client, with no deletion edition and no UI signal. An honest client
-that serializes `deleted` as `"true"` trips the same path.
-
-`custom` is also now a type lie: `ChannelMetadata.custom` is declared
-`Record<string, unknown> | undefined`, and consumers doing `Object.keys(ch.custom)` on a string
-get character indices.
-
-**Fix:** Re-apply the two validations after the destructure, keeping the spread for genuinely
-unknown keys:
-
-```ts
-const { key: _key, epoch: _epoch, name, private: isPrivate, deleted, custom, ...rest } =
-  parsed as Record<string, unknown>;
-if (typeof name !== "string" || typeof isPrivate !== "boolean") continue;
-const meta: ChannelMetadata = {
-  ...rest,
-  channel_id: eid,
-  name,
-  private: isPrivate,
-  ...(typeof deleted === "boolean" ? { deleted } : {}),
-  ...(custom !== null && typeof custom === "object" ? { custom: custom as Record<string, unknown> } : {}),
-};
-```
-
-This preserves the D-13 round-trip property for unrecognized keys while restoring the declared
-type contract for the two fields the package actually reads. Add regression tests for a
-non-boolean `deleted` (asserting the channel is NOT excluded from `publicChannelKeys`) and a
-non-object `custom` — neither is covered today (see WR-09).
-
-### CR-02: Deleting `INVITE_BUNDLE_MAX_TOTAL_BYTES` leaves attacker-crafted invite bundles with no aggregate bound, reachable with zero user interaction
-
-**File:** `packages/concord/src/helpers/invite-bundle.ts:283-287` and `:659-675`
-**Issue:**
-D-07's premise is "NIP-44's 65,535-byte plaintext limit was lifted", and the phase intent is
-"removed every serialized-byte cap on **encrypted list documents**".
-`INVITE_BUNDLE_MAX_TOTAL_BYTES` was neither: it was the aggregate bound on
-**attacker-crafted input** to `validateInviteBundle`, and its own doc comment stated the reason
-per-field caps could not replace it:
-
-> "Per-field caps ALONE cannot bound the aggregate: up to `INVITE_BUNDLE_MAX_CHANNELS` channels,
-> each carrying up to `INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS` held keys, is legal under every
-> per-field cap and still assembles into tens of kilobytes."
-
-Both the mint-time throw (`buildInviteBundle`) and the validate-time refusal
-(`validateInviteBundle`) were deleted; `validateInviteBundle` now applies exactly one cross-field
-check (the owner proof) and returns. The surviving caps admit 256 channels × 64 held keys, each
-held entry being `{epoch, key: 64-hex, refounder: 64-hex}` ≈ 150 bytes — roughly **2.5 MB of
-accepted, self-certifying, attacker-controlled bundle**, up from an 8 KB ceiling. This is not
-hypothetical: `invite-bundle.test.ts:579-604` now asserts that exactly this shape validates.
-
-Three amplifications follow:
-
-1. **Storage/publish amplification.** `client/client.ts:699` writes `bundle.channels` straight
-   into `JoinMaterial.channels`, and `recordJoin` (`:840-845`) stores that material TWICE per
-   entry (`seed` + `current`). The Community List's only remaining bound is 50 memberships
-   (D-06), so the self-encrypted 13302 plaintext this client will `nip44.encrypt`, sign, and
-   publish is now bounded at roughly 250 MB rather than ~800 KB.
-2. **CPU.** `INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS`'s own comment says each held entry costs one
-   X25519 derivation in `deriveChannelKeys`. 256 × 64 = 16,384 derivations per join — the "CPU
-   storm on the private-channel spawn path" that comment says the cap prevents, now reachable
-   because the aggregate bound that made 64 safe is gone.
-3. **No user interaction required.** `client/client.ts:568-576` (`onDirectInvite`) auto-folds
-   `bundle.channels` via `receiveChannelKeys` for any community we are already in. The owner
-   proof is `community_id == sha256(owner || owner_salt)`, and `owner_salt` is shared with every
-   member — so any co-member can craft a maximal bundle, gift-wrap it as a Direct Invite, and
-   have it folded into the recipient's material and republished in their 13302. `receiveChannelKeys`
-   (`client/community.ts:851-861`) applies no count or size bound of its own.
-
-`invite-bundle-schema.test.ts:284-297` now asserts `Object.keys(InviteBundleModule)` never
-contains `INVITE_BUNDLE_MAX_TOTAL_BYTES` again — a structural guard that makes this regression
-permanent unless the guard is also revisited.
-
-**Fix:** Restore an aggregate bound on the untrusted path. The measurement belongs on the
-REBUILT object (post-`rebuildByRules`), which is where it was:
-
-```ts
-// helpers/invite-bundle.ts, end of validateInviteBundle
-if (expected !== rebuilt.community_id) return undefined;
-// Aggregate bound on attacker-crafted input (NOT a NIP-44 ceiling — D-21). Per-field caps
-// cannot bound the product of INVITE_BUNDLE_MAX_CHANNELS x INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS.
-if (new TextEncoder().encode(JSON.stringify(rebuilt)).length > INVITE_BUNDLE_MAX_TOTAL_BYTES)
-  return undefined;
-return rebuilt;
-```
-
-Reinstate the symmetric mint-time throw in `buildInviteBundle`, and amend
-`invite-bundle-schema.test.ts`'s export guard so it no longer forbids the symbol. If the team
-prefers a non-byte bound, an equivalent structural alternative is a product bound
-(`sum(channels[i].held.length) <= N`) plus a `material.channels` count cap in
-`receiveChannelKeys` — but the current state has neither.
-
-## Warnings
-
-### WR-01: The D-22 denylist omits `held`, a key-material-carrying field that already exists on `ChannelKey`
-
-**File:** `packages/concord/src/helpers/control.ts:263-267, 318`
-**Issue:** The comment states "the two key-material field names are destructured out by name" and
-"a future contributor who adds a new sensitive field to `ChannelKey` or `JoinMaterial` must
-extend this denylist". `ChannelKey` (`types.ts:168-178`) has five fields: `id`, `key`, `epoch`,
-`name`, `held` — and `held` is `HeldKeyEntry[]`, each entry carrying a `key` hex. `held` is not
-denied. I verified by execution that a channel edition carrying
-`held: [{epoch:1, key:"aa".repeat(32)}]` lands on the folded `ChannelMetadata` and would be
-spread back out by `deleteChannel`. `JoinMaterial`'s own secret-bearing names (`community_root`,
-`owner_salt`, `held_roots`) are likewise undenied.
-
-This is a **latent guardrail gap, not a live leak**: no code path in this package writes our own
-key material into a channel edition, so what round-trips is the attacker's own data. But the
-denylist's documented contract is that it covers key-material field names on those two types, and
-it does not — so the "future contributor" instruction is already unmet at the moment it was
-written, and a single future line assigning channel key state onto a `ChannelMetadata` reopens
-CHAN-04 with no test or type failing.
-
-**Fix:** Derive the denylist from the type rather than restating it by hand, so it cannot drift:
-
-```ts
-// One list, exhaustive over ChannelKey by construction (tsc fails if a field is added).
-const CHANNEL_KEY_MATERIAL_FIELDS = ["key", "epoch", "held", "id"] as const satisfies
-  readonly (keyof ChannelKey)[];
-```
-
-then strip those keys from `parsed` before the spread. Add a test asserting `held` does not
-survive the fold, alongside the existing `key`/`epoch` assertions in `control.test.ts` Test B.
-
-### WR-02: Role names are never capped, though `caps.ts` declares the 64-byte cap uniform across communities, channels AND roles
-
-**File:** `packages/concord/src/client/admin.ts:244-269`; `packages/concord/src/helpers/caps.ts:23-24`
-**Issue:** `NAME_MAX_BYTES`'s doc comment says "communities, channels, and roles all share it", and
-the transcribed spec sentence (`CORD_METADATA_CAP_SENTENCE`) says "The 64-byte name cap is uniform
-across the protocol (Channels and Roles carry the same one)." `createRole` and `editRole` publish
-`role.name` with no `assertByteCap` call. Every other write site named in the phase intent got the
-guard; roles were missed while the constant's own documentation claims otherwise.
-
-**Fix:**
-```ts
-async createRole(name: string, position: number, permissions: bigint, scope: RoleScope = { kind: "server" }) {
-  assertByteCap(name, NAME_MAX_BYTES, "role name");
-  ...
-}
-async editRole(roleId: string, patch: Partial<Omit<Role, "role_id">>) {
-  const current = this.opts.state().roles.find((r) => r.role_id === roleId);
-  if (!current) throw new Error("role not found");
-  const role: Role = { ...current, ...patch, role_id: roleId };
-  assertByteCap(role.name, NAME_MAX_BYTES, "role name"); // MERGED, mirroring editMetadata's D-03
-  ...
-}
-```
-
-### WR-03: `documentExtras`'s monotonic merge makes a deliberately-removed top-level key unremovable
-
-**File:** `packages/concord/src/client/client.ts:1001, 1085`; `packages/concord/src/client/invite-manager.ts:316`
-**Issue:** Every capture site is `this.documentExtras = { ...this.documentExtras, ...document }`
-(existing-first, new-second). A key is therefore only ever ADDED to the carrier; it is never
-dropped when a later read of the same replaceable document omits it. If device B removes a
-protocol field it no longer wants, device A — which read it earlier this session — republishes
-it on its next save; device B then reads it back and its own carrier gains it. The field can
-never be retired, and two devices can ping-pong it indefinitely.
-
-CORD-02 §6's MUST is "round-trip fields it doesn't understand", i.e. preserve what the CURRENT
-document carries. It does not say resurrect what a peer deleted. The Community List solved the
-same problem for memberships with explicit tombstones precisely because a never-deleting union
-cannot express removal.
-
-**Fix:** Replace the carrier wholesale on each read rather than merging, so the carrier always
-reflects the most recent document actually seen:
-
-```ts
-const document = getCommunityList(cast.event);
-if (document) this.documentExtras = { ...document };
-```
-
-If the "survives an emission that happens not to carry it" property is genuinely wanted, it needs
-its own justification and a tombstone mechanism; today it is asserted in a comment and silently
-implements resurrection.
-
-### WR-04: `ConcordClient.documentExtras` retains left memberships' key material for the process lifetime and is never cleared by `stop()`
-
-**File:** `packages/concord/src/client/client.ts:293, 488-505, 1001, 1085`
-**Issue:** The carrier snapshots the WHOLE parsed document, including `entries` — every
-`CommunityListCommunity` with its `seed`/`current` `JoinMaterial` (`community_root`, channel
-`key` hex, `held_roots`). `pruneDeadEntries` (:954-960) exists specifically to drop dead
-memberships' BYTES from `this.list`, and its doc comment calls that its "surviving purpose". But
-the same bytes stay live in `documentExtras` indefinitely: `leave()` does not touch it, and
-`stop()` (:488-505) does not clear it either — unlike `ConcordInviteManager.stop()` (:178), whose
-doc comment explicitly justifies clearing "so a restart cannot replay a previous session's
-snapshot onto a document this session never read". Two carriers documented as mirrors of each
-other have opposite lifecycle behavior.
-
-The stale `entries` never reach the wire (the override ordering is correct at all four write
-sites — I verified `client.ts:1036`, `client.ts:1268`, `invite-manager.ts:290`, and confirmed
-`document-caps-conformance.test.ts` Test C pins it), so this is retention, not disclosure.
-
-**Fix:** Clear it in `stop()` alongside the other per-session state, and — better — stop
-snapshotting the arrays at all:
-
-```ts
-const { entries: _e, tombstones: _t, ...rest } = document;
-this.documentExtras = { ...rest };
-```
-This also makes the "spread FIRST" invariant unnecessary rather than load-bearing, which is the
-structural version of the fix the write-site comments currently argue for procedurally.
-
-### WR-05: `assertByteCap` silently accepts non-string values
-
-**File:** `packages/concord/src/helpers/caps.ts:37-53`
-**Issue:** `utf8ByteLength` calls `new TextEncoder().encode(value)`, which coerces. `undefined`
-becomes `""` (0 bytes) and passes; a number becomes its decimal string. The helper is exported
-from `helpers/index.ts`, so it is public API. Concretely,
-`admin.editMetadata({ name: undefined })` merges `name: undefined` into `next`, passes the
-0-byte check, and publishes a metadata edition with `name` dropped by `JSON.stringify` — a
-document violating `CommunityMetadata`'s required `name`, which the fold's blind
-`as CommunityMetadata` cast will then propagate into `state.metadata`.
-
-**Fix:**
-```ts
-export function assertByteCap(value: string, maxBytes: number, field: string): void {
-  if (typeof value !== "string") throw new Error(`${field} must be a string`);
-  const bytes = utf8ByteLength(value);
-  if (bytes > maxBytes) throw new Error(`${field} is too large (${bytes} bytes > ${maxBytes}-byte cap)`);
-}
-```
-
-### WR-06: The opened document roots now spread an arbitrary JSON value, so a malformed document emits junk keys onto the wire
-
-**File:** `packages/concord/src/helpers/community-list.ts:251-255`; `packages/concord/src/helpers/invite-list.ts:122-126`
-**Issue:** `parseCommunityList` changed from a destructure (`{ communities: doc.entries ?? [] }`)
-to `{ ...doc, entries: doc.entries ?? [], tombstones: doc.tombstones ?? [] }`. The old form
-discarded anything that was not one of the two known keys; the new one spreads whatever
-`JSON.parse` produced. A document whose root is a JSON array (`"[1,2]"` — reachable from a
-corrupted mirror or a mis-encrypted list) yields `{ "0": 1, "1": 2, entries: [], tombstones: [] }`,
-and `modifyCommunityList` (`operations/community-list.ts:93`) will serialize those numeric keys
-straight back onto the wire as "preserved unknown fields". A `"null"` root still throws
-(`doc.entries` on null), so the failure mode is inconsistent as well.
-
-**Fix:** Guard the root shape before opening it:
-
-```ts
-export function parseCommunityList(json: string | undefined): ParsedCommunityList {
-  if (!json) return { entries: [], tombstones: [] };
-  const doc = JSON.parse(json) as unknown;
-  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return { entries: [], tombstones: [] };
-  const d = doc as ParsedCommunityList;
-  return { ...d, entries: d.entries ?? [], tombstones: d.tombstones ?? [] };
-}
-```
-Apply the identical guard to `parseInviteList`.
-
-### WR-07: `deleteChannel` republishes an unvalidated `name`, bypassing the write-side cap D-02 establishes
-
-**File:** `packages/concord/src/client/admin.ts:228-233`
-**Issue:** `deleteChannel` spreads the folded `ch` (whose `name` came off the read path, which
-D-04 deliberately leaves uncapped) into a freshly published edition. So a channel whose name
-arrived over-cap from another implementation gets re-published over-cap by THIS client, from a
-write path. `caps.ts:10-17` frames the caps as "a WRITE-SIDE contract"; this write site is not
-covered by it. The result is that the same client both refuses `createChannel("<65 bytes>")` and
-emits `{"name":"<65 bytes>", "deleted":true}`.
-
-**Fix:** Decide and document which it is. Either assert on the echoed name
-(`assertByteCap(rest.name as string, NAME_MAX_BYTES, "channel name")`, accepting that a deletion
-of a legacy over-cap channel then fails), or amend `caps.ts`'s "write-side contract" wording to
-say explicitly that pure echo-through republishes are exempt and why. Silently having one write
-path outside the contract is the worst of the three.
-
-### WR-08: Three vacuous, self-referential test assertions
-
-**File:** `packages/concord/src/__tests__/document-caps-conformance.test.ts:291-293`;
-`packages/concord/src/helpers/__tests__/community-list.test.ts:243-245`;
-`packages/concord/src/helpers/__tests__/invite-list.test.ts:136-138`
-**Issue:** Each is an `it()` whose entire body asserts that a test-fixture string constant
-contains a substring of itself:
-
-```ts
-it("cites CORD-02 §6's round-trip MUST as the authority for this suite's premise", () => {
-  expect(CORD_ROUND_TRIP_SENTENCE).toContain("round-trip");
-});
-```
-
-`CORD_ROUND_TRIP_SENTENCE` is defined in `cord-wire-fixtures.ts` and imported by the same suite.
-The assertion touches no implementation symbol and cannot fail for any source change. These are
-green test-count padding of exactly the class this phase's premise indicts ("189 tests passed
-while nine HIGH bugs were live"). The `cord-wire-fixtures.test.ts` cap-literal round-trips
-(`:136-152`) are the correct pattern — they parse a number back out of the verbatim sentence and
-compare it to the transcribed constant; these three are not.
-
-**Fix:** Delete the three `it()` blocks. The citation is already carried by the describe-block
-comments, and the fixture's own self-test suite already proves the constants are non-empty and
-correctly transcribed.
-
-### WR-09: No test covers the two fields the fold refactor stopped validating, nor the `held` denylist gap
-
-**File:** `packages/concord/src/helpers/__tests__/control.test.ts:869-895` (Test D)
-**Issue:** Test D is titled "the fold's type validation is unchanged" and exercises only `name`
-(non-string) and `private` (non-boolean) — the two fields that ARE still validated. `deleted` and
-`custom`, the two whose validation the refactor deleted, are not tested at any type. Test B
-asserts `key` and `epoch` are stripped but not `held`. The suite therefore certifies exactly the
-properties that did not change and is silent on the ones that did — which is why CR-01 and WR-01
-shipped green.
-
-**Fix:** Add to Test D a `{ name: "ok", private: false, deleted: "false" }` case asserting the
-folded channel's `deleted` is `undefined` (or that the channel remains in `publicChannelKeys()`),
-a `{ custom: "not-an-object" }` case asserting `custom` is absent, and extend Test B's stripped
-set with `held`.
-
-### WR-10: `inviteListWithinByteCap` was deleted with no structural export guard, unlike its Community List twin
-
-**File:** `packages/concord/src/helpers/__tests__/invite-list.test.ts` (absent);
-compare `packages/concord/src/helpers/__tests__/community-list.test.ts:124-138`
-**Issue:** D-10's stated discipline is that a removal "must be permanent, not just a passing test
-suite that happens not to call the deleted symbols", and both `community-list.ts` and
-`invite-bundle.ts` got `Object.keys(Module)` guards enforcing it. `invite-list.ts` lost
-`inviteListWithinByteCap` in the same phase and got no guard, so it can be reintroduced silently.
-
-**Fix:** Add the mirror assertion to `invite-list.test.ts`:
-```ts
-import * as InviteListModule from "../invite-list.js";
-it("the module exports no within-cap predicate (D-07/D-10)", () => {
-  expect(Object.keys(InviteListModule)).not.toContain("inviteListWithinByteCap");
-});
-```
-
-### WR-11: The membership cap counts a live-but-engineless entry, so a corrective re-join at exactly 50 is refused
-
-**File:** `packages/concord/src/client/client.ts:829-849`
-**Issue:** `joinFromBundle` short-circuits on `this.communities.has(cid)` (the ENGINE map, :729),
-but `recordJoin`'s guard counts `liveCommunities(this.list, …)` (the DOCUMENT). An entry that is
-live in the document but has no engine is a state `reconcileCommunities` produces by design — the
-`failedConstructionFingerprint` skip path (:1156-1167) leaves an unconstructable membership in
-`this.list` with no engine, and the method's own doc comment describes that case. Re-joining that
-cid with corrected material passes the engine-map check, reaches `recordJoin`, is counted against
-the cap it already occupies, and at exactly 50 live is refused with "would exceed the
-50-membership cap" — even though `joinCommunity`'s community_id-keyed merge would not have
-increased the count at all.
-
-**Fix:** Exempt an already-live cid from the guard:
-```ts
-const alreadyLive = isCommunityLive(this.list, this.tombstones, material.community_id);
-const liveCount = liveCommunities(this.list, this.tombstones).length;
-if (!alreadyLive && liveCount + 1 > COMMUNITY_LIST_MAX_MEMBERSHIPS) throw new Error(...);
-```
-
-### WR-12: `LIST_MAX_BYTES` is dead in `src/` and its doc comment describes a use that does not exist
-
-**File:** `packages/concord/src/helpers/community-list.ts:98-110`
-**Issue:** The comment says the constant is "retained only as a reference figure in the Community
-List size trace". `saveCommunityList`'s trace (`client.ts:1224-1251`) never references it — it
-reports `communityListByteSize(...)` and a raw tombstone byte count, with no ceiling comparison.
-`grep` confirms the only remaining consumers are three test files. It is a dead export whose
-documentation asserts a live use. Two neighbouring comments are stale for the same reason:
-`caps.ts:6-8` cites "the derived-constants-carry-a-rationale convention `community-list.ts`
-follows for its arithmetic ceilings" (the only derived ceiling,
-`COMMUNITY_LIST_MAX_ENTRY_BYTES`, was deleted this phase), and `community-list.ts:88-90` refers to
-"`LIST_MAX_BYTES`'s survivors below" (`LIST_MAX_BYTES` is itself a transcribed literal, and its
-derived survivor is gone).
-
-**Fix:** Either delete `LIST_MAX_BYTES` and re-point its three test consumers at a fixture
-constant, or — if it is genuinely wanted as an operator reference — actually reference it in the
-trace (`… (%d bytes; historical CORD-02 §8 reference figure: %d)`) so the comment becomes true.
-Correct the two stale cross-references either way.
-
-### WR-13: `nostr-tools` specifier widened from `~` to `^` on a crypto dependency, and one workspace member was left behind
-
-**File:** `packages/core/package.json:106`, `packages/relay/package.json:69`, `packages/common/package.json:107`
-**Issue:** Two changes ride in one edit. (a) `~2.19` → `^2.24` widens the accepted range from
-patch-only to the whole 2.x minor line for the library that performs all NIP-44 encryption, in a
-runtime `dependencies` block; the phase's stated need was only "≥ 2.23.4 for the lifted plaintext
-ceiling", which `~2.24` would satisfy with the previous risk profile. (b) `apps/examples/package.json`
-still pins `~2.19`, and `pnpm-lock.yaml` now resolves both `nostr-tools@2.19.4` and
-`nostr-tools@2.24.1` into the tree. That is benign for `applesauce-core` consumers (core resolves
-its own copy), but it means the workspace ships two divergent crypto implementations and the
-examples app disagrees with the libraries it demonstrates.
-
-**Fix:** Use `~2.24` unless the minor-range widening is a deliberate, separately-justified policy
-change, and bump `apps/examples` to the same specifier so the workspace resolves one copy.
-
-### WR-14: The citation guard's pattern has silent blind spots its header does not disclose
-
-**File:** `packages/concord/src/__tests__/cord-wire-fixtures.ts:337-338, 366-385`
-**Issue:** `CITATION_PATTERN` requires `CORD-NN` + exactly one space + `§`. Citations written as
-`CORD-06 § 3`, `CORD-06 §§3`, `CORD-06, §3`, or `CORD-06 section 3` are not matched at all and
-pass the guard silently — the same "looks like a section token" class the guard exists to close,
-just written slightly differently. Separately, `citationsOutsideRegistry`'s range branch keys on
-`token.includes("-")` (:376), but the named-section alternative of the pattern permits hyphens
-(`[A-Za-z0-9-]*`), so a future named section containing a hyphen would be split on `-` and
-reported invalid. The header's stated limitation covers only "proves a section EXISTS, not that a
-citation is RIGHT" — neither of these is disclosed.
-
-**Fix:** Loosen the prefix to `CORD-(\d{2})[ ,]*§+\s*` and gate the range branch on the token
-being fully numeric (`/^\d+(-\d+)?$/`) rather than on the presence of a hyphen. Add a
-`cord-wire-fixtures.test.ts` case for `"CORD-06 § 7"` asserting it is reported.
+Scope was the gap wave only: `e2fba1b8`/`06b9498b` (12-10, type-derived channel-fold rule tables)
+and `58ebb95e`/`bfd3e8a9` (12-11, downstream reachability tests).
+
+**Verdict on the three questions the scope asked:**
+
+1. **Does the new fold logic correctly and totally validate every field?** Yes. I traced every
+   guard, not just the tables. `foldChannelEdition` (`control.ts:274-303`) is total over the five
+   declared `ChannelMetadata` members; no value can slip through as the wrong type. Adversarial
+   paths I checked and found closed: a JSON array as the whole edition body (rejected — `name`
+   guard miss on a `required` rule); a hostile own `channel_id` (never enters `passThrough`, since
+   `declaredKeys` filters it — so it does not even rely on the "later entries win" mechanism the
+   comment credits); an own `__proto__` on the parsed edition (does not alter the result's
+   `[[Prototype]]` — `Object.fromEntries` uses `CreateDataPropertyOrThrow`); `deleted`/`custom`
+   type-lies (dropped, channel retained). CR-01 is genuinely closed, and CR5-01's class (guard not
+   type-bound to its slot) is genuinely closed here — verified, not assumed.
+
+2. **Can the tables be silently disarmed by a plausible future refactor?** Mostly no, but with two
+   real gaps, both guardrail-only. I probed the type machinery empirically with `tsc --strict`
+   rather than reading it: an index signature reappearing on `ChannelKey` does **not** disarm
+   `ChannelKeyFoldDisposition` (declared members stay required; the index branch resolves to
+   `"strip"`); omitting a rule and mis-typing a guard both still error. The two live gaps are
+   **WR-02** (a `"strip"` classification is a silent no-op for any field also declared on
+   `ChannelMetadata` — the type system and the runtime give the two tables *opposite* precedence)
+   and **WR-03** (all three tables are exported, mutable, package-public module state).
+   Separately **WR-04**: the documented rationale for `DeclaredKeysOf` is verifiably false, and the
+   type it is actually load-bearing for is not the one the comment names — a future author acting
+   on the stated (wrong) reason could delete it and open a key-material leak with no compile error.
+
+3. **Are the new tests non-vacuous?** The `control.test.ts` probes (Tests G/H/I/J/K/L) are genuine,
+   and J/K are correctly generated from the exported tables rather than hand-enumerated. The two
+   new `community.test.ts` reachability tests are currently non-vacuous, but only by an unasserted
+   coincidence (**WR-05**): their stated "premise confirmation" assertion cannot distinguish "v2
+   was adopted" from "v2's `prev` dangled and v1 was folded instead". Test L (**WR-01**) asserts a
+   strictly narrower property than its comment claims.
+
+**Verification performed:** all 554 concord tests pass; `tsc --noEmit -p packages/concord` clean;
+six standalone `tsc --strict` probes of the mapped-type machinery; a Node repro of the
+`Object.fromEntries` / `Object.assign` prototype interaction.
+
+**No BLOCKER found.** Every finding below is a guardrail, hardening, or test-robustness gap; I
+found no value reachable through a real code path that produces incorrect behavior today. Per this
+project's own lesson about mislabeled BLOCKERs triggering avoidable gap rounds, none of these
+should gate the milestone — WR-02/WR-03/WR-04 are the ones worth folding into the next touch of
+this file.
 
 ---
 
-_Reviewed: 2026-07-30T16:30:00Z_
+## Warnings
+
+### WR-01: A hostile edition can shadow `Object.prototype` members on every folded channel; Test L asserts a narrower property than it claims
+
+**File:** `packages/concord/src/helpers/control.ts:274-302`, `packages/concord/src/helpers/__tests__/control.test.ts:1145-1162`
+
+**Issue:** `passThrough` admits *every* own key that is neither stripped nor declared — including
+`__proto__`, `constructor`, `toString`, `hasOwnProperty`. `Object.fromEntries` creates them as own
+data properties, so the folded `ChannelMetadata` carries the attacker's payload and shadows the
+corresponding `Object.prototype` member.
+
+Test L's comment states the construction "cannot alter the result's prototype", and asserts exactly
+that (`Object.getPrototypeOf(folded) === Object.prototype`) plus global cleanliness. Both pass. But
+neither assertion covers the retained payload, and the payload is what re-arms downstream. Verified
+repro:
+
+```
+folded own keys: [ '__proto__', 'channel_id', 'name', 'private' ]
+proto is Object.prototype: true                              <- what Test L asserts
+Object.assign({}, folded) proto is Object.prototype: false   <- what it does not
+Object.assign({}, folded).polluted: true
+```
+
+Reachable by any authorized `MANAGE_CHANNELS` holder. `state$.value.channels` and `channels$` are
+public API, and `admin.ts:232` re-serializes the folded object back onto the wire, so the payload
+also survives a delete/compaction round trip.
+
+**Not a regression** (the pre-12-10 rest-spread behaved identically) and **no in-repo consumer is
+affected** — `grep -rn "Object.assign" packages/concord/src` is empty, and no `Object.assign`/merge
+over a `ChannelMetadata` exists anywhere in `packages/*/src` or `apps/*/src`. The concern is
+external consumers, plus the false sense of closure Test L's comment creates.
+
+**Fix:** exclude prototype-hazard names from `passThrough` (not plausible protocol field names, so
+this does not weaken D-13's round-trip obligation), and widen Test L to assert payload absence:
+
+```ts
+const PROTOTYPE_HAZARD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const passThrough = Object.entries(parsed).filter(
+  ([key]) =>
+    !PROTOTYPE_HAZARD_KEYS.has(key) &&
+    !CHANNEL_KEY_STRIPPED_FIELDS.includes(key) &&
+    !declaredKeys.includes(key),
+);
+
+// Test L, additionally:
+expect(Object.prototype.hasOwnProperty.call(folded!, "__proto__")).toBe(false);
+expect(Object.getPrototypeOf(Object.assign({}, folded!))).toBe(Object.prototype);
+```
+
+---
+
+### WR-02: A `"strip"` classification is a silent no-op for any field `ChannelMetadata` also declares — the two tables have opposite precedence at type level and at runtime
+
+**File:** `packages/concord/src/helpers/control.ts:229-246`, `274-302`
+
+**Issue:** `ChannelKeyFoldDisposition` permits `"strip" | "metadata-field"` for any `ChannelKey`
+field that is also a declared `ChannelMetadata` member. Verified with `tsc --strict`: classifying
+`name: "strip"` produces **no** compile error.
+
+At runtime the strip loses. A key that is both stripped and declared is filtered out of
+`passThrough` (`:277`) — but the `declared` loop (`:281-300`) unconditionally re-adds it from
+`CHANNEL_METADATA_FOLD_RULES`. So the type system says "strip wins" for non-metadata names while
+the runtime says "declared wins" for shared names, and nothing reconciles the two.
+
+**Guardrail-only today.** The single shared name is `name`, correctly classified
+`"metadata-field"`, so every shipped value is correct. The failure scenario is a future field added
+to *both* types — exactly the growth path these tables exist to survive: a contributor classifies it
+`"strip"` believing that suppresses it, the compiler accepts it, `CHANNEL_KEY_STRIPPED_FIELDS`
+grows, and the field is emitted anyway from the rules table. That is the key-material-leak class the
+original WR-01 named, re-opened through the new mechanism.
+
+**Fix:** make the overlap unrepresentable rather than merely unused — either forbid the shared case
+in the type, or enforce the invariant at module load beside the derived strip set:
+
+```ts
+// Type-level: a ChannelKey field ChannelMetadata also declares may ONLY be "metadata-field".
+export type ChannelKeyFoldDisposition = {
+  [K in keyof Required<ChannelKey>]: K extends keyof ChannelMetadataDeclared ? "metadata-field" : "strip";
+};
+
+// Or, runtime invariant beside CHANNEL_KEY_STRIPPED_FIELDS:
+for (const field of CHANNEL_KEY_STRIPPED_FIELDS)
+  if (field in CHANNEL_METADATA_FOLD_RULES)
+    throw new Error(`fold tables disagree: "${field}" is stripped but also a declared metadata rule`);
+```
+
+---
+
+### WR-03: The three rule tables are exported, mutable, package-public module state — the validation can be disarmed process-wide at runtime
+
+**File:** `packages/concord/src/helpers/control.ts:213-255`
+
+**Issue:** `CHANNEL_METADATA_FOLD_RULES`, `CHANNEL_KEY_FOLD_DISPOSITION` and
+`CHANNEL_KEY_STRIPPED_FIELDS` are `export const`, which freezes the *binding*, not the contents.
+`packages/concord/src/helpers/index.ts:11` (`export * from "./control.js"`) plus the
+`./helpers` / `./helpers/*` subpath exports in `package.json` make all three package-public API. The
+`readonly string[]` annotation on the strip set is erased at runtime.
+
+Any consumer — or a future test, or a mis-ordered module side effect — can write
+`CHANNEL_METADATA_FOLD_RULES.deleted = { disposition: "optional", guard: () => true }` or
+`(CHANNEL_KEY_STRIPPED_FIELDS as string[]).length = 0` and silently disarm both CR-01's and WR-01's
+fixes for every fold in the process. The scope asked "can the tables be silently disarmed" — this is
+the most direct answer, and it needs no refactor at all.
+
+**Guardrail-only:** nothing mutates them today (the tests only read them).
+
+**Fix:**
+
+```ts
+export const CHANNEL_METADATA_FOLD_RULES: ChannelMetadataFoldRules = Object.freeze({ /* ... */ });
+export const CHANNEL_KEY_FOLD_DISPOSITION: ChannelKeyFoldDisposition = Object.freeze({ /* ... */ });
+export const CHANNEL_KEY_STRIPPED_FIELDS: readonly string[] = Object.freeze(
+  Object.entries(CHANNEL_KEY_FOLD_DISPOSITION).filter(([, d]) => d === "strip").map(([f]) => f),
+);
+```
+
+---
+
+### WR-04: `DeclaredKeysOf`'s documented rationale is verifiably false, and names the wrong type as the beneficiary
+
+**File:** `packages/concord/src/helpers/control.ts:139-152` (and the summary claim at `:127-137`)
+
+**Issue:** The doc block asserts that keying the rule table directly over
+`keyof Required<ChannelMetadata>` "degenerates into an unenforcing index signature that compiles and
+checks nothing", and that stripping the index-signature keys "is what makes
+`ChannelMetadataFoldRules` total over the five declared members".
+
+Both halves are false. TypeScript treats `{ [K in keyof Required<ChannelMetadata>]: ... }` as a
+homomorphic mapped type and preserves the declared members as required properties. Verified with
+`tsc --strict` against the exact repo types:
+
+| probe | with `DeclaredKeysOf` | **without** it |
+|---|---|---|
+| omit the `deleted` rule | error TS1360 | **error TS1360** (`Property 'deleted' is missing`) |
+| `deleted` guard typed `v is string` | error TS2322 | **error TS2322** |
+| junk key `typo_delted` in the table | error | accepted |
+
+Totality and guard-type binding therefore hold with or without the abstraction; the only thing it
+adds for `ChannelMetadataFoldRules` is junk-key rejection, which the `: ChannelMetadataFoldRules`
+annotation already supplies via excess-property checking on the object literal.
+
+`DeclaredKeysOf` **is** genuinely load-bearing — but in `ChannelKeyFoldDisposition`'s conditional
+(`:230`), which the comment never mentions. Verified: substituting `keyof Required<ChannelMetadata>`
+there makes `{ id: "strip", key: "metadata-field", epoch: "metadata-field", name: "metadata-field",
+held: "metadata-field" }` compile cleanly, because `K extends string | number` is always true — a
+direct key-material leak.
+
+This matters because the false rationale is the sole recorded reason the abstraction exists. A
+future author who checks the claim, finds it wrong, and "simplifies" `ChannelMetadataDeclared` back
+to `Required<ChannelMetadata>` gets no compile error anywhere and re-opens the leak.
+
+(The adjacent `Required<...>` claim at `:154-161` **is** correct — verified: dropping `Required<>`
+lets both the `deleted` and `custom` rules be omitted with no error.)
+
+**Fix:** rewrite the block to state the demonstrated behaviour — that the index signature does not
+break the metadata table's totality, that `DeclaredKeysOf` exists so
+`K extends keyof ChannelMetadataDeclared` in `ChannelKeyFoldDisposition` stays a *discriminating*
+condition, and that without it every `ChannelKey` field becomes classifiable as `"metadata-field"`.
+
+---
+
+### WR-05: The two new downstream tests' "premise confirmation" assertion cannot detect the failure it exists to detect
+
+**File:** `packages/concord/src/client/__tests__/community.test.ts:1786-1791`, `1893-1897`
+
+**Issue:** Both new CR-01 tests build a v2 edition by hand and chain it with
+`computeEditionHash({ vsk, eid, version: 1, content: JSON.stringify({ name, private: false }) })`,
+*reconstructing* what `createChannel` published rather than reading it back. The stated guard is:
+
+```ts
+// "Confirms v2 was actually adopted for HOSTILE before anything else is asserted."
+expect(Object.prototype.hasOwnProperty.call(foldedHostile!, "deleted")).toBe(false);
+```
+
+That assertion is equally true when v2 was **not** adopted. If the reconstructed `v1Content` ever
+diverges by a byte, `v2.prev !== v1.selfHash`, `headCandidates` (`control.ts:91-96`) breaks the
+contiguous walk and holds the head at v1 — and the folded v1 has no `deleted` property either. Every
+remaining assertion in both tests (channel registered in `publicChannelKeys()`, present in
+`currentAuthors()`, sub-engine retained) then passes trivially for a channel that never carried a
+hostile `deleted` at all.
+
+The `deadId` control does not cover this: the CHAN-07 sticky scan (`control.ts:487-503`) inspects
+*all* authorized candidates, not just the chain head, so `deadId` is dropped whether or not v2 is
+the head.
+
+**Currently non-vacuous** — I verified `admin.ts:196` emits exactly
+`JSON.stringify({ name, private: isPrivate })` with matching key order, `publishEdition`
+(`admin.ts:144-150`) uses `version: 1` with no `prevHash` for the first edition, and `editionHash`
+(`crypto.ts:223-238`) excludes `vsk`/`vac`, so the chain links today. The finding is that nothing in
+the tests holds that coincidence in place: adding one field to `createChannel`'s content object
+silently converts both tests into always-green no-ops, with no failing assertion anywhere.
+
+**Fix:** make v2 carry a value only v2 could have supplied, and assert it:
+
+```ts
+async function publishV2(channelId: string, name: string, deleted: unknown): Promise<string> {
+  const v2Name = `${name}-v2`;
+  // ...build v2 with content JSON.stringify({ name: v2Name, private: false, deleted })
+  return v2Name;
+}
+const hostileV2Name = await publishV2(hostileId, hostileName, "false");
+// Fails loudly if the prev-hash chain broke and the fold held the head at v1:
+expect(foldedHostile!.name).toBe(hostileV2Name);
+```
+
+---
+
+### WR-06: The central claim of 12-10 — "adding a field fails the build" — has no automated coverage, because both test files are excluded from typechecking
+
+**File:** `packages/concord/tsconfig.json` (`exclude: ["src/**/*.test.ts", "src/**/__tests__/**/*"]`), `packages/concord/src/helpers/__tests__/control.test.ts:1103-1143`
+
+**Issue:** The entire justification for 12-10 is a *compile-time* guarantee, and nothing exercises
+it. Both changed test files are excluded from `tsc`, so no `@ts-expect-error` fixture proving
+"omitting a rule fails" or "a wrong-typed guard fails" can live there — and none exists elsewhere.
+Tests J and K are runtime probes over the tables' *current contents*; neither would notice if the
+types stopped enforcing anything, because both tables would still be populated correctly.
+
+Related symptom: `control.test.ts:1121`'s comment (`// narrows for tsc; already filtered above`)
+reasons about a compiler that never reads the file.
+
+I confirmed the guarantee holds today by hand (six `tsc --strict` probes; results in WR-04's table),
+but a claim that must survive future edits and is checked by no gate will drift.
+
+**Fix:** add a type-only fixture under `src/` (which *is* typechecked) — e.g.
+`helpers/__type-tests__/control-fold-rules.ts`, emitting nothing at runtime — with
+`@ts-expect-error` on a rules literal missing `deleted`, on a `deleted` rule guarded by
+`isStringValue`, and on a `ChannelKeyFoldDisposition` classifying `key` as `"metadata-field"`. Each
+`@ts-expect-error` becomes a build failure the moment the guardrail stops working.
+
+---
+
+## Info
+
+### IN-01: The `!c.deleted` gates the new tests were written to protect are now provably unreachable-false
+
+**File:** `packages/concord/src/client/__tests__/community.test.ts:1755-1764` (comment), `packages/concord/src/client/community.ts:757`, `807`, `830`
+
+The CHAN-07 sticky scan `continue`s before the fold loop for any entity with an authorized
+`deleted === true` candidate, over the *same* `authorized` list and the *same* non-null-object
+precondition as the fold loop. So `state.channels` can never contain an entry with
+`deleted === true`, and `filter(c => !c.private && !c.deleted)` / `if (!c.private || c.deleted)
+continue` are dead conditions — not merely "correct because the fold guarantees boolean-or-absent",
+as the new test's comment frames it. Not a defect, and the decision not to tighten them to
+`=== true` is settled; recorded so the rationale is not carried forward inaccurately.
+
+### IN-02: `admin.ts`'s channel doc block still documents the removed denylist-then-spread fold
+
+**File:** `packages/concord/src/client/admin.ts:204-226`
+
+Outside the reviewed file set, but invalidated by the in-scope change. The block explains
+`deleteChannel`'s spread in terms of "the channel fold's denylist-then-spread (D-13/D-14)" and "the
+fold's own denylist additionally prevents a hostile edition's `key` field from ever becoming a live
+property" — a mechanism `e2fba1b8` deleted. The conclusion is still true (now via
+`CHANNEL_KEY_STRIPPED_FIELDS`), but the stated reason no longer exists in the codebase.
+
+### IN-03: An `optional` guard miss erases the field from `deleteChannel`'s re-serialized tombstone
+
+**File:** `packages/concord/src/helpers/control.ts:294-299`, `packages/concord/src/client/admin.ts:231-232`
+
+A malformed `custom` written by a newer client is dropped by the fold, and `deleteChannel` spreads
+the *folded* object, so the tombstone edition this client publishes no longer carries it — a narrow
+CORD-02 §6 round-trip loss. Bounded: `deleteChannel` is the only path that re-serializes a folded
+`ChannelMetadata` back into an edition (`grep -rn "VSK.CHANNEL" packages/concord/src` shows only
+`createChannel` and `deleteChannel` publishing channel editions), and the channel is terminal at
+that point. Consistent with the locked D-04/D-15 read-side precedent; recorded only, no action
+proposed.
+
+---
+
+_Reviewed: 2026-08-01T14:47:29Z_
 _Reviewer: Claude (gsd-code-reviewer)_
-_Depth: standard_
+_Depth: standard (gap-wave scope, 48debd59..HEAD)_
