@@ -5,15 +5,15 @@ milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
 status: executing
-stopped_at: Planned 12-10-PLAN.md, 12-11-PLAN.md (gap closure)
-last_updated: "2026-08-01T12:29:02.360Z"
+stopped_at: Completed 12-11-PLAN.md — CR-01 downstream non-vacuity proven (public + private channel reachability)
+last_updated: "2026-08-01T13:52:13.452Z"
 last_activity: 2026-08-01
-last_activity_desc: Phase 12 execution started
+last_activity_desc: 12-11 executed — CR-01 downstream non-vacuity proven, Phase 12 gap wave plans complete (re-verification pending)
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 87
-  completed_plans: 85
+  completed_plans: 87
   percent: 92
 ---
 
@@ -28,16 +28,27 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12 (document-caps-conformance) — EXECUTING GAP WAVE
-Plan: 10 of 11 complete (12-10 landed 2026-08-01; 12-11 next)
+Phase: 12 (document-caps-conformance) — GAP WAVE PLANS COMPLETE, RE-VERIFICATION PENDING
+Plan: 11 of 11 complete (12-10 landed 2026-08-01; 12-11 landed 2026-08-01)
 Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blocking gap (CR-01,
-  channel-fold type-validation regression introduced by plan 12-08). Phase is NOT complete.
+  channel-fold type-validation regression introduced by plan 12-08). Phase was NOT complete
+  at that verification pass.
   Gap wave planned 2026-08-01: 12-10 (wave 5, depends on 12-08) replaces the fold's
   hand-maintained denylist with two total, type-derived rule tables — closing CR-01
   (`deleted`/`custom` validation), WR-01 (`held` omitted from the denylist), and WR-09
   (no test coverage) as a class rather than by enumeration, per the 12.3-14
   `HELD_KEY_FIELD_RULES` precedent. 12-11 (wave 6) proves downstream that a hostile
-  non-boolean `deleted` cannot produce a visible-but-silently-dead channel.
+  non-boolean `deleted` cannot produce a visible-but-silently-dead channel — landed
+  2026-08-01, commits `58ebb95e`/`bfd3e8a9`, 554/554 concord tests green, `pnpm -r test`
+  exit 0, non-vacuity confirmed by a revert-RED-restore-GREEN probe (see
+  12-11-SUMMARY.md). Both gap plans are now committed; `roadmap.update-plan-progress`
+  reports Phase 12's plan-count row as Complete (11/11 summaries), but a full
+  phase-level re-verification pass has NOT yet been run against this gap wave — do not
+  treat the phase as formally closed until that pass confirms CR-01/WR-01/WR-09 are
+  closed and no new gap surfaced. `REQUIREMENTS.md`'s TEST-01 traceability row still
+  reads "Pending — cross-cutting" (free-text, not auto-updated by `requirements
+  mark-complete`); its own text says it "closes only when all eight [phases] have
+  passed" — re-verification is what should flip it, not this plan alone.
   Plan-checker passed with no BLOCKER or WARNING; it independently confirmed the plans'
   type-system claims against `types.ts`/`control.ts` and the 546-test baseline.
   Two design notes worth carrying: (a) `ChannelMetadata`'s `[k: string]: unknown` (added by
@@ -50,7 +61,7 @@ Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blo
   `documentExtras`), WR-06 (no root-shape guard on the document spread), WR-08 (three
   vacuous self-referential `it()` blocks), WR-13 (`apps/examples` still pins nostr-tools
   ~2.19). CR-02 and the D-04/D-14 overrides are settled by locked user decisions.
-  Next: /gsd-execute-phase 12
+  Next: re-verify Phase 12 against this gap wave (12-10/12-11), then close the phase if it passes.
   Note that phases 12.1/12.2/12.3 were INSERTED phases (promoted from backlog) and were
   executed ahead of Phase 12 itself, so the next unchecked phase in ROADMAP.md is 12, not
   12.1 — `phase.complete` reported `next_phase: 12.1` by numeric adjacency and was
@@ -85,9 +96,9 @@ Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blo
   named only one of the two early returns preceding `getExpirationTimestamp`, was corrected to
   name both `kinds.EventDeletion` and `this.deletes.check`. Comment-only; see 05-VERIFICATION.md
   Closure Addendum.)
-Last activity: 2026-08-01 — Phase 12 execution started
+Last activity: 2026-08-01 — 12-11 executed (CR-01 downstream non-vacuity, gap wave plans complete)
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 92% (by phase; all 87/87 plans across 12 phases are now landed — Phase 12 itself is not counted complete until re-verification passes)
 
 ## Performance Metrics
 
@@ -160,6 +171,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P07 | 15min | 3 tasks | 12 files |
 | Phase 12 P08 | 21min | 3 tasks | 5 files |
 | Phase 12 P09 | 151min | 3 tasks | 3 files |
+| Phase 12 P11 | 45min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -313,6 +325,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12]: 12-10: `isCustomRecord` rejects arrays (`!Array.isArray`), not merely non-objects — a bare `typeof === "object"` accepts an array, the identical type-lie CR-01 named for a string `custom`
 - [Phase 12]: 12-10: P2's index-signature probe needed the FACTORED-ALIAS form (`type X = keyof Required<ChannelMetadata>; type Rules = {[K in X]: ...}`) to reproduce the degenerate case — the plan's literal inline form is *homomorphic*, and TS 5.9.3 preserves literal members there regardless of the index signature, so it exits 2 not 0; `DeclaredKeysOf` is load-bearing against the factored form only
 - [Phase ?]: 12-09: documentExtras excluded from both publishedListFingerprint and publishedFingerprint dirty checks — a value captured there was just read off the document the fingerprint believes is already on the relay, so its presence alone never forces an extra publish
+- [Phase 12]: The three loose-truthiness deleted gates in client/community.ts (publicChannelKeys, reconcileLive's publicIds, reconcilePrivateChannels) are deliberately NOT tightened to strict === true equality — the fold-level invariant from 12-10 already makes deleted boolean-or-absent, so duplicating the guarantee into three call sites would reintroduce the enumerated-patch drift CR-01/WR-01 already exposed.
 
 ### Pending Todos
 
@@ -358,11 +371,11 @@ Items acknowledged and carried forward, not in this roadmap:
 
 ## Session Continuity
 
-Last session: 2026-07-30T15:11:12.369Z
-Stopped at: Completed 12-09-PLAN.md
+Last session: 2026-08-01T13:52:13.442Z
+Stopped at: Completed 12-11-PLAN.md — CR-01 downstream non-vacuity proven (public + private channel reachability)
 Resume file: None
 
 ## Operator Next Steps
 
-- Discuss the next phase: `/gsd-discuss-phase 12`
-- Or plan directly: `/gsd-plan-phase 12`
+- Re-verify Phase 12 against the 12-10/12-11 gap wave (CR-01/WR-01/WR-09 closure) before marking it complete.
+- If re-verification passes, close Phase 12 — it is the last phase in the v1.1 roadmap.
