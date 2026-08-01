@@ -4,11 +4,11 @@ milestone: v1.1
 milestone_name: first-fixes
 current_phase: 12
 current_phase_name: document-caps-conformance
-status: ready_to_execute
+status: executing
 stopped_at: Planned 12-10-PLAN.md, 12-11-PLAN.md (gap closure)
-last_updated: "2026-08-01T00:00:00.000Z"
+last_updated: "2026-08-01T12:29:02.360Z"
 last_activity: 2026-08-01
-last_activity_desc: Phase 12 gap wave planned — 12-10/12-11 close CR-01 + WR-01 + WR-09
+last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 12
   completed_phases: 11
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-07-15)
 
 ## Current Position
 
-Phase: 12 (document-caps-conformance) — GAP WAVE PLANNED, READY TO EXECUTE
-Plan: 9 of 11 executed (12-10, 12-11 planned, not yet executed)
+Phase: 12 (document-caps-conformance) — EXECUTING GAP WAVE
+Plan: 10 of 11 (12-10 tasks 1-2 committed, task 3 in progress; 12-11 not yet started)
 Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blocking gap (CR-01,
   channel-fold type-validation regression introduced by plan 12-08). Phase is NOT complete.
   Gap wave planned 2026-08-01: 12-10 (wave 5, depends on 12-08) replaces the fold's
@@ -85,7 +85,7 @@ Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blo
   named only one of the two early returns preceding `getExpirationTimestamp`, was corrected to
   name both `kinds.EventDeletion` and `this.deletes.check`. Comment-only; see 05-VERIFICATION.md
   Closure Addendum.)
-Last activity: 2026-07-30 — Phase 12 execution started
+Last activity: 2026-08-01 — Phase 12 execution started
 
 Progress: [█████████░] 92%
 
