@@ -8,6 +8,7 @@
 
 import { PERM, VSK } from "../types.js";
 import type {
+  ChannelKey,
   ChannelMetadata,
   CommunityMetadata,
   CommunityState,
@@ -121,6 +122,184 @@ function capRoles(candidates: Map<string, Edition[]>): Map<string, Edition[]> {
   if (candidates.size <= MAX_ROLES) return candidates;
   const lowest = [...candidates.keys()].sort().slice(0, MAX_ROLES);
   return new Map(lowest.map((eid) => [eid, candidates.get(eid)!]));
+}
+
+// ---- Channel-edition fold: type-derived rule tables (CR-01/WR-01/WR-09) ----
+//
+// Two hand-maintained field lists produced two review findings in this same
+// phase: CR-01 (this refactor's own predecessor deleted the `deleted`/`custom`
+// type guards when it introduced the denylist-then-spread shape) and WR-01
+// (the denylist named `key`/`epoch` but not `held`, even though the comment
+// beside it claimed exhaustiveness over `ChannelKey`). Both tables below are
+// TOTAL maps over the real declared types instead: adding a field to either
+// governed type fails `pnpm --filter applesauce-concord build` naming the
+// table that is now missing an entry, rather than shipping silently. Mirrors
+// 12.3-14's `HELD_KEY_FIELD_RULES` precedent (`ExhaustiveBundleRules<T>`).
+
+/**
+ * A key-remapping mapped type that keeps only `T`'s explicitly DECLARED
+ * members, dropping any key admitted solely through an index signature
+ * (`string`/`number`/`symbol`). `ChannelMetadata` carries `[k: string]:
+ * unknown` (added by plan 12-08 for D-13's round-trip requirement), so
+ * `keyof Required<ChannelMetadata>` is `string | number` — a mapped rule
+ * table keyed directly over that union degenerates into an unenforcing index
+ * signature that compiles and checks nothing. Stripping the index-signature
+ * keys is what makes {@link ChannelMetadataFoldRules} total over the five
+ * declared members instead.
+ */
+export type DeclaredKeysOf<T> = {
+  [K in keyof T as string extends K ? never : number extends K ? never : symbol extends K ? never : K]: T[K];
+};
+
+/**
+ * `ChannelMetadata`'s five declared fields, with optionality removed. The
+ * `Required<...>` wrapper is load-bearing, not cosmetic: without it the
+ * optional members `deleted` and `custom` would produce OPTIONAL rule slots
+ * in {@link ChannelMetadataFoldRules}, and a missing rule for either would
+ * not be a type error — which is exactly CR-01 (the fold's `deleted`/`custom`
+ * type guards were silently dropped when 12-08 introduced the denylist).
+ */
+export type ChannelMetadataDeclared = Required<DeclaredKeysOf<ChannelMetadata>>;
+
+/** A runtime type predicate bound to a fold rule's declared field type. */
+export type ChannelFieldGuard<V> = (value: unknown) => value is V;
+
+/**
+ * One field's fold rule. `guard` is typed {@link ChannelFieldGuard}`<V>`
+ * rather than a loose `(v: unknown) => boolean` so a guard asserting the
+ * WRONG type for its slot is a compile error — deliberately closing the
+ * class Phase 12.3 backlogged as CR5-01 (a rule's `kind` not type-bound to
+ * the field it names, found latent-only there) rather than reproducing it
+ * here.
+ * - `"derived"`: the value never comes from edition JSON (only `channel_id`,
+ *   sourced from the fold's own coordinate).
+ * - `"required"`: a guard miss rejects the WHOLE edition (`continue` to the
+ *   next candidate) — matches the fold's pre-existing `name`/`private`
+ *   behavior.
+ * - `"optional"`: a guard miss OMITS just this field and keeps the channel —
+ *   converting a type-validation miss into a channel-availability miss would
+ *   trade CR-01 for a worse bug (D-04's read-side precedent).
+ */
+export type ChannelFieldRule<V> =
+  | { disposition: "derived" }
+  | { disposition: "required"; guard: ChannelFieldGuard<V> }
+  | { disposition: "optional"; guard: ChannelFieldGuard<V> };
+
+/** A rule table total over {@link ChannelMetadataDeclared}'s five members. */
+export type ChannelMetadataFoldRules = {
+  [K in keyof ChannelMetadataDeclared]: ChannelFieldRule<ChannelMetadataDeclared[K]>;
+};
+
+function isStringValue(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isBooleanValue(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+/**
+ * `custom` is declared `Record<string, unknown>` — excluding arrays here is a
+ * DELIBERATE strengthening beyond the pre-12-08 check (which only tested
+ * `typeof === "object"`): an array passes that bare typeof test while
+ * producing numeric indices under `Object.keys`/enumeration, the identical
+ * type-lie CR-01 names for a string `custom`.
+ */
+function isCustomRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** The per-field validation table (CR-01). */
+export const CHANNEL_METADATA_FOLD_RULES: ChannelMetadataFoldRules = {
+  channel_id: { disposition: "derived" },
+  name: { disposition: "required", guard: isStringValue },
+  private: { disposition: "required", guard: isBooleanValue },
+  deleted: { disposition: "optional", guard: isBooleanValue },
+  custom: { disposition: "optional", guard: isCustomRecord },
+};
+
+/**
+ * A total classification over every `ChannelKey` field (WR-01). The
+ * conditional is the point of the whole type: a `ChannelKey` field that
+ * `ChannelMetadata` does not itself declare is not merely EXPECTED to be
+ * stripped, it CANNOT be classified any other way — the non-strip escape
+ * hatch (`"metadata-field"`) is only reachable for names present in
+ * {@link ChannelMetadataDeclared}'s key set.
+ */
+export type ChannelKeyFoldDisposition = {
+  [K in keyof Required<ChannelKey>]: K extends keyof ChannelMetadataDeclared ? "strip" | "metadata-field" : "strip";
+};
+
+/**
+ * `name` is the one field `ChannelKey` and `ChannelMetadata` share — the
+ * metadata rules above validate it, so it must not be stripped. Every other
+ * `ChannelKey` field (`id`, `key`, `epoch`, `held`) is key material or a
+ * key-material identifier and is stripped, closing WR-01's `held` omission
+ * alongside the pre-existing `key`/`epoch` denylist.
+ */
+export const CHANNEL_KEY_FOLD_DISPOSITION: ChannelKeyFoldDisposition = {
+  id: "strip",
+  key: "strip",
+  epoch: "strip",
+  name: "metadata-field",
+  held: "strip",
+};
+
+/**
+ * The strip set, DERIVED at module load from {@link CHANNEL_KEY_FOLD_DISPOSITION}
+ * rather than written out as a literal array — a literal would not grow when
+ * the table grows, which is the entire defect being closed.
+ */
+export const CHANNEL_KEY_STRIPPED_FIELDS: readonly string[] = Object.entries(CHANNEL_KEY_FOLD_DISPOSITION)
+  .filter(([, disposition]) => disposition === "strip")
+  .map(([field]) => field);
+
+/**
+ * Rule-driven channel-edition builder (CR-01/WR-01). Returns `undefined`
+ * meaning "reject this candidate, try the next" — preserving the fold's
+ * pre-existing `continue` semantics exactly.
+ *
+ * Builds ONE object from two ordered entry lists via `Object.fromEntries`,
+ * never a rest-spread and never per-key bracket assignment:
+ *  - pass-through entries (every own key neither stripped nor declared) FIRST;
+ *  - declared-field entries (from {@link CHANNEL_METADATA_FOLD_RULES}) LAST.
+ * Two properties depend on exactly that ordering and construction method:
+ * later entries win, so a hostile edition's own `channel_id` can never
+ * shadow the coordinate-derived one (D-22, pinned by Test C); and
+ * `Object.fromEntries` uses data-property creation (never a bracket-
+ * assignment loop, which WOULD set the prototype), so an edition carrying a
+ * prototype-setter key cannot alter the result's prototype — a hazard the
+ * previous rest-spread never had and this refactor must not introduce.
+ */
+function foldChannelEdition(parsed: Record<string, unknown>, eid: string): ChannelMetadata | undefined {
+  const declaredKeys = Object.keys(CHANNEL_METADATA_FOLD_RULES);
+  const passThrough = Object.entries(parsed).filter(
+    ([key]) => !CHANNEL_KEY_STRIPPED_FIELDS.includes(key) && !declaredKeys.includes(key),
+  );
+
+  const declared: [string, unknown][] = [];
+  for (const [key, entry] of Object.entries(CHANNEL_METADATA_FOLD_RULES)) {
+    // The only erasure in this function, deliberately contained here:
+    // reading a heterogeneous table generically requires one widening step,
+    // with the real enforcement living in `ChannelMetadataFoldRules`'s
+    // declared type.
+    const rule: ChannelFieldRule<unknown> = entry;
+    if (rule.disposition === "derived") {
+      declared.push([key, eid]);
+      continue;
+    }
+    const raw = parsed[key];
+    if (rule.guard(raw)) {
+      declared.push([key, raw]);
+    } else if (rule.disposition === "required") {
+      return undefined;
+    }
+    // "optional" + guard miss: contribute nothing, keep the channel (D-04's
+    // read-side precedent — a validation miss must not become an
+    // availability miss).
+  }
+
+  return Object.fromEntries([...passThrough, ...declared]) as ChannelMetadata;
 }
 
 export function foldControl(events: DecodedEvent[], material: JoinMaterial): CommunityState {
@@ -250,27 +429,51 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
   }
 
   // ---- Channels (MANAGE_CHANNELS) -----------------------------------------
-  // CHAN-04/D-13/D-22: unknown top-level keys on a channel edition are
-  // preserved by spreading the rest of the parsed object — D-13 requires
-  // folds and editors to preserve what they do not understand, and CORD-02
-  // §6 makes it a MUST. This is NOT a blind spread: `tsc` prevents our own
-  // code from reading a property `ChannelMetadata` does not declare, but it
-  // does nothing to stop a hostile edition's raw JSON from CONTAINING one. A
-  // `MANAGE_CHANNELS` holder could put a `key` field on an edition; a blind
-  // spread would make it a live property on the folded object, and
-  // `deleteChannel`'s spread would then round-trip it back out — reopening
-  // exactly the leak CHAN-04 closes. So the two key-material field names are
-  // destructured out by name before the rest is spread, and key material is
-  // still NEVER read from edition JSON (D-01: `material.channels` is the sole
-  // source of truth for channel key material, unchanged). A future
-  // contributor who adds a new sensitive field to `ChannelKey` or
-  // `JoinMaterial` must extend this denylist.
+  // What round-trips and why: unrecognized top-level keys on a channel
+  // edition survive the fold untouched (WIRE-09/WIRE-10) — D-13 requires
+  // folds and editors to preserve fields they do not understand, and CORD-02
+  // §6 makes it a MUST, since a future protocol field must not be wiped by a
+  // client that predates it.
+  //
+  // How key material is excluded now: the strip set is DERIVED from
+  // `CHANNEL_KEY_FOLD_DISPOSITION` (above), a total classification over every
+  // `ChannelKey` field (CHAN-04, D-01, D-22). Adding a field to `ChannelKey`
+  // fails the build naming that table, and the non-strip classification is
+  // reachable only for names `ChannelMetadata` itself declares — so unlike
+  // the denylist this replaces, no future-contributor instruction is needed
+  // here: the compiler carries it. `material.channels` remains the sole
+  // source of channel key material (D-01), unchanged.
+  //
+  // How `deleted`/`custom` are validated now, and why: an authorized-but-
+  // hostile `MANAGE_CHANNELS` holder publishing a truthy non-`true` `deleted`
+  // (e.g. the string `"false"`) used to produce a channel that rendered while
+  // three loose-truthiness gates in client/community.ts silently excluded it
+  // from sync, live reconciliation and sub-engine spawn (CR-01). Both fields
+  // are now guarded by predicates bound to their declared field type
+  // (`ChannelFieldGuard<V>`) — a guard asserting the wrong type is a compile
+  // error.
+  //
+  // Deliberate BOUNDARY: `JoinMaterial` is NOT covered by the strip set. Its
+  // member names are generic enough that blanket-stripping them from a
+  // channel edition would destroy the round-trip property D-13 requires, and
+  // no code path in this package ever assigns a `JoinMaterial` member onto a
+  // `ChannelMetadata` — that would be whole-object confusion, not field
+  // drift. Stating this boundary honestly (rather than claiming coverage
+  // that does not exist) is the WR-01 correction.
+  //
+  // D-15 still holds: `custom` gets no special-casing beyond the type guard
+  // every declared field now carries.
+  //
   // CHAN-07: deletion is terminal (CORD-03 §2, "the id is never reused") — if
   // ANY authorized candidate for this entity is deleted:true, the channel is
   // permanently dropped AND `heads` is pinned to that deleting edition (not
   // whatever the ordinary version-chain head would be), so a later compaction
   // republishes the terminal state, not a resurrection attempt. Both outputs
-  // (`heads.set` and the `channels.push` decision) derive from ONE scan.
+  // (`heads.set` and the `channels.push` decision) derive from ONE scan. This
+  // scan and its `=== true` test are untouched by the CR-01 fix above: the
+  // bug was never here, it was that a non-`true` truthy value survived into
+  // the folded object where this scan had already declined to treat it as a
+  // deletion.
   const channels: ChannelMetadata[] = [];
   for (const [eid, cands] of groupByEntity(byVsk(VSK.CHANNEL))) {
     const authorized = cands.filter((c) => {
@@ -303,10 +506,9 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
       continue; // never push — permanently dead, id never reused
     }
 
-    // Otherwise take the first parseable authorized candidate. Denylist the
-    // two key-material field names out by name, keep type validation on the
-    // two validated fields, and spread the rest — see the CHAN-04/D-22
-    // comment above.
+    // Otherwise take the first parseable authorized candidate and fold it
+    // through the rule tables above (CR-01/WR-01) — see the CHAN-04/D-01/D-22
+    // comment above `channels`.
     for (const cand of authorized) {
       let parsed: unknown;
       try {
@@ -315,12 +517,8 @@ export function foldControl(events: DecodedEvent[], material: JoinMaterial): Com
         continue;
       }
       if (parsed === null || typeof parsed !== "object") continue;
-      const { key: _key, epoch: _epoch, name, private: isPrivate, ...rest } = parsed as Record<string, unknown>;
-      if (typeof name !== "string" || typeof isPrivate !== "boolean") continue;
-      // Spread FIRST, assigned fields LAST: a raw edition carrying its own
-      // `channel_id` must not overwrite the entity id derived from the
-      // coordinate (D-22).
-      const meta: ChannelMetadata = { ...rest, channel_id: eid, name, private: isPrivate };
+      const meta = foldChannelEdition(parsed as Record<string, unknown>, eid);
+      if (!meta) continue;
       heads.set(eid, cand.source);
       channels.push(meta);
       break;
