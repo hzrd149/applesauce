@@ -5,7 +5,7 @@ import { PERM, VSK } from "../../types.js";
 import { EditionFactory } from "../../factories/control.js";
 import { computeEditionHash } from "../editions.js";
 import { channelKeyFor, createCommunity } from "../community.js";
-import { foldControl } from "../control.js";
+import { CHANNEL_KEY_STRIPPED_FIELDS, CHANNEL_METADATA_FOLD_RULES, foldControl } from "../control.js";
 import { banlistLocator, grantLocator, inviteLinksLocator } from "../crypto.js";
 import { resolveStanding } from "../permissions.js";
 import type { Role } from "../../types.js";
@@ -813,7 +813,7 @@ describe("control fold — unknown-key round-trip (WIRE-09/WIRE-10/D-22/D-24)", 
     expect(folded!.custom).toEqual({ extension: { nested: true } });
   });
 
-  it("Test B: hostile key/epoch fields do NOT survive the fold, while an unrelated unknown key does", async () => {
+  it("Test B: hostile key/epoch/held/id fields do NOT survive the fold, while an unrelated unknown key does (WR-01)", async () => {
     const genesis = await newCommunity();
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
 
@@ -824,6 +824,12 @@ describe("control fold — unknown-key round-trip (WIRE-09/WIRE-10/D-22/D-24)", 
       future_flag: "unknown-to-this-client",
       key: "aa".repeat(32),
       epoch: 99,
+      // WR-01: `held` was the field the old hand-written denylist omitted,
+      // even though the comment beside it claimed exhaustiveness over
+      // `ChannelKey`. `id` is a consequence of deriving the strip set from
+      // `keyof Required<ChannelKey>` rather than restating it.
+      held: [{ epoch: 1, key: "cc".repeat(32) }],
+      id: "dd".repeat(32),
     });
     const ed = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content });
     events.push(decoded(ed, genesis.material.owner, 2_000));
@@ -836,8 +842,10 @@ describe("control fold — unknown-key round-trip (WIRE-09/WIRE-10/D-22/D-24)", 
     // careless spread produces.
     expect(Object.prototype.hasOwnProperty.call(folded!, "key")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(folded!, "epoch")).toBe(false);
-    // Pairing matters: proves the denylist is selective, not that the spread
-    // is absent entirely.
+    expect(Object.prototype.hasOwnProperty.call(folded!, "held")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(folded!, "id")).toBe(false);
+    // Pairing matters: proves the strip set is selective, not that the
+    // fold's preservation is absent entirely.
     expect(Object.prototype.hasOwnProperty.call(folded!, "future_flag")).toBe(true);
     expect(folded!.future_flag).toBe("unknown-to-this-client");
   });
@@ -922,5 +930,234 @@ describe("control fold — unknown-key round-trip (WIRE-09/WIRE-10/D-22/D-24)", 
     expect(state.metadata?.name).toBe("Test");
     expect((state.metadata as Record<string, unknown>).future_flag).toBe("unknown-to-this-client");
     expect(state.metadata?.custom).toEqual({ extension: { nested: true } });
+  });
+
+  it("Test G: a non-boolean `deleted` is dropped rather than folded — CR-01's visible-but-silently-dead channel is unreachable", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+    const id = (n: number) => (0x90 + n).toString(16).padStart(2, "0").repeat(32);
+
+    // Four hostile `deleted` values, each at its own entity id — including
+    // the exact string `"false"` the review reproduced.
+    const hostileValues: unknown[] = ["false", "true", 1, null];
+    for (const [i, deleted] of hostileValues.entries()) {
+      const eid = id(i);
+      const ed = await EditionFactory.create({
+        vsk: VSK.CHANNEL,
+        eid,
+        version: 1,
+        content: JSON.stringify({ name: "c", private: false, deleted }),
+      });
+      events.push(decoded(ed, genesis.material.owner, 2_000));
+    }
+
+    // Two discriminating controls, proving the rule is selective rather than
+    // a blanket drop: a genuine `false` survives strictly-equal; a genuine
+    // `true` still makes the channel permanently ABSENT (CHAN-07's
+    // stickiness, untouched by this fix).
+    const falseControlId = id(hostileValues.length);
+    const falseControl = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: falseControlId,
+      version: 1,
+      content: JSON.stringify({ name: "c", private: false, deleted: false }),
+    });
+    events.push(decoded(falseControl, genesis.material.owner, 2_000));
+
+    const trueControlId = id(hostileValues.length + 1);
+    const trueControl = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: trueControlId,
+      version: 1,
+      content: JSON.stringify({ name: "c", private: false, deleted: true }),
+    });
+    events.push(decoded(trueControl, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+
+    hostileValues.forEach((_, i) => {
+      const folded = state.channels.find((c) => c.channel_id === id(i));
+      // Must remain a LIVE channel — a rejection here would trade CR-01 for
+      // an availability bug (D-04's read-side precedent).
+      expect(folded).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(folded!, "deleted")).toBe(false);
+      expect(folded!.deleted).toBeFalsy(); // a `!c.deleted` gate must admit it
+    });
+
+    const foldedFalse = state.channels.find((c) => c.channel_id === falseControlId);
+    expect(foldedFalse).toBeDefined();
+    expect(foldedFalse!.deleted).toBe(false);
+
+    // The `true` control also proves this task did not disturb CHAN-07's
+    // stickiness: no channel at all at that id.
+    expect(state.channels.some((c) => c.channel_id === trueControlId)).toBe(false);
+  });
+
+  it("Test H: a non-object `custom` (string, null, array) is dropped rather than folded, while a genuine object survives", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+    const id = (n: number) => (0x91 + n).toString(16).padStart(2, "0").repeat(32);
+
+    const hostileCases: { label: string; value: unknown }[] = [
+      { label: "string", value: "not-an-object" },
+      { label: "null", value: null },
+      // A deliberate strengthening beyond bare parity: an array passes a bare
+      // `typeof === "object"` test while producing numeric indices under
+      // enumeration — the same type-lie CR-01 names for a string `custom`.
+      { label: "array", value: ["not", "an", "object"] },
+    ];
+    for (const [i, { value }] of hostileCases.entries()) {
+      const eid = id(i);
+      const ed = await EditionFactory.create({
+        vsk: VSK.CHANNEL,
+        eid,
+        version: 1,
+        content: JSON.stringify({ name: "c", private: false, custom: value }),
+      });
+      events.push(decoded(ed, genesis.material.owner, 2_000));
+    }
+
+    const objectControlId = id(hostileCases.length);
+    const objectControl = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: objectControlId,
+      version: 1,
+      content: JSON.stringify({ name: "c", private: false, custom: { nested: { deep: true } } }),
+    });
+    events.push(decoded(objectControl, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+
+    hostileCases.forEach(({ label }, i) => {
+      const folded = state.channels.find((c) => c.channel_id === id(i));
+      expect(folded, `case ${label}`).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(folded!, "custom"), `case ${label}`).toBe(false);
+    });
+
+    const foldedObject = state.channels.find((c) => c.channel_id === objectControlId);
+    expect(foldedObject).toBeDefined();
+    expect(foldedObject!.custom).toEqual({ nested: { deep: true } });
+  });
+
+  it("Test I: closing CR-01 does not regress the unknown-key round-trip (WIRE-09)", async () => {
+    expect(CORD_ROUND_TRIP_SENTENCE).toContain("MUST round-trip fields it doesn't understand");
+
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const channelId = "9c".repeat(32);
+    const content = JSON.stringify({
+      name: "roadmap",
+      private: false,
+      deleted: "false",
+      custom: "not-an-object",
+      held: [{ epoch: 1, key: "cc".repeat(32) }],
+      future_flag: "unknown-to-this-client",
+      future_object: { nested: { deep: true } },
+    });
+    const ed = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content });
+    events.push(decoded(ed, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+    const folded = state.channels.find((c) => c.channel_id === channelId);
+    expect(folded).toBeDefined();
+    expect(folded!.future_flag).toBe("unknown-to-this-client");
+    expect(folded!.future_object).toEqual({ nested: { deep: true } });
+    expect(Object.prototype.hasOwnProperty.call(folded!, "deleted")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(folded!, "custom")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(folded!, "held")).toBe(false);
+  });
+
+  it("Test J (WR-01, generated probe): every name CHANNEL_KEY_STRIPPED_FIELDS classifies is absent from the folded channel", async () => {
+    // Generated from the exported table rather than hand-enumerated, so a
+    // field added to `ChannelKey` in the future gains behavioral coverage at
+    // the same moment it gains compile-time coverage.
+    expect(CHANNEL_KEY_STRIPPED_FIELDS.length).toBeGreaterThanOrEqual(4);
+
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+    const id = (n: number) => (0x92 + n).toString(16).padStart(2, "0").repeat(32);
+
+    let exercised = 0;
+    for (const [i, field] of CHANNEL_KEY_STRIPPED_FIELDS.entries()) {
+      const eid = id(i);
+      const ed = await EditionFactory.create({
+        vsk: VSK.CHANNEL,
+        eid,
+        version: 1,
+        content: JSON.stringify({ name: "c", private: false, [field]: "distinctive-marker-value" }),
+      });
+      events.push(decoded(ed, genesis.material.owner, 2_000));
+      exercised++;
+    }
+    expect(exercised).toBeGreaterThanOrEqual(4);
+
+    const state = foldControl(events, genesis.material);
+    CHANNEL_KEY_STRIPPED_FIELDS.forEach((field, i) => {
+      const folded = state.channels.find((c) => c.channel_id === id(i));
+      expect(folded, `field ${field}`).toBeDefined();
+      expect(Object.prototype.hasOwnProperty.call(folded!, field), `field ${field}`).toBe(false);
+    });
+  });
+
+  it("Test K (WR-09, generated probe): every optional rule omits its field on a guard miss, every required rule rejects the edition", async () => {
+    function hostileValueFor(guard: (value: unknown) => boolean): unknown {
+      const candidates: unknown[] = ["a-string", 42, true, null, [], {}];
+      for (const candidate of candidates) {
+        if (!guard(candidate)) return candidate;
+      }
+      throw new Error("hostileValueFor: every candidate satisfied the supplied guard — a guard that accepts everything is itself the defect");
+    }
+
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+    const id = (n: number) => (0x93 + n).toString(16).padStart(2, "0").repeat(32);
+
+    const rules = Object.entries(CHANNEL_METADATA_FOLD_RULES).filter(([, rule]) => rule.disposition !== "derived");
+    expect(rules.length).toBeGreaterThanOrEqual(4);
+
+    let exercised = 0;
+    for (const [i, [field, rule]] of rules.entries()) {
+      if (rule.disposition === "derived") continue; // narrows for tsc; already filtered above
+      const eid = id(i);
+      const base: Record<string, unknown> = { name: "c", private: false };
+      base[field] = hostileValueFor(rule.guard);
+      const ed = await EditionFactory.create({ vsk: VSK.CHANNEL, eid, version: 1, content: JSON.stringify(base) });
+      events.push(decoded(ed, genesis.material.owner, 2_000));
+      exercised++;
+    }
+    expect(exercised).toBeGreaterThanOrEqual(4);
+
+    const state = foldControl(events, genesis.material);
+    rules.forEach(([field, rule], i) => {
+      const eid = id(i);
+      const folded = state.channels.find((c) => c.channel_id === eid);
+      if (rule.disposition === "optional") {
+        expect(folded, `field ${field}`).toBeDefined();
+        expect(Object.prototype.hasOwnProperty.call(folded!, field), `field ${field}`).toBe(false);
+      } else {
+        // "required": a guard miss rejects the whole edition.
+        expect(folded, `field ${field}`).toBeUndefined();
+      }
+    });
+  });
+
+  it("Test L: a `__proto__` key on an edition does not alter the folded channel's prototype", async () => {
+    const genesis = await newCommunity();
+    const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
+
+    const channelId = "9d".repeat(32);
+    const content = JSON.stringify({ name: "c", private: false, ["__proto__"]: { polluted: true } });
+    const ed = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content });
+    events.push(decoded(ed, genesis.material.owner, 2_000));
+
+    const state = foldControl(events, genesis.material);
+    const folded = state.channels.find((c) => c.channel_id === channelId);
+    expect(folded).toBeDefined();
+    // The previous rest-spread construction made this safe for free
+    // (data-property semantics); `Object.fromEntries` must preserve that
+    // property rather than reintroduce a pollution path.
+    expect(Object.getPrototypeOf(folded!)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });
