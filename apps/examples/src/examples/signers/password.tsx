@@ -4,7 +4,8 @@
  * @related signers/accounts
  */
 import { PasswordSigner } from "applesauce-signers";
-import { generateSecretKey, nip19 } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
+import { decodePointer, npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useState } from "react";
 import { useLocalStorage } from "react-use";
 
@@ -12,7 +13,7 @@ const STORAGE_KEY = "nip49-example-ncryptsec";
 
 // Component to display user's profile information
 function ProfileCard({ pubkey, handleLock }: { pubkey: string; handleLock: () => void }) {
-  const npub = nip19.npubEncode(pubkey);
+  const npub = npubEncode(pubkey);
 
   return (
     <div className="card w-96 bg-base-100 shadow-xl">
@@ -170,7 +171,7 @@ export default function Nip49Profile() {
         } else {
           // Decode nsec if provided
           try {
-            const decoded = nip19.decode(nsec);
+            const decoded = decodePointer(nsec);
             if (decoded.type !== "nsec") throw new Error("Invalid nsec");
             privateKey = decoded.data;
           } catch {

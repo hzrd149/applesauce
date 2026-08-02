@@ -23,7 +23,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool, SyncDirection } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, catchError, EMPTY, map, tap } from "rxjs";
 

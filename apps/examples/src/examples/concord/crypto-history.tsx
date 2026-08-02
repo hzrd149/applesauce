@@ -37,7 +37,7 @@ type ConcordKeys = Helpers.ConcordKeys;
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { nip19 } from "nostr-tools";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useRef, useState } from "react";
 import { BehaviorSubject, firstValueFrom, Subscription, takeUntil, timer, toArray } from "rxjs";
 
@@ -282,7 +282,7 @@ function shortHex(hex: string): string {
 
 function shortNpub(pubkey: string): string {
   try {
-    const npub = nip19.npubEncode(pubkey);
+    const npub = npubEncode(pubkey);
     return `${npub.slice(0, 12)}…${npub.slice(-6)}`;
   } catch {
     return shortHex(pubkey);

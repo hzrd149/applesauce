@@ -19,7 +19,7 @@ import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-conne
 import { IndexedDBCouch } from "applesauce-wallet/helpers";
 import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { NostrIDB } from "nostr-idb";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BehaviorSubject,

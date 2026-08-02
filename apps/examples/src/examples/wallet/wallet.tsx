@@ -34,7 +34,7 @@ import SecureStorage from "../../extra/encrypted-storage";
 
 // Explicitly import the wallet casts so user.wallet$ is available
 import "applesauce-wallet/casts";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 

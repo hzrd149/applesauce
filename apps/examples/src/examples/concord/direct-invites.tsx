@@ -22,7 +22,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { nip19 } from "nostr-tools";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 import { combineLatest, map, of, switchMap } from "rxjs";
 
@@ -121,11 +121,11 @@ function InviteRow({
       <div className="grid gap-2 text-sm md:grid-cols-2">
         <div>
           <div className="font-medium">Inviter</div>
-          <code className="break-all opacity-70">{shortId(nip19.npubEncode(invite.inviter))}</code>
+          <code className="break-all opacity-70">{shortId(npubEncode(invite.inviter))}</code>
         </div>
         <div>
           <div className="font-medium">Owner</div>
-          <code className="break-all opacity-70">{shortId(nip19.npubEncode(bundle.owner))}</code>
+          <code className="break-all opacity-70">{shortId(npubEncode(bundle.owner))}</code>
         </div>
       </div>
 

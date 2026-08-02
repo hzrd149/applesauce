@@ -17,7 +17,7 @@ import { RelayPool } from "applesauce-relay";
 import { Actions, handleBrokenMedia } from "blossom-client-sdk";
 import { createBlossomHlsLoaders } from "blossom-client-sdk/hls";
 import Hls from "hls.js";
-import { decode, EventPointer } from "nostr-tools/nip19";
+import { decodePointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { Blurhash } from "react-blurhash";
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { firstValueFrom, merge, take, timeout } from "rxjs";
@@ -341,7 +341,7 @@ const examples: EventPointer[] = [
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qyf8wumn8ghj7mn0wd68yat99e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qpqw9tjg79fycymqv9ppzksk6fmafpw9tzlsy7sqckvxd5ggqpy49as5x0yxh",
   "nevent1qvzqqqqqqypzqfngzhsvjggdlgeycm96x4emzjlwf8dyyzdfg4hefp89zpkdgz99qyf8wumn8ghj7mn0wd68yat99e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qpqgwjv0apdkf8u583ktddtnrwenlahrcm3yq9qujdxmyfc2mtf64squlvysu",
   "nevent1qvzqqqqqqypzpmnw5yatnljuff5w47d35d87q99xddqpzlzsac4xzn6vm22ekmn5qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qghwaehxw309aex2mrp0yh8qunfd4skctnwv46z7qpqsawl5hw6rjhmzv74ydzajevrq4vqgkqq7cugwavlwpsy628hyrpqa7vu8w",
-].map((nevent) => decode(nevent.replace(/^nostr:/, "")).data as EventPointer);
+].map((nevent) => decodePointer(nevent.replace(/^nostr:/, "")).data as EventPointer);
 
 function NoteCard({ note }: { note: Note }) {
   const author = note.author;

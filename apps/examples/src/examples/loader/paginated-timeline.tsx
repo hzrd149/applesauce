@@ -11,8 +11,9 @@ import { RelayPool } from "applesauce-relay";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-import { nip19, NostrEvent } from "nostr-tools";
-import { insertEventIntoDescendingList } from "nostr-tools/utils";
+import { NostrEvent } from "applesauce-core/helpers";
+import { insertEventIntoDescendingList } from "applesauce-core/helpers";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useState } from "react";
 
 function EventRow({ event, relays }: { event: NostrEvent; relays: string[] }) {
@@ -21,7 +22,7 @@ function EventRow({ event, relays }: { event: NostrEvent; relays: string[] }) {
 
   const npub = useMemo(() => {
     try {
-      return nip19.npubEncode(event.pubkey);
+      return npubEncode(event.pubkey);
     } catch (e) {
       return event.pubkey;
     }

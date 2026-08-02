@@ -11,8 +11,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { kinds, nip19, NostrEvent } from "nostr-tools";
-import { AddressPointer, npubEncode } from "nostr-tools/nip19";
+import { kinds, NostrEvent } from "applesauce-core/helpers";
+import { AddressPointer, decodePointer, npubEncode } from "applesauce-core/helpers/pointers";
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -387,7 +387,7 @@ export default function ArticleHighlighter() {
     }
 
     try {
-      const decoded = nip19.decode(naddr.trim().replace(/^nostr:/, ""));
+      const decoded = decodePointer(naddr.trim().replace(/^nostr:/, ""));
       if (decoded.type === "naddr") {
         setAddressPointer(decoded.data);
         setError(null);

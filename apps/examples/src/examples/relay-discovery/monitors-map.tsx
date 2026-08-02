@@ -24,7 +24,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import { map } from "rxjs";

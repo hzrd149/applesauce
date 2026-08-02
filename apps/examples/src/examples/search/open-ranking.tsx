@@ -17,7 +17,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { nprofileEncode } from "nostr-tools/nip19";
+import { nprofileEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
 

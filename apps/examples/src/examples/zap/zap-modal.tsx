@@ -28,7 +28,7 @@ import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { SerializedWalletConnect, WalletConnect } from "applesauce-wallet-connect";
 import { ZapIcon } from "lucide-react";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map, startWith, Subscription } from "rxjs";
 import QRCode from "../../components/qr-code";

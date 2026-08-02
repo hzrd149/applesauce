@@ -17,7 +17,7 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
-import { nip19 } from "nostr-tools";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
@@ -238,7 +238,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
     <div className="max-w-2xl mx-auto space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Simple Composer</h1>
-        <span className="text-sm text-base-content/60 font-mono">{nip19.npubEncode(user.pubkey).slice(0, 16)}...</span>
+        <span className="text-sm text-base-content/60 font-mono">{npubEncode(user.pubkey).slice(0, 16)}...</span>
       </div>
       <p className="text-base-content/70 text-sm">
         Write a kind 1 note in the textarea. Toggle to preview to see how mentions, links, hashtags, and media will

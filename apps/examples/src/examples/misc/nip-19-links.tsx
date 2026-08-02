@@ -14,8 +14,8 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline, Models } from "apple
 import { isAddressPointer, isEventPointer } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { Filter, kinds, nip19, NostrEvent } from "nostr-tools";
-import { AddressPointer, EventPointer, ProfilePointer } from "nostr-tools/nip19";
+import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
+import { AddressPointer, decodePointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useEffect, useRef, useState } from "react";
 import { map } from "rxjs";
 
@@ -152,7 +152,7 @@ export default function LinkHandlerExample() {
 
     try {
       // Try to decode the NIP-19 entity
-      let decoded = nip19.decode(input.trim().replace(/^nostr:/, ""));
+      let decoded = decodePointer(input.trim().replace(/^nostr:/, ""));
 
       switch (decoded.type) {
         case "nprofile":

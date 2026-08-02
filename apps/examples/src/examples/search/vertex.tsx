@@ -11,7 +11,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Vertex } from "applesauce-extra";
 import type { ISigner } from "applesauce-signers";
-import { npubEncode, nprofileEncode } from "nostr-tools/nip19";
+import { npubEncode, nprofileEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
 

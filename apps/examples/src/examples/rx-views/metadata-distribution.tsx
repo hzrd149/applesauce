@@ -8,7 +8,7 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { Relay, RelayPool } from "applesauce-relay";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import { isObservable, map, Observable, of, switchMap, takeUntil, timer } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";

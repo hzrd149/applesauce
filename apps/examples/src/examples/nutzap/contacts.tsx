@@ -16,7 +16,7 @@ import type { ISigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
 import { IndexedDBCouch } from "applesauce-wallet/helpers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { npubEncode } from "nostr-tools/nip19";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";

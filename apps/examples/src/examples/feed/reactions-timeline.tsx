@@ -11,7 +11,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { Filter, kinds } from "nostr-tools";
+import { Filter, kinds } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 

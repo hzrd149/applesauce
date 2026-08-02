@@ -24,8 +24,8 @@ import {
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { kinds, NostrEvent } from "nostr-tools";
-import { naddrEncode, neventEncode, nprofileEncode, ProfilePointer } from "nostr-tools/nip19";
+import { kinds, NostrEvent } from "applesauce-core/helpers";
+import { naddrEncode, neventEncode, nprofileEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useMemo, useState } from "react";
 import { map } from "rxjs";
 

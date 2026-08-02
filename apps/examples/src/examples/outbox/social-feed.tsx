@@ -27,7 +27,7 @@ import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
 import { SubmitHandler } from "react-hook-form";

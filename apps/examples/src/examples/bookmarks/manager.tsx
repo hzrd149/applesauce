@@ -21,7 +21,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";

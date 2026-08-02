@@ -15,7 +15,7 @@ import {
   Transaction,
   WalletSupport,
 } from "applesauce-wallet-connect/helpers";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
 import { useEffect, useMemo, useState } from "react";
 import { of } from "rxjs";
 import QRCode from "../../components/qr-code";

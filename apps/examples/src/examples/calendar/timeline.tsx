@@ -20,7 +20,7 @@ import { getDisplayName, getProfilePicture, getSeenRelays, NostrEvent } from "ap
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useMemo, useState } from "react";
 import { map } from "rxjs";
 

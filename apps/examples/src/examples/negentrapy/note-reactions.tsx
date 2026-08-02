@@ -7,8 +7,8 @@ import { EventStore, mapEventsToStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
 import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { Filter, kinds, NostrEvent } from "nostr-tools";
-import { decode, EventPointer, neventEncode } from "nostr-tools/nip19";
+import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
+import { decodePointer, EventPointer, neventEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useState } from "react";
 import { useDebounce } from "react-use";
 import { BehaviorSubject, map, NEVER, of } from "rxjs";
@@ -67,7 +67,7 @@ function EventSelector({
   const change = useCallback(
     (str: string) => {
       try {
-        const decoded = decode(str);
+        const decoded = decodePointer(str);
         if (decoded.type === "nevent") onChange(decoded.data);
         else onChange(null);
       } catch (err) {

@@ -13,7 +13,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { npubEncode } from "nostr-tools/nip19";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import GroupPicker from "../../components/group-picker";
 

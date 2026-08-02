@@ -8,7 +8,7 @@ import { getDisplayName, getProfilePicture, getSeenRelays, unixNow } from "apple
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { Filter, kinds, NostrEvent } from "nostr-tools";
+import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, map, NEVER, of, startWith, switchMap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";

@@ -19,7 +19,7 @@ import {
   Title,
   Tooltip,
 } from "chart.js";
-import { Filter, kinds } from "nostr-tools";
+import { Filter, kinds } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 import { EMPTY } from "rxjs";

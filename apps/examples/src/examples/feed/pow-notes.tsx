@@ -16,7 +16,7 @@ import { createEventLoaderForStore, createTimelineLoader } from "applesauce-load
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";

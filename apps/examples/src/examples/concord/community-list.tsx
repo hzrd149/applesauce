@@ -14,7 +14,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { nip19 } from "nostr-tools";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 import { combineLatest, firstValueFrom, map, of, switchMap, timeout, toArray } from "rxjs";
 
@@ -127,7 +127,7 @@ function CommunityCard({
 
       <div className="text-sm">
         <div className="font-medium">Owner</div>
-        <code className="break-all opacity-70">{shortId(nip19.npubEncode(community.current.owner))}</code>
+        <code className="break-all opacity-70">{shortId(npubEncode(community.current.owner))}</code>
       </div>
 
       <div className="text-sm">

@@ -18,7 +18,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { nip19 } from "nostr-tools";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
@@ -39,7 +39,7 @@ const user$ = new BehaviorSubject<User | undefined>(undefined);
 
 function formatPubkey(pk: string) {
   try {
-    return nip19.npubEncode(pk).slice(0, 12) + "…";
+    return npubEncode(pk).slice(0, 12) + "…";
   } catch {
     return pk.slice(0, 8) + "…";
   }
