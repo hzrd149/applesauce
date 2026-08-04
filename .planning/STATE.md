@@ -7,8 +7,8 @@ current_phase_name: document-caps-conformance
 status: milestone_complete
 stopped_at: Phase 12 verified 7/7 and closed — v1.1 has no remaining unchecked phases
 last_updated: "2026-08-01T14:55:47.115Z"
-last_activity: 2026-08-01
-last_activity_desc: Phase 12 complete (re-verification passed 7/7) — v1.1 fully executed, ready for /gsd-complete-milestone
+last_activity: 2026-08-04
+last_activity_desc: "Completed quick task 260804-g0c: return undefined instead of throwing in getHiddenTags and getWalletNotification"
 progress:
   total_phases: 12
   completed_phases: 12
@@ -368,6 +368,12 @@ None yet.
 - Plan 12-02's frontmatter lists requirement WIRE-08, but 12-02 only supplies the runtime evidence that the byte-cap ceiling moved upstream (nostr-tools bump + round-trip test). WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - Plan 12-03's frontmatter lists requirement WIRE-08, but 12-03 only retires the invite-side half of the byte-cap removal (INVITE_LIST_MAX_BYTES/inviteListWithinByteCap, INVITE_BUNDLE_MAX_TOTAL_BYTES) per D-07. WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05, which handles the Community List half. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - [RESOLVED 2026-07-30] Plans 12-07/12-08 both deferred WIRE-09's completion, noting the client-publish-tier closure (saveCommunityList/invite-manager.save() hand-rolling the document from reduced arrays) was plan 12-09's scope per D-23 -- 12-09 landed a `documentExtras` snapshot in both ConcordClient and ConcordInviteManager (spread-first, assign-after at every write site), proven via a six-test cross-cutting suite (document-caps-conformance.test.ts) with three mandatory non-vacuity mutations observed RED at the exact pre-phase defect sites. WIRE-09 marked Complete in REQUIREMENTS.md.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260804-g0c | Return undefined instead of throwing in getHiddenTags and getWalletNotification | 2026-08-04 | a587410b, 06904f4a | [260804-g0c-undefined-over-throw](./quick/260804-g0c-undefined-over-throw/) |
 
 ### Roadmap Evolution
 
