@@ -1,7 +1,9 @@
 ---
 title: Phase 11 UAT follow-up — exclude ephemeral kinds from the observed-authors fold
-status: pending
+status: completed
 created: 2026-07-29
+completed: 2026-08-04
+resolved_by: quick-260804-gzq
 source: 11-UAT.md (test 2)
 priority: high
 ---

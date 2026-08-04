@@ -375,6 +375,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260804-g0c | Return undefined instead of throwing in getHiddenTags and getWalletNotification | 2026-08-04 | a587410b, 06904f4a | [260804-g0c-undefined-over-throw](./quick/260804-g0c-undefined-over-throw/) |
 | 260804-g7f | Return undefined instead of throwing in wallet token, history and nutzap helpers | 2026-08-04 | fa828090, 535c47f3, b1e89b55 | [260804-g7f-wallet-undefined-over-throw](./quick/260804-g7f-wallet-undefined-over-throw/) |
+| 260804-gzq | Exclude ephemeral kinds (20000-29999) from ConcordObservedAuthorsModel's fold | 2026-08-04 | 188210bc, b20cde05 | [260804-gzq-exclude-ephemeral-kinds-from-concordobse](./quick/260804-gzq-exclude-ephemeral-kinds-from-concordobse/) |
 
 ### Roadmap Evolution
 
