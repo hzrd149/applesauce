@@ -57,7 +57,7 @@ persistEncryptedContent(eventStore, storage$.pipe(defined()));
 // Setup a local event cache
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters);
+  return getEventsForFilters<NostrEvent>(cache, filters);
 }
 
 // Save all new events to the cache

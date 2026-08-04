@@ -11,7 +11,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { Filter, kinds } from "applesauce-core/helpers";
+import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 
@@ -24,7 +24,7 @@ const pool = new RelayPool();
 // Setup a local event cache
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters).then((events) => {
+  return getEventsForFilters<NostrEvent>(cache, filters).then((events) => {
     console.log("loaded events from cache", events.length);
     return events;
   });

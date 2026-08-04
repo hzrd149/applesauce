@@ -28,7 +28,7 @@ const pool = new RelayPool();
 // Setup a local event cache
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters).then((events) => {
+  return getEventsForFilters<NostrEvent>(cache, filters).then((events) => {
     console.log("loaded events from cache", events.length);
     return events;
   });

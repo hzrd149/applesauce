@@ -7,7 +7,7 @@ import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from 
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { parseBolt11, persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
-import { Filter, persistEventsToCache, unixNow } from "applesauce-core/helpers";
+import { Filter, NostrEvent, persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -51,7 +51,7 @@ const couch = new IndexedDBCouch();
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 // Local event cache
-const cache = new NostrIDB();
+const cache = new NostrIDB<NostrEvent>();
 const cacheRequest = (filters: Filter[]) => cache.query(filters);
 persistEventsToCache(eventStore, (events) => Promise.all(events.map((event) => cache.add(event))));
 
