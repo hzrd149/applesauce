@@ -125,16 +125,6 @@ Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.8: Update to nostr-tools ~2.24 (BACKLOG)
-
-**Goal:** [Captured for future planning] Bump the `nostr-tools` dependency from the currently pinned `2.19` line to `~2.24` across the workspace, then reconcile whatever changed between the two. Pinned today in four manifests: `packages/common/package.json` (`^2.19`), `packages/core/package.json` (`~2.19`), `packages/relay/package.json` (`~2.19`), and `apps/examples/package.json` (`~2.19`) — note `common` uses a caret while the rest use tilde, so the range operators should be made consistent as part of the bump. Scope at promotion should cover: reviewing the nostr-tools changelog across 2.20→2.24 for behavior and type changes, updating the manifests, running the full test suite for fallout, and adding changesets per affected published package (concord is exempt — it is unreleased).
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog when ready)
-
 ### Phase 999.10: applesauce-core expiration timer overflow (BACKLOG)
 
 **Goal:** [Captured for future planning] `ExpirationManager` schedules a native `setTimeout()` using the full delta to a NIP-40 `expiration` tag, so any event expiring more than ~24.8 days out exceeds Node's 32-bit timer limit — Node clamps the delay to `1ms` and emits `TimeoutOverflowWarning`, which then fires repeatedly. Reported against `applesauce-core@6.2.0` with a one-liner reproduction (add a single event with an expiration 365 days out; no relay, websocket, or reconnect code involved). Explicitly **not** caused by `reconnect: Infinity` in `applesauce-relay` — that setting is documented and should stay.

@@ -31,10 +31,19 @@ Not yet defined — run `/gsd-new-milestone` (questioning → research → requi
 
 Candidate inputs, in rough order of how ready they are to be picked up:
 
-- **Backlog phases already scoped** (7): 999.2 concord media epoch-key decryption audit, 999.4
-  NIP-42 lifecycle debug logging, 999.5 operation-scoped NIP-42 auth hooks, 999.7 Phase 8 rotation
-  code-review residuals, 999.8 update to nostr-tools 2.24, 999.9 rule-`kind` type binding (CR5-01),
-  999.10 `applesauce-core` expiration timer overflow. See ROADMAP.md → Backlog.
+- **Backlog phases already scoped** (6, reviewed 2026-08-04): **999.10** `applesauce-core`
+  expiration timer overflow — *confirmed still live* at `expiration-manager.ts:54` and `:124`,
+  affects the published `applesauce-core@6.2.0`, has a verified fix shape, and is the readiest
+  item here. **999.5** operation-scoped NIP-42 auth hooks — has a full drafted plan on disk;
+  largest item, behavior change for `applesauce-relay` + `applesauce-loaders`. **999.7** Phase 8
+  rotation-robustness residuals — 12.3's majority-ack gate may have overtaken WR-01; check before
+  scoping. **999.4** NIP-42 lifecycle debug logging — partly served for concord by 12.2's
+  `relay-auth.ts`; the relay package itself still has none, and 999.5 would restructure that
+  surface anyway. **999.9** invite-bundle rule-table hardening — guardrail only, zero live
+  defects, and has no phase directory. **999.2** concord media epoch-key decryption audit — its
+  stated premise looks wrong: `helpers/imeta.ts` carries per-file keys in the message's own tag
+  rather than resolving from epoch state, so there may be nothing to audit. 999.8 (nostr-tools
+  ~2.24) was removed — already shipped in v1.1. See ROADMAP.md → Backlog.
 - **Feature gaps deliberately deferred from v1.1**: FUT-01 public↔private channel conversion and
   channel rename (CORD-03 §2) — a genuine feature gap, not a conformance defect. FUT-02 CORD-07
   voice transport, if the SDK boundary is ever redrawn to include it.
