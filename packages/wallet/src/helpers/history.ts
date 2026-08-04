@@ -55,13 +55,11 @@ export function getHistoryRedeemed(history: NostrEvent): string[] {
 
 /** Checks if the history contents are locked */
 export function isHistoryContentUnlocked<T extends NostrEvent>(history: T): history is T & UnlockedHistoryContent {
-  // Wrap in try catch to avoid throwing validation errors
-  try {
-    return (
-      HistoryContentSymbol in history || (isHiddenTagsUnlocked(history) && getHistoryContent(history) !== undefined)
-    );
-  } catch {}
-  return false;
+  // No try/catch needed: `history` is typed so the `in` test cannot throw, getHiddenTags stopped
+  // throwing on malformed content, and getHistoryContent now returns undefined rather than
+  // raising. The defensive catch this used to carry was masking those throws and silently
+  // reporting a malformed history event as merely locked.
+  return HistoryContentSymbol in history || (isHiddenTagsUnlocked(history) && getHistoryContent(history) !== undefined);
 }
 
 /** Returns the parsed content of a 7376 history event */
@@ -75,13 +73,16 @@ export function getHistoryContent<T extends NostrEvent>(history: T): HistoryCont
   const tags = getHiddenTags(history);
   if (!tags) return;
 
-  // Read tags
+  // Read tags. A history event missing its required tags, or carrying an unparseable amount, is
+  // unusable — return undefined rather than throwing, consistent with the locked case above and
+  // with what this getter's own return type already promises. The rejection is not cached, so the
+  // event stays readable if correct tags are decrypted in later.
   const direction = tags.find((t) => t[0] === "direction")?.[1] as HistoryDirection | undefined;
-  if (!direction) throw new Error("History event missing direction");
+  if (!direction) return undefined;
   const amountStr = tags.find((t) => t[0] === "amount")?.[1];
-  if (!amountStr) throw new Error("History event missing amount");
+  if (!amountStr) return undefined;
   const amount = parseInt(amountStr);
-  if (!Number.isFinite(amount)) throw new Error("Failed to parse amount");
+  if (!Number.isFinite(amount)) return undefined;
 
   const mint = tags.find((t) => t[0] === "mint")?.[1];
   const feeStr = tags.find((t) => t[0] === "fee")?.[1];
