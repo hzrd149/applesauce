@@ -36,6 +36,15 @@ import {
   IExpirationManager,
 } from "./interface.js";
 
+/**
+ * Whether a cached symbol may propagate onto a DIFFERENT version of the same replaceable event
+ * ("any-duplicate": `source.id` may differ from `dest.id`, e.g. a losing version merging onto the
+ * stored NIP-01 winner) or only onto the exact same event instance/re-delivery ("same-id-only":
+ * `source.id === dest.id`). See {@link EventStore.copySymbolsToDuplicateEvent} for the per-symbol
+ * classification this type enforces.
+ */
+type DuplicateSymbolDisposition = "any-duplicate" | "same-id-only";
+
 export type EventStoreOptions<E extends StoreEvent = NostrEvent> = {
   /** Keep deleted events in the store */
   keepDeleted?: boolean;
@@ -193,7 +202,7 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
     this.remove(id);
   }
 
-  /** Copies important metadata from and identical event to another */
+  /** Copies important metadata from one event to a duplicate/replaceable-history counterpart */
   static copySymbolsToDuplicateEvent<E extends StoreEvent = NostrEvent>(source: E, dest: E) {
     if (source.kind !== dest.kind) throw new Error("Source and destination events must have the same kind");
     if (isRegularKind(source.kind) && source.id !== dest.id)
@@ -206,19 +215,50 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
 
     let changed = false;
 
-    // Merge seen relays
+    // Merge seen relays. Deliberately unconditional (crosses version boundaries even when
+    // source.id !== dest.id): this is the same provenance class as FromCacheSymbol below (not a
+    // security verdict, not a claim about `content`), it merges element-wise rather than through
+    // the presence-gated loop below, and narrowing it is a separate decision this fix does not
+    // make.
     const relays = getSeenRelays(source);
     if (relays) {
       for (const relay of relays) addSeenRelay(dest, relay);
       changed = true;
     }
 
-    const symbols = [FromCacheSymbol, verifiedSymbol, EncryptedContentSymbol];
-    for (const symbol of symbols) {
+    // A replaceable source/dest pair may be DIFFERENT versions of the same address (different
+    // id/content/created_at/sig). Each symbol below declares whether it may still propagate
+    // across that version boundary ("any-duplicate") or only merges when source and dest are the
+    // exact same event ("same-id-only", source.id === dest.id). This list is the ONLY place a
+    // symbol's disposition is decided; the tuple shape (not a bare symbol) makes adding one
+    // without a disposition a compile error, so a future symbol cannot inherit "copy always" by
+    // silent omission. This is exhaustive only over the symbols listed here, not over "all
+    // symbols that could ever exist" — a keyed/mapped-table form (as used elsewhere for `unique
+    // symbol` fields) cannot enforce that here, since FromCacheSymbol/EncryptedContentSymbol are
+    // plain `symbol` (Symbol.for(...)), not `unique symbol`.
+    //
+    //   - FromCacheSymbol: "any-duplicate" (unchanged behavior). Delivery provenance, not
+    //     payload — records only that SOME version of this replaceable address reached the
+    //     process from a local cache rather than a relay, and is read only for loader/backfill
+    //     bookkeeping, never as a security verdict or a claim about `content`. Narrowing it would
+    //     change existing loader behavior for no correctness gain.
+    //   - verifiedSymbol: "same-id-only". A verdict over one specific id/pubkey/sig triple.
+    //     Copying it across versions is worse than merely wrong: nostr-tools' verifyEvent
+    //     short-circuits on this memo before recomputing, so a copied `false` would make a
+    //     genuinely valid event read as invalid, and a copied `true` would suppress verification
+    //     of bytes nobody actually checked.
+    //   - EncryptedContentSymbol: "same-id-only". The decrypted plaintext of one specific
+    //     `content` string. A different version has different `content`, so the memo would simply
+    //     be the wrong answer for it.
+    const symbols: readonly (readonly [symbol, DuplicateSymbolDisposition])[] = [
+      [FromCacheSymbol, "any-duplicate"],
+      [verifiedSymbol, "same-id-only"],
+      [EncryptedContentSymbol, "same-id-only"],
+    ];
+    const sameVersion = source.id === dest.id;
+    for (const [symbol, disposition] of symbols) {
+      if (disposition === "same-id-only" && !sameVersion) continue;
       if (symbol in source && !(symbol in dest)) {
-        // These three symbols propagate across duplicate events via this loop rather than via
-        // object spread — accumulated state (see cache.ts taxonomy). SeenRelaysSymbol merges via
-        // the separate element-wise branch above instead; this loop is not the category's sole definition.
         setCachedValue(dest, symbol, Reflect.get(source, symbol));
         changed = true;
       }

@@ -436,8 +436,11 @@ describe("copySymbolsToDuplicateEvent (CR-04 regression)", () => {
   });
 
   it("merges symbols when pubkey and replaceable identifier both match", () => {
-    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
-    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+    // Pin an identical created_at on both events: two separate FakeUser.event() calls only
+    // produce the same id if they land in the same unixNow() second, which is a latent flake
+    // once copySymbolsToDuplicateEvent gates on source.id === dest.id (WR-01 fix).
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
 
     Reflect.set(source, EncryptedContentSymbol, "plaintext");
 
@@ -449,8 +452,9 @@ describe("copySymbolsToDuplicateEvent (CR-04 regression)", () => {
     // Note: verifiedSymbol is deliberately excluded here — nostr-tools' finalizeEvent (used by
     // FakeUser.event()) already sets verifiedSymbol on freshly built events, which would make the
     // `symbol in dest` gate skip the merge for that symbol before this test even starts.
-    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
-    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+    // Pin an identical created_at on both events for the same reason as the test above.
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
 
     Reflect.set(source, EncryptedContentSymbol, "plaintext");
 
