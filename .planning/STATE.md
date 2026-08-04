@@ -8,7 +8,7 @@ status: milestone_complete
 stopped_at: Phase 12 verified 7/7 and closed — v1.1 has no remaining unchecked phases
 last_updated: "2026-08-01T14:55:47.115Z"
 last_activity: 2026-08-04
-last_activity_desc: "Completed quick task 260804-g7f: return undefined instead of throwing in wallet token, history and nutzap helpers — closes all 5 throw/undefined review findings"
+last_activity_desc: "Completed quick task 260804-hmw: gate verifiedSymbol/EncryptedContentSymbol on source.id === dest.id in copySymbolsToDuplicateEvent (WR-01)"
 progress:
   total_phases: 12
   completed_phases: 12
@@ -376,6 +376,7 @@ None yet.
 | 260804-g0c | Return undefined instead of throwing in getHiddenTags and getWalletNotification | 2026-08-04 | a587410b, 06904f4a | [260804-g0c-undefined-over-throw](./quick/260804-g0c-undefined-over-throw/) |
 | 260804-g7f | Return undefined instead of throwing in wallet token, history and nutzap helpers | 2026-08-04 | fa828090, 535c47f3, b1e89b55 | [260804-g7f-wallet-undefined-over-throw](./quick/260804-g7f-wallet-undefined-over-throw/) |
 | 260804-gzq | Exclude ephemeral kinds (20000-29999) from ConcordObservedAuthorsModel's fold | 2026-08-04 | 188210bc, b20cde05 | [260804-gzq-exclude-ephemeral-kinds-from-concordobse](./quick/260804-gzq-exclude-ephemeral-kinds-from-concordobse/) |
+| 260804-hmw | Gate verifiedSymbol/EncryptedContentSymbol on source.id === dest.id in copySymbolsToDuplicateEvent (WR-01) | 2026-08-04 | 200d9a85, 4efd074f, 55546e6b | [260804-hmw-gate-verifiedsymbol-and-encryptedcontent](./quick/260804-hmw-gate-verifiedsymbol-and-encryptedcontent/) |
 
 ### Roadmap Evolution
 
