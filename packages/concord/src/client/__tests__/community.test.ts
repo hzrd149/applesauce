@@ -1250,6 +1250,71 @@ describe("ConcordCommunity (DI, no network)", () => {
     community.dispose();
   });
 
+  it("pins the observed-authors consumer set to {current-epoch guestbook, channel:*}", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      relayAuth: new ConcordRelayAuth(pool),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // Touch the channel store so a `channel:` key exists in the private map.
+    const general = community.state$.value.channels.find((c) => c.name === "general")!;
+    community.channelStore(general.channel_id);
+
+    const stores = (community as unknown as { stores: Map<string, { add: (r: Rumor) => unknown }> }).stores;
+
+    // Derive the expected partition independently from the documented contract
+    // (client/community.ts rewireState comment), not by reading its expression:
+    // a store is an observed input iff its plane key starts with `channel:` or
+    // equals the CURRENT-epoch guestbook key. The guestbook clause is
+    // current-epoch-scoped on purpose (ROTATE-04 / D-01/D-02) — a stale-epoch
+    // guestbook store is NOT an observed input.
+    const currentGuestbookKey = `guestbook@${community.epoch$.value}`;
+    const isObservedPlane = (key: string) => key.startsWith("channel:") || key === currentGuestbookKey;
+
+    const liveKeys = [...stores.keys()];
+    // Guard the sample space: a degenerate map (all-observed or all-unobserved)
+    // would pass silently below, mirroring the anti-vacuity checks in
+    // cord-citations.test.ts.
+    expect(liveKeys.some(isObservedPlane)).toBe(true);
+    expect(liveKeys.some((key) => !isObservedPlane(key))).toBe(true);
+
+    // Mint one fresh pubkey per live store key and add one durable (kind 9)
+    // rumor authored by it into that store — non-observed keys first, observed
+    // keys last, so the final `state$` emission provably postdates every add.
+    const authorFor = new Map<string, string>();
+    for (const key of liveKeys) authorFor.set(key, await new PrivateKeySigner(generateSecretKey()).getPublicKey());
+
+    const nonObserved = liveKeys.filter((key) => !isObservedPlane(key));
+    const observed = liveKeys.filter(isObservedPlane);
+    for (const key of [...nonObserved, ...observed]) {
+      stores.get(key)!.add(rumorFromTemplate({ kind: 9, content: "hi", tags: [] }, authorFor.get(key)!, 5_000));
+    }
+    await settle();
+
+    // One loop covers both directions: a widening makes the control/dissolved
+    // author appear, a narrowing makes the channel/guestbook author disappear.
+    for (const key of liveKeys) {
+      expect(community.state$.value.members.has(authorFor.get(key)!)).toBe(isObservedPlane(key));
+    }
+
+    community.dispose();
+  });
+
   it("exposes a descriptive status$ (idle → syncing → live + connection)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
