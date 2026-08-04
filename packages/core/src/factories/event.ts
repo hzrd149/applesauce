@@ -150,11 +150,6 @@ export class EventFactory<
     else throw new Error("Signer modified event kind");
   }
 
-  /** Sets the event kind and casts the result to a {@link KnownEventTemplate<Kind>} */
-  kind<Kind extends number>(kind: Kind): EventFactory<Kind, KnownEventTemplate<Kind>> {
-    return new EventFactory((e) => ({ ...e, kind }));
-  }
-
   /** Sets the event content */
   content(content: string) {
     return this.chain((e) => ({ ...e, content }));
