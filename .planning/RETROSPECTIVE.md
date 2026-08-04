@@ -40,6 +40,59 @@
 
 ---
 
+## Milestone: v1.1 — first-fixes
+
+**Shipped:** 2026-08-04
+**Phases:** 12 | **Plans:** 87 | **Tasks:** 203 | **Commits:** 592 | **Timeline:** 21 days (2026-07-15 → 2026-08-04)
+
+### What Was Built
+
+- **`applesauce-core` symbol propagation redesigned** (Phases 5 + 5.1) — every symbol write non-enumerable via `setCachedValue`; `PRESERVE_EVENT_SYMBOLS` carried explicitly through `pipeFromAsyncArray`/`EventFactory.chain`; both per-step strip loops deleted. Root cause of three HIGH concord findings.
+- **Rotation and refounding correctness** (6 + 8) — Refoundings rotate their plane addresses in-session, drop excluded members, and abort atomically without a relay-majority ack; racing rotations converge via a per-epoch down-only latch and a multiset-consistency gate.
+- **Private channel keying** (7) — `ChannelMetadata.key`/`.epoch` removed; `material.channels` is the sole key source; `channels$` carries a client-local `accessible` flag. Unblocked the Accordian consumer.
+- **Authority fold correctness** (9) — Grant/Kick/Ban/Role folds bind coordinates, handle malformed input totally, and enforce strict outranking against the current roster.
+- **Wire and document conformance** (10 + 11 + 12) — real factories for reactions/replies/deletes, both document roots opened for unknown-field round-trip, spec-constant caps, rule-table invite-bundle validation.
+- **Transport-only extra relays** (12.3) — app-local `extraRelays` used purely as transport, never written into community or protocol state.
+
+### What Worked
+
+- **Sequencing the root-cause fix first, with the unmasking made explicit.** The roadmap stated up front that H01 *masked* H02, so fixing the cache defect alone would activate a latent memberlist bug — and scheduled ROTATE-04 immediately after. The consequence landed in the same milestone as its cause instead of surfacing later as a mystery regression.
+- **TEST-01 as a standing criterion across eight phases rather than one phase's deliverable.** This is the single highest-leverage decision of the milestone. Phase 7's spec-derived probe of the CORD-03 §1 derivations is what exposed H07 — the bug that had a downstream consumer blocked.
+- **Closing defect classes structurally.** `validateInviteBundle`'s mapped-type rule tables, `copySymbolsToDuplicateEvent`'s tuple arity, `CHANNEL_KEY_STRIPPED_FIELDS` derived from its fold disposition. Each converts "a reviewer must notice the next instance" into "the compiler rejects it."
+- **Recorded RED→GREEN non-vacuity probes.** Deliberately reverting the exact line a test covers, observing the failure, then restoring. Cheap, and it is the only thing that distinguishes a test that passes from a test that would catch the bug.
+- **Inserting Phase 5.1 rather than shipping Phase 5's taxonomy.** Phase 5 documented a two-category convention and annotated 35 call sites; review found 14 of those annotations were false. Recognizing that the *convention* was the problem — not the annotations — and redesigning was better than a third correction pass.
+
+### What Was Inefficient
+
+- **Phase 5 spent four review rounds correcting comments about an invariant that Phase 5.1 then deleted.** Comment-only passes across 22 files, then correction passes over those corrections. The signal was available early: when a convention needs 35 hand-audited sites to stay true, it is the wrong abstraction. Roughly two rounds of that work was wasted motion.
+- **Finding IDs were not stable across review rounds** — `WR-07` in one round named a different finding than `WR-07` in another, and a summary marked one closed against the other's evidence. Cost real reconciliation time and left a permanent caveat in the record.
+- **Bookkeeping drifted from evidence in three places** (CHAN-07's traceability row, AUTH-09's alias, WIRE-10's missing frontmatter). None represented unfinished work, but each needed independent three-source verification at audit time to prove it.
+- **The milestone audit went stale within two days.** Real work closed its security BLOCKER and two other items between audit and close, requiring a refresh pass. Auditing closer to the actual close would have avoided it.
+
+### Patterns Established
+
+- **Independent spec oracles:** compute the expected value from the spec formula using primitives only (`crypto.ts`), never by calling the code under test. Anchor the assertion with an `"EXPECTED, independently derived from CORD-NN §…"` comment.
+- **Non-vacuity probes as evidence:** a test is not trusted until it has been observed failing against a surgical revert of the line it covers.
+- **Structural over enumerated:** when a defect class survives repeated gap-closure rounds, make the bad state unrepresentable rather than patching the next instance.
+- **Citation-existence guards:** a package-wide scanner that fails the build on a `CORD-NN §X` citation pointing at a section that does not exist. Its first run found 12 invalid citations.
+- **Fixture-anchored wire tests:** vendored spec tag sets in `cord-wire-fixtures.ts` so wire assertions never import an expected value from the implementation.
+
+### Key Lessons
+
+1. **A convention that requires hand-auditing many call sites to stay true is a standing defect source, not a convention.** Prefer one mechanism that makes the wrong write impossible. *(Phases 5 → 5.1)*
+2. **Green tests are necessary, not sufficient — and the gap is measurable.** 189 tests passed while 9 HIGH bugs were live because every test compared the implementation to itself. A four-line spec-derived probe caught the worst one instantly.
+3. **When a root-cause fix will unmask a latent bug, schedule the consequence in the same milestone and say so in the roadmap.** Otherwise the unmasked bug reads as a regression from the fix.
+4. **Stabilize finding IDs per review round, or namespace them.** Cross-round ID collisions silently corrupt closure records.
+5. **Run the milestone audit close to the actual close.** Two days of ordinary work was enough to invalidate its main conclusions.
+
+### Cost Observations
+
+- Model mix: orchestration on Opus (1M); executors/researchers/reviewers on Sonnet; planners on Opus.
+- Sessions: many, across 21 days — phase-by-phase rather than one autonomous run, with gap waves and re-verification on Phases 5, 11, 12, and 12.3.
+- Notable: the two largest phases by plan count (5 at 14 and 12.3 at 14) were both driven by review-and-gap-wave iteration rather than by original scope. Phase 5's iteration was largely avoidable; Phase 12.3's was genuine hardening of a new public API surface.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -47,14 +100,19 @@
 | Milestone | Sessions | Phases | Key Change |
 |-----------|----------|--------|------------|
 | v1.0 | 1 | 4 | First GSD-tracked milestone; established the full-workspace-build gate and carry-forward deferral pattern |
+| v1.1 | many (21 days) | 12 | Shifted from "does it build" to "does the test prove anything" — spec-derived oracles, non-vacuity probes, and structural class-closure became standing practice |
 
 ### Cumulative Quality
 
 | Milestone | Tests | Coverage | Zero-Dep Additions |
 |-----------|-------|----------|-------------------|
 | v1.0 | core 601 + common 500 (all green) | existing suites unchanged + new rumor tests | 0 new dependencies (pure internal TS) |
+| v1.1 | 2,466 passed / 2 skipped across 272 files (from a 1,989 baseline) | concord 189 → 554 tests across 54 files; load-bearing derivations now spec-anchored | 0 new dependencies (`nostr-tools` bumped to ^2.24) |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Full-workspace build gate is non-negotiable for cross-package type changes. *(v1.0)*
-2. Hard gates between dependency layers de-risk broad migrations. *(v1.0)*
+2. Hard gates between dependency layers de-risk broad migrations. *(v1.0, reconfirmed v1.1 — the cache fix gated all rotation work)*
+3. A test that compares the implementation to itself proves nothing; derive the expected value from the spec. *(v1.1)*
+4. When a defect class survives repeated gap-closure rounds, stop patching instances and make the state unrepresentable. *(v1.1)*
+5. Prefer one enforcing mechanism over a documented convention plus annotations. *(v1.1)*

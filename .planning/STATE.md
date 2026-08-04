@@ -2,125 +2,38 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: first-fixes
-current_phase: 12
-current_phase_name: document-caps-conformance
-status: milestone_complete
-stopped_at: Phase 12 verified 7/7 and closed — v1.1 has no remaining unchecked phases
-last_updated: "2026-08-01T14:55:47.115Z"
+current_phase: 1
+status: Awaiting next milestone
+closeout_type: override_closeout
+shipped: 2026-08-04
+stopped_at: v1.1 milestone closed and archived
+last_updated: "2026-08-04T14:27:53.924Z"
 last_activity: 2026-08-04
-last_activity_desc: "Removed unused EventFactory.kind() (WR-04) and closed WR-01; audited 05.1-review-followups todo — 3 of 6 items were already fixed"
+last_activity_desc: Milestone v1.1 completed and archived
 progress:
   total_phases: 12
   completed_phases: 12
   total_plans: 87
   completed_plans: 87
   percent: 100
+current_phase_name: document-caps-conformance
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-15)
+See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 12 — document-caps-conformance
+**Current focus:** Planning the next milestone — v1.1 first-fixes shipped 2026-08-04
 
 ## Current Position
 
-Phase: 12 (document-caps-conformance) — COMPLETE 2026-08-01. v1.1 has no remaining unchecked
-  phases; next step is `/gsd-complete-milestone`, NOT phase 12.1 (already closed 2026-07-22).
-Plan: 11 of 11 complete
-Status: Plans 12-01…12-09 executed. Verification returned gaps_found — 1 blocking gap (CR-01,
-  channel-fold type-validation regression introduced by plan 12-08). Phase was NOT complete
-  at that verification pass.
-  Gap wave planned 2026-08-01: 12-10 (wave 5, depends on 12-08) replaces the fold's
-  hand-maintained denylist with two total, type-derived rule tables — closing CR-01
-  (`deleted`/`custom` validation), WR-01 (`held` omitted from the denylist), and WR-09
-  (no test coverage) as a class rather than by enumeration, per the 12.3-14
-  `HELD_KEY_FIELD_RULES` precedent. 12-11 (wave 6) proves downstream that a hostile
-  non-boolean `deleted` cannot produce a visible-but-silently-dead channel — landed
-  2026-08-01, commits `58ebb95e`/`bfd3e8a9`, 554/554 concord tests green, `pnpm -r test`
-  exit 0, non-vacuity confirmed by a revert-RED-restore-GREEN probe (see
-  12-11-SUMMARY.md). Both gap plans are now committed; `roadmap.update-plan-progress`
-  reports Phase 12's plan-count row as Complete (11/11 summaries), but a full
-  phase-level re-verification pass has NOT yet been run against this gap wave — do not
-  treat the phase as formally closed until that pass confirms CR-01/WR-01/WR-09 are
-  closed and no new gap surfaced. `REQUIREMENTS.md`'s TEST-01 traceability row still
-  reads "Pending — cross-cutting" (free-text, not auto-updated by `requirements
-  mark-complete`); its own text says it "closes only when all eight [phases] have
-  passed" — re-verification is what should flip it, not this plan alone.
-  Plan-checker passed with no BLOCKER or WARNING; it independently confirmed the plans'
-  type-system claims against `types.ts`/`control.ts` and the 546-test baseline.
-  Two design notes worth carrying: (a) `ChannelMetadata`'s `[k: string]: unknown` (added by
-  12-08) makes a naive mapped type unenforcing — the plans use a key-remapping alias and
-  require a probe proving the mechanism fails *without* it; (b) 12.3's CR5-01 (rule `kind`
-  not type-bound to field type, backlogged as 999.9) is closed here rather than inherited,
-  via `(v: unknown) => v is <declared field type>` guards.
-  Deliberately OUT of the gap wave, still open as non-blocking: WR-03 (monotonic extras
-  merge — a removed field can ping-pong back), WR-04 (`stop()` never clears
-  `documentExtras`), WR-06 (no root-shape guard on the document spread), WR-08 (three
-  vacuous self-referential `it()` blocks), WR-13 (`apps/examples` still pins nostr-tools
-  ~2.19). CR-02 and the D-04/D-14 overrides are settled by locked user decisions.
-  RESOLVED 2026-08-01: re-verification ran and PASSED 7/7 must-haves (2 scored by locked
-  overrides D-04/D-14, 0 present-but-unverified). The verifier read `helpers/control.ts`
-  directly rather than trusting SUMMARY claims and confirmed CR-01 is closed AS A CLASS:
-  `CHANNEL_METADATA_FOLD_RULES` is a total `Required<>`-wrapped map over `ChannelMetadata`'s
-  declared fields (omitting a rule is TS1360) and `CHANNEL_KEY_STRIPPED_FIELDS` is DERIVED
-  from `CHANNEL_KEY_FOLD_DISPOSITION` rather than a parallel literal, so `held` (WR-01) and
-  `id` are stripped structurally. Tests J/K are generated from the exported tables, so future
-  fields inherit coverage. Gap-wave code review: 0 BLOCKER / 6 WARNING / 3 INFO.
-  Carried forward as VERIFICATION DEBT (guardrail-only, no reachable defect — do NOT treat as
-  a new gap round): WR-04 (12-10's doc comment gives a FALSE rationale for `DeclaredKeysOf` —
-  the abstraction is load-bearing in `ChannelKeyFoldDisposition`'s conditional, which the
-  comment never mentions; someone who checks the stated reason, finds it wrong and
-  "simplifies" opens a key-material leak); WR-05 (12-11's two downstream tests are
-  non-vacuous only by an unasserted byte-match coincidence — one added field in the
-  hand-rebuilt v1 content string turns both into always-green no-ops; one-line fix is to give
-  v2 a distinct `name` and assert it); WR-06 (the "adding a field fails the build" claim is
-  held by nothing automated — both test files sit in `tsconfig.json`'s `exclude`); WR-02
-  (`ChannelKeyFoldDisposition` accepts `name: "strip"` with no compile error while the runtime
-  `declared` loop re-adds it — type says strip wins, runtime says declared wins); WR-03 (all
-  three tables are package-public mutable objects; `readonly` erases at runtime).
-  Note that phases 12.1/12.2/12.3 were INSERTED phases (promoted from backlog) and were
-  executed ahead of Phase 12 itself. `phase.complete` again reported `next_phase: 12.1` and
-  `is_last_phase: false` by numeric adjacency — BOTH WRONG, 12.1 closed 2026-07-22 and Phase 12
-  was the last unchecked phase in v1.1. Corrected here. It also wrote Phase 12's plan count
-  into backlog Phase 999.2's `**Plans:**` line (restored to `0 plans`) — always `git diff`
-  ROADMAP.md after a phase transition.
-
-  Prior context — Phase 11 closed 2026-07-29. 6/6 plans, verification passed 6/6 must-haves,
-  UAT 2/2. Test 1 (stale `react()`/`replyToThread()`/`deleteMessage()` examples in
-  `apps/docs/concord/community.md`) was verified real and fixed in-phase; `editMessage()` and
-  `sendMessage()`'s `replyTo` were confirmed NOT stale and left alone. Test 2 (voice-presence
-  beacons resurrecting a kicked or departed member through the observed-authors fold) was
-  verified real via a `foldMembers` probe — departed and kicked members are both re-added,
-  banned members are not — and backlogged to `.planning/todos/pending/11-verify-followups.md`
-  rather than widened into Phase 11's scope, since no plan there claimed the roster fold.
-  Next: /gsd-discuss-phase 12
-
-  Prior context — Phase 12.3 closed 2026-07-28 after 14 plans and five review rounds. Final state: the
-  transport-only extra-relays contract (D-01…D-16) is implemented and verified 17/17 —
-  `relays()`/`transport()` is the sole merge boundary, the refounding quorum denominator is
-  provably distinct from the publish target, and extras never reach community material,
-  invite bundles, invite links, or published relay lists. D-17 (bundle-validation
-  exhaustiveness, added mid-phase by review round 3) closed CR-01/CR-02 as classes; round 4's
-  CR4-01 (a rule table mapped over a hand-declared mirror instead of the real type) was closed
-  as a class by plan 12.3-14 and independently re-verified — adding a field to `HeldKeyEntry`
-  now fails the build naming `HELD_KEY_FIELD_RULES`, where round 4 exited 0.
-  Two items carried forward deliberately, both in 12.3-VERIFICATION.md's Acknowledged Gaps:
-  WR-08 (the two-instance live-Refounding trigger was never executed — the downstream prune
-  path IS proven behaviorally; only the trigger is synthetic) and CR5-01 (rule `kind` is not
-  type-bound to field type; all 26 shipped rules audited correct, so guardrail-only — backlogged
-  as 999.9 rather than triggering a sixth gap round).
-  Also still open in v1.1: Phase 12 only. (Phase 5 closed 2026-07-29 at 5/5 — CACHE-02 resolved
-  by supersession in Phase 5.1 D-06, and the residual `cache.ts` frozen-throw disclosure, which
-  named only one of the two early returns preceding `getExpirationTimestamp`, was corrected to
-  name both `kinds.EventDeletion` and `this.deletes.check`. Comment-only; see 05-VERIFICATION.md
-  Closure Addendum.)
-Last activity: 2026-08-01 — Phase 12 complete, transitioned to Phase 12.1
-
-Progress: [█████████░] 92% (by phase; all 87/87 plans across 12 phases are now landed — Phase 12 itself is not counted complete until re-verification passes)
+Phase: Milestone v1.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-04 — Milestone v1.1 completed and archived
 
 ## Performance Metrics
 
@@ -402,13 +315,37 @@ Items acknowledged and carried forward, not in this roadmap:
 | Core | CACHE-02's full taxonomy reconciliation (`cache.ts`'s worked-example/category-3 rework) superseded by the symbol-propagation redesign decision — the taxonomy documents a memo-vs-carry-forward distinction the redesign eliminates (all symbol writes non-enumerable via `setCachedValue`; carry-forward via explicit pipeline whitelist copy; gift-wrap symbols moved to core); `cache.ts` retains only a minimal falsehood-neutralization plus a supersession note (05-12) — score CACHE-02 against this reduced scope, not the original gap list | Superseded | Phase 5 round 3 |
 | Core | Truth 6 / D-13 non-vacuity probe (migrate `modifyHiddenTags`'s write to non-enumerable, watch the shipped `cache.test.ts` carry-forward suite go RED, revert) never completed under trusted conditions — a transcript asserted during round-3 planning was rejected for resting on a false working-tree premise; now moot, since the symbol-propagation redesign makes that exact migration correct behavior and `cache.test.ts`'s carry-forward suite will be rewritten against the pipeline's explicit whitelist copy | Superseded | Phase 5 round 3 |
 
+### Acknowledged at v1.1 milestone close (2026-08-04)
+
+The open-artifact audit surfaced these; all were acknowledged and deferred rather than resolved,
+making this an `override_closeout`. None blocks a v1.1 requirement — all 54 are satisfied.
+
+| Category | Item | Status |
+|----------|------|--------|
+| todo | `05.1-review-followups.md` — three cosmetic remainders (`low`): stale `stamp` comment, `lockWallet` leaves `WalletRelaysSymbol` cached, `getAppDataContent` truthy checks mishandle falsy parsed values. Dropped from `high` once CR-01/WR-01/WR-03/WR-04 and the INFO item were fixed | Deferred |
+| seed | SEED-001 avoid inline `debug.extend()` — create logger instances at class or module level | Dormant |
+| seed | SEED-002 update to TypeScript 7 | Dormant |
+| seed | SEED-003 update to React 19 while maintaining React 18 support | Dormant |
+| seed | SEED-004 update to `@snort/worker-relay` v2 | Dormant |
+| seed | SEED-005 legacy direct messages need a Client class + Manager | Dormant |
+| seed | SEED-006 wrapped messages need Client + Conversation classes | Dormant |
+| seed | SEED-007 gift wrap ingestion service | Dormant |
+| seed | SEED-008 evaluate first-class `nostr-double-ratchet` support | Dormant |
+| seed | SEED-009 first-class support for profile themes | Dormant |
+| override | Phase 10 — `inviteBundleKey` has no hand-derived spec-value test; round-trip coverage only. Standing TEST-01 candidate for any future phase touching it (hzrd149, 2026-07-21) | Accepted |
+| override | Phase 12 D-04 — read path deliberately accepts an over-cap channel name/description verbatim; rejecting would convert a caps bug into a channel-availability bug (user, 2026-07-29) | Accepted |
+| override | Phase 12 D-14 — `deleteChannel` destructure-and-spread, safe because `ChannelMetadata` no longer carries key/epoch (user, 2026-07-29) | Accepted |
+| override | Phase 12.3 WR-08 — `handleRemoved` prune proven behaviorally, but the live two-instance Refounding trigger remains unproven; separable test-harness effort (user, 2026-07-27) | Accepted |
+| override | Phase 12.3 CR5-01 — rule `kind` not type-bound to field type; zero live defect across all 26 rules, backlogged as Phase 999.9 (user, 2026-07-27) | Accepted |
+| nyquist | Phases 10 and 12.2 `nyquist_compliant: false`, both still `status: draft` — `/gsd-validate-phase 10`, `/gsd-validate-phase 12.2` | Partial |
+| nyquist | Phase 12.1 has no VALIDATION.md — `/gsd-validate-phase 12.1` | Missing |
+
 ## Session Continuity
 
-Last session: 2026-08-01T13:52:13.442Z
-Stopped at: Completed 12-11-PLAN.md — CR-01 downstream non-vacuity proven (public + private channel reachability)
+Last session: 2026-08-04
+Stopped at: v1.1 milestone closed and archived
 Resume file: None
 
 ## Operator Next Steps
 
-- Re-verify Phase 12 against the 12-10/12-11 gap wave (CR-01/WR-01/WR-09 closure) before marking it complete.
-- If re-verification passes, close Phase 12 — it is the last phase in the v1.1 roadmap.
+- Start the next milestone with /gsd-new-milestone
