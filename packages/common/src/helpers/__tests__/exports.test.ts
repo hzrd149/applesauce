@@ -415,6 +415,7 @@ describe("exports", () => {
         "isValidProfileBadges",
         "isValidRelayDiscovery",
         "isValidRelayMonitorAnnouncement",
+        "isValidSeal",
         "isValidSearchRelaysList",
         "isValidShare",
         "isValidStreamChatMessage",
