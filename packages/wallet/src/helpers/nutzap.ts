@@ -106,8 +106,11 @@ export function isNutzapRedeemed(nutzapId: string, history: NostrEvent[]): boole
 /**
  * Extracts the P2PK locking pubkey from proofs in a nutzap event
  * @param nutzap the nutzap event containing P2PK-locked proofs
- * @returns the pubkey that the proofs are locked to, or undefined if not found
- * @throws {Error} if proofs are not P2PK locked or have inconsistent pubkeys
+ * @returns the single pubkey every proof is locked to, or undefined if there is no such pubkey —
+ * no proofs, a proof that is not P2PK locked, or proofs locked to more than one pubkey. A nutzap
+ * arrives from a stranger, so all three are hostile input rather than programmer errors, and none
+ * of them throw. This matches getProofP2PKPubkey one level down, which already returns undefined
+ * for every failure.
  */
 export function getNutzapP2PKPubkey(nutzap: NostrEvent): string | undefined {
   const proofs = getNutzapProofs(nutzap);
@@ -117,12 +120,14 @@ export function getNutzapP2PKPubkey(nutzap: NostrEvent): string | undefined {
 
   for (const proof of proofs) {
     const proofPubkey = getProofP2PKPubkey(proof);
-    if (!proofPubkey) throw new Error("Proof is not P2PK locked");
+    if (!proofPubkey) return undefined;
 
     if (!p2pkPubkey) {
       p2pkPubkey = proofPubkey;
     } else if (p2pkPubkey !== proofPubkey) {
-      throw new Error("Proofs are locked to different pubkeys");
+      // Mixed locks mean there is no single pubkey to report, so the answer is undefined rather
+      // than the first one seen — returning p2pkPubkey here would silently hide the mismatch.
+      return undefined;
     }
   }
 
@@ -133,8 +138,9 @@ export function getNutzapP2PKPubkey(nutzap: NostrEvent): string | undefined {
  * Finds the matching private key for the P2PK lock in a nutzap event's proofs
  * @param nutzap the nutzap event containing P2PK-locked proofs
  * @param privateKeys array of private keys to search through
- * @returns the matching private key, or undefined if none match
- * @throws {Error} if proofs are not P2PK locked or have inconsistent pubkeys
+ * @returns the matching private key, or undefined if none match — including when the nutzap has no
+ * single P2PK pubkey to match against, which getNutzapP2PKPubkey now reports as undefined rather
+ * than by throwing
  */
 export function findMatchingPrivateKeyForNutzap(nutzap: NostrEvent, privateKeys: Uint8Array[]): Uint8Array | undefined {
   const p2pkPubkey = getNutzapP2PKPubkey(nutzap);
