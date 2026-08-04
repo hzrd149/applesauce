@@ -4,6 +4,7 @@ import {
   isHiddenContentUnlocked,
   KnownEvent,
   notifyEventUpdate,
+  safeParse,
   setCachedValue,
   setHiddenContentEncryptionMethod,
   UnlockedHiddenContent,
@@ -54,7 +55,9 @@ export type WalletNotification = PaymentReceivedNotification | PaymentSentNotifi
 
 /** Checks if a kind 23196 or 23197 event is locked */
 export function isWalletNotificationUnlocked(notification: any): notification is UnlockedWalletNotification {
-  // Wrap in try catch to avoid throwing validation errors
+  // The catch guards the `any` parameter only: `X in notification` throws a TypeError when
+  // handed a primitive. It is no longer masking a parse failure — getWalletNotification returns
+  // undefined for malformed content rather than throwing.
   try {
     return (
       WalletNotificationSymbol in notification ||
@@ -86,8 +89,14 @@ export function getWalletNotification(notification: NostrEvent): WalletNotificat
   const content = getHiddenContent(notification);
   if (!content) return undefined;
 
-  // Parse the content as a wallet notification
-  const parsed = JSON.parse(content) as WalletNotification;
+  // Parse the content as a wallet notification. safeParse (not JSON.parse) because this content
+  // arrives from the remote wallet service — malformed JSON is a routine network condition, not
+  // a programmer error, and this getter's return type already carries undefined for it.
+  const parsed = safeParse<WalletNotification>(content);
+
+  // Not cached on failure: the rejection describes the content available right now, and caching
+  // it would leave the notification permanently unreadable.
+  if (!parsed) return undefined;
 
   // Save the parsed content (identity memo, non-enumerable so a spread drops it)
   setCachedValue(notification, WalletNotificationSymbol, parsed);
