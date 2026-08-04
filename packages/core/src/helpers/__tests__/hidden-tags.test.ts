@@ -1,7 +1,14 @@
 import { finalizeEvent, generateSecretKey, getPublicKey, kinds, nip04, NostrEvent } from "nostr-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HiddenContentSigner } from "../hidden-content.js";
-import { getHiddenTags, HiddenTagsSymbol, setHiddenTagsCache, unlockHiddenTags } from "../hidden-tags.js";
+import { setHiddenContentCache } from "../hidden-content.js";
+import {
+  getHiddenTags,
+  HiddenTagsSymbol,
+  isHiddenTagsUnlocked,
+  setHiddenTagsCache,
+  unlockHiddenTags,
+} from "../hidden-tags.js";
 import { unixNow } from "../time.js";
 
 /**
@@ -126,5 +133,57 @@ describe("setHiddenTagsCache", () => {
 
     const copy = { ...draft };
     expect(Object.prototype.hasOwnProperty.call(copy, HiddenTagsSymbol)).toBe(false);
+  });
+});
+
+describe("getHiddenTags — malformed content returns undefined", () => {
+  // Findings #1 of the throw/undefined review. getHiddenTags is read across whole timelines
+  // from inside RxJS pipes (every hidden-* getter in applesauce-common delegates to it), where
+  // a throw errors the observable and is terminal — one corrupt list would take down every
+  // event in the pipe, not just the malformed one.
+  const listWithHiddenContent = (plaintext: string) => {
+    const event = { kind: kinds.Mutelist, content: "ciphertext", tags: [], created_at: unixNow(), pubkey, id: "", sig: "" } as unknown as NostrEvent;
+    setHiddenContentCache(event, plaintext);
+    return event;
+  };
+
+  it("returns undefined for content that is not valid JSON", () => {
+    const event = listWithHiddenContent("not json{{{");
+
+    expect(() => getHiddenTags(event)).not.toThrow();
+    expect(getHiddenTags(event)).toBeUndefined();
+  });
+
+  it("returns undefined for JSON that is not an array of tags", () => {
+    const event = listWithHiddenContent(JSON.stringify({ not: "an array" }));
+
+    expect(() => getHiddenTags(event)).not.toThrow();
+    expect(getHiddenTags(event)).toBeUndefined();
+  });
+
+  it("caches nothing on rejection, so a later correct value is still readable", () => {
+    const event = listWithHiddenContent("not json{{{");
+    expect(getHiddenTags(event)).toBeUndefined();
+
+    // No memo — caching the rejection would leave the list permanently unreadable and would
+    // break isHiddenTagsUnlocked, which tests for presence rather than value.
+    expect(Reflect.has(event, HiddenTagsSymbol)).toBe(false);
+    expect(isHiddenTagsUnlocked(event)).toBe(false);
+
+    // The rejection is not sticky.
+    setHiddenContentCache(event, JSON.stringify([["p", "abc"]]));
+    expect(getHiddenTags(event)).toEqual([["p", "abc"]]);
+  });
+
+  it("one malformed list does not stop the rest of a timeline from resolving", () => {
+    const bad = listWithHiddenContent("not json{{{");
+    const good = listWithHiddenContent(JSON.stringify([["p", "good"]]));
+
+    let results: (string[][] | undefined)[] = [];
+    expect(() => {
+      results = [bad, good].map((e) => getHiddenTags(e));
+    }).not.toThrow();
+
+    expect(results.filter((r) => !!r)).toEqual([[["p", "good"]]]);
   });
 });

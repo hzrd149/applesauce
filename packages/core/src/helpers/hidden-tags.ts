@@ -1,6 +1,7 @@
 import { setCachedValue } from "./cache.js";
 import { EncryptionMethod } from "./encrypted-content.js";
 import { kinds } from "./event.js";
+import { safeParse } from "./json.js";
 import {
   canHaveHiddenContent,
   getHiddenContent,
@@ -68,16 +69,21 @@ export function getHiddenTagsEncryptionMethods(kind: number, signer: HiddenConte
 /** Checks if the hidden tags are locked and casts it to the {@link UnlockedHiddenTags} type */
 export function isHiddenTagsUnlocked<T extends { kind: number }>(event: T): event is T & UnlockedHiddenTags {
   if (!canHaveHiddenTags(event.kind)) return false;
-  // Wrap in try catch to avoid throwing validation errors
-  try {
-    return HiddenTagsSymbol in event || (isHiddenContentUnlocked(event) && getHiddenTags(event) !== undefined);
-  } catch {}
-  return false;
+  // No try/catch needed: `event` is typed, so the `in` test cannot throw, and neither
+  // isHiddenContentUnlocked nor getHiddenTags throws — getHiddenTags returns undefined for
+  // malformed content rather than raising. The defensive catch this used to carry was
+  // masking that throw and silently reporting a malformed list as merely locked.
+  return HiddenTagsSymbol in event || (isHiddenContentUnlocked(event) && getHiddenTags(event) !== undefined);
 }
 
 /**
  * Returns the hidden tags for an event if they are unlocked
- * @throws {Error} If the hidden content is not an array of tags
+ *
+ * Returns undefined for anything that does not yield usable tags — a kind that cannot have
+ * hidden tags, content that is still locked, content that is not valid JSON, or JSON that is
+ * not an array. None of these throw: this getter is read across whole timelines from inside
+ * RxJS pipes, where a throw errors the observable and takes down every event, not just the
+ * malformed one. `unlockHiddenTags` is the imperative counterpart that does throw.
  */
 export function getHiddenTags<T extends { kind: number } & UnlockedHiddenTags>(event: T): string[][];
 export function getHiddenTags<T extends { kind: number }>(event: T): string[][] | undefined;
@@ -93,11 +99,16 @@ export function getHiddenTags<T extends { kind: number }>(event: T): string[][] 
   // Return undefined if the hidden content is not unlocked
   if (content === undefined) return undefined;
 
-  // Parse the hidden content as an array of tags
-  const parsed = JSON.parse(content) as string[][];
+  // Parse the hidden content as an array of tags. safeParse (not JSON.parse) so malformed
+  // ciphertext-turned-garbage returns undefined instead of throwing out of a getter.
+  const parsed = safeParse<string[][]>(content);
 
-  // Throw error if content is not an array of tags
-  if (!Array.isArray(parsed)) throw new Error("Content is not an array of tags");
+  // Return undefined if the content is not an array of tags. Deliberately NOT cached: the
+  // rejection describes the content we can see right now, and caching it would make a list
+  // permanently unreadable even after correct content is decrypted into it. Returning before
+  // setCachedValue keeps the invariant the six hidden-tag getters rely on — HiddenTagsSymbol
+  // only ever holds real tags, so isHiddenTagsUnlocked's presence check stays sound.
+  if (!parsed || !Array.isArray(parsed)) return undefined;
 
   // Convert array to tags array string[][]
   const tags = parsed.filter((t) => Array.isArray(t)).map((t) => t.map((v) => String(v)));
