@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { EncryptedContentSymbol, isEncryptedContentUnlocked, unixNow } from "applesauce-core/helpers";
+import {
+  EncryptedContentSymbol,
+  isEncryptedContentUnlocked,
+  setHiddenContentCache,
+  unixNow,
+} from "applesauce-core/helpers";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { WalletTokenFactory } from "../../factories/tokens.js";
@@ -247,5 +252,74 @@ describe("decodeTokenFromEmojiString", () => {
         unit: "sat",
       }),
     );
+  });
+});
+
+describe("getTokenContent — malformed content returns undefined", () => {
+  // Finding #4 of the throw/undefined review. WalletToken's meta$ maps getTokenContent inside an
+  // RxJS pipe; a throw there errors the observable, which is terminal, so one corrupt token would
+  // kill the wallet's token stream rather than skipping that event.
+  const tokenWithContent = async (plaintext: string) => {
+    const token = await WalletTokenFactory.create({
+      mint: "https://money.com",
+      proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }],
+    })
+      .as(user)
+      .sign();
+    // Drop the memo written at sign time so the getter re-reads the content we plant.
+    Reflect.deleteProperty(token, TokenContentSymbol);
+    setHiddenContentCache(token, plaintext);
+    return token;
+  };
+
+  it("returns undefined for content that is not valid JSON", async () => {
+    const token = await tokenWithContent("not json{{{");
+
+    expect(() => getTokenContent(token)).not.toThrow();
+    expect(getTokenContent(token)).toBeUndefined();
+  });
+
+  it("returns undefined for JSON null without throwing a TypeError", async () => {
+    // The shape guard earns its place here: `null.mint` would throw, swapping one throw for
+    // another and defeating the fix.
+    const token = await tokenWithContent("null");
+
+    expect(() => getTokenContent(token)).not.toThrow();
+    expect(getTokenContent(token)).toBeUndefined();
+  });
+
+  it("returns undefined when mint or proofs are missing", async () => {
+    const noMint = await tokenWithContent(JSON.stringify({ proofs: [] }));
+    const noProofs = await tokenWithContent(JSON.stringify({ mint: "https://money.com" }));
+
+    expect(getTokenContent(noMint)).toBeUndefined();
+    expect(getTokenContent(noProofs)).toBeUndefined();
+  });
+
+  it("caches nothing on rejection, so a later correct value is still readable", async () => {
+    const token = await tokenWithContent("not json{{{");
+    expect(getTokenContent(token)).toBeUndefined();
+
+    expect(Reflect.has(token, TokenContentSymbol)).toBe(false);
+    expect(isTokenContentUnlocked(token)).toBe(false);
+
+    // Not sticky.
+    const valid = { mint: "https://money.com", proofs: [{ secret: "A", C: "A", id: "A", amount: 100 }] };
+    setHiddenContentCache(token, JSON.stringify(valid));
+    expect(getTokenContent(token)?.mint).toBe("https://money.com");
+  });
+
+  it("one malformed token does not stop the rest of a timeline from resolving", async () => {
+    const bad = await tokenWithContent("not json{{{");
+    const good = await tokenWithContent(
+      JSON.stringify({ mint: "https://good.com", proofs: [{ secret: "B", C: "B", id: "B", amount: 5 }] }),
+    );
+
+    let results: (ReturnType<typeof getTokenContent> | undefined)[] = [];
+    expect(() => {
+      results = [bad, good].map((t) => getTokenContent(t));
+    }).not.toThrow();
+
+    expect(results.filter((r) => !!r).map((r) => r!.mint)).toEqual(["https://good.com"]);
   });
 });
