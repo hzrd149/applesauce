@@ -1,10 +1,11 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { verifiedSymbol } from "nostr-tools/pure";
+import { verifyEvent as nostrVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
+import { setCachedValue } from "../../helpers/cache.js";
 import { EncryptedContentSymbol } from "../../helpers/encrypted-content.js";
 import { unixNow } from "../../helpers";
-import { EventStoreSymbol, kinds, NostrEvent } from "../../helpers/event.js";
+import { EventStoreSymbol, isFromCache, kinds, markFromCache, NostrEvent } from "../../helpers/event.js";
 import { addSeenRelay, getSeenRelays } from "../../helpers/relays.js";
 import { EventModel } from "../../models/base.js";
 import { ProfileModel } from "../../models/profile.js";
@@ -468,6 +469,111 @@ describe("copySymbolsToDuplicateEvent (CR-04 regression)", () => {
     Reflect.set(source, EncryptedContentSymbol, "different plaintext");
     EventStore.copySymbolsToDuplicateEvent(source, dest);
     expect(Reflect.get(dest, EncryptedContentSymbol)).toBe("plaintext");
+  });
+});
+
+describe("copySymbolsToDuplicateEvent gates payload symbols on source.id === dest.id (WR-01 regression)", () => {
+  const userA = new FakeUser();
+
+  /**
+   * Builds two genuine, differently-signed versions of one replaceable event: v2 (newer, becomes
+   * the stored NIP-01 winner) and v1 (older, loses and routes through the event-store.ts:269
+   * cross-version copy branch). Every test in this block drives eventStore.add() with these two
+   * real events rather than calling copySymbolsToDuplicateEvent directly, since a direct call
+   * with hand-built arguments would still pass even if the reachable add() path were wired
+   * differently.
+   */
+  function buildVersions() {
+    const v2 = userA.event({
+      kind: kinds.Bookmarksets,
+      tags: [["d", "wr-01-list"]],
+      content: "v2 content",
+      created_at: 1700000100,
+    });
+    const v1 = userA.event({
+      kind: kinds.Bookmarksets,
+      tags: [["d", "wr-01-list"]],
+      content: "v1 content",
+      created_at: 1700000000,
+    });
+    return { v1, v2 };
+  }
+
+  it("Test A: decrypted plaintext does not cross versions", () => {
+    const { v1, v2 } = buildVersions();
+    // Anti-degeneration guards: a future fixture edit that collapses v1/v2 into a same-id pair
+    // would otherwise turn this test into an always-green no-op.
+    expect(v1.id).not.toBe(v2.id);
+    expect(v1.content).not.toBe(v2.content);
+
+    eventStore.add(v2);
+    setCachedValue(v1, EncryptedContentSymbol, "wr-01 test A unique plaintext");
+
+    expect(eventStore.add(v1)).toBe(v2);
+
+    // Nothing in this test ever decrypts v2, so absence is the only correct state — any present
+    // value can only have leaked in from v1.
+    expect(Reflect.has(v2, EncryptedContentSymbol)).toBe(false);
+  });
+
+  it("Test B: a signature verdict does not cross versions, proven downstream", () => {
+    const { v1, v2 } = buildVersions();
+    expect(v1.id).not.toBe(v2.id);
+    expect(v1.content).not.toBe(v2.content);
+
+    eventStore.add(v2);
+
+    // Corrupt only v1's sig -- id/content/created_at and NIP-01 ordering stay coherent, the only
+    // defect is the signature.
+    v1.sig = "0".repeat(128);
+
+    // Clear v1's finalize-time memo (FakeUser.event() -> finalizeEvent sets verifiedSymbol true)
+    // and let nostr-tools recompute it against the corrupted sig, earning the memo honestly
+    // rather than hand-setting it. This also fails loudly if nostr-tools ever changes.
+    Reflect.deleteProperty(v1, verifiedSymbol);
+    expect(nostrVerifyEvent(v1)).toBe(false);
+
+    // Clear the stored winner's memo (the store set it during add(v2)) so the `!(symbol in dest)`
+    // presence gate is open for the copy this test is proving does NOT happen.
+    Reflect.deleteProperty(v2, verifiedSymbol);
+
+    expect(eventStore.add(v1)).toBe(v2);
+
+    // Ordering matters: step 1 must be asserted before step 2 sets a fresh memo on v2.
+    expect(Reflect.has(v2, verifiedSymbol)).toBe(false);
+    // Discriminating assertion: verifyEvent returns a memo without recomputing when one is
+    // present, so under the defect the copied `false` would make this genuinely valid event read
+    // as invalid. `true` here is derived from v2's own signature by nostr-tools, not from
+    // anything this codebase produced.
+    expect(nostrVerifyEvent(v2)).toBe(true);
+  });
+
+  it("Test C: a same-version duplicate still merges (positive control)", () => {
+    const { v2 } = buildVersions();
+    eventStore.add(v2);
+
+    const duplicate = { ...v2 };
+    setCachedValue(duplicate, EncryptedContentSymbol, "duplicate plaintext");
+    expect(duplicate.id).toBe(v2.id);
+
+    // A spread copy ties on created_at and id, so it loses too and routes through the same
+    // event-store.ts:269 branch -- but since the id matches, the gate still lets the merge land.
+    expect(eventStore.add(duplicate)).toBe(v2);
+    expect(Reflect.get(v2, EncryptedContentSymbol)).toBe("duplicate plaintext");
+  });
+
+  it("Test D: FromCacheSymbol still crosses versions", () => {
+    const { v1, v2 } = buildVersions();
+    expect(v1.id).not.toBe(v2.id);
+    expect(v1.content).not.toBe(v2.content);
+
+    eventStore.add(v2);
+    markFromCache(v1);
+
+    expect(eventStore.add(v1)).toBe(v2);
+    // Pins the deliberate "any-duplicate" decision so a future "tighten everything" edit has to
+    // argue with a test instead of quietly changing behavior.
+    expect(isFromCache(v2)).toBe(true);
   });
 });
 
