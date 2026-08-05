@@ -129,3 +129,77 @@ describe("dispose", () => {
     expect(spy.getValues()).not.toContain(event.id);
   });
 });
+
+describe("far-future expirations", () => {
+  const MAX_TIMER_DELAY = 2_147_483_647;
+
+  it("clamps the scheduled delay to the 32-bit timer limit (D1-a)", () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const event = user.note("test", { tags: [["expiration", String(unixNow() + 365 * 24 * 60 * 60)]] });
+
+    expirationManager.track(event);
+
+    expect(setTimeoutSpy).toHaveBeenCalled();
+    for (const call of setTimeoutSpy.mock.calls) {
+      expect(call[1]).toBeLessThanOrEqual(MAX_TIMER_DELAY);
+    }
+  });
+
+  it("still expires a far-future event via chunked re-arm (D1-b)", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const event = user.note("test", { tags: [["expiration", String(unixNow() + 365 * 24 * 60 * 60)]] });
+    expirationManager.track(event);
+
+    const spy = subscribeSpyTo(expirationManager.expired$);
+
+    await vi.advanceTimersByTimeAsync(366 * 24 * 60 * 60 * 1000);
+
+    expect(spy.getValues()).toContain(event.id);
+    expect(setTimeoutSpy.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("schedules and expires at the boundary of the 32-bit cap (D1-c)", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    const underManager = new ExpirationManager();
+    const underEvent = user.note("test", { tags: [["expiration", String(unixNow() + 24 * 24 * 60 * 60)]] });
+    const underSpy = subscribeSpyTo(underManager.expired$);
+    underManager.track(underEvent);
+
+    const overManager = new ExpirationManager();
+    const overEvent = user.note("test", { tags: [["expiration", String(unixNow() + 26 * 24 * 60 * 60)]] });
+    const overSpy = subscribeSpyTo(overManager.expired$);
+    overManager.track(overEvent);
+
+    for (const call of setTimeoutSpy.mock.calls) {
+      expect(call[1]).toBeLessThanOrEqual(MAX_TIMER_DELAY);
+    }
+
+    await vi.advanceTimersByTimeAsync((26 * 24 * 60 * 60 + 20) * 1000);
+
+    expect(underSpy.getValues()).toContain(underEvent.id);
+    expect(overSpy.getValues()).toContain(overEvent.id);
+
+    underManager.dispose();
+    overManager.dispose();
+  });
+});
+
+describe("stale timer bookkeeping (D2)", () => {
+  it("still schedules a newly tracked event after the last one is forgotten and its timer fires", async () => {
+    const eventA = user.note("test", { tags: [["expiration", String(unixNow() + 10)]] });
+    expirationManager.track(eventA);
+    expirationManager.forget(eventA.id);
+
+    // Timer fires with nothing left to expire
+    await vi.advanceTimersByTimeAsync(11000);
+
+    const eventB = user.note("test", { tags: [["expiration", String(unixNow() + 10)]] });
+    const spy = subscribeSpyTo(expirationManager.expired$);
+    expirationManager.track(eventB);
+
+    await vi.advanceTimersByTimeAsync(11000);
+
+    expect(spy.getValues()).toContain(eventB.id);
+  });
+});
