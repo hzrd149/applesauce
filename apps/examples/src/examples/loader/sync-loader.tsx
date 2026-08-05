@@ -8,7 +8,7 @@ import { getSeenRelays, mergeRelaySets, normalizeToPubkey } from "applesauce-cor
 import { createEventLoaderForStore, createSyncLoader, SyncLoaderStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { NostrEvent } from "nostr-tools";
+import { NostrEvent } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PubkeyPicker from "../../components/pubkey-picker";
 

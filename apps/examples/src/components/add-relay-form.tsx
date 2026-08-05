@@ -1,4 +1,4 @@
-import { normalizeURL } from "nostr-tools/utils";
+import { normalizeURL } from "applesauce-core/helpers";
 import { useState } from "react";
 
 // Component for relay add form

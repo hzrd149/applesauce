@@ -1,5 +1,5 @@
 import { Observable, Subject } from "rxjs";
-import { NostrEvent } from "../helpers/event.js";
+import { NostrEvent, StoreEvent } from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { unixNow } from "../helpers/time.js";
 import { IExpirationManager } from "./interface.js";
@@ -8,7 +8,7 @@ import { IExpirationManager } from "./interface.js";
 const MAX_TIMER_DELAY = 2_147_483_647;
 
 /** Manages expiration state for events with expiration tags */
-export class ExpirationManager implements IExpirationManager {
+export class ExpirationManager<E extends StoreEvent = NostrEvent> implements IExpirationManager<E> {
   /** A stream of event IDs that have expired */
   public readonly expired$: Observable<string>;
 
@@ -33,7 +33,7 @@ export class ExpirationManager implements IExpirationManager {
    * Add an event to the expiration manager if it has an expiration tag
    * @param event The event to track for expiration
    */
-  track(event: NostrEvent): void {
+  track(event: E): void {
     const expiration = getExpirationTimestamp(event);
     if (!expiration || !Number.isFinite(expiration)) return;
 
@@ -64,7 +64,7 @@ export class ExpirationManager implements IExpirationManager {
    * @param event The event to check
    * @returns true if the event has expired, false otherwise
    */
-  check(event: NostrEvent): boolean {
+  check(event: E): boolean {
     const expiration = getExpirationTimestamp(event);
     if (!expiration) return false;
     return expiration <= unixNow();

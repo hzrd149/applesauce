@@ -1,5 +1,5 @@
 import { Observable } from "rxjs";
-import { getEventUID, isAddressableKind, isReplaceableKind, NostrEvent } from "../helpers/event.js";
+import { getEventUID, isAddressableKind, isReplaceableKind, NostrEvent, StoreEvent } from "../helpers/event.js";
 import {
   AddressPointer,
   EventPointer,
@@ -12,8 +12,22 @@ import { chainable, ChainableObservable } from "../observable/chainable.js";
 import { CastRefEventStore } from "./cast.js";
 import { castUser, User } from "./user.js";
 
-/** The base class for all casts */
-export class EventCast<T extends NostrEvent = NostrEvent> {
+/**
+ * The base class for all casts. `T` is bounded by {@link StoreEvent} (not `NostrEvent`) so a
+ * cast can wrap an unsigned {@link Rumor} as well as a signed event — `EventCast` never reads
+ * `.sig`. The event-reading helpers below are still typed `NostrEvent`, so they are bridged
+ * with a localized `as NostrEvent`; each reads only fields present on a rumor.
+ */
+export class EventCast<T extends StoreEvent = NostrEvent> {
+  /**
+   * The event viewed as a signed `NostrEvent`, for the event-reading helpers that are still
+   * typed `NostrEvent` but only touch fields a rumor already has (id/kind/pubkey/created_at/
+   * tags). A documented internal bridge until those helpers are genericized over StoreEvent.
+   */
+  private get signedView(): NostrEvent {
+    return this.event as unknown as NostrEvent;
+  }
+
   /** Alias for event.id */
   get id() {
     return this.event.id;
@@ -24,7 +38,7 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
   }
   /** Returns the unique identifier for this event */
   get uid() {
-    return getEventUID(this.event);
+    return getEventUID(this.signedView);
   }
 
   /** Returns the created_at timestamp as a Date object */
@@ -34,17 +48,19 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
 
   /** Get the {@link User} that authored this event */
   get author(): User {
-    return castUser(this.event, this.store);
+    // Route via the pubkey string overload: result-identical for signed events and correct for
+    // rumors (passing the event would hit `isEvent`, which requires `sig` and misroutes a rumor).
+    return castUser(this.event.pubkey, this.store);
   }
 
   /** Return the set of relays this event was seen on */
   get seen() {
-    return getSeenRelays(this.event);
+    return getSeenRelays(this.signedView);
   }
 
   /** Returns the NIP-01 address string for this event if its replaceable or addressable, otherwise returns null */
   get coordinate(): string | null {
-    return getReplaceableAddressForEvent(this.event);
+    return getReplaceableAddressForEvent(this.signedView);
   }
   /** Alias for {@link coordinate} */
   get replaceableAddress() {
@@ -54,8 +70,8 @@ export class EventCast<T extends NostrEvent = NostrEvent> {
   /** Returns a single {@link EventPointer} or {@link AddressPointer} for this event */
   get pointer(): EventPointer | AddressPointer {
     if (isReplaceableKind(this.kind) || isAddressableKind(this.kind))
-      return getAddressPointerForEvent(this.event) || getEventPointerForEvent(this.event);
-    return getEventPointerForEvent(this.event);
+      return getAddressPointerForEvent(this.signedView) || getEventPointerForEvent(this.signedView);
+    return getEventPointerForEvent(this.signedView);
   }
 
   // Enfore kind check in constructor. this will force child classes to verify the event before calling super()

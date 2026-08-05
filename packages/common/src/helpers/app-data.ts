@@ -1,3 +1,4 @@
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { EncryptionMethod } from "applesauce-core/helpers/encrypted-content";
 import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -62,7 +63,11 @@ export function getAppDataContent<
   }
   if (!data) return undefined;
 
-  Reflect.set(event, AppDataContentSymbol, data);
+  // Derived from the event's own (possibly encrypted) content — identity memo (see
+  // applesauce-core's cache.ts taxonomy). Written non-enumerable via setCachedValue (05.1-09) so
+  // a plain spread drops it instead of carrying a stale derivation onto a copy whose content
+  // differs. lockAppData's Reflect.deleteProperty still clears it (CR-03).
+  setCachedValue(event, AppDataContentSymbol, data);
   return data;
 }
 
@@ -90,5 +95,9 @@ export async function unlockAppData<
 
 /** Removes the unencrypted application data cache on an event */
 export function lockAppData<T extends object>(event: T): void {
+  // Two-delete lock (mirrors lockHiddenTags): drop the parsed-plaintext memo first, then lock the
+  // underlying hidden content. Without this, AppDataContentSymbol's cached-read early return in
+  // getAppDataContent survives the lock and keeps handing back decrypted plaintext (CR-03).
+  Reflect.deleteProperty(event, AppDataContentSymbol);
   lockHiddenContent(event);
 }

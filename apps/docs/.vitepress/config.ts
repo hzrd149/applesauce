@@ -201,6 +201,24 @@ export default defineConfig({
         ],
       },
       {
+        text: "Communities",
+        collapsed: false,
+        items: [
+          {
+            text: "Concord",
+            link: "/concord/package",
+            items: [
+              { text: "The client", link: "/concord/client" },
+              { text: "Communities", link: "/concord/community" },
+              { text: "Channels", link: "/concord/channels" },
+              { text: "Moderation", link: "/concord/moderation" },
+              { text: "Invites", link: "/concord/invites" },
+              { text: "Persistence & media", link: "/concord/storage" },
+            ],
+          },
+        ],
+      },
+      {
         text: "Storing events",
         collapsed: false,
         link: "/storage",

@@ -10,7 +10,7 @@ import {
   parseWalletAuthURI,
   WalletAuthURI,
 } from "applesauce-wallet-connect/helpers";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import QRCode from "../../components/qr-code";

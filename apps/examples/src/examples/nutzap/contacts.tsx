@@ -8,7 +8,7 @@ import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts/user";
 import { defined, EventStore } from "applesauce-core";
-import { Filter, persistEventsToCache } from "applesauce-core/helpers";
+import { Filter, NostrEvent, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -16,7 +16,7 @@ import type { ISigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
 import { IndexedDBCouch } from "applesauce-wallet/helpers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { npubEncode } from "nostr-tools/nip19";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
@@ -37,7 +37,7 @@ const couch = new IndexedDBCouch();
 
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters);
+  return getEventsForFilters<NostrEvent>(cache, filters);
 }
 
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));

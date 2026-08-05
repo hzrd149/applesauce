@@ -13,7 +13,7 @@ import type { ISigner } from "applesauce-signers";
 import { WalletConnect } from "applesauce-wallet-connect";
 import { IndexedDBCouch, WALLET_KIND } from "applesauce-wallet/helpers";
 import { NutWallet } from "applesauce-wallet/wallet";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, filter, firstValueFrom, map, Observable, of, take, timeout } from "rxjs";
 

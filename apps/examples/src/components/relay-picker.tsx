@@ -19,7 +19,7 @@ import {
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "react-use";
 import { map } from "rxjs";

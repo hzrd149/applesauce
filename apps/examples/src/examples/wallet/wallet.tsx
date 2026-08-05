@@ -34,7 +34,7 @@ import SecureStorage from "../../extra/encrypted-storage";
 
 // Explicitly import the wallet casts so user.wallet$ is available
 import "applesauce-wallet/casts";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
@@ -57,7 +57,7 @@ persistEncryptedContent(eventStore, storage$.pipe(defined()));
 // Setup a local event cache
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters);
+  return getEventsForFilters<NostrEvent>(cache, filters);
 }
 
 // Save all new events to the cache

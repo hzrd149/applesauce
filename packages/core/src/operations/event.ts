@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { isKind } from "nostr-tools/kinds";
 import type { EventOperation } from "../factories/types.js";
+import { setCachedValue } from "../helpers/cache.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import {
   EventTemplate,
@@ -122,16 +123,19 @@ export function stamp<K extends number = number>(
   return async (draft) => {
     if (!signer) throw new Error("Missing signer");
 
-    // Remove old fields from signed nostr event
-    Reflect.deleteProperty(draft, "id");
-    Reflect.deleteProperty(draft, "sig");
-
     const pubkey = await signer.getPublicKey();
     const newDraft = { ...draft, pubkey };
 
-    // copy the plaintext hidden content if its on the draft
+    // Remove old fields from the copy — never the caller's draft (CR-05: stamp must not mutate its input)
+    Reflect.deleteProperty(newDraft, "id");
+    Reflect.deleteProperty(newDraft, "sig");
+
+    // copy the plaintext hidden content if its on the draft. Written non-enumerably via
+    // setCachedValue (the one rule) so it cannot be re-copied across a later kind-changing
+    // spread; the Reflect.has/get read is enumerability-blind, so it carries the symbol
+    // regardless of how it was written upstream.
     if (Reflect.has(draft, EncryptedContentSymbol))
-      Reflect.set(newDraft, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
+      setCachedValue(newDraft, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
 
     return newDraft;
   };
@@ -158,9 +162,12 @@ export function sign<K extends number = number, T extends KnownEventTemplate<K> 
     // If its the same kind, return the signed event
     if (!isKind(signed, draft.kind)) throw new Error("Signer modified event kind");
 
-    // copy the plaintext hidden content if its on the draft
+    // copy the plaintext hidden content if its on the draft. signer.signEvent returns a plain
+    // NostrEvent with no symbol-keyed properties and no guarantee of preserving them, so this
+    // explicit copy is what carries the plaintext onto signed. Written non-enumerably via
+    // setCachedValue (the one rule) so it cannot be re-copied across a later kind-changing spread.
     if (Reflect.has(draft, EncryptedContentSymbol))
-      Reflect.set(signed, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
+      setCachedValue(signed, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
 
     return signed;
   };

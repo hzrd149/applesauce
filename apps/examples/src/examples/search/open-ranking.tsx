@@ -1,6 +1,5 @@
 /**
- * Search for profiles using an Open Ranking (ORE) provider, ranked by its web of trust.
- * Signing in issues a Nostr Web Token (kind 27519) to authenticate point-of-view requests.
+ * Search web-of-trust-ranked profiles through an authenticated Open Ranking provider.
  * @tags search, open-ranking, web-of-trust, nostr-web-token
  * @related search/vertex, search/primal
  */
@@ -17,7 +16,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { nprofileEncode } from "nostr-tools/nip19";
+import { nprofileEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
 

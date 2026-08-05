@@ -1,0 +1,7 @@
+{
+  "workflow": {
+    "_auto_chain_active": false,
+    "build_command": "turbo build --filter='./packages/*'",
+    "test_command": "vitest run"
+  }
+}

@@ -20,7 +20,7 @@ import {
   IndexedDBCouch,
   NUTZAP_INFO_KIND,
 } from "applesauce-wallet/helpers";
-import { npubEncode } from "nostr-tools/nip19";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useState } from "react";
 import { map } from "rxjs";
 import QRCode from "../../components/qr-code";

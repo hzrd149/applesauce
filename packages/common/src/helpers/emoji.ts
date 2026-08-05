@@ -1,4 +1,4 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { NostrEvent, StoreEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, parseReplaceableAddress } from "applesauce-core/helpers/pointers";
 
 export type Emoji = {
@@ -32,7 +32,7 @@ export function getEmojiFromTags(event: { tags: string[][] } | string[][], code:
 }
 
 /** Returns the custom emoji for a reaction event */
-export function getReactionEmoji(event: NostrEvent): Emoji | undefined {
+export function getReactionEmoji<E extends StoreEvent = NostrEvent>(event: E): Emoji | undefined {
   // Trim and strip colons
   const shortcode = /^:+(.+?):+$/g.exec(event.content.trim().toLowerCase())?.[1];
   if (!shortcode) return undefined;

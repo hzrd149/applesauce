@@ -16,6 +16,7 @@ describe("exports", () => {
         "ExpirationTimestampSymbol",
         "Expressions",
         "FromCacheSymbol",
+        "GiftWrapSymbol",
         "HiddenContactsSymbol",
         "HiddenContentKinds",
         "HiddenContentSymbol",
@@ -32,7 +33,9 @@ describe("exports", () => {
         "PublicContactsSymbol",
         "ReplaceableAddressSymbol",
         "ReplaceableIdentifierSymbol",
+        "RumorSymbol",
         "STREAM_EXT",
+        "SealSymbol",
         "SeenRelaysSymbol",
         "Tokens",
         "UnsignedEvent",
@@ -169,6 +172,7 @@ describe("exports", () => {
         "isRegularKind",
         "isReplaceable",
         "isReplaceableKind",
+        "isRumor",
         "isSafeRelayURL",
         "isSameURL",
         "isStreamURL",
@@ -232,6 +236,7 @@ describe("exports", () => {
         "unlockHiddenTags",
         "verifiedSymbol",
         "verifyEvent",
+        "verifyRumor",
         "verifyWrappedEvent",
       ]
     `);

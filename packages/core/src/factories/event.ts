@@ -2,6 +2,7 @@ import { isAddressableKind, isKind } from "nostr-tools/kinds";
 import { EventSigner } from "./types.js";
 import type { EventOperation } from "./types.js";
 import { EncryptionMethod } from "../helpers/encrypted-content.js";
+import { setCachedValue } from "../helpers/cache.js";
 import { KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
 import { PRESERVE_EVENT_SYMBOLS } from "../helpers/pipeline.js";
 import { unixNow } from "../helpers/time.js";
@@ -73,13 +74,21 @@ export class EventFactory<
         this.then(async (draft) => {
           const result = await operation(draft);
 
-          // Strip any symbols that are not in the preserve list, matching the
-          // behaviour of eventPipe / pipeFromAsyncArray so stale caches (e.g.
-          // HiddenTagsSymbol set by a previous modifyHiddenTags step) never
-          // leak into subsequent chain operations.
-          for (const key of Reflect.ownKeys(result)) {
-            if (typeof key === "symbol" && !PRESERVE_EVENT_SYMBOLS.has(key)) {
-              Reflect.deleteProperty(result, key);
+          // Carry forward: restore any preserved symbol draft had that result is missing,
+          // mirroring pipeFromAsyncArray's carry-forward loop (an operation's own internal
+          // spread drops non-enumerable writes; this explicitly restores them). Only carry
+          // forward when the step modifies the same event in place (same kind); a transform
+          // step that builds a new, different-kind event must not inherit the input's symbols.
+          const sameEvent =
+            typeof (result as { kind?: unknown }).kind === "number" &&
+            (result as { kind?: unknown }).kind === (draft as { kind?: unknown }).kind;
+          if (sameEvent) {
+            for (const symbol of PRESERVE_EVENT_SYMBOLS) {
+              if (Reflect.has(draft, symbol) && !Reflect.has(result, symbol)) {
+                // Restore non-enumerably (the one rule) so the carried symbol is not re-enumerated
+                // and cannot be copied across a later kind-changing spread.
+                setCachedValue(result, symbol, Reflect.get(draft, symbol));
+              }
             }
           }
 
@@ -139,11 +148,6 @@ export class EventFactory<
     // If its the same kind, return the signed event
     if (isKind(signed, template.kind)) return signed;
     else throw new Error("Signer modified event kind");
-  }
-
-  /** Sets the event kind and casts the result to a {@link KnownEventTemplate<Kind>} */
-  kind<Kind extends number>(kind: Kind): EventFactory<Kind, KnownEventTemplate<Kind>> {
-    return new EventFactory((e) => ({ ...e, kind }));
   }
 
   /** Sets the event content */

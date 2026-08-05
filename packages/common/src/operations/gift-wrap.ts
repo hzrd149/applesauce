@@ -3,6 +3,7 @@
 
 import type { EventOperation } from "applesauce-core/factories";
 import { blankEventTemplate } from "applesauce-core/factories";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { EncryptedContentSymbol } from "applesauce-core/helpers/encrypted-content";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import {
@@ -14,16 +15,14 @@ import {
   UnsignedEvent,
 } from "applesauce-core/helpers/event";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
-import { eventPipe, PRESERVE_EVENT_SYMBOLS } from "applesauce-core/helpers/pipeline";
+import { eventPipe } from "applesauce-core/helpers/pipeline";
 import { unixNow } from "applesauce-core/helpers/time";
 import { setEncryptedContent } from "applesauce-core/operations/encrypted-content";
 import { MetaTagOptions, setMetaTags, stamp } from "applesauce-core/operations/event";
 import { GiftWrapSymbol, Rumor, RumorSymbol, SealSymbol } from "../helpers/gift-wrap.js";
 
-// Preserve gift-wrap and seal symbols when building gift-wrap events
-PRESERVE_EVENT_SYMBOLS.add(GiftWrapSymbol);
-PRESERVE_EVENT_SYMBOLS.add(SealSymbol);
-PRESERVE_EVENT_SYMBOLS.add(RumorSymbol);
+// GiftWrapSymbol/SealSymbol/RumorSymbol are static members of applesauce-core's
+// PRESERVE_EVENT_SYMBOLS (see core/helpers/pipeline.ts) — no import-time mutation needed here.
 
 /** Create a timestamp with a random offset of an hour */
 function randomNow() {
@@ -79,13 +78,22 @@ export function sealRumor(
 
     const seal = await signer.signEvent(unsigned);
 
-    // Set the downstream reference on the seal
-    Reflect.set(seal, RumorSymbol, rumor);
+    // Set the downstream reference on the seal: an object-reference link to `rumor`, not a
+    // value copy. `RumorSymbol` is a static member of `PRESERVE_EVENT_SYMBOLS` (applesauce-core),
+    // which stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
+    // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
+    // list, which has no gift-wrap symbols — accumulated state (see cache.ts one-rule doc block).
+    // Written non-enumerable via setCachedValue so a plain spread drops it instead of silently
+    // carrying a stale reference forward.
+    setCachedValue(seal, RumorSymbol, rumor);
 
     // Add the upstream reference to the rumor
     const seals = Reflect.get(rumor, SealSymbol);
     if (seals) seals.add(seal);
-    else Reflect.set(rumor, SealSymbol, new Set([seal]));
+    // Initializes the mutable Set that grows in place elsewhere (helpers/gift-wrap.ts's
+    // addParentSealReference) — accumulated state (see cache.ts one-rule doc block), not a memo.
+    // Written non-enumerable via setCachedValue.
+    else setCachedValue(rumor, SealSymbol, new Set([seal]));
 
     return seal;
   };
@@ -111,14 +119,30 @@ export function wrapSeal(pubkey: string, opts?: GiftWrapOptions): EventOperation
 
     const gift = finalizeEvent(draft, key);
 
-    // Set the upstream references on the seal
-    Reflect.set(seal, GiftWrapSymbol, gift);
+    // Set the upstream reference on the seal: an object-reference link to `gift`, not a
+    // value copy. `GiftWrapSymbol` is a static member of `PRESERVE_EVENT_SYMBOLS` (applesauce-core),
+    // which stops `eventPipe`'s delete loop from scrubbing it mid-pipe — it is NOT carried onto a
+    // redelivered duplicate of this event by `EventStore.copySymbolsToDuplicateEvent`'s merge
+    // list, which has no gift-wrap symbols — accumulated state (see cache.ts one-rule doc block).
+    // Written non-enumerable via setCachedValue.
+    setCachedValue(seal, GiftWrapSymbol, gift);
 
-    // Set the downstream reference on the gift wrap
-    Reflect.set(gift, SealSymbol, seal);
+    // Set the downstream reference on the gift wrap: an object-reference link to `seal`, not
+    // a value copy. `SealSymbol`'s static membership in `PRESERVE_EVENT_SYMBOLS` (applesauce-core)
+    // buys survival of `eventPipe`'s delete loop, nothing more — it is NOT carried onto a
+    // redelivered duplicate of this event by that merge list, which has no gift-wrap symbols
+    // — accumulated state (see cache.ts one-rule doc block). Written non-enumerable via
+    // setCachedValue.
+    setCachedValue(gift, SealSymbol, seal);
 
-    // Set the encrypted content on the gift wrap
-    Reflect.set(gift, EncryptedContentSymbol, plaintext);
+    // Set the encrypted content on the gift wrap: a build-path write, like applesauce-core's
+    // operations/tags.ts's modifyHiddenTags return and operations/encrypted-content.ts's
+    // setEncryptedContent return. `wrapSeal` is the last step of the `giftWrap` eventPipe, so this
+    // write survives because PRESERVE_EVENT_SYMBOLS keeps it through the delete loop that runs
+    // immediately after this operation — it is set directly on this operation's own returned
+    // event (`gift`), not inherited from a prior step's carry-forward. Written non-enumerable via
+    // setCachedValue (see cache.ts one-rule doc block).
+    setCachedValue(gift, EncryptedContentSymbol, plaintext);
 
     return gift;
   };

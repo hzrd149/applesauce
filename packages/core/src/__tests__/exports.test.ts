@@ -7,6 +7,7 @@ describe("exports", () => {
       [
         "AsyncDeleteManager",
         "AsyncEventStore",
+        "AsyncRumorStore",
         "BehaviorSubject",
         "CASTS_SYMBOL",
         "CAST_REF_SYMBOL",
@@ -27,6 +28,7 @@ describe("exports", () => {
         "ProfileFactory",
         "PubkeyCast",
         "ReplaySubject",
+        "RumorStore",
         "Subject",
         "TimeoutError",
         "User",
@@ -54,6 +56,7 @@ describe("exports", () => {
         "mapEventsToStore",
         "mapEventsToTimeline",
         "merge",
+        "performCast",
         "simpleTimeout",
         "timeoutWithIgnore",
         "toEventTemplate",

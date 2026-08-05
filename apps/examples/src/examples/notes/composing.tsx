@@ -1,6 +1,5 @@
 /**
- * Compose a kind 1 note with nostr-editor, build it with NoteFactory, then confirm and publish to outbox relays.
- * Supports uploading images, videos, and files to the user's configured blossom servers.
+ * Compose and publish notes with media uploads to configured Blossom servers.
  * @tags nip-01, nip-65, compose, editor, nostr-editor, blossom, file-upload
  * @related notes/rendering, simple/profile-editor, blossom/server-manager
  */
@@ -20,7 +19,7 @@ import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/ac
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import type { FileAttributes, NostrStorage, UploadTask } from "nostr-editor";
 import { NostrExtension } from "nostr-editor";
-import { nip19 } from "nostr-tools";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
@@ -203,7 +202,7 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
     <div className="max-w-3xl mx-auto space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Compose note</h1>
-        <span className="text-sm text-base-content/60 font-mono">{nip19.npubEncode(user.pubkey).slice(0, 16)}…</span>
+        <span className="text-sm text-base-content/60 font-mono">{npubEncode(user.pubkey).slice(0, 16)}…</span>
       </div>
       <p className="text-base-content/70 text-sm">
         Use the editor to write a kind 1 note. Mentions, links, and hashtags are turned into the right Nostr content and

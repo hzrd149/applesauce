@@ -14,7 +14,7 @@ export function setHiddenContent(
   override?: EncryptionMethod,
 ): EventOperation {
   return async (draft) => {
-    if (!signer) throw new Error("Signer required for encrypted content");
+    if (!signer) throw new Error("Signer required for hidden content");
 
     const pubkey = await signer.getPublicKey();
     return setEncryptedContent(pubkey, content, signer, override)(draft);

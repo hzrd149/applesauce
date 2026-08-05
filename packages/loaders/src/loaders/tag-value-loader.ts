@@ -125,7 +125,7 @@ export function createTagValueLoader(
     // Filter results based on requests
     (pointer, event) => event.tags.some((tag) => tag[0] === tagName && tag[1] === pointer.value),
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
-    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
+    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
     // Forward the abort signal for explicit teardown
     { signal: opts?.signal },
   );

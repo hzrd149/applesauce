@@ -1,8 +1,11 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
+import { verifyEvent as nostrVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
+import { setCachedValue } from "../../helpers/cache.js";
+import { EncryptedContentSymbol } from "../../helpers/encrypted-content.js";
 import { unixNow } from "../../helpers";
-import { kinds, NostrEvent } from "../../helpers/event.js";
+import { EventStoreSymbol, isFromCache, kinds, markFromCache, NostrEvent } from "../../helpers/event.js";
 import { addSeenRelay, getSeenRelays } from "../../helpers/relays.js";
 import { EventModel } from "../../models/base.js";
 import { ProfileModel } from "../../models/profile.js";
@@ -160,6 +163,16 @@ describe("add", () => {
 
   it("should handle addressable events without an identifier", () => {
     expect(() => eventStore.add(user.event({ kind: 30000 }))).not.toThrow();
+  });
+
+  it("should store EventStoreSymbol non-enumerably on the added event", () => {
+    const added = eventStore.add(user.note("non-enumerable store link"))!;
+
+    expect(Reflect.get(added, EventStoreSymbol)).toBe(eventStore);
+    expect(Object.getOwnPropertyDescriptor(added, EventStoreSymbol)?.enumerable).toBe(false);
+    // Object spread only copies enumerable own properties, so a non-enumerable
+    // write must not ride along a spread of the stored event.
+    expect(EventStoreSymbol in { ...added }).toBe(false);
   });
 
   describe("NIP-01 tie-break for replaceable events", () => {
@@ -389,6 +402,178 @@ describe("replaceable", () => {
     let value: NostrEvent | undefined = undefined;
     observable.subscribe((v) => (value = v));
     expect(value).toBe(profile);
+  });
+});
+
+describe("copySymbolsToDuplicateEvent (CR-04 regression)", () => {
+  const userA = new FakeUser();
+  const userB = new FakeUser();
+
+  it("throws when pubkey matches but the replaceable identifier differs", () => {
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "list-one"]] });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "list-two"]] });
+
+    // Prove the guard is what stops the merge, not an incidental absence of symbols to copy.
+    Reflect.set(source, verifiedSymbol, true);
+    Reflect.set(source, EncryptedContentSymbol, "leaked plaintext");
+
+    expect(() => EventStore.copySymbolsToDuplicateEvent(source, dest)).toThrow(
+      /same pubkey and replaceable identifier/,
+    );
+    expect(Reflect.has(dest, EncryptedContentSymbol)).toBe(false);
+  });
+
+  it("throws when the replaceable identifier matches but pubkey differs", () => {
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+    const dest = userB.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]] });
+
+    Reflect.set(source, verifiedSymbol, true);
+    Reflect.set(source, EncryptedContentSymbol, "leaked plaintext");
+
+    expect(() => EventStore.copySymbolsToDuplicateEvent(source, dest)).toThrow(
+      /same pubkey and replaceable identifier/,
+    );
+    expect(Reflect.has(dest, EncryptedContentSymbol)).toBe(false);
+  });
+
+  it("merges symbols when pubkey and replaceable identifier both match", () => {
+    // Pin an identical created_at on both events: two separate FakeUser.event() calls only
+    // produce the same id if they land in the same unixNow() second, which is a latent flake
+    // once copySymbolsToDuplicateEvent gates on source.id === dest.id (WR-01 fix).
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
+
+    Reflect.set(source, EncryptedContentSymbol, "plaintext");
+
+    expect(EventStore.copySymbolsToDuplicateEvent(source, dest)).toBe(true);
+    expect(Reflect.get(dest, EncryptedContentSymbol)).toBe("plaintext");
+  });
+
+  it("merges the symbol onto dest non-enumerably, and the `symbol in dest` gate still prevents a double-merge", () => {
+    // Note: verifiedSymbol is deliberately excluded here — nostr-tools' finalizeEvent (used by
+    // FakeUser.event()) already sets verifiedSymbol on freshly built events, which would make the
+    // `symbol in dest` gate skip the merge for that symbol before this test even starts.
+    // Pin an identical created_at on both events for the same reason as the test above.
+    const source = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
+    const dest = userA.event({ kind: kinds.Bookmarksets, tags: [["d", "shared-list"]], created_at: 1700000000 });
+
+    Reflect.set(source, EncryptedContentSymbol, "plaintext");
+
+    expect(EventStore.copySymbolsToDuplicateEvent(source, dest)).toBe(true);
+
+    // Non-enumerable: descriptor check and spread-drop check.
+    expect(Object.getOwnPropertyDescriptor(dest, EncryptedContentSymbol)?.enumerable).toBe(false);
+    expect(EncryptedContentSymbol in { ...dest }).toBe(false);
+
+    // The `symbol in dest` presence gate still blocks re-merging an already-merged symbol.
+    Reflect.set(source, EncryptedContentSymbol, "different plaintext");
+    EventStore.copySymbolsToDuplicateEvent(source, dest);
+    expect(Reflect.get(dest, EncryptedContentSymbol)).toBe("plaintext");
+  });
+});
+
+describe("copySymbolsToDuplicateEvent gates payload symbols on source.id === dest.id (WR-01 regression)", () => {
+  const userA = new FakeUser();
+
+  /**
+   * Builds two genuine, differently-signed versions of one replaceable event: v2 (newer, becomes
+   * the stored NIP-01 winner) and v1 (older, loses and routes through the event-store.ts:269
+   * cross-version copy branch). Every test in this block drives eventStore.add() with these two
+   * real events rather than calling copySymbolsToDuplicateEvent directly, since a direct call
+   * with hand-built arguments would still pass even if the reachable add() path were wired
+   * differently.
+   */
+  function buildVersions() {
+    const v2 = userA.event({
+      kind: kinds.Bookmarksets,
+      tags: [["d", "wr-01-list"]],
+      content: "v2 content",
+      created_at: 1700000100,
+    });
+    const v1 = userA.event({
+      kind: kinds.Bookmarksets,
+      tags: [["d", "wr-01-list"]],
+      content: "v1 content",
+      created_at: 1700000000,
+    });
+    return { v1, v2 };
+  }
+
+  it("Test A: decrypted plaintext does not cross versions", () => {
+    const { v1, v2 } = buildVersions();
+    // Anti-degeneration guards: a future fixture edit that collapses v1/v2 into a same-id pair
+    // would otherwise turn this test into an always-green no-op.
+    expect(v1.id).not.toBe(v2.id);
+    expect(v1.content).not.toBe(v2.content);
+
+    eventStore.add(v2);
+    setCachedValue(v1, EncryptedContentSymbol, "wr-01 test A unique plaintext");
+
+    expect(eventStore.add(v1)).toBe(v2);
+
+    // Nothing in this test ever decrypts v2, so absence is the only correct state — any present
+    // value can only have leaked in from v1.
+    expect(Reflect.has(v2, EncryptedContentSymbol)).toBe(false);
+  });
+
+  it("Test B: a signature verdict does not cross versions, proven downstream", () => {
+    const { v1, v2 } = buildVersions();
+    expect(v1.id).not.toBe(v2.id);
+    expect(v1.content).not.toBe(v2.content);
+
+    eventStore.add(v2);
+
+    // Corrupt only v1's sig -- id/content/created_at and NIP-01 ordering stay coherent, the only
+    // defect is the signature.
+    v1.sig = "0".repeat(128);
+
+    // Clear v1's finalize-time memo (FakeUser.event() -> finalizeEvent sets verifiedSymbol true)
+    // and let nostr-tools recompute it against the corrupted sig, earning the memo honestly
+    // rather than hand-setting it. This also fails loudly if nostr-tools ever changes.
+    Reflect.deleteProperty(v1, verifiedSymbol);
+    expect(nostrVerifyEvent(v1)).toBe(false);
+
+    // Clear the stored winner's memo (the store set it during add(v2)) so the `!(symbol in dest)`
+    // presence gate is open for the copy this test is proving does NOT happen.
+    Reflect.deleteProperty(v2, verifiedSymbol);
+
+    expect(eventStore.add(v1)).toBe(v2);
+
+    // Ordering matters: step 1 must be asserted before step 2 sets a fresh memo on v2.
+    expect(Reflect.has(v2, verifiedSymbol)).toBe(false);
+    // Discriminating assertion: verifyEvent returns a memo without recomputing when one is
+    // present, so under the defect the copied `false` would make this genuinely valid event read
+    // as invalid. `true` here is derived from v2's own signature by nostr-tools, not from
+    // anything this codebase produced.
+    expect(nostrVerifyEvent(v2)).toBe(true);
+  });
+
+  it("Test C: a same-version duplicate still merges (positive control)", () => {
+    const { v2 } = buildVersions();
+    eventStore.add(v2);
+
+    const duplicate = { ...v2 };
+    setCachedValue(duplicate, EncryptedContentSymbol, "duplicate plaintext");
+    expect(duplicate.id).toBe(v2.id);
+
+    // A spread copy ties on created_at and id, so it loses too and routes through the same
+    // event-store.ts:269 branch -- but since the id matches, the gate still lets the merge land.
+    expect(eventStore.add(duplicate)).toBe(v2);
+    expect(Reflect.get(v2, EncryptedContentSymbol)).toBe("duplicate plaintext");
+  });
+
+  it("Test D: FromCacheSymbol still crosses versions", () => {
+    const { v1, v2 } = buildVersions();
+    expect(v1.id).not.toBe(v2.id);
+    expect(v1.content).not.toBe(v2.content);
+
+    eventStore.add(v2);
+    markFromCache(v1);
+
+    expect(eventStore.add(v1)).toBe(v2);
+    // Pins the deliberate "any-duplicate" decision so a future "tighten everything" edit has to
+    // argue with a test instead of quietly changing behavior.
+    expect(isFromCache(v2)).toBe(true);
   });
 });
 

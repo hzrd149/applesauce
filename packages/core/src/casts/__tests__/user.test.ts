@@ -92,12 +92,36 @@ describe("User", () => {
       expect(castUser(signer.pubkey, store)).toBe(castUser(signer.pubkey, store));
     });
 
+    it("should return different instances for the same pubkey in different stores", () => {
+      const signer = new FakeUser();
+      const storeA = new EventStore();
+      const storeB = new EventStore();
+
+      expect(castUser(signer.pubkey, storeA)).not.toBe(castUser(signer.pubkey, storeB));
+    });
+
+    it("should keep cached observables scoped to their original store", () => {
+      const signer = new FakeUser();
+      const storeA = new EventStore();
+      const storeB = new EventStore();
+      const eventA = signer.event({ kind: 1, content: "store A" });
+      const eventB = signer.event({ kind: 1, content: "store B" });
+      storeA.add(eventA);
+      storeB.add(eventB);
+
+      const userA = castUser(signer.pubkey, storeA);
+      const userB = castUser(signer.pubkey, storeB);
+
+      expect(subscribeSpyTo(userA.timeline$(1)).getValues().at(-1)).toEqual([eventA]);
+      expect(subscribeSpyTo(userB.timeline$(1)).getValues().at(-1)).toEqual([eventB]);
+    });
+
     it("should hold instances weakly so they can be garbage collected", () => {
       const signer = new FakeUser();
       const store = new EventStore();
 
       const user = castUser(signer.pubkey, store);
-      const ref = User.cache.get(signer.pubkey);
+      const ref = Array.from(User.cache.values()).find((cached) => cached.deref() === user);
 
       // The cache stores a WeakRef, not a strong reference to the instance
       expect(ref).toBeInstanceOf(WeakRef);

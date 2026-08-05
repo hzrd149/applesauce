@@ -1,4 +1,4 @@
-import { getOrComputeCachedValue } from "./cache.js";
+import { getOrComputeCachedValue, setCachedValue } from "./cache.js";
 import { NostrEvent, notifyEventUpdate } from "./event.js";
 import { HiddenContentSigner } from "./hidden-content.js";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "./hidden-tags.js";
@@ -70,8 +70,10 @@ export function getPublicContacts(event: NostrEvent): ProfilePointer[] {
 
 /** Checks if the hidden contacts are unlocked */
 export function isHiddenContactsUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedContacts {
-  // No need for try catch or proactivly parsing here since it only depends on hidden tags
-  return isHiddenTagsUnlocked(event);
+  // Hidden tags being unlocked does not imply the contacts were ever parsed and cached: require
+  // HiddenContactsSymbol to already be present, or derive it now via getHiddenContacts, so this
+  // guard never lies to a caller doing `event[HiddenContactsSymbol]` immediately after (CR-01).
+  return isHiddenTagsUnlocked(event) && (HiddenContactsSymbol in event || getHiddenContacts(event) !== undefined);
 }
 
 /** Returns only the hidden contacts from a contacts list event */
@@ -91,8 +93,10 @@ export function getHiddenContacts(event: NostrEvent | UnlockedContacts): Profile
     (t) => getProfilePointerFromPTag(t) ?? undefined,
   );
 
-  // Set cache and notify event store
-  Reflect.set(event, HiddenContactsSymbol, contacts);
+  // Set cache and notify event store. Identity memo per cache.ts's one rule: written non-
+  // enumerable via setCachedValue, so a copy with different tags does not inherit the stale
+  // parsed contacts — it re-parses on next access.
+  setCachedValue(event, HiddenContactsSymbol, contacts);
 
   return contacts;
 }

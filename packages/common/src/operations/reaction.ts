@@ -1,5 +1,5 @@
 import { EventOperation } from "applesauce-core/factories";
-import { getTagValue, isAddressableKind, NostrEvent } from "applesauce-core/helpers/event";
+import { getTagValue, isAddressableKind, NostrEvent, Rumor } from "applesauce-core/helpers/event";
 import {
   ensureAddressPointerTag,
   ensureEventPointerTag,
@@ -16,13 +16,20 @@ export function setReaction(emoji: string | Emoji = "+"): EventOperation {
 }
 
 /**
+ * The event a reaction points to. A full event/rumor carries its tags (so an
+ * addressable target can be resolved to an "a" tag), or a lightweight
+ * `{ id, pubkey, kind }` pointer for cases where only the identity is known.
+ */
+export type ReactionParent = NostrEvent | Rumor | { id: string; pubkey: string; kind: number };
+
+/**
  * Includes NIP-25 "e", "p", "k", and "a" tags for a reaction event to point to a parent event
  * @param event - Event being reacted to
  * @param getEventRelayHint - Optional function to get relay hint for event ID
  * @param getPubkeyRelayHint - Optional function to get relay hint for pubkey
  */
 export function setReactionParent(
-  event: NostrEvent,
+  event: ReactionParent,
   getEventRelayHint?: (eventId: string) => Promise<string | undefined>,
   getPubkeyRelayHint?: (pubkey: string) => Promise<string | undefined>,
 ): EventOperation {
@@ -44,7 +51,7 @@ export function setReactionParent(
       relays: pubkeyHint ? [pubkeyHint] : undefined,
     });
 
-    if (isAddressableKind(event.kind)) {
+    if (isAddressableKind(event.kind) && "tags" in event) {
       // include "a" tag
       const identifier = getTagValue(event, "d");
       if (identifier)

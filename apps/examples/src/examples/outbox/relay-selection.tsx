@@ -9,7 +9,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellify from "pastellify";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, firstValueFrom, shareReplay, switchMap, throttleTime } from "rxjs";

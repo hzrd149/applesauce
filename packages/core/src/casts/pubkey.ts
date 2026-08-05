@@ -13,6 +13,18 @@ export type PubkeyCastConstructor<C extends PubkeyCast> = (new (
   cacheRegistry?: FinalizationRegistry<string>;
 };
 
+const storeCacheIds = new WeakMap<CastRefEventStore, number>();
+let nextStoreCacheId = 0;
+
+function getStoreCacheId(store: CastRefEventStore): number {
+  let id = storeCacheIds.get(store);
+  if (id === undefined) {
+    id = ++nextStoreCacheId;
+    storeCacheIds.set(store, id);
+  }
+  return id;
+}
+
 /**
  * Cast a pubkey to a specific class instance.
  * Works like {@link castUser} - returns a cached singleton per pubkey+relay-hints combination.
@@ -30,7 +42,8 @@ export function castPubkey<C extends PubkeyCast>(
   const pointer: ProfilePointer = typeof pubkey === "string" ? { pubkey } : pubkey;
   if (!isHexKey(pointer.pubkey)) throw new Error("Invalid pubkey");
 
-  const cacheKey = pointer.relays?.length ? `${pointer.pubkey}:${JSON.stringify(pointer.relays)}` : pointer.pubkey;
+  const pointerKey = pointer.relays?.length ? `${pointer.pubkey}:${JSON.stringify(pointer.relays)}` : pointer.pubkey;
+  const cacheKey = `${getStoreCacheId(store)}:${pointerKey}`;
 
   if (!cls.cache) cls.cache = new Map();
   // Clean up dead cache entries when their instances are garbage collected

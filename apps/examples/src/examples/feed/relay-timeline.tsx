@@ -6,7 +6,7 @@
 import { castEvent, Note } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { Filter, getDisplayName, persistEventsToCache } from "applesauce-core/helpers";
+import { Filter, getDisplayName, NostrEvent, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -22,7 +22,7 @@ const pool = new RelayPool();
 
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters);
+  return getEventsForFilters<NostrEvent>(cache, filters);
 }
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 

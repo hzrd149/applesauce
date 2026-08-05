@@ -1,0 +1,1637 @@
+// ConcordCommunity — the single-community reactive engine.
+//
+// A thin wrapper that connects the Concord parts (crypto/keys, the stream
+// envelope, the plane RumorStores + fold models, factories/operations, and the
+// NIP-42 stream-key authenticator) for ONE community. It owns no fold logic:
+// every piece of derived state comes from a model over a RumorStore. The engine
+// only derives keys, routes decoded wraps into the right plane store, runs the
+// epoch-atomic sync, and publishes.
+
+import {
+  BehaviorSubject,
+  Observable,
+  Subject,
+  Subscription,
+  combineLatest,
+  distinctUntilChanged,
+  map,
+  shareReplay,
+  startWith,
+  switchMap,
+} from "rxjs";
+import type { Debugger } from "debug";
+import { EventStore, RumorStore } from "applesauce-core";
+import { finalizeEvent, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
+import { ensureKTag } from "applesauce-core/helpers/factory";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { mergeRelaySets, normalizeRelayUrl } from "applesauce-core/helpers/relays";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
+import { DeleteFactory, type Emoji } from "applesauce-core/factories";
+import type { ISigner } from "applesauce-signers";
+import type { RelayPool } from "applesauce-relay";
+
+import { logger } from "../logger.js";
+import type { ConcordRelayAuth } from "./relay-auth.js";
+import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
+import {
+  addChannelKey,
+  buildChannelRekey,
+  buildRefounding,
+  channelEpochOf,
+  deriveConcordKeys,
+  readRekey,
+  wrapForTarget,
+  type ConcordKeys,
+  type PlaneInfo,
+  type WrapTarget,
+} from "../helpers/keys.js";
+import type { GroupKey } from "../helpers/crypto.js";
+import { hasChannelKey } from "../helpers/community.js";
+import { isStrictlyLowerKey } from "../helpers/rekey.js";
+import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
+import { foldControl } from "../helpers/control.js";
+import { checkChatBinding } from "../helpers/chat.js";
+import { refoundAuthority, vacVerifier, type Standing } from "../helpers/permissions.js";
+import type { AttachmentEncryption, MediaAttachment } from "../helpers/imeta.js";
+import { STOCK_RELAYS, buildInviteBundle, buildInviteLink, newInviteToken } from "../helpers/invite-bundle.js";
+import { EditFactory } from "../factories/edit.js";
+import { DissolutionFactory } from "../factories/control.js";
+import { JoinLeaveFactory, KickFactory } from "../factories/guestbook.js";
+import { InviteBundleFactory } from "../factories/invite-bundle.js";
+import { DirectInviteFactory } from "../factories/direct-invite.js";
+import { bindToChannel, includeMediaEncryption, type MediaEncryption } from "../operations/channel.js";
+import { ConcordCommunityStateModel } from "../models/community.js";
+import { decodedFromRumor } from "../models/utils.js";
+import {
+  PERM,
+  type ChannelKey,
+  type ChannelMetadata,
+  type CommunityMetadata,
+  type CommunityState,
+  type ConcordCommunityStatus,
+  type ConcordSyncPhase,
+  type DecodedEvent,
+  type InviteBundle,
+  type JoinMaterial,
+  type Role,
+  type RoleScope,
+  type Rumor,
+} from "../types.js";
+import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
+import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
+import { ConcordPrivateChannel } from "./private-channel.js";
+import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader, ConcordUploadProgress } from "./storage.js";
+import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
+
+export interface ConcordSendMessageOptions {
+  onUploadProgress?: (progress: ConcordUploadProgress) => void;
+}
+
+/** Options for constructing a single-community {@link ConcordCommunity} engine. */
+export interface ConcordCommunityOptions {
+  /** The membership/key material for this community (from an invite or the list). */
+  material: JoinMaterial;
+  /** The logged-in user's signer (NIP-44 required to follow Refoundings). */
+  signer: ISigner;
+  /** The logged-in user's hex pubkey. */
+  pubkey: string;
+  /** The applesauce RelayPool used for all subscriptions/publishes. */
+  pool: RelayPool;
+  /** NIP-42 stream-key authenticator (shared across communities by the manager). */
+  relayAuth: ConcordRelayAuth;
+  /** Wrap-level store for kind-1059 dedup + the NIP-77 negentropy local store.
+   *  Defaults to a fresh {@link EventStore}. */
+  eventStore?: EventStore;
+  /** Media uploader (encrypt + upload). Required to send files or set images. */
+  uploader?: ConcordUploader;
+  /** Fallback relays when the community defines none. */
+  relays?: string[];
+  /** Additional transport-only relays threaded down from `ConcordClientOptions`,
+   *  unioned into every request/subscription/publish/auth target this engine
+   *  dials (D-12) — but NEVER written into community material, metadata, invite
+   *  bundles, invite links, or the user's Community List. Purely additive: with
+   *  no extras configured, {@link ExtraRelays.merge}'s identity fast path
+   *  returns `relays()`'s set completely unchanged (D-14); `relays()`'s
+   *  existing material-then-options-then-stock fallback chain is untouched.
+   *  When extras ARE configured, the merged transport set is normalized and
+   *  deduplicated (`mergeRelaySets`), which changes the shape of relay-target
+   *  strings and `pool.status$` lookup keys for that configuration.
+   *
+   *  `refound()`'s majority threshold and ack-attribution set are always
+   *  derived from `relays()` alone (never `extraRelays`) via that same
+   *  normalize-and-deduplicate path, so an always-acking extra can never
+   *  satisfy or inflate the CORD-06 quorum — bit-for-bit identical to the
+   *  pre-phase raw relay-count arithmetic whenever the configured protocol
+   *  relay list is already well-formed and duplicate-free, and fail-soft
+   *  (dropping the offending entry, never crashing) when it is not. */
+  extraRelays?: ExtraRelaysOption;
+  /** Per-plane store factory (persistent cache). Defaults to in-memory stores. */
+  storeFactory?: ConcordStoreFactory;
+  /** Called whenever `material` changes (a fresh private-channel key, a Refounding)
+   *  so the manager can persist it and refresh the Community List. */
+  onMaterialChange?: (material: JoinMaterial) => void;
+  /** Called when a Refounding excludes us (CORD-06): the manager tombstones the
+   *  membership and drops the community. */
+  onRemoved?: (communityId: string) => void;
+  /** Called after a public invite link has been minted and registered so the
+   *  owning client can persist it into the user's private Invite List (13303). */
+  onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
+  /** Called after a public invite link has been revoked so the owning client can
+   *  persist the terminal tombstone into the user's private Invite List (13303). */
+  onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
+  /** Called after a Refounding rolls the community_root so the owning client can
+   *  refresh every live invite bundle behind its unchanged URL (CORD-05 §2). */
+  onRefounded?: (communityId: string) => void;
+  /** A custom debug logger (defaults to the "applesauce:concord" namespace). */
+  logger?: Debugger;
+}
+
+/** Content equality for the member/ban sets, which are rebuilt on every fold. */
+function sameSet(a: Set<string>, b: Set<string>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const value of a) if (!b.has(value)) return false;
+  return true;
+}
+
+/** A folded channel plus the client-local `accessible` affordance (CHAN-06):
+ *  `true` for every public channel, and for a private channel iff `material.channels`
+ *  currently holds a key for it. `accessible` is NEVER folded state — it rides only
+ *  this emitted view, never {@link ChannelMetadata} or the control-plane fold. */
+export type ChannelView = ChannelMetadata & { accessible: boolean };
+
+/** Content equality for `channels$`'s emitted `ChannelView[]` — a fresh array is
+ *  mapped on every emission, so reference equality would never suppress a no-op
+ *  re-emission. Mirrors {@link sameSet}'s content-comparator role for `members$`. */
+function sameChannelViews(a: ChannelView[], b: ChannelView[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].channel_id !== b[i].channel_id) return false;
+    if (a[i].accessible !== b[i].accessible) return false;
+  }
+  return true;
+}
+
+/** Thrown by {@link ConcordCommunity.sendMessage}/{@link ConcordCommunity.sendEvent}
+ *  when the target channel is known (folded, visible in `state$.value.channels`)
+ *  and private, but `material.channels` holds no key for it (CHAN-02/D-06). This
+ *  is the client's own guard, thrown BEFORE `channelEpoch`/`planeKeyFor` are ever
+ *  reached — with D-01/D-02, a keyless private channel has no `keys.channels`
+ *  entry, so `planeKeyFor` would otherwise throw its generic `unknown channel`,
+ *  indistinguishable from a truly-unknown id. Consumers `instanceof`-catch this
+ *  to disable the composer precisely. `planeKeyFor`'s generic throw stays as the
+ *  backstop for an id absent from `state.channels` entirely — this guard does
+ *  not cover that case. */
+export class MissingChannelKeyError extends Error {
+  constructor(public readonly channelId: string) {
+    super("missing private channel key");
+    this.name = "MissingChannelKeyError";
+  }
+}
+
+function sameStanding(a: Standing, b: Standing): boolean {
+  return (
+    a.isOwner === b.isOwner &&
+    a.position === b.position &&
+    a.permissions === b.permissions &&
+    a.roleIds.length === b.roleIds.length &&
+    a.roleIds.every((id, i) => id === b.roleIds[i])
+  );
+}
+
+function emptyState(material: JoinMaterial): CommunityState {
+  return {
+    material,
+    channels: [],
+    roles: [],
+    grants: new Map(),
+    banlist: new Set(),
+    inviteLinks: new Set(),
+    members: new Set(),
+    dissolved: false,
+  };
+}
+
+export class ConcordCommunity {
+  readonly signer: ISigner;
+  readonly pubkey: string;
+  /** The current folded community state (channels, roles, members, …). The
+   *  aggregate; prefer the granular reads below, which only emit when their own
+   *  slice changes. */
+  readonly state$: BehaviorSubject<CommunityState>;
+  /** The community's metadata (name, description, icon, banner, relays). */
+  readonly metadata$: Observable<CommunityMetadata | undefined>;
+  /** The community's live (non-deleted) channels, enriched with the client-local
+   *  `accessible` flag (CHAN-06). Reacts to both a control-plane fold AND an
+   *  out-of-band key grant/drop (`receiveChannelKeys`/`persistChannelKey`/
+   *  `dropChannelKey`/`mintChannelKey`), with no simultaneous control-plane fold
+   *  required — the reactivity gap this stream exists to close. */
+  readonly channels$: Observable<ChannelView[]>;
+  /** The community's roles, ordered by position (highest authority first). */
+  readonly roles$: Observable<Role[]>;
+  /** member → role_ids. */
+  readonly grants$: Observable<Map<string, string[]>>;
+  /** The banned pubkeys. */
+  readonly banlist$: Observable<Set<string>>;
+  /** Live invite-link coordinates; non-empty ⇒ the community is Public (CORD-05 §5). */
+  readonly inviteLinks$: Observable<Set<string>>;
+  /** The community's members. */
+  readonly members$: Observable<Set<string>>;
+  /** The community's sync-lifecycle phase (idle → syncing → live; removed/error). */
+  readonly phase$ = new BehaviorSubject<ConcordSyncPhase>("idle");
+  /** The community's current root epoch (bumps on each adopted Refounding). */
+  readonly epoch$: BehaviorSubject<number>;
+  /** The last sync error message, or null. */
+  readonly error$ = new BehaviorSubject<string | null>(null);
+  /** Whether the owner has dissolved the community. */
+  readonly dissolved$: Observable<boolean>;
+  /** Whether any of the community's relays (plus any configured `extraRelays`) has
+   *  an open socket — derived from the merged transport set, re-deriving on every
+   *  later `extraRelays` emission (D-08). Because this is an any-of check, an
+   *  always-up app-local extra keeps this reporting connected even while every
+   *  community relay is down; UI reading "live" may be reading the local cache —
+   *  an accepted, documented consequence (D-07), not a defect. */
+  readonly connected$: Observable<boolean>;
+  /** Whether the community's stream keys are NIP-42-authenticated on every
+   *  connected relay in the merged transport set, re-deriving on every later
+   *  `extraRelays` emission (D-08). Because this is an all-of check over
+   *  connected relays, an extra that challenges and rejects our stream keys
+   *  holds this flag low indefinitely — an accepted, documented consequence
+   *  (D-07), not a defect. If several engines should share one live extras
+   *  source, pass a hot/shared Observable (D-10) — each engine subscribes its
+   *  own otherwise. */
+  readonly authenticated$: Observable<boolean>;
+  /** A flat snapshot of the community's status, for UI to react to as one value. */
+  readonly status$: Observable<ConcordCommunityStatus>;
+
+  /** Every action that requires authority — metadata, channels, roles, members,
+   *  invites, refounding, dissolution — as one intent-shaped surface. This is the
+   *  community-management API; prefer it over the flat aliases the community keeps
+   *  for convenience. Nothing in it names a protocol plane. */
+  readonly admin: ConcordCommunityAdmin;
+
+  /** The community's debug logger — `options.logger` when threaded from the client,
+   *  otherwise the `applesauce:concord` module base (D-01/D-02). */
+  private readonly log: Debugger;
+  /** The `:sync` sub-logger, derived ONCE in the constructor — handed to every
+   *  {@link SyncContext} this instance builds. `syncContext()` runs once per
+   *  `start()` AND once per `reconcileLive()` batch, so `.extend()`ing there
+   *  would reallocate and re-run namespace enable-matching each time. */
+  private readonly syncLog: Debugger;
+  /** The `:sync:decode` per-dropped-wrap logger (D-07), derived ONCE in the
+   *  constructor — never re-`.extend()`d per wrap (that reallocates and
+   *  re-runs namespace enable-matching on every call). */
+  private readonly decodeLog: Debugger;
+  /** The `:publish` sub-logger (D-03 light operational tracing), derived ONCE
+   *  in the constructor — reused at every publish trace/dual-emit site in this
+   *  engine (channel rekey, invite bundle mint/refresh/revoke, channel grant). */
+  private readonly publishLog: Debugger;
+  /** The `:fold` sub-logger (D-03), derived ONCE in the constructor — light
+   *  tracing at control/member fold outcomes that change the community's
+   *  epoch (a live Refounding adoption or an involuntary removal). */
+  private readonly foldLog: Debugger;
+  private readonly pool: RelayPool;
+  private readonly relayAuth: ConcordRelayAuth;
+  private readonly eventStore: EventStore;
+  private readonly uploader?: ConcordCommunityOptions["uploader"];
+  private readonly defaultRelays: string[];
+  private readonly storeFactory: ConcordStoreFactory;
+  private readonly onMaterialChange?: (material: JoinMaterial) => void;
+  private readonly onRemoved?: (communityId: string) => void;
+  private readonly onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
+  private readonly onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
+  private readonly onRefounded?: (communityId: string) => void;
+  /** The RAW `extraRelays` option, kept unresolved so {@link spawnPrivateChannel}
+   *  can pass it through to each sub-engine's OWN holder rather than a resolved
+   *  snapshot (D-13) — the sub-engine must stay reactive to its own subscription. */
+  private readonly extraRelaysOption?: ExtraRelaysOption;
+  /** The per-engine transport-only extras holder (D-04) — merges into every
+   *  network target this engine dials via {@link transport}; `relays()` itself
+   *  is never touched. */
+  private readonly extras: ExtraRelays;
+
+  /** The current key state; rolled forward on a Refounding. */
+  private keys: ConcordKeys;
+  /** Emits whenever `this.keys.material.channels` mutates out-of-band (a Direct
+   *  Invite grant, a channel Rekey, a voluntary leave, or a fresh mint) — CHAN-06:
+   *  `channels$` combines this with the control-plane `channels` slice so its
+   *  `accessible` flag reacts to key-holding changes with no simultaneous fold. */
+  private readonly materialChanged$ = new Subject<void>();
+  /** planeKey ("control"|"guestbook"|"dissolved"|"rekey"|`channel:<id>`) → store. */
+  private readonly stores = new Map<string, ConcordRumorStore>();
+  /** channelId → the sub-community engine for each private channel we hold a key for. */
+  private readonly privateChannels = new Map<string, ConcordPrivateChannel>();
+
+  private stateSub?: Subscription;
+  private liveSub?: Subscription;
+  /** Reacts to every later `extraRelays` emission (D-08/D-09): re-opens the live
+   *  subscription once one already exists, so a no-op emission before `start()`
+   *  has ever gone live cannot prematurely open a socket, and a real later
+   *  change re-derives the merged set via `openLive()`'s own widened guard. */
+  private extrasSub: Subscription;
+  /** URL → the Subscription {@link relay-auth.js}'s `authenticateStreamKeys`
+   *  returned for it (WR-04). Keyed by URL rather than a single aggregate
+   *  Subscription so {@link ensureAuth} can PRUNE an entry whose relay left the
+   *  transport set — a de-configured relay's driver must actually tear down,
+   *  not just accumulate forever, and a relay re-added after removal must
+   *  register a genuinely fresh driver rather than being silently suppressed. */
+  private authDrivers = new Map<string, Subscription>();
+  private liveAuthors = "";
+  private rekeyTimer?: ReturnType<typeof setTimeout>;
+  /** epoch → lowest adopted root key (D-04 down-only anti-refork latch). A
+   *  strictly lower sibling replaces the entry; an equal-or-higher one is
+   *  ignored — a settled epoch can heal DOWN but never re-fork UP. In-memory
+   *  only per engine (not persisted; A3). */
+  private rekeyHandled = new Map<number, Uint8Array>();
+  private started = false;
+  private disposed = false;
+
+  constructor(options: ConcordCommunityOptions) {
+    this.log = options.logger ?? logger;
+    this.syncLog = this.log.extend("sync");
+    this.decodeLog = this.syncLog.extend("decode");
+    this.publishLog = this.log.extend("publish");
+    this.foldLog = this.log.extend("fold");
+    this.signer = options.signer;
+    this.pubkey = options.pubkey;
+    this.pool = options.pool;
+    this.relayAuth = options.relayAuth;
+    this.eventStore = options.eventStore ?? new EventStore();
+    this.uploader = options.uploader;
+    this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
+    this.storeFactory = options.storeFactory ?? (() => new RumorStore());
+    this.onMaterialChange = options.onMaterialChange;
+    this.onRemoved = options.onRemoved;
+    this.onInviteCreated = options.onInviteCreated;
+    this.onInviteRevoked = options.onInviteRevoked;
+    this.onRefounded = options.onRefounded;
+    this.extraRelaysOption = options.extraRelays;
+    // Constructed BEFORE any observable derivation below so its synchronous
+    // snapshot is already seeded when connected$/authenticated$ build (D-04).
+    // Its position here is unchanged (D-04 is load-bearing) — but EVERYTHING
+    // after it, to the end of the constructor, is now wrapped: `ExtraRelays`'s
+    // constructor subscribes to an APP-SUPPLIED source (`options.extraRelays`,
+    // typically a long-lived shared `BehaviorSubject` per this class's own
+    // option docs), so a throw anywhere below — most immediately
+    // `deriveConcordKeys` on malformed material, but this covers every
+    // statement in the tail, not just that one line — would otherwise leave a
+    // PERMANENT subscriber attached to the app's source with no way to release
+    // it: the half-built instance is discarded by the caller, and nothing else
+    // holds a reference to `this.extras` to call `.dispose()` on it (WR-01).
+    // This is invisible with a static `string[]` extras option, since `of(...)`
+    // completes immediately and never actually accumulates a live subscription
+    // — it only bites the reactive-Observable (e.g. `BehaviorSubject`)
+    // configuration this phase was built for. Deliberately NOT calling the
+    // full `dispose()` here: the instance is half-built (fields below this
+    // point may not exist yet), so releasing the ONE subscription already
+    // taken (`this.extras`) is exactly the cleanup this failure path needs —
+    // no more, no less.
+    this.extras = new ExtraRelays(options.extraRelays);
+    try {
+      this.keys = deriveConcordKeys(options.material, []);
+      this.state$ = new BehaviorSubject<CommunityState>(emptyState(options.material));
+      this.epoch$ = new BehaviorSubject<number>(options.material.root_epoch);
+
+      this.dissolved$ = this.state$.pipe(
+        map((s) => s.dissolved),
+        distinctUntilChanged(),
+      );
+
+      // Granular reads. Every control-plane slice keeps a STABLE REFERENCE between
+      // control folds — `ConcordCommunityStateModel` spreads `{ ...control, members }`,
+      // so `state$` re-emitting because a chat message moved the observed-authors set
+      // leaves `roles`/`channels`/… pointing at the same objects. Reference identity is
+      // therefore enough to keep these quiet under channel traffic.
+      const slice = <T>(select: (s: CommunityState) => T): Observable<T> =>
+        this.state$.pipe(map(select), distinctUntilChanged());
+      this.metadata$ = slice((s) => s.metadata);
+      // CHAN-06: `accessible` is client-local (never folded), and must react to a
+      // key grant/drop ALONE — combineLatest with materialChanged$ so a Direct
+      // Invite delivering a key with no simultaneous control-plane fold still
+      // re-emits (the reactivity gap RESEARCH.md surfaced).
+      this.channels$ = combineLatest([slice((s) => s.channels), this.materialChanged$.pipe(startWith(undefined))]).pipe(
+        map(([channels]) =>
+          channels.map(
+            (c): ChannelView => ({
+              ...c,
+              accessible: !c.private || hasChannelKey(this.material, c.channel_id),
+            }),
+          ),
+        ),
+        distinctUntilChanged(sameChannelViews),
+      );
+      this.roles$ = slice((s) => s.roles);
+      this.grants$ = slice((s) => s.grants);
+      this.banlist$ = slice((s) => s.banlist);
+      this.inviteLinks$ = slice((s) => s.inviteLinks);
+      // `members` is rebuilt by every guestbook/presence fold, so compare by content.
+      this.members$ = this.state$.pipe(
+        map((s) => s.members),
+        distinctUntilChanged(sameSet),
+      );
+
+      // Reactive (D-08): switchMap over the extras holder's relays$ so a later
+      // extraRelays emission re-derives both statuses, rather than freezing at a
+      // construction-time snapshot. Both route their merge through transport()
+      // (not the switchMap's own emitted value) so it stays the class's one
+      // literal merge point (D-04).
+      this.connected$ = this.extras.relays$.pipe(switchMap(() => this.relayAuth.connected$(this.transport())));
+      this.authenticated$ = this.extras.relays$.pipe(
+        switchMap(() => this.relayAuth.authenticated$(this.transport(), () => this.currentAuthors())),
+      );
+      this.status$ = combineLatest({
+        phase: this.phase$,
+        epoch: this.epoch$,
+        dissolved: this.dissolved$,
+        connected: this.connected$,
+        authenticated: this.authenticated$,
+        error: this.error$,
+      }).pipe(
+        map(
+          ({ dissolved, ...s }): ConcordCommunityStatus => ({
+            ...s,
+            phase: dissolved ? "dissolved" : s.phase,
+          }),
+        ),
+        distinctUntilChanged(
+          (a, b) =>
+            a.phase === b.phase &&
+            a.epoch === b.epoch &&
+            a.connected === b.connected &&
+            a.authenticated === b.authenticated &&
+            a.error === b.error,
+        ),
+        shareReplay(1),
+      );
+
+      // Eagerly create the community planes so the state model has stores to fold
+      // and the (cached) history renders immediately, before sync fills the delta.
+      this.storeFor("control");
+      this.storeFor(this.guestbookPlaneKey());
+      this.storeFor("dissolved");
+      this.storeFor("rekey");
+
+      this.admin = new ConcordCommunityAdmin({
+        community: this,
+        store: this.storeFor("control"),
+        state: () => this.state$.value,
+        pubkey: this.pubkey,
+        uploader: this.uploader,
+        publish: (rumor) => this.publishToPlane({ plane: "control" }, rumor, { plaintext: true }),
+        mintChannelKey: (channelId, name) => {
+          this.keys = addChannelKey(this.keys, channelId, name);
+          this.onMaterialChange?.(this.keys.material);
+          this.materialChanged$.next();
+        },
+      });
+
+      this.rewireState();
+
+      // D-09: guarded with `if (this.liveSub)` rather than firing unconditionally
+      // — the ExtraRelays holder's internal BehaviorSubject always emits once
+      // synchronously at construction (even with no `extraRelays` configured), and
+      // an unguarded subscribe would open the live socket here, before `start()`
+      // ever runs (a timing regression D-14's byte-identical requirement forbids).
+      this.extrasSub = this.extras.relays$.subscribe(() => {
+        if (!this.disposed && this.liveSub) this.openLive();
+      });
+    } catch (err) {
+      this.extras.dispose();
+      throw err;
+    }
+  }
+
+  get material(): JoinMaterial {
+    return this.keys.material;
+  }
+
+  /** The current-epoch Guestbook store key (CORD-02 §5: the Guestbook rides the
+   *  epoch) — mirrors `planeStoreKey`'s `guestbook@<epoch>` scheme in sync.ts. */
+  private guestbookPlaneKey(): string {
+    return `guestbook@${this.keys.material.root_epoch}`;
+  }
+
+  /**
+   * D-03: dispose+delete any `guestbook@<epoch>` store whose epoch is no longer
+   * live — neither the current epoch nor one of `held_roots`. Keys and stores
+   * share one retention horizon: you can't decode an epoch you no longer hold the
+   * root for (its address is unrecoverable), so its store is dead weight. Only
+   * the guestbook plane is epoch-keyed this phase (control/dissolved/rekey/
+   * channel are untouched) — called once per adopted Refounding, after the key
+   * roll so `held_roots`/the current epoch are already current.
+   */
+  private trimStaleGuestbookStores(): void {
+    const material = this.keys.material;
+    const liveEpochs = new Set<number>([material.root_epoch, ...(material.held_roots ?? []).map((r) => r.epoch)]);
+    for (const key of [...this.stores.keys()]) {
+      if (!key.startsWith("guestbook@")) continue;
+      const epoch = Number(key.slice("guestbook@".length));
+      if (liveEpochs.has(epoch)) continue;
+      this.stores.get(key)?.dispose();
+      this.stores.delete(key);
+    }
+  }
+
+  get communityId(): string {
+    return this.keys.material.community_id;
+  }
+
+  // ---- lifecycle ----------------------------------------------------------
+
+  /** Walk every epoch to the tip (auth → full-sync each plane → fold → rekey),
+   *  then open a live subscription at the latest epoch. */
+  async start(): Promise<void> {
+    if (this.started || this.disposed) return;
+    this.started = true;
+    this.phase$.next("syncing");
+    this.log("epoch walk starting");
+    try {
+      const walk = await syncEpochs(this.syncContext(), this.material);
+      if (this.disposed) return;
+      if (walk.removed) {
+        this.handleRemoved();
+        return;
+      }
+      if (walk.tipKeys) {
+        this.keys = walk.tipKeys;
+        // A Refounding adopted during the walk advances material.refounder — rebind
+        // the fold so the tip epoch's guestbook snapshot (kind 3312) is honored.
+        this.rewireState();
+        this.openLive();
+        this.epoch$.next(this.keys.material.root_epoch);
+        if (this.keys.material !== this.state$.value.material) this.onMaterialChange?.(this.keys.material);
+      }
+      this.error$.next(null);
+      this.phase$.next("live");
+      this.log("epoch walk complete tip_epoch=%d", this.keys.material.root_epoch);
+    } catch (err) {
+      if (this.disposed) return;
+      this.error$.next(err instanceof Error ? err.message : String(err));
+      this.phase$.next("error");
+    }
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.stateSub?.unsubscribe();
+    this.liveSub?.unsubscribe();
+    this.extrasSub.unsubscribe();
+    this.extras.dispose();
+    for (const sub of this.authDrivers.values()) sub.unsubscribe();
+    this.authDrivers.clear();
+    if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
+    for (const engine of this.privateChannels.values()) engine.dispose();
+    this.privateChannels.clear();
+    for (const store of this.stores.values()) store.dispose();
+    this.stores.clear();
+  }
+
+  /** The Control Plane {@link RumorStore} — fold it with `ConcordControlModel` &
+   *  friends, or read editions directly with `.timeline([{ kinds: [3308] }])`. */
+  get controlStore(): ConcordRumorStore {
+    return this.storeFor("control");
+  }
+
+  /** The current-epoch Guestbook Plane {@link RumorStore} (Joins/Leaves/Kicks/
+   *  Snapshots). The Guestbook rides the epoch (CORD-02 §5) — a Refounding's new
+   *  epoch reads a fresh store; see {@link guestbookPlaneKey}. */
+  get guestbookStore(): ConcordRumorStore {
+    return this.storeFor(this.guestbookPlaneKey());
+  }
+
+  /** A channel's {@link RumorStore}. Consumers render messages themselves off the
+   *  standard store API — e.g. `.timeline([{ kinds: [9] }])` for chat, or any
+   *  applesauce model — so the engine carries no chat-fold logic. */
+  channelStore(channelId: string): ConcordRumorStore {
+    return this.storeFor(`channel:${channelId}`);
+  }
+
+  // ---- stores & state wiring ----------------------------------------------
+
+  private storeFor(planeKey: string): ConcordRumorStore {
+    let store = this.stores.get(planeKey);
+    if (!store) {
+      store = this.storeFactory(this.communityId, planeKey);
+      this.stores.set(planeKey, store);
+      // A newly-discovered channel store must join the observed-authors set.
+      if (this.started) this.rewireState();
+    }
+    return store;
+  }
+
+  /** (Re)subscribe the folded community state over the current store set. The
+   *  fold lives entirely in {@link ConcordCommunityStateModel}; here we only
+   *  combine it with the tiny dissolved-plane signal and mirror to `state$`. */
+  private rewireState(): void {
+    this.stateSub?.unsubscribe();
+    const control = this.storeFor("control");
+    const guestbook = this.storeFor(this.guestbookPlaneKey());
+    const dissolved = this.storeFor("dissolved");
+    // The live `observed` set is scoped to current-epoch guestbook (added by the
+    // model itself, below) + channel activity only. Control/dissolved/rekey are
+    // protocol/tombstone traffic, not "publishing" — excluding them also keeps the
+    // control store from entangling the roster fold with observed-authorship
+    // (Phase 8/9 territory). Public-channel stores stay un-epoch-scoped (continuous
+    // chat history); a removed member's OLD public-channel activity is a known
+    // residual DEFERRED to Phase 7 (channel epoch-keying) — see 06-RESEARCH.md
+    // Open Question 1 and the community.test.ts regression test that pins it.
+    const observed = [...this.stores.entries()].filter(([key]) => key.startsWith("channel:")).map(([, s]) => s);
+    const state$ = control.model(ConcordCommunityStateModel, this.material, { guestbook, observed });
+    const dissolved$ = dissolved
+      .timeline([{}])
+      .pipe(
+        map((rumors) =>
+          rumors.some((r) => r.pubkey === this.material.owner && r.tags.some((t) => t[0] === "vsk" && t[1] === "10")),
+        ),
+      );
+    this.stateSub = combineLatest([state$, dissolved$]).subscribe(([state, dissolved]) => {
+      this.state$.next({ ...state, dissolved });
+      if (this.started) this.reconcileLive(state.channels);
+    });
+  }
+
+  // ---- routing (decode → plane store) -------------------------------------
+
+  /** Decode a live gift wrap and route it (used by the live subscription and by
+   *  the optimistic echo of our own publishes). */
+  private onWrap(event: NostrEvent): void {
+    const info = this.keys.planes.get(event.pubkey);
+    if (!info) return;
+    const canonical = (this.eventStore.add(event) as NostrEvent | null) ?? event;
+    const decoded = decodeWrapCached(canonical, info.convKey);
+    if (!decoded) {
+      // Epoch sourced from the enclosing scope's known value (channelEpochOf for
+      // channel planes, else the root epoch) — RESEARCH Pitfall 3.
+      const epoch =
+        info.type === "channel" ? channelEpochOf(this.keys, info.channelId!) : this.keys.material.root_epoch;
+      this.decodeLog("dropped wrap=%s plane=%s epoch=%d", canonical.id.slice(0, 8), info.type, epoch);
+      return;
+    }
+    this.route(info, decoded);
+  }
+
+  /** The single funnel: apply the CORD-03 receive binding, then add the rumor
+   *  to its plane store. Shared by sync and the live subscription. */
+  private route(info: PlaneInfo, decoded: DecodedEvent): void {
+    if (info.type === "channel") {
+      const epoch = info.epoch ?? channelEpochOf(this.keys, info.channelId!);
+      // CORD-03 §3: drop any rumor whose channel/epoch binding doesn't match the
+      // key that opened the wrap (anti-replay).
+      if (!checkChatBinding(decoded.rumor.tags, info.channelId!, epoch)) return;
+    }
+    // `.add` is synchronous for an in-memory store and a Promise for an async-database-backed
+    // one. Folded state derives reactively from the store's `insert$` (which fires once the add
+    // resolves) and the folds are order-independent, so fire-and-forget is correct here — but
+    // surface async-database errors rather than dropping them.
+    Promise.resolve(this.storeFor(planeStoreKey(info)).add(decoded.rumor)).catch((err) => {
+      this.log("failed to add rumor to plane store: %s", (err as Error)?.message ?? err);
+      console.error("[applesauce-concord] Failed to add rumor to plane store:", err);
+    });
+    if (info.type === "rekey") this.scheduleRekeyCheck();
+  }
+
+  // ---- sync context / subscriptions ---------------------------------------
+
+  private relays(): string[] {
+    return this.material.relays.length ? this.material.relays : this.defaultRelays;
+  }
+
+  /** The merged transport target for this community: {@link relays}'s protocol
+   *  set unioned with the current extras snapshot (D-04) — the ONLY merge point
+   *  in this class. `relays()` is the community's protocol relay set and is the
+   *  only thing ever written into published content; `transport()` is the
+   *  network target set and is never written anywhere. */
+  private transport(): string[] {
+    return this.extras.merge(this.relays());
+  }
+
+  private syncContext(): SyncContext {
+    return {
+      pool: this.pool,
+      relayAuth: this.relayAuth,
+      eventStore: this.eventStore,
+      signer: this.signer,
+      self: this.pubkey,
+      relays: this.transport(),
+      route: (info, decoded) => this.route(info, decoded),
+      ensureAuth: (relays) => this.ensureAuth(relays),
+      alive: () => !this.disposed,
+      logger: this.syncLog,
+      decodeLogger: this.decodeLog,
+    };
+  }
+
+  /**
+   * Synchronise the per-URL auth-driver registry against `relays` (WR-04): any
+   * registered driver whose URL is no longer in `relays` is unsubscribed and
+   * dropped (so a de-configured relay stops receiving NIP-42 responses driven
+   * by the community's stream keys), and a fresh driver is registered for every
+   * URL in `relays` that has none yet — including a URL that was previously
+   * removed and is now being re-added. An entry already present and still
+   * wanted is left completely untouched (no unsubscribe/re-create), so a
+   * no-op re-emission of an unchanged transport set churns nothing (D-09).
+   *
+   * MUST always be called with the COMPLETE current transport set, never a
+   * subset — every call site (both `syncContext()` callers and both
+   * `openLive()` callers) passes a full transport snapshot, because this now
+   * prunes anything absent from its argument.
+   */
+  private ensureAuth(relays: string[]): void {
+    const wanted = new Set(relays);
+    for (const [url, sub] of this.authDrivers) {
+      if (wanted.has(url)) continue;
+      sub.unsubscribe();
+      this.authDrivers.delete(url);
+    }
+    for (const url of wanted) {
+      if (this.authDrivers.has(url)) continue;
+      this.authDrivers.set(url, this.relayAuth.authenticateStreamKeys(this.pool.relay(url)));
+    }
+  }
+
+  /** The PUBLIC channel stream keys — private channels sync on their own engines. */
+  private publicChannelKeys(): GroupKey[] {
+    const publicIds = new Set(
+      this.state$.value.channels.filter((c) => !c.private && !c.deleted).map((c) => c.channel_id),
+    );
+    return [...this.keys.channels.entries()].filter(([id]) => publicIds.has(id)).map(([, k]) => k);
+  }
+
+  /** The current-epoch stream pubkeys the community subscribes: core planes +
+   *  PUBLIC channels only (private channels live on their sub-engines). */
+  private currentAuthors(): string[] {
+    const { control, guestbook, dissolved, nextBaseRekey } = this.keys;
+    return [control.pk, guestbook.pk, dissolved.pk, nextBaseRekey.key.pk, ...this.publicChannelKeys().map((k) => k.pk)];
+  }
+
+  /** Open (or reopen) the live subscription at the current epoch's addresses. */
+  private openLive(): void {
+    const authors = this.currentAuthors();
+    // Computed ONCE and reused for the guard, the auth registration, and the
+    // subscription target, so the guard can never disagree with what was
+    // dialled (D-09/Pitfall 4). The guard key now covers BOTH the sorted
+    // authors list and the sorted merged transport set, so a no-op extras
+    // re-emission cannot tear down and reopen the live socket.
+    const targets = this.transport();
+    const sig = `${[...authors].sort().join(",")}|${[...targets].sort().join(",")}`;
+    if (sig === this.liveAuthors && this.liveSub) return;
+    this.liveAuthors = sig;
+    this.relayAuth.registerStreamKeys([
+      this.keys.control,
+      this.keys.guestbook,
+      this.keys.dissolved,
+      this.keys.nextBaseRekey.key,
+      ...this.publicChannelKeys(),
+    ]);
+    this.ensureAuth(targets);
+    this.liveSub?.unsubscribe();
+    this.liveSub = this.pool
+      .subscription(targets, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
+        waitForAuth: authors,
+      })
+      .subscribe((event) => this.onWrap(event as NostrEvent));
+    this.log("live subscription open targets=%d", targets.length);
+  }
+
+  /** A live state change may reveal a new channel. Derive every channel address
+   *  (for routing), catch up freshly-revealed PUBLIC channels + reopen the live
+   *  subscription, and spawn/dispose a {@link ConcordPrivateChannel} sub-engine for
+   *  each private channel we hold a key for. */
+  private reconcileLive(channels: CommunityState["channels"]): void {
+    const before = new Set(this.keys.channels.keys());
+    this.keys = deriveConcordKeys(this.material, channels, this.keys);
+
+    // Public channels ride the community live sub — catch up any newly revealed.
+    const publicIds = new Set(channels.filter((c) => !c.private && !c.deleted).map((c) => c.channel_id));
+    const fresh = [...this.keys.channels.entries()]
+      .filter(([id]) => publicIds.has(id) && !before.has(id))
+      .map(([, k]) => k.pk);
+    if (fresh.length > 0) {
+      this.log("catching up %d newly revealed public channel(s)", fresh.length);
+      this.relayAuth.registerStreamKeys(this.publicChannelKeys());
+      this.ensureAuth(this.transport());
+      void syncAuthors(this.syncContext(), fresh).then((events) => {
+        for (const ev of events) this.onWrap(ev);
+      });
+    }
+    this.openLive();
+    this.reconcilePrivateChannels(channels);
+  }
+
+  // ---- private channels (sub-community engines) ---------------------------
+
+  /** Spawn a sub-engine for every private channel we hold a key for, and dispose
+   *  those whose channel was deleted. */
+  private reconcilePrivateChannels(channels: CommunityState["channels"]): void {
+    const live = new Set<string>();
+    for (const c of channels) {
+      if (!c.private || c.deleted) continue;
+      const key = this.material.channels.find((k) => k.id === c.channel_id);
+      if (!key) continue; // a private channel we don't hold the key for — can't read it
+      live.add(c.channel_id);
+      if (!this.privateChannels.has(c.channel_id)) this.spawnPrivateChannel(key);
+    }
+    for (const [id, engine] of this.privateChannels) {
+      if (live.has(id)) continue;
+      engine.dispose();
+      this.privateChannels.delete(id);
+    }
+  }
+
+  /**
+   * Merge channel keys delivered out-of-band — a Direct Invite / channel grant
+   * (CORD-05 §6, see {@link grantChannelAccess}) — into our held material, then
+   * spawn a sub-engine for each newly-granted private channel. Idempotent: keys we
+   * already hold (by id) are ignored, so a redelivered grant is a no-op. A channel
+   * whose metadata edition hasn't folded yet is picked up later by the next
+   * {@link reconcileLive}. Returns true if anything new was merged.
+   */
+  receiveChannelKeys(keys: ChannelKey[]): boolean {
+    const held = new Set(this.material.channels.map((c) => c.id));
+    const fresh = keys.filter((k) => !held.has(k.id));
+    if (fresh.length === 0) return false;
+    const channels = [...this.material.channels, ...fresh];
+    this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
+    this.onMaterialChange?.(this.keys.material);
+    this.materialChanged$.next();
+    this.reconcilePrivateChannels(this.state$.value.channels);
+    return true;
+  }
+
+  private spawnPrivateChannel(channelKey: ChannelKey): void {
+    const engine = new ConcordPrivateChannel({
+      channelKey,
+      material: () => this.material,
+      signer: this.signer,
+      pubkey: this.pubkey,
+      pool: this.pool,
+      relayAuth: this.relayAuth,
+      eventStore: this.eventStore,
+      store: this.storeFor(`channel:${channelKey.id}`),
+      relays: this.relays(),
+      // Pass the ORIGINAL (unresolved) option through — not a resolved snapshot
+      // (D-13) — so the sub-engine builds its own holder and stays reactive.
+      extraRelays: this.extraRelaysOption,
+      logger: this.log.extend("channel").extend(channelKey.id.slice(0, 8)),
+      isAuthorized: (rotator) => this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS),
+      // A rotator may only remove US if they also strictly outrank us (CORD-04),
+      // so an under-ranked channel manager can't rekey a higher-ranked member out.
+      canRemoveSelf: (rotator) =>
+        this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS, this.standingOf(this.pubkey).position),
+      // D-08/D-12: vac-verify against the CURRENT folded state (rebuilt fresh
+      // per call, mirroring admin.hasPerm's freshness) for MANAGE_CHANNELS.
+      verifyVac: (rotator, vac) => vacVerifier(this.state$.value, PERM.MANAGE_CHANNELS)(rotator, vac),
+      onKeyChange: (ck) => this.persistChannelKey(ck),
+      onRemoved: (id) => this.onPrivateChannelRemoved(id),
+    });
+    this.privateChannels.set(channelKey.id, engine);
+    void engine.start();
+  }
+
+  /** Persist a rolled-forward channel key into `material.channels` (a channel Rekey). */
+  private persistChannelKey(channelKey: ChannelKey): void {
+    const channels = this.material.channels.map((c) => (c.id === channelKey.id ? channelKey : c));
+    this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
+    this.onMaterialChange?.(this.keys.material);
+    this.materialChanged$.next();
+  }
+
+  /** A channel Rekey excluded us: drop the sub-engine and our now-stale key (so we
+   *  don't respawn an engine that just re-detects removal). Synced messages remain. */
+  private onPrivateChannelRemoved(channelId: string): void {
+    this.dropChannelKey(channelId);
+  }
+
+  /** Forget a private channel's key and dispose its sub-engine (idempotent). The
+   *  shared teardown behind both an involuntary Rekey removal
+   *  ({@link onPrivateChannelRemoved}) and a voluntary {@link leaveChannel}. */
+  private dropChannelKey(channelId: string): void {
+    const engine = this.privateChannels.get(channelId);
+    if (engine) {
+      engine.dispose();
+      this.privateChannels.delete(channelId);
+    }
+    if (!hasChannelKey(this.material, channelId)) return;
+    const channels = this.material.channels.filter((c) => c.id !== channelId);
+    this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
+    this.onMaterialChange?.(this.keys.material);
+    this.materialChanged$.next();
+  }
+
+  /**
+   * Voluntarily leave a private channel (CORD-03): drop our copy of the channel
+   * key and dispose its sub-engine, then persist. Purely local — no rotation, so
+   * the remaining members are undisturbed. Self-exclude via {@link rotateChannel}
+   * is impossible (you can never strictly outrank yourself), so a local key-drop
+   * is the only self-leave. Messages already synced to cache stay readable; new
+   * channel traffic no longer decodes.
+   */
+  async leaveChannel(channelId: string): Promise<void> {
+    this.dropChannelKey(channelId);
+  }
+
+  // ---- CORD-06 rekey read path (live adoption / removal) ------------------
+
+  private scheduleRekeyCheck(): void {
+    if (this.rekeyTimer) return;
+    this.rekeyTimer = setTimeout(() => {
+      this.rekeyTimer = undefined;
+      void this.checkRekey();
+    }, 200);
+  }
+
+  private async checkRekey(): Promise<void> {
+    const state = this.state$.value;
+    // `getTimeline` is sync for an in-memory store and a Promise for an async-database-backed one.
+    const rekeyTimeline = await Promise.resolve(this.storeFor("rekey").getTimeline([{}]));
+    const rekeyEvents = rekeyTimeline.map((rumor) => decodedFromRumor(rumor));
+    const outcome = await readRekey(
+      this.keys,
+      rekeyEvents,
+      refoundAuthority(state),
+      this.pubkey,
+      this.signer,
+      state.channels,
+      // A rotator may only remove US if they also strictly outrank us (CORD-04/
+      // CORD-06 §3 "in both"), so an under-ranked BAN holder can't rotate a
+      // higher-ranked member out via a root Refounding (mirrors spawnPrivateChannel).
+      (rotator) => this.admin.hasPerm(rotator, PERM.BAN, this.standingOf(this.pubkey).position),
+      // D-08/D-12: vac-verify against this SAME folded state (the live-check
+      // sibling of sync.ts's syncEpoch gate).
+      vacVerifier(state, PERM.BAN),
+    );
+    if (outcome.kind === "none" || this.disposed) return;
+    if (outcome.kind === "removed") {
+      this.foldLog("rekey fold: removed epoch=%d", outcome.epoch);
+      this.handleRemoved();
+      return;
+    }
+    // Down-only latch (D-04): adopt when unlatched, or when the candidate root
+    // key is STRICTLY lower than the latched one; an equal-or-higher sibling is
+    // already-converged and ignored, so a settled epoch can never re-fork.
+    const candidate = hexToBytes(outcome.next.material.community_root);
+    const latched = this.rekeyHandled.get(outcome.epoch);
+    if (latched && !isStrictlyLowerKey(latched, candidate)) return;
+    this.rekeyHandled.set(outcome.epoch, candidate);
+    this.foldLog("rekey fold: adopting epoch=%d", outcome.epoch);
+    this.adoptRefounding(outcome.next);
+  }
+
+  /** Follow a Refounding forward: swap in the rolled-forward key state, reopen the
+   *  live subscription at the new epoch's addresses, and re-walk each private
+   *  channel — a Refounding may bundle a channel Rekey sealed under the prior root
+   *  (CORD-06 §3) and the channel-rekey address keys on the (now-changed) root. */
+  private adoptRefounding(next: ConcordKeys): void {
+    this.keys = next;
+    this.trimStaleGuestbookStores();
+    // Rebind the fold to the new epoch's refounder so foldMembers honors the new
+    // epoch's guestbook snapshot (kind 3312) and the full memberlist carries over.
+    this.rewireState();
+    this.openLive();
+    this.epoch$.next(this.keys.material.root_epoch);
+    this.onMaterialChange?.(this.keys.material);
+    for (const engine of this.privateChannels.values()) void engine.refreshForCommunityEpoch();
+    // The root just rolled, so every live invite bundle now carries a stale
+    // community_root. Ask the client to re-post them behind their unchanged URLs
+    // (CORD-05 §2); it holds the per-link signer secrets, we don't.
+    this.onRefounded?.(this.communityId);
+    this.foldLog("refounding adopted epoch=%d", this.keys.material.root_epoch);
+  }
+
+  private handleRemoved(): void {
+    const cid = this.communityId;
+    this.log("community removed cid=%s", cid.slice(0, 8));
+    this.phase$.next("removed");
+    this.dispose();
+    this.onRemoved?.(cid);
+  }
+
+  // ---- chat actions -------------------------------------------------------
+
+  private channelEpoch(channelId: string): number {
+    return channelEpochOf(this.keys, channelId);
+  }
+
+  /** CHAN-02/D-06: throw a typed, `instanceof`-catchable {@link MissingChannelKeyError}
+   *  if `channelId` is a KNOWN private channel we hold no key for — before
+   *  `channelEpoch`/`planeKeyFor` are ever reached. A truly-unknown id (absent
+   *  from `state.channels`) is NOT covered here; it still surfaces `planeKeyFor`'s
+   *  generic `unknown channel` backstop. A public or keyed-private channel passes
+   *  through untouched. */
+  private requireChannelKey(channelId: string): void {
+    const channel = this.state$.value.channels.find((c) => c.channel_id === channelId);
+    if (channel?.private && !hasChannelKey(this.material, channelId)) throw new MissingChannelKeyError(channelId);
+  }
+
+  /** Publish ANY event to a channel (CORD-03) — a factory promise, a template, or
+   *  a signed event. The channel/epoch binding + ms ordering are appended before
+   *  the rumor is sealed + wrapped. */
+  async sendEvent(
+    channelId: string,
+    source: PromiseLike<EventTemplate> | EventTemplate,
+    opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
+  ): Promise<string> {
+    this.requireChannelKey(channelId);
+    const epoch = this.channelEpoch(channelId);
+    const rumor = await bindToChannel(channelId, epoch)(await source);
+    return this.publishToPlane({ plane: "channel", channelId }, rumor, opts);
+  }
+
+  async sendMessage(
+    channelId: string,
+    text: string,
+    replyTo?: { id: string; author: string },
+    files?: Blob[],
+    emojis?: Emoji[],
+    options: ConcordSendMessageOptions = {},
+  ): Promise<void> {
+    this.requireChannelKey(channelId);
+    const epoch = this.channelEpoch(channelId);
+    let content = text;
+    let attachments: MediaAttachment[] | undefined;
+    if (files?.length) {
+      if (!this.uploader) throw new Error("no uploader configured: cannot send file attachments");
+      attachments = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        let phase: ConcordUploadProgress["phase"] = "encrypting";
+        const emit = (next: ConcordUploadProgress["phase"]) => {
+          phase = next;
+          options.onUploadProgress?.({ total: files.length, done: i, phase });
+        };
+        emit("encrypting");
+        const attachment = await this.uploader.upload(file, this.communityId, { onProgress: emit });
+        if (!attachment.url) throw new Error("uploader did not return a url");
+        attachments.push(attachment);
+        options.onUploadProgress?.({ total: files.length, done: i + 1, phase });
+        content = content ? `${content}\n${attachment.url}` : attachment.url;
+      }
+    }
+
+    let factory = ChatMessageFactory.create(content, { emojis });
+    if (replyTo) factory = factory.replyTo({ id: replyTo.id, author: replyTo.author });
+    if (attachments?.length) factory = factory.attachments(attachments);
+    const encryption: MediaEncryption[] = (attachments ?? [])
+      .filter(
+        (a): a is MediaAttachment & { url: string; encryption: AttachmentEncryption } => !!a.url && !!a.encryption,
+      )
+      .map((a) => ({ url: a.url, ...a.encryption }));
+
+    let rumor = await bindToChannel(channelId, epoch)(await factory);
+    rumor = await includeMediaEncryption(encryption)(rumor);
+    await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
+  }
+
+  /** Post a NIP-7D forum thread (kind 11) to a channel. */
+  async sendThread(channelId: string, title: string, body = ""): Promise<void> {
+    this.requireChannelKey(channelId);
+    const epoch = this.channelEpoch(channelId);
+    const rumor = await bindToChannel(channelId, epoch)(await ForumThreadFactory.create(title, body));
+    await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
+  }
+
+  /** Reply to a channel thread with a NIP-22 kind 1111 comment (NIP-7D). */
+  async replyToThread(channelId: string, parent: Rumor, body: string): Promise<void> {
+    this.requireChannelKey(channelId);
+    const epoch = this.channelEpoch(channelId);
+    const rumor = await bindToChannel(channelId, epoch)(await CommentFactory.create(parent, body));
+    await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
+  }
+
+  async react(channelId: string, target: Rumor, reaction: string | Emoji): Promise<void> {
+    this.requireChannelKey(channelId);
+    const epoch = this.channelEpoch(channelId);
+    const rumor = await bindToChannel(channelId, epoch)(await ReactionFactory.create(target, reaction));
+    await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
+  }
+
+  async editMessage(channelId: string, targetId: string, text: string): Promise<void> {
+    this.requireChannelKey(channelId);
+    const epoch = this.channelEpoch(channelId);
+    const rumor = await bindToChannel(channelId, epoch)(await EditFactory.create(targetId, text));
+    await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
+  }
+
+  async deleteMessage(channelId: string, target: Rumor): Promise<void> {
+    this.requireChannelKey(channelId);
+    const epoch = this.channelEpoch(channelId);
+    // A Concord Rumor never carries a `sig`, so `setDeleteEvents`' `isEvent(event)`
+    // branch never fires for it and no "k" tag would be emitted. Pass only the id
+    // (the bare-string branch) and apply `ensureKTag` explicitly with the target's
+    // real kind on the awaited template before binding it to the channel.
+    const template = await DeleteFactory.fromEvents([target.id]);
+    const withKTag = { ...template, tags: ensureKTag(template.tags, target.kind) };
+    const rumor = await bindToChannel(channelId, epoch)(withKTag);
+    await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
+  }
+
+  // ---- admin actions ------------------------------------------------------
+  //
+  // Each of these is a CORD-04 edition: the version/hash chain, the entity
+  // coordinates, and the authority resolution all live in ConcordCommunityControl.
+  // They stay exposed here so an app never has to know which plane an action lands
+  // on — `kick` writes the guestbook, `ban` the control plane, and both read the
+  // same to a caller.
+
+  editMetadata(patch: Partial<CommunityMetadata>): Promise<void> {
+    return this.admin.editMetadata(patch);
+  }
+
+  /** Encrypt an image via the uploader and publish it as the icon or banner. */
+  setCommunityImage(which: "icon" | "banner", file: Blob): Promise<void> {
+    return this.admin.setCommunityImage(which, file);
+  }
+
+  removeCommunityImage(which: "icon" | "banner"): Promise<void> {
+    return this.admin.removeCommunityImage(which);
+  }
+
+  createChannel(name: string, options?: CreateChannelOptions): Promise<string> {
+    return this.admin.createChannel(name, options);
+  }
+
+  deleteChannel(channelId: string): Promise<void> {
+    return this.admin.deleteChannel(channelId);
+  }
+
+  /**
+   * Mint a Role (CORD-04 §2). A server-scoped role (the default) grants rank
+   * community-wide; a channel-scoped role (`{kind:"channel", channel_id}`) is the
+   * spec's private-channel membership marker — its grant-holders are the intended
+   * readership of that channel, kept in sync with key possession by the caller
+   * (deliver on grant via {@link grantChannelAccess}, rekey on removal via
+   * {@link rotateChannel}). A role mints no key, so this only records entitlement.
+   */
+  createRole(
+    name: string,
+    position: number,
+    permissions: bigint,
+    scope: RoleScope = { kind: "server" },
+  ): Promise<string> {
+    return this.admin.createRole(name, position, permissions, scope);
+  }
+
+  editRole(roleId: string, patch: Partial<Omit<Role, "role_id">>): Promise<void> {
+    return this.admin.editRole(roleId, patch);
+  }
+
+  /**
+   * Retire a Role (CORD-04). The role stays in {@link CommunityState.roles} flagged
+   * `deleted` — so it remains visible and compactable — but confers no permissions
+   * or rank, stripping its authority from every grant-holder. Reverse with
+   * `editRole(roleId, { deleted: false })`. Existing grants are left untouched.
+   */
+  deleteRole(roleId: string): Promise<void> {
+    return this.admin.deleteRole(roleId);
+  }
+
+  grantRoles(member: string, roleIds: string[]): Promise<void> {
+    return this.admin.grantRoles(member, roleIds);
+  }
+
+  /** Strip a member's roles (control plane) and publish the Kick (guestbook). */
+  async kick(member: string): Promise<void> {
+    // CORD-04/AUTH-05: kicking is acting on member — the caller must strictly
+    // outrank them, not merely hold KICK. Mirrors rotateChannel's exclude-loop
+    // outrank throw (:1039-1041), single target instead of a loop.
+    if (!this.canDo(PERM.KICK, this.standingOf(member).position))
+      throw new Error(`cannot kick ${member} — you do not outrank them or lack KICK`);
+    await this.admin.grantRoles(member, []);
+    const vac = await this.admin.vacFor(this.pubkey);
+    await this.publishToPlane({ plane: "guestbook" }, await KickFactory.create(member, vac), {});
+  }
+
+  ban(member: string): Promise<void> {
+    return this.admin.ban(member);
+  }
+
+  unban(member: string): Promise<void> {
+    return this.admin.unban(member);
+  }
+
+  /**
+   * Channel-scoped Rekey (CORD-06): rotate a private channel's key to sever the
+   * excluded members, delivering the new key only to `keep`. Requires
+   * `MANAGE_CHANNELS`. The new key is persisted into `material.channels` once the
+   * channel's sub-engine adopts the rotation.
+   */
+  async rotateChannel(channelId: string, opts: { keep: string[]; exclude?: string[] }): Promise<void> {
+    const channelKey = this.material.channels.find((c) => c.id === channelId);
+    if (!channelKey) throw new Error("not a private channel we hold a key for");
+    if (!this.canDo(PERM.MANAGE_CHANNELS)) throw new Error("need MANAGE_CHANNELS to rekey a channel");
+
+    // CORD-04: excluding a member is acting on them — the rotator must strictly
+    // outrank each one, not merely hold MANAGE_CHANNELS.
+    for (const target of opts.exclude ?? []) {
+      if (!this.canDo(PERM.MANAGE_CHANNELS, this.standingOf(target).position))
+        throw new Error(`cannot exclude ${target} from the channel — you do not outrank them`);
+    }
+
+    const excluded = new Set(opts.exclude ?? []);
+    const recipients = [...new Set([this.pubkey, ...opts.keep])].filter((pk) => !excluded.has(pk));
+    // CORD-04/D-08: cite our own Grant (undefined for the owner) so a receiver
+    // can vac-verify this channel rekey against its folded Roster.
+    const vac = await this.admin.vacFor(this.pubkey);
+    const plan = await buildChannelRekey(this.material, channelKey, this.signer, {
+      recipients,
+      self: this.pubkey,
+      vac,
+    });
+
+    const relays = this.transport();
+    this.publishLog("rotating channel=%s", channelId.slice(0, 8));
+    for (const wrap of plan.rekeyWraps)
+      await this.pool.publish(relays, wrap).catch((err) => {
+        this.publishLog("channel rekey publish failed: %s", (err as Error)?.message ?? err);
+        console.warn("channel rekey publish failed", err);
+      });
+
+    // Optimistically hand the rekey to the channel's sub-engine so it adopts the
+    // new key immediately (which persists it via onKeyChange); fall back to
+    // persisting directly if no sub-engine is running yet.
+    const engine = this.privateChannels.get(channelId);
+    if (engine) for (const wrap of plan.rekeyWraps) engine.ingest(wrap);
+    else this.persistChannelKey(plan.next);
+  }
+
+  async dissolve(): Promise<void> {
+    if (this.pubkey !== this.material.owner) throw new Error("only the owner can dissolve");
+    await this.publishToPlane({ plane: "dissolved" }, await DissolutionFactory.create(), { plaintext: true });
+  }
+
+  /** Publish our Leave and tear the community down. The manager tombstones the
+   *  membership in the Community List. */
+  async leave(): Promise<void> {
+    await this.publishToPlane({ plane: "guestbook" }, await JoinLeaveFactory.create("leave"), {});
+    this.dispose();
+  }
+
+  // ---- invites ------------------------------------------------------------
+
+  async createInvite(options: CreateInviteOptions): Promise<ConcordInviteLink> {
+    const token = newInviteToken();
+    const linkSk = generateSecretKey();
+    const linkPub = getPublicKey(linkSk);
+
+    const state = this.state$.value;
+    const bundle = buildInviteBundle(this.material, {
+      name: state.metadata?.name,
+      icon: state.metadata?.icon,
+      creator_npub: this.pubkey,
+      label: options.label,
+      expires_at: options.expiresAt,
+      channels: options.channels,
+    });
+
+    const template = await InviteBundleFactory.create(bundle, token);
+    const signed = finalizeEvent(template, linkSk);
+    this.eventStore.add(signed);
+    // D-05 leak surface (T-12.3-15): one shared local used to feed both a
+    // signed URL and a publish target was the dual-meaning local named in
+    // CONTEXT.md — split into two: `protocolRelays` (this community's own
+    // relay set) is the only thing the signed invite-link URL ever sees;
+    // `transportRelays` (the merged set) is where the bundle is actually
+    // published. Neither local is reassigned after binding.
+    const protocolRelays = this.relays();
+    const transportRelays = this.transport();
+    this.publishLog("publishing invite bundle link=%s", linkPub.slice(0, 8));
+    this.pool.publish(transportRelays, signed).catch((err) => {
+      this.publishLog("bundle publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("bundle publish failed", err);
+    });
+
+    // Register the link into the community (CORD-05 §5) so it counts as Public.
+    await this.admin.registerInviteLink(linkPub);
+
+    const invite: ConcordInviteLink = {
+      token: bytesToHex(token),
+      signerSk: bytesToHex(linkSk),
+      signerPubkey: linkPub,
+      communityId: this.communityId,
+      url: buildInviteLink(options.base, linkPub, token, protocolRelays),
+      label: options.label,
+      channels: options.channels,
+      createdAt: Math.floor(Date.now() / 1000),
+      expiresAt: options.expiresAt,
+      revoked: false,
+    };
+    await this.onInviteCreated?.(invite);
+    return invite;
+  }
+
+  /**
+   * Re-post the given live invite bundles behind their unchanged URLs (CORD-05 §2).
+   * Called after a Refounding: each bundle is rebuilt from the CURRENT material (the
+   * fresh community_root, root_epoch, and channel keys) and re-signed under the same
+   * `link_signer`, replacing the stale bundle at its coordinate (`d: ""`). The URL —
+   * whose naddr is the link_signer pubkey and whose token is unchanged — keeps
+   * opening, so a link shared once survives every rotation. Best-effort per link.
+   */
+  async refreshInviteBundles(links: ConcordInviteLink[]): Promise<void> {
+    const state = this.state$.value;
+    // This shared local feeds only the bundle publish (no URL builder call in
+    // this method), so — unlike createInvite's dual-meaning local — it becomes
+    // the transport local outright rather than needing a protocol/transport split.
+    const transportRelays = this.transport();
+    this.publishLog("refreshing %d invite bundle(s)", links.length);
+    for (const link of links) {
+      try {
+        const bundle = buildInviteBundle(this.material, {
+          name: state.metadata?.name,
+          icon: state.metadata?.icon,
+          creator_npub: this.pubkey,
+          label: link.label,
+          expires_at: link.expiresAt,
+          channels: link.channels,
+        });
+        const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
+        const signed = finalizeEvent(template, hexToBytes(link.signerSk));
+        this.eventStore.add(signed);
+        this.pool.publish(transportRelays, signed).catch((err) => {
+          this.publishLog("invite bundle refresh publish failed: %s", (err as Error)?.message ?? err);
+          console.warn("invite bundle refresh publish failed", err);
+        });
+      } catch (err) {
+        this.publishLog(
+          "invite refresh skipped for link=%s: %s",
+          link.signerPubkey.slice(0, 8),
+          (err as Error)?.message ?? err,
+        );
+        // NEVER log `link.token` — it is the 128-bit secret that keys the
+        // kind-33301 bundle (the only thing guarding `community_root`). The
+        // signer pubkey identifies the same link and is already public on relays.
+        console.warn(`invite refresh skipped for link ${link.signerPubkey}`, err);
+      }
+    }
+  }
+
+  async revokeInvite(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
+    this.publishLog("revoking invite link=%s", invite.signerPubkey.slice(0, 8));
+    const template = await InviteBundleFactory.revoke();
+    const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
+    this.eventStore.add(signed);
+    await this.pool.publish(this.transport(), signed).catch((err) => {
+      this.publishLog("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("bundle revocation publish failed", err);
+    });
+    await this.admin.unregisterInviteLink(invite.signerPubkey);
+
+    const revoked = { ...invite, revoked: true };
+    await this.onInviteRevoked?.(revoked);
+    return revoked;
+  }
+
+  /**
+   * Grant a member access to one or more private channels we hold (CORD-05 §6 /
+   * CORD-03: "delivered on grant"). Hands over each channel's CURRENT `(key, epoch)`
+   * — plus any held prior keys, so they read recent history — via a single Direct
+   * Invite gift-wrapped to `member`. This is the spec-correct way to ADD someone: no
+   * rotation and no epoch bump (rotations sever, and a {@link rotateChannel} can
+   * never onboard a new holder — its continuity check requires the prior key).
+   * The bundle carries only the requested channel keys (never the caller's other
+   * private channels), so an inviter can hand-pick an arbitrary subset. Requires
+   * `MANAGE_CHANNELS`. Publish is best-effort to the community relays, where the
+   * recipient's Direct-Invite watcher also listens.
+   */
+  async grantChannelAccess(channels: string | string[], member: string): Promise<void> {
+    const ids = [...new Set(Array.isArray(channels) ? channels : [channels])];
+    if (ids.length === 0) throw new Error("no channels to grant");
+    if (!this.canDo(PERM.MANAGE_CHANNELS)) throw new Error("need MANAGE_CHANNELS to grant channel access");
+
+    const state = this.state$.value;
+    const bundle: InviteBundle = buildInviteBundle(this.material, {
+      name: state.metadata?.name,
+      icon: state.metadata?.icon,
+      creator_npub: this.pubkey,
+      channels: ids,
+    });
+
+    const wrap = await DirectInviteFactory.create(bundle, member, this.signer);
+    this.eventStore.add(wrap);
+    this.publishLog("granting channel access channels=%d member=%s", ids.length, member.slice(0, 8));
+    await this.pool.publish(this.transport(), wrap).catch((err) => {
+      this.publishLog("channel grant publish failed: %s", (err as Error)?.message ?? err);
+      console.warn("channel grant publish failed", err);
+    });
+  }
+
+  // ---- CORD-06 refounding (rekey) -----------------------------------------
+
+  /**
+   * Rebuild the Control-Plane heads WITH their re-wrappable plaintext seals, for
+   * Refounding compaction (CORD-06 §2). The folded `CommunityState.heads` come
+   * from the RumorStore, which persists only the inner rumor — the seal is
+   * stripped (`decodedFromRumor`), so those heads carry no `seal` and
+   * `buildRefounding` would skip compaction entirely. The original seals survive
+   * in the wrap-level `eventStore`, so decode the control-plane wraps (current +
+   * every held epoch) back into full `DecodedEvent`s and re-fold to recover the
+   * current head set with seals intact.
+   */
+  private controlHeadsWithSeals(): DecodedEvent[] {
+    const decoded: DecodedEvent[] = [];
+    for (const [pk, info] of this.keys.planes) {
+      if (info.type !== "control") continue;
+      for (const wrap of this.eventStore.getByFilters([{ kinds: [GIFT_WRAP_KIND], authors: [pk] }])) {
+        const d = decodeWrapCached(wrap, info.convKey);
+        if (d) decoded.push(d);
+      }
+    }
+    return [...(foldControl(decoded, this.material).heads?.values() ?? [])];
+  }
+
+  async refound(opts: {
+    keep: string[];
+    exclude?: string[];
+    /**
+     * Per-private-channel keep lists (CORD-06 §3). ONLY the named channels are
+     * rotated, and each new channel key is delivered ONLY to its own `keep` set —
+     * pass a channel's actual membership, never the community-wide keep set, or a
+     * member who was never in the channel would be granted its key. Unnamed
+     * private channels are left untouched: the excluded retain their existing
+     * channel key until a separate {@link rotateChannel}.
+     */
+    channelRekeys?: Array<{ channelId: string; keep: string[] }>;
+  }): Promise<void> {
+    const state = this.state$.value;
+    if (!refoundAuthority(state)(this.pubkey)) throw new Error("need BAN or ownership to refound");
+
+    // CORD-04/CORD-06 §3: excluding a member is acting on them — the rotator must
+    // strictly outrank each excluded target, not merely hold BAN (mirrors
+    // rotateChannel's outrank loop). Throws before anything is built or published,
+    // so a failed check aborts the whole Refounding atomically — no partial rotation.
+    for (const target of opts.exclude ?? []) {
+      if (!this.canDo(PERM.BAN, this.standingOf(target).position))
+        throw new Error(`cannot exclude ${target} — you do not outrank them`);
+    }
+
+    const excluded = new Set(opts.exclude ?? []);
+    const recipients = [...new Set([this.pubkey, ...opts.keep])].filter((pk) => !excluded.has(pk));
+    // D-06: `protocolRelays` stays the protocol/counting set — the majority
+    // threshold and the ack attribution below both read ONLY this local, derived
+    // ONCE via `mergeRelaySets` (T-12.3-09-01/02) so a duplicate-by-normalization
+    // entry or an unparseable entry can never make the two halves disagree, and
+    // an unparseable entry can never throw instead of being dropped.
+    // `transportRelays` (the merged set) is where every wrap is actually
+    // published, so the split is visible in the diff rather than only in a
+    // comment.
+    const protocolRelays = mergeRelaySets(this.relays());
+    const transportRelays = this.transport();
+
+    // Bundle a channel Rekey ONLY for the explicitly-named private channels, each
+    // delivered to that channel's own membership (CORD-06 §3). Delivering to the
+    // community keep set would over-grant — a kept member who was never in a
+    // private channel would receive its key — so scoping is the caller's to supply.
+    const channelRekeys = (opts.channelRekeys ?? []).flatMap(({ channelId, keep }) => {
+      const channel = this.material.channels.find((c) => c.id === channelId);
+      if (!channel) return [];
+      const recips = [...new Set([this.pubkey, ...keep])].filter((pk) => !excluded.has(pk));
+      return [{ channel, recipients: recips }];
+    });
+
+    // CORD-04/D-08: cite our own Grant (undefined for the owner) so a receiver
+    // can vac-verify this Refounding (and any bundled channel rekeys) against
+    // its folded Roster.
+    const vac = await this.admin.vacFor(this.pubkey);
+    const plan = await buildRefounding(this.keys, this.signer, {
+      recipients,
+      self: this.pubkey,
+      heads: this.controlHeadsWithSeals(),
+      channels: state.channels,
+      channelRekeys,
+      vac,
+    });
+
+    // D-09/D-11/ROTATE-09 (T-08-06): publish acks are the only evidence anyone
+    // else can discover the new epoch, so each root-roll and channel-rekey wrap
+    // must independently clear strict majority of the CONFIGURED relay set
+    // (`protocolRelays.length`, not the number of responses received — a relay
+    // that never answers counts against the denominator) before
+    // compaction/snapshot publish or adoption. A sub-majority wrap aborts the
+    // whole Refounding atomically, mirroring D-01's abort-before-further-publish
+    // shape — no unilateral roll-forward onto an undiscoverable epoch.
+    //
+    // D-06/T-12.3-17/T-12.3-18/T-12.3-09: publish targets now include
+    // transport-only extras (`transportRelays`), but the denominator above and
+    // the ack attribution below remain the normalized, deduplicated protocol set
+    // (`protocolRelays`) alone — an always-acking app-local extra must never be
+    // able to satisfy the discoverability quorum by itself, and it must never be
+    // able to inflate the denominator either. `protocolRelays` is bit-for-bit
+    // identical to the pre-phase raw `this.relays()` length whenever the
+    // configured protocol relay list is already well-formed and duplicate-free;
+    // it fails soft (drops the offending entry) rather than crashing when it is
+    // not (T-12.3-09-01/02). Acks are attributed to the protocol set with the
+    // same normalized-URL tolerance `relay-auth.ts`'s status lookup already
+    // applies, since a relay's ack `from` may or may not come back normalized,
+    // may be absent, or may be malformed — none of which may ever surface as a
+    // parse error in place of the intended majority-abort error (T-12.3-09-03).
+    const majorityThreshold = Math.ceil((protocolRelays.length + 1) / 2);
+    const protocolRelaySet = new Set(protocolRelays);
+    /** Tolerant ack-origin normalization: returns undefined for an absent or
+     *  unparseable `from`, swallowing the parse failure, mirroring the
+     *  established tolerance shape in relay-auth.ts's `lookupStatus`. */
+    const normalizeAckOrigin = (from: string | undefined): string | undefined => {
+      if (!from) return undefined;
+      try {
+        return normalizeRelayUrl(from);
+      } catch {
+        return undefined;
+      }
+    };
+    const requireMajority = async (wrap: NostrEvent, what: string) => {
+      const responses = await this.pool.publish(transportRelays, wrap);
+      const okCount = responses.filter((r) => {
+        if (r.ok !== true) return false;
+        const origin = normalizeAckOrigin(r.from);
+        return origin !== undefined && protocolRelaySet.has(origin);
+      }).length;
+      if (okCount < majorityThreshold)
+        throw new Error(`refounding aborted: ${what} not confirmed by a majority of relays`);
+    };
+
+    // Rekey blobs (root + channels) gate convergence, so land them first.
+    for (const wrap of plan.rekeyWraps) await requireMajority(wrap, "root roll");
+    for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
+
+    this.publishLog(
+      "refounding publish targets=%d protocol=%d",
+      transportRelays.length,
+      protocolRelays.length,
+    );
+
+    // Only after every gated wrap clears majority: compaction/snapshot + adopt.
+    for (const wrap of plan.compactionWraps) this.pool.publish(transportRelays, wrap).catch(() => {});
+    for (const wrap of plan.snapshotWraps) this.pool.publish(transportRelays, wrap).catch(() => {});
+
+    this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
+    this.adoptRefounding(plan.next);
+  }
+
+  // ---- publishing ---------------------------------------------------------
+
+  /** Seal + wrap a rumor onto a plane, echo it locally, and publish it. For a
+   *  channel prefer {@link sendEvent}, which appends the CORD-03 binding; this is
+   *  the raw plane path used for control/guestbook seeding (genesis, Join). */
+  async publishToPlane(
+    target: WrapTarget,
+    rumor: { kind: number; content: string; tags: string[][]; created_at?: number },
+    opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
+  ): Promise<string> {
+    const { wrap, rumorId } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
+    // Optimistic local echo first, so the UI updates before relays ack.
+    if (!opts.ephemeral) this.onWrap(wrap);
+    this.pool.publish(this.transport(), wrap).catch((err) => {
+      this.publishLog("publish failed plane=%s: %s", target.plane, (err as Error)?.message ?? err);
+      console.warn("publish failed", err);
+    });
+    return rumorId;
+  }
+
+  // ---- permissions --------------------------------------------------------
+  //
+  // Snapshot and reactive forms of the same checks. The snapshot form is correct in
+  // an event handler (an answer at click-time) and is what the engine's own guards
+  // use; a render path wants the `$` form, because a role grant that changes the
+  // answer has to re-render the button it gates.
+
+  /** A member's resolved authority — snapshot. */
+  standingOf(member: string): Standing {
+    return this.admin.standingOf(member);
+  }
+
+  /** A member's resolved authority, re-emitted whenever roles or grants move. */
+  standing$(member: string): Observable<Standing> {
+    return this.state$.pipe(
+      map(() => this.standingOf(member)),
+      distinctUntilChanged(sameStanding),
+    );
+  }
+
+  /** Whether the logged-in user holds `perm` (and outranks `targetPosition`) — snapshot. */
+  canDo(perm: bigint, targetPosition = 0xffffffff): boolean {
+    return this.admin.canDo(perm, targetPosition);
+  }
+
+  /** Reactive {@link canDo} — prefer this in a render path. */
+  can$(perm: bigint, targetPosition = 0xffffffff): Observable<boolean> {
+    return this.state$.pipe(
+      map(() => this.canDo(perm, targetPosition)),
+      distinctUntilChanged(),
+    );
+  }
+
+  /**
+   * Whether the logged-in user may act on `member` with `perm` — reactive. Holding
+   * the bit isn't enough: CORD-04 requires strictly outranking the target, and you
+   * can never act on yourself (you never outrank yourself). Both halves are folded
+   * in here so a caller can't pair `canDo` with a stale `standingOf` position or
+   * forget the self-check.
+   */
+  canModerate$(member: string, perm: bigint): Observable<boolean> {
+    return this.state$.pipe(
+      map(() => member !== this.pubkey && this.canDo(perm, this.standingOf(member).position)),
+      distinctUntilChanged(),
+    );
+  }
+}

@@ -9,6 +9,7 @@ import {
   UnlockedHiddenContent,
   unlockHiddenContent,
 } from "applesauce-core/helpers/hidden-content";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 
 import { TWalletMethod } from "./methods.js";
 
@@ -71,8 +72,8 @@ export function getWalletResponse<Method extends TWalletMethod = TWalletMethod>(
   if (!content) return undefined;
   const parsed = JSON.parse(content) as Method["response"];
 
-  // Save the parsed content
-  Reflect.set(response, WalletResponseSymbol, parsed);
+  // Save the parsed content (identity memo, non-enumerable so a spread drops it)
+  setCachedValue(response, WalletResponseSymbol, parsed);
   notifyEventUpdate(response);
 
   return parsed;

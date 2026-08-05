@@ -1,4 +1,5 @@
 import { getOrComputeCachedValue, notifyEventUpdate } from "applesauce-core/helpers";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { getTagValue } from "applesauce-core/helpers/event";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
@@ -86,13 +87,18 @@ export function getHiddenProviders<T extends NostrEvent>(event: T): TrustedProvi
   if (!tags) return undefined;
 
   const providers = tags.map(parseProviderTag).filter((p): p is TrustedProvider => p !== undefined);
-  Reflect.set(event, TrustedProvidersHiddenSymbol, providers);
+  // Derived from the event's own hidden tags — identity memo (see applesauce-core's cache.ts
+  // taxonomy). Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it
+  // instead of carrying a stale derivation onto a copy whose hidden tags differ.
+  setCachedValue(event, TrustedProvidersHiddenSymbol, providers);
   return providers;
 }
 
 /** Checks if the hidden providers are unlocked */
 export function isHiddenProvidersUnlocked<T extends NostrEvent>(event: T): event is T & UnlockedTrustedProviderList {
-  return TrustedProvidersHiddenSymbol in event || isHiddenTagsUnlocked(event);
+  return (
+    isHiddenTagsUnlocked(event) && (TrustedProvidersHiddenSymbol in event || getHiddenProviders(event) !== undefined)
+  );
 }
 
 /** Unlocks the hidden providers in a trusted provider list event */

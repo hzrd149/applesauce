@@ -1,4 +1,4 @@
-import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
+import { getOrComputeCachedValue, setCachedValue } from "applesauce-core/helpers/cache";
 import { kinds, KnownEvent, NostrEvent, notifyEventUpdate } from "applesauce-core/helpers/event";
 import { getIndexableTags } from "applesauce-core/helpers/filter";
 import { isETag, isPTag, isTTag } from "applesauce-core/helpers/tags";
@@ -67,8 +67,7 @@ export function getPublicMutedThings(mute: NostrEvent): MutedThings {
 
 /** Checks if the hidden mutes are unlocked */
 export function isHiddenMutesUnlocked<T extends NostrEvent>(mute: T): mute is T & UnlockedMutes {
-  // No need for try catch or proactivly parsing here since it only depends on hidden tags
-  return MuteHiddenSymbol in mute || isHiddenTagsUnlocked(mute);
+  return isHiddenTagsUnlocked(mute) && (MuteHiddenSymbol in mute || getHiddenMutedThings(mute) !== undefined);
 }
 
 /** Returns the hidden muted content if the event is unlocked */
@@ -84,8 +83,10 @@ export function getHiddenMutedThings<T extends NostrEvent>(mute: T): MutedThings
   // parse muted tags
   const mutes = parseMutedTags(tags);
 
-  // set cached value
-  Reflect.set(mute, MuteHiddenSymbol, mutes);
+  // Derived from the event's own hidden tags — identity memo (see applesauce-core's cache.ts
+  // taxonomy). Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it
+  // instead of carrying a stale derivation onto a copy whose hidden tags differ.
+  setCachedValue(mute, MuteHiddenSymbol, mutes);
 
   return mutes;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isSafeRelayURL, mergeRelaySets } from "../relays.js";
+import { FakeUser } from "../../__tests__/fixtures.js";
+import { addSeenRelay, isSafeRelayURL, mergeRelaySets, SeenRelaysSymbol } from "../relays.js";
 
 describe("isSafeRelayURL", () => {
   it("should correctly filter URLs", () => {
@@ -172,5 +173,31 @@ describe("mergeRelaySets", () => {
     for (let i = 1; i <= 8; i++) {
       expect(result).toContain(`wss://relay${i}.com/`);
     }
+  });
+});
+
+describe("addSeenRelay", () => {
+  it("writes SeenRelaysSymbol non-enumerable and a plain spread copy drops it", () => {
+    const user = new FakeUser();
+    const event = user.note("Test");
+
+    addSeenRelay(event, "wss://relay.damus.io/");
+
+    const descriptor = Object.getOwnPropertyDescriptor(event, SeenRelaysSymbol);
+    expect(descriptor?.enumerable).toBe(false);
+
+    const copy = { ...event };
+    expect(Object.prototype.hasOwnProperty.call(copy, SeenRelaysSymbol)).toBe(false);
+  });
+
+  it("still accumulates additional relays into the same Set on repeated calls", () => {
+    const user = new FakeUser();
+    const event = user.note("Test");
+
+    const first = addSeenRelay(event, "wss://relay.damus.io/");
+    const second = addSeenRelay(event, "wss://nostrue.com/");
+
+    expect(first).toBe(second);
+    expect(Array.from(second)).toEqual(["wss://relay.damus.io/", "wss://nostrue.com/"]);
   });
 });

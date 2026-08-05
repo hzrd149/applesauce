@@ -1,6 +1,5 @@
 /**
- * Zap modal example showing how to fetch a lightning invoice and display it as a QR code
- * @description Renders a note and lets you zap it via a modal with amount presets, lightning address lookup, QR invoice, and zap receipt detection
+ * Zap a note through a modal with amount presets and a QR invoice.
  * @tags nip-57, zap, lightning, modal, qrcode, invoice
  * @related zap/timeline, zap/graph, nwc/simple-wallet
  */
@@ -28,7 +27,7 @@ import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { SerializedWalletConnect, WalletConnect } from "applesauce-wallet-connect";
 import { ZapIcon } from "lucide-react";
-import { generateSecretKey } from "nostr-tools";
+import { generateSecretKey } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map, startWith, Subscription } from "rxjs";
 import QRCode from "../../components/qr-code";

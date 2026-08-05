@@ -7,9 +7,17 @@ import {
   isRegularKind,
   isReplaceableKind,
 } from "nostr-tools/kinds";
-import { EventTemplate, NostrEvent, UnsignedEvent, VerifiedEvent, verifiedSymbol, verifyEvent } from "nostr-tools/pure";
+import {
+  EventTemplate,
+  getEventHash,
+  NostrEvent,
+  UnsignedEvent,
+  VerifiedEvent,
+  verifiedSymbol,
+  verifyEvent,
+} from "nostr-tools/pure";
 import { IAsyncEventStore, IEventStore } from "../event-store/interface.js";
-import { getOrComputeCachedValue } from "./cache.js";
+import { getOrComputeCachedValue, setCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
 export {
@@ -41,12 +49,48 @@ export type KnownEventTemplate<K extends number> = Omit<EventTemplate, "kind"> &
 /** An unsigned event with a known kind. used in event factories */
 export type KnownUnsignedEvent<K extends number> = Omit<UnsignedEvent, "kind"> & { kind: K };
 
+/** The innermost unsigned event that has a computed id but no signature (e.g. a NIP-59 rumor) */
+export type Rumor = UnsignedEvent & { id: string };
+
+/**
+ * The structural fields common to any event that can live in a store or be cast — a signed
+ * {@link NostrEvent}, a {@link Rumor}, and everything in between — deliberately excluding `sig`.
+ * Used as the generic bound for the cast subsystem (and, in future, the generic event store).
+ */
+export type StoreEvent = {
+  id: string;
+  kind: number;
+  pubkey: string;
+  created_at: number;
+  content: string;
+  tags: string[][];
+};
+
+/** Verifies a NIP-59 rumor by recomputing its event hash and comparing it to `rumor.id` */
+export function verifyRumor(rumor: Rumor): boolean {
+  return getEventHash(rumor) === rumor.id;
+}
+
 /** A symbol on an event that marks which event store its part of */
 export const EventStoreSymbol = Symbol.for("event-store");
 export const EventUIDSymbol = Symbol.for("event-uid");
 export const ReplaceableAddressSymbol = Symbol.for("replaceable-address");
 export const FromCacheSymbol = Symbol.for("from-cache");
 export const ReplaceableIdentifierSymbol = Symbol.for("replaceable-identifier");
+
+/** Checks if an object is a Rumor ( unsigned event with a known id ) */
+export function isRumor(event: any): event is Rumor {
+  return (
+    event.id?.length === 64 &&
+    event.sig === undefined && // Missing signature ( unsigned )
+    typeof event.pubkey === "string" &&
+    event.pubkey.length === 64 &&
+    typeof event.content === "string" &&
+    Array.isArray(event.tags) &&
+    typeof event.created_at === "number" &&
+    event.created_at > 0
+  );
+}
 
 /**
  * Checks if an object is a nostr event
@@ -81,20 +125,24 @@ export function isReplaceable(kind: number) {
  * For replaceable events this is ( event.kind + ":" + event.pubkey + ":" )
  * For parametrized replaceable events this is ( event.kind + ":" + event.pubkey + ":" + event.tags.d )
  */
-export function getEventUID(event: NostrEvent) {
+export function getEventUID<E extends StoreEvent = NostrEvent>(event: E) {
   let uid = Reflect.get(event, EventUIDSymbol) as string | undefined;
 
   if (!uid) {
     if (isReplaceable(event.kind)) uid = getReplaceableAddress(event) ?? event.id;
     else uid = event.id;
-    Reflect.set(event, EventUIDSymbol, uid);
+    // Identity memo per cache.ts's one rule: written non-enumerable via setCachedValue, so a copy
+    // with different kind/pubkey/tags does not inherit this stale UID — it recomputes on next
+    // access instead. D-12: Phase 5's hot-path deferral for this site is intentionally lifted
+    // here — "one rule" is exceptionless.
+    setCachedValue(event, EventUIDSymbol, uid);
   }
 
   return uid;
 }
 
 /** Returns the replaceable event address for an addressable event */
-export function getReplaceableAddress(event: NostrEvent): string | null {
+export function getReplaceableAddress<E extends StoreEvent = NostrEvent>(event: E): string | null {
   if (!isReplaceable(event.kind)) return null;
 
   return getOrComputeCachedValue(event, ReplaceableAddressSymbol, () => {
@@ -128,13 +176,16 @@ export function verifyWrappedEvent(event: NostrEvent): event is VerifiedEvent {
 
 /** Sets events verified flag without checking anything */
 export function fakeVerifyEvent(event: NostrEvent): event is VerifiedEvent {
-  event[verifiedSymbol] = true;
+  setCachedValue(event, verifiedSymbol, true);
   return true;
 }
 
 /** Marks an event as being from a cache */
 export function markFromCache(event: NostrEvent) {
-  Reflect.set(event, FromCacheSymbol, true);
+  // FromCacheSymbol is propagated across duplicate events via the event store's merge list
+  // (EventStore.copySymbolsToDuplicateEvent), not via object spread — accumulated state (see
+  // cache.ts taxonomy).
+  setCachedValue(event, FromCacheSymbol, true);
 }
 
 /** Returns if an event was from a cache */
@@ -156,7 +207,7 @@ export function notifyEventUpdate(event: any) {
 }
 
 /** Returns the replaceable identifier for a replaceable event */
-export function getReplaceableIdentifier(event: NostrEvent): string {
+export function getReplaceableIdentifier<E extends StoreEvent = NostrEvent>(event: E): string {
   return getOrComputeCachedValue(event, ReplaceableIdentifierSymbol, () => {
     return event.tags.find((t) => t[0] === "d")?.[1] ?? "";
   });
@@ -170,15 +221,12 @@ export function isProtectedEvent(event: NostrEvent): boolean {
 /**
  * Returns the second index ( tag[1] ) of the first tag that matches the name
  */
-export function getTagValue<T extends { kind: number; tags: string[][]; content: string }>(
-  event: T,
-  name: string,
-): string | undefined {
+export function getTagValue<T extends { kind: number; tags: string[][] }>(event: T, name: string): string | undefined {
   return event.tags.find((t) => t[0] === name)?.[1];
 }
 
 /** Checks if an event has a public name / value tag*/
-export function hasNameValueTag<T extends { kind: number; tags: string[][]; content: string }>(
+export function hasNameValueTag<T extends { kind: number; tags: string[][] }>(
   event: T,
   name: string,
   value: string,

@@ -1,4 +1,5 @@
 export * from "./article.js";
+export * from "./forum-thread.js";
 export * from "./bookmarks.js";
 export * from "./cast.js";
 export * from "./code-snippet.js";

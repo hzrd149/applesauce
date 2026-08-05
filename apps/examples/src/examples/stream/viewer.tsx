@@ -12,7 +12,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { kinds } from "nostr-tools";
+import { kinds } from "applesauce-core/helpers";
 import { memo, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import ReactPlayer from "react-player";

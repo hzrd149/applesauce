@@ -1,5 +1,6 @@
 import { verifyEvent as coreVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
 import { Observable, Subject, Subscription } from "rxjs";
+import { setCachedValue } from "../helpers/cache.js";
 import { EncryptedContentSymbol } from "../helpers/encrypted-content.js";
 import {
   EventStoreSymbol,
@@ -9,6 +10,7 @@ import {
   isReplaceable,
   kinds,
   NostrEvent,
+  StoreEvent,
 } from "../helpers/event.js";
 import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { Filter } from "../helpers/filter.js";
@@ -34,7 +36,16 @@ import {
   IExpirationManager,
 } from "./interface.js";
 
-export type EventStoreOptions = {
+/**
+ * Whether a cached symbol may propagate onto a DIFFERENT version of the same replaceable event
+ * ("any-duplicate": `source.id` may differ from `dest.id`, e.g. a losing version merging onto the
+ * stored NIP-01 winner) or only onto the exact same event instance/re-delivery ("same-id-only":
+ * `source.id === dest.id`). See {@link EventStore.copySymbolsToDuplicateEvent} for the per-symbol
+ * classification this type enforces.
+ */
+type DuplicateSymbolDisposition = "any-duplicate" | "same-id-only";
+
+export type EventStoreOptions<E extends StoreEvent = NostrEvent> = {
   /** Keep deleted events in the store */
   keepDeleted?: boolean;
   /** Keep expired events in the store */
@@ -42,27 +53,34 @@ export type EventStoreOptions = {
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions?: boolean;
   /** The database to use for storing events */
-  database?: IEventDatabase;
+  database?: IEventDatabase<E>;
   /** Custom {@link IDeleteManager} implementation */
-  deleteManager?: IDeleteManager;
+  deleteManager?: IDeleteManager<E>;
   /** Custom {@link IExpirationManager} implementation */
-  expirationManager?: IExpirationManager;
+  expirationManager?: IExpirationManager<E>;
   /** The method used to verify events */
-  verifyEvent?: (event: NostrEvent) => boolean;
+  verifyEvent?: (event: E) => boolean;
 };
 
 /** A wrapper around an event database that handles replaceable events, deletes, and models */
-export class EventStore extends EventModels implements IEventStore {
-  database: IEventDatabase;
+// Gate-driven fix (Task 2, full-workspace build): EventModels' own TStore default (the
+// IEventStore<E> | IAsyncEventStore<E> union) is deliberately kept here — pinning TStore to the
+// narrower IEventStore<E> alone breaks every downstream consumer that references bare
+// EventModels<E>/CastRefEventStore<E> (e.g. applesauce-wallet's castUser/ActionRunner call
+// sites), since those compose against EventModels' own union default. Letting TStore default
+// (rather than narrowing it) preserves that pre-existing compatibility while still closing the
+// D-02 seam (EventStore<E>'s subscription methods are E-typed regardless of TStore's shape).
+export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E> implements IEventStore<E> {
+  database: IEventDatabase<E>;
 
   /** Optional memory database for ensuring single event instances */
-  memory: EventMemory;
+  memory: EventMemory<E>;
 
   /** Manager for handling event deletions with authorization */
-  private deletes: IDeleteManager;
+  private deletes: IDeleteManager<E>;
 
   /** Manager for handling event expirations */
-  private expiration: IExpirationManager;
+  private expiration: IExpirationManager<E>;
 
   /** Enable this to keep old versions of replaceable events */
   keepOldVersions = false;
@@ -74,15 +92,18 @@ export class EventStore extends EventModels implements IEventStore {
   keepDeleted = false;
 
   /** The method used to verify events */
-  private _verifyEventMethod?: (event: NostrEvent) => boolean = coreVerifyEvent;
+  // nostr-tools' verifyEvent is hard-typed to NostrEvent; this bridge re-types the default
+  // verifier for the store's generic E (it is exactly nostr-tools' verifyEvent at the
+  // NostrEvent default, per D-04).
+  private _verifyEventMethod?: (event: E) => boolean = coreVerifyEvent as unknown as (event: E) => boolean;
 
   /** Get the method used to verify events */
-  get verifyEvent(): undefined | ((event: NostrEvent) => boolean) {
+  get verifyEvent(): undefined | ((event: E) => boolean) {
     return this._verifyEventMethod;
   }
 
   /** Sets the method used to verify events */
-  set verifyEvent(method: undefined | ((event: NostrEvent) => boolean)) {
+  set verifyEvent(method: undefined | ((event: E) => boolean)) {
     this._verifyEventMethod = method;
 
     if (method === undefined)
@@ -90,37 +111,41 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** A stream of new events added to the store */
-  insert$ = new Subject<NostrEvent>();
+  insert$ = new Subject<E>();
 
   /** A stream of events that have been updated (Warning: this is a very noisy stream, use with caution) */
-  update$ = new Subject<NostrEvent>();
+  update$ = new Subject<E>();
 
   /** A stream of events that have been removed */
-  remove$ = new Subject<NostrEvent>();
+  remove$ = new Subject<E>();
 
   /** A method that will be called when an event isn't found in the store */
   eventLoader?: (
     pointer: EventPointer | AddressPointer | AddressPointerWithoutD,
-  ) => Observable<NostrEvent> | Promise<NostrEvent | undefined>;
+  ) => Observable<E> | Promise<E | undefined>;
 
   /** Internal subscriptions (delete + expiration managers) torn down on dispose */
   private internalSubscriptions = new Subscription();
 
-  constructor(options?: EventStoreOptions) {
+  constructor(options?: EventStoreOptions<E>) {
     super();
     if (options?.database) {
       this.database = options.database;
-      this.memory = new EventMemory();
+      this.memory = new EventMemory<E>();
     } else {
       // If no database is provided, its the same as having a memory database
-      this.database = this.memory = new EventMemory();
+      this.database = this.memory = new EventMemory<E>();
     }
 
     // Set options if provided
     if (options?.keepDeleted !== undefined) this.keepDeleted = options.keepDeleted;
     if (options?.keepExpired !== undefined) this.keepExpired = options.keepExpired;
     if (options?.keepOldVersions !== undefined) this.keepOldVersions = options.keepOldVersions;
-    if (options?.verifyEvent) this.verifyEvent = options.verifyEvent;
+
+    // CORE-03 fix — the one intentional runtime change in this phase: honor an explicit
+    // `verifyEvent: undefined` to disable verification, while still routing through the
+    // setter so the D-01 console.warn fires.
+    if (options && "verifyEvent" in options) this.verifyEvent = options.verifyEvent;
 
     // Use provided delete manager or create a default one
     this.deletes = options?.deleteManager ?? new DeleteManager();
@@ -136,9 +161,9 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** A method to add all events to memory to ensure there is only ever a single instance of an event */
-  private mapToMemory(event: NostrEvent): NostrEvent;
-  private mapToMemory(event: NostrEvent | undefined): NostrEvent | undefined;
-  private mapToMemory(event: NostrEvent | undefined): NostrEvent | undefined {
+  private mapToMemory(event: E): E;
+  private mapToMemory(event: E | undefined): E | undefined;
+  private mapToMemory(event: E | undefined): E | undefined {
     if (event === undefined) return undefined;
     if (!this.memory) return event;
     return this.memory.add(event);
@@ -177,31 +202,64 @@ export class EventStore extends EventModels implements IEventStore {
     this.remove(id);
   }
 
-  /** Copies important metadata from and identical event to another */
-  static copySymbolsToDuplicateEvent(source: NostrEvent, dest: NostrEvent) {
+  /** Copies important metadata from one event to a duplicate/replaceable-history counterpart */
+  static copySymbolsToDuplicateEvent<E extends StoreEvent = NostrEvent>(source: E, dest: E) {
     if (source.kind !== dest.kind) throw new Error("Source and destination events must have the same kind");
     if (isRegularKind(source.kind) && source.id !== dest.id)
       throw new Error("Source and destination events must have the same ID");
     if (
       isReplaceable(source.kind) &&
-      source.pubkey !== dest.pubkey &&
-      getReplaceableIdentifier(source) !== getReplaceableIdentifier(dest)
+      (source.pubkey !== dest.pubkey || getReplaceableIdentifier(source) !== getReplaceableIdentifier(dest))
     )
       throw new Error("Source and destination events must have the same pubkey and replaceable identifier");
 
     let changed = false;
 
-    // Merge seen relays
+    // Merge seen relays. Deliberately unconditional (crosses version boundaries even when
+    // source.id !== dest.id): this is the same provenance class as FromCacheSymbol below (not a
+    // security verdict, not a claim about `content`), it merges element-wise rather than through
+    // the presence-gated loop below, and narrowing it is a separate decision this fix does not
+    // make.
     const relays = getSeenRelays(source);
     if (relays) {
       for (const relay of relays) addSeenRelay(dest, relay);
       changed = true;
     }
 
-    const symbols = [FromCacheSymbol, verifiedSymbol, EncryptedContentSymbol];
-    for (const symbol of symbols) {
+    // A replaceable source/dest pair may be DIFFERENT versions of the same address (different
+    // id/content/created_at/sig). Each symbol below declares whether it may still propagate
+    // across that version boundary ("any-duplicate") or only merges when source and dest are the
+    // exact same event ("same-id-only", source.id === dest.id). This list is the ONLY place a
+    // symbol's disposition is decided; the tuple shape (not a bare symbol) makes adding one
+    // without a disposition a compile error, so a future symbol cannot inherit "copy always" by
+    // silent omission. This is exhaustive only over the symbols listed here, not over "all
+    // symbols that could ever exist" — a keyed/mapped-table form (as used elsewhere for `unique
+    // symbol` fields) cannot enforce that here, since FromCacheSymbol/EncryptedContentSymbol are
+    // plain `symbol` (Symbol.for(...)), not `unique symbol`.
+    //
+    //   - FromCacheSymbol: "any-duplicate" (unchanged behavior). Delivery provenance, not
+    //     payload — records only that SOME version of this replaceable address reached the
+    //     process from a local cache rather than a relay, and is read only for loader/backfill
+    //     bookkeeping, never as a security verdict or a claim about `content`. Narrowing it would
+    //     change existing loader behavior for no correctness gain.
+    //   - verifiedSymbol: "same-id-only". A verdict over one specific id/pubkey/sig triple.
+    //     Copying it across versions is worse than merely wrong: nostr-tools' verifyEvent
+    //     short-circuits on this memo before recomputing, so a copied `false` would make a
+    //     genuinely valid event read as invalid, and a copied `true` would suppress verification
+    //     of bytes nobody actually checked.
+    //   - EncryptedContentSymbol: "same-id-only". The decrypted plaintext of one specific
+    //     `content` string. A different version has different `content`, so the memo would simply
+    //     be the wrong answer for it.
+    const symbols: readonly (readonly [symbol, DuplicateSymbolDisposition])[] = [
+      [FromCacheSymbol, "any-duplicate"],
+      [verifiedSymbol, "same-id-only"],
+      [EncryptedContentSymbol, "same-id-only"],
+    ];
+    const sameVersion = source.id === dest.id;
+    for (const [symbol, disposition] of symbols) {
+      if (disposition === "same-id-only" && !sameVersion) continue;
       if (symbol in source && !(symbol in dest)) {
-        Reflect.set(dest, symbol, Reflect.get(source, symbol));
+        setCachedValue(dest, symbol, Reflect.get(source, symbol));
         changed = true;
       }
     }
@@ -213,7 +271,7 @@ export class EventStore extends EventModels implements IEventStore {
    * Adds an event to the store and update subscriptions
    * @returns The existing event or the event that was added, if it was ignored returns null
    */
-  add(event: NostrEvent, fromRelay?: string): NostrEvent | null {
+  add(event: E, fromRelay?: string): E | null {
     // Handle delete events differently
     if (event.kind === kinds.EventDeletion) {
       this.deletes.add(event);
@@ -273,8 +331,11 @@ export class EventStore extends EventModels implements IEventStore {
 
     // If the event is the same as the inserted event, its a new event
     if (inserted === event) {
-      // Set the event store on the event
-      Reflect.set(inserted, EventStoreSymbol, this);
+      // Set the event store on the event. EventStoreSymbol is deliberately EXCLUDED from
+      // copySymbolsToDuplicateEvent's merge list: that function's source is the incoming
+      // duplicate (discarded) and dest is the stored event, so exclusion protects the stored
+      // event from acquiring the incoming duplicate's store reference (cache.ts taxonomy).
+      setCachedValue(inserted, EventStoreSymbol, this);
 
       // Emit insert$ signal
       this.insert$.next(inserted);
@@ -310,7 +371,7 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Removes an event from the store and updates subscriptions */
-  remove(event: string | NostrEvent): boolean {
+  remove(event: string | E): boolean {
     const eventId = typeof event === "string" ? event : event.id;
     let instance = this.memory.getEvent(eventId);
 
@@ -355,7 +416,7 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Add an event to the store and notifies all subscribes it has updated */
-  update(event: NostrEvent): boolean {
+  update(event: E): boolean {
     // Map the event to the current instance in the database
     const e = this.database.add(event);
     if (!e) return false;
@@ -376,7 +437,7 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Get an event by id from the store */
-  getEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): NostrEvent | undefined {
+  getEvent(id: string | EventPointer | AddressPointer | AddressPointerWithoutD): E | undefined {
     // Get the event from memory first, then from the database
     if (typeof id === "string") return this.memory.getEvent(id) ?? this.mapToMemory(this.database.getEvent(id));
     // If its a pointer, use the advanced get event method to resolve
@@ -391,7 +452,7 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Gets the latest version of a replaceable event */
-  getReplaceable(kind: number, pubkey: string, identifier?: string): NostrEvent | undefined {
+  getReplaceable(kind: number, pubkey: string, identifier?: string): E | undefined {
     // Get the event from memory first, then from the database
     return (
       this.memory.getReplaceable(kind, pubkey, identifier) ??
@@ -400,7 +461,7 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Returns all versions of a replaceable event */
-  getReplaceableHistory(kind: number, pubkey: string, identifier?: string): NostrEvent[] | undefined {
+  getReplaceableHistory(kind: number, pubkey: string, identifier?: string): E[] | undefined {
     // Get the events from memory first, then from the database
     return (
       this.memory.getReplaceableHistory(kind, pubkey, identifier) ??
@@ -409,7 +470,7 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Get all events matching a filter */
-  getByFilters(filters: Filter | Filter[]): NostrEvent[] {
+  getByFilters(filters: Filter | Filter[]): E[] {
     // NOTE: no way to read from memory since memory won't have the full set of events
     const events = this.database.getByFilters(filters);
     // Map events to memory if available for better performance
@@ -418,34 +479,34 @@ export class EventStore extends EventModels implements IEventStore {
   }
 
   /** Returns a timeline of events that match filters */
-  getTimeline(filters: Filter | Filter[]): NostrEvent[] {
+  getTimeline(filters: Filter | Filter[]): E[] {
     const events = this.database.getTimeline(filters);
     if (this.memory) return events.map((e) => this.mapToMemory(e));
     else return events;
   }
 
   /** Passthrough method for the database.touch */
-  touch(event: NostrEvent) {
+  touch(event: E) {
     return this.memory.touch(event);
   }
   /** Increments the claim count on the event and touches it */
-  claim(event: NostrEvent): void {
+  claim(event: E): void {
     return this.memory.claim(event);
   }
   /** Checks if an event is claimed by anything */
-  isClaimed(event: NostrEvent): boolean {
+  isClaimed(event: E): boolean {
     return this.memory.isClaimed(event) ?? false;
   }
   /** Decrements the claim count on an event */
-  removeClaim(event: NostrEvent): void {
+  removeClaim(event: E): void {
     return this.memory.removeClaim(event);
   }
   /** Removes all claims on an event */
-  clearClaim(event: NostrEvent): void {
+  clearClaim(event: E): void {
     return this.memory.clearClaim(event);
   }
   /** Pass through method for the database.unclaimed */
-  unclaimed(): Generator<NostrEvent> {
+  unclaimed(): Generator<E> {
     return this.memory.unclaimed() || (function* () {})();
   }
   /** Removes any event that is not being used by a subscription */

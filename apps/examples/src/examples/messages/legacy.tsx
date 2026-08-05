@@ -22,8 +22,8 @@ import { RelayPool } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { Filter, kinds, NostrEvent } from "nostr-tools";
-import { npubEncode } from "nostr-tools/nip19";
+import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
 

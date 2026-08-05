@@ -133,7 +133,7 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
     // Filter resutls based on requests
     (pointer, event) => event.id === pointer.id,
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
-    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory()),
+    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
     // Forward the abort signal for explicit teardown
     { signal: opts?.signal },
   );

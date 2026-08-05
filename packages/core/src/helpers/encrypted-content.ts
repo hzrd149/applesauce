@@ -1,3 +1,4 @@
+import { setCachedValue } from "./cache.js";
 import { kinds, notifyEventUpdate } from "./event.js";
 
 /** A symbol use to store the encrypted content of an event in memory */
@@ -114,7 +115,15 @@ export async function unlockEncryptedContent<T extends { kind: number; content: 
 
 /** Sets the encrypted content on an event and updates it if its part of an event store */
 export function setEncryptedContentCache<T extends object>(event: T, plaintext: string) {
-  Reflect.set(event, EncryptedContentSymbol, plaintext);
+  // Avoids a repeat signer round-trip on an already-signed, immutable event. Written non-
+  // enumerable via setCachedValue (05.1: the carry-forward mechanism now compensates for the
+  // spread this used to be hand-rolled enumerable to survive). An unlocked event re-entering the
+  // factory pipe hits operations/tags.ts's modifyPublicTags (`{ ...draft, tags }`), which copies
+  // only enumerable own properties — but EncryptedContentSymbol is a permanent member of
+  // PRESERVE_EVENT_SYMBOLS (helpers/pipeline.ts), so pipeFromAsyncArray's carry-forward loop
+  // restores it onto modifyPublicTags's output after that step runs, on every subsequent pipe
+  // step. No allowlist change was needed; only this write-site conversion.
+  setCachedValue(event, EncryptedContentSymbol, plaintext);
 
   // if the event has been added to an event store, notify it
   notifyEventUpdate(event);

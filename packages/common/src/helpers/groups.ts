@@ -93,22 +93,25 @@ export function getHiddenGroups<T extends NostrEvent>(bookmark: T): GroupPointer
 export function getHiddenGroups<T extends NostrEvent>(bookmark: T): GroupPointer[] | undefined {
   if (GroupsHiddenSymbol in bookmark) return bookmark[GroupsHiddenSymbol] as GroupPointer[];
 
-  return getOrComputeCachedValue(bookmark, GroupsHiddenSymbol, () => {
-    //get hidden tags
-    const tags = getHiddenTags(bookmark);
-    if (!tags) return undefined;
+  // get hidden tags
+  const tags = getHiddenTags(bookmark);
 
-    // parse groups from hidden tags
-    const groups = processTags(
+  // D-02/D-03: don't memoize undefined. getOrComputeCachedValue unconditionally caches whatever
+  // its compute callback returns, so if we called it while the hidden tags are still locked
+  // (tags undefined) it would permanently poison GroupsHiddenSymbol with undefined — satisfying
+  // isHiddenGroupsUnlocked's presence check forever, even after the tags are later unlocked by
+  // some other path, and letting unlockHiddenGroups's short-circuit hand back that poisoned
+  // undefined instead of throwing or returning real groups. Returning here, before ever calling
+  // getOrComputeCachedValue, guarantees its callback only ever runs (and only ever caches) when
+  // the result is a real, defined GroupPointer[].
+  if (!tags) return undefined;
+
+  return getOrComputeCachedValue(bookmark, GroupsHiddenSymbol, () =>
+    processTags(
       tags.filter((t) => t[0] === "group"),
       getGroupPointerFromGroupTag,
-    );
-
-    // set cached value
-    Reflect.set(bookmark, GroupsHiddenSymbol, groups);
-
-    return groups;
-  });
+    ),
+  );
 }
 
 /** Checks if the hidden groups are unlocked */

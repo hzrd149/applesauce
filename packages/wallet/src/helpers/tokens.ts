@@ -4,6 +4,8 @@ import {
   isHiddenContentUnlocked,
   lockHiddenContent,
   notifyEventUpdate,
+  safeParse,
+  setCachedValue,
   setHiddenContentEncryptionMethod,
   UnlockedHiddenContent,
   unlockHiddenContent,
@@ -60,16 +62,21 @@ export type UnlockedTokenContent = UnlockedHiddenContent & {
 
 /** Returns if token details are locked */
 export function isTokenContentUnlocked<T extends NostrEvent>(token: T): token is T & UnlockedTokenContent {
-  // Wrap in try catch to avoid throwing validation errors
-  try {
-    return TokenContentSymbol in token || (isHiddenContentUnlocked(token) && getTokenContent(token) !== undefined);
-  } catch {}
-  return false;
+  // No try/catch needed: `token` is typed so the `in` test cannot throw, and neither
+  // isHiddenContentUnlocked nor getTokenContent throws — getTokenContent returns undefined for
+  // malformed content rather than raising. The defensive catch this used to carry was masking
+  // that throw and silently reporting a malformed token as merely locked.
+  return TokenContentSymbol in token || (isHiddenContentUnlocked(token) && getTokenContent(token) !== undefined);
 }
 
 /**
  * Returns the decrypted and parsed details of a 7375 token event
- * @throws {Error} If the token content is invalid
+ *
+ * Returns undefined for anything that does not yield usable content — still locked, not valid
+ * JSON, not an object, or missing `mint`/`proofs`. None of these throw: this getter is read from
+ * inside RxJS pipes (see WalletToken's `meta$`), where a throw errors the observable and is
+ * terminal, killing the wallet's token stream rather than skipping one malformed event.
+ * `unlockTokenContent` is the imperative counterpart that does throw.
  */
 export function getTokenContent(token: UnlockedTokenContent): TokenContent;
 export function getTokenContent(token: NostrEvent): TokenContent | undefined;
@@ -80,16 +87,23 @@ export function getTokenContent<T extends NostrEvent>(token: T): TokenContent | 
   const plaintext = getHiddenContent(token);
   if (!plaintext) return undefined;
 
-  // Parse the content as a token content
-  const details = JSON.parse(plaintext) as TokenContent;
+  // Parse the content as a token content. safeParse (not JSON.parse) so malformed content
+  // returns undefined instead of throwing out of a getter.
+  const details = safeParse<TokenContent>(plaintext);
 
-  // Throw an error if the token content is invalid
-  if (!details.mint) throw new Error("Token missing mint");
-  if (!details.proofs) throw new Error("Token missing proofs");
+  // Shape guard BEFORE any property read: safeParse("null") yields null and `null.mint` throws a
+  // TypeError, which would just swap one throw for another.
+  if (!details || typeof details !== "object") return undefined;
+
+  // Content missing its required fields is unusable. Returning undefined (rather than throwing)
+  // keeps this consistent with the locked and unparseable cases above, and the rejection is
+  // deliberately not cached — a token stays readable if correct content is decrypted in later.
+  if (!details.mint) return undefined;
+  if (!details.proofs) return undefined;
   if (!details.del) details.del = [];
 
-  // Set the cached value
-  Reflect.set(token, TokenContentSymbol, details);
+  // Set the cached value (identity memo, non-enumerable so a spread drops it)
+  setCachedValue(token, TokenContentSymbol, details);
 
   return details;
 }

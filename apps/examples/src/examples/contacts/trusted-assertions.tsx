@@ -1,6 +1,5 @@
 /**
- * Score every contact in your follow list with a NIP-85 trusted assertions provider.
- * Reads your kind 10040 trusted provider list, then loads each trusted provider's kind 30382 assertion per contact.
+ * Score contacts using assertions from trusted NIP-85 providers.
  * @tags nip-02, nip-85, contacts, web-of-trust, trusted-assertions
  * @related contacts/open-ranking, contacts/manager
  */

@@ -4,6 +4,7 @@ import {
   insertEventIntoDescendingList,
   isReplaceable,
   NostrEvent,
+  StoreEvent,
 } from "../helpers/event.js";
 import { Filter, getIndexableTags, INDEXABLE_TAGS } from "../helpers/filter.js";
 import { LRU } from "../helpers/lru.js";
@@ -11,23 +12,23 @@ import { logger } from "../logger.js";
 import { IEventMemory } from "./interface.js";
 
 /** An in-memory database of events */
-export class EventMemory implements IEventMemory {
+export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMemory<E> {
   protected log = logger.extend("EventMemory");
 
   /** Indexes */
-  protected kinds = new Map<number, Set<NostrEvent>>();
-  protected authors = new Map<string, Set<NostrEvent>>();
-  protected tags = new LRU<Set<NostrEvent>>();
-  protected created_at: NostrEvent[] = [];
+  protected kinds = new Map<number, Set<E>>();
+  protected authors = new Map<string, Set<E>>();
+  protected tags = new LRU<Set<E>>();
+  protected created_at: E[] = [];
 
   /** Composite index for kind+author queries (common pattern) */
-  protected kindAuthor = new Map<string, Set<NostrEvent>>();
+  protected kindAuthor = new Map<string, Set<E>>();
 
   /** LRU cache of last events touched */
-  events = new LRU<NostrEvent>();
+  events = new LRU<E>();
 
   /** A sorted array of replaceable events by address */
-  protected replaceable = new Map<string, NostrEvent[]>();
+  protected replaceable = new Map<string, E[]>();
 
   /** The number of events in the database */
   get size() {
@@ -39,7 +40,7 @@ export class EventMemory implements IEventMemory {
     return this.events.has(id);
   }
   /** Gets a single event based on id */
-  getEvent(id: string): NostrEvent | undefined {
+  getEvent(id: string): E | undefined {
     return this.events.get(id);
   }
 
@@ -49,31 +50,34 @@ export class EventMemory implements IEventMemory {
     return !!events && events.length > 0;
   }
   /** Gets the latest replaceable event */
-  getReplaceable(kind: number, pubkey: string, identifier?: string): NostrEvent | undefined {
+  getReplaceable(kind: number, pubkey: string, identifier?: string): E | undefined {
     const address = createReplaceableAddress(kind, pubkey, identifier);
     const events = this.replaceable.get(address);
     return events?.[0];
   }
   /** Gets the history of a replaceable event */
-  getReplaceableHistory(kind: number, pubkey: string, identifier?: string): NostrEvent[] | undefined {
+  getReplaceableHistory(kind: number, pubkey: string, identifier?: string): E[] | undefined {
     const address = createReplaceableAddress(kind, pubkey, identifier);
     return this.replaceable.get(address);
   }
 
   /** Gets all events that match the filters */
-  getByFilters(filters: Filter | Filter[]): NostrEvent[] {
+  getByFilters(filters: Filter | Filter[]): E[] {
     return Array.from(this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]));
   }
   /** Gets a timeline of events that match the filters */
-  getTimeline(filters: Filter | Filter[]): NostrEvent[] {
-    const timeline: NostrEvent[] = [];
+  getTimeline(filters: Filter | Filter[]): E[] {
+    const timeline: E[] = [];
     const events = this.getByFilters(filters);
-    for (const event of events) insertEventIntoDescendingList(timeline, event);
+    // NOTE: insertEventIntoDescendingList is not in the CORE-04 list and stays NostrEvent-typed;
+    // bridge with a localized cast, mirroring casts/event.ts's signedView pattern.
+    for (const event of events)
+      insertEventIntoDescendingList(timeline as unknown as NostrEvent[], event as unknown as NostrEvent);
     return timeline;
   }
 
   /** Inserts an event into the database and notifies all subscriptions */
-  add(event: NostrEvent): NostrEvent {
+  add(event: E): E {
     const id = event.id;
 
     const current = this.events.get(id);
@@ -90,7 +94,9 @@ export class EventMemory implements IEventMemory {
     }
 
     // Insert into time index
-    insertEventIntoDescendingList(this.created_at, event);
+    // NOTE: insertEventIntoDescendingList is not in the CORE-04 list and stays NostrEvent-typed;
+    // bridge with a localized cast, mirroring casts/event.ts's signedView pattern.
+    insertEventIntoDescendingList(this.created_at as unknown as NostrEvent[], event as unknown as NostrEvent);
 
     // Insert into replaceable index
     if (isReplaceable(event.kind)) {
@@ -105,13 +111,13 @@ export class EventMemory implements IEventMemory {
       }
 
       // insert the event into the sorted array
-      insertEventIntoDescendingList(array, event);
+      insertEventIntoDescendingList(array as unknown as NostrEvent[], event as unknown as NostrEvent);
     }
 
     return event;
   }
   /** Removes an event from the database and notifies all subscriptions */
-  remove(eventOrId: string | NostrEvent): boolean {
+  remove(eventOrId: string | E): boolean {
     let event = typeof eventOrId === "string" ? this.events.get(eventOrId) : eventOrId;
     if (!event) return false;
 
@@ -189,15 +195,15 @@ export class EventMemory implements IEventMemory {
     return removedCount;
   }
   /** Notify the database that an event has updated */
-  update(_event: NostrEvent) {
+  update(_event: E) {
     // Do nothing
   }
 
   /** A weak map of events to claim reference counts */
-  protected claims = new WeakMap<NostrEvent, number>();
+  protected claims = new WeakMap<E, number>();
 
   /** Moves an event to the top of the LRU cache */
-  touch(event: NostrEvent): void {
+  touch(event: E): void {
     // Make sure the event is in the database before adding it to the LRU
     if (!this.events.has(event.id)) return;
 
@@ -206,7 +212,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Increments the claim count on the event and touches it */
-  claim(event: NostrEvent): void {
+  claim(event: E): void {
     const currentCount = this.claims.get(event) || 0;
     this.claims.set(event, currentCount + 1);
 
@@ -214,12 +220,12 @@ export class EventMemory implements IEventMemory {
     this.touch(event);
   }
   /** Checks if an event is claimed by anything */
-  isClaimed(event: NostrEvent): boolean {
+  isClaimed(event: E): boolean {
     const count = this.claims.get(event);
     return count !== undefined && count > 0;
   }
   /** Decrements the claim count on an event */
-  removeClaim(event: NostrEvent): void {
+  removeClaim(event: E): void {
     const currentCount = this.claims.get(event);
     if (currentCount !== undefined && currentCount > 0) {
       const newCount = currentCount - 1;
@@ -231,11 +237,11 @@ export class EventMemory implements IEventMemory {
     }
   }
   /** Removes all claims on an event */
-  clearClaim(event: NostrEvent): void {
+  clearClaim(event: E): void {
     this.claims.delete(event);
   }
   /** Returns a generator of unclaimed events in order of least used */
-  *unclaimed(): Generator<NostrEvent> {
+  *unclaimed(): Generator<E> {
     let removed = 0;
 
     let cursor = this.events.first;
@@ -279,7 +285,7 @@ export class EventMemory implements IEventMemory {
   protected getTagIndex(tagAndValue: string) {
     if (!this.tags.has(tagAndValue)) {
       // build new tag index from existing events
-      const events = new Set<NostrEvent>();
+      const events = new Set<E>();
 
       const ts = Date.now();
       for (const event of this.events.values()) {
@@ -299,7 +305,7 @@ export class EventMemory implements IEventMemory {
    * Helper method to remove an event from a sorted array using binary search.
    * Falls back to indexOf if binary search doesn't find exact match.
    */
-  protected removeFromSortedArray(array: NostrEvent[], event: NostrEvent): void {
+  protected removeFromSortedArray(array: E[], event: E): void {
     if (array.length === 0) return;
 
     // Use binary search to find the approximate position
@@ -346,7 +352,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Iterates over all events by author */
-  *iterateAuthors(authors: Iterable<string>): Generator<NostrEvent> {
+  *iterateAuthors(authors: Iterable<string>): Generator<E> {
     for (const author of authors) {
       const events = this.authors.get(author);
 
@@ -357,7 +363,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Iterates over all events by indexable tag and value */
-  *iterateTag(tag: string, values: Iterable<string>): Generator<NostrEvent> {
+  *iterateTag(tag: string, values: Iterable<string>): Generator<E> {
     for (const value of values) {
       const events = this.getTagIndex(tag + ":" + value);
 
@@ -368,7 +374,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Iterates over all events by kind */
-  *iterateKinds(kinds: Iterable<number>): Generator<NostrEvent> {
+  *iterateKinds(kinds: Iterable<number>): Generator<E> {
     for (const kind of kinds) {
       const events = this.kinds.get(kind);
 
@@ -379,7 +385,7 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Iterates over all events by time */
-  *iterateTime(since: number | undefined, until: number | undefined): Generator<NostrEvent> {
+  *iterateTime(since: number | undefined, until: number | undefined): Generator<E> {
     // Early return if array is empty
     if (this.created_at.length === 0) return;
 
@@ -419,20 +425,20 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Iterates over all events by id */
-  *iterateIds(ids: Iterable<string>): Generator<NostrEvent> {
+  *iterateIds(ids: Iterable<string>): Generator<E> {
     for (const id of ids) {
       if (this.events.has(id)) yield this.events.get(id)!;
     }
   }
 
   /** Returns all events that match the filter */
-  protected getEventsForFilter(filter: Filter): Set<NostrEvent> {
+  protected getEventsForFilter(filter: Filter): Set<E> {
     // search is not supported, return an empty set
     if (filter.search) return new Set();
 
     let first = true;
-    let events = new Set<NostrEvent>();
-    const and = (iterable: Iterable<NostrEvent>) => {
+    let events = new Set<E>();
+    const and = (iterable: Iterable<E>) => {
       const set = iterable instanceof Set ? iterable : new Set(iterable);
       if (first) {
         events = set;
@@ -447,7 +453,7 @@ export class EventMemory implements IEventMemory {
 
     if (filter.ids) and(this.iterateIds(filter.ids));
 
-    let time: NostrEvent[] | null = null;
+    let time: E[] | null = null;
 
     // query for time first if since is set
     if (filter.since !== undefined) {
@@ -489,7 +495,7 @@ export class EventMemory implements IEventMemory {
 
     // Optimize: Use composite kind+author index when both are present and the cross-product is small
     if (filter.authors && filter.kinds && filter.authors.length * filter.kinds.length <= 20) {
-      const combined = new Set<NostrEvent>();
+      const combined = new Set<E>();
       for (const kind of filter.kinds) {
         for (const author of filter.authors) {
           const key = `${kind}:${author}`;
@@ -519,7 +525,7 @@ export class EventMemory implements IEventMemory {
 
     // if the filter queried on time and has a limit. truncate the events now
     if (filter.limit && time) {
-      const limited = new Set<NostrEvent>();
+      const limited = new Set<E>();
       for (const event of time) {
         if (limited.size >= filter.limit) break;
         if (events.has(event)) limited.add(event);
@@ -531,10 +537,10 @@ export class EventMemory implements IEventMemory {
   }
 
   /** Returns all events that match the filters */
-  protected getEventsForFilters(filters: Filter[]): Set<NostrEvent> {
+  protected getEventsForFilters(filters: Filter[]): Set<E> {
     if (filters.length === 0) return new Set();
 
-    let events = new Set<NostrEvent>();
+    let events = new Set<E>();
 
     for (const filter of filters) {
       const filtered = this.getEventsForFilter(filter);

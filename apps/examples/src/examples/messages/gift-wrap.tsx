@@ -26,8 +26,8 @@ import { RelayPool, SyncDirection } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
 import { addEvents, openDB } from "nostr-idb";
-import { kinds, NostrEvent } from "nostr-tools";
-import { npubEncode } from "nostr-tools/nip19";
+import { kinds, NostrEvent } from "applesauce-core/helpers";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, catchError, EMPTY, map, tap } from "rxjs";
 

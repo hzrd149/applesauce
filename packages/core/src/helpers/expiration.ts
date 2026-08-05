@@ -1,11 +1,11 @@
-import { NostrEvent } from "./event.js";
+import { NostrEvent, StoreEvent } from "./event.js";
 import { getOrComputeCachedValue } from "./cache.js";
 import { unixNow } from "./time.js";
 
 export const ExpirationTimestampSymbol = Symbol("expiration-timestamp");
 
 /** Returns the NIP-40 expiration timestamp for an event */
-export function getExpirationTimestamp(event: NostrEvent): number | undefined {
+export function getExpirationTimestamp<E extends StoreEvent = NostrEvent>(event: E): number | undefined {
   return getOrComputeCachedValue(event, ExpirationTimestampSymbol, () => {
     const expiration = event.tags.find((t) => t[0] === "expiration")?.[1];
     return expiration ? parseInt(expiration) : undefined;

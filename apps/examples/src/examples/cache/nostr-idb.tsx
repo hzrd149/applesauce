@@ -6,7 +6,7 @@
 import { Note } from "applesauce-common/casts";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
-import { Filter, isFromCache, persistEventsToCache, unixNow } from "applesauce-core/helpers";
+import { Filter, isFromCache, NostrEvent, persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -16,7 +16,7 @@ import { BehaviorSubject, combineLatest, debounceTime, interval, startWith, swit
 import RelayPicker from "../../components/relay-picker";
 
 // Open the IndexedDB database
-const nostrIDB = new NostrIDB();
+const nostrIDB = new NostrIDB<NostrEvent>();
 await nostrIDB.start();
 
 // Setup event store and relay pool

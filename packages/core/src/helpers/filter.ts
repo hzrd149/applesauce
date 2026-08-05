@@ -1,6 +1,7 @@
 import equal from "fast-deep-equal";
 import type { Filter as CoreFilter } from "nostr-tools/filter";
-import { NostrEvent } from "./event.js";
+import { setCachedValue } from "./cache.js";
+import { NostrEvent, StoreEvent } from "./event.js";
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 export const INDEXABLE_TAGS = new Set((LETTERS + LETTERS.toUpperCase()).split(""));
@@ -8,7 +9,7 @@ export const INDEXABLE_TAGS = new Set((LETTERS + LETTERS.toUpperCase()).split(""
 export const EventIndexableTagsSymbol = Symbol.for("indexable-tags");
 
 /** Returns a Set of tag names and values that are indexable */
-export function getIndexableTags(event: NostrEvent): Set<string> {
+export function getIndexableTags<E extends StoreEvent = NostrEvent>(event: E): Set<string> {
   let indexable = Reflect.get(event, EventIndexableTagsSymbol) as Set<string> | undefined;
   if (!indexable) {
     const tags = new Set<string>();
@@ -20,7 +21,13 @@ export function getIndexableTags(event: NostrEvent): Set<string> {
     }
 
     indexable = tags;
-    Reflect.set(event, EventIndexableTagsSymbol, tags);
+    // Identity memo per cache.ts's one rule: written non-enumerable via setCachedValue, so a copy
+    // built from `{ ...event, tags: newTags }` does NOT inherit this Set — the `if (!indexable)`
+    // guard above recomputes from the copy's own tags on next access. This closes D-01/D-04's
+    // shared-Set defect (a copy with different tags previously matched against the ORIGINAL's
+    // indexable set). D-12: Phase 5's hot-path deferral for this site is intentionally lifted
+    // here — "one rule" is exceptionless.
+    setCachedValue(event, EventIndexableTagsSymbol, indexable);
   }
 
   return indexable;
@@ -41,7 +48,7 @@ export type Filter = CoreFilter & {
  * Extended to support NIP-91 AND operator with `&` prefix
  * @see https://github.com/nbd-wtf/nostr-tools/blob/a61cde77eacc9518001f11d7f67f1a50ae05fd80/filter.ts
  */
-export function matchFilter(filter: Filter, event: NostrEvent): boolean {
+export function matchFilter<E extends StoreEvent = NostrEvent>(filter: Filter, event: E): boolean {
   if (filter.ids && filter.ids.indexOf(event.id) === -1) return false;
   if (filter.kinds && filter.kinds.indexOf(event.kind) === -1) return false;
   if (filter.authors && filter.authors.indexOf(event.pubkey) === -1) return false;
@@ -93,7 +100,7 @@ export function matchFilter(filter: Filter, event: NostrEvent): boolean {
 }
 
 /** Copied from nostr-tools and modified to use {@link matchFilter} */
-export function matchFilters(filters: Filter[], event: NostrEvent): boolean {
+export function matchFilters<E extends StoreEvent = NostrEvent>(filters: Filter[], event: E): boolean {
   for (let i = 0; i < filters.length; i++) {
     if (matchFilter(filters[i], event)) return true;
   }

@@ -13,7 +13,7 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
-import { nip19 } from "nostr-tools";
+import { npubEncode } from "applesauce-core/helpers/pointers";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
@@ -491,7 +491,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
             <div className="text-xs text-base-content/60">Signed in as</div>
             <div className="mt-1 text-sm font-semibold">{userDisplayName}</div>
             <div className="mt-1 font-mono text-xs text-base-content/60">
-              {nip19.npubEncode(user.pubkey).slice(0, 18)}...
+              {npubEncode(user.pubkey).slice(0, 18)}...
             </div>
           </div>
         </div>

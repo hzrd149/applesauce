@@ -1,5 +1,5 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
+import { NostrEvent } from "applesauce-core/helpers/event";
 import { AddressPointer, EventPointer, getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 
@@ -90,7 +90,7 @@ export function interpretThreadTags(tags: string[][]) {
 }
 
 /** Returns the parsed NIP-10 tags for an event */
-export function getNip10References(event: NostrEvent | EventTemplate): ThreadReferences {
+export function getNip10References<E extends { tags: string[][] } = NostrEvent>(event: E): ThreadReferences {
   return getOrComputeCachedValue(event, Nip10ThreadRefsSymbol, () => {
     const tags = interpretThreadTags(event.tags);
 

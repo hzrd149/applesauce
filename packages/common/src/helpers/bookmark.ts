@@ -1,4 +1,5 @@
 import { getOrComputeCachedValue, isATag, isETag, notifyEventUpdate, processTags } from "applesauce-core/helpers";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
 import { getHiddenTags, isHiddenTagsUnlocked, unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
@@ -98,8 +99,10 @@ export function getHiddenBookmarks<T extends NostrEvent>(bookmark: T): BookmarkP
   // parse bookmarks
   const bookmarks = parseBookmarkTags(tags);
 
-  // set cached value
-  Reflect.set(bookmark, BookmarkHiddenSymbol, bookmarks);
+  // Derived from the event's own hidden tags — identity memo (see applesauce-core's cache.ts
+  // taxonomy). Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it
+  // instead of carrying a stale derivation onto a copy whose hidden tags differ.
+  setCachedValue(bookmark, BookmarkHiddenSymbol, bookmarks);
 
   return bookmarks;
 }

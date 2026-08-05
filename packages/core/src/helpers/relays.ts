@@ -1,4 +1,5 @@
-import { NostrEvent } from "./event.js";
+import { setCachedValue } from "./cache.js";
+import { NostrEvent, StoreEvent } from "./event.js";
 import { ensureWebSocketURL, normalizeURL } from "./url.js";
 
 export const SeenRelaysSymbol = Symbol.for("seen-relays");
@@ -9,11 +10,14 @@ export function normalizeRelayUrl(input: string): string {
 }
 
 /** Marks an event as being seen on a relay */
-export function addSeenRelay(event: NostrEvent, relay: string): Set<string> {
-  let seen = Reflect.get(event, SeenRelaysSymbol);
+export function addSeenRelay<E extends StoreEvent = NostrEvent>(event: E, relay: string): Set<string> {
+  let seen = Reflect.get(event, SeenRelaysSymbol) as Set<string> | undefined;
   if (!seen) {
     seen = new Set([relay]);
-    Reflect.set(event, SeenRelaysSymbol, seen);
+    // SeenRelaysSymbol is propagated across duplicate events via the element-wise seen-relays
+    // merge in EventStore.copySymbolsToDuplicateEvent (a separate branch from that function's
+    // symbol merge list), not via object spread — accumulated state (see cache.ts taxonomy).
+    setCachedValue(event, SeenRelaysSymbol, seen);
     return seen;
   } else {
     seen.add(relay);
@@ -22,12 +26,12 @@ export function addSeenRelay(event: NostrEvent, relay: string): Set<string> {
 }
 
 /** Returns the set of relays this event was seen on */
-export function getSeenRelays(event: NostrEvent): Set<string> | undefined {
-  return Reflect.get(event, SeenRelaysSymbol);
+export function getSeenRelays<E extends StoreEvent = NostrEvent>(event: E): Set<string> | undefined {
+  return Reflect.get(event, SeenRelaysSymbol) as Set<string> | undefined;
 }
 
 /** Checks if an event was received from a specific relay */
-export function isFromRelay(event: NostrEvent, relay: string): boolean {
+export function isFromRelay<E extends StoreEvent = NostrEvent>(event: E, relay: string): boolean {
   return getSeenRelays(event)?.has(relay) === true;
 }
 

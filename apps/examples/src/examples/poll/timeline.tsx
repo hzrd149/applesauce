@@ -21,7 +21,7 @@ import { createEventLoaderForStore, createTagValueLoader } from "applesauce-load
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { npubEncode, ProfilePointer } from "nostr-tools/nip19";
+import { npubEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";

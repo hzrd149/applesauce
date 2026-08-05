@@ -1,0 +1,43 @@
+version: 1
+
+engines:
+  format: true
+  lint: true
+  code-quality: true
+  ai-slop: true
+  architecture: false    # opt-in, needs rules.yml
+  security: true
+
+quality:
+  maxFunctionLoc: 80
+  maxFileLoc: 400
+  maxNesting: 5
+  maxParams: 6
+
+security:
+  audit: true
+  auditTimeout: 25000
+
+scoring:
+  weights:
+    format: 0.3
+    lint: 0.6
+    code-quality: 0.8
+    ai-slop: 1.0
+    architecture: 1.0
+    security: 1.5
+  thresholds:
+    good: 75
+    ok: 50
+  smoothing: 20
+  maxPerRule: 40
+
+ci:
+  failBelow: 70          # fail CI below this score
+  format: json
+
+telemetry:
+  enabled: true          # set to false to opt out
+
+rules:
+  ai-slop/thin-wrapper: "off"   # ignore "small wrapper functions" findings

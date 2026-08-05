@@ -258,7 +258,7 @@ export class RelayGroup {
       // Extract event messages
       map((message) => message.event),
       // If an event store is provided, filter duplicate events
-      opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory()),
+      opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory<NostrEvent>()),
       // Only create one upstream subscription
       share(),
     );
@@ -275,7 +275,7 @@ export class RelayGroup {
       // Extract event messages
       map((message) => message.event),
       // If an event store is provided, filter duplicate events
-      opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory()),
+      opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore ?? new EventMemory<NostrEvent>()),
       // Only create one upstream subscription
       share(),
     );

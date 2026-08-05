@@ -1,0 +1,269 @@
+import { describe, expect, it } from "vitest";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { blankEventTemplate } from "applesauce-core/factories";
+
+import type { RumorTemplate } from "../../types.js";
+import { epochKeyCommitment, grantLocator } from "../crypto.js";
+import { includeRekeyChunk } from "../../operations/rekey.js";
+import {
+  buildRekeyRumors,
+  checkContinuity,
+  decodeWrappedKey,
+  encodeWrappedKey,
+  groupRotations,
+  parseRekey,
+  REKEY_KIND,
+  rekeyScopeId,
+  type RekeyRotation,
+} from "../rekey.js";
+import { decoded } from "./test-utils.js";
+
+describe("rekey codec", () => {
+  it("wrapped-key round-trips and rejects scope/epoch splices", () => {
+    const scopeId = new Uint8Array(32).fill(4);
+    const key = new Uint8Array(32).fill(5);
+    const enc = encodeWrappedKey(scopeId, 7n, key);
+    expect(enc.length).toBe(72);
+    expect(bytesToHex(decodeWrappedKey(enc, scopeId, 7n))).toBe(bytesToHex(key));
+    expect(() => decodeWrappedKey(enc, new Uint8Array(32).fill(6), 7n)).toThrow(/scope/);
+    expect(() => decodeWrappedKey(enc, scopeId, 8n)).toThrow(/epoch/);
+  });
+
+  it("checkContinuity distinguishes ok / gap / fork", () => {
+    const held = new Uint8Array(32).fill(1);
+    const commit = bytesToHex(epochKeyCommitment(2n, held));
+    expect(checkContinuity({ prevEpoch: 2n, prevCommit: commit }, 2n, held)).toEqual({ ok: true });
+    expect(checkContinuity({ prevEpoch: 2n, prevCommit: "00".repeat(32) }, 2n, held)).toEqual({
+      ok: false,
+      reason: "fork",
+    });
+    expect(checkContinuity({ prevEpoch: 5n, prevCommit: commit }, 2n, held)).toEqual({ ok: false, reason: "gap" });
+  });
+
+  it("groupRotations marks a single-chunk rotation complete", () => {
+    const rumor: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "aa", wrapped: "bb" }]),
+      tags: [
+        ["scope", bytesToHex(rekeyScopeId({ kind: "root" }))],
+        ["newepoch", "3"],
+        ["prevepoch", "2"],
+        ["prevcommit", "cc".repeat(32)],
+        ["chunk", "1", "1"],
+        ["ms", "0"],
+      ],
+    };
+    const parsed = parseRekey(decoded(rumor, "rotator"));
+    expect(parsed).not.toBeNull();
+    const sets = groupRotations([parsed!]);
+    expect(sets).toHaveLength(1);
+    expect(sets[0].complete).toBe(true);
+  });
+
+  it("groupRotations marks a bucket inconsistent when chunks disagree on chunkCount (n)", () => {
+    // CORD-06 §2's removal rule reads a rotation's blobs "once you hold all n
+    // chunks" — n is a single fact about ONE rotation generation. Two chunks in
+    // the same (rotator, scope, newEpoch, prevCommit) bucket that disagree on n
+    // cannot both belong to the rotation CORD-06 describes, so hand-derived
+    // expectation: the bucket is unresolvable (consistent === false) and can
+    // never satisfy "hold all n chunks" (complete === false) — never mind
+    // whether the first-arriving generation's own chunks happen to be fully
+    // present (chunks.size meets ITS chunkCount).
+    const base = {
+      scope: bytesToHex(rekeyScopeId({ kind: "root" })),
+      newepoch: "3",
+      prevepoch: "2",
+      prevcommit: "cc".repeat(32),
+    };
+    const genA1: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "a1", wrapped: "w" }]),
+      tags: [
+        ["scope", base.scope],
+        ["newepoch", base.newepoch],
+        ["prevepoch", base.prevepoch],
+        ["prevcommit", base.prevcommit],
+        ["chunk", "1", "2"],
+        ["ms", "0"],
+      ],
+    };
+    const genA2: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "a2", wrapped: "w" }]),
+      tags: [
+        ["scope", base.scope],
+        ["newepoch", base.newepoch],
+        ["prevepoch", base.prevepoch],
+        ["prevcommit", base.prevcommit],
+        ["chunk", "2", "2"],
+        ["ms", "0"],
+      ],
+    };
+    const genB1: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "b1", wrapped: "w" }]),
+      tags: [
+        ["scope", base.scope],
+        ["newepoch", base.newepoch],
+        ["prevepoch", base.prevepoch],
+        ["prevcommit", base.prevcommit],
+        ["chunk", "1", "3"],
+        ["ms", "0"],
+      ],
+    };
+    const parsed = [genA1, genA2, genB1]
+      .map((rumor) => parseRekey(decoded(rumor, "rotator")))
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+    expect(parsed).toHaveLength(3);
+    const sets = groupRotations(parsed);
+    expect(sets).toHaveLength(1);
+    // Generation A alone (index 1 + 2, chunkCount 2) would satisfy "chunks.size
+    // >= chunkCount" — proving the guard fires on disagreement, not on a missing
+    // chunk count.
+    expect(sets[0].chunks.size).toBeGreaterThanOrEqual(2);
+    expect(sets[0].consistent).toBe(false);
+    expect(sets[0].complete).toBe(false);
+  });
+
+  it("groupRotations marks a bucket inconsistent when chunks disagree on prevEpoch", () => {
+    // CORD-06 §2: continuity is checked against ONE prevEpoch per rotation. Two
+    // chunks correlated into the same bucket that name different prevEpoch
+    // values cannot both describe the same rotation, so the hand-derived
+    // expectation is the same unresolvable-bucket outcome as the n-disagreement
+    // case: consistent === false, complete === false.
+    const scope = bytesToHex(rekeyScopeId({ kind: "root" }));
+    const prevcommit = "dd".repeat(32);
+    const chunkPrevEpoch2: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "p1", wrapped: "w" }]),
+      tags: [
+        ["scope", scope],
+        ["newepoch", "5"],
+        ["prevepoch", "2"],
+        ["prevcommit", prevcommit],
+        ["chunk", "1", "1"],
+        ["ms", "0"],
+      ],
+    };
+    const chunkPrevEpoch4: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "p2", wrapped: "w" }]),
+      tags: [
+        ["scope", scope],
+        ["newepoch", "5"],
+        ["prevepoch", "4"],
+        ["prevcommit", prevcommit],
+        ["chunk", "1", "1"],
+        ["ms", "0"],
+      ],
+    };
+    const parsed = [chunkPrevEpoch2, chunkPrevEpoch4]
+      .map((rumor) => parseRekey(decoded(rumor, "rotator")))
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+    expect(parsed).toHaveLength(2);
+    const sets = groupRotations(parsed);
+    expect(sets).toHaveLength(1);
+    expect(sets[0].consistent).toBe(false);
+    expect(sets[0].complete).toBe(false);
+  });
+
+  it("groupRotations: matching n and prevEpoch across all chunks yields a consistent, complete set (positive control)", () => {
+    const scope = bytesToHex(rekeyScopeId({ kind: "root" }));
+    const chunk1: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "ok1", wrapped: "w" }]),
+      tags: [
+        ["scope", scope],
+        ["newepoch", "9"],
+        ["prevepoch", "8"],
+        ["prevcommit", "ee".repeat(32)],
+        ["chunk", "1", "2"],
+        ["ms", "0"],
+      ],
+    };
+    const chunk2: RumorTemplate = {
+      kind: 3303,
+      content: JSON.stringify([{ locator: "ok2", wrapped: "w" }]),
+      tags: [
+        ["scope", scope],
+        ["newepoch", "9"],
+        ["prevepoch", "8"],
+        ["prevcommit", "ee".repeat(32)],
+        ["chunk", "2", "2"],
+        ["ms", "0"],
+      ],
+    };
+    const parsed = [chunk1, chunk2]
+      .map((rumor) => parseRekey(decoded(rumor, "rotator")))
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+    expect(parsed).toHaveLength(2);
+    const sets = groupRotations(parsed);
+    expect(sets).toHaveLength(1);
+    expect(sets[0].consistent).toBe(true);
+    expect(sets[0].complete).toBe(true);
+  });
+
+  it("buildRekeyRumors chunks blobs into complete 3303 rumors", async () => {
+    const blobs = Array.from({ length: 121 }, (_, i) => ({ locator: String(i), wrapped: "w" }));
+    const rumors = await Promise.all(
+      buildRekeyRumors({ scope: { kind: "root" }, newEpoch: 1n, prevEpoch: 0n, prevCommit: "cc" }, blobs),
+    );
+    expect(rumors).toHaveLength(2);
+    expect(rumors[0].kind).toBe(REKEY_KIND);
+    expect(rumors[0].tags).toContainEqual(["chunk", "1", "2"]);
+    expect(rumors[1].tags).toContainEqual(["chunk", "2", "2"]);
+    expect(JSON.parse(rumors[0].content)).toHaveLength(120);
+    expect(JSON.parse(rumors[1].content)).toHaveLength(1);
+  });
+
+  it("buildRekeyRumors emits one empty chunk for an empty blob set", async () => {
+    const rumors = await Promise.all(
+      buildRekeyRumors({ scope: { kind: "root" }, newEpoch: 1n, prevEpoch: 0n, prevCommit: "cc" }, []),
+    );
+    expect(rumors).toHaveLength(1);
+    expect(rumors[0].tags).toContainEqual(["chunk", "1", "1"]);
+    expect(JSON.parse(rumors[0].content)).toEqual([]);
+  });
+
+  // D-08: a non-owner rotation cites the Grant it acts under (CORD-04 §3 —
+  // "a rotation cites the Grant it acts under like any authority action"),
+  // round-tripped through the wire exactly like includeKickTarget's vac.
+  it("a non-owner rotation's vac citation round-trips through includeRekeyChunk → parseRekey (D-08)", async () => {
+    const rotatorPub = "ab".repeat(32);
+    const communityId = new Uint8Array(32).fill(7);
+    // EXPECTED eid, hand-derived ONLY from grantLocator (CORD-04's member-Grant
+    // coordinate formula) — never read back from includeRekeyChunk/parseRekey.
+    const expectedEid = grantLocator(communityId, rotatorPub);
+    const vac: [string, string, string] = [expectedEid, "3", "dd".repeat(32)];
+    const rotation: RekeyRotation = {
+      scope: { kind: "root" },
+      newEpoch: 5n,
+      prevEpoch: 4n,
+      prevCommit: "ee".repeat(32),
+      vac,
+    };
+    const blobs = [{ locator: "loc1", wrapped: "w1" }];
+    const template = await includeRekeyChunk(rotation, blobs, 1, 1)(blankEventTemplate(REKEY_KIND));
+
+    const parsed = parseRekey(decoded(template as RumorTemplate, rotatorPub));
+    expect(parsed).not.toBeNull();
+    expect(parsed!.vac).toEqual(vac);
+    expect(parsed!.vac?.[0]).toBe(expectedEid);
+  });
+
+  it("an owner rotation (no vac) parses with vac undefined", async () => {
+    const ownerPub = "cd".repeat(32);
+    const rotation: RekeyRotation = {
+      scope: { kind: "root" },
+      newEpoch: 2n,
+      prevEpoch: 1n,
+      prevCommit: "ff".repeat(32),
+      // no vac — owner exemption (D-08).
+    };
+    const template = await includeRekeyChunk(rotation, [], 1, 1)(blankEventTemplate(REKEY_KIND));
+    const parsed = parseRekey(decoded(template as RumorTemplate, ownerPub));
+    expect(parsed).not.toBeNull();
+    expect(parsed!.vac).toBeUndefined();
+    expect(template.tags.some((t) => t[0] === "vac")).toBe(false);
+  });
+});

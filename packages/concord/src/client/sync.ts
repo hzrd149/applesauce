@@ -1,0 +1,417 @@
+// Epoch-atomic sync engine for a Concord community.
+//
+// A community rotates its root frequently (CORD-06). Each epoch derives its OWN
+// stream addresses (control/guestbook/channel/dissolved/rekey), and the decision
+// to advance to epoch N+1 lives in epoch N's rekey plane — which can only be read
+// once epoch N is FULLY synced. Processing epochs out of order, or opening a live
+// subscription before the tip is reached, drops messages.
+//
+// So sync is a strict sequential walk: for each epoch we NIP-42 authenticate (if
+// the relay gates), fully sync every plane (a hard barrier — every gift wrap is
+// fetched, decrypted, and routed before we read the rekey plane), then decide how
+// the walk continues. Only the latest (tip) epoch gets a live subscription.
+//
+// This promotes the manual `loadEpoch`/`buildChain` walk from the examples
+// (concord/rumor-stores, concord/models) to first-class engine functions, using
+// `createSyncLoader` for the per-plane full sync so NIP-77 negentropy is used
+// when a relay supports it and paginated backward REQ otherwise.
+
+import type { Debugger } from "debug";
+import { firstValueFrom, toArray } from "rxjs";
+import { createSyncLoader } from "applesauce-loaders/loaders";
+import { hexToBytes } from "@noble/hashes/utils.js";
+import type { EventStore } from "applesauce-core";
+import type { RelayPool } from "applesauce-relay";
+import type { ISigner } from "applesauce-signers";
+import type { NostrEvent } from "applesauce-core/helpers/event";
+
+import type { ConcordRelayAuth } from "./relay-auth.js";
+import { deriveConcordKeys, readRekey, type ConcordKeys, type PlaneInfo } from "../helpers/keys.js";
+import { BACKFILL_KINDS, decodeWrapCached } from "../helpers/gift-wrap.js";
+import { foldControl } from "../helpers/control.js";
+import { foldMembers } from "../helpers/guestbook.js";
+import { canActOn, refoundAuthority, resolveStanding, vacVerifier } from "../helpers/permissions.js";
+import { isStrictlyLowerKey } from "../helpers/rekey.js";
+import { PERM } from "../types.js";
+import type { CommunityState, DecodedEvent, JoinMaterial, Role } from "../types.js";
+
+/** How the walk continues past an epoch. */
+export type EpochTransition = "known" | "adopt" | "removed" | "tip" | "cannot-follow";
+
+/** The outcome of fully syncing one epoch. */
+export interface EpochResult {
+  epoch: number;
+  keys: ConcordKeys;
+  transition: EpochTransition;
+  /** Present when `transition === "adopt"`: the material for the next epoch. */
+  adoptedMaterial?: JoinMaterial;
+  /** D-04 re-read (Pitfall 3): present when `transition === "known"` AND this
+   *  epoch's already-fetched rekey plane folds to an "adopt" outcome — a sibling
+   *  rotation the walk hadn't previously reconsidered. `syncEpochs` compares
+   *  `key` against the already-built next-epoch root and cascades the rebuild
+   *  only when it is STRICTLY lower (down-only, never re-fork a settled epoch). */
+  reReadAdopted?: { key: Uint8Array; epoch: number; material: JoinMaterial };
+  /** Number of rumors routed while syncing this epoch. */
+  rumors: number;
+}
+
+/** The outcome of walking every epoch to the tip. */
+export interface EpochWalkResult {
+  epochs: EpochResult[];
+  /** The keys for the latest epoch we still belong to — open the live subscription
+   *  here. Undefined when we were removed. */
+  tipKeys?: ConcordKeys;
+  /** True when a Refounding excluded us (CORD-06). */
+  removed: boolean;
+}
+
+/** Everything the sync walk needs, injected by the {@link ConcordCommunity}. */
+export interface SyncContext {
+  pool: RelayPool;
+  relayAuth: ConcordRelayAuth;
+  /** Wrap-level store: dedups kind-1059 wraps and doubles as the NIP-77 local store. */
+  eventStore: EventStore;
+  signer: ISigner;
+  /** The logged-in user's hex pubkey. */
+  self: string;
+  relays: string[];
+  /** Route one decoded plane event into its plane's RumorStore (the community applies
+   *  the CORD-03 channel binding). */
+  route: (info: PlaneInfo, decoded: DecodedEvent) => void;
+  /** Register the per-relay NIP-42 auth drivers for the currently-held stream keys. */
+  ensureAuth: (relays: string[]) => void;
+  /** Cooperative cancellation: return false to abort the walk between epochs. */
+  alive?: () => boolean;
+  /** The sync-scoped debug logger (always a real value — constructed internally by
+   *  each instance's own `syncContext()`, never `undefined`; see Pitfall 2). */
+  logger: Debugger;
+  /** The `:sync:decode` child logger for per-dropped-wrap detail (D-07), derived
+   *  ONCE by `syncContext()` alongside `logger` — never re-`.extend()`d inside a
+   *  decode loop, since `Debugger.extend()` allocates and re-runs namespace
+   *  enable-matching on every call. */
+  decodeLogger: Debugger;
+}
+
+/**
+ * Fully sync every gift wrap at `authors` across the context relays and RESOLVE
+ * only when done (the atomic barrier). Uses `createSyncLoader`, which probes each
+ * relay for NIP-77 and reconciles via negentropy when supported, otherwise pages
+ * backward through REQ blocks. Passing `waitForAuth: authors` makes an auth-gating
+ * relay hold BOTH the negentropy sync and the paginated REQ until the derived
+ * stream keys are NIP-42-authenticated (by the already-registered
+ * {@link ConcordRelayAuth} driver) and retry once they are, rather than erroring.
+ */
+export async function syncAuthors(ctx: SyncContext, authors: string[]): Promise<NostrEvent[]> {
+  if (authors.length === 0) return [];
+  const loader = createSyncLoader({ eventStore: ctx.eventStore, pool: ctx.pool });
+  const { events$ } = loader({
+    relays: ctx.relays,
+    filter: { kinds: BACKFILL_KINDS, authors },
+    waitForAuth: authors,
+  });
+  // events$ completes when every relay has finished (completed or errored), so this
+  // awaits the whole epoch's traffic — nothing advances until it resolves.
+  return firstValueFrom(events$.pipe(toArray()));
+}
+
+/**
+ * Fully sync ONE epoch and decide how the walk continues. Mirrors the examples'
+ * `loadEpoch`, but drains every decoded wrap into the caller's stores (via
+ * `ctx.route`) and awaits each plane's full sync before reading the rekey plane.
+ */
+export async function syncEpoch(
+  ctx: SyncContext,
+  epochMaterial: JoinMaterial,
+  prior: ConcordKeys | undefined,
+  chainHasNext: boolean,
+): Promise<EpochResult> {
+  let rumors = 0;
+  const emit = (info: PlaneInfo, d: DecodedEvent) => {
+    ctx.route(info, d);
+    rumors++;
+  };
+
+  // 1. Derive with no channels yet; register the core planes and authenticate.
+  let keys = deriveConcordKeys(epochMaterial, [], prior);
+  ctx.relayAuth.registerStreamKeys([keys.control, keys.guestbook, keys.dissolved, keys.nextBaseRekey.key]);
+  ctx.ensureAuth(ctx.relays);
+
+  // 2. Full-sync control / guestbook / dissolved / next-rekey (ATOMIC), routing by plane.
+  const coreAuthors = [keys.control.pk, keys.guestbook.pk, keys.dissolved.pk, keys.nextBaseRekey.key.pk];
+  const control: DecodedEvent[] = [];
+  const guestbook: DecodedEvent[] = [];
+  const dissolved: DecodedEvent[] = [];
+  const rekey: DecodedEvent[] = [];
+  const coreFetched = await syncAuthors(ctx, coreAuthors);
+  let coreDecoded = 0;
+  let coreDropped = 0;
+  // Wraps that never reached the decode boundary at all (no plane matches the
+  // author). Counted so the aggregate always sums: fetched = decoded + dropped
+  // + skipped — otherwise `fetched=10 decoded=0 dropped=0` reads as "all fine".
+  let coreSkipped = 0;
+  for (const ev of coreFetched) {
+    const info = keys.planes.get(ev.pubkey);
+    if (!info) {
+      coreSkipped++;
+      continue;
+    }
+    const d = decodeWrapCached(ev, info.convKey);
+    if (!d) {
+      coreDropped++;
+      ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, epochMaterial.root_epoch);
+      continue;
+    }
+    coreDecoded++;
+    if (info.type === "control") (control.push(d), emit(info, d));
+    else if (info.type === "guestbook") (guestbook.push(d), emit(info, d));
+    else if (info.type === "dissolved") (dissolved.push(d), emit(info, d));
+    else if (info.type === "rekey") (rekey.push(d), emit(info, d));
+  }
+  // D-05 litmus: this MUST fire even when coreFetched.length === 0 — a zero-event
+  // sync must read `fetched=0`, distinct from an arrived-but-undecryptable sync.
+  ctx.logger(
+    "core planes epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
+    epochMaterial.root_epoch,
+    coreFetched.length,
+    coreDecoded,
+    coreDropped,
+    coreSkipped,
+  );
+
+  // 3. Fold control → channels, re-derive to reveal the channel addresses, then
+  //    full-sync only the PUBLIC channel planes. Public channels derive from the
+  //    community_root, so they rotate with the base and belong to this walk;
+  //    PRIVATE channels are independently keyed and sync on their own lifecycle
+  //    (ConcordPrivateChannel), lifted out of the community walk entirely.
+  const state0 = foldControl(control, epochMaterial);
+  keys = deriveConcordKeys(epochMaterial, state0.channels, prior);
+  const publicIds = new Set(state0.channels.filter((c) => !c.private && !c.deleted).map((c) => c.channel_id));
+  const publicKeys = [...keys.channels.entries()].filter(([id]) => publicIds.has(id)).map(([, k]) => k);
+  ctx.relayAuth.registerStreamKeys(publicKeys);
+  ctx.ensureAuth(ctx.relays);
+  const channelDecoded: DecodedEvent[] = [];
+  const channelFetched = await syncAuthors(
+    ctx,
+    publicKeys.map((k) => k.pk),
+  );
+  let channelDecodedCount = 0;
+  let channelDropped = 0;
+  let channelSkipped = 0; // never reached the decode boundary (see coreSkipped)
+  for (const ev of channelFetched) {
+    const info = keys.planes.get(ev.pubkey);
+    if (!info || info.type !== "channel") {
+      channelSkipped++;
+      continue;
+    }
+    const d = decodeWrapCached(ev, info.convKey);
+    if (!d) {
+      channelDropped++;
+      // The channel plane carries its OWN epoch (RESEARCH Pitfall 3) — report it
+      // rather than the root epoch, so this line correlates with the same wrap
+      // dropped by the live subscription (`community.ts`'s `onWrap`).
+      ctx.decodeLogger(
+        "dropped wrap=%s plane=%s epoch=%d",
+        ev.id.slice(0, 8),
+        info.type,
+        info.epoch ?? epochMaterial.root_epoch,
+      );
+      continue;
+    }
+    channelDecodedCount++;
+    channelDecoded.push(d);
+    emit(info, d);
+  }
+  // D-05 litmus: always-on, even for zero fetched public-channel wraps.
+  ctx.logger(
+    "public channels epoch=%d fetched=%d decoded=%d dropped=%d skipped=%d",
+    epochMaterial.root_epoch,
+    channelFetched.length,
+    channelDecodedCount,
+    channelDropped,
+    channelSkipped,
+  );
+
+  // 4. Decide the transition (fold members for standing/authority, exactly as the walk does).
+  const observed = new Map<string, number>();
+  for (const d of [...control, ...guestbook, ...channelDecoded, ...dissolved])
+    if (d.ms > (observed.get(d.author) ?? 0)) observed.set(d.author, d.ms);
+  const rolesMap = new Map<string, Role>(state0.roles.map((r) => [r.role_id, r]));
+  const members = foldMembers(
+    guestbook,
+    observed,
+    state0.banlist,
+    (m) => resolveStanding(m, epochMaterial.owner, rolesMap, state0.grants),
+    Date.now(),
+    epochMaterial.refounder,
+    vacVerifier(state0, PERM.KICK),
+  );
+  const state: CommunityState = { ...state0, members };
+
+  // A rotator may only remove US if they also strictly outrank us (CORD-04/
+  // CORD-06 §3 "in both"); no admin instance exists in the sync walk, so build
+  // the predicate directly from the same resolveStanding/canActOn primitives.
+  // Built unconditionally (not just for the tip) since the "known" branch's
+  // re-read below needs it too.
+  const canRemoveSelf = (rotator: string) =>
+    canActOn(
+      resolveStanding(rotator, epochMaterial.owner, rolesMap, state0.grants),
+      resolveStanding(ctx.self, epochMaterial.owner, rolesMap, state0.grants),
+      PERM.BAN,
+    );
+
+  // D-08/D-12: a non-owner rotation must cite the Grant it acts under; the
+  // receiver verifies it against this SAME folded state, independent of the
+  // `refoundAuthority` roster-bit check below (readRekey's `isAuthorized` arg).
+  const verifyVac = vacVerifier(state, PERM.BAN);
+
+  let transition: EpochTransition = "tip";
+  let adoptedMaterial: JoinMaterial | undefined;
+  let reReadAdopted: EpochResult["reReadAdopted"];
+  if (chainHasNext) {
+    transition = "known";
+    // D-04 re-read spine (Pitfall 3): this epoch's rekey plane was already
+    // fully fetched above (step 2) — fold it via readRekey instead of
+    // discarding it, so a strictly-lower authorized sibling that arrives late
+    // is still discoverable on a later full walk. This does NOT change the
+    // "known" classification for the normal case; `syncEpochs` decides
+    // whether the winner beats the already-built next epoch and cascades.
+    const outcome = await readRekey(
+      keys,
+      rekey,
+      refoundAuthority(state),
+      ctx.self,
+      ctx.signer,
+      state.channels,
+      canRemoveSelf,
+      verifyVac,
+    );
+    if (outcome.kind === "adopt")
+      reReadAdopted = {
+        key: hexToBytes(outcome.next.material.community_root),
+        epoch: outcome.epoch,
+        material: outcome.next.material,
+      };
+  } else if (!ctx.signer.nip44) {
+    transition = "cannot-follow";
+  } else {
+    const outcome = await readRekey(
+      keys,
+      rekey,
+      refoundAuthority(state),
+      ctx.self,
+      ctx.signer,
+      state.channels,
+      canRemoveSelf,
+      verifyVac,
+    );
+    if (outcome.kind === "adopt") {
+      transition = "adopt";
+      adoptedMaterial = outcome.next.material;
+    } else if (outcome.kind === "removed") {
+      transition = "removed";
+    }
+  }
+
+  return { epoch: epochMaterial.root_epoch, keys, transition, adoptedMaterial, reReadAdopted, rumors };
+}
+
+/**
+ * Walk every epoch from the seed forward — fully syncing each (auth → all planes →
+ * fold → rekey) before advancing — until we reach the tip, are removed, or can no
+ * longer follow. Returns the tip keys so the caller can open the live subscription
+ * there (and nowhere else).
+ */
+export async function syncEpochs(ctx: SyncContext, material: JoinMaterial): Promise<EpochWalkResult> {
+  const epochs: EpochResult[] = [];
+  let prior: ConcordKeys | undefined;
+  let chain = buildChain(material);
+  let tipKeys: ConcordKeys | undefined;
+  let removed = false;
+
+  for (let i = 0; i < chain.length; i++) {
+    if (ctx.alive && !ctx.alive()) break;
+    const result = await syncEpoch(ctx, chain[i], prior, i + 1 < chain.length);
+    prior = result.keys;
+    epochs.push(result);
+
+    if (result.transition === "adopt" && result.adoptedMaterial) {
+      chain = [...chain, result.adoptedMaterial];
+      continue;
+    }
+    if (result.transition === "known") {
+      // D-04 cascade (Open Question 2): a strictly-lower re-read winner for this
+      // known epoch beats what `chain[i+1]` already recorded — discard
+      // chain[i+1..] (it was built on the abandoned branch) and rebuild the
+      // continuation from the corrected root; the forward walk regenerates
+      // everything past it from there. An equal-or-higher re-read keeps the
+      // existing chain untouched (down-only — never re-fork a settled epoch).
+      const next = chain[i + 1];
+      if (
+        result.reReadAdopted &&
+        next &&
+        isStrictlyLowerKey(hexToBytes(next.community_root), result.reReadAdopted.key)
+      ) {
+        chain = [...chain.slice(0, i + 1), result.reReadAdopted.material];
+      }
+      continue;
+    }
+    // tip / cannot-follow: we still belong here → open live at these keys.
+    // removed: a Refounding excluded us → no live subscription.
+    if (result.transition === "removed") removed = true;
+    else tipKeys = result.keys;
+    break;
+  }
+
+  return { epochs, tipKeys, removed };
+}
+
+/**
+ * The ordered chain of held roots an invite/material grants — epoch 0..current.
+ * Each element is a per-epoch {@link JoinMaterial} carrying only the roots at or
+ * before that epoch, so `deriveConcordKeys` addresses the right generation.
+ */
+export function buildChain(material: JoinMaterial): JoinMaterial[] {
+  const roots = [
+    ...(material.held_roots ?? []),
+    // The tip carries ITS OWN refounder already (material.refounder) — not
+    // inherited from anywhere else, so it's used as-is here.
+    { epoch: material.root_epoch, key: material.community_root, refounder: material.refounder },
+  ].sort((a, b) => a.epoch - b.epoch);
+  const seen = new Set<number>();
+  const uniq = roots.filter((r) => (seen.has(r.epoch) ? false : (seen.add(r.epoch), true)));
+  // Strip the tip's own `refounder` out of the spread base below — every
+  // synthesized epoch attributes its OWN refounder instead (ROTATE-12/L01), so
+  // the tip's must never leak onto a historical entry via `...base`.
+  const { refounder: _tipRefounder, ...base } = material;
+  return uniq.map((r) => ({
+    ...base,
+    community_root: r.key,
+    root_epoch: r.epoch,
+    // ROTATE-12/L01: attribute EACH synthesized epoch's refounder from its OWN
+    // held_roots entry — genesis (epoch 0) and pre-field entries fall back to
+    // undefined (key omitted, not set to `undefined`, to keep the object shape
+    // stable when there is none) — instead of stamping the TIP's refounder onto
+    // every historical epoch (a forged-roster vector the moment any per-epoch
+    // fold surfaces at foldMembers' snapshot-authorization gate).
+    ...(r.refounder !== undefined ? { refounder: r.refounder } : {}),
+    held_roots: uniq
+      .filter((o) => o.epoch < r.epoch)
+      .map((o) => ({ epoch: o.epoch, key: o.key, ...(o.refounder !== undefined ? { refounder: o.refounder } : {}) }))
+      .reverse(),
+  }));
+}
+
+/** The logical plane a decoded wrap belongs to — the RumorStore key. Channels
+ *  key by their stable id (shared across epochs); control/dissolved/rekey key by
+ *  kind (not epoch-partitioned in this phase). The Guestbook rides the epoch
+ *  (CORD-02 §5), so its key includes `info.epoch` — a Refounding's new epoch
+ *  starts a fresh store, and `foldMembers` reads only the current epoch's Joins/
+ *  Leaves/Kicks/Snapshots + observed authors, so a removed member's prior-epoch
+ *  activity can't resurrect them. Old-epoch guestbook stores stay addressable for
+ *  reading history until the retention trim (`adoptRefounding`, D-03) disposes
+ *  them once their epoch leaves `held_roots`. */
+export function planeStoreKey(info: PlaneInfo): string {
+  if (info.type === "channel") return `channel:${info.channelId}`;
+  if (info.type === "guestbook") return `guestbook@${info.epoch}`;
+  return info.type;
+}

@@ -1,6 +1,6 @@
 /**
- * Integrate nostr-tools library with Applesauce loaders for event loading
- * @tags loader, nostr-tools, integration
+ * Integrate a relay pool with Applesauce loaders for event loading
+ * @tags loader, relay-pool, integration
  * @related loader/using-ndk, loader/using-nostrify
  */
 import { castEvent, Note } from "applesauce-common/casts";
@@ -8,33 +8,16 @@ import { EventStore } from "applesauce-core";
 import { UpstreamPool } from "applesauce-loaders";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { mergeFilters, SimplePool } from "nostr-tools";
+import { RelayPool } from "applesauce-relay";
 import { useEffect, useMemo, useState } from "react";
-import { Observable } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
-const pool = new SimplePool();
+const pool = new RelayPool();
 
 // Create an event store to hold events
 const store = new EventStore();
 
-// Create an adapter for nostr-tools SimplePool
-const upstream: UpstreamPool = (relays, filters) =>
-  new Observable((observer) => {
-    const sub = pool.subscribe(relays, mergeFilters(...filters), {
-      onevent: (event) => observer.next(event),
-      oneose: () => observer.complete(),
-      onclose: (reasons) => {
-        if (reasons && reasons.length > 0) {
-          observer.error(new Error(reasons.join(", ")));
-        } else {
-          observer.complete();
-        }
-      },
-    });
-
-    return () => sub.close();
-  });
+const upstream: UpstreamPool = pool;
 
 // Create the necessary loaders for the store to load profiles
 createEventLoaderForStore(store, upstream, { lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"] });

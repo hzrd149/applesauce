@@ -14,7 +14,7 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import clsx from "clsx";
-import { kinds, NostrEvent } from "nostr-tools";
+import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useRef, useState } from "react";
 import { map } from "rxjs";
 

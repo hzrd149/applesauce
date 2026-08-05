@@ -8,7 +8,7 @@ import { TORRENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { EventStore, mapEventsToStore } from "applesauce-core";
-import { Filter, persistEventsToCache } from "applesauce-core/helpers";
+import { Filter, NostrEvent, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createReactionsLoader, createZapsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -53,7 +53,7 @@ const pool = new RelayPool();
 // Setup a local event cache
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters).then((events) => {
+  return getEventsForFilters<NostrEvent>(cache, filters).then((events) => {
     console.log("loaded events from cache", events.length);
     return events;
   });

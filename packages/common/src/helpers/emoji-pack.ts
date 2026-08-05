@@ -1,4 +1,5 @@
 import { getOrComputeCachedValue, notifyEventUpdate } from "applesauce-core/helpers";
+import { setCachedValue } from "applesauce-core/helpers/cache";
 import { getReplaceableIdentifier, getTagValue, kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { HiddenContentSigner } from "applesauce-core/helpers/hidden-content";
 import {
@@ -100,7 +101,10 @@ export function getHiddenFavoriteEmojis<T extends NostrEvent>(list: T): Emoji[] 
   if (!tags) return undefined;
 
   const emojis = parseEmojiTags(tags);
-  Reflect.set(list, FavoriteEmojiPacksHiddenSymbol, emojis);
+  // Derived from the list's own hidden tags — identity memo (see applesauce-core's cache.ts
+  // taxonomy). Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it
+  // instead of carrying a stale derivation onto a copy whose hidden tags differ.
+  setCachedValue(list, FavoriteEmojiPacksHiddenSymbol, emojis);
   return emojis;
 }
 
@@ -117,7 +121,10 @@ export function getHiddenFavoriteEmojiPackPointers<T extends NostrEvent>(list: T
   if (!tags) return undefined;
 
   const pointers = parseEmojiPackPointers(tags);
-  Reflect.set(list, FavoriteEmojiPacksHiddenPointersSymbol, pointers);
+  // Derived from the list's own hidden tags — identity memo (see applesauce-core's cache.ts
+  // taxonomy). Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it
+  // instead of carrying a stale derivation onto a copy whose hidden tags differ.
+  setCachedValue(list, FavoriteEmojiPacksHiddenPointersSymbol, pointers);
   return pointers;
 }
 
@@ -127,10 +134,8 @@ export function isHiddenFavoriteEmojiPacksUnlocked<T extends NostrEvent>(
 ): list is T & UnlockedFavoriteEmojiPacks {
   return (
     isHiddenTagsUnlocked(list) &&
-    (FavoriteEmojiPacksHiddenSymbol in list ||
-      FavoriteEmojiPacksHiddenPointersSymbol in list ||
-      getHiddenFavoriteEmojis(list) !== undefined ||
-      getHiddenFavoriteEmojiPackPointers(list) !== undefined)
+    getHiddenFavoriteEmojis(list) !== undefined &&
+    getHiddenFavoriteEmojiPackPointers(list) !== undefined
   );
 }
 

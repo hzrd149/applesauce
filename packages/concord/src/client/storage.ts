@@ -1,0 +1,88 @@
+// Pluggable persistence + media upload for ConcordClient.
+
+import type { AsyncRumorStore, RumorStore } from "applesauce-core";
+
+import type { MediaAttachment } from "../helpers/imeta.js";
+
+/** Progress for a batch of attachments sent with a chat message. */
+export interface ConcordUploadProgress {
+  /** Files in this send operation. */
+  total: number;
+  /** Files fully uploaded so far, so the file being worked on is `done + 1`. */
+  done: number;
+  /** Which half of the current file's trip is in progress. */
+  phase: "encrypting" | "uploading";
+}
+
+/** Per-file progress emitted by a {@link ConcordUploader}. */
+export interface ConcordUploadOptions {
+  onProgress?: (phase: ConcordUploadProgress["phase"]) => void;
+}
+
+/** A per-plane rumor store — either the in-memory {@link RumorStore} or an
+ *  {@link AsyncRumorStore} backed by an async event database. */
+export type ConcordRumorStore = RumorStore | AsyncRumorStore;
+
+/** Creates the per-plane {@link ConcordRumorStore} for a community — the persistent
+ *  cache seam. Return an {@link AsyncRumorStore} backed by an async event database to
+ *  persist decrypted rumors across reloads; the default is a fresh in-memory
+ *  {@link RumorStore}. */
+export type ConcordStoreFactory = (communityId: string, planeKey: string) => ConcordRumorStore;
+
+/** Async key/value storage for Concord membership/key material and sync cursors. */
+export interface ConcordStorage {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+}
+
+/** An in-memory {@link ConcordStorage}. Not durable — real clients should pass one. */
+export function memoryStorage(): ConcordStorage {
+  const map = new Map<string, string>();
+  return {
+    getItem: async (k) => map.get(k) ?? null,
+    setItem: async (k, v) => void map.set(k, v),
+    removeItem: async (k) => void map.delete(k),
+  };
+}
+
+interface SyncStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/** The best default storage: wrapped `localStorage` if present, else memory. */
+export function defaultStorage(): ConcordStorage {
+  const ls = (globalThis as { localStorage?: SyncStorage }).localStorage;
+  if (!ls) return memoryStorage();
+  return {
+    getItem: async (k) => ls.getItem(k),
+    setItem: async (k, v) => void ls.setItem(k, v),
+    removeItem: async (k) => void ls.removeItem(k),
+  };
+}
+
+/**
+ * Encrypts and uploads chat/community media, returning the NIP-92 attachment
+ * (url + per-file `encryption` + `originalSha256`) that rides in the message's
+ * imeta tag / a community `BlobPointer`. Injected so the core client carries no
+ * Blossom dependency; the app supplies a Blossom-backed implementation.
+ */
+export interface ConcordUploader {
+  upload(file: Blob, communityId: string, options?: ConcordUploadOptions): Promise<MediaAttachment>;
+}
+
+// ---- decoded-rumor cache (survives reload independent of relay behaviour) ----
+
+export type CachePlane = "control" | "guestbook" | "channel";
+
+export interface CachedEntry {
+  plane: CachePlane;
+  channelId?: string;
+  // The decoded rumor + verified author — never a raw kind-1059 wrap.
+  decoded: import("../types.js").DecodedEvent;
+}
+
+/** Cap cached chat per channel; control/guestbook are small and kept whole. */
+export const MAX_CHANNEL_CACHE = 300;

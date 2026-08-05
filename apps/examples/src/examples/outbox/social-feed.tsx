@@ -27,7 +27,7 @@ import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellify from "pastellify";
 import { useMemo, useState } from "react";
 import { SubmitHandler } from "react-hook-form";
@@ -44,7 +44,7 @@ const eventStore = new EventStore();
 // Setup a local event cache
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters(cache, filters);
+  return getEventsForFilters<NostrEvent>(cache, filters);
 }
 
 // Save all new events to the cache

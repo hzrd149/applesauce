@@ -16,7 +16,7 @@ import { createEventLoaderForStore, createReactionsLoader, createTimelineLoader 
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { ProfilePointer } from "nostr-tools/nip19";
+import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 import { map } from "rxjs";
 
