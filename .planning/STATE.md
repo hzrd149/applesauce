@@ -4,15 +4,15 @@ milestone: v1.2
 milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: Operation-Scoped NIP-42 Auth Hooks
-status: planning
-stopped_at: Phase 13 context gathered
-last_updated: "2026-08-05T15:55:11.428Z"
+status: executing
+stopped_at: Phase 13 planned
+last_updated: "2026-08-05T16:44:01.913Z"
 last_activity: 2026-08-05
-last_activity_desc: "ROADMAP.md created for v1.2: Phase 13 (RAUTH-01..09), Phase 14 (ALOG-01..03, depends on 13), Phase 15 (CAUTH-01..04, hard-blocked on 13)"
+last_activity_desc: "Phase 13 planned: 7 plans across 6 waves (RAUTH-01..09), research + pattern map + validation strategy captured; plan-checker passed with 0 blockers"
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** v1.2 operation-scoped-relay-auth — Phase 13 (Operation-Scoped NIP-42 Auth Hooks) ready to plan
+**Current focus:** v1.2 operation-scoped-relay-auth — Phase 13 (Operation-Scoped NIP-42 Auth Hooks) ready to execute
 
 ## Current Position
 
 Phase: 13 of 15 (Operation-Scoped NIP-42 Auth Hooks)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-08-05 — ROADMAP.md created for v1.2: Phase 13 (RAUTH-01..09), Phase 14 (ALOG-01..03, depends on 13), Phase 15 (CAUTH-01..04, hard-blocked on 13)
+Plan: 0 of 7 complete (6 waves)
+Status: Ready to execute
+Last activity: 2026-08-05 — Phase 13 planned: 7 plans across 6 waves (RAUTH-01..09), research + pattern map + validation strategy captured; plan-checker passed with 0 blockers
 
 ## Performance Metrics
 

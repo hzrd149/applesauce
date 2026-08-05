@@ -75,13 +75,29 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 **Plans**: 7 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 13-01-PLAN.md — Auth option/context types, `AuthHandlerError`/`AuthTimeoutError`, and the shared auth-retry operator (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 13-02-PLAN.md — `req`/`request`/`subscription`: value-signal conversion, pre-block removal, suspended request clock (wave 2)
 - [ ] 13-03-PLAN.md — `SyncLoader` threading, auth-aware stall guard, and the gated negentropy fallback (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 13-04-PLAN.md — `count`: value-signal conversion and suspendable 10s clock (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 13-05-PLAN.md — `event`/`publish`: shared operator, `customRetryOperator` `RelayClosedError` skip, suspended publish clock (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 13-06-PLAN.md — `negentropy`/`sync`: value-signal conversion, internal call threading, pre-gate helper removal (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 13-07-PLAN.md — `RelayGroup`/`RelayPool` pass-through, per-relay sync isolation, `PublishResponse.error`, changesets (wave 6)
 
 ### Phase 14: Auth Lifecycle Debug Logging
