@@ -4,6 +4,9 @@ import { getExpirationTimestamp } from "../helpers/expiration.js";
 import { unixNow } from "../helpers/time.js";
 import { IExpirationManager } from "./interface.js";
 
+/** Node's 32-bit signed timer limit (~24.8 days); setTimeout delays beyond this overflow and clamp to ~1ms. */
+const MAX_TIMER_DELAY = 2_147_483_647;
+
 /** Manages expiration state for events with expiration tags */
 export class ExpirationManager<E extends StoreEvent = NostrEvent> implements IExpirationManager<E> {
   /** A stream of event IDs that have expired */
@@ -45,15 +48,7 @@ export class ExpirationManager<E extends StoreEvent = NostrEvent> implements IEx
     // Exit if the next check is already before expiration
     if (this.timer && this.nextCheck && this.nextCheck <= expiration) return;
 
-    // Clear any existing timer
-    if (this.timer) clearTimeout(this.timer);
-
-    // Set timer for next check
-    const timeout = expiration - now;
-    if (timeout > 0) {
-      this.timer = setTimeout(this.emitNotifications.bind(this), timeout * 1000 + 10);
-      this.nextCheck = expiration;
-    }
+    this.scheduleNextCheck(expiration, now);
   }
 
   /**
@@ -93,6 +88,27 @@ export class ExpirationManager<E extends StoreEvent = NostrEvent> implements IEx
   }
 
   /**
+   * Sole owner of the `timer` / `nextCheck` pair: clears any live handle, then arms a
+   * new one for the given expiration. The scheduled delay is capped to MAX_TIMER_DELAY
+   * to avoid Node's 32-bit setTimeout overflow, but `nextCheck` stores the true target
+   * expiration (not the capped wake time) — track()'s early-exit guard reads it as the
+   * semantic "next check target". A capped early wake is a harmless no-op:
+   * emitNotifications() recomputes the minimum over remaining entries and expires
+   * nothing when nothing is due, re-arming the next chunk each time.
+   */
+  private scheduleNextCheck(expiration: number, now = unixNow()): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.nextCheck = null;
+
+    const timeout = expiration - now;
+    if (timeout <= 0) return;
+
+    this.timer = setTimeout(this.emitNotifications.bind(this), Math.min(timeout * 1000 + 10, MAX_TIMER_DELAY));
+    this.nextCheck = expiration;
+  }
+
+  /**
    * Remove expired events from the store and emit them
    */
   private emitNotifications(): void {
@@ -112,18 +128,13 @@ export class ExpirationManager<E extends StoreEvent = NostrEvent> implements IEx
       }
     }
 
-    // Schedule next check if there are remaining expirations
+    // The fired timer handle is spent and must not be left visible to track()'s guard,
+    // whether or not there's a next expiration to schedule.
     if (nextExpiration !== Infinity) {
-      // Cleanup timers
-      if (this.timer) clearTimeout(this.timer);
-      this.nextCheck = null;
+      this.scheduleNextCheck(nextExpiration, now);
+    } else {
       this.timer = null;
-
-      const timeout = nextExpiration - now;
-      if (timeout > 0) {
-        this.timer = setTimeout(this.emitNotifications.bind(this), timeout * 1000 + 10);
-        this.nextCheck = nextExpiration;
-      }
+      this.nextCheck = null;
     }
   }
 }
