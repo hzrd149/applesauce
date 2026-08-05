@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { firstValueFrom, map, Observable, race, share } from "rxjs";
 
 import { Negentropy, NegentropyStorageVector } from "./lib/negentropy.js";
-import { AuthRequirement, MultiplexWebSocket } from "./types.js";
+import { MultiplexWebSocket, RelayAuthOptions } from "./types.js";
 
 /**
  * A function that reconciles the storage vectors with a remote relay
@@ -14,16 +14,14 @@ import { AuthRequirement, MultiplexWebSocket } from "./types.js";
  */
 export type ReconcileFunction = (have: string[], need: string[]) => Promise<void>;
 
-/** Options for the negentropy sync */
+/**
+ * Options for the negentropy sync. `waitForAuth`/`onAuthRequired`/`authTimeout`/`authRetries` are
+ * handled by the relay layer, not `negentropySync` itself.
+ */
 export type NegentropySyncOptions = {
   frameSizeLimit?: number;
   signal?: AbortSignal;
-  /**
-   * Whether to wait for NIP-42 authentication when the relay rejects the sync with `auth-required`.
-   * Defaults to `true`. Handled by the relay layer, not `negentropySync` itself.
-   */
-  waitForAuth?: AuthRequirement;
-};
+} & RelayAuthOptions;
 
 const log = logger.extend("negentropy");
 

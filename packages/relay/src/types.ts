@@ -56,6 +56,56 @@ export interface RelayStatus {
 
 export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">;
 
+/** The kind of operation an auth-required response was received for */
+export type RelayAuthOperation = "read" | "publish" | "sync";
+
+/**
+ * The context passed to a {@link RelayAuthHandler} when a relay signals that authentication is required
+ * for a specific operation (RAUTH-01)
+ */
+export type RelayAuthContext = {
+  /** The relay that requires authentication */
+  relay: Relay;
+  /** The URL of the relay */
+  url: string;
+  /** The current NIP-42 AUTH challenge string, or null if none has been received yet */
+  challenge: string | null;
+  /** The kind of operation that triggered the auth-required response */
+  operation: RelayAuthOperation;
+  /** The auth requirement configured for the operation that triggered this auth phase */
+  requirement: AuthRequirement;
+  /** The pubkeys that are not yet authenticated for `requirement`, or null when `requirement` is `true` */
+  missingPubkeys: string[] | null;
+  /** The machine-readable reason string reported by the relay */
+  reason: string;
+};
+
+/** A caller-supplied callback invoked when a relay signals that authentication is required */
+export type RelayAuthHandler = (context: RelayAuthContext) => void | Promise<void>;
+
+/**
+ * D-05 mixin: the shared set of auth-related options intersected into every operation's option type
+ * (`RelayReqOptions`, `PublishOptions`, `NegentropySyncOptions`, `RelayCountOptions`, `RelayEventOptions`,
+ * `RelaySyncOptions`) so `waitForAuth` and its siblings are declared exactly once.
+ */
+export type RelayAuthOptions = {
+  /**
+   * What authentication to wait for when the relay requires auth for this operation. default is `true` (any authenticated user)
+   * Pass a pubkey (or array of pubkeys) to wait until those specific users are authenticated.
+   */
+  waitForAuth?: AuthRequirement;
+  /** Called when the relay signals that authentication is required for this operation */
+  onAuthRequired?: RelayAuthHandler;
+  /**
+   * The maximum time (in milliseconds) to wait for a single auth phase (handler execution plus the
+   * subsequent authentication wait). default is 30_000. Pass `false` to wait indefinitely for external
+   * auth state to satisfy the requirement.
+   */
+  authTimeout?: number | false;
+  /** The number of consecutive auth-required cycles to tolerate before giving up. default is 1 */
+  authRetries?: number;
+};
+
 /** Options for the publish method on the pool and relay */
 export type PublishOptions = {
   /** Number of times to retry the publish. default is 3 */
@@ -67,25 +117,21 @@ export type PublishOptions = {
   reconnect?: boolean | number | Parameters<typeof retry>[0];
   /** Timeout for publish in milliseconds (default 30 seconds) */
   timeout?: number | boolean;
-  /**
-   * What authentication to wait for when the relay requires auth for publishing. default is true (any authenticated user)
-   * Pass a pubkey (or array of pubkeys) to wait until those specific users are authenticated.
-   */
-  waitForAuth?: AuthRequirement;
-};
+} & RelayAuthOptions;
 
 /** The response type when publishing an event to a relay */
-export type PublishResponse = { ok: boolean; message?: string; from: string };
+export type PublishResponse = {
+  ok: boolean;
+  message?: string;
+  from: string;
+  /** The original error object, alongside `message`, so consumers can branch structurally (D-18) */
+  error?: unknown;
+};
 
 /** Base options for REQ subscriptions to a relay */
 export type RelayReqOptions = {
   /** Custom REQ id for the subscription */
   id?: string;
-  /**
-   * Whether to wait for authentication and retry if auth-required is received. default is true (any authenticated user)
-   * Pass a pubkey (or array of pubkeys) to wait until those specific users are authenticated.
-   */
-  waitForAuth?: AuthRequirement;
   /**
    * Whether to resubscribe after a clean CLOSED message from the relay. default is false
    * @see https://rxjs.dev/api/index/function/repeat
@@ -96,7 +142,16 @@ export type RelayReqOptions = {
    * @see https://rxjs.dev/api/index/function/retry
    */
   reconnect?: boolean | number | Parameters<typeof retry>[0];
-};
+} & RelayAuthOptions;
+
+/** Options for the count method on the pool and relay */
+export type RelayCountOptions = RelayAuthOptions;
+
+/** Options for the event method on the pool and relay */
+export type RelayEventOptions = RelayAuthOptions;
+
+/** Options for the sync method on the pool and relay */
+export type RelaySyncOptions = RelayAuthOptions;
 
 /** Internal type emitted when REQ is sent to the relay */
 export type RelayReqOpenMessage = { type: "OPEN"; from: string; id: string; filters: Filter[] };
