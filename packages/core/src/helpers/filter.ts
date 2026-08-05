@@ -1,5 +1,5 @@
 import equal from "fast-deep-equal";
-import { Filter as CoreFilter } from "nostr-tools";
+import type { Filter as CoreFilter } from "nostr-tools/filter";
 import { setCachedValue } from "./cache.js";
 import { NostrEvent, StoreEvent } from "./event.js";
 

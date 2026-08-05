@@ -1,5 +1,7 @@
 // reexport encryption methods from nostr-tools
-export { nip04, nip44 } from "nostr-tools";
+// NOTE: import from subpaths only, importing from the "nostr-tools" root pulls in modules that reference `fetch`
+export * as nip04 from "nostr-tools/nip04";
+export * as nip44 from "nostr-tools/nip44";
 
 /**
  * Checks if a string is encrypted with NIP-04 or NIP-44

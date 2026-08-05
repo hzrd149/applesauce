@@ -1,4 +1,5 @@
-import { kinds, NostrEvent } from "nostr-tools";
+import * as kinds from "nostr-tools/kinds";
+import type { NostrEvent } from "nostr-tools/pure";
 import { KnownEventTemplate } from "../helpers/event.js";
 import { blankEventTemplate, EventFactory } from "./event.js";
 import { setDeleteEvents } from "../operations/delete.js";
