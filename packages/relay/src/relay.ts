@@ -31,6 +31,7 @@ import {
   NEVER,
   Observable,
   of,
+  OperatorFunction,
   repeat,
   RepeatConfig,
   ReplaySubject,
@@ -54,6 +55,7 @@ import {
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
+import { AuthPhaseGate, authRetry, type AuthRequiredSignal } from "./operators/auth-retry.js";
 import { completeWhen } from "./operators/complete-when.js";
 import {
   AuthRequirement,
@@ -62,6 +64,9 @@ import {
   NegentropyReadStore,
   NegentropySyncStore,
   PublishOptions,
+  RelayAuthContext,
+  RelayAuthOperation,
+  RelayAuthOptions,
   RelayAuthState,
   PublishResponse,
   RelayCountResponse,
@@ -114,6 +119,31 @@ export class AuthRequiredError extends RelayClosedError {
   constructor(reason: string) {
     super(reason);
     this.name = "AuthRequiredError";
+  }
+}
+
+/**
+ * NOTE: the `.name` values of `AuthHandlerError` and `AuthTimeoutError` are load-bearing wire between
+ * packages. `packages/loaders/src/loaders/sync-loader.ts` deliberately does NOT import these classes
+ * (D-06 keeps `applesauce-loaders` free of an `applesauce-relay` dependency) and instead duck-types
+ * against these exact strings. Renaming either class requires updating that check in the same change.
+ */
+
+/** Thrown when a caller-supplied `onAuthRequired` handler rejects or throws (D-17) */
+export class AuthHandlerError extends RelayClosedError {
+  constructor(reason: string, cause: unknown) {
+    super(reason);
+    this.name = "AuthHandlerError";
+    // ES2022 target: Error.cause carries the handler's original rejection
+    this.cause = cause;
+  }
+}
+
+/** Thrown when a single auth phase (handler execution plus the subsequent wait) exceeds `authTimeout` (D-17) */
+export class AuthTimeoutError extends RelayClosedError {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "AuthTimeoutError";
   }
 }
 
@@ -696,6 +726,66 @@ export class Relay {
   protected authSatisfied$(requirement: AuthRequirement): Observable<boolean> {
     if (typeof requirement === "boolean") return this.authenticated$;
     return this.authenticatedFor$(requirement);
+  }
+
+  /**
+   * Compute the pubkeys not yet authenticated for an {@link AuthRequirement}, for {@link RelayAuthContext.missingPubkeys}.
+   * `true` returns null (any authenticated user satisfies it, so no specific pubkeys are "missing").
+   * A single pubkey returns an empty array when already authenticated, a one-element array otherwise.
+   * An array returns only the entries `isAuthenticated` reports false for.
+   */
+  protected missingPubkeysFor(requirement: AuthRequirement): string[] | null {
+    if (typeof requirement === "boolean") return null;
+    if (typeof requirement === "string") return this.isAuthenticated(requirement) ? [] : [requirement];
+    return requirement.filter((pubkey) => !this.isAuthenticated(pubkey));
+  }
+
+  /** Assemble the {@link RelayAuthContext} passed to a caller's `onAuthRequired` handler (RAUTH-01) */
+  protected buildAuthContext(operation: RelayAuthOperation, requirement: AuthRequirement, reason: string): RelayAuthContext {
+    return {
+      relay: this,
+      url: this.url,
+      challenge: this.challenge,
+      operation,
+      requirement,
+      missingPubkeys: this.missingPubkeysFor(requirement),
+      reason,
+    };
+  }
+
+  /**
+   * Thin `Relay`-side adapter over the shared `authRetry` operator (`operators/auth-retry.ts`, D-04).
+   * Resolves `waitForAuth`/`onAuthRequired`/`authTimeout`/`authRetries` off `opts` (defaults: waitForAuth
+   * true, authTimeout 30_000, authRetries 1) and injects the three terminal error constructors here so the
+   * value-level dependency stays one-way — `relay.ts` imports the operator module, never the reverse, and
+   * `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError` are constructed only at this caller boundary
+   * (D-01). Not yet wired into any of the four auth sites — that lands in plans 13-02/13-04/13-05/13-06.
+   */
+  protected authRetryOperator<T extends unknown = unknown>(
+    operation: RelayAuthOperation,
+    opts: RelayAuthOptions | undefined,
+    gate: AuthPhaseGate,
+  ): OperatorFunction<T | AuthRequiredSignal, T> {
+    const waitForAuth = opts?.waitForAuth ?? true;
+    const authTimeout = opts?.authTimeout ?? 30_000;
+    const authRetries = opts?.authRetries ?? 1;
+
+    return authRetry<T>({
+      operation,
+      waitForAuth,
+      onAuthRequired: opts?.onAuthRequired,
+      authTimeout,
+      authRetries,
+      buildContext: (reason) => this.buildAuthContext(operation, waitForAuth, reason),
+      authSatisfied$: (requirement) => this.authSatisfied$(requirement),
+      gate,
+      log: this.log,
+      errors: {
+        exhausted: (reason) => new AuthRequiredError(reason),
+        handler: (reason, cause) => new AuthHandlerError(reason, cause),
+        timeout: (reason) => new AuthTimeoutError(reason),
+      },
+    });
   }
 
   /** Wait for authentication state, make connection and then wait for authentication if required */
