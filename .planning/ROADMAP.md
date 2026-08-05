@@ -72,7 +72,17 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
   5. `SyncLoader` threads `onAuthRequired`/`authTimeout`/`authRetries` into both its negentropy sync path and its paginated request path identically, the behavior passes through `RelayPool`/`RelayGroup`, and `authRequiredForRead$`/`authRequiredForPublish$` keep updating as informational status only. (RAUTH-08, RAUTH-09; pool/group leg of RAUTH-07)
 
 **Reference**: Full drafted implementation plan on disk at [`phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md`](phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md) — `/gsd-plan-phase 13` should read it as primary input.
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+
+- [ ] 13-01-PLAN.md — Auth option/context types, `AuthHandlerError`/`AuthTimeoutError`, and the shared auth-retry operator (wave 1)
+- [ ] 13-02-PLAN.md — `req`/`request`/`subscription`: value-signal conversion, pre-block removal, suspended request clock (wave 2)
+- [ ] 13-03-PLAN.md — `SyncLoader` threading, auth-aware stall guard, and the gated negentropy fallback (wave 2)
+- [ ] 13-04-PLAN.md — `count`: value-signal conversion and suspendable 10s clock (wave 3)
+- [ ] 13-05-PLAN.md — `event`/`publish`: shared operator, `customRetryOperator` `RelayClosedError` skip, suspended publish clock (wave 4)
+- [ ] 13-06-PLAN.md — `negentropy`/`sync`: value-signal conversion, internal call threading, pre-gate helper removal (wave 5)
+- [ ] 13-07-PLAN.md — `RelayGroup`/`RelayPool` pass-through, per-relay sync isolation, `PublishResponse.error`, changesets (wave 6)
 
 ### Phase 14: Auth Lifecycle Debug Logging
 
@@ -121,7 +131,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
-| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 0/TBD | Not started | - |
+| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 0/7 | Planned | - |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 0/TBD | Not started | - |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 0/TBD | Not started | - |
 
