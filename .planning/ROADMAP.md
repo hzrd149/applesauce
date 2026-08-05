@@ -141,3 +141,13 @@ Full report with reproduction, observed warnings, patch shape, and reporter's va
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.11: Concord operation-scoped stream authentication cleanup (BACKLOG)
+
+**Goal:** [Captured for future planning] Replace Concord's client-wide, append-only stream-signer registry and ambient relay challenge/authentication drivers with operation-scoped `onAuthRequired` handlers owned by each community and private-channel engine. Each request, subscription, and sync operation should authenticate only its missing `waitForAuth` pubkeys using the keys held by that scope, eliminating whole-registry AUTH churn while preserving per-operation retries. Remove or narrow `ConcordRelayAuth.authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication after their callers migrate. **Blocked until Phase 999.5 ships `onAuthRequired`, `authTimeout`, and `authRetries` through `applesauce-relay` and `applesauce-loaders`, including both paginated REQ and negentropy sync paths.** Root-cause evidence: `.planning/debug/concord-multi-user-auth-churn.md`.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog after Phase 999.5 is complete)
