@@ -2,9 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: operation-scoped-relay-auth
+current_phase: 13
+current_phase_name: Operation-Scoped NIP-42 Auth Hooks
 status: planning
-last_updated: "2026-08-05T15:30:00.000Z"
+stopped_at: Phase 13 context gathered
+last_updated: "2026-08-05T15:55:11.428Z"
 last_activity: 2026-08-05
+last_activity_desc: "ROADMAP.md created for v1.2: Phase 13 (RAUTH-01..09), Phase 14 (ALOG-01..03, depends on 13), Phase 15 (CAUTH-01..04, hard-blocked on 13)"
 progress:
   total_phases: 3
   completed_phases: 0
@@ -337,9 +341,9 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-04
-Stopped at: v1.1 milestone closed and archived
-Resume file: None
+Last session: 2026-08-05T15:55:11.410Z
+Stopped at: Phase 13 context gathered
+Resume file: .planning/phases/13-operation-scoped-nip-42-auth-hooks/13-CONTEXT.md
 
 ## Operator Next Steps
 
