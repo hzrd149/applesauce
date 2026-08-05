@@ -125,22 +125,34 @@ Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.10: applesauce-core expiration timer overflow (BACKLOG)
+### Phase 999.10: applesauce-core expiration timer overflow (RESOLVED 2026-08-05)
 
-**Goal:** [Captured for future planning] `ExpirationManager` schedules a native `setTimeout()` using the full delta to a NIP-40 `expiration` tag, so any event expiring more than ~24.8 days out exceeds Node's 32-bit timer limit — Node clamps the delay to `1ms` and emits `TimeoutOverflowWarning`, which then fires repeatedly. Reported against `applesauce-core@6.2.0` with a one-liner reproduction (add a single event with an expiration 365 days out; no relay, websocket, or reconnect code involved). Explicitly **not** caused by `reconnect: Infinity` in `applesauce-relay` — that setting is documented and should stay.
+**Status: FIXED — shipped via PR [#89](https://github.com/hzrd149/applesauce/pull/89), merged to `master` as `5ca390ec` and merged into `concord`.** Never promoted to a full phase; fixed as quick task `260805-ds0` after a second, independent report arrived from a production incident. Full record: `.planning/quick/260805-ds0-clamp-expirationmanager-settimeout-delay/`.
 
-**Verified against live source 2026-07-29** (the report's claims hold): `packages/core/src/event-store/expiration-manager.ts` has two uncapped `setTimeout(..., timeout * 1000 + 10)` sites, at **line 54** (`track()`) and **line 124** (`emitNotifications()`). The proposed fix — clamp each delay to `MAX_TIMER_DELAY = 2_147_483_647` via a shared private `scheduleNextCheck()`, letting a capped early fire re-derive the next target — is genuinely semantics-preserving: `emitNotifications()` (lines 98-128) recomputes `nextExpiration` as the min over all remaining entries on every fire and expires nothing when nothing is due, so an early wake is a no-op that simply reschedules. Keeping `nextCheck` set to the true target expiration (not the capped wake time) also preserves the `track()` early-exit guard at line 46. A regression test asserting the capped delay belongs in the existing `packages/core/src/event-store/__tests__/expiration-manager.test.ts`.
+**Original goal:** `ExpirationManager` schedules a native `setTimeout()` using the full delta to a NIP-40 `expiration` tag, so any event expiring more than ~24.8 days out exceeds Node's 32-bit timer limit — Node clamps the delay to `1ms` and emits `TimeoutOverflowWarning`, which then fires repeatedly. Reported against `applesauce-core@6.2.0` with a one-liner reproduction (add a single event with an expiration 365 days out; no relay, websocket, or reconnect code involved). Explicitly **not** caused by `reconnect: Infinity` in `applesauce-relay` — that setting is documented and stays.
 
-**Secondary observation for whoever promotes this** (pre-existing, not introduced by the fix, same few lines): when the last tracked expiration is `forget()`-ten before its timer fires, `emitNotifications()` skips the `nextExpiration !== Infinity` branch entirely and leaves `this.timer`/`this.nextCheck` stale from the already-fired timer — worth clearing in the same pass.
+**What shipped** (all three landed together):
 
-Full report with reproduction, observed warnings, patch shape, and reporter's validation run: `expiration-report.md` in this phase directory. Note the reporter's `pnpm --filter applesauce-core test -- <path>` ran the whole core suite rather than the single file (586 tests, all green) — the filter syntax is worth sorting out at promotion.
+- **D1 — the reported overflow.** Both uncapped `setTimeout(..., timeout * 1000 + 10)` sites now route through one private `scheduleNextCheck()` that clamps to `MAX_TIMER_DELAY = 2_147_483_647`. Consolidating to a single owner — rather than clamping at each site — is what stops the defect recurring at one site only. `nextCheck` still stores the true target expiration, not the capped wake time, preserving `track()`'s early-exit guard.
+- **D2 — the secondary observation below, confirmed real.** `scheduleNextCheck()` is now sole owner of the `timer`/`nextCheck` pair and clears before arming, so a fired timer always clears its own bookkeeping. Has its own regression test.
+- **D3 — same defect class, found while auditing every timer call site.** `applesauce-wallet-connect`'s `waitForPaid()` passed `Infinity` to `simpleTimeout` for invoices with no expiry (clamping to ~1ms, so "never time out" became "time out immediately"); it now skips the operator entirely. Its expiry `setTimeout` is clamped too.
 
-**Requirements:** TBD
+**Verification.** 6 regression tests added; core + wallet-connect suites green. Because unit tests use fake timers — where Node's clamping never happens and the bug cannot be witnessed — the original field reproduction was also run against the real built `dist`: **0** warnings post-fix vs **1180** in 1.5s with only the clamp removed (~143 KB, matching the ~107 KB/s measured on the affected host).
+
+**Original secondary observation** (now fixed as D2, kept for the record): when the last tracked expiration is `forget()`-ten before its timer fires, `emitNotifications()` skips the `nextExpiration !== Infinity` branch entirely and leaves `this.timer`/`this.nextCheck` stale from the already-fired timer.
+
+**Open item resolved.** The capture note flagged that the reporter's `pnpm --filter applesauce-core test -- <path>` ran the whole core suite instead of the named file. Cause: a single root `vitest.config.ts` with no workspace projects, so positional path filters only bind when vitest runs from the repo root. Use `pnpm vitest run <path>` from the root; the `--filter … -- <path>` form silently ignores the path.
+
+**Downstream:** unblocks hzrd149/nsite-gateway#28 on the next `applesauce-core` patch release.
+
+Original report retained at `expiration-report.md` in this phase directory.
+
+**Requirements:** n/a (fixed as a quick task)
 **Plans:** 0 plans
 
 Plans:
 
-- [ ] TBD (promote with /gsd-review-backlog when ready)
+- [x] Fixed as quick task `260805-ds0` — no phase promotion needed
 
 ### Phase 999.11: Concord operation-scoped stream authentication cleanup (BACKLOG)
 

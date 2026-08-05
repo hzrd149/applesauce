@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-04 — Milestone v1.1 completed and archived
+Last activity: 2026-08-05 — Completed quick task 260805-ds0 (setTimeout clamp, PR #89 merged to master and into concord); backlog Phase 999.10 resolved
 
 ## Performance Metrics
 
@@ -291,6 +291,7 @@ None yet.
 | 260804-gzq | Exclude ephemeral kinds (20000-29999) from ConcordObservedAuthorsModel's fold | 2026-08-04 | 188210bc, b20cde05 | [260804-gzq-exclude-ephemeral-kinds-from-concordobse](./quick/260804-gzq-exclude-ephemeral-kinds-from-concordobse/) |
 | 260804-hmw | Gate verifiedSymbol/EncryptedContentSymbol on source.id === dest.id in copySymbolsToDuplicateEvent (WR-01) | 2026-08-04 | 200d9a85, 4efd074f, 55546e6b | [260804-hmw-gate-verifiedsymbol-and-encryptedcontent](./quick/260804-hmw-gate-verifiedsymbol-and-encryptedcontent/) |
 | 260804-hmw-b | Remove unused EventFactory.kind() method (WR-04) | 2026-08-04 | e829d0a3 | inline (no plan dir) |
+| 260805-ds0 | Clamp setTimeout delays to the 32-bit max in ExpirationManager and WalletConnect.waitForPaid (resolves backlog 999.10) | 2026-08-05 | 187930b9, 3f6f4bd3, 1b6b2976, 594bf1de | [260805-ds0-clamp-expirationmanager-settimeout-delay](./quick/260805-ds0-clamp-expirationmanager-settimeout-delay/) |
 
 ### Roadmap Evolution
 
