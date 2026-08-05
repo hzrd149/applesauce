@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-08-05T17:10:03.917Z",
+  "phase": "13",
+  "phase_name": "Operation-Scoped NIP-42 Auth Hooks",
+  "phase_dir": ".planning/phases/13-operation-scoped-nip-42-auth-hooks",
+  "plan": 1,
+  "task": 3,
+  "total_tasks": 3,
+  "status": "paused",
+  "unit": "plan",
+  "note": "Units below are PLANS, not tasks within a plan. Plan 13-01 is fully complete (3/3 tasks, merged). Nothing is mid-plan — the pause is on a clean wave boundary.",
+  "wave": {
+    "completed": 1,
+    "total": 6,
+    "next": 2,
+    "next_wave_plans": ["13-02", "13-03"],
+    "next_wave_parallel": true
+  },
+  "completed_tasks": [
+    {
+      "id": "13-01",
+      "name": "Auth option/context types, AuthHandlerError/AuthTimeoutError, shared auth-retry operator",
+      "status": "done",
+      "commit": "a54b4b75",
+      "wave": 1,
+      "merge_commit": "395093b2",
+      "summary": ".planning/phases/13-operation-scoped-nip-42-auth-hooks/13-01-SUMMARY.md"
+    }
+  ],
+  "remaining_tasks": [
+    {"id": "13-02", "name": "Convert req()/request()/subscription() onto the shared auth operator", "status": "not_started", "wave": 2, "depends_on": ["13-01"], "files": ["packages/relay/src/relay.ts", "packages/relay/src/__tests__/relay.test.ts"]},
+    {"id": "13-03", "name": "Thread auth options through SyncLoader (negentropy + paginated paths)", "status": "not_started", "wave": 2, "depends_on": ["13-01"], "files": ["packages/loaders/src/loaders/sync-loader.ts", "packages/loaders/src/loaders/__tests__/sync-loader.test.ts"]},
+    {"id": "13-04", "name": "Convert count() to the shared auth operator", "status": "not_started", "wave": 3, "depends_on": ["13-02"]},
+    {"id": "13-05", "name": "Move event()'s post-response auth wait onto the shared operator", "status": "not_started", "wave": 4, "depends_on": ["13-04"]},
+    {"id": "13-06", "name": "Convert negentropy() and Relay.sync to the shared auth operator", "status": "not_started", "wave": 5, "depends_on": ["13-05"]},
+    {"id": "13-07", "name": "Pool/group leg of RAUTH-07, D-18/D-19, changeset, fill 13-VALIDATION.md TBD rows", "status": "not_started", "wave": 6, "depends_on": ["13-03", "13-06"]}
+  ],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "13-01 used concat(runPhase(value), source) instead of the plan's sketched switchMap to resubscribe the source after an auth phase resolves",
+      "rationale": "runPhase returns an ignoreElements()-wrapped Observable<never> — it never emits next, so switchMap's projector would never fire. concat waits for phase completion then resubscribes, which is the intended semantics. Recorded in 13-01-SUMMARY.md under Decisions Made. Downstream plans 13-02/04/05/06 call this.authRetryOperator(...) rather than re-sketching the operator, so this does not recur.",
+      "phase": "13"
+    },
+    {
+      "decision": "13-01 marked no requirements complete in REQUIREMENTS.md",
+      "rationale": "Foundation-only plan. RAUTH-01/03/04/06/07 all describe wired end-to-end behavior delivered by 13-02 through 13-06. Mirrors the INVITE-01 / WIRE-08 precedent of not claiming a requirement until its implementing plan lands.",
+      "phase": "13"
+    },
+    {
+      "decision": "Paused on the Wave 1/Wave 2 boundary rather than mid-wave",
+      "rationale": "User requested a pause after the running executor finished. Wave 1 was fully closed out (merged, gates run, tracking committed) so the resume point is a clean fork rather than a partially-merged tree.",
+      "phase": "13"
+    }
+  ],
+  "uncommitted_files": [],
+  "next_action": "Run /gsd-execute-phase 13 --wave 2 to dispatch 13-02 and 13-03 in parallel, or /gsd-execute-phase 13 to run all remaining waves 2-6.",
+  "context_notes": "Wave 1 delivered the single shared auth operator the whole phase is built around: packages/relay/src/operators/auth-retry.ts (authRetry, suspendableTimeout, AuthPhaseGate, AuthRequiredSignal) plus the RelayAuthOptions mixin in types.ts and AuthHandlerError/AuthTimeoutError in relay.ts. The design bet is that RAUTH-07's 'available on all eight operations' becomes a property of one operator rather than four implementations that happen to agree — so every later plan is a conversion, not a reimplementation. Wave 2's two plans are genuinely independent (relay.ts vs loaders/sync-loader.ts, zero file overlap) and 13-03 deliberately does NOT import applesauce-relay (D-06 structural mirror), so it duck-types auth errors by the pinned .name strings. Waves 3-6 all serialize on packages/relay/src/relay.ts, which is why they are one plan each. Post-merge state is verified: turbo build 14/14 packages, full vitest suite 2487 passed / 2 skipped / 0 failed."
+}
