@@ -2,4 +2,4 @@
 "applesauce-common": minor
 ---
 
-Add NIP-7D forum thread support: a `ForumThreadFactory` (kind 11), a `ForumThread` cast, `isValidForumThread`/`getForumThreadTitle` helpers, and a `setTitle` operation, with replies handled by the existing NIP-22 `CommentFactory`.
+Add NIP-7D forum thread support with a thread factory, cast, helpers, and a title operation.
