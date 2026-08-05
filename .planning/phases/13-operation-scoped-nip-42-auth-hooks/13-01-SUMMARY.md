@@ -149,3 +149,13 @@ None - no external service configuration required.
 ---
 *Phase: 13-operation-scoped-nip-42-auth-hooks*
 *Completed: 2026-08-05*
+
+## Self-Check: PASSED
+
+- FOUND: packages/relay/src/operators/auth-retry.ts
+- FOUND: packages/relay/src/__tests__/auth-retry.test.ts
+- FOUND: .planning/phases/13-operation-scoped-nip-42-auth-hooks/13-01-SUMMARY.md
+- FOUND: e03939d4 (Task 1)
+- FOUND: 7c91a95f (Task 2)
+- FOUND: 358bc653 (Task 3)
+- FOUND: 4023f821 (SUMMARY commit)
