@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: operation-scoped-relay-auth
 status: planning
-last_updated: "2026-08-05T14:36:56.972Z"
+last_updated: "2026-08-05T15:30:00.000Z"
 last_activity: 2026-08-05
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Planning the next milestone — v1.1 first-fixes shipped 2026-08-04
+**Current focus:** v1.2 operation-scoped-relay-auth — Phase 13 (Operation-Scoped NIP-42 Auth Hooks) ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-08-05 — Milestone v1.2 started
+Phase: 13 of 15 (Operation-Scoped NIP-42 Auth Hooks)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-08-05 — ROADMAP.md created for v1.2: Phase 13 (RAUTH-01..09), Phase 14 (ALOG-01..03, depends on 13), Phase 15 (CAUTH-01..04, hard-blocked on 13)
 
 ## Performance Metrics
 

@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 event-store-supports-rumors** — Phases 1–4 (shipped 2026-07-09)
 - ✅ **v1.1 first-fixes** — Phases 5–12.3 (shipped 2026-08-04)
-- 📋 **Next milestone** — not yet defined (`/gsd-new-milestone`)
+- 🚧 **v1.2 operation-scoped-relay-auth** — Phases 13–15 (in progress)
 
 ## Phases
 
@@ -44,9 +44,62 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 
 </details>
 
-### 📋 Next milestone — not yet defined
+### 🚧 v1.2 operation-scoped-relay-auth (In Progress)
 
-Run `/gsd-new-milestone` to open it (questioning → research → requirements → roadmap). `REQUIREMENTS.md` was removed at v1.1 close and is recreated there.
+**Milestone Goal:** Move NIP-42 authentication out of ambient, relay-wide cached state and into the operation that actually receives `auth-required:`, then migrate Concord's stream auth onto that hook instead of its own client-wide registry driver.
+
+**Origin:** three backlog items promoted 2026-08-05 via `/gsd-review-backlog` — 999.5 (drafted plan on disk), 999.4, and 999.11 — plus SEED-001's `packages/loaders/` sweep. Full requirements: [`REQUIREMENTS.md`](REQUIREMENTS.md).
+
+**Hard sequencing:** Phase 15 is hard-blocked on Phase 13 — CAUTH-01..04 need `onAuthRequired`/`authTimeout`/`authRetries` to exist on both the paginated REQ path and the negentropy sync path before Concord's stream-auth engines can migrate off the client-wide registry. Phase 14 depends on Phase 13 only softly (13 restructures the auth surface that 14 instruments with logging).
+
+- [ ] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader`
+- [ ] **Phase 14: Auth Lifecycle Debug Logging** - A NIP-42 auth attempt's lifecycle and outcome become observable in debug output, and every `packages/loaders/` logger is derived once instead of `.extend()`-ed inline
+- [ ] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine
+
+## Phase Details
+
+### Phase 13: Operation-Scoped NIP-42 Auth Hooks
+
+**Goal**: NIP-42 authentication moves out of ambient, relay-wide cached flags (`authRequiredForRead$`/`authRequiredForPublish$` as pre-blocking gates) and into the specific operation that receives `auth-required:` — `req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, and negentropy each expose `onAuthRequired`/`authTimeout`/`authRetries`, passed through `RelayPool`/`RelayGroup` and threaded into `applesauce-loaders`' `SyncLoader` on both its negentropy and paginated paths.
+**Depends on**: Nothing new (first phase of v1.2)
+**Requirements**: RAUTH-01, RAUTH-02, RAUTH-03, RAUTH-04, RAUTH-05, RAUTH-06, RAUTH-07, RAUTH-08, RAUTH-09
+**Success Criteria** (what must be TRUE):
+
+  1. A consumer can pass `onAuthRequired` to `req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, or negentropy and have it invoked with operation-local context (`relay`, `url`, `challenge`, `operation`, `requirement`, `missingPubkeys`, `reason`) exactly when that operation itself receives `auth-required:` — not when an unrelated earlier operation did. (RAUTH-01, RAUTH-02, RAUTH-07)
+  2. After the handler resolves, the operation waits for `waitForAuth` to be satisfied and retries, bounded by `authRetries` (default `1`) and `authTimeout` (default `30_000`ms, or `false` to wait indefinitely for external auth state). (RAUTH-03, RAUTH-04)
+  3. Two concurrent operations against the same relay each invoke their own handler independently — a rejection or timeout on one resolves only its own operation, with no relay-internal dedupe. (RAUTH-05)
+  4. `waitForAuth: false` rejects immediately with `AuthRequiredError` without ever calling the handler, and `event(…, "AUTH")` never invokes it. (RAUTH-06)
+  5. `SyncLoader` threads `onAuthRequired`/`authTimeout`/`authRetries` into both its negentropy sync path and its paginated request path identically, the behavior passes through `RelayPool`/`RelayGroup`, and `authRequiredForRead$`/`authRequiredForPublish$` keep updating as informational status only. (RAUTH-08, RAUTH-09; pool/group leg of RAUTH-07)
+
+**Reference**: Full drafted implementation plan on disk at [`phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md`](phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md) — `/gsd-plan-phase 13` should read it as primary input.
+**Plans**: TBD
+
+### Phase 14: Auth Lifecycle Debug Logging
+
+**Goal**: An operator can tell from debug output where a NIP-42 auth attempt sits in its lifecycle — challenge received, AUTH sent, result — and why it succeeded or failed, with outcomes attributable to the specific operation that triggered them; every `Debugger` in `packages/loaders/` is derived once at class/module/context construction rather than `.extend()`-ed at a log call site.
+**Depends on**: Phase 13 (soft — Phase 13 restructures the auth surface this phase instruments; logging the pre-Phase-13 pre-block gate would need rework the moment Phase 13 lands)
+**Requirements**: ALOG-01, ALOG-02, ALOG-03
+**Success Criteria** (what must be TRUE):
+
+  1. With debug logging enabled, an operator can trace a single NIP-42 auth attempt's position in its lifecycle — challenge received, AUTH sent, result — and read why it succeeded or failed from the log output alone. (ALOG-01)
+  2. Retry, timeout, and rejection log lines identify the specific operation that triggered them, so two concurrent operations' auth attempts stay distinguishable in a shared log stream. (ALOG-02)
+  3. Every `Debugger` in `packages/loaders/` is derived once at class, module, or context construction — a grep for inline `.extend(` at a log call site in that package returns zero hits. (ALOG-03)
+
+**Plans**: TBD
+
+### Phase 15: Concord Stream-Auth Cleanup
+
+**Goal**: Concord's client-wide, append-only stream-signer registry and ambient relay challenge/authentication drivers are replaced with operation-scoped `onAuthRequired` handlers owned by each community and private-channel engine — each operation authenticates only the pubkeys its own scope is missing, using keys held by that scope, and the client-wide driver machinery (`authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication) is removed or narrowed once callers migrate.
+**Depends on**: Phase 13 (hard-blocked — CAUTH-01..04 require `onAuthRequired`/`authTimeout`/`authRetries` to exist on both the paginated REQ path and the negentropy sync path before Concord's engines can migrate off the client-wide registry)
+**Requirements**: CAUTH-01, CAUTH-02, CAUTH-03, CAUTH-04
+**Success Criteria** (what must be TRUE):
+
+  1. A community or private-channel engine's operation authenticates only the `waitForAuth` pubkeys its own scope is missing, drawn from keys held by that scope, never the full client-wide registry. (CAUTH-01)
+  2. A relay observed during a scoped operation receives AUTH only for the k pubkeys that scope's own operations require — not every key in the client-wide registry — and a reconnect re-authenticates exactly that same scoped set. Assessed against this design, since no "before" recording of the prior churn behavior was ever committed. (CAUTH-02)
+  3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. (CAUTH-03)
+  4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
+
+**Plans**: TBD
 
 ## Progress
 
@@ -68,24 +121,17 @@ Run `/gsd-new-milestone` to open it (questioning → research → requirements �
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
+| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 0/TBD | Not started | - |
+| 14. Auth Lifecycle Debug Logging | v1.2 | 0/TBD | Not started | - |
+| 15. Concord Stream-Auth Cleanup | v1.2 | 0/TBD | Not started | - |
 
-**Totals:** 16 phases, 98 plans across two shipped milestones.
+**Totals:** 19 phases across three milestones (16 shipped, 3 in progress); 98 plans shipped across v1.0/v1.1 — v1.2 plan count TBD until phases are planned.
 
 ## Backlog
 
 ### Phase 999.2: Concord media epoch key decryption audit (BACKLOG)
 
 **Goal:** [Captured for future planning] Review and check concord's file/media encryption and decryption to confirm that media sent in past epochs is decrypted with the correct keys **from that epoch**, not with the latest keys. Suspected failure mode: the decrypt path resolves keys from current epoch state rather than from the epoch the media was encrypted under, which would make historical media undecryptable after a rotation.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog when ready)
-
-### Phase 999.4: NIP-42 lifecycle debug logging (BACKLOG)
-
-**Goal:** [Captured for future planning] The NIP-42 relay authentication lifecycle needs more debug logging around it — the auth challenge/response/result flow should emit enough diagnostic detail to tell where an auth attempt is in its lifecycle and why it succeeded or failed, so that silent auth stalls or rejections are observable rather than opaque.
 **Requirements:** TBD
 **Plans:** 0 plans
 
@@ -108,16 +154,6 @@ Plans:
 **Goal:** [Captured for future planning] Five findings from the Phase 12.3 round-5 code review (`.planning/phases/12.3-transport-only-extra-relays-in-applesauce-concord/12.3-REVIEW.md`). **None is a live defect** — all 26 shipped rules across the four tables were audited against their declared field types at close of 12.3 and found correct; these harden the *guardrail*, not the behavior. **CR5-01** (review labelled BLOCKER, downgraded on audit): `ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule }` binds WHICH fields a rule table must name but never consults `T[K]`, so a rule's `kind` is unbound to the field's type — reproduced by giving `HeldKeyEntry.refounder` (a `string`) `kind: "safe-integer"`, which builds at exit 0 with 471/471 green. The same mutation on the top-level `refounder` IS caught, but only by 2 incidental behavioral tests, so detection is field-dependent — the exact property D-17 exists to remove. Fix shape: a `RuleFor<V>` conditional binding the rule union to the field type, which SUBSUMES `RULE_TABLE_SUBJECT_PROOF` rather than adding a sixth check. **WR5-01:** the hand-enumerated-mirror shape survives in `joinFromBundle`'s bundle→`JoinMaterial` projection and `buildInviteBundle`'s two literals — a new *optional* field is forced into the rule table by `tsc` but silently not carried; complete today, unenforced. **WR5-02:** 12.3-14's new `HeldKeyEntry` doc comment claims a channel's retained keys never carry `refounder`, but the shared table accepts and copies it at `channels[].held[]`. **WR5-03:** the proof tuple is hand-enumerated at five positions and the source meta-test's regex misses non-exported or differently-named tables; its alias check is a substring test that comments satisfy. **WR5-04:** `invite-manager.ts` — unguarded `hexToBytes(invite.signer_sk)` in `fromInviteListInvite` on the `emit()` path; data is self-authored (`authors: [this.pubkey]`), so this is robustness (a corrupt own-list wedges `create()`/`revoke()` and makes `dispose()` skip `extras.dispose()`), not a vulnerability.
 
 **Context — why this was deferred rather than fixed in 12.3:** phase 12.3's goal is transport-only extra relays (D-01…D-16). The invite-bundle validator entered scope through review rounds, not through the phase's own acceptance criteria, and rounds 3/4/5 each closed a defect only for the next round to find the same class one meta-level up (fields → table subjects → rule kinds). Deferred by explicit user decision on 2026-07-27 to stop that regress at a natural boundary. Promote as ONE hardening plan; the tables are 26 lines in a single file and the phase is done touching them.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog when ready)
-
-### Phase 999.5: Operation-Scoped NIP-42 Auth Hooks (BACKLOG)
-
-**Goal:** [Captured for future planning] Move NIP-42 auth handling out of ambient relay/pool status subscriptions and into the specific operation that receives `auth-required:` — request-like operations (`req`/`request`/`subscription`/`count`/`publish`/`event`/`sync`/negentropy) expose an `onAuthRequired` callback plus `authTimeout`/`authRetries` options, keying off concrete `auth-required:` responses instead of the broad cached `authRequiredForRead$`/`authRequiredForPublish$` flags, so consumers (and Concord) no longer hand-roll status/challenge watchers to authenticate. Behavior change for `applesauce-relay` and `applesauce-loaders`; Concord auth cleanup is a follow-up. Full drafted plan: `operation-scoped-nip-42-auth-hooks-plan.md` in this phase directory.
 **Requirements:** TBD
 **Plans:** 0 plans
 
@@ -153,13 +189,3 @@ Original report retained at `expiration-report.md` in this phase directory.
 Plans:
 
 - [x] Fixed as quick task `260805-ds0` — no phase promotion needed
-
-### Phase 999.11: Concord operation-scoped stream authentication cleanup (BACKLOG)
-
-**Goal:** [Captured for future planning] Replace Concord's client-wide, append-only stream-signer registry and ambient relay challenge/authentication drivers with operation-scoped `onAuthRequired` handlers owned by each community and private-channel engine. Each request, subscription, and sync operation should authenticate only its missing `waitForAuth` pubkeys using the keys held by that scope, eliminating whole-registry AUTH churn while preserving per-operation retries. Remove or narrow `ConcordRelayAuth.authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication after their callers migrate. **Blocked until Phase 999.5 ships `onAuthRequired`, `authTimeout`, and `authRetries` through `applesauce-relay` and `applesauce-loaders`, including both paginated REQ and negentropy sync paths.** Root-cause evidence: `.planning/debug/concord-multi-user-auth-churn.md`.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with /gsd-review-backlog after Phase 999.5 is complete)

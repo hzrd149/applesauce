@@ -71,13 +71,24 @@ Deferred; tracked but not in this roadmap.
 
 ## Traceability
 
-Filled during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RAUTH-01…09 | Phase 13 | Pending |
-| ALOG-01…03 | Phase 14 | Pending |
-| CAUTH-01…04 | Phase 15 | Pending |
+| RAUTH-01 | Phase 13 | Pending |
+| RAUTH-02 | Phase 13 | Pending |
+| RAUTH-03 | Phase 13 | Pending |
+| RAUTH-04 | Phase 13 | Pending |
+| RAUTH-05 | Phase 13 | Pending |
+| RAUTH-06 | Phase 13 | Pending |
+| RAUTH-07 | Phase 13 | Pending |
+| RAUTH-08 | Phase 13 | Pending |
+| RAUTH-09 | Phase 13 | Pending |
+| ALOG-01 | Phase 14 | Pending |
+| ALOG-02 | Phase 14 | Pending |
+| ALOG-03 | Phase 14 | Pending |
+| CAUTH-01 | Phase 15 | Pending |
+| CAUTH-02 | Phase 15 | Pending |
+| CAUTH-03 | Phase 15 | Pending |
+| CAUTH-04 | Phase 15 | Pending |
 
 ## Verification Standard
 
