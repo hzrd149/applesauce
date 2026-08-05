@@ -1,22 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: first-fixes
-current_phase: 1
-status: Awaiting next milestone
-closeout_type: override_closeout
-shipped: 2026-08-04
-stopped_at: v1.1 milestone closed and archived
-last_updated: "2026-08-04T14:27:53.924Z"
-last_activity: 2026-08-04
-last_activity_desc: Milestone v1.1 completed and archived
+milestone: v1.2
+milestone_name: operation-scoped-relay-auth
+status: planning
+last_updated: "2026-08-05T14:36:56.972Z"
+last_activity: 2026-08-05
 progress:
-  total_phases: 12
-  completed_phases: 12
-  total_plans: 87
-  completed_plans: 87
-  percent: 100
-current_phase_name: document-caps-conformance
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -30,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 ## Current Position
 
-Phase: Milestone v1.1 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-05 — Completed quick task 260805-ds0 (setTimeout clamp, PR #89 merged to master and into concord); backlog Phase 999.10 resolved
+Status: Defining requirements
+Last activity: 2026-08-05 — Milestone v1.2 started
 
 ## Performance Metrics
 

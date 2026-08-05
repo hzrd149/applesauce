@@ -24,34 +24,42 @@ Full record: [`milestones/v1.1-ROADMAP.md`](milestones/v1.1-ROADMAP.md) ·
 [`milestones/v1.1-MILESTONE-AUDIT.md`](milestones/v1.1-MILESTONE-AUDIT.md) ·
 [`MILESTONES.md`](MILESTONES.md)
 
-## Next Milestone Goals
+## Current Milestone: v1.2 operation-scoped-relay-auth
 
-Not yet defined — run `/gsd-new-milestone` (questioning → research → requirements → roadmap).
-`REQUIREMENTS.md` was removed at v1.1 close and is recreated there.
+**Goal:** Move NIP-42 authentication out of ambient, relay-wide cached state and into the
+operation that actually receives `auth-required:`, then migrate Concord's stream auth onto that
+hook instead of its own client-wide registry driver.
 
-Candidate inputs, in rough order of how ready they are to be picked up:
+**Target features:**
 
-- **Backlog phases already scoped** (6, reviewed 2026-08-04): **999.10** `applesauce-core`
-  expiration timer overflow — *confirmed still live* at `expiration-manager.ts:54` and `:124`,
-  affects the published `applesauce-core@6.2.0`, has a verified fix shape, and is the readiest
-  item here. **999.5** operation-scoped NIP-42 auth hooks — has a full drafted plan on disk;
-  largest item, behavior change for `applesauce-relay` + `applesauce-loaders`. **999.7** Phase 8
-  rotation-robustness residuals — 12.3's majority-ack gate may have overtaken WR-01; check before
-  scoping. **999.4** NIP-42 lifecycle debug logging — partly served for concord by 12.2's
-  `relay-auth.ts`; the relay package itself still has none, and 999.5 would restructure that
-  surface anyway. **999.9** invite-bundle rule-table hardening — guardrail only, zero live
-  defects, and has no phase directory. **999.2** concord media epoch-key decryption audit — its
-  stated premise looks wrong: `helpers/imeta.ts` carries per-file keys in the message's own tag
-  rather than resolving from epoch state, so there may be nothing to audit. 999.8 (nostr-tools
-  ~2.24) was removed — already shipped in v1.1. See ROADMAP.md → Backlog.
-- **Feature gaps deliberately deferred from v1.1**: FUT-01 public↔private channel conversion and
-  channel rename (CORD-03 §2) — a genuine feature gap, not a conformance defect. FUT-02 CORD-07
-  voice transport, if the SDK boundary is ever redrawn to include it.
-- **Verification debt**: three Nyquist gaps (`/gsd-validate-phase` on 10, 12.1, 12.2), five
-  accepted overrides, and the `low` 05.1 follow-ups todo.
-- **Dormant seeds** (9): TypeScript 7, React 19 alongside 18, `@snort/worker-relay` v2, legacy DM
-  Client + Manager, wrapped-message Client + Conversation classes, gift-wrap ingestion service,
-  `nostr-double-ratchet` evaluation, profile themes, module-level debug loggers.
+- **Operation-scoped auth hooks** — `onAuthRequired` / `authTimeout` / `authRetries` across
+  `req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, and negentropy in
+  `applesauce-relay`, threaded through `applesauce-loaders`' sync loader. Promoted from backlog
+  999.5, which carries a full drafted plan on disk.
+- **NIP-42 lifecycle debug logging** in `applesauce-relay`, so an auth attempt's position in its
+  lifecycle and its success/failure reason are observable rather than opaque. Promoted from
+  backlog 999.4; scope includes SEED-001's `packages/loaders/` sweep (derive each `Debugger`
+  once; never `.extend()` at a log call site).
+- **Concord stream-auth cleanup** — per-operation handlers owned by each community and
+  private-channel engine, retiring the client-wide append-only signer registry, its relay driver
+  reference counting, and `ensureAuth()`. Promoted from backlog 999.11.
+
+**Key context:** `waitForAuth` changes meaning — from "pre-block this operation if the relay-wide
+flag is set" to "after this operation receives `auth-required:` and the handler resolves, wait
+for this auth state before retrying". That is a behavior change for two *published* packages
+(`applesauce-relay`, `applesauce-loaders`), so both need changesets; concord is unreleased and
+needs none. The Concord cleanup is hard-blocked on the relay hooks landing first, including both
+the paginated REQ and negentropy sync paths.
+
+**Remaining backlog candidates** (deliberately not in this milestone): **999.7** Phase 8
+rotation-robustness residuals — 12.3's majority-ack gate may have overtaken WR-01; check before
+scoping. **999.9** invite-bundle rule-table hardening — guardrail only, zero live defects.
+**999.2** concord media epoch-key decryption audit — its stated premise looks wrong:
+`helpers/imeta.ts` carries per-file keys in the message's own tag rather than resolving from
+epoch state, so there may be nothing to audit. **999.10** shipped 2026-08-05 as quick task
+`260805-ds0` (PR #89). Also outstanding: FUT-01/FUT-02 feature gaps; three Nyquist validation
+gaps (`/gsd-validate-phase` on 10, 12.1, 12.2); five accepted overrides; the `low` 05.1
+follow-ups todo; and eight still-dormant seeds.
 
 ## Requirements
 
@@ -84,9 +92,11 @@ Candidate inputs, in rough order of how ready they are to be picked up:
 
 ### Active
 
-<!-- Empty — v1.1 shipped 2026-08-04. `/gsd-new-milestone` populates this for the next milestone. -->
+<!-- v1.2 operation-scoped-relay-auth — REQ-IDs defined in REQUIREMENTS.md, mapped to phases in ROADMAP.md. -->
 
-None. See **Next Milestone Goals** above for candidate inputs.
+Being defined for v1.2 — see [`REQUIREMENTS.md`](REQUIREMENTS.md). Scope is the three promoted
+backlog items above (999.5 → relay auth hooks, 999.4 → auth lifecycle logging, 999.11 → concord
+cleanup).
 
 ### Out of Scope
 
@@ -162,6 +172,15 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-04 after the v1.1 first-fixes milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.1 was a conformance milestone in `applesauce-concord`; it did not shift what the SDK is or what matters most about it); all eight v1.1 Active requirements moved to Validated; Out of Scope audited with each reason re-confirmed; six Key Decisions resolved to outcomes; Context updated with shipped state.*
+*Last updated: 2026-08-05 — started milestone v1.2 operation-scoped-relay-auth from three promoted
+backlog items (999.5, 999.4, 999.11) plus SEED-001's loaders sweep. Every premise was verified
+against the code before scoping: the relay-wide pre-block is live at `relay.ts:846/944/995/1063`,
+no `onAuthRequired` exists yet, and concord's churn mechanism is `relay-auth.ts:174`'s
+`combineLatest([relay.challenge$, this.version$])` re-authing the whole registry on every key add
+(`:65`). Noted gap: 999.11 cites `.planning/debug/concord-multi-user-auth-churn.md` as root-cause
+evidence, but that file was never committed — the mechanism is confirmed independently, the
+reproduction is not.*
+
+*Prior: 2026-08-04 after the v1.1 first-fixes milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.1 was a conformance milestone in `applesauce-concord`; it did not shift what the SDK is or what matters most about it); all eight v1.1 Active requirements moved to Validated; Out of Scope audited with each reason re-confirmed; six Key Decisions resolved to outcomes; Context updated with shipped state.*
 
 *Prior: 2026-08-01 — Phase 12 complete (document & caps conformance; re-verification passed 7/7 after a gap wave closed CR-01, the channel-fold type-validation regression, as a class via type-derived rule tables rather than by enumeration).*
