@@ -86,6 +86,9 @@ import {
   NostrSubscriptionMethod,
 } from "./interop.js";
 
+/** Node's 32-bit signed timer limit (~24.8 days); setTimeout delays beyond this overflow and clamp to ~1ms. */
+const MAX_TIMER_DELAY = 2_147_483_647;
+
 export type SerializedWalletConnect = WalletConnectURI;
 
 export type WalletConnectOptions = NostrConnectionMethodsOptions & {
@@ -520,7 +523,9 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
             if (result.state === "expired") throw new Error("Invoice expired");
             return [];
           }),
-          simpleTimeout(expiresAt ? expiresAt - now : Infinity),
+          // Skip the timeout operator entirely when there's no expiry — an Infinity delay
+          // would clamp to ~1ms, causing an immediate spurious TimeoutError.
+          expiresAt ? simpleTimeout(expiresAt - now) : identity,
         ),
       );
     }
@@ -533,11 +538,17 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
         resolve(payment);
       });
 
+      // Clamp the delay to the 32-bit timer limit; invoices expiring further out than
+      // ~24.8 days will reject at the cap instead of at the true expiry (accepted tradeoff,
+      // since this callback rejects rather than re-arming and so cannot hot-loop).
       const timeout = expiresAt
-        ? setTimeout(() => {
-            cleanup();
-            reject(new Error("Invoice expired"));
-          }, expiresAt - now)
+        ? setTimeout(
+            () => {
+              cleanup();
+              reject(new Error("Invoice expired"));
+            },
+            Math.min(expiresAt - now, MAX_TIMER_DELAY),
+          )
         : undefined;
 
       function cleanup() {
