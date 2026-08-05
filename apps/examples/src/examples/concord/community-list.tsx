@@ -1,6 +1,5 @@
 /**
- * Load and auto-unlock your self-encrypted Concord community list (kind 13302), then join, leave, and
- * re-join communities — rendered off the reactive concordCommunityList$ chain, no ConcordClient.
+ * Unlock and manage your reactive Concord community list.
  * @tags concord, communities, casts, factories, encryption, nip-44, reactive
  * @related concord/invite-manager, concord/crypto-history
  */

@@ -1,6 +1,5 @@
 /**
- * Compose a kind 1 note with nostr-editor, build it with NoteFactory, then confirm and publish to outbox relays.
- * Supports uploading images, videos, and files to the user's configured blossom servers.
+ * Compose and publish notes with media uploads to configured Blossom servers.
  * @tags nip-01, nip-65, compose, editor, nostr-editor, blossom, file-upload
  * @related notes/rendering, simple/profile-editor, blossom/server-manager
  */

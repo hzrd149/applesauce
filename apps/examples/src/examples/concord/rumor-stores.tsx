@@ -1,9 +1,5 @@
 /**
- * Walk a real Concord community from an invite link, following its Refounding epochs like
- * concord/crypto-history — but instead of only counting each plane, decrypt EVERY rumor on EVERY
- * plane (control, guestbook, channels, dissolved, rekey) and pour them into per-plane {@link RumorStore}s
- * so each plane's history renders live via `rumorStore.timeline`. Author avatars and names are pulled
- * from a separate global EventStore that lazily loads kind-0 profiles from public indexer relays.
+ * Decrypt Concord history into live per-plane rumor timelines.
  * @tags concord, encryption, rumor-store, timeline, epochs, rekey, relays, profiles
  * @related concord/crypto-history, concord/models
  */

@@ -1,6 +1,5 @@
 /**
- * Score every contact in your follow list with an Open Ranking (ORE) provider using the `/stats/pubkey` endpoint (ORE-02).
- * The endpoint is only used when the provider advertises it in its capability document (ORE-01).
+ * Score contacts with an ORE provider that supports ORE-02.
  * @tags nip-02, contacts, open-ranking, web-of-trust, nostr-web-token
  * @related contacts/manager, search/open-ranking
  */

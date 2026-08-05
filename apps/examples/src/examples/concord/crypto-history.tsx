@@ -1,7 +1,5 @@
 /**
- * Walk a real Concord community's cryptographic history epoch by epoch from an invite link, deriving each
- * epoch's ConcordKeys and fetching its plane events live; past the invite's tip, your signer folds the
- * rekey blobs addressed to you to follow further Refoundings.
+ * Trace a Concord community's encrypted history from an invite.
  * @tags concord, encryption, crypto, epochs, rekey, relays, nip-42
  * @related concord/rumor-stores, concord/community-list
  */

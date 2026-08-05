@@ -1,6 +1,5 @@
 /**
- * Manage Concord communities with the high-level ConcordClient engine: select a joined community where
- * you hold admin permissions, then update metadata, moderate members, manage roles/channels, and refound.
+ * Manage Concord community metadata, members, roles, channels, and refoundings.
  * @tags concord, admin, communities, roles, moderation, encryption, client
  * @related concord/community-list, concord/invite-manager, concord/direct-invites
  */

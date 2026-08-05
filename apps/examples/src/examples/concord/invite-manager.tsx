@@ -1,8 +1,5 @@
 /**
- * Mint and revoke invite links for your Concord communities through the high-level ConcordClient: the
- * engine owns the private kind-13303 Invite List (client.invites), so creating a link publishes the
- * bundle, registers it in the community, and records it into your encrypted list in one call — gated
- * on the CREATE_INVITE permission you actually hold in each community.
+ * Create and revoke permission-gated Concord invite links.
  * @tags concord, invites, communities, roles, permissions, client, reactive
  * @related concord/admin-management, concord/community-list, concord/direct-invites
  */

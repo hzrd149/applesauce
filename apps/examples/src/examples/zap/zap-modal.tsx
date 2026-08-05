@@ -1,6 +1,5 @@
 /**
- * Zap modal example showing how to fetch a lightning invoice and display it as a QR code
- * @description Renders a note and lets you zap it via a modal with amount presets, lightning address lookup, QR invoice, and zap receipt detection
+ * Zap a note through a modal with amount presets and a QR invoice.
  * @tags nip-57, zap, lightning, modal, qrcode, invoice
  * @related zap/timeline, zap/graph, nwc/simple-wallet
  */

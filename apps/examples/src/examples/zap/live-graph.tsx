@@ -1,5 +1,5 @@
 /**
- * Live space-themed force graph of zaps across multiple relays. Designed as a TV screensaver.
+ * Visualize live multi-relay zaps in a space-themed force graph.
  * @tags nip-57, zap, force-graph, live, visualization, screensaver
  * @related zap/timeline, zap/zap-history
  */

@@ -1,6 +1,5 @@
 /**
- * Simple note composer using a plain textarea with a live content preview toggle.
- * Supports uploading files to the user's configured blossom servers.
+ * Compose notes with live previews and Blossom file uploads.
  * @tags nip-01, nip-65, compose, preview, rendering, blossom, file-upload
  * @related notes/composing, notes/rendering, blossom/server-manager
  */

@@ -1,7 +1,5 @@
 /**
- * Render simple text notes with basic formatting, media detection, and image galleries.
- * Uses blossom-client-sdk `handleBrokenMedia` so img/video/audio under each note (including galleries)
- * get blossom server fallbacks when URLs fail or `blossom:` cannot load directly.
+ * Render formatted notes and media with Blossom server fallbacks.
  * @tags nip-27, nip-96, content, text, rendering, blossom
  * @related content/articles, feed/algorithmic-relay
  */

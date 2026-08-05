@@ -1,6 +1,5 @@
 /**
- * Watch your NIP-59 gift-wrap inbox for Concord Direct Invites, hide communities already accepted on
- * your community list, and accept pending invites by publishing both the list update and Guestbook Join.
+ * Watch for and accept Concord direct invites.
  * @tags concord, direct-invites, communities, gift-wraps, encryption, nip-44, reactive
  * @related concord/community-list, concord/invite-manager
  */
