@@ -5,16 +5,16 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Phase 13 Wave 3 complete (13-04 done); ready for Wave 4 (13-05)
-last_updated: "2026-08-06T09:56:35.545Z"
+stopped_at: Phase 13 Wave 4 complete (13-05 done); ready for Wave 5 (13-06)
+last_updated: "2026-08-06T10:32:38.208Z"
 last_activity: 2026-08-06
 last_activity_desc: 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 0
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 4 of 7 complete (Wave 3 of 6 done)
+Plan: 5 of 7 complete (Wave 3 of 6 done)
 Status: Ready to execute Wave 4 (13-05)
 Last activity: 2026-08-06 — 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 
@@ -106,6 +106,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P09 | 151min | 3 tasks | 3 files |
 | Phase 12 P11 | 45min | 2 tasks | 1 files |
 | Phase 13 P04 | 17min | 2 tasks | 2 files |
+| Phase 13 P05 | 24min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -264,6 +265,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 13]: 13-04: count() take(1) moved outside authRetryOperator (after, not before) so the operator's expand/concat retry can see every auth-required signal as a value on its source stream
 - [Phase 13]: 13-04: D-15's count() clock-suspension test proven via a real setTimeout spy (two >9s arm calls bracketing the auth phase) instead of a literal >10s wait, since count()'s 10s budget has no user-configurable knob
 - [Phase 13]: 13-04: RAUTH-02/03/04/07/09 left Pending in REQUIREMENTS.md — each spans all eight auth sites; count() closes 1 of the remaining 5, matching 13-02's precedent for the same requirement IDs
+- [Phase ?]: 13-05: fixed a pre-existing reentrancy bug in event()'s send/listen structure exposed by this plan's own internal-retry behavior (synchronous onAuthRequired handlers silently dropped the resend); split into an unshared control defer + shared listen-only messages mirroring count()'s existing pattern
+- [Phase ?]: 13-05: event()'s catchError intercepts only AuthRequiredError (exhausted retries) and converts it back to a value response, preserving its pre-existing never-throws-for-auth-required contract for auth()/negentropy()/sync() callers; AuthHandlerError/AuthTimeoutError propagate as genuine errors per D-17
+- [Phase ?]: 13-05: customTimeoutOperator deleted outright (sole caller was publish()) rather than left dead, replaced by customSuspendableTimeoutOperator; RAUTH-02/03/04/06/07/09 remain Pending in REQUIREMENTS.md until 13-06 (negentropy/sync) lands, per 13-02/13-04 precedent
 
 ### Pending Todos
 
@@ -345,10 +349,8 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T09:56:07.746Z
-Stopped at: Phase 13 Wave 3 complete (13-04 done); ready for Wave 4 (13-05)
+Last session: 2026-08-06T10:32:38.198Z
+Stopped at: Phase 13 Wave 4 complete (13-05 done); ready for Wave 5 (13-06)
 Resume file: 
-
-## Operator Next Steps
 
 - Start the next milestone with /gsd-new-milestone
