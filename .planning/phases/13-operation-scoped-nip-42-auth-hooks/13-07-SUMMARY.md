@@ -201,3 +201,22 @@ None - no external service configuration required.
 ---
 *Phase: 13-operation-scoped-nip-42-auth-hooks*
 *Completed: 2026-08-06*
+
+## Self-Check: PASSED
+
+- FOUND: packages/relay/src/group.ts
+- FOUND: packages/relay/src/pool.ts
+- FOUND: packages/relay/src/__tests__/group.test.ts
+- FOUND: packages/relay/src/__tests__/pool.test.ts
+- FOUND: .planning/phases/13-operation-scoped-nip-42-auth-hooks/13-VALIDATION.md
+- FOUND: .planning/REQUIREMENTS.md
+- FOUND: .changeset/relay-operation-scoped-auth-callbacks.md
+- FOUND: .changeset/relay-auth-timeout-bounded-wait.md
+- FOUND: .changeset/relay-publish-response-error-field.md
+- FOUND: .changeset/relay-group-sync-per-relay-isolation.md
+- FOUND: .changeset/loaders-sync-loader-auth-threading.md
+- FOUND: 34939b30 (Task 1)
+- FOUND: 6ce753a9 (Task 2)
+- FOUND: 54d84000 (Task 3)
+- FOUND: 08abd3d9 (REQUIREMENTS.md follow-up)
+- FOUND: 1d583674 (SUMMARY commit)
