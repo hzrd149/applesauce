@@ -862,92 +862,11 @@ export class Relay {
     // Create an observable that completes when the upstream observable completes
     const filtersComplete = input.pipe(ignoreElements(), endWith(true));
 
-    // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE
-    let relayClosedSub = false;
-    let shouldResubscribe = false;
-
-    // Create an observable that filters responses from the relay to just the ones for this REQ
-    const messages: Observable<RelayReqMessage | AuthRequiredSignal> = this.socket.pipe(
-      filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
-      // Map NIP-01 messages to RelayReqMessage
-      map<any, RelayReqMessage>((m) => {
-        if (m[0] === "EVENT" && typeof m[2] === "object")
-          return { type: "EVENT", from: this.url, id: m[1], event: m[2] } satisfies RelayReqEventMessage;
-        if (m[0] === "CLOSED")
-          return { type: "CLOSED", from: this.url, id: m[1], reason: m[2] ?? "" } satisfies RelayReqClosedMessage;
-        // EOSE
-        return { type: "EOSE", from: this.url, id: m[1] } satisfies RelayReqEoseMessage;
-      }),
-      // D-01/D-02/D-03: signal auth-required as a value instead of throwing (the shared auth operator
-      // consumes and never forwards it); every other prefixed CLOSED still throws its typed error
-      // unchanged. Mark relay-closed before takeWhile sees either outcome.
-      map<RelayReqMessage, RelayReqMessage | AuthRequiredSignal>((m) => {
-        if (m.type === "CLOSED") {
-          relayClosedSub = true;
-
-          // D-01/D-02/D-03: only auth-required is signalled as a value; check the reason prefix
-          // directly (mirrors event()'s existing value-signal check) rather than parsing then
-          // narrowing by instanceof
-          if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
-            this.log(`Auth required for REQ`);
-            this.receivedAuthRequiredForReq.next(true);
-            return authRequiredSignal(m.reason);
-          }
-
-          const error = parseClosedError(m.reason);
-          if (error) throw error;
-          shouldResubscribe = true;
-        }
-        return m;
-      }),
-      // Complete the stream on unprefixed CLOSED or an auth-required signal, emitting it last (inclusive)
-      takeWhile((m) => !isAuthRequiredSignal(m) && m.type !== "CLOSED", true),
-      // Singleton (prevents the .pipe() operator later from sending two REQ messages)
-      share(),
-    );
-
-    // Create an observable that controls sending the filters and closing the REQ
-    const control = input.pipe(
-      // Send the filters when they change
-      map((filters) => {
-        // Reset closed flag on each new REQ (resubscribe cycles)
-        relayClosedSub = false;
-        shouldResubscribe = false;
-        this.socket.next(["REQ", id, ...filters]);
-        // Add to tracking when REQ is sent
-        this.reqs$.next({ ...this.reqs$.value, [id]: filters });
-
-        return { type: "OPEN", id, filters, from: this.url } satisfies RelayReqOpenMessage;
-      }),
-      // Send CLOSE when unsubscribed or input completes, but not if relay already sent CLOSED
-      finalize(() => {
-        if (!relayClosedSub) this.socket.next(["CLOSE", id]);
-        // Remove from tracking when REQ closes
-        const { [id]: _, ...rest } = this.reqs$.value;
-        this.reqs$.next(rest);
-      }),
-      // Once filters have been sent, switch to listening for messages
-      switchMap((openMessage) =>
-        messages.pipe(
-          // Pass along the OPEN message for listeners
-          startWith(openMessage),
-        ),
-      ),
-    );
-
-    // Start the watch tower with the observables
-    const observable = merge(this.watchTower, control).pipe(
-      // Complete when messages completes (e.g. unprefixed CLOSED = graceful relay close)
-      takeUntil(messages.pipe(ignoreElements(), endWith(true))),
-      // Complete the subscription when the input is completed
-      takeUntil(filtersComplete),
-      // mark events as from relays
-      tap((message) => {
-        if (!isAuthRequiredSignal(message) && message.type === "EVENT") addSeenRelay(message.event, this.url);
-      }),
-      // Only create one upstream subscription
-      share(),
-    );
+    // CR-02: customRepeatOperator's condition callback (below) is read AFTER the auth retry boundary,
+    // once the attempt chain constructed inside the defer below has fully completed — by which point no
+    // attempt-scoped local survives. Each attempt writes its own outcome into this call-scoped holder, so
+    // the condition callback always observes the most recently completed attempt's result.
+    const resubscribeHolder = { value: false };
 
     // D-04: use the gate an outer operation (e.g. request()) threaded in via the module-private
     // symbol key, or make a fresh one for this call. RAUTH-02: no pre-block here — the REQ is sent
@@ -955,14 +874,119 @@ export class Relay {
     // the shared operator below.
     const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
 
-    return defer(() => this.waitForReady(observable)).pipe(
+    return defer(() => {
+      // CR-02: one auth attempt owns one send and one terminating listen chain, both constructed fresh
+      // on every subscription to this defer — including the internal resubscription the shared auth
+      // operator drives from inside its own CLOSED dispatch when a synchronous onAuthRequired handler
+      // resolves the auth phase synchronously. Nothing that completes on the auth-required signal is
+      // hoisted above this defer, so a synchronous resubscribe can never rejoin a still-connected
+      // share() and silently skip the resend (mirrors event()'s 13-05 send/listen split).
+
+      // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE. Attempt-scoped
+      // (CR-02): a stale value carried over from a prior attempt would send a redundant CLOSE for a REQ
+      // the relay already closed, or skip the CLOSE for this attempt's own still-open REQ.
+      let relayClosedSub = false;
+
+      // Create an observable that filters responses from the relay to just the ones for this REQ.
+      // Per-attempt: a fresh chain, so a resend after an auth-required signal always registers its own
+      // socket filters and its own inclusive takeWhile rather than rejoining a chain that already
+      // completed for the previous attempt.
+      const messages: Observable<RelayReqMessage | AuthRequiredSignal> = this.socket.pipe(
+        filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
+        // Map NIP-01 messages to RelayReqMessage
+        map<any, RelayReqMessage>((m) => {
+          if (m[0] === "EVENT" && typeof m[2] === "object")
+            return { type: "EVENT", from: this.url, id: m[1], event: m[2] } satisfies RelayReqEventMessage;
+          if (m[0] === "CLOSED")
+            return { type: "CLOSED", from: this.url, id: m[1], reason: m[2] ?? "" } satisfies RelayReqClosedMessage;
+          // EOSE
+          return { type: "EOSE", from: this.url, id: m[1] } satisfies RelayReqEoseMessage;
+        }),
+        // D-01/D-02/D-03: signal auth-required as a value instead of throwing (the shared auth operator
+        // consumes and never forwards it); every other prefixed CLOSED still throws its typed error
+        // unchanged. Mark relay-closed before takeWhile sees either outcome.
+        map<RelayReqMessage, RelayReqMessage | AuthRequiredSignal>((m) => {
+          if (m.type === "CLOSED") {
+            relayClosedSub = true;
+
+            // D-01/D-02/D-03: only auth-required is signalled as a value; check the reason prefix
+            // directly (mirrors event()'s existing value-signal check) rather than parsing then
+            // narrowing by instanceof
+            if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
+              this.log(`Auth required for REQ`);
+              this.receivedAuthRequiredForReq.next(true);
+              return authRequiredSignal(m.reason);
+            }
+
+            const error = parseClosedError(m.reason);
+            if (error) throw error;
+            resubscribeHolder.value = true;
+          }
+          return m;
+        }),
+        // Complete the stream on unprefixed CLOSED or an auth-required signal, emitting it last (inclusive)
+        takeWhile((m) => !isAuthRequiredSignal(m) && m.type !== "CLOSED", true),
+        // Singleton within this attempt only (prevents the switchMap below and the takeUntil notifier
+        // from registering two separate socket filters for the same attempt)
+        share(),
+      );
+
+      // Create an observable that controls sending the filters and closing the REQ. Per-attempt: this
+      // send side effect always re-runs when this defer's factory runs, independent of any share()
+      // reset timing — the fix for CR-02's "REQ never written to the socket at all" symptom.
+      const control = input.pipe(
+        // Send the filters when they change
+        map((filters) => {
+          // Reset closed flag on each new REQ (resubscribe cycles within this attempt)
+          relayClosedSub = false;
+          resubscribeHolder.value = false;
+          this.socket.next(["REQ", id, ...filters]);
+          // Add to tracking when REQ is sent
+          this.reqs$.next({ ...this.reqs$.value, [id]: filters });
+
+          return { type: "OPEN", id, filters, from: this.url } satisfies RelayReqOpenMessage;
+        }),
+        // Send CLOSE when unsubscribed or input completes, but not if relay already sent CLOSED
+        finalize(() => {
+          if (!relayClosedSub) this.socket.next(["CLOSE", id]);
+          // Remove from tracking when REQ closes
+          const { [id]: _, ...rest } = this.reqs$.value;
+          this.reqs$.next(rest);
+        }),
+        // Once filters have been sent, switch to listening for messages
+        switchMap((openMessage) =>
+          messages.pipe(
+            // Pass along the OPEN message for listeners
+            startWith(openMessage),
+          ),
+        ),
+      );
+
+      // Start the watch tower with this attempt's observables. Deliberately NOT share()'d here (CR-02):
+      // the returned pipe's own share() (below) already dedupes downstream subscribers and sits outside
+      // the auth retry boundary where it belongs; a share() on this attempt-scoped observable would
+      // reintroduce the same reentrancy race this restructuring removes.
+      const observable = merge(this.watchTower, control).pipe(
+        // Complete when messages completes (e.g. unprefixed CLOSED = graceful relay close)
+        takeUntil(messages.pipe(ignoreElements(), endWith(true))),
+        // Complete the subscription when the input is completed
+        takeUntil(filtersComplete),
+        // mark events as from relays
+        tap((message) => {
+          if (!isAuthRequiredSignal(message) && message.type === "EVENT") addSeenRelay(message.event, this.url);
+        }),
+      );
+
+      return this.waitForReady(observable);
+    }).pipe(
       // D-04/D-09: the shared auth-retry operator drives the whole read auth phase, innermost in the pipe.
       // CR-01: isReqProgress excludes the synthetic OPEN bookkeeping message from resetting the retry budget.
       this.authRetryOperator("read", opts, gate, isReqProgress),
       // Retry connection errors independently from relay CLOSED errors
       this.customConnectionRetryOperator(opts?.reconnect),
-      // Resubscribe only after the relay cleanly CLOSED this REQ
-      this.customRepeatOperator(opts?.resubscribe, () => shouldResubscribe),
+      // Resubscribe only after the relay cleanly CLOSED this REQ — reads the most recently completed
+      // attempt's outcome via the call-scoped holder (CR-02: no attempt-scoped local survives to this point)
+      this.customRepeatOperator(opts?.resubscribe, () => resubscribeHolder.value),
       // Only create one upstream subscription
       share(),
     );
