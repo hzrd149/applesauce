@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
 import { RelayGroup } from "../group.js";
+import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
 import { Relay } from "../relay.js";
 import { FakeUser } from "./fake-user.js";
 
@@ -390,5 +391,87 @@ describe("count", () => {
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
 
     spy.unsubscribe();
+  });
+});
+
+// 13-11: WR-02 gap closure. RelayGroup.request() (the group's most-used read API) is the one path in
+// the phase that never received D-15's operation-clock suspension — it called relay.req() without
+// threading an AuthPhaseGate and kept a bare timeout() instead of suspendableTimeout. These tests build
+// on real Relay instances against vitest-websocket-mock (not mocked relay objects), per the plan's
+// explicit instruction, since only something that actually emits can catch a behavioural gap.
+describe("request() operation clock gap closure (13-11, WR-02)", () => {
+  it("threads one shared AuthPhaseGate instance into every relay's req() call", async () => {
+    const spy1 = vi.spyOn(relay1, "req");
+    const spy2 = vi.spyOn(relay2, "req");
+
+    group.request([{ kinds: [1] }], { id: "greq1" }).subscribe({ error: () => {} });
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "greq1", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "greq1", { kinds: [1] }]);
+
+    expect(spy1).toHaveBeenCalledTimes(1);
+    expect(spy2).toHaveBeenCalledTimes(1);
+
+    const gate1 = (spy1.mock.calls[0]?.[1] as any)?.[AUTH_PHASE_GATE];
+    const gate2 = (spy2.mock.calls[0]?.[1] as any)?.[AUTH_PHASE_GATE];
+
+    // Presence alone is weaker than instance identity — assert both, per the plan's explicit instruction.
+    expect(gate1).toBeInstanceOf(AuthPhaseGate);
+    expect(gate2).toBeInstanceOf(AuthPhaseGate);
+    expect(gate1).toBe(gate2);
+  });
+
+  it("D-15: request()'s group-level operation clock is suspended across a relay's auth phase", async () => {
+    // Single-relay group so the test is not entangled with relay2's independent REQ/EOSE lifecycle.
+    const soloGroup = new RelayGroup([relay1]);
+
+    // Non-vacuity (D-20): the auth phase duration (80ms) deliberately EXCEEDS the group request's own
+    // timeout (40ms) so the two are unambiguously ordered on real timers — without gate suspension the
+    // 40ms clock fires and errors long before the 80ms auth round trip ever resolves, so the request can
+    // only survive because the group's clock is paused for the whole auth phase and resumes with its
+    // remaining budget once it closes. Verified by temporarily substituting a fresh, never-opened
+    // AuthPhaseGate into group.ts's suspendableTimeout call (so the clock is never actually suspended):
+    // this test went RED (timed out waiting for spy.onComplete()) against that substitution, and GREEN
+    // again once the real threaded gate was restored — recorded in the plan SUMMARY.
+    const onAuthRequired = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      relay1.authenticationResponse$.next({ ok: true, from: "wss://relay1.test" });
+    });
+
+    const spy = subscribeSpyTo(soloGroup.request([{ kinds: [1] }], { id: "greq2", timeout: 40, onAuthRequired }));
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "greq2", { kinds: [1] }]);
+    mockRelay1.send(["CLOSED", "greq2", "auth-required: need to authenticate"]);
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "greq2", { kinds: [1] }]);
+
+    mockRelay1.send(["EVENT", "greq2", mockEvent]);
+    mockRelay1.send(["EOSE", "greq2"]);
+
+    await spy.onComplete();
+
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+    expect(spy.receivedError()).toBe(false);
+  });
+
+  it("WR-02: request()'s group-level operation clock fires against a relay that accepts the REQ and then says nothing at all", async () => {
+    // No auth involved here at all — a relay that answers the REQ with total silence (no EVENT, no
+    // EOSE, no CLOSED). Mirrors relay.test.ts's identically-named `request()` clock-fires test (13-09)
+    // and is the group analog: it proves the bare-timeout-to-suspendableTimeout swap did not simply
+    // move one unfireable clock to another. Against pre-fix code (a bare timeout({first}) cancelled by
+    // req()'s synthetic OPEN message), this reaches its assertion window with no error and fails.
+    const soloGroup = new RelayGroup([relay1]);
+
+    const spy = subscribeSpyTo(soloGroup.request([{ kinds: [1] }], { id: "greq3", timeout: 40 }), {
+      expectErrors: true,
+    });
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "greq3", { kinds: [1] }]);
+    // Deliberately send nothing back.
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(Error);
+    expect(spy.receivedComplete()).toBe(false);
   });
 });
