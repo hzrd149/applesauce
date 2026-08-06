@@ -358,3 +358,37 @@ describe("RAUTH-09: group status$ surfaces informational auth-required flags (13
     spy.unsubscribe();
   });
 });
+
+describe("count", () => {
+  it("CR-03 downstream (13-10): RelayGroup.count's combineLatest still emits for a relay whose count survives an auth round-trip", async () => {
+    // waitForAuth: [] + a synchronous handler drives relay1's resubscribe from inside the very
+    // CLOSED dispatch that delivered auth-required — the exact CR-03 reentrancy case. Before 13-10,
+    // relay1's count() completed with zero values under this scenario, so combineLatest would never
+    // emit a combined record for the group at all (one relay completing empty suppresses the whole
+    // group result).
+    const onAuthRequired = vi.fn();
+
+    const spy = subscribeSpyTo(group.count([{ kinds: [1] }], "count1", { onAuthRequired, waitForAuth: [] }));
+
+    await expect(mockRelay1).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    mockRelay1.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    // The resend must reach a live listen chain, not the pre-13-10 dead one
+    await expect(mockRelay1).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    mockRelay1.send(["COUNT", "count1", { count: 3 }]);
+    mockRelay2.send(["COUNT", "count1", { count: 5 }]);
+
+    // group.count() stays open (mirrors group.req()/group.subscription(): the group's own relays$
+    // never completes, so switchMap's output never completes either) — assert the combined value
+    // arrives instead of waiting for a completion that structurally never happens.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(spy.getValues()).toEqual([{ "wss://relay1.test": { count: 3 }, "wss://relay2.test": { count: 5 } }]);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+
+    spy.unsubscribe();
+  });
+});

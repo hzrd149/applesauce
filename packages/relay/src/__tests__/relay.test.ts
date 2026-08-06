@@ -2408,6 +2408,84 @@ describe("operation-scoped COUNT auth (13-04)", () => {
   });
 });
 
+describe("operation-scoped COUNT auth gap closure (13-10, CR-03)", () => {
+  it("T-13-10-01 (COUNT leg of RESEARCH gap 1): a persistently auth-requiring relay receives exactly authRetries + 1 COUNT frames, then a terminal AuthRequiredError, with the default retries left in place", async () => {
+    // Synchronous handler — this is exactly what CR-03 dropped: driving the shared operator's
+    // resubscribe from inside the very CLOSED dispatch that delivered auth-required. Against pre-Task-1
+    // count(), the resend reached the wire (the verifier observed 2 COUNT frames) but joined a listen
+    // chain that was already tearing down, so a genuine reply was never observed.
+    const onAuthRequired = vi.fn(() => {
+      relay.authenticationResponse$.next({ ok: true, from: relay.url });
+    });
+
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired, authTimeout: 50 }), {
+      expectErrors: true,
+    });
+
+    // First COUNT
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    // Second (and last) COUNT — authRetries defaults to 1, so authRetries + 1 = 2 total sends
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+
+    // Non-vacuity: count() has no separate outer retry/backoff layer of its own (unlike req()'s
+    // customConnectionRetryOperator or publish()'s customRetryOperator), so this wait exists purely to
+    // prove the assertion below cannot pass vacuously just because a hypothetical extra resend hadn't
+    // fired yet — not a real backoff window count() has to skip.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const countFrames = server.messages.filter((m: any) => m[0] === "COUNT" && m[1] === "count1");
+    expect(countFrames).toHaveLength(2);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("CR-03: a synchronously-resolving auth phase produces a real COUNT resend whose reply is observed", async () => {
+    // waitForAuth: [] is an already-satisfied requirement (empty array), so per D-11 the shared
+    // operator's wait resolves synchronously the instant the (synchronous, non-Promise-returning)
+    // handler returns — driving the resubscribe from inside the very CLOSED-message dispatch that
+    // delivered auth-required. This is the exact reentrancy CR-03 describes.
+    const onAuthRequired = vi.fn();
+
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired, waitForAuth: [] }));
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    // The resend must actually reach the wire — against pre-Task-1 count() the verifier observed the
+    // second COUNT frame reaching the wire too (["COUNT","COUNT","CLOSE","CLOSE"]), so frame count alone
+    // is not acceptance; the point is whether the reply below is ever actually observed.
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    expect(spy.receivedComplete()).toBe(false);
+
+    // The delay is the point — it is what the verifier used to demonstrate a genuine reply is never
+    // observed against the pre-fix code (a real COUNT reply sent 50ms later never reached the
+    // subscriber, which had already completed with zero values).
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    server.send(["COUNT", "count1", { count: 7 }]);
+
+    await spy.onComplete();
+
+    // The final attempt's take(1) completion sends a CLOSE frame; wait for the mock server to actually
+    // receive it before asserting the exact frame count below.
+    await expect(server).toReceiveMessage(["CLOSE", "count1"]);
+
+    expect(spy.getValues()).toEqual([{ count: 7 }]);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+
+    // Pins CR-03's redundant-CLOSE regression: the first attempt's auth-required CLOSED already marks
+    // that attempt's own relayClosedSub, so its finalize skips the CLOSE frame; only the second
+    // (successful) attempt's clean take(1) completion sends one. Against the pre-fix code the verifier
+    // observed 2 CLOSE frames (one redundant) alongside the never-observed reply.
+    const closeFrames = server.messages.filter((m: any) => m[0] === "CLOSE" && m[1] === "count1");
+    expect(closeFrames).toHaveLength(1);
+  });
+});
+
 describe("close", () => {
   it("should close the socket", async () => {
     subscribeSpyTo(relay.req([{ kinds: [1] }]));
