@@ -80,6 +80,7 @@ import {
   PublishResponse,
   RelayCountOptions,
   RelayCountResponse,
+  RelayEventOptions,
   RelayInformation,
   RelayReqClosedMessage,
   RelayReqEoseMessage,
@@ -1056,7 +1057,7 @@ export class Relay {
   event(
     event: NostrEvent,
     verb: "EVENT" | "AUTH" = "EVENT",
-    opts?: { waitForAuth?: AuthRequirement },
+    opts?: RelayEventOptions & WithAuthPhaseGate,
   ): Observable<PublishResponse> {
     const messages: Observable<PublishResponse> = defer(() => {
       // Send event when subscription starts
@@ -1079,26 +1080,60 @@ export class Relay {
       takeUntil(messages.pipe(ignoreElements(), endWith(true))),
       // complete on first value
       take(1),
-      // listen for OK auth-required
+      // listen for OK auth-required (kept as a value-level flag update regardless of whether this
+      // attempt is later retried by the shared operator, so authRequiredForPublish$ stays accurate — RAUTH-09)
       tap(({ ok, message }) => {
         if (ok === false && message?.startsWith(AUTH_REQUIRED_PREFIX) && !this.receivedAuthRequiredForEvent.value) {
           this.log("Auth required for publish");
           this.receivedAuthRequiredForEvent.next(true);
         }
       }),
-      // if no message is seen in 10s, emit failed publish response
+      // if no message is seen in 10s, emit failed publish response. This is per-attempt: it bounds
+      // waiting for the OK on a single EVENT send and lives inside the shared operator's resend loop.
       timeout({
         first: this.eventTimeout,
         with: () => of<PublishResponse>({ ok: false, from: this.url, message: "Timeout" }),
       }),
     );
 
-    // skip wait for auth if verb is AUTH or waitForAuth is false
-    // Use share() to prevent multiple subscriptions from creating duplicate EVENT messages
+    // skip wait for auth if verb is AUTH or waitForAuth is false (RAUTH-06) — no auth flow at all,
+    // which is also what keeps auth() from recursing into the auth machinery
     const waitForAuth = opts?.waitForAuth ?? true;
     if (verb === "AUTH" || !waitForAuth) return this.waitForReady(observable).pipe(share());
-    else
-      return this.waitForReady(this.waitForAuth(this.authRequiredForPublish$, observable, waitForAuth)).pipe(share());
+
+    // D-01/D-02: event()'s existing value-shaped response is the model the rest of the phase follows.
+    // Map a genuine auth-required OK response into the internal signal so the shared operator can run
+    // the handler, wait, and drive the resend (RAUTH-02: no pre-block — the EVENT above is already sent
+    // immediately, regardless of any other publish's auth state).
+    const signalled: Observable<PublishResponse | AuthRequiredSignal> = observable.pipe(
+      map((response) =>
+        response.ok === false && response.message?.startsWith(AUTH_REQUIRED_PREFIX)
+          ? authRequiredSignal(response.message)
+          : response,
+      ),
+    );
+
+    // D-04: use the gate an outer operation (publish()) threaded in via the module-private symbol
+    // key, or make a fresh one for this call.
+    const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
+
+    return this.waitForReady(signalled)
+      .pipe(this.authRetryOperator("publish", opts, gate))
+      .pipe(
+        // D-01: on exhaustion the shared operator throws AuthRequiredError (config.errors.exhausted).
+        // event() converts that back into the relay's final `{ ok: false, message: "auth-required:..." }`
+        // value rather than letting it propagate, because publish() is the caller boundary that
+        // reconstructs AuthRequiredError from a value (D-01) and RelayGroup.event consumers already
+        // branch on the response shape. A handler rejection (AuthHandlerError) or a phase timeout
+        // (AuthTimeoutError) are genuine errors and DO propagate here (D-17) — RelayGroup's per-relay
+        // catch converts those into a response carrying the error object once plan 13-07 lands D-18.
+        catchError((err) =>
+          err instanceof AuthRequiredError
+            ? of<PublishResponse>({ ok: false, from: this.url, message: err.reason })
+            : throwError(() => err),
+        ),
+        share(),
+      );
   }
 
   /** Send an AUTH message. Can be called multiple times with events from different pubkeys to authenticate multiple users */

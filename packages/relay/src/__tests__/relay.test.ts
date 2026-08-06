@@ -454,33 +454,31 @@ describe("req", () => {
 });
 
 describe("event", () => {
-  it("should wait for authentication if relay responds with auth-required", async () => {
-    // First event to trigger auth-required
-    const firstSpy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
+  it("should retry the EVENT after authenticating when relay responds with auth-required (13-05: superseded pre-block test)", async () => {
+    // 13-05 deviation (Rule 1): this test previously asserted event()'s ambient pre-block — a SECOND,
+    // unrelated event() call waiting behind the FIRST call's auth-required flag before sending its own
+    // EVENT frame. That pre-block is exactly what D-02/RAUTH-02 removes: an EVENT is now sent
+    // immediately regardless of any other publish's auth state, and the auth-required wait + resend
+    // happen entirely INSIDE the single event() call via the shared auth-retry operator. See
+    // 13-05-SUMMARY.md's RAUTH-02 coverage for the "a fresh publish is not blocked" test.
+    const spy = subscribeSpyTo(relay.event(mockEvent));
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
 
     // Send OK with auth-required message
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
-    await firstSpy.onComplete();
-
-    // Create a second event that should wait for auth
-    const secondSpy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
-
-    // Verify no EVENT message was sent yet (waiting for auth)
-    expect(server).not.toHaveReceivedMessages(["EVENT", mockEvent]);
 
     // Simulate successful authentication
     relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
 
-    // Now the EVENT should be sent
+    // The shared auth-retry operator resends the EVENT automatically, from within the same call
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
 
     // Send OK response to complete the event
     server.send(["OK", mockEvent.id, true, ""]);
 
-    // Verify the second event completed successfully
-    await secondSpy.onComplete();
-    expect(secondSpy.receivedComplete()).toBe(true);
+    await spy.onComplete();
+    expect(spy.receivedComplete()).toBe(true);
+    expect(spy.getValues()).toEqual([{ ok: true, from: "wss://test", message: "" }]);
   });
 
   it("should trigger connection to relay", async () => {
