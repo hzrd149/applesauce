@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: operation-scoped-relay-auth
 current_phase: 13
-current_phase_name: Operation-Scoped NIP-42 Auth Hooks
+current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
 stopped_at: Phase 13 Wave 1 complete (13-01 merged); paused before Wave 2
-last_updated: "2026-08-05T18:10:00.000Z"
-last_activity: 2026-08-05
-last_activity_desc: "Phase 13 Wave 1 complete: 13-01 (shared auth-retry operator + RelayAuthOptions mixin) merged; build + 2487 tests green; paused before Wave 2"
+last_updated: "2026-08-06T08:51:37.873Z"
+last_activity: 2026-08-06
+last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 7
   completed_plans: 1
-  percent: 14
+  percent: 0
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** v1.2 operation-scoped-relay-auth — Phase 13 (Operation-Scoped NIP-42 Auth Hooks), Wave 1 of 6 complete
+**Current focus:** Phase 13 — operation-scoped-nip-42-auth-hooks
 
 ## Current Position
 
-Phase: 13 of 15 (Operation-Scoped NIP-42 Auth Hooks) — EXECUTING (paused)
-Plan: 1 of 7 complete (Wave 1 of 6 done)
-Status: Paused after Wave 1 — resume at Wave 2 (13-02 + 13-03, parallel)
-Last activity: 2026-08-05 — 13-01 merged to master; post-merge build + full suite (2487 tests) green
+Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 13
+Last activity: 2026-08-06 — Phase 13 execution started
 
 ## Performance Metrics
 
