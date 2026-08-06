@@ -1254,15 +1254,35 @@ export class Relay {
     return lastValueFrom(start.pipe(switchMap((event) => this.auth(event))));
   }
 
-  /** Internal operator for creating a retry() operator */
+  /**
+   * Internal operator for creating a retry() operator, used only by `publish()`. Skips (re-throws
+   * rather than retries) any `RelayClosedError`, mirroring `customConnectionRetryOperator`'s existing
+   * skip (D-07): the auth family (`AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError`) all extend
+   * `RelayClosedError` precisely so this one check covers exhausted-auth, handler-rejection and
+   * phase-timeout alike, closing the hot-loop gap RESEARCH found — without it, this retry would
+   * multiply against the auth operator's own retries and repeatedly resend the caller's EVENT to a
+   * hostile relay. Since `event()` returns ordinary relay rejections as values (not errors), the auth
+   * family is the only `RelayClosedError` subtype that can ever reach this operator.
+   */
   protected customRetryOperator<T extends unknown = unknown>(
     times: undefined | boolean | number | RetryConfig,
     base?: RetryConfig,
   ): MonoTypeOperatorFunction<T> {
     if (times === false || times === undefined) return identity;
-    else if (typeof times === "number") return retry({ ...base, count: times });
-    else if (times === true) return base ? retry(base) : retry();
-    else return retry({ ...base, ...times });
+
+    const config: RetryConfig =
+      typeof times === "number" ? { ...base, count: times } : times === true ? (base ?? {}) : { ...base, ...times };
+
+    return retry({
+      ...config,
+      delay: (error, count) => {
+        if (error instanceof RelayClosedError) return throwError(() => error);
+
+        if (typeof config.delay === "number") return timer(config.delay);
+        if (typeof config.delay === "function") return config.delay(error, count);
+        return of(null);
+      },
+    });
   }
 
   /** Internal operator for retrying connection failures without retrying relay CLOSED errors */
@@ -1310,17 +1330,24 @@ export class Relay {
     else return repeat({ ...times, delay });
   }
 
-  /** Internal operator for creating the timeout() operator */
-  protected customTimeoutOperator<T extends unknown = unknown>(
+  /**
+   * Internal operator for creating a suspendable timeout() operator whose countdown does not advance
+   * while `gate` is in an auth phase (D-15) — used by `publish()` so `publishTimeout` gets its full
+   * budget for the real work once the auth phase closes, rather than racing `authTimeout`. Preserves
+   * the same false/true/number semantics the prior bare-timeout helper had. Do NOT "simplify" this back
+   * to a bare rxjs timeout(), which cannot pause.
+   */
+  protected customSuspendableTimeoutOperator<T extends unknown = unknown>(
     timeout: undefined | boolean | number,
     defaultTimeout: number,
+    gate: AuthPhaseGate,
   ): MonoTypeOperatorFunction<T> {
     // Do nothing if disabled
     if (timeout === false) return identity;
-    // If true default to 30 seconds
-    else if (timeout === true) return simpleTimeout(defaultTimeout);
-    // Otherwise use the timeout value or default to 30 seconds
-    else return simpleTimeout(timeout ?? defaultTimeout);
+    // If true default to defaultTimeout
+    else if (timeout === true) return suspendableTimeout<T>(defaultTimeout, gate);
+    // Otherwise use the timeout value or default to defaultTimeout
+    else return suspendableTimeout<T>(timeout ?? defaultTimeout, gate);
   }
 
   /** Creates a persistent REQ that retries connection errors (default 3 retries) */
@@ -1369,19 +1396,37 @@ export class Relay {
 
   /** Publishes an event to the relay and retries when relay errors or responds with auth-required ( default 3 retries ) */
   publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse> {
+    // D-15: a dedicated gate for this publish's EVENT auth phase, threaded into event() via the
+    // module-private symbol key so publishTimeout (below) can suspend across it
+    const gate = new AuthPhaseGate();
+
     return lastValueFrom(
-      this.event(event, "EVENT", { waitForAuth: opts?.waitForAuth }).pipe(
+      this.event(event, "EVENT", {
+        // RAUTH-07: forward the full auth option set, not just waitForAuth, so onAuthRequired/authTimeout/
+        // authRetries are not silently inert on the highest-level publish API
+        waitForAuth: opts?.waitForAuth,
+        onAuthRequired: opts?.onAuthRequired,
+        authTimeout: opts?.authTimeout,
+        authRetries: opts?.authRetries,
+        [AUTH_PHASE_GATE]: gate,
+      }).pipe(
         mergeMap((result) => {
-          // If the relay responds with auth-required, throw an error for the retry operator to handle
+          // event() only reaches this point with a value-shaped auth-required response once its own
+          // internal auth-retry budget is exhausted (D-01/D-02) — construct the terminal AuthRequiredError
+          // here, at the single caller boundary D-01 designates.
           if (result.ok === false && result.message?.startsWith(AUTH_REQUIRED_PREFIX))
             return throwError(() => new AuthRequiredError(result.message ?? ""));
 
           return of(result);
         }),
-        // Retry the publish until it succeeds or the number of retries is reached
+        // Retry the publish until it succeeds or the number of retries is reached. D-07: with
+        // customRetryOperator's RelayClosedError skip, the AuthRequiredError thrown just above (and any
+        // AuthHandlerError/AuthTimeoutError event() itself threw) is never retried here — max EVENT sends
+        // is authRetries + 1, independent of `retries`.
         this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, this.publishRetry),
-        // Add timeout for publishing
-        this.customTimeoutOperator(opts?.timeout, this.publishTimeout),
+        // D-15: suspend publishTimeout across the auth phase so it does not run while waiting for auth,
+        // and gets its full budget for the real work afterwards
+        this.customSuspendableTimeoutOperator(opts?.timeout, this.publishTimeout, gate),
       ),
     );
   }
