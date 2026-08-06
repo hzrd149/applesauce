@@ -135,7 +135,11 @@ describe("createSyncLoader", () => {
     const events = await collect(events$);
 
     expect(events).toEqual([a]);
-    expect(sync).toHaveBeenCalledWith("wss://relay/", filter, { waitForAuth: undefined });
+    expect(sync).toHaveBeenCalledTimes(1);
+    const opts = (sync as any).mock.calls[0][2] as SyncMethodOptions;
+    expect(opts.waitForAuth).toBeUndefined();
+    // WR-03: the auth-phase wrapper is installed even when the caller supplied no onAuthRequired
+    expect(typeof opts.onAuthRequired).toBe("function");
     expect(request).not.toHaveBeenCalled();
   });
 
@@ -152,7 +156,11 @@ describe("createSyncLoader", () => {
 
     await collect(events$);
 
-    expect(sync).toHaveBeenCalledWith("wss://relay/", filter, { waitForAuth: user.pubkey });
+    expect(sync).toHaveBeenCalledTimes(1);
+    const opts = (sync as any).mock.calls[0][2] as SyncMethodOptions;
+    expect(opts.waitForAuth).toBe(user.pubkey);
+    // WR-03: the auth-phase wrapper is installed even when the caller supplied no onAuthRequired
+    expect(typeof opts.onAuthRequired).toBe("function");
   });
 
   it("threads waitForAuth into the paginated request", async () => {
@@ -168,7 +176,11 @@ describe("createSyncLoader", () => {
 
     await collect(events$);
 
-    expect(request).toHaveBeenCalledWith("wss://relay/", [expect.any(Object)], { waitForAuth: user.pubkey });
+    expect(request).toHaveBeenCalledTimes(1);
+    const opts = (request as any).mock.calls[0][2] as SyncMethodOptions;
+    expect(opts.waitForAuth).toBe(user.pubkey);
+    // WR-03: the auth-phase wrapper is installed even when the caller supplied no onAuthRequired
+    expect(typeof opts.onAuthRequired).toBe("function");
     expect(sync).not.toHaveBeenCalled();
   });
 
@@ -459,7 +471,11 @@ describe("createSyncLoader", () => {
 
     expect(events).toEqual([a]);
     expect(pool.relay).toHaveBeenCalledWith("wss://relay/");
-    expect(relay.sync).toHaveBeenCalledWith(eventStore, filter, undefined, { waitForAuth: undefined });
+    expect(relay.sync).toHaveBeenCalledTimes(1);
+    const opts = (relay.sync as any).mock.calls[0][3] as SyncMethodOptions;
+    expect(opts.waitForAuth).toBeUndefined();
+    // WR-03: the auth-phase wrapper is installed even when the caller supplied no onAuthRequired
+    expect(typeof opts.onAuthRequired).toBe("function");
   });
 
   it("maps a relay pool to the internal methods, threading the three auth options (RAUTH-08)", async () => {

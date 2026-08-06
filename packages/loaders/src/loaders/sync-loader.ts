@@ -404,50 +404,54 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
           pendingAuthCloses.clear();
         };
 
-        // The onAuthRequired that actually goes into this relay's methodOptions: a wrapper around the
-        // caller's handler (when one is supplied) that opens the suspension the instant it is invoked and
-        // closes it on the later of (a) the handler settling and (b) `authTimeout` ms after that — the
-        // maximum possible remaining duration of the relay-side auth phase, since this loader is the one
-        // passing that same `authTimeout` down. This closes RESEARCH's Assumption A2 residual window: the
-        // suspension covers the post-handler `authSatisfied$` wait, not just the handler call itself.
-        // `authTimeout: false` leaves it open indefinitely until a stream emission closes it early. The
-        // wrapper never swallows the caller's rejection — it returns the caller's result unchanged so the
-        // relay layer maps a rejection to its own AuthHandlerError — and it never invokes the handler
-        // itself beyond this single delegation.
-        const relayOnAuthRequired: SyncAuthHandler | undefined = onAuthRequired
-          ? (context) => {
-              authPhases++;
-              authPhaseChange$.next();
+        // The onAuthRequired that actually goes into this relay's methodOptions. WR-03: this wrapper is
+        // ALWAYS installed — never conditional on the caller supplying a handler — because the stall-guard
+        // suspension is a property of the auth phase itself (D-16), and D-14's uniform 30s default applies
+        // with or without a handler. Making "no wrapper installed" unrepresentable is what stops a
+        // handler-less caller's stall clock from racing the relay's own `authTimeout` wait. It opens the
+        // suspension the instant it is invoked and closes it on the later of (a) the caller's handler (if
+        // any) settling and (b) `authTimeout` ms after that — the maximum possible remaining duration of
+        // the relay-side auth phase, since this loader is the one passing that same `authTimeout` down.
+        // When the caller supplied nothing, delegating to `undefined` still opens/closes the phase, and
+        // `authRetry` folds an `undefined`-returning handler into the exact same `of(undefined)` it already
+        // produces for a missing handler (auth-retry.ts's `result instanceof Promise ? from(result) :
+        // of(undefined)`), so the relay-side semantics are unchanged either way. This closes RESEARCH's
+        // Assumption A2 residual window: the suspension covers the post-handler `authSatisfied$` wait, not
+        // just the handler call itself. `authTimeout: false` leaves it open indefinitely until a stream
+        // emission closes it early. The wrapper never swallows the caller's rejection — it returns the
+        // caller's result unchanged so the relay layer maps a rejection to its own AuthHandlerError — and
+        // it never invokes the handler itself beyond this single delegation.
+        const relayOnAuthRequired: SyncAuthHandler = (context) => {
+          authPhases++;
+          authPhaseChange$.next();
 
-              let closed = false;
-              const close = () => {
-                if (closed) return;
-                closed = true;
-                pendingAuthCloses.delete(close);
-                authPhases = Math.max(0, authPhases - 1);
-                authPhaseChange$.next();
-              };
-              pendingAuthCloses.add(close);
+          let closed = false;
+          const close = () => {
+            if (closed) return;
+            closed = true;
+            pendingAuthCloses.delete(close);
+            authPhases = Math.max(0, authPhases - 1);
+            authPhaseChange$.next();
+          };
+          pendingAuthCloses.add(close);
 
-              const scheduleClose = () => {
-                // authTimeout: false means unbounded — only forceCloseAuthPhases (a stream emission)
-                // closes this phase
-                if (authTimeout !== false) setTimeout(close, authTimeout ?? 30_000);
-              };
+          const scheduleClose = () => {
+            // authTimeout: false means unbounded — only forceCloseAuthPhases (a stream emission)
+            // closes this phase
+            if (authTimeout !== false) setTimeout(close, authTimeout ?? 30_000);
+          };
 
-              const result = onAuthRequired(context);
-              if (result instanceof Promise) result.then(scheduleClose, scheduleClose);
-              else scheduleClose();
-              return result;
-            }
-          : undefined;
+          const result = onAuthRequired?.(context);
+          if (result instanceof Promise) result.then(scheduleClose, scheduleClose);
+          else scheduleClose();
+          return result;
+        };
 
         // The options this relay's sync() and paginatedRequest() calls both read — the same base fields
-        // constructed once at `methodOptions` above, with only `onAuthRequired` narrowed to this relay's
-        // own wrapper so both paths still read one shared shape (RAUTH-08)
-        const relayMethodOptions: SyncMethodOptions = relayOnAuthRequired
-          ? { ...methodOptions, onAuthRequired: relayOnAuthRequired }
-          : methodOptions;
+        // constructed once at `methodOptions` above, with `onAuthRequired` always narrowed to this relay's
+        // own wrapper (installed unconditionally, WR-03) so both paths always read one shared shape
+        // carrying the wrapper (RAUTH-08)
+        const relayMethodOptions: SyncMethodOptions = { ...methodOptions, onAuthRequired: relayOnAuthRequired };
 
         // D-16: an auth-aware replacement for the bare `rxTimeout({ first, each })` stall guard. Its
         // countdown is paused for the whole time `authPhases > 0` (constructed per relay above), and
