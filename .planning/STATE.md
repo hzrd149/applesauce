@@ -6,14 +6,14 @@ current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
 stopped_at: Completed 13-13-PLAN.md
-last_updated: "2026-08-06T21:32:02.669Z"
+last_updated: "2026-08-06T22:02:17.575Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 4 of 13
+Plan: 5 of 13
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 13 execution started
 
@@ -112,6 +112,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P08 | 20min | 3 tasks | 3 files |
 | Phase 13 P09 | 25min | 3 tasks | 2 files |
 | Phase 13-13 P13-13 | 25min | 3 tasks | 2 files |
+| Phase 13 P10 | 35min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -285,6 +286,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 13-13: relayOnAuthRequired declared non-optionally-typed and constructed unconditionally (no ternary), closing WR-03 structurally rather than by special-casing a caller's absent handler
 - [Phase ?]: 13-13: WR-04 closed on all three exit paths -- retained/cleared timer handle in close(), scheduleClose() no-ops for an already-closed phase, and a new finalize(forceCloseAuthPhases) on buildRelayStream's terminal pipeline (placed outside withTimeout since it returns its source unwrapped when the stall guard is disabled)
 - [Phase ?]: 13-13: Test 4's mock defers its emission via a microtask rather than emitting synchronously, avoiding mapEventsToStore's documented share()/mergeWith double-subscription gotcha
+- [Phase ?]: 13-10: count()'s messages/relayClosedSub moved from call-scoped constants into the same per-attempt defer shape 13-09 gave req(), closing CR-03 -- event()'s messages never needed this fix since it has no terminating condition of its own
+- [Phase ?]: 13-10: send/listen invariant stated once as a comment above the shared authRetryOperator adapter (relay.ts); Task 3's eight-operation + RelayGroup/RelayPool audit found no further violation beyond the already-known, already-scoped WR-02 gap (RelayGroup.request()'s missing gate threading, owned by 13-11)
+- [Phase ?]: 13-10: REQUIREMENTS.md left unchanged (RAUTH-03/RAUTH-07 remain In Progress) per the 13-08/13-09 precedent -- plan 13-12 is the designated closing plan that flips RAUTH-03/07/08 to Complete once every gap-closure plan in this wave sequence has landed
 
 ### Pending Todos
 
@@ -368,7 +372,7 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T21:31:03.360Z
+Last session: 2026-08-06T22:00:59.787Z
 Stopped at: Completed 13-13-PLAN.md
 Resume file: 
 None
