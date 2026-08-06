@@ -1,3 +1,4 @@
+import { logger } from "applesauce-core";
 import { EventMemory } from "applesauce-core/event-store";
 import type { Filter, NostrEvent } from "applesauce-core/helpers";
 import { filterDuplicateEvents } from "applesauce-core/observable";
@@ -67,6 +68,7 @@ function errorToPublishResponse(relay: Relay): MonoTypeOperatorFunction<PublishR
 }
 
 export class RelayGroup {
+  protected log: typeof logger = logger.extend("RelayGroup");
   protected relays$: BehaviorSubject<Relay[]> | Observable<Relay[]> = new BehaviorSubject<Relay[]>([]);
 
   /** Observable of relay status for all relays in the group */
@@ -343,7 +345,7 @@ export class RelayGroup {
               // sync() has no error channel (Observable<NostrEvent>), so the dropped relay is visible
               // in debug output only — a status channel for it is Phase 14 (ALOG-02) territory.
               catchError((err) => {
-                console.debug(`[RelayGroup.sync] dropping relay from group sync (D-19): ${relay.url}`, err);
+                this.log(`dropping relay from group sync (D-19): ${relay.url}`, err);
                 return EMPTY;
               }),
             ),
