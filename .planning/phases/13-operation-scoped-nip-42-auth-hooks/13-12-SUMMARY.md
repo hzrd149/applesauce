@@ -208,3 +208,20 @@ None - no external service configuration required.
 ---
 *Phase: 13-operation-scoped-nip-42-auth-hooks*
 *Completed: 2026-08-06*
+
+## Self-Check: PASSED
+
+- FOUND: packages/loaders/src/loaders/__tests__/sync-loader.test.ts
+- FOUND: .changeset/relay-auth-retry-bound-not-reset-by-req-open.md
+- FOUND: .changeset/relay-auth-handler-sync-throw-mapped.md
+- FOUND: .changeset/relay-auth-resend-req-count-observed.md
+- FOUND: .changeset/relay-request-timeout-can-fire.md
+- FOUND: .changeset/relay-group-request-timeout-suspended.md
+- FOUND: .changeset/relay-group-logger-routing.md
+- FOUND: .changeset/sync-loader-handlerless-stall-suspension.md
+- FOUND: .changeset/sync-loader-auth-phase-timer-leak-fixed.md
+- FOUND: .planning/REQUIREMENTS.md
+- FOUND: .planning/phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md
+- FOUND: 161c815c (Task 1)
+- FOUND: 1be34ca0 (Task 2)
+- FOUND: 3d640d78 (Task 3)
