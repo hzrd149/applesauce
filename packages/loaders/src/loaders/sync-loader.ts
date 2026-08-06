@@ -1,5 +1,5 @@
 import { logger as baseLogger } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { addSeenRelay, relaySet } from "applesauce-core/helpers/relays";
 import { mapEventsToStore } from "applesauce-core/observable";
@@ -34,6 +34,59 @@ import {
  * Structurally matches applesauce-relay's `AuthRequirement`.
  */
 export type SyncAuthRequirement = boolean | string | string[];
+
+/**
+ * The minimal relay interface a {@link SyncAuthHandler} needs to authenticate: `url`, `authenticate` and
+ * `auth`. This structurally matches applesauce-relay's `Relay`, the concrete type behind its
+ * `RelayAuthContext.relay` — a real `Relay` satisfies this interface without any adaptation.
+ */
+export interface SyncAuthRelay {
+  /** The relay's URL */
+  url: string;
+  /** Authenticate with the relay using a signer */
+  authenticate(signer: { signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent> }): Promise<unknown>;
+  /** Send an already-signed AUTH event directly */
+  auth(event: NostrEvent): Promise<unknown>;
+}
+
+/**
+ * The context passed to a {@link SyncAuthHandler} when a relay signals that authentication is required.
+ * This structurally matches applesauce-relay's `RelayAuthContext` (RAUTH-01), narrowed to the fields a
+ * sync-loader-level handler actually needs. One-way assignability: a handler written against this type
+ * accepts a real `Relay` for `relay` (a `Relay` satisfies {@link SyncAuthRelay}), but a handler written
+ * against applesauce-relay's full `RelayAuthContext` is NOT assignable to a {@link SyncAuthHandler} —
+ * `RelayAuthContext.relay` is a concrete `Relay`, which is not assignable backwards to the narrower
+ * `SyncAuthRelay` some other caller of that wider handler type might expect.
+ */
+export type SyncAuthContext = {
+  /** The relay that requires authentication */
+  relay: SyncAuthRelay;
+  /** The URL of the relay */
+  url: string;
+  /** The current NIP-42 AUTH challenge string, or null if none has been received yet */
+  challenge: string | null;
+  /** The auth requirement configured for the operation that triggered this auth phase */
+  requirement: SyncAuthRequirement;
+  /** The pubkeys that are not yet authenticated for `requirement`, or null when `requirement` is `true` */
+  missingPubkeys: string[] | null;
+  /** The machine-readable reason string reported by the relay */
+  reason: string;
+};
+
+/**
+ * A caller-supplied callback invoked when a relay signals that authentication is required. This
+ * structurally matches applesauce-relay's `RelayAuthHandler` (D-06).
+ */
+export type SyncAuthHandler = (context: SyncAuthContext) => void | Promise<void>;
+
+/**
+ * NOTE: these three `name` strings are load-bearing wire between packages. They are coupled to
+ * `AuthHandlerError`/`AuthTimeoutError`/`AuthRequiredError`'s pinned `.name` values declared in
+ * `packages/relay/src/relay.ts`. D-06 deliberately forbids importing those classes here, so this loader
+ * duck-types against the exact strings instead — a rename in `relay.ts` must update this set in the same
+ * change.
+ */
+export const RELAY_AUTH_ERROR_NAMES = new Set(["AuthRequiredError", "AuthHandlerError", "AuthTimeoutError"]);
 
 /** The method a relay was loaded with */
 export type SyncRelayMethod = "negentropy" | "request";
@@ -74,7 +127,15 @@ export type SyncLoaderResult = {
 };
 
 /** Per-relay options threaded through the request and sync methods */
-export type SyncMethodOptions = { waitForAuth?: SyncAuthRequirement };
+export type SyncMethodOptions = {
+  waitForAuth?: SyncAuthRequirement;
+  /** Called when the relay signals that authentication is required for this operation */
+  onAuthRequired?: SyncAuthHandler;
+  /** The maximum time (in milliseconds) to wait for a single auth phase, or `false` to wait indefinitely */
+  authTimeout?: number | false;
+  /** The number of consecutive auth-required cycles to tolerate before giving up */
+  authRetries?: number;
+};
 
 /** A method that makes a one-shot REQ to a single relay and completes on EOSE */
 export type SyncRequestMethod = (relay: string, filters: Filter[], opts?: SyncMethodOptions) => Observable<NostrEvent>;
@@ -140,6 +201,21 @@ export type SyncLoadRequest = {
    * @default true
    */
   waitForAuth?: SyncAuthRequirement;
+  /** Called when a relay signals that authentication is required, for both the negentropy sync and the
+   * paginated request path identically (RAUTH-08) */
+  onAuthRequired?: SyncAuthHandler;
+  /**
+   * The maximum time (in milliseconds) to wait for a single auth phase (handler execution plus the
+   * subsequent authentication wait), owned by the relay layer. Pass `false` to wait indefinitely for
+   * external auth state.
+   * @default 30000
+   */
+  authTimeout?: number | false;
+  /**
+   * The number of consecutive auth-required cycles to tolerate before giving up, owned by the relay layer.
+   * @default 1
+   */
+  authRetries?: number;
 };
 
 /** A loader that loads a set of events from multiple relays using NIP-77 sync or paginated requests */
@@ -262,12 +338,17 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
     timeout = 30_000,
     concurrency = 10,
     waitForAuth,
+    onAuthRequired,
+    authTimeout,
+    authRetries,
   }: SyncLoadRequest): SyncLoaderResult => {
     const log = baseLog.extend(nanoid(4));
 
     // Per-relay options threaded into both the negentropy sync and the paginated request so an auth-required
-    // relay waits for authentication and retries instead of failing
-    const methodOptions: SyncMethodOptions = { waitForAuth };
+    // relay waits for authentication and retries instead of failing. This is the single construction point
+    // both sync(url, filter, methodOptions) and paginatedRequest(..., methodOptions) read, which is what
+    // makes RAUTH-08's "identically" requirement structural rather than a coincidence.
+    const methodOptions: SyncMethodOptions = { waitForAuth, onAuthRequired, authTimeout, authRetries };
 
     // Normalize, de-duplicate, and drop invalid relay urls
     const urls = relaySet(relays);
