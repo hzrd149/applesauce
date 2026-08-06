@@ -23,7 +23,6 @@ import { RelayGroup } from "./group.js";
 import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
 import { Relay, type RelayOptions, SyncDirection } from "./relay.js";
 import type {
-  AuthRequirement,
   FilterInput,
   GroupReqMessage,
   GroupReqOptions,
@@ -255,7 +254,9 @@ export class RelayPool {
     store: NegentropySyncStore | NostrEvent[],
     filter: Filter,
     direction?: SyncDirection,
-    opts?: { waitForAuth?: AuthRequirement },
+    // D-05: derived from RelayGroup.sync (literal 5 of 5, the last hand-declared option literal) so a
+    // future option added there reaches the pool surface automatically.
+    opts?: Parameters<RelayGroup["sync"]>[3],
   ): Observable<NostrEvent> {
     // Never filter out offline relays in manual methods
     return this.group(relays, false).sync(store, filter, direction, opts);

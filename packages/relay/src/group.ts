@@ -9,6 +9,7 @@ import {
   connect,
   defaultIfEmpty,
   defer,
+  EMPTY,
   filter,
   from,
   identity,
@@ -37,7 +38,6 @@ import {
   GroupNegentropySyncOptions,
   GroupRelayInput,
   GroupReqErrorMessage,
-  AuthRequirement,
   GroupReqMessage,
   GroupReqOptions,
   GroupRequestCompleteOperator,
@@ -55,7 +55,14 @@ import {
 /** Convert an error to a PublishResponse */
 function errorToPublishResponse(relay: Relay): MonoTypeOperatorFunction<PublishResponse> {
   return catchError((err) =>
-    of({ ok: false, from: relay.url, message: err?.message || "Unknown error" } satisfies PublishResponse),
+    of({
+      ok: false,
+      from: relay.url,
+      message: err?.message || "Unknown error",
+      // D-18: attach the original error object alongside the message so a group publish failure
+      // reaches the consumer as something it can branch on rather than a bare string.
+      error: err,
+    } satisfies PublishResponse),
   );
 }
 
@@ -301,7 +308,9 @@ export class RelayGroup {
     store: NegentropySyncStore | NostrEvent[],
     filter: Filter,
     direction?: SyncDirection,
-    opts?: { waitForAuth?: AuthRequirement },
+    // D-05: derived from Relay.sync (literal 4 of 5) rather than hand-declared, so a future option
+    // added to Relay.sync propagates here automatically.
+    opts?: Parameters<Relay["sync"]>[3],
   ): Observable<NostrEvent> {
     // Get an array of relays that support NIP-77 negentropy sync
     return defer(async () => {
@@ -313,7 +322,22 @@ export class RelayGroup {
       return relays;
     }).pipe(
       // Once relays are selected, sync all the relays in parallel
-      switchMap((relays) => merge(...relays.map((relay) => relay.sync(store, filter, direction, opts)))),
+      switchMap((relays) =>
+        merge(
+          ...relays.map((relay) =>
+            relay.sync(store, filter, direction, opts).pipe(
+              // D-19: isolate one relay's sync failure so it doesn't end the sync for the rest of the
+              // group, matching the fan-out fidelity the REQ path and publish path already have.
+              // sync() has no error channel (Observable<NostrEvent>), so the dropped relay is visible
+              // in debug output only — a status channel for it is Phase 14 (ALOG-02) territory.
+              catchError((err) => {
+                console.debug(`[RelayGroup.sync] dropping relay from group sync (D-19): ${relay.url}`, err);
+                return EMPTY;
+              }),
+            ),
+          ),
+        ),
+      ),
       // Only create one upstream subscription
       share(),
     );
