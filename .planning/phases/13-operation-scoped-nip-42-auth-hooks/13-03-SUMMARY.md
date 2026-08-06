@@ -166,3 +166,13 @@ None - no external service configuration required.
 ---
 *Phase: 13-operation-scoped-nip-42-auth-hooks*
 *Completed: 2026-08-06*
+
+## Self-Check: PASSED
+
+- FOUND: packages/loaders/src/loaders/sync-loader.ts
+- FOUND: packages/loaders/src/loaders/__tests__/sync-loader.test.ts
+- FOUND: .planning/phases/13-operation-scoped-nip-42-auth-hooks/13-03-SUMMARY.md
+- FOUND: 3bbfb177 (Task 1)
+- FOUND: 6551c33c (Task 2)
+- FOUND: 37eca131 (Task 3)
+- FOUND: 054f641a (SUMMARY commit)
