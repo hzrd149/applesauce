@@ -1,5 +1,5 @@
 import { logger as baseLogger } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { addSeenRelay, relaySet } from "applesauce-core/helpers/relays";
 import { mapEventsToStore } from "applesauce-core/observable";
@@ -34,6 +34,59 @@ import {
  * Structurally matches applesauce-relay's `AuthRequirement`.
  */
 export type SyncAuthRequirement = boolean | string | string[];
+
+/**
+ * The minimal relay interface a {@link SyncAuthHandler} needs to authenticate: `url`, `authenticate` and
+ * `auth`. This structurally matches applesauce-relay's `Relay`, the concrete type behind its
+ * `RelayAuthContext.relay` — a real `Relay` satisfies this interface without any adaptation.
+ */
+export interface SyncAuthRelay {
+  /** The relay's URL */
+  url: string;
+  /** Authenticate with the relay using a signer */
+  authenticate(signer: { signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent> }): Promise<unknown>;
+  /** Send an already-signed AUTH event directly */
+  auth(event: NostrEvent): Promise<unknown>;
+}
+
+/**
+ * The context passed to a {@link SyncAuthHandler} when a relay signals that authentication is required.
+ * This structurally matches applesauce-relay's `RelayAuthContext` (RAUTH-01), narrowed to the fields a
+ * sync-loader-level handler actually needs. One-way assignability: a handler written against this type
+ * accepts a real `Relay` for `relay` (a `Relay` satisfies {@link SyncAuthRelay}), but a handler written
+ * against applesauce-relay's full `RelayAuthContext` is NOT assignable to a {@link SyncAuthHandler} —
+ * `RelayAuthContext.relay` is a concrete `Relay`, which is not assignable backwards to the narrower
+ * `SyncAuthRelay` some other caller of that wider handler type might expect.
+ */
+export type SyncAuthContext = {
+  /** The relay that requires authentication */
+  relay: SyncAuthRelay;
+  /** The URL of the relay */
+  url: string;
+  /** The current NIP-42 AUTH challenge string, or null if none has been received yet */
+  challenge: string | null;
+  /** The auth requirement configured for the operation that triggered this auth phase */
+  requirement: SyncAuthRequirement;
+  /** The pubkeys that are not yet authenticated for `requirement`, or null when `requirement` is `true` */
+  missingPubkeys: string[] | null;
+  /** The machine-readable reason string reported by the relay */
+  reason: string;
+};
+
+/**
+ * A caller-supplied callback invoked when a relay signals that authentication is required. This
+ * structurally matches applesauce-relay's `RelayAuthHandler` (D-06).
+ */
+export type SyncAuthHandler = (context: SyncAuthContext) => void | Promise<void>;
+
+/**
+ * NOTE: these three `name` strings are load-bearing wire between packages. They are coupled to
+ * `AuthHandlerError`/`AuthTimeoutError`/`AuthRequiredError`'s pinned `.name` values declared in
+ * `packages/relay/src/relay.ts`. D-06 deliberately forbids importing those classes here, so this loader
+ * duck-types against the exact strings instead — a rename in `relay.ts` must update this set in the same
+ * change.
+ */
+export const RELAY_AUTH_ERROR_NAMES = new Set(["AuthRequiredError", "AuthHandlerError", "AuthTimeoutError"]);
 
 /** The method a relay was loaded with */
 export type SyncRelayMethod = "negentropy" | "request";
@@ -74,7 +127,15 @@ export type SyncLoaderResult = {
 };
 
 /** Per-relay options threaded through the request and sync methods */
-export type SyncMethodOptions = { waitForAuth?: SyncAuthRequirement };
+export type SyncMethodOptions = {
+  waitForAuth?: SyncAuthRequirement;
+  /** Called when the relay signals that authentication is required for this operation */
+  onAuthRequired?: SyncAuthHandler;
+  /** The maximum time (in milliseconds) to wait for a single auth phase, or `false` to wait indefinitely */
+  authTimeout?: number | false;
+  /** The number of consecutive auth-required cycles to tolerate before giving up */
+  authRetries?: number;
+};
 
 /** A method that makes a one-shot REQ to a single relay and completes on EOSE */
 export type SyncRequestMethod = (relay: string, filters: Filter[], opts?: SyncMethodOptions) => Observable<NostrEvent>;
@@ -140,6 +201,21 @@ export type SyncLoadRequest = {
    * @default true
    */
   waitForAuth?: SyncAuthRequirement;
+  /** Called when a relay signals that authentication is required, for both the negentropy sync and the
+   * paginated request path identically (RAUTH-08) */
+  onAuthRequired?: SyncAuthHandler;
+  /**
+   * The maximum time (in milliseconds) to wait for a single auth phase (handler execution plus the
+   * subsequent authentication wait), owned by the relay layer. Pass `false` to wait indefinitely for
+   * external auth state.
+   * @default 30000
+   */
+  authTimeout?: number | false;
+  /**
+   * The number of consecutive auth-required cycles to tolerate before giving up, owned by the relay layer.
+   * @default 1
+   */
+  authRetries?: number;
 };
 
 /** A loader that loads a set of events from multiple relays using NIP-77 sync or paginated requests */
@@ -262,21 +338,26 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
     timeout = 30_000,
     concurrency = 10,
     waitForAuth,
+    onAuthRequired,
+    authTimeout,
+    authRetries,
   }: SyncLoadRequest): SyncLoaderResult => {
     const log = baseLog.extend(nanoid(4));
 
     // Per-relay options threaded into both the negentropy sync and the paginated request so an auth-required
-    // relay waits for authentication and retries instead of failing
-    const methodOptions: SyncMethodOptions = { waitForAuth };
+    // relay waits for authentication and retries instead of failing. This is the single construction point
+    // both sync(url, filter, methodOptions) and paginatedRequest(..., methodOptions) read, which is what
+    // makes RAUTH-08's "identically" requirement structural rather than a coincidence.
+    const methodOptions: SyncMethodOptions = { waitForAuth, onAuthRequired, authTimeout, authRetries };
 
     // Normalize, de-duplicate, and drop invalid relay urls
     const urls = relaySet(relays);
 
     // Bound how long a relay may stall (time to first event and between events) so an offline or
-    // unresponsive relay can never block the merge from completing. 0/false disables it
+    // unresponsive relay can never block the merge from completing. 0/false disables it. D-16: each
+    // relay builds its own auth-aware version of this below (`buildRelayStream`'s `withTimeout`) rather
+    // than sharing one function, since the clock must be suspendable per relay independently.
     const timeoutMs = timeout === false ? 0 : timeout;
-    const withTimeout = <T>(observable: Observable<T>): Observable<T> =>
-      timeoutMs > 0 ? observable.pipe(rxTimeout({ first: timeoutMs, each: timeoutMs })) : observable;
 
     type Msg = { event: NostrEvent } | { status: SyncLoaderStatus };
 
@@ -307,6 +388,152 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
       if (urls.length === 0) return status();
 
       const buildRelayStream = (url: string): Observable<Msg> => {
+        // D-16: this relay's own auth-phase suspension, constructed per relay/url (not once for the
+        // whole loader) so one relay's auth wait can never pause another relay's stall clock. A counter
+        // (not a boolean), mirroring applesauce-relay's own AuthPhaseGate, so overlapping phases cannot
+        // resume the clock early. `withTimeout` below does not advance while `authPhases > 0`.
+        let authPhases = 0;
+        const authPhaseChange$ = new Subject<void>();
+        // Close callbacks for every currently in-flight phase, so a stream emission (meaning the auth
+        // phase is over) can force ALL of them closed immediately, even ones whose own authTimeout-delay
+        // hasn't elapsed yet
+        const pendingAuthCloses = new Set<() => void>();
+        const forceCloseAuthPhases = () => {
+          if (pendingAuthCloses.size === 0) return;
+          for (const close of pendingAuthCloses) close();
+          pendingAuthCloses.clear();
+        };
+
+        // The onAuthRequired that actually goes into this relay's methodOptions: a wrapper around the
+        // caller's handler (when one is supplied) that opens the suspension the instant it is invoked and
+        // closes it on the later of (a) the handler settling and (b) `authTimeout` ms after that — the
+        // maximum possible remaining duration of the relay-side auth phase, since this loader is the one
+        // passing that same `authTimeout` down. This closes RESEARCH's Assumption A2 residual window: the
+        // suspension covers the post-handler `authSatisfied$` wait, not just the handler call itself.
+        // `authTimeout: false` leaves it open indefinitely until a stream emission closes it early. The
+        // wrapper never swallows the caller's rejection — it returns the caller's result unchanged so the
+        // relay layer maps a rejection to its own AuthHandlerError — and it never invokes the handler
+        // itself beyond this single delegation.
+        const relayOnAuthRequired: SyncAuthHandler | undefined = onAuthRequired
+          ? (context) => {
+              authPhases++;
+              authPhaseChange$.next();
+
+              let closed = false;
+              const close = () => {
+                if (closed) return;
+                closed = true;
+                pendingAuthCloses.delete(close);
+                authPhases = Math.max(0, authPhases - 1);
+                authPhaseChange$.next();
+              };
+              pendingAuthCloses.add(close);
+
+              const scheduleClose = () => {
+                // authTimeout: false means unbounded — only forceCloseAuthPhases (a stream emission)
+                // closes this phase
+                if (authTimeout !== false) setTimeout(close, authTimeout ?? 30_000);
+              };
+
+              const result = onAuthRequired(context);
+              if (result instanceof Promise) result.then(scheduleClose, scheduleClose);
+              else scheduleClose();
+              return result;
+            }
+          : undefined;
+
+        // The options this relay's sync() and paginatedRequest() calls both read — the same base fields
+        // constructed once at `methodOptions` above, with only `onAuthRequired` narrowed to this relay's
+        // own wrapper so both paths still read one shared shape (RAUTH-08)
+        const relayMethodOptions: SyncMethodOptions = relayOnAuthRequired
+          ? { ...methodOptions, onAuthRequired: relayOnAuthRequired }
+          : methodOptions;
+
+        // D-16: an auth-aware replacement for the bare `rxTimeout({ first, each })` stall guard. Its
+        // countdown is paused for the whole time `authPhases > 0` (constructed per relay above), and
+        // resumes with the remaining — not reset — budget once every phase closes, mirroring D-15's
+        // pause/resume model: an auth wait does not grant the operation extra time, it just stops the
+        // clock while authentication is out of the operation's hands.
+        const withTimeout = <T>(observable: Observable<T>): Observable<T> => {
+          if (timeoutMs <= 0) return observable;
+
+          return new Observable<T>((subscriber) => {
+            let remaining = timeoutMs;
+            let armedAt: number | null = null;
+            let timer: ReturnType<typeof setTimeout> | null = null;
+            let settled = false;
+
+            const clearArmed = () => {
+              if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+              }
+            };
+            const fail = () => {
+              if (settled) return;
+              settled = true;
+              clearArmed();
+              phaseSub.unsubscribe();
+              sourceSub.unsubscribe();
+              subscriber.error(new Error(`Sync loader timed out waiting for progress from ${url}`));
+            };
+            const arm = () => {
+              if (settled || authPhases > 0) return;
+              armedAt = Date.now();
+              clearArmed();
+              timer = setTimeout(fail, Math.max(0, remaining));
+            };
+            const disarm = () => {
+              if (armedAt !== null) {
+                remaining -= Date.now() - armedAt;
+                armedAt = null;
+              }
+              clearArmed();
+            };
+
+            const phaseSub = authPhaseChange$.subscribe(() => {
+              if (settled) return;
+              if (authPhases > 0) disarm();
+              else arm();
+            });
+
+            arm();
+
+            const sourceSub = observable.subscribe({
+              next: (value) => {
+                if (settled) return;
+                // An emission means any in-flight auth phase is over (D-16); force it closed and give
+                // the next stall window a fresh budget, matching the existing `each` semantics
+                forceCloseAuthPhases();
+                remaining = timeoutMs;
+                arm();
+                subscriber.next(value);
+              },
+              error: (err) => {
+                if (settled) return;
+                settled = true;
+                clearArmed();
+                phaseSub.unsubscribe();
+                subscriber.error(err);
+              },
+              complete: () => {
+                if (settled) return;
+                settled = true;
+                clearArmed();
+                phaseSub.unsubscribe();
+                subscriber.complete();
+              },
+            });
+
+            return () => {
+              settled = true;
+              clearArmed();
+              phaseSub.unsubscribe();
+              sourceSub.unsubscribe();
+            };
+          });
+        };
+
         // Resolve the relay's supported NIPs (Promise or Observable) into a single emission
         const supported$ = defer(() => {
           const result = getSupported(url);
@@ -348,7 +575,14 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             const request$ = () =>
               toMessages(
                 withTimeout(
-                  paginatedRequest(request, url, filter, limit, log.extend(url).extend("request"), methodOptions),
+                  paginatedRequest(
+                    request,
+                    url,
+                    filter,
+                    limit,
+                    log.extend(url).extend("request"),
+                    relayMethodOptions,
+                  ),
                 ),
               );
 
@@ -358,8 +592,21 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             // Part 2: negentropy sync, falling back to a paginated request if it fails or times out
             return concat(
               status(),
-              toMessages(withTimeout(sync(url, filter, methodOptions))).pipe(
+              toMessages(withTimeout(sync(url, filter, relayMethodOptions))).pipe(
                 catchError((error) => {
+                  // D-16: an auth-required failure on the negentropy path must NOT trigger the paginated
+                  // fallback — that would burn the request path against the same auth wall the negentropy
+                  // path just gave up on, and report a spurious "sync failed" before the relay ultimately
+                  // errors anyway. Re-throw so it reaches the per-relay catchError below instead.
+                  if (error?.name && RELAY_AUTH_ERROR_NAMES.has(error.name)) {
+                    log(
+                      "Negentropy sync auth-required for %s, not falling back to request: %s",
+                      url,
+                      error?.message ?? error,
+                    );
+                    throw error;
+                  }
+
                   log("Negentropy sync failed for %s, falling back to request: %s", url, error?.message ?? error);
                   // Surface the fallback as its own status change before streaming the request's events
                   return concat(
