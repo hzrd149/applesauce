@@ -34,12 +34,14 @@ function makeErrors() {
   };
 }
 
-function baseConfig(overrides: Partial<AuthRetryConfig> = {}): AuthRetryConfig {
+function baseConfig(overrides: Partial<AuthRetryConfig<number>> = {}): AuthRetryConfig<number> {
   return {
     operation: "read",
     buildContext: (reason) => ({ ...FAKE_CONTEXT, reason }),
     authSatisfied$: () => of(true),
     gate: new AuthPhaseGate(),
+    // Default: any value counts as progress, matching every existing test's "any value is progress" intent
+    isProgress: () => true,
     errors: makeErrors(),
     ...overrides,
   };
@@ -170,6 +172,63 @@ describe("authRetry", () => {
     expect(spy.getError()).toEqual({ kind: "handler", reason: "auth-required: persistent", cause: rejection });
   });
 
+  // Pairs with the test above: a synchronous throw and a rejected promise must be the same outcome (CR-04)
+  it("maps a synchronously-throwing handler to the handler error, carrying the thrown value as cause (CR-04)", async () => {
+    const thrown = new Error("sync boom");
+    const onAuthRequired = vi.fn(() => {
+      throw thrown;
+    });
+    const errors = makeErrors();
+    const persistent = makePersistentSignalSource();
+    const spy = subscribeSpyTo(
+      persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, errors }))),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    expect(errors.handler).toHaveBeenCalledTimes(1);
+    expect(errors.handler).toHaveBeenCalledWith("auth-required: persistent", thrown);
+    expect(spy.getError()).toEqual({ kind: "handler", reason: "auth-required: persistent", cause: thrown });
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  // CR-01: a call-site bookkeeping value (mirroring req()'s synthetic OPEN) must never reset the D-08
+  // consecutive counter — only a value config.isProgress accepts as real progress may reset it.
+  it("does not let a non-progress bookkeeping value reset the consecutive counter (CR-01)", async () => {
+    const errors = makeErrors();
+    const onAuthRequired = vi.fn();
+    // -1 stands in for req()'s synthetic OPEN: a real (non-signal) value that is NOT progress
+    const isProgress = (value: number) => value !== -1;
+    let subscribeCount = 0;
+    // Explicit subscription cap (per plan instruction): against an operator whose D-08 reset is
+    // unconditional, this fixture's bookkeeping value would reset the counter every cycle and the
+    // source would be resubscribed forever. Cap it so the test fails an assertion instead of hanging.
+    const SUBSCRIPTION_CAP = 5;
+
+    const source = new Observable<number | AuthRequiredSignal>((subscriber) => {
+      subscribeCount++;
+      if (subscribeCount > SUBSCRIPTION_CAP) {
+        subscriber.error(new Error("test fixture subscription cap exceeded — CR-01 bound did not hold"));
+        return;
+      }
+      // Every subscription: a bookkeeping value first (mirrors req()'s OPEN), then an auth-required signal
+      subscriber.next(-1);
+      subscriber.next(authRequiredSignal(`auth-required: cycle ${subscribeCount}`));
+    });
+
+    const spy = subscribeSpyTo(
+      source.pipe(authRetry(baseConfig({ authRetries: 1, isProgress, onAuthRequired, errors }))),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    expect(subscribeCount).toBe(2); // authRetries + 1
+    expect(onAuthRequired).toHaveBeenCalledTimes(1); // authRetries
+    expect(errors.exhausted).toHaveBeenCalledTimes(1);
+  });
+
   it("a short authTimeout produces the timeout error", async () => {
     const errors = makeErrors();
     const persistent = makePersistentSignalSource();
@@ -233,7 +292,9 @@ describe("suspendableTimeout", () => {
     const gate = new AuthPhaseGate();
     gate.begin();
 
-    const spy = subscribeSpyTo(NEVER.pipe(suspendableTimeout(80, gate)), { expectErrors: true });
+    const spy = subscribeSpyTo(NEVER.pipe(suspendableTimeout(80, gate, { firstWhen: () => true })), {
+      expectErrors: true,
+    });
 
     // Wait well past the budget while the gate stays open — must not have fired yet
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -248,7 +309,9 @@ describe("suspendableTimeout", () => {
 
   it("fires using the `with` escape hatch when provided", async () => {
     const gate = new AuthPhaseGate();
-    const spy = subscribeSpyTo(NEVER.pipe(suspendableTimeout(50, gate, { with: () => of("fallback") })));
+    const spy = subscribeSpyTo(
+      NEVER.pipe(suspendableTimeout(50, gate, { firstWhen: () => true, with: () => of("fallback") })),
+    );
 
     await new Promise((resolve) => setTimeout(resolve, 150));
 
@@ -257,18 +320,36 @@ describe("suspendableTimeout", () => {
 
   it("returns identity for a non-positive or non-finite budget", async () => {
     const gate = new AuthPhaseGate();
-    const spy = subscribeSpyTo(of(1).pipe(suspendableTimeout(0, gate)));
+    const spy = subscribeSpyTo(of(1).pipe(suspendableTimeout(0, gate, { firstWhen: () => true })));
     expect(spy.getValues()).toEqual([1]);
 
-    const spyInfinite = subscribeSpyTo(of(2).pipe(suspendableTimeout(Infinity, gate)));
+    const spyInfinite = subscribeSpyTo(of(2).pipe(suspendableTimeout(Infinity, gate, { firstWhen: () => true })));
     expect(spyInfinite.getValues()).toEqual([2]);
   });
 
   it("propagates a source error normally", async () => {
     const gate = new AuthPhaseGate();
     const err = new Error("boom");
-    const spy = subscribeSpyTo(throwError(() => err).pipe(suspendableTimeout(100, gate)), { expectErrors: true });
+    const spy = subscribeSpyTo(throwError(() => err).pipe(suspendableTimeout(100, gate, { firstWhen: () => true })), {
+      expectErrors: true,
+    });
     await spy.onError();
     expect(spy.getError()).toBe(err);
+  });
+
+  // WR-01: a value firstWhen rejects (mirroring req()'s synthetic OPEN) must not cancel the clock —
+  // only a value it accepts as progress may.
+  it("still fires after the budget when firstWhen rejects the first emission (WR-01)", async () => {
+    const gate = new AuthPhaseGate();
+    const source = new Subject<number>();
+    const spy = subscribeSpyTo(source.pipe(suspendableTimeout(80, gate, { firstWhen: (value) => value !== 0 })), {
+      expectErrors: true,
+    });
+
+    // Emits a bookkeeping value (mirrors req()'s OPEN) the predicate rejects, then stays silent
+    source.next(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(spy.getError()).toBeInstanceOf(Error);
   });
 });
