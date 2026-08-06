@@ -5,15 +5,15 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Completed 13-08-PLAN.md
-last_updated: "2026-08-06T13:50:32.390Z"
+stopped_at: Completed 13-09-PLAN.md
+last_updated: "2026-08-06T14:54:29.892Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 13
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 2 of 13
+Plan: 3 of 13
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 13 execution started
 
@@ -110,6 +110,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P06 | 22min | 3 tasks | 2 files |
 | Phase 13 P07 | 21min | 3 tasks | 6 files |
 | Phase 13 P08 | 20min | 3 tasks | 3 files |
+| Phase 13 P09 | 25min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -277,6 +278,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 13]: 13-07: the plan's non-vacuity probe premise for the pool sync pass-through test does not empirically hold (opts was always forwarded wholesale regardless of type); verified empirically and documented rather than silently worked around, while the genuinely-behavioral D-19 catch WAS verified RED->GREEN
 - [Phase 13]: 13-08: closed CR-01/WR-01 by making ProgressPredicate<T> a required (never defaulted) parameter at authRetry's D-08 reset and suspendableTimeout's first-emission gate, plus CR-04's synchronous-throw-to-AuthHandlerError mapping in runPhase's defer factory — Structural fix per the plan's explicit directive — omitting the answer is a compile error, not a runtime surprise, so a future call site cannot silently reintroduce the bookkeeping-value defect class
 - [Phase 13]: 13-08's frontmatter lists requirements RAUTH-03/07/08, but 13-08 only closes CR-01/CR-04/WR-01 — a subset of the gaps 13-VERIFICATION.md found blocking those requirements — CR-02/CR-03 (req()/count() reentrancy under a synchronous handler) and WR-02 (RelayGroup.request() gate threading) remain open and are plans 13-09/13-10/13-11's scope; REQUIREMENTS.md left as In Progress, not Complete, mirroring the INVITE-01/WIRE-06..12 precedent — mark RAUTH-03/07/08 Complete only when the closing plan lands
+- [Phase 13]: 13-09: req()'s messages/control/observable moved from call-scoped constants (shared across every internal auth-retry attempt) into a single per-attempt defer factory, closing CR-02 — the REQ-side analog of 13-05's event() reentrancy bug where a synchronous onAuthRequired handler's resubscribe silently rejoined a still-connected share and never wrote a second REQ frame
+- [Phase 13]: 13-09: shouldResubscribe replaced by a call-scoped resubscribeHolder object each attempt writes into, since customRepeatOperator's condition callback is read after the auth retry boundary — no attempt-scoped local survives to that point
+- [Phase 13]: 13-09: REQUIREMENTS.md left unchanged (RAUTH-03/RAUTH-07 remain In Progress) per the 13-08 precedent — both span all eight auth sites and count()'s CR-03 gap (plan 13-10's scope) is still open
 
 ### Pending Todos
 
@@ -359,6 +363,6 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T13:49:50.008Z
-Stopped at: Completed 13-08-PLAN.md
+Last session: 2026-08-06T14:54:29.870Z
+Stopped at: Completed 13-09-PLAN.md
 Resume file: 
