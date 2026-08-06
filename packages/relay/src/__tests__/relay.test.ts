@@ -5,7 +5,7 @@ import { filter, repeat, retry } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
-import { AuthRequiredError, Relay, SyncDirection } from "../relay.js";
+import { AuthHandlerError, AuthRequiredError, AuthTimeoutError, Relay, RelayClosedError, SyncDirection } from "../relay.js";
 import { RelayInformation } from "../types";
 import { FakeUser } from "./fake-user.js";
 
@@ -1103,6 +1103,412 @@ describe("subscription", () => {
 
     await spy.onError();
     expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+  });
+});
+
+describe("operation-scoped REQ auth (13-02)", () => {
+  it("RAUTH-02: a fresh REQ is sent immediately while an earlier, unrelated REQ is auth-blocked", async () => {
+    const specA = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "a", authTimeout: 30 }), { expectErrors: true });
+    await expect(server).toReceiveMessage(["REQ", "a", { kinds: [1] }]);
+
+    // "a" is told auth is required — the old pre-block would have made every OTHER REQ wait behind this
+    server.send(["CLOSED", "a", "auth-required: need to authenticate"]);
+
+    const specB = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "b" }));
+
+    // "b" must send its own REQ immediately, before any AUTH frame is ever sent
+    await expect(server).toReceiveMessage(["REQ", "b", { kinds: [1] }]);
+    expect(server.messages.some((m: any) => m[0] === "AUTH")).toBe(false);
+
+    specA.unsubscribe();
+    specB.unsubscribe();
+  });
+
+  it("RAUTH-01: invokes onAuthRequired with the full operation-local context", async () => {
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: 50 }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-xyz"]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(onAuthRequired).toHaveBeenCalledWith({
+      relay,
+      url: relay.url,
+      challenge: "challenge-xyz",
+      operation: "read",
+      requirement: true,
+      missingPubkeys: null,
+      reason: "auth-required: need to authenticate",
+    });
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-01: missingPubkeys reflects only the not-yet-authenticated entry of an array requirement", async () => {
+    const userA = new FakeUser();
+    const userB = new FakeUser();
+
+    // Pre-authenticate userA on this connection via an unrelated REQ
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+    await server.nextMessage;
+    server.send(["AUTH", "challenge-1"]);
+    const authPromise = relay.authenticate(userA);
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", authMsg[1].id, true, ""]);
+    await authPromise;
+
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+    const spy = subscribeSpyTo(
+      relay.req([{ kinds: [1] }], {
+        id: "sub2",
+        waitForAuth: [userA.pubkey, userB.pubkey],
+        onAuthRequired,
+        authTimeout: 50,
+      }),
+      { expectErrors: true },
+    );
+
+    await expect(server).toReceiveMessage(["REQ", "sub2", { kinds: [1] }]);
+    server.send(["CLOSED", "sub2", "auth-required: need to authenticate"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onAuthRequired).toHaveBeenCalledWith(expect.objectContaining({ missingPubkeys: [userB.pubkey] }));
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-03: retries exactly once by default and resends the REQ after the handler authenticates", async () => {
+    const user = new FakeUser();
+    const onAuthRequired = vi.fn(async () => {
+      await relay.authenticate(user);
+    });
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    expect(authMsg[0]).toBe("AUTH");
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    server.send(["EVENT", "sub1", mockEvent]);
+    server.send(["EOSE", "sub1"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const reqFrames = server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "sub1");
+    expect(reqFrames).toHaveLength(2);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-03: authRetries:2 allows three REQ frames total", async () => {
+    const user = new FakeUser();
+    const onAuthRequired = vi.fn(async () => {
+      if (!relay.isAuthenticated(user.pubkey)) await relay.authenticate(user);
+    });
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired, authRetries: 2 }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    // The relay demands auth again on the second attempt (already-authenticated user, no new AUTH round trip)
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    server.send(["EVENT", "sub1", mockEvent]);
+    server.send(["EOSE", "sub1"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const reqFrames = server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "sub1");
+    expect(reqFrames).toHaveLength(3);
+    expect(onAuthRequired).toHaveBeenCalledTimes(2);
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-03: authRetries:0 exhausts immediately without invoking the handler or retrying", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired, authRetries: 0 }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+
+    const reqFrames = server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "sub1");
+    expect(reqFrames).toHaveLength(1);
+  });
+
+  it("RAUTH-04: a short authTimeout errors with AuthTimeoutError when the requirement is never satisfied", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: 30 }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(AuthTimeoutError);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("RAUTH-04: authTimeout:false waits past a short window and still retries once satisfied out of band", async () => {
+    const onAuthRequired = vi.fn(); // no-op — auth happens out of band, not through this handler
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: false }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    // A short bound (e.g. 30ms) would already have errored by now — authTimeout: false must not have
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(spy.receivedError()).toBe(false);
+    expect(spy.receivedComplete()).toBe(false);
+
+    // Satisfy the requirement out of band — e.g. a concurrent operation's handler authenticating the
+    // same connection, or an in-flight relay.auth() the app already had running — not this REQ's own
+    // handler. Poking authenticationResponse$ directly (matching this suite's existing convention for
+    // "simulate successful authentication") avoids depending on a live challenge/AUTH round trip,
+    // which this fixture's keepAlive=0 can drop while nothing is subscribed during the wait.
+    relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-05: two concurrent REQs each invoke their own handler independently", async () => {
+    const userA = new FakeUser();
+    const userB = new FakeUser();
+    const handlerA = vi.fn(async () => {
+      await relay.authenticate(userA);
+    });
+    const handlerB = vi.fn(async () => {
+      await relay.authenticate(userB);
+    });
+
+    const specA = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "a", onAuthRequired: handlerA }));
+    const specB = subscribeSpyTo(relay.req([{ kinds: [2] }], { id: "b", onAuthRequired: handlerB }));
+
+    await expect(server).toReceiveMessage(["REQ", "a", { kinds: [1] }]);
+    await expect(server).toReceiveMessage(["REQ", "b", { kinds: [2] }]);
+
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "a", "auth-required: need to authenticate"]);
+    server.send(["CLOSED", "b", "auth-required: need to authenticate"]);
+
+    // Respond OK to both AUTH round trips, regardless of arrival order
+    for (let i = 0; i < 2; i++) {
+      const msg = (await server.nextMessage) as [string, NostrEvent];
+      expect(msg[0]).toBe("AUTH");
+      server.send(["OK", msg[1].id, true, ""]);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(handlerA).toHaveBeenCalledTimes(1);
+    expect(handlerB).toHaveBeenCalledTimes(1);
+    expect(server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "a")).toHaveLength(2);
+    expect(server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "b")).toHaveLength(2);
+
+    specA.unsubscribe();
+    specB.unsubscribe();
+  });
+
+  it("RAUTH-05: a rejecting handler on one REQ does not affect a concurrent REQ's retry", async () => {
+    const userB = new FakeUser();
+    const handlerA = vi.fn().mockRejectedValue(new Error("nope"));
+    const handlerB = vi.fn(async () => {
+      await relay.authenticate(userB);
+    });
+
+    const specA = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "a", onAuthRequired: handlerA }), {
+      expectErrors: true,
+    });
+    const specB = subscribeSpyTo(relay.req([{ kinds: [2] }], { id: "b", onAuthRequired: handlerB }));
+
+    await expect(server).toReceiveMessage(["REQ", "a", { kinds: [1] }]);
+    await expect(server).toReceiveMessage(["REQ", "b", { kinds: [2] }]);
+
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "a", "auth-required: need to authenticate"]);
+    server.send(["CLOSED", "b", "auth-required: need to authenticate"]);
+
+    await specA.onError();
+    expect(specA.getError()).toBeInstanceOf(AuthHandlerError);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    expect(authMsg[0]).toBe("AUTH");
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["REQ", "b", { kinds: [2] }]);
+
+    specB.unsubscribe();
+  });
+
+  it("RAUTH-06: waitForAuth:false never invokes the handler and errors with AuthRequiredError", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", waitForAuth: false, onAuthRequired }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+  });
+
+  it("D-03: a non-auth CLOSED prefix still throws RelayClosedError immediately, without invoking the handler", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired }), { expectErrors: true });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "restricted: not allowed"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(RelayClosedError);
+    expect(spy.getError()).not.toBeInstanceOf(AuthRequiredError);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+  });
+
+  it("D-15: request()'s operation clock is suspended across the auth phase", async () => {
+    const onAuthRequired = vi.fn(async () => {
+      // A slow out-of-band auth round trip, comfortably longer than request()'s own timeout budget.
+      // Resolved via authenticationResponse$ (matching this suite's existing convention) rather than
+      // a live relay.authenticate() round trip, which this fixture's keepAlive=0 can drop while
+      // nothing is subscribed during the wait (a pre-existing quirk, reproducible pre-13-02 too).
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
+    });
+
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { id: "sub1", onAuthRequired, timeout: 40 }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    server.send(["EVENT", "sub1", mockEvent]);
+    server.send(["EOSE", "sub1"]);
+
+    await spy.onComplete();
+
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+    expect(spy.receivedError()).toBe(false);
+  });
+
+  it("D-08: the consecutive counter resets after real progress, so a second auth-required cycle is still handled", async () => {
+    const user = new FakeUser();
+    const onAuthRequired = vi.fn(async () => {
+      if (!relay.isAuthenticated(user.pubkey)) await relay.authenticate(user);
+    });
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    // Real progress: an event is delivered on the resumed subscription
+    server.send(["EVENT", "sub1", mockEvent]);
+    server.send(["EOSE", "sub1"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // A second, independent auth-required cycle on the same long-lived subscription
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    expect(onAuthRequired).toHaveBeenCalledTimes(2);
+    expect(spy.receivedError()).toBe(false);
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-09: authRequiredForRead$ flips true when a REQ receives auth-required", async () => {
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", authTimeout: 30 }), { expectErrors: true });
+
+    const flagSpy = subscribeSpyTo(relay.authRequiredForRead$);
+    expect(flagSpy.getLastValue()).toBe(false);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    // Check immediately (not after a delay): this fixture's keepAlive=0 is a pre-existing quirk
+    // (reproducible against the pre-13-02 implementation too) that lets the connection drop and
+    // resetState() clear the flag again once nothing has resubscribed for a few ms — orthogonal to
+    // what RAUTH-09 asserts here (the flag flips true the instant auth-required is received)
+    expect(flagSpy.getLastValue()).toBe(true);
+  });
+
+  it("D-01: a req() subscriber never observes a value that is not a RelayReqMessage", async () => {
+    const user = new FakeUser();
+    const onAuthRequired = vi.fn(async () => {
+      await relay.authenticate(user);
+    });
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    server.send(["EVENT", "sub1", mockEvent]);
+    server.send(["EOSE", "sub1"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const validTypes = new Set(["OPEN", "EVENT", "EOSE", "CLOSED"]);
+    expect(spy.getValues().length).toBeGreaterThan(0);
+    expect(spy.getValues().every((v: any) => typeof v === "object" && v !== null && validTypes.has(v.type))).toBe(
+      true,
+    );
+
+    spy.unsubscribe();
   });
 });
 

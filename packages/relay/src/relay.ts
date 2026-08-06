@@ -55,7 +55,16 @@ import {
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
-import { AuthPhaseGate, authRetry, type AuthRequiredSignal } from "./operators/auth-retry.js";
+import {
+  AUTH_PHASE_GATE,
+  authRequiredSignal,
+  AuthPhaseGate,
+  authRetry,
+  isAuthRequiredSignal,
+  suspendableTimeout,
+  type AuthRequiredSignal,
+  type WithAuthPhaseGate,
+} from "./operators/auth-retry.js";
 import { completeWhen } from "./operators/complete-when.js";
 import {
   AuthRequirement,
@@ -837,9 +846,8 @@ export class Relay {
    * `resubscribe` only repeats after the relay sends a clean CLOSED message for this REQ.
    * `reconnect` only retries connection errors and does not retry relay CLOSED errors.
    */
-  req(filters: FilterInput, opts?: RelayReqOptions): Observable<RelayReqMessage> {
+  req(filters: FilterInput, opts?: RelayReqOptions & WithAuthPhaseGate): Observable<RelayReqMessage> {
     const id = opts?.id ?? nanoid();
-    const waitForAuth = opts?.waitForAuth ?? true;
 
     // Convert filters input into an observable, if its a normal value merge it with NEVER so it never completes
     let input: Observable<Filter[]>;
@@ -862,7 +870,7 @@ export class Relay {
     let shouldResubscribe = false;
 
     // Create an observable that filters responses from the relay to just the ones for this REQ
-    const messages = this.socket.pipe(
+    const messages: Observable<RelayReqMessage | AuthRequiredSignal> = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
       // Map NIP-01 messages to RelayReqMessage
       map<any, RelayReqMessage>((m) => {
@@ -873,17 +881,30 @@ export class Relay {
         // EOSE
         return { type: "EOSE", from: this.url, id: m[1] } satisfies RelayReqEoseMessage;
       }),
-      // Throw typed errors for prefixed CLOSED; mark relay-closed before takeWhile sees it
-      tap((m) => {
+      // D-01/D-02/D-03: signal auth-required as a value instead of throwing (the shared auth operator
+      // consumes and never forwards it); every other prefixed CLOSED still throws its typed error
+      // unchanged. Mark relay-closed before takeWhile sees either outcome.
+      map<RelayReqMessage, RelayReqMessage | AuthRequiredSignal>((m) => {
         if (m.type === "CLOSED") {
           relayClosedSub = true;
+
+          // D-01/D-02/D-03: only auth-required is signalled as a value; check the reason prefix
+          // directly (mirrors event()'s existing value-signal check) rather than parsing then
+          // narrowing by instanceof
+          if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
+            this.log(`Auth required for REQ`);
+            this.receivedAuthRequiredForReq.next(true);
+            return authRequiredSignal(m.reason);
+          }
+
           const error = parseClosedError(m.reason);
           if (error) throw error;
           shouldResubscribe = true;
         }
+        return m;
       }),
-      // Complete the stream on unprefixed CLOSED, emitting the CLOSED message last (inclusive)
-      takeWhile((m) => m.type !== "CLOSED", true),
+      // Complete the stream on unprefixed CLOSED or an auth-required signal, emitting it last (inclusive)
+      takeWhile((m) => !isAuthRequiredSignal(m) && m.type !== "CLOSED", true),
       // Singleton (prevents the .pipe() operator later from sending two REQ messages)
       share(),
     );
@@ -925,38 +946,21 @@ export class Relay {
       takeUntil(filtersComplete),
       // mark events as from relays
       tap((message) => {
-        if (message.type === "EVENT") addSeenRelay(message.event, this.url);
+        if (!isAuthRequiredSignal(message) && message.type === "EVENT") addSeenRelay(message.event, this.url);
       }),
       // Only create one upstream subscription
       share(),
     );
 
-    // Wait for auth only when enabled and make sure to start the watch tower
-    const reqWithAuthStrategy = waitForAuth
-      ? this.waitForAuth(this.authRequiredForRead$, observable, waitForAuth)
-      : observable;
+    // D-04: use the gate an outer operation (e.g. request()) threaded in via the module-private
+    // symbol key, or make a fresh one for this call. RAUTH-02: no pre-block here — the REQ is sent
+    // immediately regardless of any other REQ's auth state; auth-required is handled entirely by
+    // the shared operator below.
+    const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
 
-    return defer(() => this.waitForReady(reqWithAuthStrategy)).pipe(
-      // Retry only auth-required errors, optionally waiting for authentication first
-      retry({
-        delay: (error) => {
-          // Re-throw non-auth-required errors
-          if (!(error instanceof AuthRequiredError)) return throwError(() => error);
-
-          // Flip the flag to indicate that auth is required
-          this.log(`Auth required for REQ`);
-          this.receivedAuthRequiredForReq.next(true);
-
-          // If not waiting for auth, re-throw the error
-          if (!waitForAuth) return throwError(() => error);
-
-          // Wait for authentication (of the required users) before retrying
-          return this.authSatisfied$(waitForAuth).pipe(
-            filter((satisfied) => satisfied),
-            take(1),
-          );
-        },
-      }),
+    return defer(() => this.waitForReady(observable)).pipe(
+      // D-04/D-09: the shared auth-retry operator drives the whole read auth phase, innermost in the pipe
+      this.authRetryOperator("read", opts, gate),
       // Retry connection errors independently from relay CLOSED errors
       this.customConnectionRetryOperator(opts?.reconnect),
       // Resubscribe only after the relay cleanly CLOSED this REQ
@@ -1010,7 +1014,7 @@ export class Relay {
       }),
     );
 
-    const observable = merge(this.watchTower, control).pipe(
+    const countObservable = merge(this.watchTower, control).pipe(
       // Complete when messages completes (unprefixed CLOSED = graceful relay close)
       takeUntil(messages.pipe(ignoreElements(), endWith(true))),
       // Complete on first value (COUNT responses are single-shot)
@@ -1029,10 +1033,10 @@ export class Relay {
 
     // Start the watch tower and wait for auth if required
     const waitForAuth = opts?.waitForAuth ?? true;
-    // NOTE: observable already merges the watchTower, so it can be used directly when not waiting for auth
+    // NOTE: countObservable already merges the watchTower, so it can be used directly when not waiting for auth
     const withAuthStrategy = waitForAuth
-      ? this.waitForAuth(this.authRequiredForRead$, observable, waitForAuth)
-      : observable;
+      ? this.waitForAuth(this.authRequiredForRead$, countObservable, waitForAuth)
+      : countObservable;
     return this.waitForReady(withAuthStrategy).pipe(share());
   }
 
@@ -1289,16 +1293,22 @@ export class Relay {
 
   /** Makes a single request that retries connection errors and completes on EOSE */
   request(filters: FilterInput, opts?: RelayRequestOptions): Observable<RelayRequestResponse> {
+    // D-15: a dedicated gate for this operation's REQ, threaded into req() via the module-private
+    // symbol key so this method's own operation clock (below) can suspend across req()'s auth phase
+    const gate = new AuthPhaseGate();
+
     const req = this.req(filters, {
       ...opts,
       reconnect: opts?.reconnect ?? this.requestReconnect,
+      [AUTH_PHASE_GATE]: gate,
     });
 
     return req.pipe(
       // Add completion condition
       opts?.complete ? completeWhen(opts?.complete) : identity,
-      // Apply request timeout
-      timeout({ first: opts?.timeout ?? 30_000 }),
+      // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
+      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause
+      suspendableTimeout(opts?.timeout ?? 30_000, gate),
       // Complete when EOSE is received
       takeWhile((message) => message.type !== "EOSE"),
       // Filter only for event messages
