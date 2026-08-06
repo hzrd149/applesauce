@@ -239,3 +239,24 @@ Original report retained at `expiration-report.md` in this phase directory.
 Plans:
 
 - [x] Fixed as quick task `260805-ds0` — no phase promotion needed
+
+### Phase 999.12: applesauce-sqlite optional peer dependencies (BACKLOG)
+
+**Goal:** [Captured for future planning] `packages/sqlite/package.json` declares all four SQLite drivers as hard `peerDependencies` (`@libsql/client`, `@tursodatabase/database`, `@tursodatabase/database-wasm`, `better-sqlite3`) with **no `peerDependenciesMeta`**, so every consumer is asked to install all four regardless of which backend it actually uses. The backends are mutually exclusive by construction — each has its own subpath export (`./better-sqlite3`, `./native`/`./deno`, `./bun`, `./libsql`, `./turso`, `./turso-wasm`) and no consumer needs more than one. The reported symptom is Deno: it only needs the `./deno` → `dist/native/` path (`node:sqlite`, built in) yet still pulls the other three, including `better-sqlite3`'s native compile step. Fix is additive metadata, no code change:
+
+```json
+"peerDependenciesMeta": {
+  "@libsql/client": { "optional": true },
+  "@tursodatabase/database": { "optional": true },
+  "@tursodatabase/database-wasm": { "optional": true },
+  "better-sqlite3": { "optional": true }
+}
+```
+
+**Worth checking at promotion:** all four stay in `devDependencies` so the repo's own tests still exercise every backend; whether any other package in the monorepo declares backend-specific peers with the same all-or-nothing shape (same defect class, not just this instance); and that a `patch` changeset for `applesauce-sqlite` ships with it.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
