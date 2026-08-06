@@ -20,7 +20,7 @@
 - [ ] **RAUTH-05**: A handler rejection or timeout rejects only its own operation — concurrent operations each call their own handler, with no relay-internal dedupe
 - [ ] **RAUTH-06**: `waitForAuth: false` still rejects immediately with `AuthRequiredError` without invoking the handler, and `event(…, "AUTH")` never invokes it
 - [ ] **RAUTH-07**: The behavior is available on `req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, and negentropy, and passes through `RelayPool` and `RelayGroup`
-- [ ] **RAUTH-08**: `SyncLoader` threads `onAuthRequired`, `authTimeout`, and `authRetries` into both the negentropy sync path and the paginated request path
+- [x] **RAUTH-08**: `SyncLoader` threads `onAuthRequired`, `authTimeout`, and `authRetries` into both the negentropy sync path and the paginated request path
 - [ ] **RAUTH-09**: `authRequiredForRead$` / `authRequiredForPublish$` keep updating for UI and status consumers, as informational state only
 
 ### ALOG — Auth lifecycle observability
@@ -80,7 +80,7 @@ Deferred; tracked but not in this roadmap.
 | RAUTH-05 | Phase 13 | Pending |
 | RAUTH-06 | Phase 13 | Pending |
 | RAUTH-07 | Phase 13 | Pending |
-| RAUTH-08 | Phase 13 | Pending |
+| RAUTH-08 | Phase 13 | Complete |
 | RAUTH-09 | Phase 13 | Pending |
 | ALOG-01 | Phase 14 | Pending |
 | ALOG-02 | Phase 14 | Pending |
