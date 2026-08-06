@@ -78,6 +78,7 @@ import {
   RelayAuthOptions,
   RelayAuthState,
   PublishResponse,
+  RelayCountOptions,
   RelayCountResponse,
   RelayInformation,
   RelayReqClosedMessage,
@@ -971,30 +972,38 @@ export class Relay {
   }
 
   /** Create a COUNT observable that emits a single count response */
-  count(
-    filters: Filter | Filter[],
-    id = nanoid(),
-    opts?: { waitForAuth?: AuthRequirement },
-  ): Observable<RelayCountResponse> {
+  count(filters: Filter | Filter[], id = nanoid(), opts?: RelayCountOptions): Observable<RelayCountResponse> {
     // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE
     let relayClosedSub = false;
 
     // Create an observable that filters responses from the relay to just the ones for this COUNT
-    const messages = this.socket.pipe(
+    const messages: Observable<RelayCountResponse | AuthRequiredSignal> = this.socket.pipe(
       filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
-      // Map to typed response, throwing on error-prefixed CLOSED
-      map<any, RelayCountResponse | null>((m) => {
+      // Map to typed response. D-01/D-02/D-03: only auth-required is signalled as a value (the shared
+      // auth operator consumes and never forwards it) — check the reason prefix directly (mirrors
+      // req()'s existing value-signal check) rather than parsing then narrowing by instanceof. Every
+      // other recognized CLOSED prefix still throws its typed error unchanged.
+      map<any, RelayCountResponse | AuthRequiredSignal | null>((m) => {
         if (m[0] === "COUNT") return m[2] as RelayCountResponse;
         else if (m[0] === "CLOSED") {
           relayClosedSub = true;
-          const error = parseClosedError(m[2] ?? "");
+          const reason = m[2] ?? "";
+
+          if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
+            this.log(`Auth required for COUNT`);
+            this.receivedAuthRequiredForReq.next(true);
+            return authRequiredSignal(reason);
+          }
+
+          const error = parseClosedError(reason);
           if (error) throw error;
         }
         return null;
       }),
-      // Complete the stream on any CLOSED (including graceful close), emitting COUNT last
-      takeWhile((m) => m !== null, true),
-      filter((m) => m !== null),
+      // Complete the stream on any CLOSED (including graceful close) or an auth-required signal,
+      // emitting it last (inclusive)
+      takeWhile((m) => m !== null && !isAuthRequiredSignal(m), true),
+      filter((m): m is RelayCountResponse | AuthRequiredSignal => m !== null),
       // Singleton
       share(),
     );
@@ -1015,29 +1024,32 @@ export class Relay {
     );
 
     const countObservable = merge(this.watchTower, control).pipe(
-      // Complete when messages completes (unprefixed CLOSED = graceful relay close)
+      // Complete when messages completes (unprefixed CLOSED = graceful relay close, or the terminal
+      // auth-required signal)
       takeUntil(messages.pipe(ignoreElements(), endWith(true))),
-      // Complete on first value (COUNT responses are single-shot)
-      take(1),
-      // Set auth required flag when relay closes with auth-required
-      catchError((error) => {
-        if (error instanceof AuthRequiredError && !this.receivedAuthRequiredForReq.value) {
-          this.log(`Auth required for COUNT`);
-          this.receivedAuthRequiredForReq.next(true);
-        }
-        return throwError(() => error);
-      }),
-      // Throw an error if no COUNT response received within 10 seconds
-      timeout({ first: 10_000, with: () => throwError(() => new Error("COUNT timeout")) }),
     );
 
-    // Start the watch tower and wait for auth if required
-    const waitForAuth = opts?.waitForAuth ?? true;
-    // NOTE: countObservable already merges the watchTower, so it can be used directly when not waiting for auth
-    const withAuthStrategy = waitForAuth
-      ? this.waitForAuth(this.authRequiredForRead$, countObservable, waitForAuth)
-      : countObservable;
-    return this.waitForReady(withAuthStrategy).pipe(share());
+    // D-04: count owns both the auth operator and its own clock in this one method, unlike
+    // request()/req() — nothing needs threading via AUTH_PHASE_GATE.
+    const gate = new AuthPhaseGate();
+
+    // D-04/D-09: the shared auth-retry operator drives the whole read auth phase. RAUTH-02: no
+    // pre-block here — the COUNT is sent immediately regardless of any other operation's auth state.
+    // Annotated explicitly so the `with` callback below can't leak a `never` inference back into it.
+    const authOperator: OperatorFunction<RelayCountResponse | AuthRequiredSignal, RelayCountResponse> =
+      this.authRetryOperator("read", opts, gate);
+
+    return defer(() => this.waitForReady(countObservable)).pipe(
+      authOperator,
+      // Complete on the first (genuine) COUNT response (COUNT responses are single-shot)
+      take(1),
+      // D-15: suspend the 10s COUNT clock across the auth phase so a COUNT can survive an auth
+      // round-trip — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause
+      suspendableTimeout<RelayCountResponse>(10_000, gate, {
+        with: () => throwError(() => new Error("COUNT timeout")),
+      }),
+      share(),
+    );
   }
 
   /** Send an EVENT or AUTH message and return an observable of PublishResponse that completes or errors */
