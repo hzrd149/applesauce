@@ -5,15 +5,15 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Completed 13-09-PLAN.md
-last_updated: "2026-08-06T14:54:29.892Z"
+stopped_at: Completed 13-13-PLAN.md
+last_updated: "2026-08-06T21:32:02.669Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 13
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 3 of 13
+Plan: 4 of 13
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 13 execution started
 
@@ -111,6 +111,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P07 | 21min | 3 tasks | 6 files |
 | Phase 13 P08 | 20min | 3 tasks | 3 files |
 | Phase 13 P09 | 25min | 3 tasks | 2 files |
+| Phase 13-13 P13-13 | 25min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -281,6 +282,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 13]: 13-09: req()'s messages/control/observable moved from call-scoped constants (shared across every internal auth-retry attempt) into a single per-attempt defer factory, closing CR-02 — the REQ-side analog of 13-05's event() reentrancy bug where a synchronous onAuthRequired handler's resubscribe silently rejoined a still-connected share and never wrote a second REQ frame
 - [Phase 13]: 13-09: shouldResubscribe replaced by a call-scoped resubscribeHolder object each attempt writes into, since customRepeatOperator's condition callback is read after the auth retry boundary — no attempt-scoped local survives to that point
 - [Phase 13]: 13-09: REQUIREMENTS.md left unchanged (RAUTH-03/RAUTH-07 remain In Progress) per the 13-08 precedent — both span all eight auth sites and count()'s CR-03 gap (plan 13-10's scope) is still open
+- [Phase ?]: 13-13: relayOnAuthRequired declared non-optionally-typed and constructed unconditionally (no ternary), closing WR-03 structurally rather than by special-casing a caller's absent handler
+- [Phase ?]: 13-13: WR-04 closed on all three exit paths -- retained/cleared timer handle in close(), scheduleClose() no-ops for an already-closed phase, and a new finalize(forceCloseAuthPhases) on buildRelayStream's terminal pipeline (placed outside withTimeout since it returns its source unwrapped when the stall guard is disabled)
+- [Phase ?]: 13-13: Test 4's mock defers its emission via a microtask rather than emitting synchronously, avoiding mapEventsToStore's documented share()/mergeWith double-subscription gotcha
 
 ### Pending Todos
 
@@ -301,6 +305,7 @@ None yet.
 - Plan 12-03's frontmatter lists requirement WIRE-08, but 12-03 only retires the invite-side half of the byte-cap removal (INVITE_LIST_MAX_BYTES/inviteListWithinByteCap, INVITE_BUNDLE_MAX_TOTAL_BYTES) per D-07. WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05, which handles the Community List half. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - [RESOLVED 2026-07-30] Plans 12-07/12-08 both deferred WIRE-09's completion, noting the client-publish-tier closure (saveCommunityList/invite-manager.save() hand-rolling the document from reduced arrays) was plan 12-09's scope per D-23 -- 12-09 landed a `documentExtras` snapshot in both ConcordClient and ConcordInviteManager (spread-first, assign-after at every write site), proven via a six-test cross-cutting suite (document-caps-conformance.test.ts) with three mandatory non-vacuity mutations observed RED at the exact pre-phase defect sites. WIRE-09 marked Complete in REQUIREMENTS.md.
 - Phase 13 deferred-items.md: a connection can drop mid-auth-wait at very low keepAlive (verified pre-existing, not a regression) — worth a backlog entry once Phase 14's auth lifecycle logging work gives it a place to land
+- 13-13 closed WR-03/WR-04 in sync-loader.ts (RAUTH-08's stall-guard suspension and timer-lifetime gaps), but REQUIREMENTS.md leaves RAUTH-08 In Progress -- plan 13-12 (which depends on 13-13) is the designated closing plan that flips RAUTH-03/07/08 to Complete once every gap-closure plan in this wave sequence has landed
 
 ### Quick Tasks Completed
 
@@ -363,6 +368,7 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T14:54:29.870Z
-Stopped at: Completed 13-09-PLAN.md
+Last session: 2026-08-06T21:31:03.360Z
+Stopped at: Completed 13-13-PLAN.md
 Resume file: 
+None

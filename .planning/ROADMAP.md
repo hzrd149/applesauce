@@ -72,7 +72,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
   5. `SyncLoader` threads `onAuthRequired`/`authTimeout`/`authRetries` into both its negentropy sync path and its paginated request path identically, the behavior passes through `RelayPool`/`RelayGroup`, and `authRequiredForRead$`/`authRequiredForPublish$` keep updating as informational status only. (RAUTH-08, RAUTH-09; pool/group leg of RAUTH-07)
 
 **Reference**: Full drafted implementation plan on disk at [`phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md`](phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md) — `/gsd-plan-phase 13` should read it as primary input.
-**Plans**: 9/13 plans executed
+**Plans**: 10/13 plans executed
 
 Plans:
 **Wave 1**
@@ -118,7 +118,7 @@ Plans:
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
-- [ ] 13-13-PLAN.md — `SyncLoader` auth-phase suspension independent of the caller's handler, and auth-phase timer lifetime (WR-03/WR-04, wave 11)
+- [x] 13-13-PLAN.md — `SyncLoader` auth-phase suspension independent of the caller's handler, and auth-phase timer lifetime (WR-03/WR-04, wave 11)
 
 **Wave 12** *(blocked on Wave 11 completion)*
 
@@ -171,7 +171,7 @@ Plans:
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
-| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 9/13 | In Progress|  |
+| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 10/13 | In Progress|  |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 0/TBD | Not started | - |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 0/TBD | Not started | - |
 
