@@ -13,15 +13,15 @@
 
 `applesauce-relay`, `applesauce-loaders`. Promoted from backlog 999.5.
 
-- [ ] **RAUTH-01**: A consumer can pass `onAuthRequired` to a request-like operation and have it invoked with operation-local context — relay, url, challenge, operation, requirement, `missingPubkeys`, reason — when that operation receives `auth-required:`
-- [ ] **RAUTH-02**: An operation that has not itself received `auth-required:` is never pre-blocked by an earlier unrelated operation's auth failure
-- [ ] **RAUTH-03**: After the handler resolves, the operation waits for `waitForAuth` to be satisfied and retries, bounded by `authRetries` (default `1`)
-- [ ] **RAUTH-04**: A consumer can bound the wait with `authTimeout` (default `30_000` ms); `authTimeout: false` waits indefinitely for external auth state to satisfy the operation
-- [ ] **RAUTH-05**: A handler rejection or timeout rejects only its own operation — concurrent operations each call their own handler, with no relay-internal dedupe
-- [ ] **RAUTH-06**: `waitForAuth: false` still rejects immediately with `AuthRequiredError` without invoking the handler, and `event(…, "AUTH")` never invokes it
-- [ ] **RAUTH-07**: The behavior is available on `req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, and negentropy, and passes through `RelayPool` and `RelayGroup`
+- [x] **RAUTH-01**: A consumer can pass `onAuthRequired` to a request-like operation and have it invoked with operation-local context — relay, url, challenge, operation, requirement, `missingPubkeys`, reason — when that operation receives `auth-required:`
+- [x] **RAUTH-02**: An operation that has not itself received `auth-required:` is never pre-blocked by an earlier unrelated operation's auth failure
+- [x] **RAUTH-03**: After the handler resolves, the operation waits for `waitForAuth` to be satisfied and retries, bounded by `authRetries` (default `1`)
+- [x] **RAUTH-04**: A consumer can bound the wait with `authTimeout` (default `30_000` ms); `authTimeout: false` waits indefinitely for external auth state to satisfy the operation
+- [x] **RAUTH-05**: A handler rejection or timeout rejects only its own operation — concurrent operations each call their own handler, with no relay-internal dedupe
+- [x] **RAUTH-06**: `waitForAuth: false` still rejects immediately with `AuthRequiredError` without invoking the handler, and `event(…, "AUTH")` never invokes it
+- [x] **RAUTH-07**: The behavior is available on `req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, and negentropy, and passes through `RelayPool` and `RelayGroup`
 - [x] **RAUTH-08**: `SyncLoader` threads `onAuthRequired`, `authTimeout`, and `authRetries` into both the negentropy sync path and the paginated request path
-- [ ] **RAUTH-09**: `authRequiredForRead$` / `authRequiredForPublish$` keep updating for UI and status consumers, as informational state only
+- [x] **RAUTH-09**: `authRequiredForRead$` / `authRequiredForPublish$` keep updating for UI and status consumers, as informational state only
 
 ### ALOG — Auth lifecycle observability
 
@@ -73,15 +73,15 @@ Deferred; tracked but not in this roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RAUTH-01 | Phase 13 | Pending |
-| RAUTH-02 | Phase 13 | Pending |
-| RAUTH-03 | Phase 13 | Pending |
-| RAUTH-04 | Phase 13 | Pending |
-| RAUTH-05 | Phase 13 | Pending |
-| RAUTH-06 | Phase 13 | Pending |
-| RAUTH-07 | Phase 13 | Pending |
+| RAUTH-01 | Phase 13 | Complete |
+| RAUTH-02 | Phase 13 | Complete |
+| RAUTH-03 | Phase 13 | Complete |
+| RAUTH-04 | Phase 13 | Complete |
+| RAUTH-05 | Phase 13 | Complete |
+| RAUTH-06 | Phase 13 | Complete |
+| RAUTH-07 | Phase 13 | Complete |
 | RAUTH-08 | Phase 13 | Complete |
-| RAUTH-09 | Phase 13 | Pending |
+| RAUTH-09 | Phase 13 | Complete |
 | ALOG-01 | Phase 14 | Pending |
 | ALOG-02 | Phase 14 | Pending |
 | ALOG-03 | Phase 14 | Pending |
