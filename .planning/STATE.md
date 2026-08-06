@@ -4,15 +4,15 @@ milestone: v1.2
 milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
-status: executing
-stopped_at: Completed 13-07-PLAN.md (final plan of phase 13)
-last_updated: "2026-08-06T11:29:27.101Z"
+status: ready_to_execute
+stopped_at: Planned 13-08..13-13 (gap closure for RAUTH-03/07/08)
+last_updated: "2026-08-06T13:31:14.000Z"
 last_activity: 2026-08-06
-last_activity_desc: 13-04 (count() operation-scoped auth) complete; build + full relay suite green
+last_activity_desc: Gap closure planned — 6 plans (waves 7-12) closing CR-01..04, WR-01/02/03/04/06
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 7
+  total_plans: 13
   completed_plans: 7
   percent: 33
 ---
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 ## Current Position
 
-Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 7 of 7 complete (Wave 3 of 6 done)
-Status: Ready to execute Wave 4 (13-05)
-Last activity: 2026-08-06 — 13-04 (count() operation-scoped auth) complete; build + full relay suite green
+Phase: 13 (operation-scoped-nip-42-auth-hooks) — PLANNED (gap closure)
+Plan: 7 of 13 complete (waves 1-6 shipped; waves 7-12 planned, not started)
+Status: Ready to execute Wave 7 (13-08)
+Last activity: 2026-08-06 — verification reopened RAUTH-03/07/08; 6 gap-closure plans created and verified
 
 ## Performance Metrics
 

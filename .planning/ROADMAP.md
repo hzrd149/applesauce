@@ -72,7 +72,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
   5. `SyncLoader` threads `onAuthRequired`/`authTimeout`/`authRetries` into both its negentropy sync path and its paginated request path identically, the behavior passes through `RelayPool`/`RelayGroup`, and `authRequiredForRead$`/`authRequiredForPublish$` keep updating as informational status only. (RAUTH-08, RAUTH-09; pool/group leg of RAUTH-07)
 
 **Reference**: Full drafted implementation plan on disk at [`phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md`](phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md) — `/gsd-plan-phase 13` should read it as primary input.
-**Plans**: 12 plans (7 complete; 5 gap-closure plans added 2026-08-06 after verification reopened RAUTH-03/07/08)
+**Plans**: 13 plans (7 complete; 6 gap-closure plans added 2026-08-06 after verification reopened RAUTH-03/07/08)
 
 Plans:
 **Wave 1**
