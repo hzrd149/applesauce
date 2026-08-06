@@ -932,6 +932,219 @@ describe("publish", () => {
   });
 });
 
+describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
+  it("T-13-01 (RESEARCH gap 1): a persistently auth-requiring relay receives exactly authRetries + 1 EVENT frames, then a terminal AuthRequiredError, with the default retries left in place", async () => {
+    // The relay never really authenticates — onAuthRequired pokes authenticationResponse$ directly
+    // (this suite's established out-of-band convention) so authSatisfied$ resolves and the shared
+    // operator resends, while the mock relay keeps answering every EVENT with auth-required. Only the
+    // operator's own authRetries budget (default 1) can end this, giving authRetries + 1 = 2 sends.
+    const onAuthRequired = vi.fn(() => {
+      relay.authenticationResponse$.next({ ok: true, from: relay.url });
+    });
+
+    const spy = relay.publish(mockEvent, { onAuthRequired, authTimeout: 50 }).catch((err) => err);
+
+    // First EVENT
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    // Second (and last) EVENT — authRetries defaults to 1, so authRetries + 1 = 2 total sends
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    const result = await spy;
+    expect(result).toBeInstanceOf(AuthRequiredError);
+
+    // Prove publish's own (default, left-in-place) retry budget does NOT retry the exhausted auth
+    // failure — this is the RESEARCH gap: without customRetryOperator's RelayClosedError skip, this
+    // would fire a third (and more) EVENT frame after this.publishRetry's linear backoff (1000ms for
+    // the first retry). Wait comfortably past that first-retry delay — not a short window — so this
+    // assertion cannot pass vacuously just because the retry hadn't fired yet. Non-vacuity: this
+    // assertion was observed RED (a 3rd EVENT frame arrives ~1s later) against a customRetryOperator
+    // without the skip.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const eventFrames = server.messages.filter((m: any) => Array.isArray(m) && m[0] === "EVENT");
+    expect(eventFrames).toHaveLength(2);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("RAUTH-02: a fresh publish sends its EVENT frame immediately, before any AUTH frame, even after an earlier publish already received auth-required", async () => {
+    // First EVENT is told auth is required — the old pre-block would have made a fresh EVENT wait
+    // behind this flag. Non-vacuity: this assertion was observed RED (the second EVENT never arrives)
+    // against the pre-task event()'s ambient waitForAuth() wrapper. Deliberately no wait between the
+    // first response and the second event() call: this fixture's keepAlive=0 drops the connection (and
+    // resetState() clears receivedAuthRequiredForEvent) within a few ms of nothing being subscribed,
+    // which would falsely "pass" even the old pre-blocked model — checking immediately is what actually
+    // exercises RAUTH-02 rather than an unrelated timing quirk (matches this suite's established
+    // convention, e.g. the COUNT/REQ RAUTH-09 tests).
+    const firstSub = relay.event(mockEvent, "EVENT", { authTimeout: false }).subscribe();
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    const secondEvent = { ...mockEvent, id: "second-event-id" };
+    const secondSub = relay.event(secondEvent, "EVENT", { authTimeout: 30 }).subscribe();
+
+    // The second EVENT must be sent immediately, before any AUTH frame is ever sent
+    await expect(server).toReceiveMessage(["EVENT", secondEvent]);
+    expect(server.messages.some((m: any) => Array.isArray(m) && m[0] === "AUTH")).toBe(false);
+
+    firstSub.unsubscribe();
+    secondSub.unsubscribe();
+  });
+
+  it("RAUTH-01/RAUTH-03: invokes onAuthRequired with operation \"publish\" and resends the EVENT after the handler authenticates", async () => {
+    const user = new FakeUser();
+    const onAuthRequired = vi.fn(async () => {
+      await relay.authenticate(user);
+    });
+
+    const spy = relay.publish(mockEvent, { onAuthRequired });
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    expect(authMsg[0]).toBe("AUTH");
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, true, ""]);
+
+    await expect(spy).resolves.toEqual({ ok: true, message: "", from: "wss://test" });
+
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(onAuthRequired).toHaveBeenCalledWith({
+      relay,
+      url: relay.url,
+      challenge: "challenge-1",
+      operation: "publish",
+      requirement: true,
+      missingPubkeys: null,
+      reason: "auth-required: need to authenticate",
+    });
+  });
+
+  it("RAUTH-04: a short authTimeout rejects the publish with AuthTimeoutError", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = relay.publish(mockEvent, { onAuthRequired, authTimeout: 30 }).catch((err) => err);
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    const result = await spy;
+    expect(result).toBeInstanceOf(AuthTimeoutError);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("RAUTH-04: a rejecting handler rejects the publish with AuthHandlerError carrying the rejection as cause", async () => {
+    const cause = new Error("nope");
+    const onAuthRequired = vi.fn().mockRejectedValue(cause);
+    const spy = relay.publish(mockEvent, { onAuthRequired }).catch((err) => err);
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    const result = await spy;
+    expect(result).toBeInstanceOf(AuthHandlerError);
+    expect((result as AuthHandlerError).cause).toBe(cause);
+  });
+
+  it("RAUTH-04: authTimeout:false leaves the EVENT pending past a short window", async () => {
+    const onAuthRequired = vi.fn(); // no-op — auth happens out of band, not through this handler
+    const spy = subscribeSpyTo(relay.event(mockEvent, "EVENT", { onAuthRequired, authTimeout: false }));
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    // A short bound (e.g. 30ms) would already have errored/completed by now — authTimeout: false must not have
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(spy.receivedError()).toBe(false);
+    expect(spy.receivedComplete()).toBe(false);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+
+    spy.unsubscribe();
+  });
+
+  it('RAUTH-06: event(..., "AUTH") never invokes the handler even when the relay answers auth-required', async () => {
+    const onAuthRequired = vi.fn();
+    const authEvent = { ...mockEvent, id: "auth-event-id" };
+    const spy = subscribeSpyTo(relay.event(authEvent, "AUTH", { onAuthRequired }));
+
+    await expect(server).toReceiveMessage(["AUTH", authEvent]);
+    server.send(["OK", authEvent.id, false, "auth-required: need to authenticate"]);
+
+    await spy.onComplete();
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(spy.getValues()).toEqual([
+      { ok: false, from: "wss://test", message: "auth-required: need to authenticate" },
+    ]);
+  });
+
+  it("RAUTH-06: waitForAuth:false never invokes the handler", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.event(mockEvent, "EVENT", { waitForAuth: false, onAuthRequired }));
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    await spy.onComplete();
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(spy.getValues()).toEqual([
+      { ok: false, from: "wss://test", message: "auth-required: need to authenticate" },
+    ]);
+  });
+
+  it("D-15: publish's timeout is suspended across the auth phase", async () => {
+    // Handler + wait together outlast the short `timeout` below; only suspension across the auth
+    // phase (not a race against authTimeout) lets this publish still resolve. Simulates successful
+    // authentication out of band via authenticationResponse$ (this suite's established convention,
+    // see 13-02-SUMMARY.md) rather than a live relay.authenticate() round trip — this fixture's
+    // keepAlive=0 can drop the connection (and wipe the challenge) while nothing is subscribed
+    // during a real async handler delay, which is orthogonal to what D-15 asserts here.
+    const onAuthRequired = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
+    });
+
+    const spy = relay.publish(mockEvent, { onAuthRequired, timeout: 20, authTimeout: false });
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, true, ""]);
+
+    await expect(spy).resolves.toEqual({ ok: true, message: "", from: "wss://test" });
+  });
+
+  it("RAUTH-09: authRequiredForPublish$ flips true when an EVENT receives auth-required", async () => {
+    const flagSpy = subscribeSpyTo(relay.authRequiredForPublish$);
+    expect(flagSpy.getLastValue()).toBe(false);
+
+    const spy = subscribeSpyTo(relay.event(mockEvent, "EVENT", { authTimeout: 30 }), { expectErrors: true });
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    expect(flagSpy.getLastValue()).toBe(true);
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-07: publish() forwards onAuthRequired to the underlying EVENT auth phase", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = relay.publish(mockEvent, { onAuthRequired, authTimeout: 30 }).catch((err) => err);
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+    await spy;
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("request", () => {
   it("should retry when auth-required is received and authentication is completed", async () => {
     // First attempt to request
