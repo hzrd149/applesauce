@@ -6,12 +6,25 @@ import { asyncScheduler, lastValueFrom, NEVER, Observable, of, scheduled, Subjec
 import { describe, expect, it, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { createSyncLoader, SyncLoaderStatus, SyncRequestMethod } from "../sync-loader.js";
+import { createSyncLoader, SyncAuthContext, SyncLoaderStatus, SyncMethodOptions, SyncRequestMethod } from "../sync-loader.js";
 
 const user = new FakeUser();
 
 function collect<T>(observable: Observable<T>): Promise<T[]> {
   return lastValueFrom(observable.pipe(toArray()));
+}
+
+/** A minimal SyncAuthContext for tests that need to invoke a wrapped onAuthRequired handler directly */
+function authContext(overrides: Partial<SyncAuthContext> = {}): SyncAuthContext {
+  return {
+    relay: {} as SyncAuthContext["relay"],
+    url: "wss://relay/",
+    challenge: null,
+    requirement: true,
+    missingPubkeys: null,
+    reason: "auth-required: please authenticate",
+    ...overrides,
+  };
 }
 
 // Emits the events asynchronously, mirroring a real relay REQ (a synchronous source would be re-run by the
@@ -157,6 +170,106 @@ describe("createSyncLoader", () => {
 
     expect(request).toHaveBeenCalledWith("wss://relay/", [expect.any(Object)], { waitForAuth: user.pubkey });
     expect(sync).not.toHaveBeenCalled();
+  });
+
+  it("threads onAuthRequired, authTimeout and authRetries into the negentropy sync (RAUTH-08)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    const sync = vi.fn().mockReturnValue(of(a));
+    const request = vi.fn();
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      waitForAuth: user.pubkey,
+      onAuthRequired,
+      authTimeout: 5_000,
+      authRetries: 2,
+    });
+
+    await collect(events$);
+
+    expect(sync).toHaveBeenCalledTimes(1);
+    const opts = (sync as any).mock.calls[0][2] as SyncMethodOptions;
+    expect(opts.waitForAuth).toBe(user.pubkey);
+    expect(opts.authTimeout).toBe(5_000);
+    expect(opts.authRetries).toBe(2);
+
+    // onAuthRequired is wrapped (the loader owns its own suspension signal), so assert delegation
+    // behavior rather than reference equality
+    expect(typeof opts.onAuthRequired).toBe("function");
+    expect(opts.onAuthRequired).not.toBe(onAuthRequired);
+    const context = authContext();
+    await opts.onAuthRequired!(context);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(onAuthRequired).toHaveBeenCalledWith(context);
+  });
+
+  it("threads onAuthRequired, authTimeout and authRetries into the paginated request (RAUTH-08)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    const sync = vi.fn();
+    const request = vi.fn().mockReturnValue(of(a));
+    const getSupported = vi.fn().mockResolvedValue([1]);
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      waitForAuth: user.pubkey,
+      onAuthRequired,
+      authTimeout: 5_000,
+      authRetries: 2,
+    });
+
+    await collect(events$);
+
+    expect(request).toHaveBeenCalledTimes(1);
+    const opts = (request as any).mock.calls[0][2] as SyncMethodOptions;
+    expect(opts.waitForAuth).toBe(user.pubkey);
+    expect(opts.authTimeout).toBe(5_000);
+    expect(opts.authRetries).toBe(2);
+
+    expect(typeof opts.onAuthRequired).toBe("function");
+    const context = authContext();
+    await opts.onAuthRequired!(context);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(onAuthRequired).toHaveBeenCalledWith(context);
+  });
+
+  it("passes the exact same auth options object to both the negentropy sync and its paginated fallback (RAUTH-08)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    // The negentropy sync fails for a non-auth reason, so the relay falls back to the paginated
+    // request using the SAME per-relay options object (Task 1's single methodOptions construction)
+    const sync = vi.fn().mockReturnValue(throwError());
+    const request = vi.fn().mockReturnValueOnce(of(a)).mockReturnValueOnce(of());
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      waitForAuth: user.pubkey,
+      onAuthRequired,
+      authTimeout: 5_000,
+      authRetries: 2,
+    });
+
+    await collect(events$);
+
+    const syncOpts = (sync as any).mock.calls[0][2];
+    const requestOpts = (request as any).mock.calls[0][2];
+    // Both paths read the literal same object — "identically" is structural, not a coincidence
+    expect(requestOpts).toBe(syncOpts);
   });
 
   it("uses a paginated request when the relay does not support NIP-77", async () => {
@@ -349,6 +462,31 @@ describe("createSyncLoader", () => {
     expect(relay.sync).toHaveBeenCalledWith(eventStore, filter, undefined, { waitForAuth: undefined });
   });
 
+  it("maps a relay pool to the internal methods, threading the three auth options (RAUTH-08)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    const relay = {
+      request: vi.fn().mockReturnValue(of()),
+      getSupported: vi.fn().mockResolvedValue([1, 77]),
+      sync: vi.fn().mockReturnValue(of(a)),
+    };
+    const pool = { relay: vi.fn().mockReturnValue(relay) };
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+
+    const loader = createSyncLoader({ eventStore, pool });
+    const { events$ } = loader({ relays: ["wss://relay/"], filter, onAuthRequired, authTimeout: 5_000, authRetries: 2 });
+
+    const events = await collect(events$);
+
+    expect(events).toEqual([a]);
+    expect(relay.sync).toHaveBeenCalledTimes(1);
+    const opts = (relay.sync as any).mock.calls[0][3] as SyncMethodOptions;
+    expect(opts.authTimeout).toBe(5_000);
+    expect(opts.authRetries).toBe(2);
+    expect(typeof opts.onAuthRequired).toBe("function");
+  });
+
   it("surfaces a relay error as an error status without failing the loader", async () => {
     const eventStore = new EventStore();
 
@@ -520,9 +658,127 @@ describe("createSyncLoader", () => {
     );
     expect(fallback).toBeDefined();
   });
+
+  it("suspends the stall guard while a slow onAuthRequired handler is running (D-16)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+    const request = vi.fn();
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    // The handler takes 40ms to resolve, longer than the loader's 20ms stall-guard budget
+    const onAuthRequired = vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 40)));
+
+    // Mirrors what a real relay's authRetryOperator does: invoke the (wrapped) handler, then emit once
+    // it settles
+    const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) => {
+      return new Observable<NostrEvent>((observer) => {
+        Promise.resolve(opts.onAuthRequired?.(authContext())).then(() => {
+          observer.next(a);
+          observer.complete();
+        });
+      });
+    });
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { status$, events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      timeout: 20,
+      onAuthRequired,
+      authTimeout: false,
+    });
+
+    const statusPromise = collect(status$);
+    const events = await collect(events$);
+    const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+
+    expect(events).toEqual([a]);
+    expect(last.relays["wss://relay/"].state).toBe("complete");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  // HELD-OUT: reserved for RESEARCH Assumption A2. Suspending only for the duration of the handler call
+  // (not the post-handler wait) makes this fail — verified empirically before landing this test (see the
+  // plan summary's RED observation).
+  it("suspends the stall guard through the post-handler auth wait, not just the handler call (D-16)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+    const request = vi.fn();
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    // The handler resolves almost immediately...
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+
+    const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) => {
+      return new Observable<NostrEvent>((observer) => {
+        Promise.resolve(opts.onAuthRequired?.(authContext())).then(() => {
+          // ...but the underlying stream (mirroring a slow post-handler authSatisfied$ wait) emits
+          // nothing for longer than the loader's own 20ms stall-guard budget before finally emitting
+          setTimeout(() => {
+            observer.next(a);
+            observer.complete();
+          }, 40);
+        });
+      });
+    });
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { status$, events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      timeout: 20,
+      onAuthRequired,
+      authTimeout: 100,
+    });
+
+    const statusPromise = collect(status$);
+    const events = await collect(events$);
+    const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+
+    expect(events).toEqual([a]);
+    expect(last.relays["wss://relay/"].state).toBe("complete");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("errors the relay without falling back when negentropy sync fails with an auth error name (D-16)", async () => {
+    const eventStore = new EventStore();
+    const authError = Object.assign(new Error("auth-required: please authenticate"), { name: "AuthTimeoutError" });
+
+    const sync = vi.fn().mockReturnValue(throwError(authError));
+    const request = vi.fn().mockReturnValue(of());
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { status$, events$ } = loader({ relays: ["wss://relay/"], filter });
+
+    const statusPromise = collect(status$);
+    events$.subscribe();
+    const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+
+    expect(last.relays["wss://relay/"].state).toBe("error");
+    expect(last.relays["wss://relay/"].error?.name).toBe("AuthTimeoutError");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("still falls back to a request when negentropy sync fails with a non-auth error (D-16)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    const sync = vi.fn().mockReturnValue(throwError());
+    const request = vi.fn().mockReturnValueOnce(of(a)).mockReturnValueOnce(of());
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { events$ } = loader({ relays: ["wss://relay/"], filter });
+
+    const events = await collect(events$);
+
+    expect(events).toEqual([a]);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
 });
 
-/** Returns an observable that errors immediately */
-function throwError(): Observable<never> {
-  return new Observable((observer) => observer.error(new Error("sync failed")));
+/** Returns an observable that errors immediately with `error`, defaulting to a generic sync failure */
+function throwError(error: Error = new Error("sync failed")): Observable<never> {
+  return new Observable((observer) => observer.error(error));
 }
