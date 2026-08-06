@@ -61,6 +61,7 @@ import {
   AuthPhaseGate,
   authRetry,
   isAuthRequiredSignal,
+  suspendableTimeout,
   type AuthRequiredSignal,
   type WithAuthPhaseGate,
 } from "./operators/auth-retry.js";
@@ -1292,16 +1293,22 @@ export class Relay {
 
   /** Makes a single request that retries connection errors and completes on EOSE */
   request(filters: FilterInput, opts?: RelayRequestOptions): Observable<RelayRequestResponse> {
+    // D-15: a dedicated gate for this operation's REQ, threaded into req() via the module-private
+    // symbol key so this method's own operation clock (below) can suspend across req()'s auth phase
+    const gate = new AuthPhaseGate();
+
     const req = this.req(filters, {
       ...opts,
       reconnect: opts?.reconnect ?? this.requestReconnect,
+      [AUTH_PHASE_GATE]: gate,
     });
 
     return req.pipe(
       // Add completion condition
       opts?.complete ? completeWhen(opts?.complete) : identity,
-      // Apply request timeout
-      timeout({ first: opts?.timeout ?? 30_000 }),
+      // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
+      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause
+      suspendableTimeout(opts?.timeout ?? 30_000, gate),
       // Complete when EOSE is received
       takeWhile((message) => message.type !== "EOSE"),
       // Filter only for event messages
