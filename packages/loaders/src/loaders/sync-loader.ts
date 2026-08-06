@@ -10,6 +10,7 @@ import {
   concat,
   defer,
   EMPTY,
+  finalize,
   from,
   identity,
   isObservable,
@@ -421,14 +422,23 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
         // emission closes it early. The wrapper never swallows the caller's rejection — it returns the
         // caller's result unchanged so the relay layer maps a rejection to its own AuthHandlerError — and
         // it never invokes the handler itself beyond this single delegation.
+        // WR-04 invariant: a phase owns at most one timer, that timer never outlives the phase, and the
+        // phase never outlives the relay stream (enforced below by `finalize` on the terminal pipeline).
         const relayOnAuthRequired: SyncAuthHandler = (context) => {
           authPhases++;
           authPhaseChange$.next();
 
           let closed = false;
+          // The phase's own close-timer handle, retained so it can be cleared the moment the phase closes
+          // by any means — nothing else clears it (WR-04)
+          let handle: ReturnType<typeof setTimeout> | undefined;
           const close = () => {
             if (closed) return;
             closed = true;
+            if (handle !== undefined) {
+              clearTimeout(handle);
+              handle = undefined;
+            }
             pendingAuthCloses.delete(close);
             authPhases = Math.max(0, authPhases - 1);
             authPhaseChange$.next();
@@ -436,15 +446,29 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
           pendingAuthCloses.add(close);
 
           const scheduleClose = () => {
+            // WR-04 leak path 1: a phase already closed (typically force-closed by a stream emission
+            // while the handler was still pending) must never arm a fresh timer — nothing would ever
+            // clear it, since `close()` early-returns on `closed` and the callback is already gone from
+            // `pendingAuthCloses`.
+            if (closed) return;
             // authTimeout: false means unbounded — only forceCloseAuthPhases (a stream emission)
             // closes this phase
-            if (authTimeout !== false) setTimeout(close, authTimeout ?? 30_000);
+            if (authTimeout !== false) handle = setTimeout(close, authTimeout ?? 30_000);
           };
 
-          const result = onAuthRequired?.(context);
-          if (result instanceof Promise) result.then(scheduleClose, scheduleClose);
-          else scheduleClose();
-          return result;
+          try {
+            const result = onAuthRequired?.(context);
+            if (result instanceof Promise) result.then(scheduleClose, scheduleClose);
+            else scheduleClose();
+            return result;
+          } catch (error) {
+            // WR-04 leak path 2: a synchronous throw must still close this phase — otherwise no timer is
+            // armed, but the phase is also never closed, leaving the suspension open (and the stall guard
+            // disarmed for this relay) until some later emission force-closes it. Re-raise the caller's
+            // original error untouched so the relay layer still maps it to its own handler error class.
+            close();
+            throw error;
+          }
         };
 
         // The options this relay's sync() and paginatedRequest() calls both read — the same base fields
@@ -645,6 +669,12 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             state[url].error = error instanceof Error ? error : new Error(String(error));
             return of<Msg>({ status: snapshot() });
           }),
+          // WR-04 leak path 3: force-close every auth phase still open on this relay when its stream ends
+          // by any means (complete, error or unsubscribe alike) — the only hook that covers all three.
+          // This must sit here, outside `withTimeout`, because `withTimeout` returns its source unwrapped
+          // whenever the stall guard is disabled (`timeoutMs <= 0`), so a hook placed there would silently
+          // disappear for those callers.
+          finalize(forceCloseAuthPhases),
         );
       };
 
