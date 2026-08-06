@@ -20,6 +20,7 @@ describe("exports", () => {
         "ignoreUnhealthyMailboxes",
         "ignoreUnhealthyRelays",
         "ignoreUnhealthyRelaysOnPointers",
+        "isReqProgress",
         "onlyEvents",
         "reverseSwitchMap",
         "storeEvents",
