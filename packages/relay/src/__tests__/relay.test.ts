@@ -1230,6 +1230,23 @@ describe("request", () => {
     await spy.onError();
     expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
   });
+
+  it("WR-01: request()'s operation clock fires against a relay that accepts the REQ and then says nothing at all", async () => {
+    // No auth involved here at all — a relay that answers the REQ with total silence (no EVENT, no
+    // EOSE, no CLOSED). req()'s own synthetic OPEN message is the only value this stream will ever
+    // emit, and isReqProgress (CR-01/WR-01) correctly rejects it as bookkeeping, not progress — so
+    // this test proves request()'s operation clock still starts and fires on its own, independent of
+    // the auth-suspension mechanism the D-15 test below exercises.
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { id: "sub1", timeout: 40 }), { expectErrors: true });
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    // Deliberately send nothing back.
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(Error);
+    expect(spy.receivedComplete()).toBe(false);
+  });
 });
 
 describe("subscription", () => {
@@ -1617,6 +1634,16 @@ describe("operation-scoped REQ auth (13-02)", () => {
   });
 
   it("D-15: request()'s operation clock is suspended across the auth phase", async () => {
+    // Non-vacuity (13-09 Task 3 repair): the auth phase duration (100ms, the handler's own wait below)
+    // deliberately EXCEEDS the operation timeout (40ms, passed to request() below) so the two are
+    // unambiguously ordered on real timers (D-20) — without gate suspension the 40ms clock would fire
+    // and error long before the 100ms auth round trip ever resolves, so the request can only survive
+    // because the clock is paused for the whole auth phase and resumes with its remaining budget once
+    // it closes. Verified by temporarily threading a fresh, never-opened AuthPhaseGate into request()'s
+    // own suspendableTimeout call (so gate.active$ never reports "in an auth phase" and the clock is
+    // never actually suspended): this test went RED (timed out waiting for spy.onComplete()) against
+    // that substitution, and GREEN again once the real threaded gate was restored — recorded in the
+    // plan SUMMARY.
     const onAuthRequired = vi.fn(async () => {
       // A slow out-of-band auth round trip, comfortably longer than request()'s own timeout budget.
       // Resolved via authenticationResponse$ (matching this suite's existing convention) rather than
