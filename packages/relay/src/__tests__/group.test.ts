@@ -1,11 +1,12 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { of } from "rxjs";
+import { lastValueFrom, of, throwError, toArray } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
 import { RelayGroup } from "../group.js";
 import { Relay } from "../relay.js";
+import { FakeUser } from "./fake-user.js";
 
 let mockRelay1: WS;
 let mockRelay2: WS;
@@ -167,5 +168,193 @@ describe("event", () => {
       expect.objectContaining({ ok: true, from: "wss://relay2.test", message: "" }),
     ]);
     expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("D-18: a failed group publish carries the original error object alongside the message", async () => {
+    const spy = subscribeSpyTo(group.event(mockEvent));
+
+    mockRelay1.error();
+    mockRelay2.send(["OK", mockEvent.id, true, ""]);
+
+    const values = spy.getValues();
+    const failed = values.find((v) => v.from === "wss://relay1.test");
+    expect(failed).toMatchObject({ ok: false, from: "wss://relay1.test", message: "Unknown error" });
+    expect(failed?.error).toBeDefined();
+
+    const succeeded = values.find((v) => v.from === "wss://relay2.test");
+    expect(succeeded).toMatchObject({ ok: true, from: "wss://relay2.test", message: "" });
+    expect(succeeded?.error).toBeUndefined();
+  });
+});
+
+// 13-07: pass-through of the four RelayAuthOptions fields (waitForAuth/onAuthRequired/authTimeout/
+// authRetries) through every group operation to the underlying relay method. Table-driven (D-20) so a
+// newly added group operation cannot silently skip the check the way RelayGroup.sync/RelayPool.sync did
+// before this plan (RESEARCH Pitfall 4).
+describe("auth options pass-through (13-07)", () => {
+  const authOptions = () => ({
+    waitForAuth: ["pubkey-a"],
+    onAuthRequired: vi.fn(),
+    authTimeout: 1234,
+    authRetries: 3,
+  });
+
+  const cases: Array<[string, (opts: ReturnType<typeof authOptions>) => void | Promise<void>]> = [
+    [
+      "req",
+      (opts) => {
+        const spy = vi.spyOn(relay1, "req");
+        group.req([{ kinds: [1] }], opts).subscribe();
+        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(opts));
+      },
+    ],
+    [
+      "request",
+      (opts) => {
+        const spy = vi.spyOn(relay1, "req");
+        group.request([{ kinds: [1] }], opts).subscribe({ error: () => {} });
+        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(opts));
+      },
+    ],
+    [
+      "subscription",
+      (opts) => {
+        const spy = vi.spyOn(relay1, "req");
+        group.subscription([{ kinds: [1] }], opts).subscribe();
+        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(opts));
+      },
+    ],
+    [
+      "count",
+      (opts) => {
+        const spy = vi.spyOn(relay1, "count");
+        group.count([{ kinds: [1] }], "id1", opts).subscribe({ error: () => {} });
+        expect(spy).toHaveBeenCalledWith(expect.anything(), "id1", expect.objectContaining(opts));
+      },
+    ],
+    [
+      "event",
+      (opts) => {
+        const spy = vi.spyOn(relay1, "event");
+        group.event(mockEvent, opts).subscribe();
+        expect(spy).toHaveBeenCalledWith(mockEvent, "EVENT", expect.objectContaining(opts));
+      },
+    ],
+    [
+      "sync",
+      async (opts) => {
+        vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+        vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
+        const spy = vi.spyOn(relay1, "sync").mockReturnValue(of());
+        vi.spyOn(relay2, "sync").mockReturnValue(of());
+
+        await lastValueFrom(group.sync([], { kinds: [1] }, undefined, opts), { defaultValue: null });
+
+        expect(spy).toHaveBeenCalledWith([], { kinds: [1] }, undefined, expect.objectContaining(opts));
+      },
+    ],
+    [
+      "negentropy",
+      async (opts) => {
+        vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+        vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
+        const spy = vi.spyOn(relay1, "negentropy").mockResolvedValue(true);
+        vi.spyOn(relay2, "negentropy").mockResolvedValue(true);
+
+        const negentropyOpts = { ...opts, parallel: true as const };
+        await group.negentropy({} as any, { kinds: [1] }, async () => {}, negentropyOpts);
+
+        expect(spy).toHaveBeenCalledWith(
+          expect.anything(),
+          { kinds: [1] },
+          expect.anything(),
+          expect.objectContaining(opts),
+        );
+      },
+    ],
+  ];
+
+  it.each(cases)(
+    "passes waitForAuth/onAuthRequired/authTimeout/authRetries through group.%s to the underlying relay method",
+    async (_name, run) => {
+      await run(authOptions());
+    },
+  );
+});
+
+describe("RAUTH-05 group-level auth independence (13-07)", () => {
+  it("each relay in the group invokes its own handler independently, and a rejecting handler for one relay does not affect the other", async () => {
+    const userB = new FakeUser();
+    const handlerA = vi.fn().mockRejectedValue(new Error("nope"));
+    const handlerB = vi.fn(async () => {
+      await relay2.authenticate(userB);
+    });
+
+    const spy = subscribeSpyTo(
+      group.req([{ kinds: [1] }], {
+        id: "sub1",
+        onAuthRequired: (context) => (context.relay === relay1 ? handlerA() : handlerB()),
+      }),
+      { expectErrors: true },
+    );
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    mockRelay1.send(["AUTH", "challenge-1"]);
+    mockRelay2.send(["AUTH", "challenge-2"]);
+    mockRelay1.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+    mockRelay2.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    // relay2's handler authenticates and its REQ resends
+    const authMsg = (await mockRelay2.nextMessage) as [string, NostrEvent];
+    expect(authMsg[0]).toBe("AUTH");
+    mockRelay2.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(mockRelay2).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+
+    // Give relay1's rejected handler a tick to settle into an ERROR message
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(handlerA).toHaveBeenCalledTimes(1);
+    expect(handlerB).toHaveBeenCalledTimes(1);
+
+    // relay1's handler rejection surfaces as an ERROR message for relay1 only — it does not stop
+    // relay2's independent auth/retry flow
+    const values = spy.getValues();
+    expect(values.some((m) => m.type === "ERROR" && m.from === "wss://relay1.test")).toBe(true);
+
+    spy.unsubscribe();
+  });
+});
+
+describe("D-19: RelayGroup.sync per-relay isolation (13-07)", () => {
+  it("one relay's sync failure does not stop another relay's events, and the group sync still completes", async () => {
+    vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay1, "sync").mockReturnValue(throwError(() => new Error("relay1 sync failed")));
+    vi.spyOn(relay2, "sync").mockReturnValue(of(mockEvent));
+
+    const events = await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
+
+    expect(events).toEqual([mockEvent]);
+  });
+});
+
+describe("RAUTH-09: group status$ surfaces informational auth-required flags (13-07)", () => {
+  it("authRequiredForRead flips true on the affected relay's entry in group.status$", async () => {
+    const spy = subscribeSpyTo(group.status$);
+
+    group.req([{ kinds: [1] }], { id: "sub1", onAuthRequired: vi.fn() }).subscribe({ error: () => {} });
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    mockRelay1.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const last = spy.getLastValue()!;
+    expect(last["wss://relay1.test"]?.authRequiredForRead).toBe(true);
+
+    spy.unsubscribe();
   });
 });

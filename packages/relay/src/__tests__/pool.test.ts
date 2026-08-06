@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, NostrEvent } from "applesauce-core/helpers";
-import { of } from "rxjs";
+import { lastValueFrom, of } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
@@ -253,5 +253,122 @@ describe("waitForAuth pass-through", () => {
     subscribeSpyTo(pool.count(urls, { kinds: [1059] }, "count1", { waitForAuth: pubkeys }), { expectErrors: true });
 
     expect(count).toHaveBeenCalledWith({ kinds: [1059] }, "count1", expect.objectContaining({ waitForAuth: pubkeys }));
+  });
+});
+
+// 13-07: pass-through of the four RelayAuthOptions fields (waitForAuth/onAuthRequired/authTimeout/
+// authRetries) through the pool's own method surface, including publish and sync, confirming the options
+// survive the extra pool-to-group hop (RAUTH-07's pool leg). Table-driven (D-20) so a newly added pool
+// operation cannot silently skip the check.
+describe("auth options pass-through (13-07)", () => {
+  const urls = ["wss://relay1.example.com"];
+  const authOptions = () => ({
+    waitForAuth: ["pubkey-a"],
+    onAuthRequired: vi.fn(),
+    authTimeout: 1234,
+    authRetries: 3,
+  });
+
+  const cases: Array<[string, (opts: ReturnType<typeof authOptions>) => void | Promise<void>]> = [
+    [
+      "req",
+      (opts) => {
+        const relay = pool.relay(urls[0]);
+        const spy = vi.spyOn(relay, "req");
+        pool.req(urls, { kinds: [1] }, opts).subscribe();
+        expect(spy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(opts));
+      },
+    ],
+    [
+      "request",
+      (opts) => {
+        const relay = pool.relay(urls[0]);
+        const spy = vi.spyOn(relay, "req");
+        pool.request(urls, { kinds: [1] }, opts).subscribe({ error: () => {} });
+        expect(spy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(opts));
+      },
+    ],
+    [
+      "subscription",
+      (opts) => {
+        const relay = pool.relay(urls[0]);
+        const spy = vi.spyOn(relay, "req");
+        pool.subscription(urls, { kinds: [1] }, opts).subscribe();
+        expect(spy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(opts));
+      },
+    ],
+    [
+      "count",
+      (opts) => {
+        const relay = pool.relay(urls[0]);
+        const spy = vi.spyOn(relay, "count");
+        pool.count(urls, { kinds: [1] }, "id1", opts).subscribe({ error: () => {} });
+        expect(spy).toHaveBeenCalledWith({ kinds: [1] }, "id1", expect.objectContaining(opts));
+      },
+    ],
+    [
+      "event",
+      (opts) => {
+        const relay = pool.relay(urls[0]);
+        const spy = vi.spyOn(relay, "event");
+        pool.event(urls, mockEvent, opts).subscribe();
+        expect(spy).toHaveBeenCalledWith(mockEvent, "EVENT", expect.objectContaining(opts));
+      },
+    ],
+    [
+      "publish",
+      async (opts) => {
+        const relay = pool.relay(urls[0]);
+        const spy = vi.spyOn(relay, "publish").mockResolvedValue({ ok: true, from: urls[0] });
+        await pool.publish(urls, mockEvent, opts);
+        expect(spy).toHaveBeenCalledWith(mockEvent, expect.objectContaining(opts));
+      },
+    ],
+    [
+      "sync",
+      async (opts) => {
+        const relay = pool.relay(urls[0]);
+        vi.spyOn(relay, "getSupported").mockResolvedValue([77]);
+        const spy = vi.spyOn(relay, "sync").mockReturnValue(of());
+
+        await lastValueFrom(pool.sync(urls, [], { kinds: [1] }, undefined, opts), { defaultValue: null });
+
+        expect(spy).toHaveBeenCalledWith([], { kinds: [1] }, undefined, expect.objectContaining(opts));
+      },
+    ],
+  ];
+
+  it.each(cases)(
+    "passes waitForAuth/onAuthRequired/authTimeout/authRetries through pool.%s to the relay layer",
+    async (_name, run) => {
+      await run(authOptions());
+    },
+  );
+});
+
+// RAUTH-08: SyncLoader itself (packages/loaders) already proves its own threading end to end against a
+// mocked pool (13-03-SUMMARY.md). What that leaves unproven is the pool's OWN leg of the hop — that
+// pool.sync/pool.request genuinely forward the caller's auth options down to `pool.relay(url).sync(...)`
+// and `pool.relay(url).request(...)`, which is what a real RelayPool-backed SyncLoader depends on.
+// Driving an actual `createSyncLoader` here would require adding `applesauce-loaders` as a new
+// cross-package devDependency of `applesauce-relay` for a single test — per the plan's own fallback
+// clause this asserts at the pool.sync/pool.request boundary instead (see 13-07-SUMMARY.md).
+describe("RAUTH-08 pool boundary threading (13-07)", () => {
+  it("threads onAuthRequired/authTimeout/authRetries through pool.sync and pool.request to the relay layer", async () => {
+    const urls = ["wss://relay1.example.com"];
+    const relay = pool.relay(urls[0]);
+
+    vi.spyOn(relay, "getSupported").mockResolvedValue([77]);
+    const syncSpy = vi.spyOn(relay, "sync").mockReturnValue(of());
+    const reqSpy = vi.spyOn(relay, "req");
+
+    const onAuthRequired = vi.fn();
+    const authOptions = { onAuthRequired, authTimeout: 5_000, authRetries: 2 };
+
+    await lastValueFrom(pool.sync(urls, [], { kinds: [1] }, undefined, authOptions), { defaultValue: null });
+    pool.request(urls, { kinds: [1] }, authOptions).subscribe({ error: () => {} });
+
+    expect(syncSpy).toHaveBeenCalledWith([], { kinds: [1] }, undefined, expect.objectContaining(authOptions));
+    expect(reqSpy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(authOptions));
   });
 });
