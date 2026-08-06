@@ -1059,22 +1059,29 @@ export class Relay {
     verb: "EVENT" | "AUTH" = "EVENT",
     opts?: RelayEventOptions & WithAuthPhaseGate,
   ): Observable<PublishResponse> {
-    const messages: Observable<PublishResponse> = defer(() => {
-      // Send event when subscription starts
-      this.socket.next([verb, event]);
-
-      return this.socket.pipe(
-        filter((m) => m[0] === "OK" && m[1] === event.id),
-        // format OK message
-        map((m) => ({ ok: m[2] as boolean, message: m[3] as string, from: this.url })),
-      );
-    }).pipe(
-      // Singleton (prevents the .pipe() operator later from sending two EVENT messages )
+    // Listen-only stream (no side effect) — shared so the two places below that reference it
+    // (the main merge and the takeUntil notifier) don't register duplicate filter/map chains.
+    const messages: Observable<PublishResponse> = this.socket.pipe(
+      filter((m) => m[0] === "OK" && m[1] === event.id),
+      // format OK message
+      map((m) => ({ ok: m[2] as boolean, message: m[3] as string, from: this.url })),
       share(),
     );
 
+    // Send the EVENT/AUTH message as a side effect of subscribing, deliberately NOT shared (mirrors
+    // count()'s send/listen split): the shared operator's resend can be driven synchronously by a
+    // handler still nested inside the current OK-message dispatch, and a share()'d defer's
+    // refCount-reset timing is not guaranteed to have settled by the time that resubscription happens
+    // — bundling the send inside a shared defer silently dropped the resend under a synchronous
+    // handler (found via this plan's own non-vacuity check). An unshared `control` always re-sends on
+    // every subscription, independent of any share() reset race.
+    const control = defer(() => {
+      this.socket.next([verb, event]);
+      return messages;
+    });
+
     // Start the watch tower and add complete operators
-    const observable = merge(this.watchTower, messages).pipe(
+    const observable = merge(this.watchTower, control).pipe(
       // Complete the subscription when the messages observable completes
       // This is to work around the fact that merge() waits for both observables to complete
       takeUntil(messages.pipe(ignoreElements(), endWith(true))),
