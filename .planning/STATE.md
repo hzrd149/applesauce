@@ -5,16 +5,16 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Completed 13-11-PLAN.md
-last_updated: "2026-08-06T22:15:03.943Z"
+stopped_at: Completed 13-12-PLAN.md
+last_updated: "2026-08-06T22:40:38.184Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 13
-  completed_plans: 12
-  percent: 0
+  completed_plans: 13
+  percent: 33
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 6 of 13
+Plan: 7 of 13
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 13 execution started
 
@@ -114,6 +114,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13-13 P13-13 | 25min | 3 tasks | 2 files |
 | Phase 13 P10 | 35min | 3 tasks | 3 files |
 | Phase 13 P11 | 10min | 3 tasks | 2 files |
+| Phase 13 P12 | ~20min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -292,6 +293,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 13-10: REQUIREMENTS.md left unchanged (RAUTH-03/RAUTH-07 remain In Progress) per the 13-08/13-09 precedent -- plan 13-12 is the designated closing plan that flips RAUTH-03/07/08 to Complete once every gap-closure plan in this wave sequence has landed
 - [Phase ?]: 13-11: RelayGroup.request() gate threading wraps isReqProgress (message: GroupReqMessage) => isReqProgress(message as RelayReqMessage) rather than redeclaring it, since GroupReqMessage is a strict superset RelayReqMessage's parameter type does not admit
 - [Phase ?]: 13-11: D-15 clock-suspension and clock-fires tests build a single-relay RelayGroup([relay1]) rather than reusing the shared two-relay group, so relay2's independent EOSE lifecycle cannot entangle the clock assertions
+- [Phase 13]: 13-12: req()'s CR-02 fix and count()'s CR-03 fix share one changeset ('resends the REQ and the COUNT'), not two -- same user-visible behavior class landing on two call sites across two plans
+- [Phase 13]: 13-12: all eight new changesets are patch, not minor -- each restores a contract already documented and shipped as minor by plans 13-01..13-07, none adds a new option or changes a default
+- [Phase 13]: 13-12: RAUTH-03/07/08 flipped to Complete in REQUIREMENTS.md only after every phase-touched suite ran green and each requirement was mapped to a named test with its recorded RED symptom, closing the gap-closure wave 13-VERIFICATION.md opened
 
 ### Pending Todos
 
@@ -375,7 +379,7 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T22:15:03.933Z
-Stopped at: Completed 13-11-PLAN.md
+Last session: 2026-08-06T22:40:38.175Z
+Stopped at: Completed 13-12-PLAN.md
 Resume file: 
 None
