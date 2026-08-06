@@ -5,16 +5,16 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Phase 13 Wave 1 complete (13-01 merged); paused before Wave 2
-last_updated: "2026-08-06T08:51:37.873Z"
+stopped_at: Phase 13 Wave 3 complete (13-04 done); ready for Wave 4 (13-05)
+last_updated: "2026-08-06T09:56:35.545Z"
 last_activity: 2026-08-06
-last_activity_desc: Phase 13 execution started
+last_activity_desc: 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
-  percent: 0
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 1 of 7
-Status: Executing Phase 13
-Last activity: 2026-08-06 — Phase 13 execution started
+Plan: 4 of 7 complete (Wave 3 of 6 done)
+Status: Ready to execute Wave 4 (13-05)
+Last activity: 2026-08-06 — 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 
 ## Performance Metrics
 
@@ -105,6 +105,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P08 | 21min | 3 tasks | 5 files |
 | Phase 12 P09 | 151min | 3 tasks | 3 files |
 | Phase 12 P11 | 45min | 2 tasks | 1 files |
+| Phase 13 P04 | 17min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -260,6 +261,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 12]: 12-10: P2's index-signature probe needed the FACTORED-ALIAS form (`type X = keyof Required<ChannelMetadata>; type Rules = {[K in X]: ...}`) to reproduce the degenerate case — the plan's literal inline form is *homomorphic*, and TS 5.9.3 preserves literal members there regardless of the index signature, so it exits 2 not 0; `DeclaredKeysOf` is load-bearing against the factored form only
 - [Phase ?]: 12-09: documentExtras excluded from both publishedListFingerprint and publishedFingerprint dirty checks — a value captured there was just read off the document the fingerprint believes is already on the relay, so its presence alone never forces an extra publish
 - [Phase 12]: The three loose-truthiness deleted gates in client/community.ts (publicChannelKeys, reconcileLive's publicIds, reconcilePrivateChannels) are deliberately NOT tightened to strict === true equality — the fold-level invariant from 12-10 already makes deleted boolean-or-absent, so duplicating the guarantee into three call sites would reintroduce the enumerated-patch drift CR-01/WR-01 already exposed.
+- [Phase 13]: 13-04: count() take(1) moved outside authRetryOperator (after, not before) so the operator's expand/concat retry can see every auth-required signal as a value on its source stream
+- [Phase 13]: 13-04: D-15's count() clock-suspension test proven via a real setTimeout spy (two >9s arm calls bracketing the auth phase) instead of a literal >10s wait, since count()'s 10s budget has no user-configurable knob
+- [Phase 13]: 13-04: RAUTH-02/03/04/07/09 left Pending in REQUIREMENTS.md — each spans all eight auth sites; count() closes 1 of the remaining 5, matching 13-02's precedent for the same requirement IDs
 
 ### Pending Todos
 
@@ -341,9 +345,9 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-05T15:55:11.410Z
-Stopped at: Phase 13 context gathered
-Resume file: .planning/phases/13-operation-scoped-nip-42-auth-hooks/13-CONTEXT.md
+Last session: 2026-08-06T09:56:07.746Z
+Stopped at: Phase 13 Wave 3 complete (13-04 done); ready for Wave 4 (13-05)
+Resume file: 
 
 ## Operator Next Steps
 

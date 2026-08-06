@@ -163,3 +163,12 @@ None - no external service configuration required.
 ---
 *Phase: 13-operation-scoped-nip-42-auth-hooks*
 *Completed: 2026-08-06*
+
+## Self-Check: PASSED
+
+- FOUND: packages/relay/src/relay.ts
+- FOUND: packages/relay/src/__tests__/relay.test.ts
+- FOUND: .planning/phases/13-operation-scoped-nip-42-auth-hooks/13-04-SUMMARY.md
+- FOUND: 857e60c8 (Task 1)
+- FOUND: 1f2c6473 (Task 2)
+- FOUND: c4950a30 (SUMMARY commit)
