@@ -798,3 +798,198 @@ describe("createSyncLoader", () => {
 function throwError(error: Error = new Error("sync failed")): Observable<never> {
   return new Observable((observer) => observer.error(error));
 }
+
+// 13-13: WR-03/WR-04 gap closure. Kept as its own describe block (not folded into "createSyncLoader"
+// above) so later additions can append alongside it without disturbing this file's existing structure.
+describe("13-13: handler-less auth-phase suspension and auth-phase timer lifetime (WR-03/WR-04)", () => {
+  const filter: Filter = { kinds: [1], authors: [user.pubkey] };
+
+  it("suspends the stall guard for a handler-less caller when the relay requires auth (WR-03)", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+    // The fallback path must never actually be reached once the fix holds; configured to fail loudly
+    // (rather than complete emptily) so a pre-fix fallback trip surfaces as the relay's final ERROR
+    // state, not a misleadingly "complete" empty result
+    const request = vi.fn().mockReturnValue(throwError());
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    // No onAuthRequired anywhere in the loader options. Mirrors what a real relay's authRetryOperator
+    // does: invoke the (always-installed, WR-03) wrapper, then wait noticeably longer than the loader's
+    // small stall-guard budget before emitting — the shape of a relay-side wait for out-of-band auth
+    // under D-14
+    const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) => {
+      return new Observable<NostrEvent>((observer) => {
+        Promise.resolve(opts.onAuthRequired?.(authContext())).then(() => {
+          setTimeout(() => {
+            observer.next(a);
+            observer.complete();
+          }, 40);
+        });
+      });
+    });
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { status$, events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      timeout: 20,
+      authTimeout: 100,
+    });
+
+    const statusPromise = collect(status$);
+    const events = await collect(events$);
+    const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+
+    // RED (pre-fix): last.relays["wss://relay/"].state read "error" (the handler-less call was a no-op,
+    // the 20ms stall clock ran through the 40ms wait, timed out, fell back to a throwing request, and
+    // the relay errored) and events read [] instead of [a]. See the SUMMARY for the recorded values.
+    expect(events).toEqual([a]);
+    expect(last.relays["wss://relay/"].state).toBe("complete");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  // Control, not a RED observation of its own: proves the WR-03 fix does not become a permanent disarm.
+  // Must pass both before and after the fix — a handler-less caller's suspension is bounded by
+  // authTimeout, not turned off.
+  it("still errors a handler-less caller once authTimeout elapses with no relay response (WR-03 control)", async () => {
+    const eventStore = new EventStore();
+    const request = vi.fn().mockReturnValue(throwError());
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+    // Opens the auth phase (invokes the wrapper) and then never emits or completes at all
+    const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) => {
+      return new Observable<NostrEvent>((observer) => {
+        void opts.onAuthRequired?.(authContext());
+      });
+    });
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { status$, events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      timeout: 20,
+      authTimeout: 30,
+    });
+
+    const statusPromise = collect(status$);
+    events$.subscribe();
+    const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+
+    expect(last.relays["wss://relay/"].state).toBe("error");
+  });
+
+  it("clears the auth-phase timer when the run is torn down before the phase closes (WR-04)", async () => {
+    vi.useFakeTimers();
+    try {
+      const eventStore = new EventStore();
+      const request = vi.fn();
+      const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+      // Opens the auth phase and then never emits or completes — the phase's own timer is still
+      // pending when the run below is torn down
+      const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) => {
+        return new Observable<NostrEvent>((observer) => {
+          void opts.onAuthRequired?.(authContext());
+        });
+      });
+
+      const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+      const { events$ } = loader({
+        relays: ["wss://relay/"],
+        filter,
+        timeout: false,
+        authTimeout: 10_000,
+      });
+
+      // Baseline before subscribing — no timer of this test's own is armed anywhere else, so the
+      // assertions below can be an exact zero rather than a relative delta
+      const baseline = vi.getTimerCount();
+      const sub = events$.subscribe();
+
+      // Drive the run far enough (past the asapScheduler microtask hop, getSupported's promise, and
+      // sync()'s synchronous handler invocation) for the auth phase's own close-timer to be armed.
+      // advanceTimersByTimeAsync is required over the synchronous form: the run starts on asapScheduler,
+      // which is microtask-based, so a synchronous advance would never get it moving.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBeGreaterThan(baseline);
+
+      // Tear the run down by unsubscribing — nothing else will ever close this phase now
+      sub.unsubscribe();
+
+      // RED (pre-fix): this read baseline + 1 — no finalize hook existed to force-close the still-open
+      // phase on unsubscribe, so its 10s close-timer survived teardown. See the SUMMARY for the actual
+      // recorded pre-fix count.
+      expect(vi.getTimerCount()).toBe(baseline);
+
+      // Advancing well past authTimeout afterwards must produce no further emission and run no leaked
+      // callback
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(vi.getTimerCount()).toBe(baseline);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not arm a fresh timer when a handler settles after its phase was already force-closed (WR-04)", async () => {
+    vi.useFakeTimers();
+    try {
+      const eventStore = new EventStore();
+      const a = user.note("a");
+      const request = vi.fn();
+      const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+      let resolveHandler!: () => void;
+      const onAuthRequired = vi.fn().mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveHandler = resolve;
+          }),
+      );
+
+      // Invokes the wrapper, then emits on the next microtask — forceCloseAuthPhases runs on every
+      // stream emission (D-16), force-closing the phase while the handler above is still pending. The
+      // emission must not be synchronous: mapEventsToStore's internal share()/mergeWith combination
+      // re-subscribes (and re-runs) a fully synchronous source, which would double-invoke the wrapper —
+      // the exact gotcha this file's own asyncOf() helper exists to avoid
+      const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) => {
+        return new Observable<NostrEvent>((observer) => {
+          void opts.onAuthRequired?.(authContext());
+          Promise.resolve().then(() => {
+            observer.next(a);
+            observer.complete();
+          });
+        });
+      });
+
+      const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+      const { events$ } = loader({
+        relays: ["wss://relay/"],
+        filter,
+        timeout: false,
+        onAuthRequired,
+        authTimeout: 10_000,
+      });
+
+      const baseline = vi.getTimerCount();
+      const sub = events$.subscribe();
+
+      // Drive the run to completion: the handler is still pending when its phase force-closes
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onAuthRequired).toHaveBeenCalledTimes(1);
+
+      // Resolve the handler's promise well after the force-close, and flush — this is the leak path:
+      // scheduleClose() runs against an already-closed phase
+      resolveHandler();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // RED (pre-fix): this read baseline + 1 — scheduleClose() armed a fresh authTimeout-long timer
+      // against an already-closed phase, and nothing would ever clear it. See the SUMMARY for the
+      // actual recorded pre-fix count.
+      expect(vi.getTimerCount()).toBe(baseline);
+
+      sub.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
