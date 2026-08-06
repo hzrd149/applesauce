@@ -5,16 +5,16 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Completed 13-06-PLAN.md
-last_updated: "2026-08-06T11:03:47.298Z"
+stopped_at: Completed 13-07-PLAN.md (final plan of phase 13)
+last_updated: "2026-08-06T11:29:27.101Z"
 last_activity: 2026-08-06
 last_activity_desc: 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 6
-  percent: 0
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 6 of 7 complete (Wave 3 of 6 done)
+Plan: 7 of 7 complete (Wave 3 of 6 done)
 Status: Ready to execute Wave 4 (13-05)
 Last activity: 2026-08-06 — 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 
@@ -108,6 +108,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P04 | 17min | 2 tasks | 2 files |
 | Phase 13 P05 | 24min | 3 tasks | 2 files |
 | Phase 13 P06 | 22min | 3 tasks | 2 files |
+| Phase 13 P07 | 21min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -271,6 +272,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 13-05: customTimeoutOperator deleted outright (sole caller was publish()) rather than left dead, replaced by customSuspendableTimeoutOperator; RAUTH-02/03/04/06/07/09 remain Pending in REQUIREMENTS.md until 13-06 (negentropy/sync) lands, per 13-02/13-04 precedent
 - [Phase 13]: 13-06: negentropy() converted to shared auth operator; Relay.sync retyped RelaySyncOptions and threads auth options into its internal event()/req() calls (RAUTH-08); dead pre-gate waitForAuth() helper deleted
 - [Phase 13]: 13-06: negentropySync's per-attempt cleanup sends NEG-CLOSE before an async AUTH round trip completes, and negentropy() never subscribes watchTower, so its auth-required flag update is not synchronous with server.send() the way req/count/event are
+- [Phase 13]: 13-07: RelayGroup.sync/RelayPool.sync derived via Parameters<> (D-05's last 2 of 5 literals); RelayGroup.sync gained per-relay catchError isolation (D-19) and errorToPublishResponse gained the error field (D-18); RAUTH-01..09 marked Complete in REQUIREMENTS.md once the pool/group leg closed
+- [Phase 13]: 13-07: the plan's non-vacuity probe premise for the pool sync pass-through test does not empirically hold (opts was always forwarded wholesale regardless of type); verified empirically and documented rather than silently worked around, while the genuinely-behavioral D-19 catch WAS verified RED->GREEN
 
 ### Pending Todos
 
@@ -290,6 +293,7 @@ None yet.
 - Plan 12-02's frontmatter lists requirement WIRE-08, but 12-02 only supplies the runtime evidence that the byte-cap ceiling moved upstream (nostr-tools bump + round-trip test). WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - Plan 12-03's frontmatter lists requirement WIRE-08, but 12-03 only retires the invite-side half of the byte-cap removal (INVITE_LIST_MAX_BYTES/inviteListWithinByteCap, INVITE_BUNDLE_MAX_TOTAL_BYTES) per D-07. WIRE-08's own requirement text (the 50-membership enforcement alongside the already-enforced byte cap) is delivered by plan 12-05, which handles the Community List half. Left REQUIREMENTS.md unchanged (still Pending) to avoid a false-complete claim, mirroring the 12-01/12-02 precedent; mark WIRE-08 Complete only when 12-05 lands.
 - [RESOLVED 2026-07-30] Plans 12-07/12-08 both deferred WIRE-09's completion, noting the client-publish-tier closure (saveCommunityList/invite-manager.save() hand-rolling the document from reduced arrays) was plan 12-09's scope per D-23 -- 12-09 landed a `documentExtras` snapshot in both ConcordClient and ConcordInviteManager (spread-first, assign-after at every write site), proven via a six-test cross-cutting suite (document-caps-conformance.test.ts) with three mandatory non-vacuity mutations observed RED at the exact pre-phase defect sites. WIRE-09 marked Complete in REQUIREMENTS.md.
+- Phase 13 deferred-items.md: a connection can drop mid-auth-wait at very low keepAlive (verified pre-existing, not a regression) — worth a backlog entry once Phase 14's auth lifecycle logging work gives it a place to land
 
 ### Quick Tasks Completed
 
@@ -352,8 +356,6 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T11:03:47.279Z
-Stopped at: Completed 13-06-PLAN.md
+Last session: 2026-08-06T11:29:27.075Z
+Stopped at: Completed 13-07-PLAN.md (final plan of phase 13)
 Resume file: 
-
-None
