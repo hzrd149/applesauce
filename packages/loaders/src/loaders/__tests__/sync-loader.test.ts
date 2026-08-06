@@ -993,3 +993,71 @@ describe("13-13: handler-less auth-phase suspension and auth-phase timer lifetim
     }
   });
 });
+
+// 13-12: RAUTH-08 gap closure. These are CONTRACT tests against the loader's injected request/sync
+// functions (D-06: applesauce-loaders depends only on applesauce-core, nanoid and rxjs — it does not
+// import applesauce-relay, even as a devDependency). The two error `.name` strings used below
+// ("AuthRequiredError" / "AuthHandlerError", alongside the pre-existing "AuthTimeoutError" coverage
+// above) are load-bearing wire between packages: they must stay in lockstep with the pinned values
+// RELAY_AUTH_ERROR_NAMES duck-types against (sync-loader.ts) and that AuthRequiredError/AuthHandlerError/
+// AuthTimeoutError construct (packages/relay/src/relay.ts) — a rename in either place silently breaks
+// the D-16 no-fallback guard with no compiler error to catch it.
+describe("13-12: D-16 all-name coverage and the paginated path's own bound", () => {
+  const filter: Filter = { kinds: [1], authors: [user.pubkey] };
+
+  it.each(["AuthRequiredError", "AuthHandlerError"])(
+    "errors the relay without falling back when negentropy sync fails with a %s name (D-16)",
+    async (name) => {
+      const eventStore = new EventStore();
+      const authError = Object.assign(new Error("auth-required: please authenticate"), { name });
+
+      const sync = vi.fn().mockReturnValue(throwError(authError));
+      const request = vi.fn().mockReturnValue(of());
+      const getSupported = vi.fn().mockResolvedValue([1, 77]);
+
+      const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+      const { status$, events$ } = loader({ relays: ["wss://relay/"], filter });
+
+      const statusPromise = collect(status$);
+      events$.subscribe();
+      const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+
+      // Paired negative control for this whole set lives above at "still falls back to a request when
+      // negentropy sync fails with a non-auth error (D-16)" — an unrecognised error name DOES fall back
+      // and DOES call request(), proving this guard actually discriminates rather than always refusing
+      // to fall back.
+      expect(last.relays["wss://relay/"].state).toBe("error");
+      expect(last.relays["wss://relay/"].error?.name).toBe(name);
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not add its own retry layer on top of the paginated path's own terminal auth failure", async () => {
+    const eventStore = new EventStore();
+    // The terminal outcome a real relay.request() now produces once its own authRetries budget is
+    // spent (packages/relay/src/relay.ts's AuthRequiredError, constructed at authRetryOperator's
+    // exhausted outcome) — the bound itself is proven at the wire level by plan 13-09. This test pins
+    // that the loader does not layer its own unbounded retry on top of that already-terminal failure:
+    // exactly one request() call, not a ceiling.
+    const exhaustedAuth = Object.assign(new Error("auth-required: please authenticate"), {
+      name: "AuthRequiredError",
+    });
+    const request = vi.fn().mockReturnValue(throwError(exhaustedAuth));
+    // No NIP-77 support, so the loader pages through a REQ directly — the branch just above the D-16
+    // guard
+    const getSupported = vi.fn().mockResolvedValue([1]);
+    const sync = vi.fn();
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const { status$, events$ } = loader({ relays: ["wss://relay/"], filter });
+
+    const statusPromise = collect(status$);
+    events$.subscribe();
+    const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(last.relays["wss://relay/"].state).toBe("error");
+    expect(last.relays["wss://relay/"].error?.name).toBe("AuthRequiredError");
+    expect(sync).not.toHaveBeenCalled();
+  });
+});
