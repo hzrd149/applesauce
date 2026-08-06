@@ -20,6 +20,7 @@ describe("exports", () => {
         "defined",
         "filterDuplicateEvents",
         "filterOptimalRelays",
+        "filterRelaysPerAuthor",
         "firstValueFrom",
         "getObservableValue",
         "ignoreBlacklistedRelays",
