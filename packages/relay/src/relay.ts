@@ -994,64 +994,10 @@ export class Relay {
 
   /** Create a COUNT observable that emits a single count response */
   count(filters: Filter | Filter[], id = nanoid(), opts?: RelayCountOptions): Observable<RelayCountResponse> {
-    // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE
-    let relayClosedSub = false;
-
-    // Create an observable that filters responses from the relay to just the ones for this COUNT
-    const messages: Observable<RelayCountResponse | AuthRequiredSignal> = this.socket.pipe(
-      filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
-      // Map to typed response. D-01/D-02/D-03: only auth-required is signalled as a value (the shared
-      // auth operator consumes and never forwards it) — check the reason prefix directly (mirrors
-      // req()'s existing value-signal check) rather than parsing then narrowing by instanceof. Every
-      // other recognized CLOSED prefix still throws its typed error unchanged.
-      map<any, RelayCountResponse | AuthRequiredSignal | null>((m) => {
-        if (m[0] === "COUNT") return m[2] as RelayCountResponse;
-        else if (m[0] === "CLOSED") {
-          relayClosedSub = true;
-          const reason = m[2] ?? "";
-
-          if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
-            this.log(`Auth required for COUNT`);
-            this.receivedAuthRequiredForReq.next(true);
-            return authRequiredSignal(reason);
-          }
-
-          const error = parseClosedError(reason);
-          if (error) throw error;
-        }
-        return null;
-      }),
-      // Complete the stream on any CLOSED (including graceful close) or an auth-required signal,
-      // emitting it last (inclusive)
-      takeWhile((m) => m !== null && !isAuthRequiredSignal(m), true),
-      filter((m): m is RelayCountResponse | AuthRequiredSignal => m !== null),
-      // Singleton
-      share(),
-    );
-
-    // Send the COUNT message and listen for response
-    const control = defer(() => {
-      // Reset closed flag on each new COUNT
-      relayClosedSub = false;
-      // Send the COUNT message when subscription starts
-      this.socket.next(Array.isArray(filters) ? ["COUNT", id, ...filters] : ["COUNT", id, filters]);
-
-      return messages;
-    }).pipe(
-      // Send CLOSE when unsubscribed, but not if relay already sent CLOSED
-      finalize(() => {
-        if (!relayClosedSub) this.socket.next(["CLOSE", id]);
-      }),
-    );
-
-    const countObservable = merge(this.watchTower, control).pipe(
-      // Complete when messages completes (unprefixed CLOSED = graceful relay close, or the terminal
-      // auth-required signal)
-      takeUntil(messages.pipe(ignoreElements(), endWith(true))),
-    );
-
     // D-04: count owns both the auth operator and its own clock in this one method, unlike
-    // request()/req() — nothing needs threading via AUTH_PHASE_GATE.
+    // request()/req() — nothing needs threading via AUTH_PHASE_GATE. Call-scoped: one gate spans every
+    // attempt of this count() call, which is what lets suspendableTimeout suspend its clock across
+    // every auth phase rather than resetting per attempt.
     const gate = new AuthPhaseGate();
 
     // D-04/D-09: the shared auth-retry operator drives the whole read auth phase. RAUTH-02: no
@@ -1061,7 +1007,78 @@ export class Relay {
     const authOperator: OperatorFunction<RelayCountResponse | AuthRequiredSignal, RelayCountResponse> =
       this.authRetryOperator("read", opts, gate, () => true);
 
-    return defer(() => this.waitForReady(countObservable)).pipe(
+    return defer(() => {
+      // CR-03: mirrors req()'s CR-02 fix — one auth attempt owns one send and one terminating listen
+      // chain, both constructed fresh on every subscription to this defer, including the internal
+      // resubscription the shared auth operator drives from inside its own CLOSED dispatch when a
+      // synchronous onAuthRequired handler resolves the auth phase synchronously. Nothing that
+      // completes on the auth-required signal is hoisted above this defer, so a synchronous resubscribe
+      // always reaches a live listen chain instead of rejoining one that already terminated (mirrors
+      // event()'s 13-05 and req()'s 13-09 send/listen splits).
+
+      // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE.
+      // Attempt-scoped (CR-03): a stale value from a prior attempt would send a redundant CLOSE for a
+      // COUNT the relay already closed.
+      let relayClosedSub = false;
+
+      // Create an observable that filters responses from the relay to just the ones for this COUNT.
+      // Per-attempt: a fresh chain, so a resend after an auth-required signal always registers its own
+      // socket filters and its own inclusive takeWhile rather than rejoining a chain that already
+      // completed for the previous attempt.
+      const messages: Observable<RelayCountResponse | AuthRequiredSignal> = this.socket.pipe(
+        filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
+        // Map to typed response. D-01/D-02/D-03: only auth-required is signalled as a value (the
+        // shared auth operator consumes and never forwards it) — check the reason prefix directly
+        // (mirrors req()'s existing value-signal check) rather than parsing then narrowing by
+        // instanceof. Every other recognized CLOSED prefix still throws its typed error unchanged.
+        map<any, RelayCountResponse | AuthRequiredSignal | null>((m) => {
+          if (m[0] === "COUNT") return m[2] as RelayCountResponse;
+          else if (m[0] === "CLOSED") {
+            relayClosedSub = true;
+            const reason = m[2] ?? "";
+
+            if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
+              this.log(`Auth required for COUNT`);
+              this.receivedAuthRequiredForReq.next(true);
+              return authRequiredSignal(reason);
+            }
+
+            const error = parseClosedError(reason);
+            if (error) throw error;
+          }
+          return null;
+        }),
+        // Complete the stream on any CLOSED (including graceful close) or an auth-required signal,
+        // emitting it last (inclusive)
+        takeWhile((m) => m !== null && !isAuthRequiredSignal(m), true),
+        filter((m): m is RelayCountResponse | AuthRequiredSignal => m !== null),
+        // Singleton within this attempt only
+        share(),
+      );
+
+      // Send the COUNT message and listen for response. Per-attempt: this send side effect always
+      // re-runs when this defer's factory runs, independent of any share() reset timing — the fix for
+      // CR-03's "resend never reaches a live listen chain" symptom.
+      const control = defer(() => {
+        // Send the COUNT message when subscription starts
+        this.socket.next(Array.isArray(filters) ? ["COUNT", id, ...filters] : ["COUNT", id, filters]);
+
+        return messages;
+      }).pipe(
+        // Send CLOSE when unsubscribed, but not if relay already sent CLOSED
+        finalize(() => {
+          if (!relayClosedSub) this.socket.next(["CLOSE", id]);
+        }),
+      );
+
+      const countObservable = merge(this.watchTower, control).pipe(
+        // Complete when messages completes (unprefixed CLOSED = graceful relay close, or the terminal
+        // auth-required signal)
+        takeUntil(messages.pipe(ignoreElements(), endWith(true))),
+      );
+
+      return this.waitForReady(countObservable);
+    }).pipe(
       authOperator,
       // Complete on the first (genuine) COUNT response (COUNT responses are single-shot)
       take(1),
