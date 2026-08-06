@@ -25,14 +25,14 @@ import {
   startWith,
   switchMap,
   take,
-  timeout,
   timer,
   toArray,
 } from "rxjs";
 import { type ReconcileFunction } from "./negentropy.js";
+import { AUTH_PHASE_GATE, AuthPhaseGate, suspendableTimeout } from "./operators/auth-retry.js";
 import { completeWhen } from "./operators/complete-when.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
-import { Relay, SyncDirection } from "./relay.js";
+import { isReqProgress, Relay, SyncDirection } from "./relay.js";
 import {
   FilterInput,
   GroupNegentropySyncOptions,
@@ -247,19 +247,31 @@ export class RelayGroup {
       // Default complete condition is to wait for the first relay to send an EOSE message and then timeout or all relays to EOSE
       RelayGroup.completeOnAny(RelayGroup.completeAfterFirstRelay(5_000), RelayGroup.completeOnAllEose());
 
+    // D-15/WR-02: one AuthPhaseGate per call, shared by every relay in the fan-out — the group's clock
+    // is a single budget over the whole fan-out, so any relay's in-flight auth phase must suspend it.
+    const gate = new AuthPhaseGate();
+
     return this.internalSubscription(
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
         relay.req(
           filters,
-          // Manually default to relays reconnect config
-          { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect },
+          // Manually default to relays reconnect config; thread the shared gate so req()'s auth phase
+          // suspends this call's own operation clock below.
+          { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect, [AUTH_PHASE_GATE]: gate },
         ),
     ).pipe(
       // Add the completion condition if provided
       complete ? completeWhen(complete) : identity,
-      // Add request timeout
-      timeout({ first: opts?.timeout ?? 30_000 }),
+      // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
+      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. isReqProgress
+      // excludes req()'s synthetic OPEN so it can no longer cancel this clock before the relay has said
+      // anything (WR-01's group analog). Wrapped (not redeclared) because the group stream also carries
+      // GroupReqErrorMessage, a per-relay connection-error value isReqProgress's parameter type does not
+      // admit even though its OPEN-exclusion check applies identically.
+      suspendableTimeout(opts?.timeout ?? 30_000, gate, {
+        firstWhen: (message: GroupReqMessage) => isReqProgress(message as RelayReqMessage),
+      }),
       // Filter only for event messages
       filter((message) => message.type === "EVENT"),
       // Extract event messages
