@@ -52,7 +52,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 
 **Hard sequencing:** Phase 15 is hard-blocked on Phase 13 — CAUTH-01..04 need `onAuthRequired`/`authTimeout`/`authRetries` to exist on both the paginated REQ path and the negentropy sync path before Concord's stream-auth engines can migrate off the client-wide registry. Phase 14 depends on Phase 13 only softly (13 restructures the auth surface that 14 instruments with logging).
 
-- [ ] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (waves 1-6 complete 2026-08-06; reopened by verification — gap closure in waves 7-11)
+- [ ] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (waves 1-6 complete 2026-08-06; reopened by verification — gap closure in waves 7-12)
 - [ ] **Phase 14: Auth Lifecycle Debug Logging** - A NIP-42 auth attempt's lifecycle and outcome become observable in debug output, and every `packages/loaders/` logger is derived once instead of `.extend()`-ed inline
 - [ ] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine
 
@@ -118,7 +118,11 @@ Plans:
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
-- [ ] 13-12-PLAN.md — `SyncLoader` contract tests, changesets, and RAUTH-03/07/08 closure (wave 11)
+- [ ] 13-13-PLAN.md — `SyncLoader` auth-phase suspension independent of the caller's handler, and auth-phase timer lifetime (WR-03/WR-04, wave 11)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+
+- [ ] 13-12-PLAN.md — `SyncLoader` contract tests, changesets, and RAUTH-03/07/08 closure (wave 12)
 
 ### Phase 14: Auth Lifecycle Debug Logging
 
