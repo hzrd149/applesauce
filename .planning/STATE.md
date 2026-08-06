@@ -5,15 +5,15 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Completed 13-13-PLAN.md
-last_updated: "2026-08-06T22:02:17.575Z"
+stopped_at: Completed 13-11-PLAN.md
+last_updated: "2026-08-06T22:15:03.943Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 5 of 13
+Plan: 6 of 13
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 13 execution started
 
@@ -113,6 +113,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P09 | 25min | 3 tasks | 2 files |
 | Phase 13-13 P13-13 | 25min | 3 tasks | 2 files |
 | Phase 13 P10 | 35min | 3 tasks | 3 files |
+| Phase 13 P11 | 10min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -289,6 +290,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 13-10: count()'s messages/relayClosedSub moved from call-scoped constants into the same per-attempt defer shape 13-09 gave req(), closing CR-03 -- event()'s messages never needed this fix since it has no terminating condition of its own
 - [Phase ?]: 13-10: send/listen invariant stated once as a comment above the shared authRetryOperator adapter (relay.ts); Task 3's eight-operation + RelayGroup/RelayPool audit found no further violation beyond the already-known, already-scoped WR-02 gap (RelayGroup.request()'s missing gate threading, owned by 13-11)
 - [Phase ?]: 13-10: REQUIREMENTS.md left unchanged (RAUTH-03/RAUTH-07 remain In Progress) per the 13-08/13-09 precedent -- plan 13-12 is the designated closing plan that flips RAUTH-03/07/08 to Complete once every gap-closure plan in this wave sequence has landed
+- [Phase ?]: 13-11: RelayGroup.request() gate threading wraps isReqProgress (message: GroupReqMessage) => isReqProgress(message as RelayReqMessage) rather than redeclaring it, since GroupReqMessage is a strict superset RelayReqMessage's parameter type does not admit
+- [Phase ?]: 13-11: D-15 clock-suspension and clock-fires tests build a single-relay RelayGroup([relay1]) rather than reusing the shared two-relay group, so relay2's independent EOSE lifecycle cannot entangle the clock assertions
 
 ### Pending Todos
 
@@ -372,7 +375,7 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T22:00:59.787Z
-Stopped at: Completed 13-13-PLAN.md
+Last session: 2026-08-06T22:15:03.933Z
+Stopped at: Completed 13-11-PLAN.md
 Resume file: 
 None
