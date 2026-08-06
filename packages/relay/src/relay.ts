@@ -16,7 +16,6 @@ import {
   endWith,
   filter,
   finalize,
-  first,
   firstValueFrom,
   from,
   identity,
@@ -1186,49 +1185,42 @@ export class Relay {
     const { buildStorageVector, buildStorageFromFilter, negentropySync, NegentropyError } =
       await import("./negentropy.js");
 
-    const waitForAuth = opts?.waitForAuth ?? true;
-
     // Build the storage vector fresh for each negotiation attempt (so an auth retry re-negotiates cleanly)
     const buildStorage = async () =>
       Array.isArray(store) ? buildStorageVector(store) : await buildStorageFromFilter(store, filter);
 
-    // Run a single negentropy negotiation, mapping NEG-ERR reasons to typed relay errors
-    const runSync = defer(() =>
+    // Run a single negentropy negotiation. D-02: a NegentropyError from negentropySync is still translated
+    // at this edge — its reason is parsed by parseClosedError, because translating a lower layer's error at
+    // the boundary is not throw-as-signal. What changes is the result: when the parse yields
+    // AuthRequiredError, the translation produces an auth-required signal value instead of re-throwing
+    // (D-01), flipping the informational flag at the same point so authRequiredForRead$ keeps updating
+    // (RAUTH-09). Every other parsed prefix still re-throws its typed error, and an unparseable reason
+    // still re-throws the original.
+    const runSync: Observable<boolean | AuthRequiredSignal> = defer(() =>
       from(buildStorage().then((storage) => negentropySync(storage, this.socket, filter, reconcile, opts))),
     ).pipe(
       catchError((err) => {
-        // Map negentropy NEG-ERR reasons (e.g. `auth-required:`) to typed relay errors so the retry below can react
         if (err instanceof NegentropyError) {
           const parsed = parseClosedError(err.reason);
+          if (parsed instanceof AuthRequiredError) {
+            this.log(`Auth required for sync`);
+            this.receivedAuthRequiredForReq.next(true);
+            return of(authRequiredSignal(parsed.reason));
+          }
           if (parsed) return throwError(() => parsed);
         }
         return throwError(() => err);
       }),
     );
 
-    // Wait for auth before sending when a previous request already required it, then retry after authenticating.
-    // Mirrors the auth strategy used by req().
-    const withAuthStrategy = waitForAuth ? this.waitForAuth(this.authRequiredForRead$, runSync, waitForAuth) : runSync;
+    // D-04: negentropy() has no operation-level clock of its own (that's sync()'s to manage), so nothing
+    // needs threading via AUTH_PHASE_GATE here — construct a fresh gate locally.
+    const gate = new AuthPhaseGate();
 
-    const observable = withAuthStrategy.pipe(
-      retry({
-        delay: (error) => {
-          // Re-throw non-auth-required errors
-          if (!(error instanceof AuthRequiredError)) return throwError(() => error);
-
-          // Flip the flag to indicate that auth is required for reads
-          this.log(`Auth required for sync`);
-          this.receivedAuthRequiredForReq.next(true);
-
-          // If not waiting for auth, re-throw the error
-          if (!waitForAuth) return throwError(() => error);
-
-          // Wait for authentication (of the required users) before retrying the negotiation
-          // NOTE: use `first` instead of the `filter` operator, which is shadowed by the `filter` parameter here
-          return this.authSatisfied$(waitForAuth).pipe(first((satisfied) => satisfied));
-        },
-      }),
-    );
+    // D-04/D-09: the shared auth-retry operator drives the whole auth flow, delegating handler invocation,
+    // the per-phase timeout, retry counting/reset and error mapping. RAUTH-02: no pre-block — the
+    // negotiation starts immediately regardless of any other operation's auth state.
+    const observable: Observable<boolean> = runSync.pipe(this.authRetryOperator("sync", opts, gate));
 
     // Resolve to false if aborted while waiting for auth (before negentropySync starts handling the signal itself)
     const signal = opts?.signal;
