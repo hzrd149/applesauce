@@ -1832,6 +1832,243 @@ describe("count", () => {
   });
 });
 
+describe("operation-scoped COUNT auth (13-04)", () => {
+  it("RAUTH-02: a fresh COUNT is sent immediately while an earlier, unrelated REQ is auth-blocked", async () => {
+    const reqSpy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "a", authTimeout: 30 }), { expectErrors: true });
+    await expect(server).toReceiveMessage(["REQ", "a", { kinds: [1] }]);
+
+    // "a" is told auth is required — the old pre-block would have made a fresh COUNT wait behind this
+    server.send(["CLOSED", "a", "auth-required: need to authenticate"]);
+
+    const countSpy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+
+    // The COUNT must be sent immediately, before any AUTH frame is ever sent
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    expect(server.messages.some((m: any) => m[0] === "AUTH")).toBe(false);
+
+    reqSpy.unsubscribe();
+    countSpy.unsubscribe();
+  });
+
+  it("RAUTH-01: invokes onAuthRequired with the full operation-local context", async () => {
+    const onAuthRequired = vi.fn().mockResolvedValue(undefined);
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired, authTimeout: 50 }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-xyz"]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(onAuthRequired).toHaveBeenCalledWith({
+      relay,
+      url: relay.url,
+      challenge: "challenge-xyz",
+      operation: "read",
+      requirement: true,
+      missingPubkeys: null,
+      reason: "auth-required: need to authenticate",
+    });
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-03: retries exactly once by default and resends the COUNT after the handler authenticates", async () => {
+    const user = new FakeUser();
+    const onAuthRequired = vi.fn(async () => {
+      await relay.authenticate(user);
+    });
+
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired }));
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    expect(authMsg[0]).toBe("AUTH");
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    server.send(["COUNT", "count1", { count: 3 }]);
+
+    await spy.onComplete();
+
+    const countFrames = server.messages.filter((m: any) => m[0] === "COUNT" && m[1] === "count1");
+    expect(countFrames).toHaveLength(2);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(spy.getValues()).toEqual([{ count: 3 }]);
+  });
+
+  it("RAUTH-03: authRetries:2 allows three COUNT frames total", async () => {
+    const user = new FakeUser();
+    const onAuthRequired = vi.fn(async () => {
+      if (!relay.isAuthenticated(user.pubkey)) await relay.authenticate(user);
+    });
+
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired, authRetries: 2 }));
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["AUTH", "challenge-1"]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", authMsg[1].id, true, ""]);
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    // The relay demands auth again on the second attempt (already-authenticated user, no new AUTH round trip)
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    server.send(["COUNT", "count1", { count: 9 }]);
+
+    await spy.onComplete();
+
+    const countFrames = server.messages.filter((m: any) => m[0] === "COUNT" && m[1] === "count1");
+    expect(countFrames).toHaveLength(3);
+    expect(onAuthRequired).toHaveBeenCalledTimes(2);
+    expect(spy.getValues()).toEqual([{ count: 9 }]);
+  });
+
+  it("RAUTH-03: authRetries:0 exhausts immediately without invoking the handler or retrying", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired, authRetries: 0 }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+
+    const countFrames = server.messages.filter((m: any) => m[0] === "COUNT" && m[1] === "count1");
+    expect(countFrames).toHaveLength(1);
+  });
+
+  it("RAUTH-04: a short authTimeout errors with AuthTimeoutError when the requirement is never satisfied", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired, authTimeout: 30 }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(AuthTimeoutError);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("RAUTH-04: a rejecting handler errors with AuthHandlerError carrying the rejection as cause", async () => {
+    const cause = new Error("nope");
+    const onAuthRequired = vi.fn().mockRejectedValue(cause);
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired }), { expectErrors: true });
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(AuthHandlerError);
+    expect((spy.getError() as AuthHandlerError).cause).toBe(cause);
+  });
+
+  it("RAUTH-06: waitForAuth:false never invokes the handler and errors with AuthRequiredError", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { waitForAuth: false, onAuthRequired }), {
+      expectErrors: true,
+    });
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+  });
+
+  it("D-02/D-03: a non-auth CLOSED prefix still throws RelayClosedError immediately, without invoking the handler", async () => {
+    const onAuthRequired = vi.fn();
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired }), { expectErrors: true });
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "restricted: not allowed"]);
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(RelayClosedError);
+    expect(spy.getError()).not.toBeInstanceOf(AuthRequiredError);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+  });
+
+  it("RAUTH-09: authRequiredForRead$ flips true when a COUNT receives auth-required", async () => {
+    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { authTimeout: 30 }), { expectErrors: true });
+
+    const flagSpy = subscribeSpyTo(relay.authRequiredForRead$);
+    expect(flagSpy.getLastValue()).toBe(false);
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    // Check immediately (not after a delay): this fixture's keepAlive=0 is a pre-existing quirk that
+    // lets the connection drop and resetState() clear the flag again once nothing has resubscribed
+    // for a few ms — orthogonal to what RAUTH-09 asserts here (the flag flips true the instant
+    // auth-required is received)
+    expect(flagSpy.getLastValue()).toBe(true);
+  });
+
+  it("D-15: count()'s 10s clock is suspended across the auth phase", async () => {
+    // D-20 mandates real timers and no mocked time advance, and count()'s 10s budget is not
+    // user-configurable (unlike request()'s opts.timeout), so a literal >10s real-time wait would
+    // be the only other way to observe this. Instead, spy on the real global setTimeout and assert
+    // the operation-clock timer is re-armed with (approximately) its full original budget after the
+    // auth phase closes, rather than the auth-wait duration having been deducted from it — this is
+    // "real ordering" (genuine setTimeout calls made by suspendableTimeout), not a mocked advance,
+    // and fails RED against a reverted bare `timeout({first: 10_000, ...})` implementation, which
+    // arms exactly once for the operation's whole lifetime and never re-arms around an auth phase.
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    const onAuthRequired = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
+    });
+
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { onAuthRequired, authTimeout: false }));
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
+
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["COUNT", "count1", { count: 5 }]);
+
+    await spy.onComplete();
+
+    // The COUNT succeeded despite the auth interruption, rather than producing a COUNT-timeout error
+    expect(spy.getValues()).toEqual([{ count: 5 }]);
+    expect(spy.receivedError()).toBe(false);
+
+    // The 10s clock was armed (before the auth phase) and re-armed (after it closed) with
+    // essentially its full original budget, not `10_000 - the ~30ms auth wait`
+    const fullBudgetArms = setTimeoutSpy.mock.calls.filter(
+      ([, delay]) => typeof delay === "number" && delay > 9000,
+    );
+    expect(fullBudgetArms.length).toBeGreaterThanOrEqual(2);
+
+    setTimeoutSpy.mockRestore();
+  });
+});
+
 describe("close", () => {
   it("should close the socket", async () => {
     subscribeSpyTo(relay.req([{ kinds: [1] }]));
