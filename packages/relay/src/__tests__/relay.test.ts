@@ -1724,6 +1724,106 @@ describe("operation-scoped REQ auth (13-02)", () => {
   });
 });
 
+describe("operation-scoped REQ auth gap closure (13-09, CR-02/WR-01)", () => {
+  it("T-13-09-01 (REQ leg of RESEARCH gap 1): a persistently auth-requiring relay receives exactly authRetries + 1 REQ frames, then a terminal AuthRequiredError, with the default retries left in place", async () => {
+    // Synchronous handler — this is exactly what CR-02 dropped: driving the shared operator's
+    // resubscribe from inside the very CLOSED dispatch that delivered auth-required. Against pre-Task-1
+    // req(), the second REQ never reached the socket at all (silent complete, 0 events) instead of
+    // exhausting cleanly with a terminal AuthRequiredError.
+    const onAuthRequired = vi.fn(() => {
+      relay.authenticationResponse$.next({ ok: true, from: relay.url });
+    });
+
+    // reconnect:true exercises customConnectionRetryOperator's RelayClosedError skip too (mirrors
+    // T-13-01's genuine test of the analogous skip in publish()'s customRetryOperator) — without it,
+    // the exhausted AuthRequiredError would be retried after the connection-retry's own backoff.
+    const spy = subscribeSpyTo(
+      relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: 50, reconnect: true }),
+      { expectErrors: true },
+    );
+
+    // First REQ
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    // Second (and last) REQ — authRetries defaults to 1, so authRetries + 1 = 2 total sends
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+
+    // Prove customConnectionRetryOperator's RelayClosedError skip (D-07) does not let a third REQ
+    // frame land after the exhausted auth failure — DEFAULT_RETRY_CONFIG's first backoff is
+    // count(1) * 1000ms = 1000ms. Wait comfortably past that (1200ms, matching T-13-01's identical
+    // non-vacuity reasoning), not a short window, so this assertion cannot pass vacuously just
+    // because the retry hadn't fired yet.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const reqFrames = server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "sub1");
+    expect(reqFrames).toHaveLength(2);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("CR-02: a synchronously-resolving auth phase produces a real REQ resend whose reply is observed", async () => {
+    // waitForAuth: [] is an already-satisfied requirement (empty array), so per D-11 the shared
+    // operator's wait resolves synchronously the instant the (synchronous, non-Promise-returning)
+    // handler returns — driving the resubscribe from inside the very CLOSED-message dispatch that
+    // delivered auth-required. This is the exact reentrancy CR-02 describes; an async handler always
+    // worked correctly even against the pre-Task-1 code (13-05 precedent for the same defect class in
+    // event()).
+    const onAuthRequired = vi.fn();
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1", onAuthRequired, waitForAuth: [] }));
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    // The resend must actually reach the wire — against pre-Task-1 req() this second REQ frame never
+    // arrived (the socket saw exactly one REQ frame and the subscriber silently completed with 0 events).
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    expect(spy.receivedComplete()).toBe(false);
+
+    // Non-vacuity: asserting only the frame count would still pass against a resend that reaches the
+    // wire but joins a dead listen chain (count()'s pre-13-10 CR-03 shape) — the reply must be observed.
+    server.send(["EVENT", "sub1", mockEvent]);
+    server.send(["EOSE", "sub1"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(spy.getValues().some((v: any) => v.type === "EVENT" && v.event.id === mockEvent.id)).toBe(true);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+
+    spy.unsubscribe();
+  });
+
+  it("RAUTH-07 (inheritance leg): subscription()'s REQ resend is bounded exactly like req()'s own, not an unbounded loop", async () => {
+    // Short — exists to prove subscription() inherits req()'s bound rather than re-testing the
+    // mechanism, which the two tests above already cover directly on req().
+    const onAuthRequired = vi.fn(() => {
+      relay.authenticationResponse$.next({ ok: true, from: relay.url });
+    });
+
+    const spy = subscribeSpyTo(
+      relay.subscription({ kinds: [1] }, { id: "sub1", onAuthRequired, authTimeout: 50 }),
+      { expectErrors: true },
+    );
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
+
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+
+    const reqFrames = server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "sub1");
+    expect(reqFrames).toHaveLength(2);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("send", () => {
   it("should send a custom message to the server", async () => {
     // Force a connection
