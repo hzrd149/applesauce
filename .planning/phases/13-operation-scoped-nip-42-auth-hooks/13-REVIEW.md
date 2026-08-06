@@ -1,343 +1,538 @@
 ---
 phase: 13-operation-scoped-nip-42-auth-hooks
-reviewed: 2026-08-06T11:48:11Z
+reviewed: 2026-08-06T22:56:57Z
 depth: standard
-files_reviewed: 14
+round: gap-closure (supersedes the 2026-08-06T11:48:11Z review of waves 1-7)
+files_reviewed: 22
 files_reviewed_list:
-  - packages/loaders/src/loaders/sync-loader.ts
-  - packages/loaders/src/loaders/__tests__/exports.test.ts
-  - packages/loaders/src/loaders/__tests__/sync-loader.test.ts
-  - packages/relay/src/group.ts
-  - packages/relay/src/negentropy.ts
   - packages/relay/src/operators/auth-retry.ts
-  - packages/relay/src/pool.ts
   - packages/relay/src/relay.ts
+  - packages/relay/src/group.ts
+  - packages/relay/src/pool.ts
+  - packages/relay/src/negentropy.ts
+  - packages/relay/src/types.ts
   - packages/relay/src/__tests__/auth-retry.test.ts
-  - packages/relay/src/__tests__/exports.test.ts
+  - packages/relay/src/__tests__/relay.test.ts
   - packages/relay/src/__tests__/group.test.ts
   - packages/relay/src/__tests__/pool.test.ts
-  - packages/relay/src/__tests__/relay.test.ts
-  - packages/relay/src/types.ts
+  - packages/relay/src/__tests__/exports.test.ts
+  - packages/loaders/src/loaders/sync-loader.ts
+  - packages/loaders/src/loaders/__tests__/sync-loader.test.ts
+  - packages/loaders/src/loaders/__tests__/exports.test.ts
+  - .changeset/relay-auth-handler-sync-throw-mapped.md
+  - .changeset/relay-auth-resend-req-count-observed.md
+  - .changeset/relay-auth-retry-bound-not-reset-by-req-open.md
+  - .changeset/relay-group-logger-routing.md
+  - .changeset/relay-group-request-timeout-suspended.md
+  - .changeset/relay-request-timeout-can-fire.md
+  - .changeset/sync-loader-auth-phase-timer-leak-fixed.md
+  - .changeset/sync-loader-handlerless-stall-suspension.md
 findings:
-  critical: 4
-  warning: 6
-  info: 3
-  total: 13
+  critical: 3
+  warning: 11
+  info: 0
+  total: 14
 status: issues_found
 ---
 
-# Phase 13: Code Review Report
+# Phase 13: Code Review Report (gap-closure round)
 
-**Reviewed:** 2026-08-06T11:48:11Z
+**Reviewed:** 2026-08-06T22:56:57Z
 **Depth:** standard
-**Files Reviewed:** 14
+**Files Reviewed:** 22
 **Status:** issues_found
 
 ## Summary
 
-The shared-operator design (`operators/auth-retry.ts`) is sound in isolation and its unit tests pass, but
-the design's guarantees do **not** survive the conversion of all four call sites. Three of the four
-guarantees the phase set out to make structural are broken at the `req()` and `count()` call sites, and
-one is broken inside the operator itself:
+This gap-closure round genuinely closes CR-01..CR-04 and WR-01..WR-06 as scoped. I traced each fix
+rather than trusting the SUMMARY files, and each holds:
 
-- **Retry accounting is unbounded on `req()`** — `req()` emits an `OPEN` control message on every
-  (re)subscription, and `authRetry`'s D-08 "any real value resets the counter" tap treats it as progress.
-  A relay that keeps answering `auth-required` drives an infinite REQ/handler loop.
-- **The 13-05 reentrancy fix was applied only to `event()`** — `req()` and `count()` still bundle their
-  send into (or behind) a stream that completes on the auth-required signal, so a synchronously resolving
-  auth phase silently drops the operation.
-- **A synchronously *throwing* `onAuthRequired` escapes the operator's error mapping** — it propagates raw
-  instead of as `AuthHandlerError`, which defeats both the `RelayClosedError` retry skip in
-  `publish()` (D-07) and the loader's `RELAY_AUTH_ERROR_NAMES` duck-typing (D-06/D-16).
+- `authRetry`'s `isProgress` and `suspendableTimeout`'s `firstWhen` are structurally required; a
+  call site that omits them is a compile error, not a runtime surprise.
+- `req()` (13-09) and `count()` (13-10) now build the send side effect and the terminating listen
+  chain together inside one unshared `defer`. I traced the reentrant path — the `share()` Subject
+  delivers `next` to the `ignoreElements` notifier and the control `switchMap` before `complete`,
+  and `expand` resubscribes the defer synchronously inside that `next` dispatch — and confirmed the
+  resend now reaches a live chain.
+- `event()` satisfies the send/listen invariant for the reason stated (its `messages` share never
+  terminates, and attempt 2 joins it before attempt 1 drops the refcount to zero).
+  `negentropy()`/`sync()` satisfy it because `runSync` is a `defer` over a Promise, so the
+  resubscribe is always asynchronous. `publish()`/`subscription()` inherit from `event()`/`req()`.
+- D-06 holds: `packages/loaders/package.json` declares only `applesauce-core`, `nanoid` and `rxjs`,
+  and no file under `packages/loaders/src` imports `applesauce-relay` at value or type level.
+- 13-13's WR-04 timer work holds; all three leak paths (arm-after-close, synchronous throw,
+  teardown) are covered and the `finalize` placement rationale is correct as far as it goes.
+- All eight changesets comply with CLAUDE.md: one change each, a single sentence of markdown, no
+  bullets, no code blocks, no multiple paragraphs. `patch` is the right bump for eight bug fixes;
+  the phase's new public surface is already covered by the pre-existing `minor`
+  `relay-operation-scoped-auth-callbacks.md`.
 
-All four Critical findings were reproduced against the real `Relay` with `vitest-websocket-mock`; the
-observed frame counts and stream outcomes are quoted verbatim in each finding. The probe files were
-deleted after use — no source file was modified by this review.
+What this round did **not** close is the defect *class* it claims to have made unrepresentable.
+Three blockers below are live, remotely triggerable, unbounded-hang or wrong-error defects that I
+reproduced against the real `Relay`/`RelayGroup` with `vitest-websocket-mock` (probe files written
+under `packages/relay/src/__tests__/`, run individually, deleted after use; `git status --short`
+confirmed a clean tree afterwards). One of them (CR-02 below) is the *exact* WR-01 "bookkeeping
+value counted as progress" defect, reintroduced at the very group call site plan 13-11 was written
+to fix.
 
-Secondary concerns: `Relay.request()`'s operation clock can never fire (pre-existing, but the phase
-rewrote and re-documented that line as the D-15 budget), `RelayGroup.request()` was left off the D-15
-suspension entirely, and the sync-loader's stall-guard suspension is conditional on the caller supplying a
-handler.
+The four suites I ran are green (238/238). The blockers are invisible to them because no test
+exercises a multi-round negentropy negotiation, a group request mixing erroring and silent relays,
+or a `CLOSED` reason whose prefix collides with `Object.prototype`.
 
 ## Critical Issues
 
-### CR-01: `req()` auth retries are unbounded — the `OPEN` message resets the retry budget
+### CR-01: `negentropySync` never sends the follow-up `NEG-MSG` — any multi-round sync hangs forever
 
-**File:** `packages/relay/src/relay.ts:905` (the `OPEN` emission) with `packages/relay/src/operators/auth-retry.ts:286-289` (the reset `tap`)
-**Issue:**
-`authRetry` resets `consecutive = 0` on *any* value that is not an auth-required signal (D-08). Every
-re-subscription of `req()`'s source re-sends the REQ and immediately emits
-`{ type: "OPEN", ... }` before anything from the relay arrives. That `OPEN` flows through the operator as a
-real value and zeroes the counter, so `consecutive >= authRetries` can never be reached: the operator runs
-an auth phase, retries, sees `OPEN`, resets, and repeats forever.
+**File:** `packages/relay/src/negentropy.ts:129-157` (specifically 144-148); dead capability declared at `:66`
 
-Reproduced (default `authRetries: 1`, relay answers `CLOSED … auth-required` to every REQ, handler resolves
-on a macrotask and satisfies auth):
-
-```
-relay.req(...)      -> 25 REQ frames, 25 onAuthRequired invocations, no error   (expected 2 / 1 / AuthRequiredError)
-relay.request(...)  -> 30 REQ frames, 30 onAuthRequired invocations, no error   (expected 2 / 1 / AuthRequiredError)
-relay.count(...)    ->  2 COUNT frames, 1 invocation, AuthRequiredError          (correct — COUNT has no OPEN message)
-```
-
-The COUNT contrast isolates the cause. In a real app each extra cycle is another signer prompt / AUTH event
-and another REQ to a hostile relay; `subscription()`, `request()`, `RelayGroup.req/request/subscription` and
-`RelayPool` all inherit it. The existing REQ tests never exercise a persistently auth-requiring relay (the
-EVENT path has exactly that test — `T-13-01`, relay.test.ts:937 — the REQ path does not), which is why this
-is not caught.
-
-**Fix:** make "progress" explicit instead of "any value". Add a predicate to the operator config and pass it
-from `req()`:
+**Issue:** The reconciliation loop computes the next client message and stores it, but never writes
+it to the socket:
 
 ```ts
-// auth-retry.ts
-export type AuthRetryConfig = {
-  /** Values that count as real progress and reset the consecutive counter (default: all) */
-  isProgress?: (value: unknown) => boolean;
-  // ...
-};
-// ...
-tap((value) => {
-  if (config.isProgress?.(value) ?? true) consecutive = 0;
-}),
-
-// relay.ts req()
-this.authRetryOperator("read", opts, gate, (m) => (m as RelayReqMessage).type !== "OPEN"),
+const [newMsg, have, need] = await ne.reconcile<string>(received.data);
+await reconcile(have, need);
+msg = newMsg;          // <- assigned, never sent
 ```
 
-Add a REQ-side non-vacuity test mirroring `T-13-01`: a relay that always answers `auth-required` must
-receive exactly `authRetries + 1` REQ frames and then terminate with `AuthRequiredError`.
+`socket.multiplex`'s `open` callback sends `["NEG-OPEN", id, filter, initialMessage]` exactly once
+on subscribe. `incoming` is `share()`d and held open by `sub` (line 123), so the refcount never
+reaches zero and the multiplex never re-opens. The `socket` parameter is typed
+`MultiplexWebSocket & { next: (msg: any) => void }` — the `next` capability exists precisely so this
+loop can send `["NEG-MSG", id, msg]` — and `socket.next` is never called anywhere in the file.
 
-### CR-02: `req()` silently drops the resend (and completes with no events) when the auth phase resolves synchronously
+Consequence: whenever `ne.reconcile()` returns a non-null `newMsg`, the loop iterates and blocks on
+`firstValueFrom(race(incoming, abortSignal$))` waiting for a reply the relay will never send,
+because the client never asked. Nothing bounds it: `Relay.negentropy()` documents "no
+operation-level clock of its own (that's `sync()`'s to manage)" (relay.ts:1271-1273) and
+`Relay.sync()` has no clock either — it is a bare `new Observable` around the promise. So
+`relay.sync()`, `pool.sync()` and `RelayGroup.sync()` hang indefinitely unless the caller aborts.
+`applesauce-loaders`' `SyncLoader` is the only bounded caller, and only because its own `withTimeout`
+stall guard fires — which then reports a spurious "sync failed" and burns the paginated fallback.
 
-**File:** `packages/relay/src/relay.ts:855-953`
-**Issue:**
-`req()` puts the REQ-sending `control` *inside* the `share()`d `observable` (line 924-935), and its
-`messages` stream completes on the auth-required signal (`takeWhile(..., true)`, line 889). When the auth
-phase resolves synchronously — a synchronous `onAuthRequired` plus an already-satisfied requirement, which
-D-11 explicitly supports ("the handler always runs, even if `waitForAuth` is already satisfied") — the
-operator re-subscribes the source from inside the current message dispatch. At that instant the `share()` is
-still connected (refCount 1), so the re-subscription joins the *existing* subject instead of re-running
-`control`; no REQ is sent, and the in-flight completion then terminates both subscribers.
+Reproduced: driving the real `lib/negentropy.ts` `Negentropy` on both sides with two diverging
+500-item sets required **2** client→server messages before `reconcile` returned null. Only the first
+is ever written. The existing suite passes only because `relay.test.ts:2748-2751` deliberately keeps
+both sides under 32 items, where the negotiation always resolves in a single round trip — the test's
+own comment says exactly this.
 
-Reproduced with `waitForAuth: []` (satisfied synchronously) and a synchronous handler:
-
-```
-socket frames attempted: ["REQ"]      // the resend was never even written to the socket
-handler invocations:     1
-subscriber outcome:      complete = true, 0 events, no error   // silent data loss
-```
-
-This is the identical failure shape plan 13-05 fixed for `event()` (`9aa18b07 fix(13-05): split event()'s
-send from its shared listen stream to fix a resend reentrancy bug`); the same probe against `event()` gives
-the correct `["EVENT","EVENT"]` + `{ok:true}`. The fix was never carried over to `req()`.
-
-**Fix:** apply the 13-05 split here — keep a share on the pure *listen* path and leave the sending `control`
-unshared so every subscription re-sends, e.g. move the `share()` off `observable` (the outer `share()` at
-line 951 already dedupes downstream subscribers) or wrap the send in its own `defer` that is not behind a
-`share()`. Alternatively, break the synchronous re-entrance in the operator by scheduling the resubscribe:
+**Fix:**
 
 ```ts
-isAuthRequiredSignal(value)
-  ? concat(runPhase(value), defer(() => source).pipe(subscribeOn(asapScheduler)))
-  : EMPTY,
+const [newMsg, have, need] = await ne.reconcile<string>(received.data);
+await reconcile(have, need);
+msg = newMsg;
+// Ask for the next round; without this the relay has nothing to reply to
+if (msg) socket.next(["NEG-MSG", id, msg]);
 ```
 
-(the second option fixes CR-03 in the same edit). Add a regression test with a synchronous handler for each
-of the four call sites.
-
-### CR-03: `count()` resends the COUNT into a dead listen stream when the auth phase resolves synchronously
-
-**File:** `packages/relay/src/relay.ts:961-1034`
-**Issue:**
-`count()` does split send from listen, but its `messages` stream *completes* on the auth-required signal
-(line 986, `takeWhile(..., true)` inclusive). Under a synchronous auth phase the re-subscription happens
-before that completion has propagated, so the new `control` joins the still-live-but-terminating shared
-`messages`: the second COUNT goes out on the wire and is then immediately abandoned.
-
-Reproduced with `waitForAuth: []` and a synchronous handler; the relay's real `COUNT` reply arrives 50 ms
-later and is never observed:
-
-```
-socket frames attempted: ["COUNT", "COUNT", "CLOSE", "CLOSE"]
-subscriber outcome:      complete = true, values = []        // no count response at all
-```
-
-A completion with zero values also means `firstValueFrom(relay.count(...))` rejects with `EmptyError`
-instead of returning a count, and `RelayGroup.count`'s `combineLatest` never emits for that relay.
-
-**Fix:** same as CR-02 — either make the auth resubscribe asynchronous inside `authRetry`, or stop letting
-the *shared* `messages` be the thing that both terminates the current attempt and serves the next one (give
-each subscription of `control` its own listen chain, as `event()` does with a `messages` stream that never
-completes).
-
-### CR-04: a synchronously throwing `onAuthRequired` is not mapped to `AuthHandlerError`
-
-**File:** `packages/relay/src/operators/auth-retry.ts:242-258`
-**Issue:**
-`config.onAuthRequired?.(context)` is called *inside* the `defer` factory, above the `catchError` that maps
-handler failures. A handler that throws synchronously (as opposed to returning a rejected promise) therefore
-errors the `defer` with the raw thrown value; `config.errors.handler` is never invoked, contradicting the
-documented contract on `AuthHandlerError` ("Thrown when a caller-supplied `onAuthRequired` handler rejects or
-throws (D-17)").
-
-Reproduced: `relay.req(..., { onAuthRequired: () => { throw new Error("sync boom") } })` errors with a plain
-`Error`, `err instanceof AuthHandlerError === false`.
-
-Two downstream guarantees break as a result:
-
-1. `publish()` — the raw error is not a `RelayClosedError`, so `customRetryOperator`'s D-07 skip
-   (relay.ts:1259) does not fire and the caller's EVENT is **re-sent**. Reproduced:
-   `relay.publish(event, { onAuthRequired: () => { throw ... }, timeout: 2000 })` produced **2 EVENT
-   frames** and finally rejected with `Error: Timeout has occurred` instead of a terminal
-   `AuthHandlerError`. This is exactly the hot-loop RESEARCH flagged and D-07 was written to close.
-2. `applesauce-loaders` — `RELAY_AUTH_ERROR_NAMES` (sync-loader.ts:89) matches on `.name`, so the raw
-   `"Error"` is not recognised and the negentropy path falls back to the paginated request against the same
-   auth wall, which D-16 explicitly forbids (sync-loader.ts:601).
-
-**Fix:** move the handler invocation under the error mapping:
-
-```ts
-const phase$: Observable<boolean> = defer(() => {
-  config.gate.begin();
-  config.log?.(`Auth required for ${config.operation}: ${signal.reason}`);
-
-  let result: void | Promise<void>;
-  try {
-    result = config.onAuthRequired?.(context);
-  } catch (cause) {
-    return throwError(() => config.errors.handler(signal.reason, cause));
-  }
-  // ...
-```
-
-and extend `auth-retry.test.ts` ("maps a rejecting handler to the handler error", line 156) with a
-`vi.fn(() => { throw ... })` case — the suite currently only covers `mockRejectedValue`.
-
-## Warnings
-
-### WR-01: `Relay.request()`'s operation clock can never fire — the `OPEN` message satisfies its first-emission gate
-
-**File:** `packages/relay/src/relay.ts:1365`
-**Issue:** `suspendableTimeout` implements *first-emission* semantics (`firstEmitted = true; clearTimer()`,
-auth-retry.ts:153-156), and `req()` emits `OPEN` synchronously on subscription, upstream of this operator.
-The 30 s request budget is therefore cancelled before the relay has said anything, and a relay that never
-answers hangs forever. Reproduced: `relay.request(filters, { timeout: 200 })` against a silent relay — no
-error and no completion after 300 ms; the same probe against an auth-looping relay ran 600 ms without the
-200 ms clock firing. The behaviour is pre-existing (`timeout({ first })` had the identical flaw), but this
-phase rewrote the line, documented it as the operation budget D-15 suspends, and shipped a passing "D-15:
-request()'s operation clock is suspended across the auth phase" test (relay.test.ts:1619) that asserts a
-timeout which cannot fire either way — i.e. the new guarantee is vacuous here.
-**Fix:** either place the clock after `OPEN` is filtered out, or give `suspendableTimeout` a predicate for
-what counts as a first emission:
-
-```ts
-suspendableTimeout(opts?.timeout ?? 30_000, gate, { firstWhen: (m) => m.type !== "OPEN" }),
-```
-
-Then re-assert the D-15 test so it fails without the gate.
-
-### WR-02: `RelayGroup.request()`'s clock is not suspended across the auth phase
-
-**File:** `packages/relay/src/group.ts:262`
-**Issue:** Every other operation clock in the phase was converted to `suspendableTimeout` with a threaded
-`AUTH_PHASE_GATE`; the group request still uses a bare `timeout({ first: opts?.timeout ?? 30_000 })` and
-never threads a gate into `relay.req`. `pool.request()` / `group.request()` is the most-used read API, so
-the D-15 property the phase advertises is absent on the main path. (Currently masked by WR-01 — the group
-stream also emits `OPEN` first, so the clock never fires at all. Fixing WR-01 without fixing this turns the
-latent gap into a live one: any auth prompt slower than the request timeout kills the request.)
-**Fix:** create an `AuthPhaseGate` in `RelayGroup.request`, thread it into each `relay.req(...)` via
-`AUTH_PHASE_GATE`, and swap the bare `timeout` for `suspendableTimeout`.
-
-### WR-03: the sync loader's stall-guard suspension only exists when the caller passes `onAuthRequired`
-
-**File:** `packages/loaders/src/loaders/sync-loader.ts:417-450`
-**Issue:** `authPhases` is only incremented from inside `relayOnAuthRequired`, which is `undefined` when the
-caller supplies no handler (line 443). A relay that answers `auth-required` with no handler configured still
-makes the relay layer wait up to `authTimeout` (default 30 s) for external auth — while the loader's stall
-clock (default `timeout: 30_000`) keeps running and errors the relay out from under it. D-16's suspension is
-therefore conditional on an unrelated option.
-**Fix:** drive the suspension off the auth phase itself rather than off the handler — e.g. always install a
-wrapper (`onAuthRequired: relayOnAuthRequired` even when the caller's handler is absent, delegating to a
-no-op), so the phase accounting is independent of whether the caller wants a callback.
-
-### WR-04: the sync loader's auth-phase close timer is never cleared
-
-**File:** `packages/loaders/src/loaders/sync-loader.ts:432-436`
-**Issue:** `scheduleClose()` arms `setTimeout(close, authTimeout ?? 30_000)` and nothing ever clears it —
-not `forceCloseAuthPhases()` (which only calls `close()` and drops the callback from the set), not the
-`withTimeout` teardown, not the relay stream's completion. Every auth phase leaves a pending timer for up to
-30 s after the loader is torn down, which keeps a Node process alive and fires callbacks on state belonging
-to a finished run.
-**Fix:** keep the handle and clear it in `close()`:
-
-```ts
-let handle: ReturnType<typeof setTimeout> | undefined;
-const close = () => {
-  if (closed) return;
-  closed = true;
-  if (handle !== undefined) clearTimeout(handle);
-  // ...
-};
-const scheduleClose = () => {
-  if (authTimeout !== false) handle = setTimeout(close, authTimeout ?? 30_000);
-};
-```
-
-### WR-05: `relayClosedSub` / `shouldResubscribe` are shared mutable flags across overlapping auth-retry cycles
-
-**File:** `packages/relay/src/relay.ts:851-852, 895-913` (and `958, 993-1004` for `count`)
-**Issue:** These per-call flags are reset by the *new* cycle's `control` before the *previous* cycle's
-`finalize` runs (the retry subscribe happens inside the old subscription's terminal dispatch). Two
-consequences: the old cycle sends a redundant `["CLOSE", id]` for a REQ the relay already closed
-(observed in the CR-03 probe: `["COUNT","COUNT","CLOSE","CLOSE"]`), and the old cycle's
-`finalize` deletes `reqs$[id]` that the new cycle just re-registered, so `relay.reqs` under-reports live
-REQs after an auth retry. `shouldResubscribe` is read later by `customRepeatOperator`'s condition and is
-subject to the same cross-cycle staleness.
-**Fix:** scope the flags to a subscription rather than to the `req()`/`count()` call — e.g. move them into
-the `defer` that creates each attempt, or key the `reqs$` bookkeeping on the attempt object so a stale
-finalize cannot remove a live entry.
-
-### WR-06: `console.debug` in library code
-
-**File:** `packages/relay/src/group.ts:334`
-**Issue:** `RelayGroup.sync`'s D-19 catch writes directly to the console. Every other diagnostic in this
-package goes through the `debug` logger (`logger.extend(...)`), which consumers can switch off; a bare
-`console.debug` cannot be silenced and is inconsistent with the codebase convention (`Relay` has
-`this.log`, `negentropy.ts` has `const log = logger.extend("negentropy")`).
-**Fix:** add a hoisted logger to `RelayGroup` (`protected log = logger.extend("RelayGroup")`) and use
-`this.log(...)`; do not `.extend()` at the call site.
-
-## Info
-
-### IN-01: RAUTH-06 (`waitForAuth: false`) is implemented twice
-
-**File:** `packages/relay/src/relay.ts:1089` and `packages/relay/src/operators/auth-retry.ts:234`
-**Issue:** `event()` short-circuits before the operator when `waitForAuth` is falsy, and the operator
-implements the same rule again. The two must agree forever; the `event()` copy also coerces
-`waitForAuth: ""` (a falsy but type-legal `AuthRequirement`) to `false`, which the operator's strict
-`waitForAuth === false` check does not.
-**Fix:** keep only the `verb === "AUTH"` short-circuit in `event()` and let the operator own RAUTH-06.
-
-### IN-02: `event()`'s auth-exhaustion response drops the `error` field D-18 just added
-
-**File:** `packages/relay/src/relay.ts:1117-1121`
-**Issue:** `catchError` rebuilds `{ ok: false, from, message: err.reason }` without `error: err`, so the one
-failure shape a consumer most wants to branch on structurally (auth exhausted) is the one that arrives as a
-bare string, while `errorToPublishResponse` (group.ts:56) now attaches `error` for every other failure.
-**Fix:** `of<PublishResponse>({ ok: false, from: this.url, message: err.reason, error: err })`.
-
-### IN-03: `suspendableTimeout` keeps its gate subscription after the first emission
-
-**File:** `packages/relay/src/operators/auth-retry.ts:151-157`
-**Issue:** Once `firstEmitted` is set the timer is cleared but `gateSub` stays subscribed to `gate.active$`
-for the life of the operation, doing nothing but re-entering the no-op branch on every gate transition.
-`AuthPhaseGate.end()`'s `Math.max(0, …)` similarly hides an unbalanced `begin`/`end` rather than surfacing
-it.
-**Fix:** `gateSub.unsubscribe()` alongside `clearTimer()` in the `firstEmitted` branch.
+Add a regression test driving a >32-item diverging negotiation to completion (assert `reconcile`
+fires more than once and the promise resolves `true`), and bound the loop so a non-responding relay
+cannot hang the caller forever.
 
 ---
 
-_Reviewed: 2026-08-06T11:48:11Z_
+### CR-02: `RelayGroup.request()`'s operation clock is permanently cancelled by a per-relay `ERROR` message — unbounded hang
+
+**File:** `packages/relay/src/group.ts:274-276`
+
+**Issue:** The `firstWhen` predicate casts the group message type away and reuses `isReqProgress`,
+which only excludes `OPEN`:
+
+```ts
+suspendableTimeout(opts?.timeout ?? 30_000, gate, {
+  firstWhen: (message: GroupReqMessage) => isReqProgress(message as RelayReqMessage),
+}),
+```
+
+`GroupReqMessage = RelayReqMessage | GroupReqErrorMessage`, and `GroupReqErrorMessage` carries
+`type: "ERROR"` (types.ts:251). That value is synthesised by `internalSubscription`'s `catchError`
+(group.ts:156) when a relay's connection fails. It is not progress from any relay — it is the group
+layer's own bookkeeping for a relay that produced *nothing*. `isReqProgress` accepts it
+(`"ERROR" !== "OPEN"`), so `firstEmitted` latches and `clearTimer()` runs; the clock can never fire
+again for the rest of the operation.
+
+Reproduced against real `Relay` + `vitest-websocket-mock`:
+
+- **Control** — 2-relay group, `timeout: 100`, both relays accept the REQ and stay silent: errors at
+  ~100ms as intended (this is the case `group.test.ts`'s new WR-02 test covers).
+- **Defect** — same group, relay1's socket errors (one `ERROR` value), relay2 silent:
+  `receivedError() === false`, `receivedComplete() === false`, `getValues() === []` **after 500ms
+  with a 100ms timeout**. Raw `group.req()` on the same setup emits `["OPEN","OPEN","ERROR"]`,
+  confirming `ERROR` is the value that latches the gate.
+
+One unreachable relay in a set — the single most common real-world condition for a group read —
+makes `RelayGroup.request()` and `RelayPool.request()` ignore the caller's `timeout` and never
+terminate. The default complete condition does not save it: `completeOnAllEose` requires every relay
+to leave `OPEN`, and the silent relay never does.
+
+The code comment shows the `ERROR` case *was* considered ("a per-relay connection-error value
+`isReqProgress`'s parameter type does not admit even though its OPEN-exclusion check applies
+identically") and the wrong conclusion was drawn. The `as RelayReqMessage` cast is what let it
+through the type system.
+
+**Fix:** declare the group's own predicate instead of casting.
+
+```ts
+/** A value the group synthesised for a relay that produced nothing is not progress (WR-01 class). */
+export function isGroupReqProgress(message: GroupReqMessage): boolean {
+  return message.type !== "OPEN" && message.type !== "ERROR";
+}
+// ...
+suspendableTimeout(opts?.timeout ?? 30_000, gate, { firstWhen: isGroupReqProgress }),
+```
+
+Removing the cast entirely is the structural part of the fix: it forces the next group message type
+added to `GroupReqMessage` through this same decision. Add the regression test (2-relay group,
+`timeout: 100`, relay1 errors, relay2 silent → must error).
+
+---
+
+### CR-03: relay-controlled `CLOSED`/`NEG-ERR` reason indexes a prototype-inheriting object literal in `parseClosedError`
+
+**File:** `packages/relay/src/relay.ts:180-184` (object literal at `:162-173`)
+
+**Issue:**
+
+```ts
+function parseClosedError(reason: string): RelayClosedError | null {
+  const ErrorClass = CLOSED_ERROR_PREFIXES[reason.split(":")[0] as keyof typeof CLOSED_ERROR_PREFIXES];
+  if (ErrorClass) return new ErrorClass(reason);
+  return null;
+}
+```
+
+`CLOSED_ERROR_PREFIXES` is a plain object literal, so it inherits from `Object.prototype`, and
+`reason` is fully relay-controlled. A prefix of `constructor`, `__proto__`, `toString`, `valueOf`,
+`hasOwnProperty`, … resolves to a truthy `Object.prototype` member which is then `new`'d. The
+declared return type `RelayClosedError | null` is a lie for those inputs.
+
+Reproduced against real `Relay` + `vitest-websocket-mock`:
+
+| Relay sends | Observed |
+|---|---|
+| `["CLOSED","s1","constructor: go away"]` | stream errors with a **`String` object** (`[object String]`), not a `RelayClosedError` |
+| `["CLOSED","s2","__proto__: go away"]` | stream errors with **`TypeError: ErrorClass is not a constructor`** |
+| row 1 with `reconnect: 2` | **2 REQ frames** within 1.5s — the resend loop runs |
+
+The second-order damage is what matters for this phase: D-07's entire retry-skip contract is
+`error instanceof RelayClosedError` (relay.ts:1334 and :1356). A `String` object is not one, so
+`customConnectionRetryOperator` / `customRetryOperator` treat a deliberate relay rejection as a
+transient connection fault and resend the REQ/EVENT — the exact "hot loop against a hostile relay"
+the D-07 comment says it exists to prevent. `RelayGroup`'s `errorToPublishResponse` additionally
+degrades it to `"Unknown error"` (`err?.message` is `undefined` on a `String` object). The same
+function sits on the phase's own auth path via `negentropy()`'s `parseClosedError(err.reason)` and
+`parsed instanceof AuthRequiredError` check (relay.ts:1258-1265), where a `String` object is truthy
+and gets re-thrown by `throwError(() => parsed)`.
+
+**Fix:** use a prototype-less map plus an own-property check.
+
+```ts
+const CLOSED_ERROR_PREFIXES: Record<string, typeof RelayClosedError> = Object.assign(Object.create(null), {
+  "auth-required": AuthRequiredError,
+  unsupported: RelayClosedError,
+  // ...
+});
+
+function parseClosedError(reason: string): RelayClosedError | null {
+  const prefix = reason.split(":")[0];
+  const ErrorClass = Object.hasOwn(CLOSED_ERROR_PREFIXES, prefix) ? CLOSED_ERROR_PREFIXES[prefix] : undefined;
+  return ErrorClass ? new ErrorClass(reason) : null;
+}
+```
+
+Add tests for `constructor:`, `__proto__:` and `toString:` reasons asserting the observable completes
+gracefully (unrecognised prefix, per the function's own docstring) and that no extra REQ frame is
+sent.
+
+## Warnings
+
+### WR-01: a synchronous auth retry wipes `req()`'s public `reqs$` tracking
+
+**File:** `packages/relay/src/relay.ts:955-969` (add at `:959`, delete at `:967-968`)
+
+**Issue:** `authRetry`'s `expand` resubscribes the attempt `defer` *synchronously*, from inside the
+`next` dispatch that delivered the auth-required signal — before attempt 1's `complete` has
+propagated. So attempt 2's `control` map runs `this.reqs$.next({ ...value, [id]: filters })` first,
+and attempt 1's `finalize` then runs `this.reqs$.next(rest)` and **deletes the id attempt 2 just
+registered**.
+
+Reproduced: `relay.req([...], { id: "sub1", onAuthRequired: <synchronous>, waitForAuth: [] })` — with
+REQ #2 confirmed on the wire, `relay.reqs === {}`. The async-handler control case correctly reports
+`{ sub1: [...] }`, which localises the bug to the synchronous reentrancy path this round introduced.
+
+`reqs$` is documented public API ("Tracks active req() operations by subscription ID"). Nothing in
+the package consumes it today, which is why nothing failed — but any consumer using it for
+diagnostics or reconnect bookkeeping now sees a live REQ as closed.
+
+**Fix:** make the removal attempt-aware instead of last-writer-wins:
+
+```ts
+// inside the defer, alongside relayClosedSub
+let tracked: Filter[] | null = null;
+// in the map:
+tracked = filters;
+this.reqs$.next({ ...this.reqs$.value, [id]: filters });
+// in the finalize:
+if (this.reqs$.value[id] === tracked) {
+  const { [id]: _, ...rest } = this.reqs$.value;
+  this.reqs$.next(rest);
+}
+```
+
+The existing CR-02 test already drives this scenario and needs only the extra assertion.
+
+---
+
+### WR-02: the cross-package `.name` contract is enforced only by comments — no test pins the strings
+
+**Files:** `packages/relay/src/relay.ts:136-159`, `packages/loaders/src/loaders/sync-loader.ts:83-90`,
+`packages/loaders/src/loaders/__tests__/sync-loader.test.ts:790-830`
+
+**Issue:** D-06 forbids `applesauce-loaders` from importing `applesauce-relay`, so `SyncLoader`'s
+D-16 no-fallback guard duck-types on `RELAY_AUTH_ERROR_NAMES` — the literal strings
+`"AuthRequiredError"`, `"AuthHandlerError"`, `"AuthTimeoutError"`. Both files carry prominent
+comments calling these load-bearing wire. Nothing enforces it:
+
+- `packages/relay/src/__tests__/exports.test.ts` snapshots the **exported class identifiers**, not the
+  `.name` property values. Changing `this.name = "AuthRequiredError"` inside the constructor passes
+  the snapshot untouched.
+- The loaders-side D-16 tests construct synthetic errors (`Object.assign(new Error(...), { name })`),
+  so by construction they cannot observe drift in what `relay.ts` actually produces. This is a
+  vacuity of a specific kind: the tests pass identically whether or not the producing side still
+  emits those names.
+
+Net: the guard can silently stop matching, and the symptom is `SyncLoader` burning its paginated
+fallback against the same auth wall D-16 forbids — with no test failure anywhere.
+
+**Fix:** pin the strings on the producing side, in `packages/relay/src/__tests__/relay.test.ts`:
+
+```ts
+it("pins the .name strings applesauce-loaders duck-types against (D-06)", () => {
+  expect(new AuthRequiredError("x").name).toBe("AuthRequiredError");
+  expect(new AuthHandlerError("x", null).name).toBe("AuthHandlerError");
+  expect(new AuthTimeoutError("x").name).toBe("AuthTimeoutError");
+});
+```
+
+---
+
+### WR-03: `event()` synthesises a `PublishResponse`, then declares "PublishResponse carries no bookkeeping value"
+
+**Files:** `packages/relay/src/relay.ts:1154-1157`, `:1182`, `:1489`
+
+**Issue:** Both progress predicates on the publish path are the trivially permissive `() => true`,
+justified by inline comments ("PublishResponse carries no bookkeeping value", "every response is real
+progress"). That claim is false — `event()` manufactures a response the relay never sent:
+
+```ts
+timeout({
+  first: this.eventTimeout,
+  with: () => of<PublishResponse>({ ok: false, from: this.url, message: "Timeout" }),
+}),
+```
+
+That value is structurally identical to `req()`'s synthetic `OPEN` — a call-site bookkeeping value —
+and it flows into both `authRetryOperator("publish", ..., () => true)` (resetting the D-08 consecutive
+counter) and `customSuspendableTimeoutOperator(..., () => true)` (satisfying `publishTimeout`'s
+first-emission gate). This is exactly the situation the required-predicate change exists to make
+impossible to state incorrectly, and the third call site (`count()`'s `() => true`) is genuinely
+correct, so the file gives no signal that this one is not.
+
+The consequence today is bounded — the synthetic value also terminates the stream, so no unbounded
+retry loop results — but the invariant is violated and the comments actively mislead, which is how
+this class propagated across four call sites in the first place.
+
+**Fix:** name the bookkeeping value and reject it, mirroring `isReqProgress`:
+
+```ts
+const PUBLISH_TIMEOUT_MESSAGE = "Timeout";
+function isPublishProgress(response: PublishResponse): boolean {
+  return !(response.ok === false && response.message === PUBLISH_TIMEOUT_MESSAGE);
+}
+```
+
+and pass it at relay.ts:1182 and :1489. If the permissive behavior is deliberate, replace the false
+comment with the reason it is safe.
+
+---
+
+### WR-04: a still-open auth phase disarms the paginated fallback's stall guard
+
+**File:** `packages/loaders/src/loaders/sync-loader.ts:620-677`
+
+**Issue:** `finalize(forceCloseAuthPhases)` is attached to the *outer* per-relay pipeline (line 677),
+i.e. **after** the `catchError` at line 624 that starts the paginated fallback. If the negentropy sync
+fails with a non-auth error while an auth phase is still open (its `authTimeout` close-timer pending,
+no stream emission having force-closed it), the fallback's freshly-constructed `withTimeout` sees
+`authPhases > 0` and its `arm()` early-returns. The fallback request's stall guard stays disarmed for
+up to the remaining `authTimeout` (30s by default) — the very window the D-16 stall guard exists to
+bound.
+
+The WR-04 comment correctly explains why the hook cannot live inside `withTimeout`, but not why it
+needn't also run when one path hands off to another.
+
+**Fix:** force-close before entering the fallback, in addition to the terminal `finalize`:
+
+```ts
+catchError((error) => {
+  if (error?.name && RELAY_AUTH_ERROR_NAMES.has(error.name)) { /* ... */ throw error; }
+  // The negentropy attempt is over; no phase it opened may suspend the fallback's own clock
+  forceCloseAuthPhases();
+  // ...
+}),
+```
+
+---
+
+### WR-05: `Relay.sync()`'s RECEIVE branch rejects with `EmptyError` when a relay EOSEs with zero events
+
+**File:** `packages/relay/src/relay.ts:1554-1573`
+
+**Issue:**
+
+```ts
+await lastValueFrom(
+  this.req({ ids: need }, authOptions).pipe(
+    takeWhile((message) => message.type !== "EOSE"),
+    filter((message) => message.type === "EVENT"),
+    /* ... */
+  ),
+);
+```
+
+`req()` emits `OPEN`, which `takeWhile` passes and `filter` drops. If the relay answers `EOSE` with no
+`EVENT` — the ids were deleted, expired, or the relay simply no longer has what it advertised during
+reconciliation — the piped observable completes empty and `lastValueFrom` rejects. Reproduced
+directly against `vitest-websocket-mock`: `rejected: EmptyError no elements in sequence`.
+
+That rejection propagates out of the `reconcile` callback → `negentropySync` throws →
+`Relay.negentropy()` rejects → `Relay.sync()` errors. In `RelayGroup.sync()` the D-19 catch then
+silently drops that relay from the group sync (group.ts:347-350), so a benign "relay no longer has
+these events" outcome is indistinguishable from a hard failure.
+
+**Fix:** `await lastValueFrom(this.req(...).pipe(/* ... */), { defaultValue: undefined });`
+
+---
+
+### WR-06: one auth-gated relay suspends the whole group's clock, so `RelayGroup.request()`'s `timeout` has no upper bound
+
+**File:** `packages/relay/src/group.ts:252-276`
+
+**Issue:** The single per-call `AuthPhaseGate` is shared by every relay in the fan-out, and
+`suspendableTimeout` stops the clock while *any* phase is active. With `authRetries` defaulting to 1
+and `authTimeout` to 30s, each auth-gated relay can hold the group's clock for ~60s, and N relays can
+overlap. A caller asking for `group.request(filters, { timeout: 5_000 })` can be blocked for minutes
+with no bound they can express. `Relay.request()` has the same shape, but with only one relay's
+phases to absorb.
+
+The tradeoff follows from D-15, but it is undocumented on the public option and has no ceiling.
+
+**Fix:** at minimum document it on `RelayRequestOptions.timeout` / `GroupRequestOptions.timeout`
+(wall-clock bound is `timeout + authTimeout × (authRetries + 1) × relays`). Better: give
+`suspendableTimeout` an optional absolute ceiling so callers can bound total wall time.
+
+---
+
+### WR-07: `isReqProgress` leaked into `applesauce-relay`'s public barrel
+
+**Files:** `packages/relay/src/relay.ts:193-195`, `packages/relay/src/index.ts:5`,
+`packages/relay/src/__tests__/exports.test.ts:23`
+
+**Issue:** `isReqProgress` was added to `relay.ts` so `group.ts` could reuse it, but `index.ts` does
+`export * from "./relay.js"`, so it is now permanent published API — the exports snapshot was updated
+to bless it. `operators/auth-retry.ts` opens with an explicit rationale for the opposite choice ("NOT
+barrel-exported ... its exports ... would become maintained public API for no consumer benefit"). The
+same reasoning applies: it is a two-line internal predicate over an internal message shape with no
+consumer outside the package.
+
+(The bump level is fine — the phase already ships a `minor` changeset for `applesauce-relay` — which
+is precisely what makes this easy to miss.)
+
+**Fix:** move `isReqProgress` (and the `isGroupReqProgress` from CR-02) into
+`operators/auth-retry.ts` or a new internal module alongside the rest of the deliberately unexported
+machinery, import it in both `relay.ts` and `group.ts`, and revert the exports snapshot.
+
+---
+
+### WR-08: `suspendableTimeout`'s `arm()` does not clear a previously armed timer
+
+**File:** `packages/relay/src/operators/auth-retry.ts:142-146`
+
+**Issue:**
+
+```ts
+const arm = () => {
+  if (settled || firstEmitted) return;
+  armedAt = Date.now();
+  timer = setTimeout(fail, remaining);   // overwrites `timer` without clearing it
+};
+```
+
+The sibling implementation at `sync-loader.ts:508-513` *does* call `clearArmed()` before re-arming.
+Today the asymmetry is unreachable here because `gate.active$` is `distinctUntilChanged`, so
+`arm`/`disarm` strictly alternate — but that is a non-local invariant propping up a local one. Any
+future path that arms twice (for example, arming on emission the way `withTimeout` does) leaks an
+orphaned timer that still calls `fail()`.
+
+**Fix:** make `clearTimer()` the first statement of `arm()`, matching `withTimeout.arm()`.
+
+---
+
+### WR-09: stale doc on `RelayRequestOptions.timeout`, and `timeout: 0` now silently disables the clock
+
+**File:** `packages/relay/src/types.ts:169-176` (and `packages/relay/src/relay.ts:1444`)
+
+**Issue:** The doc still reads "Passed to rjxs timeout() operator", which is no longer true — it now
+feeds `suspendableTimeout`, whose semantics differ in two user-visible ways: the countdown pauses
+during auth phases, and a non-positive budget returns `identity` (auth-retry.ts:115). Under the old
+`timeout({ first: 0 })` a caller passing `timeout: 0` got an immediate `TimeoutError`; now they get
+**no timeout at all**. The same silent-disable applies at `group.ts:274`.
+
+**Fix:** update the doc to describe suspension and the disabled-on-`<= 0` behavior, or make
+`suspendableTimeout(0, ...)` fire immediately to preserve the previous contract.
+
+---
+
+### WR-10: two near-duplicate suspendable-clock implementations with undocumented divergence
+
+**Files:** `packages/relay/src/operators/auth-retry.ts:110-194`,
+`packages/loaders/src/loaders/sync-loader.ts:485-563`
+
+**Issue:** D-06 makes sharing across the package boundary impossible, so the duplication itself is
+structural. But the two ~60-line copies have silently diverged in ways not documented as intentional:
+
+| | `suspendableTimeout` | `withTimeout` |
+|---|---|---|
+| `arm()` clears prior timer | no | yes |
+| clock cancelled by | first `firstWhen`-accepted value, permanently | never — every emission resets `remaining` |
+| emission closes auth phases | no | yes (`forceCloseAuthPhases`) |
+| `error`/`complete` teardown | unsubscribes both subs | leaves `sourceSub` (harmless, asymmetric) |
+
+A reviewer who verifies one and assumes the other matches will be wrong — which is how WR-08 stayed
+invisible.
+
+**Fix:** add a short cross-reference header on each stating the deliberate differences
+("first-emission gate" vs "inter-emission stall guard") and why D-06 prevents sharing, so a future
+maintainer does not "align" them.
+
+---
+
+### WR-11: `.extend()` called inline at log call sites in `sync-loader.ts`
+
+**Files:** `packages/loaders/src/loaders/sync-loader.ts:248`, `:611`
+
+**Issue:** `logger?.extend("backward").extend(nanoid(8))` (line 248) and
+`log.extend(url).extend("request")` (line 611) construct fresh `Debugger` instances at the point of
+use, inside per-call and `switchMap` paths, rather than being derived once and stored. The rest of
+this very file follows the hoisted convention (`baseLog` at line 333, `log` at line 346), as does
+`Relay` (`this.log = this.log.extend(url)` in the constructor).
+
+**Fix:** hoist `const relayLog = log.extend(url)` into `buildRelayStream`'s scope, pass
+`relayLog.extend("request")` derived once, and have `paginatedRequest` accept an already-derived
+logger instead of extending internally.
+
+---
+
+_Reviewed: 2026-08-06T22:56:57Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
