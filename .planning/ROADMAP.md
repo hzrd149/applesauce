@@ -52,7 +52,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 
 **Hard sequencing:** Phase 15 is hard-blocked on Phase 13 — CAUTH-01..04 need `onAuthRequired`/`authTimeout`/`authRetries` to exist on both the paginated REQ path and the negentropy sync path before Concord's stream-auth engines can migrate off the client-wide registry. Phase 14 depends on Phase 13 only softly (13 restructures the auth surface that 14 instruments with logging).
 
-- [x] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (completed 2026-08-06)
+- [ ] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (waves 1-6 complete 2026-08-06; reopened by verification — gap closure in waves 7-11)
 - [ ] **Phase 14: Auth Lifecycle Debug Logging** - A NIP-42 auth attempt's lifecycle and outcome become observable in debug output, and every `packages/loaders/` logger is derived once instead of `.extend()`-ed inline
 - [ ] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine
 
@@ -72,7 +72,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
   5. `SyncLoader` threads `onAuthRequired`/`authTimeout`/`authRetries` into both its negentropy sync path and its paginated request path identically, the behavior passes through `RelayPool`/`RelayGroup`, and `authRequiredForRead$`/`authRequiredForPublish$` keep updating as informational status only. (RAUTH-08, RAUTH-09; pool/group leg of RAUTH-07)
 
 **Reference**: Full drafted implementation plan on disk at [`phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md`](phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md) — `/gsd-plan-phase 13` should read it as primary input.
-**Plans**: 7/7 plans complete
+**Plans**: 12 plans (7 complete; 5 gap-closure plans added 2026-08-06 after verification reopened RAUTH-03/07/08)
 
 Plans:
 **Wave 1**
@@ -99,6 +99,26 @@ Plans:
 **Wave 6** *(blocked on Wave 5 completion)*
 
 - [x] 13-07-PLAN.md — `RelayGroup`/`RelayPool` pass-through, per-relay sync isolation, `PublishResponse.error`, changesets (wave 6)
+
+**Wave 7** *(gap closure — blocked on Wave 6 completion)*
+
+- [ ] 13-08-PLAN.md — shared operator surface: required progress and first-emission predicates, synchronous handler-throw mapping (CR-01/CR-04/WR-01, wave 7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 13-09-PLAN.md — `req`/`request`/`subscription`: per-attempt send/listen shape and REQ-side non-vacuity tests (CR-02, wave 8)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 13-10-PLAN.md — `count`: per-attempt send/listen shape, COUNT-side tests, and the all-sites invariant audit (CR-03, wave 9)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 13-11-PLAN.md — `RelayGroup.request()`: auth-phase gate threading, suspendable clock, hoisted logger (WR-02/WR-06, wave 10)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 13-12-PLAN.md — `SyncLoader` contract tests, changesets, and RAUTH-03/07/08 closure (wave 11)
 
 ### Phase 14: Auth Lifecycle Debug Logging
 
