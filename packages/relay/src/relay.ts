@@ -25,7 +25,6 @@ import {
   map,
   merge,
   mergeMap,
-  mergeWith,
   MonoTypeOperatorFunction,
   NEVER,
   Observable,
@@ -93,6 +92,7 @@ import {
   RelayStatus,
   RelaySubscriptionOptions,
   RelaySubscriptionResponse,
+  RelaySyncOptions,
 } from "./types.js";
 
 const AUTH_REQUIRED_PREFIX = "auth-required:";
@@ -798,25 +798,6 @@ export class Relay {
     });
   }
 
-  /** Wait for authentication state, make connection and then wait for authentication if required */
-  protected waitForAuth<T extends unknown = unknown>(
-    // NOTE: require BehaviorSubject or shareReplay so it always has a value
-    requireAuth: Observable<boolean>,
-    observable: Observable<T>,
-    waitFor: AuthRequirement = true,
-  ): Observable<T> {
-    return combineLatest([requireAuth, this.authSatisfied$(waitFor)]).pipe(
-      // Once the auth state is known, make a connection and watch for auth challenges
-      mergeWith(this.watchTower),
-      // wait for auth not required or authenticated
-      filter(([required, authenticated]) => !required || authenticated),
-      // complete after the first value so this does not repeat
-      take(1),
-      // switch to the observable
-      switchMap(() => observable),
-    );
-  }
-
   /** Wait for the relay to be ready to accept connections */
   protected waitForReady<T extends unknown = unknown>(observable: Observable<T>): Observable<T> {
     // Don't wait if the relay is already ready
@@ -1435,11 +1416,22 @@ export class Relay {
     store: NegentropySyncStore,
     filters: Filter,
     direction: SyncDirection = SyncDirection.RECEIVE,
-    opts?: { waitForAuth?: AuthRequirement },
+    opts?: RelaySyncOptions,
   ): Observable<NostrEvent> {
     const getEvents = async (ids: string[]) => {
       if (Array.isArray(store)) return store.filter((event) => ids.includes(event.id));
       else return store.getByFilters({ ids });
+    };
+
+    // RAUTH-08: extract the forwarded auth option set once so all three of the relay operations sync()
+    // performs — the negentropy negotiation, the SEND-direction event() calls, and the RECEIVE-direction
+    // req() — carry the same caller-supplied bounds, so a future added field cannot land on two of the
+    // three sites instead of all three.
+    const authOptions: RelayAuthOptions = {
+      waitForAuth: opts?.waitForAuth,
+      onAuthRequired: opts?.onAuthRequired,
+      authTimeout: opts?.authTimeout,
+      authRetries: opts?.authRetries,
     };
 
     return new Observable<NostrEvent>((observer) => {
@@ -1468,7 +1460,10 @@ export class Relay {
             // The events were not fetched from the relay, but after a successful publish the relay has them.
             await Promise.allSettled(
               events.map(async (event) => {
-                const response = await lastValueFrom(this.event(event));
+                // RAUTH-08/Phase 15: forward the caller's auth options — leaving this call unthreaded
+                // would make it default to waitForAuth: true with no handler and wait the 30s default
+                // for an unrelated pubkey, entirely disconnected from what the caller configured.
+                const response = await lastValueFrom(this.event(event, "EVENT", authOptions));
                 if (response.ok) addSeenRelay(event, this.url);
                 return response;
               }),
@@ -1478,7 +1473,9 @@ export class Relay {
           // Fetch missing events from the relay
           if (direction & SyncDirection.RECEIVE && need.length > 0) {
             await lastValueFrom(
-              this.req({ ids: need }).pipe(
+              // RAUTH-08/Phase 15: forward the caller's auth options here too — same rationale as the
+              // SEND-direction event() call above.
+              this.req({ ids: need }, authOptions).pipe(
                 // Complete when EOSE is received
                 takeWhile((message) => message.type !== "EOSE"),
                 // Filter only for event messages
@@ -1495,7 +1492,7 @@ export class Relay {
             );
           }
         },
-        { signal: controller.signal, waitForAuth: opts?.waitForAuth },
+        { signal: controller.signal, ...authOptions },
       )
         // Complete the observable when the sync is complete
         .then(() => {
