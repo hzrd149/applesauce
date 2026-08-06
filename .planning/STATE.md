@@ -5,15 +5,15 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Phase 13 Wave 4 complete (13-05 done); ready for Wave 5 (13-06)
-last_updated: "2026-08-06T10:32:38.208Z"
+stopped_at: Completed 13-06-PLAN.md
+last_updated: "2026-08-06T11:03:47.298Z"
 last_activity: 2026-08-06
 last_activity_desc: 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 5 of 7 complete (Wave 3 of 6 done)
+Plan: 6 of 7 complete (Wave 3 of 6 done)
 Status: Ready to execute Wave 4 (13-05)
 Last activity: 2026-08-06 — 13-04 (count() operation-scoped auth) complete; build + full relay suite green
 
@@ -107,6 +107,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 12 P11 | 45min | 2 tasks | 1 files |
 | Phase 13 P04 | 17min | 2 tasks | 2 files |
 | Phase 13 P05 | 24min | 3 tasks | 2 files |
+| Phase 13 P06 | 22min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -268,6 +269,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 13-05: fixed a pre-existing reentrancy bug in event()'s send/listen structure exposed by this plan's own internal-retry behavior (synchronous onAuthRequired handlers silently dropped the resend); split into an unshared control defer + shared listen-only messages mirroring count()'s existing pattern
 - [Phase ?]: 13-05: event()'s catchError intercepts only AuthRequiredError (exhausted retries) and converts it back to a value response, preserving its pre-existing never-throws-for-auth-required contract for auth()/negentropy()/sync() callers; AuthHandlerError/AuthTimeoutError propagate as genuine errors per D-17
 - [Phase ?]: 13-05: customTimeoutOperator deleted outright (sole caller was publish()) rather than left dead, replaced by customSuspendableTimeoutOperator; RAUTH-02/03/04/06/07/09 remain Pending in REQUIREMENTS.md until 13-06 (negentropy/sync) lands, per 13-02/13-04 precedent
+- [Phase 13]: 13-06: negentropy() converted to shared auth operator; Relay.sync retyped RelaySyncOptions and threads auth options into its internal event()/req() calls (RAUTH-08); dead pre-gate waitForAuth() helper deleted
+- [Phase 13]: 13-06: negentropySync's per-attempt cleanup sends NEG-CLOSE before an async AUTH round trip completes, and negentropy() never subscribes watchTower, so its auth-required flag update is not synchronous with server.send() the way req/count/event are
 
 ### Pending Todos
 
@@ -349,8 +352,8 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T10:32:38.198Z
-Stopped at: Phase 13 Wave 4 complete (13-05 done); ready for Wave 5 (13-06)
+Last session: 2026-08-06T11:03:47.279Z
+Stopped at: Completed 13-06-PLAN.md
 Resume file: 
 
-- Start the next milestone with /gsd-new-milestone
+None
