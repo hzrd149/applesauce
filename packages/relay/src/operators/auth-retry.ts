@@ -265,7 +265,16 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
           config.log?.(`Auth required for ${config.operation}: ${signal.reason}`);
 
           // D-11: the handler always runs, even if waitForAuth is already satisfied
-          const result = config.onAuthRequired?.(context);
+          // CR-04: a handler that throws synchronously must map to the same AuthHandlerError-shaped
+          // outcome as a handler that returns a rejected promise — both failure modes are
+          // indistinguishable to the caller. Without this try/catch, a synchronous throw here escapes
+          // the defer factory above the catchError below and reaches the caller as a raw thrown value.
+          let result: void | Promise<void>;
+          try {
+            result = config.onAuthRequired?.(context);
+          } catch (cause) {
+            return throwError(() => config.errors.handler(signal.reason, cause));
+          }
           const handled$ = result instanceof Promise ? from(result) : of(undefined);
 
           return handled$.pipe(
