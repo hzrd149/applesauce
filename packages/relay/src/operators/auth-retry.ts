@@ -52,6 +52,16 @@ export function isAuthRequiredSignal(value: unknown): value is AuthRequiredSigna
 }
 
 /**
+ * Answers "does this value represent real progress from the relay, as opposed to a value this call
+ * site generated for its own bookkeeping (e.g. `req()`'s synthetic `OPEN`)?" Required — never optional
+ * with a permissive default — at every consumer of the shared operator (`authRetry`'s D-08 consecutive-
+ * counter reset, `suspendableTimeout`'s first-emission gate) so a future call site that introduces a new
+ * bookkeeping value cannot silently re-break the retry bound or the operation clock: omitting the answer
+ * is a TypeScript compile error, not a runtime surprise (CR-01/WR-01).
+ */
+export type ProgressPredicate<T> = (value: T) => boolean;
+
+/**
  * Tracks how many auth phases are currently in flight for one operation subscription. A counter (not a
  * boolean) so overlapping phases within one operation cannot resume the clock early. Gates are created
  * per operation call and hold no relay-scoped state — this is what makes RAUTH-05's concurrency
@@ -91,14 +101,16 @@ export type WithAuthPhaseGate = { [AUTH_PHASE_GATE]?: AuthPhaseGate };
  * A mono-type operator implementing first-emission timeout semantics (matching every operation-level
  * timeout it replaces: `count`'s 10s, `request`'s 30s, `publish`'s `publishTimeout`) whose countdown only
  * advances while `gate` is inactive (D-15). Time spent inside an auth phase does not consume the budget,
- * so the operation gets its full remaining budget for real work once the auth phase closes. `opts.with`
- * mirrors the rxjs `timeout` operator's `with` escape hatch. A non-positive or non-finite budget returns
- * identity (no timeout applied).
+ * so the operation gets its full remaining budget for real work once the auth phase closes. `opts.firstWhen`
+ * is a required {@link ProgressPredicate} (CR-01/WR-01) — a value it rejects does not start or cancel the
+ * clock, so a call site's own bookkeeping emission (e.g. `req()`'s synthetic `OPEN`) can never prematurely
+ * cancel the clock before the relay has actually said anything. `opts.with` mirrors the rxjs `timeout`
+ * operator's `with` escape hatch. A non-positive or non-finite budget returns identity (no timeout applied).
  */
 export function suspendableTimeout<T>(
   budgetMs: number,
   gate: AuthPhaseGate,
-  opts?: { with?: () => Observable<T> },
+  opts: { firstWhen: ProgressPredicate<T>; with?: () => Observable<T> },
 ): MonoTypeOperatorFunction<T> {
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) return identity;
 
@@ -123,7 +135,7 @@ export function suspendableTimeout<T>(
         clearTimer();
         gateSub.unsubscribe();
         sourceSub.unsubscribe();
-        if (opts?.with) opts.with().subscribe(subscriber);
+        if (opts.with) opts.with().subscribe(subscriber);
         else subscriber.error(new Error("Timeout has occurred"));
       };
 
@@ -150,7 +162,9 @@ export function suspendableTimeout<T>(
       const sourceSub = source.subscribe({
         next: (value) => {
           if (settled) return;
-          if (!firstEmitted) {
+          // CR-01/WR-01: only a value the predicate accepts as progress starts/cancels the clock; a
+          // rejected (bookkeeping) value is still forwarded but never marks first emission.
+          if (!firstEmitted && opts.firstWhen(value)) {
             firstEmitted = true;
             clearTimer();
           }
@@ -190,7 +204,7 @@ export type AuthRetryErrors = {
 };
 
 /** Configuration for the {@link authRetry} operator */
-export type AuthRetryConfig = {
+export type AuthRetryConfig<T> = {
   /** The operation label carried on the built {@link RelayAuthContext} */
   operation: RelayAuthOperation;
   /** What auth state to wait for. `false` terminates immediately without invoking the handler (RAUTH-06) */
@@ -201,6 +215,13 @@ export type AuthRetryConfig = {
   authTimeout?: number | false;
   /** Consecutive auth-failure cycles tolerated before giving up. Defaults to 1 (D-03/D-07/RAUTH-03) */
   authRetries?: number;
+  /**
+   * Required (CR-01): answers whether a real (non-signal) stream value represents progress from the
+   * relay, as opposed to a call site's own bookkeeping value. Gates the D-08 consecutive-counter reset
+   * — a value this rejects does not reset the retry budget, so a call site's bookkeeping emission (e.g.
+   * `req()`'s synthetic `OPEN`) can never mask a persistently auth-gated relay.
+   */
+  isProgress: ProgressPredicate<T>;
   /** Builds the {@link RelayAuthContext} handed to `onAuthRequired` for a given CLOSED/NEG-ERR reason */
   buildContext: (reason: string) => RelayAuthContext;
   /** Maps an {@link AuthRequirement} to an observable of whether it is currently satisfied */
@@ -219,7 +240,7 @@ export type AuthRetryConfig = {
  * invocation, the per-phase timeout, retry counting/reset, error mapping, and operation-clock suspension
  * (via `gate`, consumed by {@link suspendableTimeout} at the call site).
  */
-export function authRetry<T>(config: AuthRetryConfig): OperatorFunction<T | AuthRequiredSignal, T> {
+export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | AuthRequiredSignal, T> {
   const waitForAuth = config.waitForAuth ?? true;
   const authRetries = config.authRetries ?? 1;
 
@@ -283,9 +304,12 @@ export function authRetry<T>(config: AuthRetryConfig): OperatorFunction<T | Auth
         ),
         // D-01: the raw signal never reaches the subscriber
         filter((value): value is T => !isAuthRequiredSignal(value)),
-        // D-08: any real value resets the consecutive counter — a per-cycle budget, not a per-lifetime one
-        tap(() => {
-          consecutive = 0;
+        // D-08/CR-01: only a value config.isProgress accepts as real progress resets the consecutive
+        // counter — a per-cycle budget, not a per-lifetime one. A call site's own bookkeeping value
+        // (e.g. req()'s synthetic OPEN) must never reset it, or a persistently auth-gated relay could
+        // drive an unbounded retry loop regardless of authRetries.
+        tap((value) => {
+          if (config.isProgress(value)) consecutive = 0;
         }),
       );
     });

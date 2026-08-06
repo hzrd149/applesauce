@@ -61,6 +61,7 @@ import {
   isAuthRequiredSignal,
   suspendableTimeout,
   type AuthRequiredSignal,
+  type ProgressPredicate,
   type WithAuthPhaseGate,
 } from "./operators/auth-retry.js";
 import { completeWhen } from "./operators/complete-when.js";
@@ -180,6 +181,17 @@ function parseClosedError(reason: string): RelayClosedError | null {
   const ErrorClass = CLOSED_ERROR_PREFIXES[reason.split(":")[0] as keyof typeof CLOSED_ERROR_PREFIXES];
   if (ErrorClass) return new ErrorClass(reason);
   return null;
+}
+
+/**
+ * The single REQ progress predicate (CR-01/WR-01): `req()`'s synthetic `OPEN` message is a bookkeeping
+ * value this call site generates for itself, not progress from the relay — only `EVENT`/`EOSE`/`CLOSED`
+ * are. Defined exactly once and exported so `group.ts` (plan 13-11) reuses it rather than redeclaring its
+ * own copy. Passed as the required `isProgress`/`firstWhen` argument at every `authRetry`/
+ * `suspendableTimeout` call site that consumes a `RelayReqMessage` stream.
+ */
+export function isReqProgress(message: RelayReqMessage): boolean {
+  return message.type !== "OPEN";
 }
 
 /** A dummy filter that will return empty results */
@@ -769,12 +781,14 @@ export class Relay {
    * true, authTimeout 30_000, authRetries 1) and injects the three terminal error constructors here so the
    * value-level dependency stays one-way — `relay.ts` imports the operator module, never the reverse, and
    * `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError` are constructed only at this caller boundary
-   * (D-01). Not yet wired into any of the four auth sites — that lands in plans 13-02/13-04/13-05/13-06.
+   * (D-01). `isProgress` is required (CR-01) — every call site must state what counts as progress for its
+   * own stream shape; there is no permissive default.
    */
   protected authRetryOperator<T extends unknown = unknown>(
     operation: RelayAuthOperation,
     opts: RelayAuthOptions | undefined,
     gate: AuthPhaseGate,
+    isProgress: ProgressPredicate<T>,
   ): OperatorFunction<T | AuthRequiredSignal, T> {
     const waitForAuth = opts?.waitForAuth ?? true;
     const authTimeout = opts?.authTimeout ?? 30_000;
@@ -786,6 +800,7 @@ export class Relay {
       onAuthRequired: opts?.onAuthRequired,
       authTimeout,
       authRetries,
+      isProgress,
       buildContext: (reason) => this.buildAuthContext(operation, waitForAuth, reason),
       authSatisfied$: (requirement) => this.authSatisfied$(requirement),
       gate,
@@ -941,8 +956,9 @@ export class Relay {
     const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
 
     return defer(() => this.waitForReady(observable)).pipe(
-      // D-04/D-09: the shared auth-retry operator drives the whole read auth phase, innermost in the pipe
-      this.authRetryOperator("read", opts, gate),
+      // D-04/D-09: the shared auth-retry operator drives the whole read auth phase, innermost in the pipe.
+      // CR-01: isReqProgress excludes the synthetic OPEN bookkeeping message from resetting the retry budget.
+      this.authRetryOperator("read", opts, gate, isReqProgress),
       // Retry connection errors independently from relay CLOSED errors
       this.customConnectionRetryOperator(opts?.reconnect),
       // Resubscribe only after the relay cleanly CLOSED this REQ
@@ -1017,16 +1033,19 @@ export class Relay {
     // D-04/D-09: the shared auth-retry operator drives the whole read auth phase. RAUTH-02: no
     // pre-block here — the COUNT is sent immediately regardless of any other operation's auth state.
     // Annotated explicitly so the `with` callback below can't leak a `never` inference back into it.
+    // COUNT responses carry no bookkeeping value of their own, so every response is real progress.
     const authOperator: OperatorFunction<RelayCountResponse | AuthRequiredSignal, RelayCountResponse> =
-      this.authRetryOperator("read", opts, gate);
+      this.authRetryOperator("read", opts, gate, () => true);
 
     return defer(() => this.waitForReady(countObservable)).pipe(
       authOperator,
       // Complete on the first (genuine) COUNT response (COUNT responses are single-shot)
       take(1),
       // D-15: suspend the 10s COUNT clock across the auth phase so a COUNT can survive an auth
-      // round-trip — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause
+      // round-trip — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. Every
+      // COUNT response is real progress, so firstWhen is unconditionally true.
       suspendableTimeout<RelayCountResponse>(10_000, gate, {
+        firstWhen: () => true,
         with: () => throwError(() => new Error("COUNT timeout")),
       }),
       share(),
@@ -1105,7 +1124,7 @@ export class Relay {
     const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
 
     return this.waitForReady(signalled)
-      .pipe(this.authRetryOperator("publish", opts, gate))
+      .pipe(this.authRetryOperator("publish", opts, gate, () => true)) // PublishResponse carries no bookkeeping value
       .pipe(
         // D-01: on exhaustion the shared operator throws AuthRequiredError (config.errors.exhausted).
         // event() converts that back into the relay's final `{ ok: false, message: "auth-required:..." }`
@@ -1200,8 +1219,9 @@ export class Relay {
 
     // D-04/D-09: the shared auth-retry operator drives the whole auth flow, delegating handler invocation,
     // the per-phase timeout, retry counting/reset and error mapping. RAUTH-02: no pre-block — the
-    // negotiation starts immediately regardless of any other operation's auth state.
-    const observable: Observable<boolean> = runSync.pipe(this.authRetryOperator("sync", opts, gate));
+    // negotiation starts immediately regardless of any other operation's auth state. The boolean
+    // negotiation result carries no bookkeeping value of its own, so every value is real progress.
+    const observable: Observable<boolean> = runSync.pipe(this.authRetryOperator("sync", opts, gate, () => true));
 
     // Resolve to false if aborted while waiting for auth (before negentropySync starts handling the signal itself)
     const signal = opts?.signal;
@@ -1315,19 +1335,21 @@ export class Relay {
    * while `gate` is in an auth phase (D-15) — used by `publish()` so `publishTimeout` gets its full
    * budget for the real work once the auth phase closes, rather than racing `authTimeout`. Preserves
    * the same false/true/number semantics the prior bare-timeout helper had. Do NOT "simplify" this back
-   * to a bare rxjs timeout(), which cannot pause.
+   * to a bare rxjs timeout(), which cannot pause. `firstWhen` is required (CR-01/WR-01) — the sole
+   * caller states what counts as progress for its own stream shape; there is no permissive default.
    */
   protected customSuspendableTimeoutOperator<T extends unknown = unknown>(
     timeout: undefined | boolean | number,
     defaultTimeout: number,
     gate: AuthPhaseGate,
+    firstWhen: ProgressPredicate<T>,
   ): MonoTypeOperatorFunction<T> {
     // Do nothing if disabled
     if (timeout === false) return identity;
     // If true default to defaultTimeout
-    else if (timeout === true) return suspendableTimeout<T>(defaultTimeout, gate);
+    else if (timeout === true) return suspendableTimeout<T>(defaultTimeout, gate, { firstWhen });
     // Otherwise use the timeout value or default to defaultTimeout
-    else return suspendableTimeout<T>(timeout ?? defaultTimeout, gate);
+    else return suspendableTimeout<T>(timeout ?? defaultTimeout, gate, { firstWhen });
   }
 
   /** Creates a persistent REQ that retries connection errors (default 3 retries) */
@@ -1361,8 +1383,10 @@ export class Relay {
       // Add completion condition
       opts?.complete ? completeWhen(opts?.complete) : identity,
       // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
-      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause
-      suspendableTimeout(opts?.timeout ?? 30_000, gate),
+      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. WR-01:
+      // isReqProgress excludes req()'s synthetic OPEN so it can no longer cancel this clock before the
+      // relay has said anything.
+      suspendableTimeout(opts?.timeout ?? 30_000, gate, { firstWhen: isReqProgress }),
       // Complete when EOSE is received
       takeWhile((message) => message.type !== "EOSE"),
       // Filter only for event messages
@@ -1405,8 +1429,9 @@ export class Relay {
         // is authRetries + 1, independent of `retries`.
         this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, this.publishRetry),
         // D-15: suspend publishTimeout across the auth phase so it does not run while waiting for auth,
-        // and gets its full budget for the real work afterwards
-        this.customSuspendableTimeoutOperator(opts?.timeout, this.publishTimeout, gate),
+        // and gets its full budget for the real work afterwards. PublishResponse carries no bookkeeping
+        // value, so every response is real progress.
+        this.customSuspendableTimeoutOperator(opts?.timeout, this.publishTimeout, gate, () => true),
       ),
     );
   }
