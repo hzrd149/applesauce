@@ -783,6 +783,20 @@ export class Relay {
    * `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError` are constructed only at this caller boundary
    * (D-01). `isProgress` is required (CR-01) — every call site must state what counts as progress for its
    * own stream shape; there is no permissive default.
+   *
+   * SEND/LISTEN INVARIANT (13-10, closing CR-02/CR-03 as a class rather than per-site): any call site
+   * that pipes through this adapter must construct its send side effect and its signal-terminating
+   * listen chain together, per attempt, inside one unshared `defer` — nothing that completes on the
+   * auth-required signal may be hoisted to call scope. `authRetry`'s internal resubscribe (below) can be
+   * driven synchronously, from inside the very CLOSED/OK dispatch that delivered the auth-required
+   * signal, by a synchronous `onAuthRequired` handler; a call-scoped, already-terminating listen chain
+   * lets that resubscribe's send reach the wire while its reply is never observed (CR-02 on `req()`,
+   * CR-03 on `count()`) or, if the listen chain never terminates at all (`event()`'s `messages`), the
+   * invariant is trivially satisfied without a restructure. `event()` (13-05), `req()` (13-09), and
+   * `count()` (13-10) each independently rediscovered and fixed this same defect class one call site at
+   * a time — this comment, plus 13-10's Task 3 per-site audit (recorded in that plan's SUMMARY), exists
+   * so the next call site added to this adapter checks itself against a written invariant instead of
+   * needing its own reentrancy bug found by a future verifier.
    */
   protected authRetryOperator<T extends unknown = unknown>(
     operation: RelayAuthOperation,
