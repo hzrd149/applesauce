@@ -53,6 +53,19 @@ import {
   RelayStatus,
 } from "./types.js";
 
+/**
+ * The group-level progress predicate (CR-02). `GroupReqErrorMessage` is a value the group manufactures
+ * for itself in `internalSubscription`'s `catchError` when a relay's stream fails — it means that relay
+ * produced *nothing*, so it is bookkeeping rather than progress, exactly as `req()`'s synthetic `OPEN`
+ * is at the relay layer (WR-01). Narrowing instead of casting keeps the compiler responsible for this
+ * question: a new arm added to `GroupReqMessage` fails to typecheck here rather than silently counting
+ * as progress.
+ */
+export function isGroupReqProgress(message: GroupReqMessage): boolean {
+  if (message.type === "ERROR") return false;
+  return isReqProgress(message);
+}
+
 /** Convert an error to a PublishResponse */
 function errorToPublishResponse(relay: Relay): MonoTypeOperatorFunction<PublishResponse> {
   return catchError((err) =>
@@ -266,14 +279,12 @@ export class RelayGroup {
       // Add the completion condition if provided
       complete ? completeWhen(complete) : identity,
       // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
-      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. isReqProgress
-      // excludes req()'s synthetic OPEN so it can no longer cancel this clock before the relay has said
-      // anything (WR-01's group analog). Wrapped (not redeclared) because the group stream also carries
-      // GroupReqErrorMessage, a per-relay connection-error value isReqProgress's parameter type does not
-      // admit even though its OPEN-exclusion check applies identically.
-      suspendableTimeout(opts?.timeout ?? 30_000, gate, {
-        firstWhen: (message: GroupReqMessage) => isReqProgress(message as RelayReqMessage),
-      }),
+      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. isGroupReqProgress
+      // (CR-02) is total over GroupReqMessage with no cast: it excludes req()'s synthetic OPEN (WR-01's
+      // group analog) *and* the group's own manufactured ERROR bookkeeping value, so neither can
+      // prematurely cancel this clock before some relay has actually made progress. A future arm added to
+      // GroupReqMessage is a compile error here, not a silent default to "this counts as progress".
+      suspendableTimeout(opts?.timeout ?? 30_000, gate, { firstWhen: isGroupReqProgress }),
       // Filter only for event messages
       filter((message) => message.type === "EVENT"),
       // Extract event messages
