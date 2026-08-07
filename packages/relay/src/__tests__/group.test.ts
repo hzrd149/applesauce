@@ -475,3 +475,57 @@ describe("request() operation clock gap closure (13-11, WR-02)", () => {
     expect(spy.receivedComplete()).toBe(false);
   });
 });
+
+// 13-14: CR-02 gap closure. RelayGroup.request()'s firstWhen cast away GroupReqErrorMessage, so
+// isReqProgress accepted the group's own per-relay ERROR bookkeeping value as progress and permanently
+// cancelled the operation clock. These sit beside the 13-11 tests above and follow the same construction
+// (real Relay instances against vitest-websocket-mock).
+describe("request() CR-02 gap closure — the group's own ERROR bookkeeping must not satisfy the clock", () => {
+  it("CR-02: errors on the declared timeout instead of hanging when one relay errors and the other falls silent", async () => {
+    // reconnect: false so relay1's connection error surfaces to the group's own ERROR bookkeeping
+    // immediately, rather than first working through relay.req()'s own (unrelated) connection-retry
+    // backoff — isolates the CR-02 property (does ERROR satisfy the clock's firstWhen gate) from
+    // relay-level reconnect timing, which is not this test's concern.
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "greq6", timeout: 100, reconnect: false }), {
+      expectErrors: true,
+    });
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "greq6", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "greq6", { kinds: [1] }]);
+
+    // relay1's socket errors: the group manufactures its own ERROR bookkeeping value for it — not progress
+    mockRelay1.error();
+    // relay2 accepted the REQ (synthetic OPEN, also not progress) but says nothing else at all
+
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(Error);
+    expect(spy.receivedComplete()).toBe(false);
+  });
+
+  it("control: a real EVENT from the surviving relay still cancels the clock and is delivered", async () => {
+    // Asserts the clock specifically (survives past its own 100ms budget with no TimeoutError), not the
+    // whole observable's completion — request()'s default complete condition also depends on relay1's
+    // post-error OPEN/retry lifecycle (out of this test's scope), so waiting on it would entangle an
+    // unrelated concern with the CR-02 property under test.
+    const spy = subscribeSpyTo(
+      group.request([{ kinds: [1] }], { id: "greq7", timeout: 100, reconnect: false }),
+      { expectErrors: true },
+    );
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "greq7", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "greq7", { kinds: [1] }]);
+
+    // relay1's socket errors: group bookkeeping ERROR, not progress
+    mockRelay1.error();
+    // relay2 delivers a genuine EVENT before the 100ms deadline: real relay progress, cancels the clock
+    mockRelay2.send(["EVENT", "greq7", mockEvent]);
+
+    // Wait past the 100ms clock budget on a real timer; if the clock were not cancelled by relay2's EVENT
+    // it would have fired a TimeoutError well within this window.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+    expect(spy.receivedError()).toBe(false);
+  });
+});
