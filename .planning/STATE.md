@@ -5,15 +5,15 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 13
 current_phase_name: operation-scoped-nip-42-auth-hooks
 status: executing
-stopped_at: Completed 13-12-PLAN.md
-last_updated: "2026-08-06T22:40:38.184Z"
+stopped_at: Completed 13-14-PLAN.md
+last_updated: "2026-08-07T08:05:21.226Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 13 execution started
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 14
+  completed_plans: 14
   percent: 33
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 ## Current Position
 
-Phase: 13 (operation-scoped-nip-42-auth-hooks) — EXECUTING
-Plan: 7 of 13
-Status: Ready to execute
-Last activity: 2026-08-06 — Phase 13 execution started
+Phase: 13 (operation-scoped-nip-42-auth-hooks) — COMPLETE (14/14 plans, CR-02 gap closure)
+Plan: 14 of 14
+Status: Phase 13 complete; Phase 14 (Auth Lifecycle Debug Logging) not started
+Last activity: 2026-08-07 — Plan 13-14 closed CR-02 (RelayGroup.request() clock cancelled by group's own ERROR bookkeeping)
 
 ## Performance Metrics
 
@@ -115,6 +115,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P10 | 35min | 3 tasks | 3 files |
 | Phase 13 P11 | 10min | 3 tasks | 2 files |
 | Phase 13 P12 | ~20min | 3 tasks | 10 files |
+| Phase 13 P14 | ~10min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -296,6 +297,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 13]: 13-12: req()'s CR-02 fix and count()'s CR-03 fix share one changeset ('resends the REQ and the COUNT'), not two -- same user-visible behavior class landing on two call sites across two plans
 - [Phase 13]: 13-12: all eight new changesets are patch, not minor -- each restores a contract already documented and shipped as minor by plans 13-01..13-07, none adds a new option or changes a default
 - [Phase 13]: 13-12: RAUTH-03/07/08 flipped to Complete in REQUIREMENTS.md only after every phase-touched suite ran green and each requirement was mapped to a named test with its recorded RED symptom, closing the gap-closure wave 13-VERIFICATION.md opened
+- [Phase 13]: 13-14: isGroupReqProgress narrows GroupReqMessage (ERROR -> not progress, early return) then delegates to isReqProgress with no cast, closing CR-02 at group.ts's suspendableTimeout firstWhen — a future GroupReqMessage arm is now a compile error at this call site, not a silent default to progress
+- [Phase 13]: 13-14: CR-02 regression tests pass reconnect: false explicitly — without it, relay.req()'s own connection-retry backoff delays relay1's manufactured ERROR value past the test's clock budget, so neither the buggy nor fixed predicate is exercised by the ERROR value at all (discovered when the defect test unexpectedly passed against the reverted pre-fix predicate)
 
 ### Pending Todos
 
@@ -379,7 +382,7 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-06T22:40:38.175Z
-Stopped at: Completed 13-12-PLAN.md
+Last session: 2026-08-07T08:05:21.208Z
+Stopped at: Completed 13-14-PLAN.md
 Resume file: 
 None

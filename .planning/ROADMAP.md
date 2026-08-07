@@ -52,7 +52,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 
 **Hard sequencing:** Phase 15 is hard-blocked on Phase 13 — CAUTH-01..04 need `onAuthRequired`/`authTimeout`/`authRetries` to exist on both the paginated REQ path and the negentropy sync path before Concord's stream-auth engines can migrate off the client-wide registry. Phase 14 depends on Phase 13 only softly (13 restructures the auth surface that 14 instruments with logging).
 
-- [ ] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (waves 1-6 complete 2026-08-06; reopened by verification — gap closure in waves 7-9; reopened again 2026-08-06 by code review CR-02, a WR-01-class regression introduced at group.ts:275 by plan 13-11 — closing in plan 13-14)
+- [x] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (waves 1-6 complete 2026-08-06; reopened by verification — gap closure in waves 7-9; reopened again 2026-08-06 by code review CR-02, a WR-01-class regression introduced at group.ts:275 by plan 13-11 — closing in plan 13-14) (completed 2026-08-07)
 - [ ] **Phase 14: Auth Lifecycle Debug Logging** - A NIP-42 auth attempt's lifecycle and outcome become observable in debug output, and every `packages/loaders/` logger is derived once instead of `.extend()`-ed inline
 - [ ] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine
 
@@ -72,7 +72,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
   5. `SyncLoader` threads `onAuthRequired`/`authTimeout`/`authRetries` into both its negentropy sync path and its paginated request path identically, the behavior passes through `RelayPool`/`RelayGroup`, and `authRequiredForRead$`/`authRequiredForPublish$` keep updating as informational status only. (RAUTH-08, RAUTH-09; pool/group leg of RAUTH-07)
 
 **Reference**: Full drafted implementation plan on disk at [`phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md`](phases/999.5-operation-scoped-nip-42-auth-hooks/operation-scoped-nip-42-auth-hooks-plan.md) — `/gsd-plan-phase 13` should read it as primary input.
-**Plans**: 13/14 plans complete
+**Plans**: 14/14 plans complete
 
 Plans:
 **Wave 1**
@@ -126,7 +126,7 @@ Plans:
 
 **Wave 13** *(blocked on Wave 12 completion)*
 
-- [ ] 13-14-PLAN.md — Make the group progress predicate total over `GroupReqMessage` so the WR-01 class cannot re-enter behind a cast (CR-02, wave 13)
+- [x] 13-14-PLAN.md — Make the group progress predicate total over `GroupReqMessage` so the WR-01 class cannot re-enter behind a cast (CR-02, wave 13)
 
 ### Phase 14: Auth Lifecycle Debug Logging
 
@@ -175,7 +175,7 @@ Plans:
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
-| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 13/13 | Complete   | 2026-08-06 |
+| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete   | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 0/TBD | Not started | - |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 0/TBD | Not started | - |
 
