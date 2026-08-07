@@ -24,6 +24,21 @@ Full record: [`milestones/v1.1-ROADMAP.md`](milestones/v1.1-ROADMAP.md) ·
 [`milestones/v1.1-MILESTONE-AUDIT.md`](milestones/v1.1-MILESTONE-AUDIT.md) ·
 [`MILESTONES.md`](MILESTONES.md)
 
+**Phase 13 complete (2026-08-07)** — first phase of v1.2. NIP-42 auth is now operation-scoped:
+all nine RAUTH requirements validated, 14 plans across 13 waves, suite at **2,585 passing / 2
+skipped** across 274 files. The phase's central bet held — auth-on-every-operation is a property
+of one shared operator (`packages/relay/src/operators/auth-retry.ts`) rather than eight agreeing
+implementations, so each call site is a conversion onto it rather than a reimplementation.
+
+It took three rounds to get there, and the reason is worth carrying forward: one defect class —
+a call site's own bookkeeping value (`req()`'s synthetic `OPEN`, later `RelayGroup`'s manufactured
+`ERROR`) being counted as real progress by a shared consumer — recurred at each layer it reached.
+Making the progress predicate a *required* parameter closed it at the relay layer; it came back one
+layer up behind an `as` cast that defeated exactly that guardrail. The fix that finally held was
+structural: a predicate total over its own union with no cast, so a new message arm is a compile
+error rather than a silent default. Requiring a parameter only helps where a cast cannot erase the
+question.
+
 ## Current Milestone: v1.2 operation-scoped-relay-auth
 
 **Goal:** Move NIP-42 authentication out of ambient, relay-wide cached state and into the
