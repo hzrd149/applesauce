@@ -175,7 +175,7 @@ Plans:
 | 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete | 2026-07-22 |
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
-| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete   | 2026-08-06 |
+| 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 0/TBD | Not started | - |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 0/TBD | Not started | - |
 

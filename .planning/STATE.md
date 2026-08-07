@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: operation-scoped-relay-auth
-current_phase: 13
-current_phase_name: operation-scoped-nip-42-auth-hooks
-status: executing
+current_phase: 14
+current_phase_name: Auth Lifecycle Debug Logging
+status: completed
 stopped_at: Completed 13-14-PLAN.md
-last_updated: "2026-08-07T08:05:21.226Z"
-last_activity: 2026-08-06
-last_activity_desc: Phase 13 execution started
+last_updated: "2026-08-07T08:17:44.083Z"
+last_activity: 2026-08-07
+last_activity_desc: Phase 13 complete, transitioned to Phase 14
 progress:
   total_phases: 3
   completed_phases: 1
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 ## Current Position
 
-Phase: 13 (operation-scoped-nip-42-auth-hooks) — COMPLETE (14/14 plans, CR-02 gap closure)
-Plan: 14 of 14
+Phase: 14 — Auth Lifecycle Debug Logging
+Plan: Not started
 Status: Phase 13 complete; Phase 14 (Auth Lifecycle Debug Logging) not started
-Last activity: 2026-08-07 — Plan 13-14 closed CR-02 (RelayGroup.request() clock cancelled by group's own ERROR bookkeeping)
+Last activity: 2026-08-07 — Phase 13 complete, transitioned to Phase 14
 
 ## Performance Metrics
 
