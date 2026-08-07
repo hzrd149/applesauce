@@ -260,3 +260,35 @@ Plans:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.13: negentropy multi-round reconciliation never sends its follow-up message (BACKLOG)
+
+**Goal:** [Captured for future planning] `negentropySync` (`packages/relay/src/negentropy.ts:144-148`) computes the next client message and drops it: `const [newMsg, have, need] = await ne.reconcile(...)` is followed by `msg = newMsg` and nothing else. The `socket` parameter is typed `MultiplexWebSocket & { next: (msg: any) => void }` precisely so the loop can write follow-ups, and **`socket.next` is never called anywhere in the file** — the only `.next(` call sites are the abort observer. Only the initial NEG-OPEN ever reaches the wire. Two sufficiently diverged sets need more than one round trip, so the loop then blocks forever awaiting a NEG-MSG the client never asked for, and there is **no operation clock on that path** — `relay.sync()` / `pool.sync()` hang indefinitely rather than timing out.
+
+**Why the suite misses it:** `relay.test.ts:2748` deliberately keeps both sides under 32 items so the reconciliation completes in a single round trip — its own comment says so. Any regression test must exceed the frame-size threshold to force a second round.
+
+**Provenance — this is NOT a Phase 13 regression.** `git log -L 144,148` traces the loop to `f649d6dd` ("Fix abort signal being ignored in `negentropySync`"), dated **2025-10-27**, ten months before Phase 13 opened. Phase 13 touched this file for auth threading only. Surfaced by the Phase 13 code review (`phases/13-operation-scoped-nip-42-auth-hooks/13-REVIEW.md`, finding CR-01) and deferred by explicit user decision on 2026-08-06 as out of that phase's scope.
+
+**Worth checking at promotion:** whether the negentropy path should also carry an operation clock (every other operation in the phase got `suspendableTimeout`; this one has none, which is why the symptom is a hang rather than a timeout).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.14: CLOSED reason prefix lookup walks the prototype chain (BACKLOG)
+
+**Goal:** [Captured for future planning] `parseClosedError` (`packages/relay/src/relay.ts:180-184`) indexes a plain object literal with a relay-controlled string: `CLOSED_ERROR_PREFIXES[reason.split(":")[0] as keyof typeof CLOSED_ERROR_PREFIXES]`. The `as` cast silences the compiler, but at runtime the lookup resolves inherited `Object.prototype` keys. A relay sending `CLOSED <id> "constructor: ..."` resolves to the `Object` constructor — truthy **and** constructible — so `new ErrorClass(reason)` returns a **`String` object**, not a `RelayClosedError`; D-07's `error instanceof RelayClosedError` retry-skip then never fires and the REQ is resent (2 frames observed with `reconnect: 2`). A relay sending `"__proto__: ..."` resolves to `Object.prototype`, which is truthy but not constructible, throwing `TypeError: ErrorClass is not a constructor`.
+
+**Fix shape:** make the lookup incapable of reaching the prototype chain rather than filtering the known-bad keys — a `null`-prototype map (`Object.create(null)` / `new Map`) or an `Object.hasOwn` guard. Filtering `constructor`/`__proto__` by name is the enumerated fix and leaves the next inherited key open.
+
+**Provenance — this is NOT a Phase 13 regression.** `6c806776` ("Fix auth-required handling in relay req()"), confirmed an ancestor of Phase 13's first merge. Surfaced by the Phase 13 code review (`phases/13-operation-scoped-nip-42-auth-hooks/13-REVIEW.md`, finding CR-03) and deferred by explicit user decision on 2026-08-06 as out of that phase's scope.
+
+**Worth checking at promotion:** whether any other relay-controlled string in the package indexes an object literal the same way (same defect class, not just this instance).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
