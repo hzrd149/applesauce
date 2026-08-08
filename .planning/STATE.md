@@ -5,8 +5,8 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 14
 current_phase_name: Auth Lifecycle Debug Logging
 status: completed
-stopped_at: Completed 13-14-PLAN.md
-last_updated: "2026-08-07T08:17:44.083Z"
+stopped_at: Phase 14 context gathered
+last_updated: "2026-08-08T15:01:03.224Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 13 complete, transitioned to Phase 14
 progress:
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 13 — operation-scoped-nip-42-auth-hooks
+**Current focus:** Phase 14 — auth-lifecycle-debug-logging
 
 ## Current Position
 
@@ -382,7 +382,10 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-07T08:05:21.208Z
-Stopped at: Completed 13-14-PLAN.md
-Resume file: 
-None
+Last session: 2026-08-08T15:01:03.201Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-auth-lifecycle-debug-logging/14-CONTEXT.md
+
+Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
+2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
+Recoverable from commit `c3be26c2` if ever needed.
