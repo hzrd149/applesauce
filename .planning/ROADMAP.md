@@ -139,7 +139,24 @@ Plans:
   2. Retry, timeout, and rejection log lines identify the specific operation that triggered them, so two concurrent operations' auth attempts stay distinguishable in a shared log stream. (ALOG-02)
   3. Every `Debugger` in `packages/loaders/` is derived once at class, module, or context construction — a grep for inline `.extend(` at a log call site in that package returns zero hits. (ALOG-03)
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 14-01-PLAN.md — Wire-verb auth context, the shared request-summary formatter, and negentropy id ownership (wave 1)
+- [ ] 14-02-PLAN.md — ALOG-03 restatement, the `packages/loaders/` derive-once sweep, and SEED-001 closure (wave 1)
+- [ ] 14-03-PLAN.md — Shared debug-output capture harness and `RelayGroup.sync`'s dropped-relay prose (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 14-04-PLAN.md — The `:auth` namespace and the NIP-42 connection track (challenge, signing, sent, result, invalidation) (wave 2)
+- [ ] 14-05-PLAN.md — The per-operation track in the shared auth-retry operator (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 14-06-PLAN.md — ALOG-01/ALOG-02 lifecycle oracle over captured debug output (wave 3)
+- [ ] 14-07-PLAN.md — Publish-timeout discriminator and the release-window changeset set (wave 3)
 
 ### Phase 15: Concord Stream-Auth Cleanup
 
