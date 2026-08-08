@@ -603,14 +603,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             const request$ = () =>
               toMessages(
                 withTimeout(
-                  paginatedRequest(
-                    request,
-                    url,
-                    filter,
-                    limit,
-                    log.extend(url).extend("request"),
-                    relayMethodOptions,
-                  ),
+                  paginatedRequest(request, url, filter, limit, log.extend(url).extend("request"), relayMethodOptions),
                 ),
               );
 

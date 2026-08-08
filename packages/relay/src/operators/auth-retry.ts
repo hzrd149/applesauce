@@ -48,7 +48,11 @@ export function authRequiredSignal(reason: string): AuthRequiredSignal {
 
 /** Type guard for {@link AuthRequiredSignal} */
 export function isAuthRequiredSignal(value: unknown): value is AuthRequiredSignal {
-  return typeof value === "object" && value !== null && (value as Record<PropertyKey, unknown>)[AUTH_REQUIRED_SIGNAL] === true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<PropertyKey, unknown>)[AUTH_REQUIRED_SIGNAL] === true
+  );
 }
 
 /**

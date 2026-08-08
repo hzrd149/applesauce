@@ -23,10 +23,7 @@ describe("getNutzapP2PKPubkey", () => {
     "proof",
     JSON.stringify({ secret: JSON.stringify(["P2PK", { data: pubkey }]), C: id, id, amount: 1 }),
   ];
-  const plainProof = (id: string) => [
-    "proof",
-    JSON.stringify({ secret: "not-p2pk", C: id, id, amount: 1 }),
-  ];
+  const plainProof = (id: string) => ["proof", JSON.stringify({ secret: "not-p2pk", C: id, id, amount: 1 })];
 
   it("returns the shared pubkey when every proof is locked to it", () => {
     const event = { tags: [p2pkProof(pk("a"), "A"), p2pkProof(pk("a"), "B")] } as NostrEvent;

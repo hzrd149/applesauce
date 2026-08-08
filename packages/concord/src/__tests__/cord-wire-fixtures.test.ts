@@ -37,9 +37,7 @@ import {
 
 describe("substituteFixtureTags", () => {
   it("throws naming the unresolved token when a placeholder has no binding", () => {
-    expect(() => substituteFixtureTags(REACTION_KIND7_EXAMPLE.tags, {})).toThrow(
-      "<channel_id>",
-    );
+    expect(() => substituteFixtureTags(REACTION_KIND7_EXAMPLE.tags, {})).toThrow("<channel_id>");
   });
 
   it("passes non-placeholder elements through byte-identical", () => {
@@ -85,7 +83,10 @@ describe("missingFixtureTags", () => {
   });
 
   it("returns the offending tag when it is absent entirely", () => {
-    const expected = [["channel", "<channel_id>"], ["k", "9"]];
+    const expected = [
+      ["channel", "<channel_id>"],
+      ["k", "9"],
+    ];
     const actual = [["channel", "<channel_id>"]];
 
     expect(missingFixtureTags(actual, expected)).toEqual([["k", "9"]]);

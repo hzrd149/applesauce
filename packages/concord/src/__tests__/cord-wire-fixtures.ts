@@ -28,8 +28,7 @@ export const CORD_EXAMPLES_SOURCE = {
   file: "examples.md",
 };
 
-export const CORD_EXAMPLES_CAVEAT =
-  "Non-normative — if an example here disagrees with a CORD, the CORD wins.";
+export const CORD_EXAMPLES_CAVEAT = "Non-normative — if an example here disagrees with a CORD, the CORD wins.";
 
 export const REACTION_KIND7_EXAMPLE: CordWireExample = {
   section: "examples.md §2.3 Kind 7 — Reaction",
@@ -334,8 +333,7 @@ export function multiByteStringOverBytes(n: number): string {
  * closing paren, semicolon, or quote) is excluded from the character class by
  * construction, not matched at all.
  */
-const CITATION_PATTERN =
-  /CORD-(\d{2}) §(\d+(?:-\d+)?|[A-Za-z][A-Za-z0-9-]*(?: [A-Z][A-Za-z0-9-]*)*)/g;
+const CITATION_PATTERN = /CORD-(\d{2}) §(\d+(?:-\d+)?|[A-Za-z][A-Za-z0-9-]*(?: [A-Z][A-Za-z0-9-]*)*)/g;
 
 /**
  * Strips any trailing punctuation a looser upstream capture might sweep in

@@ -1,5 +1,29 @@
 # applesauce-relay
 
+## 6.3.0
+
+### Minor Changes
+
+- 1899731: Add support for authenticating multiple users on a single relay connection with `authentications$`, `authenticatedPubkeys$`, and `isAuthenticated`
+- 54d8400: An operation that previously waited indefinitely against an auth-required relay now fails with a timeout after 30 seconds by default, since `waitForAuth` no longer pre-blocks the operation on the relay-wide auth-required flags and the wait is instead bounded by the new `authTimeout` option — pass `authTimeout: false` to restore the previous indefinite wait for out-of-band authentication.
+- 54d8400: A relay whose negentropy sync fails inside `RelayGroup.sync` no longer ends the sync for the other relays in the group.
+- 54d8400: `req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, and negentropy sync now accept `onAuthRequired`, `authTimeout`, and `authRetries` and invoke the handler with operation-local context (relay, challenge, operation, requirement, `missingPubkeys`, reason) when that specific operation receives `auth-required:`.
+- 54d8400: `PublishResponse` gains an optional `error` field carrying the original error object alongside the existing `message` string.
+- 3eed9a5: Add `waitForAuth` support to negentropy sync requests
+- 1899731: Support passing a pubkey or array of pubkeys to the `waitForAuth` option on the `req`, `subscription`, `request`, `count`, `event`, and `publish` methods of `Relay`, `RelayGroup`, and `RelayPool` to wait for specific users to be authenticated
+
+### Patch Changes
+
+- 1be34ca: A synchronously-throwing `onAuthRequired` handler now maps to `AuthHandlerError` identically to a rejected promise, instead of escaping as a raw, unmapped `Error`.
+- 1be34ca: A synchronous `onAuthRequired` handler resolving `req()` or `count()`'s auth phase now sends a real resend frame and observes its reply, instead of silently rejoining an already-terminated listen chain and completing with no results.
+- 1be34ca: `req()`, `request()`, and `subscription()` auth-required retries are now correctly bounded by `authRetries` instead of being silently reset by the synthetic `OPEN` message emitted on every resubscribe.
+- 1be34ca: `RelayGroup` now routes its debug diagnostics through the package's shared debug logger instead of writing directly to the console, so a consumer can silence them like every other class in the package.
+- 0926171: `RelayGroup.request()`'s operation clock no longer treats a relay's connection error as progress, so a group whose relays all fail or fall silent now errors on its declared timeout instead of hanging forever.
+- 1be34ca: `RelayGroup.request()`'s operation timeout is now suspended for the duration of a relay's auth phase instead of racing it.
+- 1be34ca: `request()`'s own operation timeout can now actually fire against an unresponsive relay, instead of being permanently cancelled by the synthetic `OPEN` message it previously treated as first progress.
+- Updated dependencies
+  - applesauce-core@6.3.0
+
 ## 6.2.1
 
 ### Patch Changes

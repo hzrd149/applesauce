@@ -316,11 +316,27 @@ describe("ConcordKeys", () => {
     const events = () => decodeRekey(droppedKeys, plan.rekeyWraps);
 
     // (a) Fail-closed: a rotator who does NOT outrank the victim → not removed.
-    const ignored = await readRekey(droppedKeys, events(), () => true, droppedPub, dropped, [], () => false);
+    const ignored = await readRekey(
+      droppedKeys,
+      events(),
+      () => true,
+      droppedPub,
+      dropped,
+      [],
+      () => false,
+    );
     expect(ignored.kind).not.toBe("removed");
 
     // (b) The same rotation, from a rotator who DOES outrank the victim → removed.
-    const honored = await readRekey(droppedKeys, events(), () => true, droppedPub, dropped, [], () => true);
+    const honored = await readRekey(
+      droppedKeys,
+      events(),
+      () => true,
+      droppedPub,
+      dropped,
+      [],
+      () => true,
+    );
     expect(honored.kind).toBe("removed");
 
     // (c) Fail-closed-on-absence: no `canRemoveSelf` argument at all → not
@@ -592,7 +608,15 @@ describe("readRekeyScoped convergence — ROTATE-05/06/07 (D-06/D-10)", () => {
 
     // EXPECTED: {kind: "removed"} — CORD-06 §2's removal rule, unmodified by
     // D-10 since no opaque competitor exists here.
-    const outcome = await readRekey(droppedKeys, events, () => true, droppedPub, dropped, [], () => true);
+    const outcome = await readRekey(
+      droppedKeys,
+      events,
+      () => true,
+      droppedPub,
+      dropped,
+      [],
+      () => true,
+    );
     expect(outcome.kind).toBe("removed");
   });
 

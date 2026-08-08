@@ -1,5 +1,26 @@
 # applesauce-common
 
+## 6.3.0
+
+### Minor Changes
+
+- 422ce62: Add `isValidSeal`, a type guard that checks an event is a NIP-59 seal with a valid id and signature.
+- 696b860: Add a NIP-C7 chat message factory for building kind 9 chat messages and their replies.
+- 557a8c1: Support NIP-59 rumors as the parent of a NIP-22 comment.
+- 560e193: Add NIP-7D forum thread support with a thread factory, cast, helpers, and a title operation.
+- bfe3267: The NIP-10 reference, reaction emoji, hashtag, and content warning helpers now accept unsigned rumors as well as signed events.
+- bfe3267: `setReactionParent` and `ReactionFactory` now accept a lightweight `{ id, pubkey, kind }` pointer or a rumor in addition to a full signed event.
+- bfe3267: Reading a malformed gift wrap seal now returns undefined instead of throwing or permanently caching the failure.
+
+### Patch Changes
+
+- e6a8cb2: Move the gift wrap, seal, and rumor symbols into `applesauce-core` and re-export them from `applesauce-common`.
+- bfe3267: The hidden content `is...Unlocked` guards now only report unlocked once the hidden values have actually been decrypted, so the matching `unlock...` helpers no longer resolve undefined.
+- 19031ac: `lockAppData` now clears the decrypted content so `getAppDataContent` returns undefined after locking.
+- 422ce62: Gift wrap seals are now signature verified before they are trusted, so a seal with an invalid signature is no longer accepted as proof of authorship.
+- Updated dependencies
+  - applesauce-core@6.3.0
+
 ## 6.2.0
 
 ### Minor Changes

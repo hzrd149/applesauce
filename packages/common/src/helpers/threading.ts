@@ -5,13 +5,9 @@ import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 
 export type ThreadReferences = {
   root?:
-    | { e: EventPointer; a: undefined }
-    | { e: undefined; a: AddressPointer }
-    | { e: EventPointer; a: AddressPointer };
+    { e: EventPointer; a: undefined } | { e: undefined; a: AddressPointer } | { e: EventPointer; a: AddressPointer };
   reply?:
-    | { e: EventPointer; a: undefined }
-    | { e: undefined; a: AddressPointer }
-    | { e: EventPointer; a: AddressPointer };
+    { e: EventPointer; a: undefined } | { e: undefined; a: AddressPointer } | { e: EventPointer; a: AddressPointer };
 };
 
 export const Nip10ThreadRefsSymbol = Symbol.for("nip10-thread-refs");

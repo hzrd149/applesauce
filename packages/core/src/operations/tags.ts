@@ -125,9 +125,7 @@ export function modifyHiddenTags<E extends EventTemplate | UnsignedEvent | Nostr
 }
 
 export type ModifyTagsOptions =
-  | TagOperation
-  | TagOperation[]
-  | { public?: TagOperation | TagOperation[]; hidden?: TagOperation | TagOperation[] };
+  TagOperation | TagOperation[] | { public?: TagOperation | TagOperation[]; hidden?: TagOperation | TagOperation[] };
 
 /**
  * A flexible method for creating an event operation that modifies the tags

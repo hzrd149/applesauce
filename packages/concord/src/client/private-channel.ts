@@ -187,8 +187,9 @@ export class ConcordPrivateChannel {
       this.connected$ = this.extras.relays$.pipe(switchMap(() => options.relayAuth.connected$(this.transport())));
       this.authenticated$ = this.extras.relays$.pipe(
         switchMap(() =>
-          options.relayAuth.authenticated$(this.transport(), () =>
-            channelLiveAuthors(this.opts.material(), this.channelKey).authors,
+          options.relayAuth.authenticated$(
+            this.transport(),
+            () => channelLiveAuthors(this.opts.material(), this.channelKey).authors,
           ),
         ),
       );

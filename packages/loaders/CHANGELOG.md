@@ -1,5 +1,19 @@
 # applesauce-loaders
 
+## 6.3.0
+
+### Minor Changes
+
+- 55e3f83: `SyncLoader` now threads `onAuthRequired`, `authTimeout`, and `authRetries` identically into both its negentropy sync and paginated request paths, with its own stall guard suspended for the full auth phase and its negentropy fallback skipped on an auth-required failure.
+- 98875b1: Add `waitForAuth` support to the sync loader so auth-required relays wait for NIP-42 authentication and retry.
+
+### Patch Changes
+
+- 1be34ca: `SyncLoader` no longer leaves an auth-phase timer pending after a load is torn down or after a handler settles once its auth phase was already force-closed.
+- 1be34ca: `SyncLoader`'s stall guard is now suspended for the full duration of a relay's auth phase even when the caller supplies no `onAuthRequired` handler.
+- Updated dependencies
+  - applesauce-core@6.3.0
+
 ## 6.2.0
 
 ### Minor Changes

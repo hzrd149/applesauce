@@ -192,10 +192,7 @@ export function mergeCommunityTombstones(a: CommunityTombstone[], b: CommunityTo
  * never drift apart on how the document is measured (WR-04's original
  * dedup rationale; D-08's retained size trace is why this survives).
  */
-export function communityListByteSize(
-  communities: CommunityListCommunity[],
-  tombstones: CommunityTombstone[],
-): number {
+export function communityListByteSize(communities: CommunityListCommunity[], tombstones: CommunityTombstone[]): number {
   // The wire document keys the array as `entries` (armada-compatible).
   return new TextEncoder().encode(JSON.stringify({ entries: communities, tombstones })).length;
 }

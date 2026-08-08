@@ -490,9 +490,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
           <div className="text-right">
             <div className="text-xs text-base-content/60">Signed in as</div>
             <div className="mt-1 text-sm font-semibold">{userDisplayName}</div>
-            <div className="mt-1 font-mono text-xs text-base-content/60">
-              {npubEncode(user.pubkey).slice(0, 18)}...
-            </div>
+            <div className="mt-1 font-mono text-xs text-base-content/60">{npubEncode(user.pubkey).slice(0, 18)}...</div>
           </div>
         </div>
 
