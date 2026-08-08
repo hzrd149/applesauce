@@ -6,7 +6,13 @@ import { asyncScheduler, lastValueFrom, NEVER, Observable, of, scheduled, Subjec
 import { describe, expect, it, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { createSyncLoader, SyncAuthContext, SyncLoaderStatus, SyncMethodOptions, SyncRequestMethod } from "../sync-loader.js";
+import {
+  createSyncLoader,
+  SyncAuthContext,
+  SyncLoaderStatus,
+  SyncMethodOptions,
+  SyncRequestMethod,
+} from "../sync-loader.js";
 
 const user = new FakeUser();
 
@@ -491,7 +497,13 @@ describe("createSyncLoader", () => {
     const onAuthRequired = vi.fn().mockResolvedValue(undefined);
 
     const loader = createSyncLoader({ eventStore, pool });
-    const { events$ } = loader({ relays: ["wss://relay/"], filter, onAuthRequired, authTimeout: 5_000, authRetries: 2 });
+    const { events$ } = loader({
+      relays: ["wss://relay/"],
+      filter,
+      onAuthRequired,
+      authTimeout: 5_000,
+      authRetries: 2,
+    });
 
     const events = await collect(events$);
 

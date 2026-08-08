@@ -1,12 +1,6 @@
 // NOTE: import from subpaths only, importing from the "nostr-tools" root pulls in modules that reference `fetch`
 import * as kinds from "nostr-tools/kinds";
-import {
-  isAddressableKind,
-  isEphemeralKind,
-  isKind,
-  isRegularKind,
-  isReplaceableKind,
-} from "nostr-tools/kinds";
+import { isAddressableKind, isEphemeralKind, isKind, isRegularKind, isReplaceableKind } from "nostr-tools/kinds";
 import {
   EventTemplate,
   getEventHash,

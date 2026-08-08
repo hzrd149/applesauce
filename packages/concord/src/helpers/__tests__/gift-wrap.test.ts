@@ -18,7 +18,11 @@ const DecodedWrapSymbol = Symbol.for("concord-decoded-wrap");
 async function buildWrap(convKey: Uint8Array, content = "hello plane"): Promise<NostrEvent> {
   const streamSk = generateSecretKey();
   const signer = new PrivateKeySigner(generateSecretKey());
-  return giftWrap(streamSk, convKey, signer)({
+  return giftWrap(
+    streamSk,
+    convKey,
+    signer,
+  )({
     kind: 3313,
     content,
     tags: [],

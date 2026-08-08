@@ -763,7 +763,11 @@ export class Relay {
   }
 
   /** Assemble the {@link RelayAuthContext} passed to a caller's `onAuthRequired` handler (RAUTH-01) */
-  protected buildAuthContext(operation: RelayAuthOperation, requirement: AuthRequirement, reason: string): RelayAuthContext {
+  protected buildAuthContext(
+    operation: RelayAuthOperation,
+    requirement: AuthRequirement,
+    reason: string,
+  ): RelayAuthContext {
     return {
       relay: this,
       url: this.url,

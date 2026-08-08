@@ -5,7 +5,7 @@ engines:
   lint: true
   code-quality: true
   ai-slop: true
-  architecture: false    # opt-in, needs rules.yml
+  architecture: false # opt-in, needs rules.yml
   security: true
 
 quality:
@@ -33,11 +33,11 @@ scoring:
   maxPerRule: 40
 
 ci:
-  failBelow: 70          # fail CI below this score
+  failBelow: 70 # fail CI below this score
   format: json
 
 telemetry:
-  enabled: true          # set to false to opt out
+  enabled: true # set to false to opt out
 
 rules:
-  ai-slop/thin-wrapper: "off"   # ignore "small wrapper functions" findings
+  ai-slop/thin-wrapper: "off" # ignore "small wrapper functions" findings

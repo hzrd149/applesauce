@@ -1,6 +1,6 @@
 {
   "name": "applesauce-accounts",
-  "version": "6.2.0",
+  "version": "6.3.0",
   "description": "A simple nostr account management system",
   "type": "module",
   "main": "dist/index.js",
@@ -39,8 +39,8 @@
     }
   },
   "dependencies": {
-    "applesauce-core": "^6.2.0",
-    "applesauce-signers": "^6.2.0",
+    "applesauce-core": "^6.3.0",
+    "applesauce-signers": "^6.3.0",
     "nanoid": "^5.1.5",
     "rxjs": "^7.8.1"
   },

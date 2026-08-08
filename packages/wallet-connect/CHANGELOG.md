@@ -1,5 +1,15 @@
 # applesauce-wallet-connect
 
+## 6.3.0
+
+### Patch Changes
+
+- 594bf1d: Clamp `setTimeout` delays to Node's 32-bit limit so far-future NIP-40 expirations no longer trigger a `TimeoutOverflowWarning` hot loop, and fix `waitForPaid()` rejecting immediately on invoices with no expiry
+- 06904f4: `getWalletNotification` now returns undefined when the notification content is not valid JSON instead of throwing.
+- Updated dependencies
+  - applesauce-common@6.3.0
+  - applesauce-core@6.3.0
+
 ## 6.2.0
 
 ### Minor Changes

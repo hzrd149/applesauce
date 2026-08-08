@@ -35,10 +35,7 @@ export interface CommunityKeys {
  * source of a private channel's key — a private channel with no held entry
  * derives NOTHING (`null`), never the public community_root address (H07).
  */
-function channelSecret(
-  material: JoinMaterial,
-  channel: ChannelMetadata,
-): { secret: Uint8Array; epoch: number } | null {
+function channelSecret(material: JoinMaterial, channel: ChannelMetadata): { secret: Uint8Array; epoch: number } | null {
   if (channel.private) {
     const held = material.channels.find((c) => c.id === channel.channel_id);
     if (!held) return null; // CHAN-01: keyless private channel derives nothing

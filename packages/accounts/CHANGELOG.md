@@ -1,5 +1,15 @@
 # applesauce-accounts
 
+## 6.3.0
+
+### Patch Changes
+
+- 4441639: Restore the persisted `id` and metadata of `AndroidNativeAccount` when rehydrating from JSON.
+- 4441639: Seed `AndroidNativeSigner` with the persisted pubkey so relaunching an app does not re-prompt the signer app for `getPublicKey`.
+- Updated dependencies
+  - applesauce-signers@6.3.0
+  - applesauce-core@6.3.0
+
 ## 6.2.0
 
 ### Patch Changes

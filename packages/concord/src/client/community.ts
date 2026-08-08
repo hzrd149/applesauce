@@ -413,12 +413,10 @@ export class ConcordCommunity {
       // re-emits (the reactivity gap RESEARCH.md surfaced).
       this.channels$ = combineLatest([slice((s) => s.channels), this.materialChanged$.pipe(startWith(undefined))]).pipe(
         map(([channels]) =>
-          channels.map(
-            (c): ChannelView => ({
-              ...c,
-              accessible: !c.private || hasChannelKey(this.material, c.channel_id),
-            }),
-          ),
+          channels.map((c): ChannelView => ({
+            ...c,
+            accessible: !c.private || hasChannelKey(this.material, c.channel_id),
+          })),
         ),
         distinctUntilChanged(sameChannelViews),
       );
@@ -449,12 +447,10 @@ export class ConcordCommunity {
         authenticated: this.authenticated$,
         error: this.error$,
       }).pipe(
-        map(
-          ({ dissolved, ...s }): ConcordCommunityStatus => ({
-            ...s,
-            phase: dissolved ? "dissolved" : s.phase,
-          }),
-        ),
+        map(({ dissolved, ...s }): ConcordCommunityStatus => ({
+          ...s,
+          phase: dissolved ? "dissolved" : s.phase,
+        })),
         distinctUntilChanged(
           (a, b) =>
             a.phase === b.phase &&
@@ -1554,11 +1550,7 @@ export class ConcordCommunity {
     for (const wrap of plan.rekeyWraps) await requireMajority(wrap, "root roll");
     for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
 
-    this.publishLog(
-      "refounding publish targets=%d protocol=%d",
-      transportRelays.length,
-      protocolRelays.length,
-    );
+    this.publishLog("refounding publish targets=%d protocol=%d", transportRelays.length, protocolRelays.length);
 
     // Only after every gated wrap clears majority: compaction/snapshot + adopt.
     for (const wrap of plan.compactionWraps) this.pool.publish(transportRelays, wrap).catch(() => {});

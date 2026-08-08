@@ -1,5 +1,13 @@
 # applesauce-signer
 
+## 6.3.0
+
+### Patch Changes
+
+- 4441639: Seed `AndroidNativeSigner` with the persisted pubkey so relaunching an app does not re-prompt the signer app for `getPublicKey`.
+- Updated dependencies
+  - applesauce-core@6.3.0
+
 ## 6.2.2
 
 ### Patch Changes

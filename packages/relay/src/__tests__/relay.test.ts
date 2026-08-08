@@ -6,7 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
 import { Negentropy, NegentropyStorageVector } from "../lib/negentropy.js";
-import { AuthHandlerError, AuthRequiredError, AuthTimeoutError, Relay, RelayClosedError, SyncDirection } from "../relay.js";
+import {
+  AuthHandlerError,
+  AuthRequiredError,
+  AuthTimeoutError,
+  Relay,
+  RelayClosedError,
+  SyncDirection,
+} from "../relay.js";
 import { RelayInformation } from "../types";
 import { FakeUser } from "./fake-user.js";
 
@@ -994,7 +1001,7 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
     secondSub.unsubscribe();
   });
 
-  it("RAUTH-01/RAUTH-03: invokes onAuthRequired with operation \"publish\" and resends the EVENT after the handler authenticates", async () => {
+  it('RAUTH-01/RAUTH-03: invokes onAuthRequired with operation "publish" and resends the EVENT after the handler authenticates', async () => {
     const user = new FakeUser();
     const onAuthRequired = vi.fn(async () => {
       await relay.authenticate(user);
@@ -1743,9 +1750,7 @@ describe("operation-scoped REQ auth (13-02)", () => {
 
     const validTypes = new Set(["OPEN", "EVENT", "EOSE", "CLOSED"]);
     expect(spy.getValues().length).toBeGreaterThan(0);
-    expect(spy.getValues().every((v: any) => typeof v === "object" && v !== null && validTypes.has(v.type))).toBe(
-      true,
-    );
+    expect(spy.getValues().every((v: any) => typeof v === "object" && v !== null && validTypes.has(v.type))).toBe(true);
 
     spy.unsubscribe();
   });
@@ -1831,10 +1836,9 @@ describe("operation-scoped REQ auth gap closure (13-09, CR-02/WR-01)", () => {
       relay.authenticationResponse$.next({ ok: true, from: relay.url });
     });
 
-    const spy = subscribeSpyTo(
-      relay.subscription({ kinds: [1] }, { id: "sub1", onAuthRequired, authTimeout: 50 }),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { id: "sub1", onAuthRequired, authTimeout: 50 }), {
+      expectErrors: true,
+    });
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
@@ -2399,9 +2403,7 @@ describe("operation-scoped COUNT auth (13-04)", () => {
 
     // The 10s clock was armed (before the auth phase) and re-armed (after it closed) with
     // essentially its full original budget, not `10_000 - the ~30ms auth wait`
-    const fullBudgetArms = setTimeoutSpy.mock.calls.filter(
-      ([, delay]) => typeof delay === "number" && delay > 9000,
-    );
+    const fullBudgetArms = setTimeoutSpy.mock.calls.filter(([, delay]) => typeof delay === "number" && delay > 9000);
     expect(fullBudgetArms.length).toBeGreaterThanOrEqual(2);
 
     setTimeoutSpy.mockRestore();
