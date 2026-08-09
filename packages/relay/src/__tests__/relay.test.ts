@@ -1020,7 +1020,7 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
       relay,
       url: relay.url,
       challenge: "challenge-1",
-      operation: "publish",
+      request: { verb: "EVENT", event: mockEvent },
       requirement: true,
       missingPubkeys: null,
       reason: "auth-required: need to authenticate",
@@ -1370,7 +1370,7 @@ describe("operation-scoped REQ auth (13-02)", () => {
       relay,
       url: relay.url,
       challenge: "challenge-xyz",
-      operation: "read",
+      request: { verb: "REQ", id: "sub1", filters: [{ kinds: [1] }] },
       requirement: true,
       missingPubkeys: null,
       reason: "auth-required: need to authenticate",
@@ -2206,7 +2206,7 @@ describe("operation-scoped COUNT auth (13-04)", () => {
       relay,
       url: relay.url,
       challenge: "challenge-xyz",
-      operation: "read",
+      request: { verb: "COUNT", id: "count1", filters: [{ kinds: [1] }] },
       requirement: true,
       missingPubkeys: null,
       reason: "auth-required: need to authenticate",
@@ -2814,7 +2814,10 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
 
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
     expect(onAuthRequired).toHaveBeenCalledWith(
-      expect.objectContaining({ operation: "sync", reason: "auth-required: need to authenticate" }),
+      expect.objectContaining({
+        request: { verb: "NEG-OPEN", id: negOpen1[1], filter: { kinds: [1] } },
+        reason: "auth-required: need to authenticate",
+      }),
     );
 
     server.send(["NEG-ERR", negOpen2[1], "test done"]);
@@ -2990,7 +2993,9 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
     // is sufficient synchronization (no arbitrary sleep needed).
     await spy.onComplete();
 
-    expect(onAuthRequired).toHaveBeenCalledWith(expect.objectContaining({ operation: "publish" }));
+    expect(onAuthRequired).toHaveBeenCalledWith(
+      expect.objectContaining({ request: { verb: "EVENT", event: mockEvent } }),
+    );
   });
 
   it("RAUTH-08: sync()'s internal RECEIVE-direction req() call invokes the caller's onAuthRequired", async () => {
@@ -3019,7 +3024,9 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
     // without leaving a dangling timer behind.
     await spy.onError();
 
-    expect(onAuthRequired).toHaveBeenCalledWith(expect.objectContaining({ operation: "read" }));
+    expect(onAuthRequired).toHaveBeenCalledWith(
+      expect.objectContaining({ request: { verb: "REQ", id: reqMsg[1], filters: [{ ids: [mockEvent.id] }] } }),
+    );
   });
 });
 

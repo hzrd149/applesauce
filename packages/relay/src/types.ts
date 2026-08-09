@@ -56,8 +56,19 @@ export interface RelayStatus {
 
 export type MultiplexWebSocket<T = any> = Pick<WebSocketSubject<T>, "multiplex">;
 
-/** The kind of operation an auth-required response was received for */
-export type RelayAuthOperation = "read" | "publish" | "sync";
+/**
+ * The exact wire request a relay refused with `auth-required:`, discriminated by the NIP-01/NIP-77 verb
+ * that carried it. D-02: an `onAuthRequired` handler receives this instead of a three-value operation
+ * category, so it can branch on the request the relay actually rejected.
+ */
+export type RelayAuthWireRequest =
+  | { verb: "REQ"; id: string; filters: Filter[] }
+  | { verb: "COUNT"; id: string; filters: Filter[] }
+  | { verb: "EVENT"; event: NostrEvent }
+  | { verb: "NEG-OPEN"; id: string; filter: Filter };
+
+/** The verb of a {@link RelayAuthWireRequest}, derived from the union itself so it stays the single source of truth */
+export type RelayAuthWireVerb = RelayAuthWireRequest["verb"];
 
 /**
  * The context passed to a {@link RelayAuthHandler} when a relay signals that authentication is required
@@ -70,8 +81,8 @@ export type RelayAuthContext = {
   url: string;
   /** The current NIP-42 AUTH challenge string, or null if none has been received yet */
   challenge: string | null;
-  /** The kind of operation that triggered the auth-required response */
-  operation: RelayAuthOperation;
+  /** The exact wire request the relay refused */
+  request: RelayAuthWireRequest;
   /** The auth requirement configured for the operation that triggered this auth phase */
   requirement: AuthRequirement;
   /** The pubkeys that are not yet authenticated for `requirement`, or null when `requirement` is `true` */

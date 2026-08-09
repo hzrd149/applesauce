@@ -23,7 +23,8 @@ import {
   timeout,
 } from "rxjs";
 
-import type { AuthRequirement, RelayAuthContext, RelayAuthHandler, RelayAuthOperation } from "../types.js";
+import { describeWireRequest, truncateForLog } from "../helpers/auth-log.js";
+import type { AuthRequirement, RelayAuthContext, RelayAuthHandler } from "../types.js";
 
 /**
  * Internal-only D-04 operator. NOT barrel-exported from `operators/index.ts` (mirrors `complete-when.ts`'s
@@ -205,8 +206,6 @@ export type AuthRetryErrors = {
 
 /** Configuration for the {@link authRetry} operator */
 export type AuthRetryConfig<T> = {
-  /** The operation label carried on the built {@link RelayAuthContext} */
-  operation: RelayAuthOperation;
   /** What auth state to wait for. `false` terminates immediately without invoking the handler (RAUTH-06) */
   waitForAuth?: AuthRequirement;
   /** Invoked once per auth phase, even when `waitForAuth` is already satisfied (D-11) */
@@ -226,6 +225,12 @@ export type AuthRetryConfig<T> = {
   buildContext: (reason: string) => RelayAuthContext;
   /** Maps an {@link AuthRequirement} to an observable of whether it is currently satisfied */
   authSatisfied$: (requirement: AuthRequirement) => Observable<boolean>;
+  /**
+   * Required (D-08): the pubkeys that currently satisfy `waitForAuth` at the moment `satisfiedPubkeys` is
+   * called — the join key an operation track hangs its "now waiting for …" line off. Never optional, never
+   * defaulted, mirroring `isProgress`'s CR-01/WR-01 precedent so a call site cannot silently omit the answer.
+   */
+  satisfiedPubkeys: () => string[];
   /** The per-operation {@link AuthPhaseGate} opened for the duration of each auth phase */
   gate: AuthPhaseGate;
   /** Optional debug logger */
@@ -262,7 +267,7 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
 
         const phase$: Observable<boolean> = defer(() => {
           config.gate.begin();
-          config.log?.(`Auth required for ${config.operation}: ${signal.reason}`);
+          config.log?.(`Auth required: ${describeWireRequest(context.request)} — ${truncateForLog(signal.reason)}`);
 
           // D-11: the handler always runs, even if waitForAuth is already satisfied
           // CR-04: a handler that throws synchronously must map to the same AuthHandlerError-shaped
