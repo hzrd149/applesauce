@@ -19,7 +19,7 @@ const FAKE_CONTEXT: RelayAuthContext = {
   relay: {} as never,
   url: "wss://relay.example/",
   challenge: null,
-  operation: "read",
+  request: { verb: "REQ", id: "fake-req-id", filters: [{ kinds: [1] }] },
   requirement: true,
   missingPubkeys: null,
   reason: "",
@@ -36,9 +36,9 @@ function makeErrors() {
 
 function baseConfig(overrides: Partial<AuthRetryConfig<number>> = {}): AuthRetryConfig<number> {
   return {
-    operation: "read",
     buildContext: (reason) => ({ ...FAKE_CONTEXT, reason }),
     authSatisfied$: () => of(true),
+    satisfiedPubkeys: () => [],
     gate: new AuthPhaseGate(),
     // Default: any value counts as progress, matching every existing test's "any value is progress" intent
     isProgress: () => true,

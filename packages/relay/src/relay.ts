@@ -73,8 +73,9 @@ import {
   NegentropySyncStore,
   PublishOptions,
   RelayAuthContext,
-  RelayAuthOperation,
   RelayAuthOptions,
+  RelayAuthWireRequest,
+  RelayAuthWireVerb,
   RelayAuthState,
   PublishResponse,
   RelayCountOptions,
@@ -397,6 +398,30 @@ export class Relay {
   // Subjects that track if an "auth-required" message has been received for REQ or EVENT
   protected receivedAuthRequiredForReq = new BehaviorSubject(false);
   protected receivedAuthRequiredForEvent = new BehaviorSubject(false);
+
+  /**
+   * D-03: the single surviving mapping from a wire verb to the legacy read/publish informational flags.
+   * `REQ`, `COUNT`, and `NEG-OPEN` set `receivedAuthRequiredForReq`; `EVENT` sets
+   * `receivedAuthRequiredForEvent`. Each branch is guarded by the subject's current value so a repeat
+   * call is a no-op. The `default` branch assigns the narrowed `verb` to a `never`-typed local so a new
+   * {@link RelayAuthWireVerb} member added later is a compile error here rather than a silent default.
+   */
+  protected receivedAuthRequiredFor(verb: RelayAuthWireVerb): void {
+    switch (verb) {
+      case "REQ":
+      case "COUNT":
+      case "NEG-OPEN":
+        if (!this.receivedAuthRequiredForReq.value) this.receivedAuthRequiredForReq.next(true);
+        break;
+      case "EVENT":
+        if (!this.receivedAuthRequiredForEvent.value) this.receivedAuthRequiredForEvent.next(true);
+        break;
+      default: {
+        const exhaustive: never = verb;
+        throw new Error(`Unhandled auth wire verb: ${JSON.stringify(exhaustive)}`);
+      }
+    }
+  }
 
   // Computed observables that track if auth is required for REQ or EVENT
   authRequiredForRead$: Observable<boolean>;
@@ -762,13 +787,25 @@ export class Relay {
     return requirement.filter((pubkey) => !this.isAuthenticated(pubkey));
   }
 
+  /**
+   * D-08: compute the pubkeys that currently satisfy an {@link AuthRequirement} — the join key an
+   * operation track hangs its "now waiting for …" line off. `true` is satisfied by any authenticated
+   * pubkey, so the whole current set is returned wholesale. A string or array requirement returns only
+   * the required pubkeys that are already authenticated.
+   */
+  protected satisfiedPubkeysFor(requirement: AuthRequirement): string[] {
+    if (typeof requirement === "boolean") return this.authenticatedPubkeys;
+    const required = Array.isArray(requirement) ? requirement : [requirement];
+    return required.filter((pubkey) => this.isAuthenticated(pubkey));
+  }
+
   /** Assemble the {@link RelayAuthContext} passed to a caller's `onAuthRequired` handler (RAUTH-01) */
-  protected buildAuthContext(operation: RelayAuthOperation, requirement: AuthRequirement, reason: string): RelayAuthContext {
+  protected buildAuthContext(request: RelayAuthWireRequest, requirement: AuthRequirement, reason: string): RelayAuthContext {
     return {
       relay: this,
       url: this.url,
       challenge: this.challenge,
-      operation,
+      request,
       requirement,
       missingPubkeys: this.missingPubkeysFor(requirement),
       reason,
@@ -799,7 +836,7 @@ export class Relay {
    * needing its own reentrancy bug found by a future verifier.
    */
   protected authRetryOperator<T extends unknown = unknown>(
-    operation: RelayAuthOperation,
+    describeRequest: () => RelayAuthWireRequest,
     opts: RelayAuthOptions | undefined,
     gate: AuthPhaseGate,
     isProgress: ProgressPredicate<T>,
@@ -809,14 +846,16 @@ export class Relay {
     const authRetries = opts?.authRetries ?? 1;
 
     return authRetry<T>({
-      operation,
       waitForAuth,
       onAuthRequired: opts?.onAuthRequired,
       authTimeout,
       authRetries,
       isProgress,
-      buildContext: (reason) => this.buildAuthContext(operation, waitForAuth, reason),
+      // A thunk, not a value: req()'s filters can change over the life of the subscription, so the
+      // summary must describe the request as it stood when the relay refused it, not as it stands now.
+      buildContext: (reason) => this.buildAuthContext(describeRequest(), waitForAuth, reason),
       authSatisfied$: (requirement) => this.authSatisfied$(requirement),
+      satisfiedPubkeys: () => this.satisfiedPubkeysFor(waitForAuth),
       gate,
       log: this.log,
       errors: {
@@ -888,6 +927,11 @@ export class Relay {
     // the shared operator below.
     const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
 
+    // A thunk (not a value) since this REQ's filters can change over the life of the subscription —
+    // the wire request handed to onAuthRequired must describe the filters as they stood when the relay
+    // refused them. Filters are already tracked at the send site (this.reqs$), so no new bookkeeping.
+    const describeRequest = (): RelayAuthWireRequest => ({ verb: "REQ", id, filters: this.reqs$.value[id] ?? [] });
+
     return defer(() => {
       // CR-02: one auth attempt owns one send and one terminating listen chain, both constructed fresh
       // on every subscription to this defer — including the internal resubscription the shared auth
@@ -928,7 +972,7 @@ export class Relay {
             // narrowing by instanceof
             if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
               this.log(`Auth required for REQ`);
-              this.receivedAuthRequiredForReq.next(true);
+              this.receivedAuthRequiredFor("REQ");
               return authRequiredSignal(m.reason);
             }
 
@@ -995,7 +1039,7 @@ export class Relay {
     }).pipe(
       // D-04/D-09: the shared auth-retry operator drives the whole read auth phase, innermost in the pipe.
       // CR-01: isReqProgress excludes the synthetic OPEN bookkeeping message from resetting the retry budget.
-      this.authRetryOperator("read", opts, gate, isReqProgress),
+      this.authRetryOperator(describeRequest, opts, gate, isReqProgress),
       // Retry connection errors independently from relay CLOSED errors
       this.customConnectionRetryOperator(opts?.reconnect),
       // Resubscribe only after the relay cleanly CLOSED this REQ — reads the most recently completed
@@ -1014,12 +1058,19 @@ export class Relay {
     // every auth phase rather than resetting per attempt.
     const gate = new AuthPhaseGate();
 
+    // A thunk describing the wire request this COUNT sent, for the shared operator's onAuthRequired context.
+    const describeRequest = (): RelayAuthWireRequest => ({
+      verb: "COUNT",
+      id,
+      filters: Array.isArray(filters) ? filters : [filters],
+    });
+
     // D-04/D-09: the shared auth-retry operator drives the whole read auth phase. RAUTH-02: no
     // pre-block here — the COUNT is sent immediately regardless of any other operation's auth state.
     // Annotated explicitly so the `with` callback below can't leak a `never` inference back into it.
     // COUNT responses carry no bookkeeping value of their own, so every response is real progress.
     const authOperator: OperatorFunction<RelayCountResponse | AuthRequiredSignal, RelayCountResponse> =
-      this.authRetryOperator("read", opts, gate, () => true);
+      this.authRetryOperator(describeRequest, opts, gate, () => true);
 
     return defer(() => {
       // CR-03: mirrors req()'s CR-02 fix — one auth attempt owns one send and one terminating listen
@@ -1053,7 +1104,7 @@ export class Relay {
 
             if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
               this.log(`Auth required for COUNT`);
-              this.receivedAuthRequiredForReq.next(true);
+              this.receivedAuthRequiredFor("COUNT");
               return authRequiredSignal(reason);
             }
 
@@ -1113,6 +1164,9 @@ export class Relay {
     verb: "EVENT" | "AUTH" = "EVENT",
     opts?: RelayEventOptions & WithAuthPhaseGate,
   ): Observable<PublishResponse> {
+    // A thunk describing the wire request this EVENT sent, for the shared operator's onAuthRequired context.
+    const describeRequest = (): RelayAuthWireRequest => ({ verb: "EVENT", event });
+
     // Listen-only stream (no side effect) — shared so the two places below that reference it
     // (the main merge and the takeUntil notifier) don't register duplicate filter/map chains.
     const messages: Observable<PublishResponse> = this.socket.pipe(
@@ -1146,7 +1200,7 @@ export class Relay {
       tap(({ ok, message }) => {
         if (ok === false && message?.startsWith(AUTH_REQUIRED_PREFIX) && !this.receivedAuthRequiredForEvent.value) {
           this.log("Auth required for publish");
-          this.receivedAuthRequiredForEvent.next(true);
+          this.receivedAuthRequiredFor("EVENT");
         }
       }),
       // if no message is seen in 10s, emit failed publish response. This is per-attempt: it bounds
@@ -1179,7 +1233,7 @@ export class Relay {
     const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
 
     return this.waitForReady(signalled)
-      .pipe(this.authRetryOperator("publish", opts, gate, () => true)) // PublishResponse carries no bookkeeping value
+      .pipe(this.authRetryOperator(describeRequest, opts, gate, () => true)) // PublishResponse carries no bookkeeping value
       .pipe(
         // D-01: on exhaustion the shared operator throws AuthRequiredError (config.errors.exhausted).
         // event() converts that back into the relay's final `{ ok: false, message: "auth-required:..." }`
@@ -1249,6 +1303,10 @@ export class Relay {
     // retry, and an id minted inside the factory would identify an attempt rather than the operation.
     const negOpenId = nanoid();
 
+    // A thunk describing the wire request this negotiation opened, for the shared operator's
+    // onAuthRequired context. Declared after negOpenId so the id is stable across auth retries (D-05).
+    const describeRequest = (): RelayAuthWireRequest => ({ verb: "NEG-OPEN", id: negOpenId, filter });
+
     // Run a single negentropy negotiation. D-02: a NegentropyError from negentropySync is still translated
     // at this edge — its reason is parsed by parseClosedError, because translating a lower layer's error at
     // the boundary is not throw-as-signal. What changes is the result: when the parse yields
@@ -1264,7 +1322,7 @@ export class Relay {
           const parsed = parseClosedError(err.reason);
           if (parsed instanceof AuthRequiredError) {
             this.log(`Auth required for sync`);
-            this.receivedAuthRequiredForReq.next(true);
+            this.receivedAuthRequiredFor("NEG-OPEN");
             return of(authRequiredSignal(parsed.reason));
           }
           if (parsed) return throwError(() => parsed);
@@ -1281,7 +1339,7 @@ export class Relay {
     // the per-phase timeout, retry counting/reset and error mapping. RAUTH-02: no pre-block — the
     // negotiation starts immediately regardless of any other operation's auth state. The boolean
     // negotiation result carries no bookkeeping value of its own, so every value is real progress.
-    const observable: Observable<boolean> = runSync.pipe(this.authRetryOperator("sync", opts, gate, () => true));
+    const observable: Observable<boolean> = runSync.pipe(this.authRetryOperator(describeRequest, opts, gate, () => true));
 
     // Resolve to false if aborted while waiting for auth (before negentropySync starts handling the signal itself)
     const signal = opts?.signal;
