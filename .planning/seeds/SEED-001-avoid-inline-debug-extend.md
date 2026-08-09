@@ -1,8 +1,10 @@
 ---
 id: SEED-001
-status: dormant
+status: resolved
 planted: 2026-07-22
 planted_during: v1.1 / Phase 12.2 — concord-sync-debug-logging
+resolved: 2026-08-08
+resolved_in: phase-14
 trigger_when: when relevant
 scope: unknown
 ---
@@ -71,14 +73,30 @@ Already following the convention (module-level `const` or class field — no cha
 Candidate offenders — per-call or inline-at-call-site derivation:
 
 - `packages/loaders/src/loaders/timeline-loader.ts:58,136,221,241,262,446,474` —
-  several `opts?.logger?.extend(...)` derived per call
-- `packages/loaders/src/loaders/sync-loader.ts:171,266,351` — notably `:351`
-  does `log.extend(url).extend("request")` inline in a request path
-- `packages/relay/src/management.ts:123` — `this.log = this.log.extend(relay.url)`
-  (re-assigns the field; worth a look, likely fine)
-- `packages/concord/src/client/client.ts:260,409` — `this.log.extend("invite")`
-  built inside methods that can run more than once; not a hot loop, left as-is
-  during 12.2
+  **Audited compliant (Phase 14).** All seven sites derive at operator-application
+  time (inside the `(source) => {...}` returned by an operator factory, evaluated
+  once per operator application, not per emission) or at function-entry time
+  (inside `createTimelineLoader`/`createOutboxTimelineLoader`, once per loader
+  construction). None sits on a path a reactive pipeline can re-enter.
+- `packages/loaders/src/loaders/sync-loader.ts` — **Audited, one genuine offender
+  found and fixed (Phase 14).** The line numbers this entry previously cited
+  predated several refactors and no longer pointed at the described code;
+  replaced below with the audited current-state finding. `buildRelayStream(url)`'s per-url
+  request logger was derived inline via `log.extend(url).extend("request")`
+  inside the `switchMap((nips) => ...)` projector — a re-enterable reactive
+  callback — instead of at `buildRelayStream`'s own top level, where every other
+  per-relay value in that function is derived. Fixed by hoisting it to a
+  `const requestLog` declared once per relay, alongside `authPhases` and the
+  other per-relay state. `paginatedRequest`'s `logger?.extend("backward").extend(nanoid(8))`
+  and the loader-level `baseLog.extend(nanoid(4))` are per-call correlation
+  loggers, audited compliant under the Rule's carve-out below — untouched.
+- `packages/relay/src/management.ts:123` — **Audited compliant (Phase 14, as part
+  of confirming no relay-side sweep was needed, D-20).** `this.log = this.log.extend(relay.url)`
+  is a constructor-time derive-and-reassign, run once per `RelayManagement`
+  construction — the same shape as `relay.ts`'s own `this.log` derivation.
+- `packages/concord/src/client/client.ts:260,409` — out of this phase's scope
+  (`packages/concord/` is Phase 15 territory); left as recorded during 12.2,
+  not re-audited here.
 
 Resolved during Phase 12.2 (reference implementation of the fix):
 
@@ -92,3 +110,39 @@ Resolved during Phase 12.2 (reference implementation of the fix):
 Captured via one-shot seed capture during Phase 12.2 execution. Trigger and
 scope remain at defaults — enrich with
 `/gsd-capture --seed --enrich SEED-001` at your convenience.
+
+## Resolution
+
+Closed by Phase 14 (auth-lifecycle-debug-logging), plan 14-02.
+
+Phase 14's own research re-verified this seed's original criterion — a grep for an
+extend-then-immediately-invoke pattern (`x.extend(...)(...)`) at a log call site —
+and found it returns zero hits anywhere in this monorepo, so as written it passed
+without the `packages/loaders/` sweep ever being performed (D-17). The criterion
+was tightened to "derived once per relay-or-loader lifetime, never on a path a
+reactive pipeline can re-enter" (D-18), and `REQUIREMENTS.md` ALOG-03 and
+`ROADMAP.md`'s Phase 14 success criterion 3 were both amended to that wording.
+
+Under the tightened rule, the sweep found exactly one genuine offender: the
+per-url request logger in `packages/loaders/src/loaders/sync-loader.ts`'s
+`buildRelayStream`, derived inline inside a `switchMap` projector instead of at
+the function's own top level. It is now hoisted to a `const requestLog` declared
+once per relay, alongside `buildRelayStream`'s other per-relay state.
+
+`timeline-loader.ts`'s seven previously-flagged sites and both generated-suffix
+correlation loggers (`paginatedRequest`'s `.extend("backward").extend(nanoid(8))`
+and the loader-level `baseLog.extend(nanoid(4))`) were audited and are compliant
+as-is — each derives at operator-application, function-entry, or per-call
+correlation time, never inside a re-enterable reactive callback or a per-item
+loop body.
+
+`packages/relay/` needed no sweep (D-20): every logger there — including
+`management.ts:123`'s `this.log = this.log.extend(relay.url)` — is already a
+class field, a module const, or a constructor-time derive-and-reassign.
+
+No enforcement mechanism was added, and this is deliberate (D-19): a lint rule
+enforcing the logger convention is explicitly out of scope per `REQUIREMENTS.md`'s
+Out of Scope table; a grep-based repo test is that same rule wearing different
+clothes; and a written-invariant comment was declined because Phase 5.1 found 14
+of Phase 5's own invariant comments had gone false, giving that mechanism a poor
+track record in this codebase. Regressions are caught by review, not tooling.

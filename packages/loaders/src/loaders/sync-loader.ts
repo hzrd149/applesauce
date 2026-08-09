@@ -389,6 +389,12 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
       if (urls.length === 0) return status();
 
       const buildRelayStream = (url: string): Observable<Msg> => {
+        // D-18: derived once per relay, here at buildRelayStream's own top level — this function runs
+        // once per relay, whereas the switchMap projector below is a re-enterable reactive callback the
+        // request-logger derivation must not live inside. requestLog joins the other per-relay values
+        // already derived at this level (authPhases, authPhaseChange$, the close-callback set).
+        const requestLog = log.extend(url).extend("request");
+
         // D-16: this relay's own auth-phase suspension, constructed per relay/url (not once for the
         // whole loader) so one relay's auth wait can never pause another relay's stall clock. A counter
         // (not a boolean), mirroring applesauce-relay's own AuthPhaseGate, so overlapping phases cannot
@@ -601,18 +607,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
 
             // Part 1: paginated REQ
             const request$ = () =>
-              toMessages(
-                withTimeout(
-                  paginatedRequest(
-                    request,
-                    url,
-                    filter,
-                    limit,
-                    log.extend(url).extend("request"),
-                    relayMethodOptions,
-                  ),
-                ),
-              );
+              toMessages(withTimeout(paginatedRequest(request, url, filter, limit, requestLog, relayMethodOptions)));
 
             // A relay without NIP-77 just pages through a REQ
             if (!negentropy) return concat(status(), request$());
