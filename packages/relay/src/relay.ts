@@ -1244,6 +1244,11 @@ export class Relay {
     const buildStorage = async () =>
       Array.isArray(store) ? buildStorageVector(store) : await buildStorageFromFilter(store, filter);
 
+    // D-05: minted once per negentropy() call, before the runSync defer factory, so the NEG-OPEN id stays
+    // stable across every auth retry of this call — the shared auth operator resubscribes runSync on every
+    // retry, and an id minted inside the factory would identify an attempt rather than the operation.
+    const negOpenId = nanoid();
+
     // Run a single negentropy negotiation. D-02: a NegentropyError from negentropySync is still translated
     // at this edge — its reason is parsed by parseClosedError, because translating a lower layer's error at
     // the boundary is not throw-as-signal. What changes is the result: when the parse yields
@@ -1252,7 +1257,7 @@ export class Relay {
     // (RAUTH-09). Every other parsed prefix still re-throws its typed error, and an unparseable reason
     // still re-throws the original.
     const runSync: Observable<boolean | AuthRequiredSignal> = defer(() =>
-      from(buildStorage().then((storage) => negentropySync(storage, this.socket, filter, reconcile, opts))),
+      from(buildStorage().then((storage) => negentropySync(storage, this.socket, filter, reconcile, opts, negOpenId))),
     ).pipe(
       catchError((err) => {
         if (err instanceof NegentropyError) {

@@ -67,8 +67,8 @@ export async function negentropySync(
   filter: Filter,
   reconcile: ReconcileFunction,
   opts?: NegentropySyncOptions,
+  id: string = nanoid(),
 ): Promise<boolean> {
-  let id = nanoid();
   let ne = new Negentropy(storage, opts?.frameSizeLimit);
 
   let initialMessage = await ne.initiate<string>();
