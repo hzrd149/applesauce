@@ -153,3 +153,10 @@ None - no external service configuration required.
 ---
 *Phase: 14-auth-lifecycle-debug-logging*
 *Completed: 2026-08-09*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/14-auth-lifecycle-debug-logging/14-02-SUMMARY.md`
+- FOUND: `e47dd7ad` (Task 1 commit)
+- FOUND: `4d02ec5c` (Task 2 commit)
+- FOUND: `4a250e57` (Task 3 commit)
