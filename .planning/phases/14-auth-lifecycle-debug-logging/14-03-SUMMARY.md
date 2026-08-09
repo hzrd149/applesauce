@@ -145,6 +145,13 @@ None - no external service configuration required.
 - `RelayGroup.sync`'s dropped-relay line is closed out for this phase; no outstanding work on it. The Phase 13 deferred-items.md's "connection-drop-mid-auth-wait at low `keepAlive`" backlog candidate (flagged in 14-RESEARCH.md Open Question 3) remains unaddressed by this plan — it is out of ALOG-01/02's scope and should be filed as a backlog entry at phase closeout, not in this plan.
 - No blockers for 14-04/14-05 (the `applesauce-relay` wire-verb union and two-track connection logging work) or 14-06 (the `:auth` namespace lifecycle tests) — this plan's deliverables are additive infrastructure only.
 
+## Self-Check: PASSED
+
+- FOUND: `packages/relay/src/__tests__/debug-capture.ts`
+- FOUND: commit `45db6357` (Task 1)
+- FOUND: commit `bf5e0644` (Task 2)
+- FOUND: `.planning/phases/14-auth-lifecycle-debug-logging/14-03-SUMMARY.md`
+
 ---
 *Phase: 14-auth-lifecycle-debug-logging*
 *Completed: 2026-08-09*
