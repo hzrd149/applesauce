@@ -137,7 +137,7 @@ Plans:
 
   1. With debug logging enabled, an operator can trace a single NIP-42 auth attempt's position in its lifecycle — challenge received, AUTH sent, result — and read why it succeeded or failed from the log output alone. (ALOG-01)
   2. Retry, timeout, and rejection log lines identify the specific operation that triggered them, so two concurrent operations' auth attempts stay distinguishable in a shared log stream. (ALOG-02)
-  3. Every `Debugger` in `packages/loaders/` is derived once at class, module, or context construction — a grep for inline `.extend(` at a log call site in that package returns zero hits. (ALOG-03)
+  3. Every `Debugger` in `packages/loaders/` is derived once per module load, per class construction, per context construction, or per function/operator invocation — never on a path a reactive pipeline can re-enter, such as inside a `switchMap`/`mergeMap` projector or a per-item loop body (a correlation logger derived once per call with a generated suffix remains compliant; restated from the original zero-hits-grep wording per D-17/D-18). (ALOG-03)
 
 **Plans**: 7 plans
 
