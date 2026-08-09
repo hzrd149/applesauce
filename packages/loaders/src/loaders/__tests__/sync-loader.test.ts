@@ -1061,3 +1061,54 @@ describe("13-12: D-16 all-name coverage and the paginated path's own bound", () 
     expect(sync).not.toHaveBeenCalled();
   });
 });
+
+// 14-02: D-18 regression guard. Pins the derive-once-per-relay property of the request logger
+// hoisted out of buildRelayStream's switchMap projector, rather than any log line's rendered text,
+// per the standing Verification Standard (assert against a value derived from the design, not from
+// an observed run).
+describe("14-02: sync-loader's request logger is derived once per relay (D-18)", () => {
+  const filter: Filter = { kinds: [1], authors: [user.pubkey] };
+
+  /** A minimal spy standing in for an injected `debug.Debugger`: `.extend(ns)` records the
+   *  namespace and returns a fresh chainable stub (mirroring the real `Debugger`'s callable +
+   *  `.extend()` shape); calling the returned function is a no-op. Cast to `debug.Debugger` since
+   *  it satisfies only the call/`.extend()` shape this file's log sites actually use. */
+  function spyExtendLogger(): { logger: debug.Debugger; extendCalls: string[] } {
+    const extendCalls: string[] = [];
+    const node = (): debug.Debugger => {
+      const fn = ((..._args: unknown[]) => {}) as unknown as debug.Debugger;
+      (fn as unknown as { extend: (ns: string) => debug.Debugger }).extend = (ns: string) => {
+        extendCalls.push(ns);
+        return node();
+      };
+      return fn;
+    };
+    return { logger: node(), extendCalls };
+  }
+
+  it("derives the per-url request logger exactly once, even when negentropy sync never needs it", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+
+    // Negentropy sync succeeds immediately — the paginated request path (and its logger) is never
+    // exercised on this run, so this scenario is what distinguishes a derive-once-per-relay design
+    // (always derives, unconditionally, once per buildRelayStream(url) call) from the pre-fix
+    // per-call derivation buried inside request$() (only evaluated when request$() is actually
+    // invoked, i.e. zero times here)
+    const sync = vi.fn().mockReturnValue(of(a));
+    const request = vi.fn();
+    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+    const { logger, extendCalls } = spyExtendLogger();
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync, logger });
+    const { events$ } = loader({ relays: ["wss://relay/"], filter });
+
+    await collect(events$);
+
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(request).not.toHaveBeenCalled();
+    // Design: one relay -> one request-logger derivation (D-18), regardless of which loading path
+    // (negentropy vs paginated request) actually ends up being used for this load
+    expect(extendCalls.filter((ns) => ns === "request")).toHaveLength(1);
+  });
+});
