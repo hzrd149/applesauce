@@ -6,7 +6,8 @@ import { WS } from "vitest-websocket-mock";
 
 import { RelayGroup } from "../group.js";
 import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
-import { Relay } from "../relay.js";
+import { AuthRequiredError, Relay } from "../relay.js";
+import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";
 
 let mockRelay1: WS;
@@ -339,6 +340,55 @@ describe("D-19: RelayGroup.sync per-relay isolation (13-07)", () => {
     const events = await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
 
     expect(events).toEqual([mockEvent]);
+  });
+});
+
+describe("dropped-relay diagnostics (14-03): human prose names the failure class", () => {
+  // RelayGroup's own logger namespace (logger.extend("RelayGroup") in group.ts) — this line is fan-out
+  // health, not per-connection auth state, so it deliberately stays off Relay's :auth sub-namespace.
+  const NAMESPACE = "applesauce:RelayGroup";
+
+  it("an auth-family failure names the auth error class in the dropped-relay line, and the surviving relay's events still reach the subscriber", async () => {
+    vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
+    // Script a real NIP-42 auth-family failure via the pinned AuthRequiredError class (not a plain Error).
+    vi.spyOn(relay1, "sync").mockReturnValue(
+      throwError(() => new AuthRequiredError("auth-required: need to authenticate")),
+    );
+    vi.spyOn(relay2, "sync").mockReturnValue(of(mockEvent));
+
+    await withDebugCapture(NAMESPACE, async (lines) => {
+      const events = await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
+      // Surviving relay's events still reach the subscriber despite relay1 being dropped.
+      expect(events).toEqual([mockEvent]);
+
+      const droppedLines = lines().filter((l) => l.includes(relay1.url));
+      expect(droppedLines).toHaveLength(1);
+      // Phrasing derived from the scripted scenario (an auth-family error was thrown), not copied from
+      // the implementation's template string. NOTE: `AuthRequiredError.name` alone is NOT a sufficient
+      // assertion here — the raw error object is deliberately still passed as the log call's trailing
+      // argument (so the stack trace stays available), and `util.format`'s rendering of that argument
+      // includes the class name via the Error's own `toString()` regardless of whether the prose names
+      // it. Asserting the "auth failure" phrase is the non-vacuous signal that the prose itself, not
+      // just the trailing raw-error dump, tells the operator this was an auth failure.
+      expect(droppedLines[0].toLowerCase()).toContain("auth failure");
+    });
+  });
+
+  it("an ordinary connection error is NOT reported as an auth failure, proving the two classes are distinguishable from output alone", async () => {
+    vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay1, "sync").mockReturnValue(throwError(() => new Error("connection reset by peer")));
+    vi.spyOn(relay2, "sync").mockReturnValue(of(mockEvent));
+
+    await withDebugCapture(NAMESPACE, async (lines) => {
+      await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
+
+      const droppedLines = lines().filter((l) => l.includes(relay1.url));
+      expect(droppedLines).toHaveLength(1);
+      expect(droppedLines[0]).not.toContain(AuthRequiredError.name);
+      expect(droppedLines[0].toLowerCase()).not.toContain("auth failure");
+    });
   });
 });
 

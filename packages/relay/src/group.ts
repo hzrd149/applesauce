@@ -66,6 +66,14 @@ export function isGroupReqProgress(message: GroupReqMessage): boolean {
   return isReqProgress(message);
 }
 
+/**
+ * The `.name` values of `Relay`'s `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError`
+ * (`relay.ts`). Matched by string rather than `instanceof`/import, mirroring
+ * `packages/loaders/src/loaders/sync-loader.ts`'s `RELAY_AUTH_ERROR_NAMES` duck-typed precedent —
+ * a rename of any of those classes' pinned `.name` must update this set in the same change.
+ */
+const RELAY_AUTH_ERROR_NAMES = new Set(["AuthRequiredError", "AuthHandlerError", "AuthTimeoutError"]);
+
 /** Convert an error to a PublishResponse */
 function errorToPublishResponse(relay: Relay): MonoTypeOperatorFunction<PublishResponse> {
   return catchError((err) =>
@@ -354,9 +362,13 @@ export class RelayGroup {
               // D-19: isolate one relay's sync failure so it doesn't end the sync for the rest of the
               // group, matching the fan-out fidelity the REQ path and publish path already have.
               // sync() has no error channel (Observable<NostrEvent>), so the dropped relay is visible
-              // in debug output only — a status channel for it is Phase 14 (ALOG-02) territory.
+              // in debug output only — a status channel for it remains out of scope (resolved by
+              // Phase 14/ALOG-02 as a logging-only diagnostic, not a new observable).
               catchError((err) => {
-                this.log(`dropping relay from group sync (D-19): ${relay.url}`, err);
+                const reason = RELAY_AUTH_ERROR_NAMES.has(err?.name)
+                  ? `an auth failure (${err.name})`
+                  : err?.message || "an unknown error";
+                this.log(`Dropped relay ${relay.url} from group sync: ${reason}`, err);
                 return EMPTY;
               }),
             ),
