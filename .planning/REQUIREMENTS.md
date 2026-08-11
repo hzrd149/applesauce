@@ -27,9 +27,9 @@
 
 `applesauce-relay`, `applesauce-loaders`. Promoted from backlog 999.4 + SEED-001.
 
-- [ ] **ALOG-01**: An operator can tell from debug output where a NIP-42 auth attempt sits in its lifecycle — challenge received, AUTH sent, result — and why it succeeded or failed
-- [ ] **ALOG-02**: Auth retry, timeout, and rejection outcomes are attributable to the specific operation that triggered them
-- [ ] **ALOG-03**: Every `Debugger` in `packages/loaders/` is derived once per module load, per class construction, per context construction, or per function/operator invocation — never on a path a reactive pipeline can re-enter, such as inside a `switchMap`/`mergeMap` projector or a per-item loop body (a correlation logger derived once per call with a generated suffix, e.g. `.extend(nanoid(n))`, remains compliant) (SEED-001)
+- [x] **ALOG-01**: An operator can tell from debug output where a NIP-42 auth attempt sits in its lifecycle — challenge received, AUTH sent, result — and why it succeeded or failed
+- [x] **ALOG-02**: Auth retry, timeout, and rejection outcomes are attributable to the specific operation that triggered them
+- [x] **ALOG-03**: Every `Debugger` in `packages/loaders/` is derived once per module load, per class construction, per context construction, or per function/operator invocation — never on a path a reactive pipeline can re-enter, such as inside a `switchMap`/`mergeMap` projector or a per-item loop body (a correlation logger derived once per call with a generated suffix, e.g. `.extend(nanoid(n))`, remains compliant) (SEED-001)
 
   Restated from the original wording, which tested for an extend-then-immediately-invoke pattern (`x.extend(...)(...)`) at a log call site — that pattern does not exist anywhere in this monorepo, so the original criterion passed without the `packages/loaders/` sweep ever being performed (D-17). The tightened derive-once-per-lifetime rule above is what Phase 14's sweep actually satisfies (D-18).
 
@@ -84,9 +84,9 @@ Deferred; tracked but not in this roadmap.
 | RAUTH-07 | Phase 13 | Complete |
 | RAUTH-08 | Phase 13 | Complete |
 | RAUTH-09 | Phase 13 | Complete |
-| ALOG-01 | Phase 14 | Pending |
-| ALOG-02 | Phase 14 | Pending |
-| ALOG-03 | Phase 14 | Pending |
+| ALOG-01 | Phase 14 | Complete |
+| ALOG-02 | Phase 14 | Complete |
+| ALOG-03 | Phase 14 | Complete |
 | CAUTH-01 | Phase 15 | Pending |
 | CAUTH-02 | Phase 15 | Pending |
 | CAUTH-03 | Phase 15 | Pending |
