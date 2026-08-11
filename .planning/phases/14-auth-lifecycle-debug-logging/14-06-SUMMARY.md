@@ -225,6 +225,16 @@ None - no external service configuration required.
 - `14-VALIDATION.md` is complete for the whole phase (20/20 tasks), pending only the post-merge gate's confirmation that 14-07's landed diff (in a sibling worktree, not yet merged) does not perturb this plan's assertions — flagged above, no action expected but not independently re-verified against 14-07's actual commits.
 - No blockers for phase closeout once the wave's worktrees merge.
 
+## Self-Check: PASSED
+
+- FOUND: `packages/relay/src/__tests__/auth-lifecycle-logging.test.ts`
+- FOUND: `.planning/phases/14-auth-lifecycle-debug-logging/14-VALIDATION.md`
+- FOUND: `.planning/phases/14-auth-lifecycle-debug-logging/14-06-SUMMARY.md`
+- FOUND: commit `eb4895a8` (Task 1)
+- FOUND: commit `a07a34bb` (Task 2)
+- FOUND: commit `00f1af36` (Task 3)
+- FOUND: commit `eee5ff60` (SUMMARY)
+
 ---
 *Phase: 14-auth-lifecycle-debug-logging*
 *Completed: 2026-08-11*
