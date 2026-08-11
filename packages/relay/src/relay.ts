@@ -52,6 +52,7 @@ import {
 } from "rxjs";
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
+import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import {
   AUTH_PHASE_GATE,
@@ -233,6 +234,8 @@ export type RelayOptions = {
 
 export class Relay {
   protected log: typeof logger = logger.extend("Relay");
+  /** D-13/D-20: the relay's NIP-42 connection-track and refusal lines land here, a dedicated `:auth` sub-namespace derived once per relay */
+  protected authLog: typeof logger = this.log.extend("auth");
   protected socket: WebSocketSubject<any>;
 
   /** Internal subject that tracks the ready state of the relay */
@@ -459,6 +462,10 @@ export class Relay {
     opts?: RelayOptions,
   ) {
     this.log = this.log.extend(url);
+    // Re-derive authLog AFTER this.log is extended with the url: the class field initializer above ran
+    // before the constructor body, off the pre-url this.log, so without this re-derivation every relay's
+    // auth lines would collide on one url-less namespace instead of each getting its own.
+    this.authLog = this.log.extend("auth");
 
     // Set common options
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
@@ -565,24 +572,6 @@ export class Relay {
     // Create observables that track if auth is required for REQ or EVENT
     this.authRequiredForRead$ = this.receivedAuthRequiredForReq;
     this.authRequiredForPublish$ = this.receivedAuthRequiredForEvent;
-
-    // Log when auth is required
-    this.internalSubscriptions.add(
-      this.authRequiredForRead$
-        .pipe(
-          filter((r) => r === true),
-          take(1),
-        )
-        .subscribe(() => this.log("Auth required for REQ")),
-    );
-    this.internalSubscriptions.add(
-      this.authRequiredForPublish$
-        .pipe(
-          filter((r) => r === true),
-          take(1),
-        )
-        .subscribe(() => this.log("Auth required for EVENT")),
-    );
 
     // Create status$ observable by combining state observables
     this.status$ = combineLatest({
@@ -857,7 +846,7 @@ export class Relay {
       authSatisfied$: (requirement) => this.authSatisfied$(requirement),
       satisfiedPubkeys: () => this.satisfiedPubkeysFor(waitForAuth),
       gate,
-      log: this.log,
+      log: this.authLog,
       errors: {
         exhausted: (reason) => new AuthRequiredError(reason),
         handler: (reason, cause) => new AuthHandlerError(reason, cause),
@@ -971,7 +960,9 @@ export class Relay {
             // directly (mirrors event()'s existing value-signal check) rather than parsing then
             // narrowing by instanceof
             if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
-              this.log(`Auth required for REQ`);
+              this.authLog(
+                `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(m.reason)}`,
+              );
               this.receivedAuthRequiredFor("REQ");
               return authRequiredSignal(m.reason);
             }
@@ -1103,7 +1094,9 @@ export class Relay {
             const reason = m[2] ?? "";
 
             if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
-              this.log(`Auth required for COUNT`);
+              this.authLog(
+                `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(reason)}`,
+              );
               this.receivedAuthRequiredFor("COUNT");
               return authRequiredSignal(reason);
             }
@@ -1199,7 +1192,9 @@ export class Relay {
       // attempt is later retried by the shared operator, so authRequiredForPublish$ stays accurate — RAUTH-09)
       tap(({ ok, message }) => {
         if (ok === false && message?.startsWith(AUTH_REQUIRED_PREFIX) && !this.receivedAuthRequiredForEvent.value) {
-          this.log("Auth required for publish");
+          this.authLog(
+            `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(message)}`,
+          );
           this.receivedAuthRequiredFor("EVENT");
         }
       }),
@@ -1321,7 +1316,9 @@ export class Relay {
         if (err instanceof NegentropyError) {
           const parsed = parseClosedError(err.reason);
           if (parsed instanceof AuthRequiredError) {
-            this.log(`Auth required for sync`);
+            this.authLog(
+              `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(parsed.reason)}`,
+            );
             this.receivedAuthRequiredFor("NEG-OPEN");
             return of(authRequiredSignal(parsed.reason));
           }
