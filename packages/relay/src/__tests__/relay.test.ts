@@ -3237,4 +3237,117 @@ describe(":auth sub-namespace (14-04)", () => {
     // timer from bleeding a stray connection attempt into a later test.
     spy.unsubscribe();
   });
+
+  it("WR-02: resetState's invalidation line names the count of actually-authenticated pubkeys, not every AUTH attempt", async () => {
+    const authNamespace = (relay as any).authLog.namespace as string;
+    const neverAuthedPubkey = "never00000000000000000000000000000000000000000000000000000000";
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-wr02-reset" }), { expectErrors: true });
+    await server.connected;
+
+    // An AUTH attempt that was queued but never resolved -- response: null is exactly the shape auth()
+    // writes the instant an AUTH event is queued (relay.ts's auth()), not a real authentication. The
+    // held challenge is what forces resetState's line to fire at all, so the wrong count is directly
+    // observable rather than being masked by the whole line staying silent.
+    relay.authentications$.next({ [neverAuthedPubkey]: { event: mockEvent as any, response: null } });
+    relay.challenge$.next("wr02-held-challenge");
+
+    await withDebugCapture(authNamespace, async (lines) => {
+      server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+      await server.closed;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const invalidationLines = lines().filter((l) => l.toLowerCase().includes("invalidat"));
+      expect(invalidationLines).toHaveLength(1);
+      // A response: null AUTH attempt is not an authenticated pubkey -- the count must be 0, not 1
+      // (the old Object.keys(authentications$.value).length would have reported 1 here).
+      expect(invalidationLines[0]).toContain("dropping 0 authenticated pubkeys");
+      expect(invalidationLines[0].toLowerCase()).toContain("challenge");
+    });
+
+    spy.unsubscribe();
+  });
+
+  it("WR-01: event()'s auth-required refusal is logged on every refusal, not just the first on a connection", async () => {
+    const authNamespace = (relay as any).authLog.namespace as string;
+
+    await withDebugCapture(authNamespace, async (lines) => {
+      // Deliberately no wait between the first response and the second event() call -- mirrors
+      // RAUTH-02's convention: this fixture's keepAlive=0 would otherwise drop the connection within a
+      // few ms of nothing being subscribed, and firstSub staying subscribed (authTimeout: false parks
+      // it pending, RAUTH-04) is what keeps the connection alive across both refusals.
+      const firstSub = relay.event(mockEvent, "EVENT", { authTimeout: false }).subscribe();
+      await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+      server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+
+      const secondEvent = { ...mockEvent, id: "wr01-second-event-id" };
+      const secondSub = relay.event(secondEvent, "EVENT", { authTimeout: false }).subscribe();
+      await expect(server).toReceiveMessage(["EVENT", secondEvent]);
+      server.send(["OK", secondEvent.id, false, "auth-required: need to authenticate"]);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // The old `!this.receivedAuthRequiredForEvent.value` guard made this fire only for the first
+      // EVENT refused on a connection -- publishing two events to an auth-gated relay would then only
+      // produce one "Relay refused EVENT" line, and an operator couldn't tell which event it belonged to.
+      const refusalLines = lines().filter(
+        (l) => l.includes("Relay refused EVENT") && l.includes("authentication required"),
+      );
+      expect(refusalLines).toHaveLength(2);
+      expect(refusalLines.some((l) => l.includes(mockEvent.id.slice(0, 8)))).toBe(true);
+      expect(refusalLines.some((l) => l.includes(secondEvent.id.slice(0, 8)))).toBe(true);
+
+      firstSub.unsubscribe();
+      secondSub.unsubscribe();
+    });
+  });
+
+  it("WR-03: the AUTH-sent line reflects a write that actually reached the socket, not one merely queued behind a not-ready gate", async () => {
+    const authNamespace = (relay as any).authLog.namespace as string;
+    const user = new FakeUser();
+    // A high keepAlive means the socket doesn't get torn down by watchers' resetOnRefCountZero when
+    // watchTower briefly stops being subscribed (switchMap(ready => ready ? watchers : NEVER)) while
+    // _ready$ is forced false below -- an active req() subscription's own direct socket subscription
+    // (independent of watchTower) is what actually keeps the connection open regardless, but this
+    // removes any doubt.
+    relay.keepAlive = 10_000;
+
+    // Keeps the connection open (server.connected only resolves once something subscribes) and gives
+    // this test a live REQ/CLOSED/EVENT path unrelated to the AUTH send being tested. Consume its own
+    // REQ frame so it isn't mistaken for the AUTH frame below.
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-wr03" }), { expectErrors: true });
+    await expect(server).toReceiveMessage(["REQ", "sub-wr03", { kinds: [1] }]);
+
+    await withDebugCapture(authNamespace, async (lines) => {
+      // Force the not-ready gate directly -- isolates the exact WR-03 mechanism (event()'s actual
+      // socket write deferred behind waitForReady) from resetState()/reconnect timing, which would
+      // also clear the challenge (auth(), unlike authenticate(), does not require one anyway).
+      (relay as any)._ready$.next(false);
+
+      const authEvent = { ...mockEvent, pubkey: user.pubkey, id: "wr03-auth-event-id" };
+      const authPromise = relay.auth(authEvent as any);
+
+      // Nothing has reached the socket yet, so the line must not have fired either. Before the fix,
+      // auth() logged this line eagerly, before event() or waitForReady ever ran.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(lines().some((l) => l.includes("Sending AUTH event for pubkey"))).toBe(false);
+      expect(server.messages.some((m: any) => Array.isArray(m) && m[0] === "AUTH")).toBe(false);
+
+      // Release the gate -- the actual write can now happen.
+      (relay as any)._ready$.next(true);
+
+      const authMsg = (await server.nextMessage) as [string, NostrEvent];
+      expect(authMsg[0]).toBe("AUTH");
+      server.send(["OK", authMsg[1].id, true, ""]);
+      await authPromise;
+
+      expect(lines().some((l) => l.includes("Sending AUTH event for pubkey") && l.includes(user.pubkey))).toBe(true);
+    });
+
+    spy.unsubscribe();
+  });
+
+  it("WR-04: receivedAuthRequiredFor degrades silently on an unrecognized verb rather than throwing into the subscription", () => {
+    expect(() => (relay as any).receivedAuthRequiredFor("BOGUS")).not.toThrow();
+  });
 });

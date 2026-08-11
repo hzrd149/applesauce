@@ -408,6 +408,10 @@ export class Relay {
    * `receivedAuthRequiredForEvent`. Each branch is guarded by the subject's current value so a repeat
    * call is a no-op. The `default` branch assigns the narrowed `verb` to a `never`-typed local so a new
    * {@link RelayAuthWireVerb} member added later is a compile error here rather than a silent default.
+   * WR-04: that branch is unreachable through the type system today, but this method is called from
+   * inside a socket `map`/`tap`/`catchError` at every call site — a throw here would drop the whole
+   * subscription instead of just leaving an informational flag stale, so it fails soft (a no-op) rather
+   * than throwing.
    */
   protected receivedAuthRequiredFor(verb: RelayAuthWireVerb): void {
     switch (verb) {
@@ -421,7 +425,8 @@ export class Relay {
         break;
       default: {
         const exhaustive: never = verb;
-        throw new Error(`Unhandled auth wire verb: ${JSON.stringify(exhaustive)}`);
+        void exhaustive;
+        return;
       }
     }
   }
@@ -431,10 +436,14 @@ export class Relay {
   authRequiredForPublish$: Observable<boolean>;
 
   protected resetState() {
-    // D-12: read BEFORE the guarded clears below run, so the counts describe what is about to be
+    // D-12/WR-02: read BEFORE the guarded clears below run, so the counts describe what is about to be
     // dropped rather than what has already been cleared. Makes the expected re-auth-per-reconnect
-    // cycle legible as its own line instead of appearing as an unexplained disconnect.
-    const authenticatedCount = Object.keys(this.authentications$.value).length;
+    // cycle legible as its own line instead of appearing as an unexplained disconnect. Uses
+    // authenticatedPubkeys (filters on response?.ok === true), not a bare count of every entry in the
+    // map: auth() inserts an entry with response: null the instant an AUTH is queued, so a bare
+    // Object.keys(...).length also counts never-answered and rejected attempts as "authenticated
+    // pubkeys" being dropped — a false positive in a line whose only job is to explain the re-auth cycle.
+    const authenticatedCount = this.authenticatedPubkeys.length;
     const challengeHeld = this.challenge$.value !== null;
     if (authenticatedCount > 0 || challengeHeld) {
       this.authLog(
@@ -1190,6 +1199,12 @@ export class Relay {
     // handler (found via this plan's own non-vacuity check). An unshared `control` always re-sends on
     // every subscription, independent of any share() reset race.
     const control = defer(() => {
+      // WR-03: logged here, immediately before the actual write, rather than eagerly in auth() before
+      // this defer is even constructed. This defer only runs once waitForReady's gate (below, for the
+      // AUTH-verb path) has let the subscription through, so this line is now a statement of fact
+      // ("the AUTH frame was just written") instead of firing even when a reconnect is armed and the
+      // write is deferred indefinitely with no line ever following it.
+      if (verb === "AUTH") this.authLog(`Sending AUTH event for pubkey ${event.pubkey}`);
       this.socket.next([verb, event]);
       return messages;
     });
@@ -1203,8 +1218,11 @@ export class Relay {
       take(1),
       // listen for OK auth-required (kept as a value-level flag update regardless of whether this
       // attempt is later retried by the shared operator, so authRequiredForPublish$ stays accurate — RAUTH-09)
+      // WR-01: logged on every refusal (unlike the old one-shot-per-connection guard) so it matches
+      // req()/count()/negentropy() — the flag write below is already idempotent (receivedAuthRequiredFor
+      // no-ops once already true), so the guard here was only ever gating the log line, not the write.
       tap(({ ok, message }) => {
-        if (ok === false && message?.startsWith(AUTH_REQUIRED_PREFIX) && !this.receivedAuthRequiredForEvent.value) {
+        if (ok === false && message?.startsWith(AUTH_REQUIRED_PREFIX)) {
           this.authLog(
             `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(message)}`,
           );
@@ -1280,11 +1298,12 @@ export class Relay {
     const { [event.pubkey]: _replaced, ...rest } = this.authentications$.value;
     this.authentications$.next({ ...rest, [event.pubkey]: { event: authEvent, response: null } });
 
-    // D-10: lives here (not inside event()'s generic send path) so a consumer who signs their own AUTH
-    // event and calls auth() directly still sees this line. Present progressive: accurate whether or not
-    // waitForReady defers the actual socket write.
-    this.authLog(`Sending AUTH event for pubkey ${event.pubkey}`);
-
+    // D-10/WR-03: the "Sending AUTH event" line itself now lives inside event()'s control defer (the
+    // actual write side effect, guarded to the AUTH-verb path), not here — logging it here fired even
+    // when a reconnect was armed and waitForReady deferred the write indefinitely, so the line was
+    // sometimes not a statement of fact. event(event, "AUTH") reaches that defer for every caller of
+    // auth() (including one who signed their own AUTH event and called auth() directly), so nothing is
+    // lost by moving it.
     return lastValueFrom(
       this.event(event, "AUTH").pipe(
         tap((result) => {

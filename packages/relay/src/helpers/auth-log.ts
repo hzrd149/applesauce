@@ -45,7 +45,17 @@ const CONTROL_CHARS_RE = new RegExp("[\\u0000-\\u001f\\u007f]", "g");
  * hostile value was received, while making it structurally impossible for it to start a new physical line.
  */
 export function truncateForLog(value: unknown, limit: number = AUTH_LOG_TEXT_LIMIT): string {
-  const raw = value === null || value === undefined ? "" : String(value);
+  // WR-04: String(value) can throw (a poisoned Symbol.toPrimitive/toString) — at auth-retry.ts's two
+  // handler-error call sites, `value` is whatever a caller's onAuthRequired threw/rejected with, so a
+  // throw here would escape from inside a `catch`/inside a defer factory rather than being mapped to
+  // AuthHandlerError, defeating CR-04's "both failure modes are indistinguishable to the caller"
+  // invariant. A diagnostic formatter must degrade the line, never the operation.
+  let raw: string;
+  try {
+    raw = value === null || value === undefined ? "" : String(value);
+  } catch {
+    raw = "(unstringifiable value)";
+  }
   const text = raw
     .replace(/%/g, "%%")
     .replace(CONTROL_CHARS_RE, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
@@ -61,10 +71,18 @@ export function shortId(id: string, length: number = AUTH_LOG_ID_LENGTH): string
   return id.length <= length ? id : id.slice(0, length);
 }
 
-/** Formats a list of filter kinds spelled out up to {@link AUTH_LOG_KINDS_LIMIT}, with a trailing elision marker naming how many more were dropped (D-06) */
-function formatKinds(kinds: readonly number[]): string {
-  const capped = kinds.slice(0, AUTH_LOG_KINDS_LIMIT);
-  const elided = kinds.length - capped.length;
+/**
+ * Formats a list of filter kinds spelled out up to {@link AUTH_LOG_KINDS_LIMIT}, with a trailing elision
+ * marker naming how many more were dropped (D-06). WR-04: accepts `unknown` and falls back to an empty
+ * list for anything that is not actually an array — a filter is caller-supplied and only weakly typed
+ * (`summarizeFilter`'s own cast doesn't guard a non-array `kinds`, e.g. `{ kinds: 1 }`), and this is
+ * called from inside a socket `map`/`tap`, where a throw here would error the whole REQ/EVENT stream
+ * before the auth-required signal it exists to help describe is ever returned.
+ */
+function formatKinds(kinds: unknown): string {
+  const list: readonly number[] = Array.isArray(kinds) ? kinds : [];
+  const capped = list.slice(0, AUTH_LOG_KINDS_LIMIT);
+  const elided = list.length - capped.length;
   return elided > 0 ? `[${capped.join(",")},+${elided} more]` : `[${capped.join(",")}]`;
 }
 
@@ -83,7 +101,9 @@ export function summarizeFilter(filter: Filter): string {
   const record = filter as Record<string, unknown>;
   const parts: string[] = [];
 
-  if (keys.includes("kinds")) parts.push(`kinds=${formatKinds((record.kinds as number[] | undefined) ?? [])}`);
+  // WR-04: formatKinds itself guards non-array input (e.g. a caller-supplied { kinds: 1 }) — the old
+  // `(record.kinds as number[] | undefined) ?? []` cast only caught undefined, not a truthy non-array.
+  if (keys.includes("kinds")) parts.push(`kinds=${formatKinds(record.kinds)}`);
 
   for (const key of keys) {
     if (key === "kinds") continue;
@@ -109,8 +129,11 @@ export function summarizeFilters(filters: Filter[]): string {
   const kinds: number[] = [];
   const seen = new Set<number>();
   for (const filter of filters) {
-    const filterKinds = (filter as { kinds?: number[] }).kinds;
-    if (!filterKinds) continue;
+    // WR-04: Array.isArray, not just a truthiness check — a caller-supplied filter with a truthy
+    // non-array kinds (e.g. { kinds: 1 }) would otherwise reach `for...of` on a non-iterable and throw,
+    // erroring the whole REQ/COUNT/NEG-OPEN stream from inside a socket map/catchError.
+    const filterKinds = (filter as { kinds?: unknown }).kinds;
+    if (!Array.isArray(filterKinds)) continue;
     for (const kind of filterKinds) {
       if (!seen.has(kind)) {
         seen.add(kind);
@@ -136,7 +159,13 @@ export function describeAuthRequirement(requirement: AuthRequirement): string {
 /**
  * Renders the exact wire request a relay refused as a bounded, human-readable summary. The `default`
  * branch assigns the narrowed `request` to a `never`-typed local so a fifth {@link RelayAuthWireRequest}
- * member added later fails to typecheck here rather than silently falling through (D-02).
+ * member added later fails to typecheck here rather than silently falling through (D-02). WR-04: that
+ * branch is unreachable through the type system today, but this function is called from inside a socket
+ * `map`/`tap`/`catchError` at every one of its call sites in relay.ts — a future non-typechecked
+ * construction site (e.g. a value crossing an untyped boundary) would turn a missed switch arm into a
+ * thrown error that drops the whole subscription, rather than into a merely-imprecise log line. Degrades
+ * to a fallback string instead of throwing, keeping the compile-time exhaustiveness guarantee without a
+ * runtime one.
  */
 export function describeWireRequest(request: RelayAuthWireRequest): string {
   switch (request.verb) {
@@ -149,7 +178,7 @@ export function describeWireRequest(request: RelayAuthWireRequest): string {
       return `${request.verb} ${shortId(request.id)} ${summarizeFilters([request.filter])}`;
     default: {
       const exhaustive: never = request;
-      throw new Error(`Unhandled wire request verb: ${JSON.stringify(exhaustive)}`);
+      return `UNKNOWN(${String((exhaustive as { verb?: unknown }).verb ?? "unknown")})`;
     }
   }
 }
