@@ -618,6 +618,70 @@ describe("event", () => {
   });
 });
 
+describe("D-11: publish-timeout structural discriminator", () => {
+  it("a relay rejection carries no error field", async () => {
+    const spy = subscribeSpyTo(relay.event(mockEvent));
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+
+    server.send(["OK", mockEvent.id, false, "blocked: not allowed"]);
+    await spy.onComplete();
+
+    const lastValue = spy.getLastValue();
+    expect(lastValue).toMatchObject({ ok: false, from: "wss://test", message: "blocked: not allowed" });
+    // Assert absence explicitly — a falsy `error` is not the same as no `error` property at all.
+    expect(lastValue && "error" in lastValue).toBe(false);
+  });
+
+  it("a local timeout carries an error field holding a real Error", async () => {
+    vi.useFakeTimers();
+
+    // No OK frame is ever sent for this event — the manufactured timeout is the only possible
+    // source of the resolved response, so this expectation is derived from the scenario itself.
+    const spy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
+
+    vi.advanceTimersByTime(10_000);
+    await Promise.resolve();
+
+    expect(spy.receivedComplete()).toBe(true);
+    const lastValue = spy.getLastValue();
+    expect(lastValue).toMatchObject({ ok: false, from: "wss://test", message: "Timeout" });
+    expect(lastValue?.error).toBeInstanceOf(Error);
+  });
+
+  it("the discriminator reaches the response recorded in authentications$", async () => {
+    relay.eventTimeout = 20;
+
+    const timedOutUser = new FakeUser();
+    const rejectedUser = new FakeUser();
+
+    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
+    await server.nextMessage; // REQ
+    server.send(["AUTH", "challenge-d11"]);
+    await firstValueFrom(relay.challenge$.pipe(filter((c) => c !== null)));
+
+    // timedOutUser's AUTH event is sent, but the relay never replies within eventTimeout
+    const timedOutPromise = relay.authenticate(timedOutUser);
+    await server.nextMessage; // AUTH event sent, deliberately not answered
+    const timedOutResult = await timedOutPromise;
+
+    // rejectedUser's AUTH event is refused by the relay
+    const rejectedPromise = relay.authenticate(rejectedUser);
+    const rejectedAuthMsg = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", rejectedAuthMsg[1].id, false, "restricted: not allowed"]);
+    const rejectedResult = await rejectedPromise;
+
+    expect(timedOutResult.error).toBeInstanceOf(Error);
+    expect("error" in rejectedResult).toBe(false);
+
+    // D-11's actual concern: the shared consumer (authentications$) inherits the discriminator too,
+    // not only the promise event() directly returns.
+    const timedOutRecorded = relay.authentications$.value[timedOutUser.pubkey]?.response;
+    const rejectedRecorded = relay.authentications$.value[rejectedUser.pubkey]?.response;
+    expect(timedOutRecorded?.error).toBeInstanceOf(Error);
+    expect(rejectedRecorded && "error" in rejectedRecorded).toBe(false);
+  });
+});
+
 describe("notices$", () => {
   it("should not trigger connection to relay", async () => {
     subscribeSpyTo(relay.notices$);
