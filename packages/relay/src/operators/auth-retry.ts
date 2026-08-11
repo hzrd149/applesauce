@@ -23,7 +23,7 @@ import {
   timeout,
 } from "rxjs";
 
-import { describeWireRequest, truncateForLog } from "../helpers/auth-log.js";
+import { describeAuthRequirement, describeWireRequest } from "../helpers/auth-log.js";
 import type { AuthRequirement, RelayAuthContext, RelayAuthHandler } from "../types.js";
 
 /**
@@ -256,6 +256,16 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
       let consecutive = 0;
 
       const runPhase = (signal: AuthRequiredSignal): Observable<never> => {
+        // D-05: hoisted above both early returns so even a short-circuit path (opted out, retries
+        // exhausted) still has a request label to log — buildContext is a pure assembly with no
+        // side effects, so moving it earlier is safe.
+        const context = config.buildContext(signal.reason);
+        const requestLabel = describeWireRequest(context.request);
+        // D-05/D-15: every operation-track line shares this one prefix and one call shape.
+        function phaseLine(text: string): void {
+          config.log?.(`${requestLabel} — ${text}`);
+        }
+
         // RAUTH-06: waitForAuth false terminates immediately, handler is never invoked
         if (waitForAuth === false) return throwError(() => config.errors.exhausted(signal.reason));
 
@@ -263,11 +273,18 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
         if (consecutive >= authRetries) return throwError(() => config.errors.exhausted(signal.reason));
 
         consecutive++;
-        const context = config.buildContext(signal.reason);
+        // D-05: `phase n/N` uses the post-increment counter over the configured budget.
+        const phase = `phase ${consecutive}/${authRetries}`;
 
         const phase$: Observable<boolean> = defer(() => {
           config.gate.begin();
-          config.log?.(`Auth required: ${describeWireRequest(context.request)} — ${truncateForLog(signal.reason)}`);
+          phaseLine(`entering ${phase}`);
+
+          // D-14: log whether a handler is present before invoking it — two distinct observable
+          // states, not one ambiguous line. An absent handler means the operation is waiting on
+          // out-of-band auth state (e.g. status$) with no handler in play (D-08).
+          if (config.onAuthRequired) phaseLine(`invoking the configured onAuthRequired handler (${phase})`);
+          else phaseLine(`no onAuthRequired handler is configured — waiting on external auth state (${phase})`);
 
           // D-11: the handler always runs, even if waitForAuth is already satisfied
           // CR-04: a handler that throws synchronously must map to the same AuthHandlerError-shaped
@@ -284,6 +301,9 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
 
           return handled$.pipe(
             catchError((cause) => throwError(() => config.errors.handler(signal.reason, cause))),
+            // D-14: the handler-resolved/now-waiting state, reachable on both the handler-present and
+            // handler-absent paths (handled$ resolves to `of(undefined)` either way).
+            tap(() => phaseLine(`handler completed (${phase}) — now waiting for ${describeAuthRequirement(waitForAuth)}`)),
             switchMap(() =>
               config.authSatisfied$(waitForAuth).pipe(
                 filter((satisfied) => satisfied),
