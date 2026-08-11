@@ -8,6 +8,7 @@ import { WS } from "vitest-websocket-mock";
 import { Negentropy, NegentropyStorageVector } from "../lib/negentropy.js";
 import { AuthHandlerError, AuthRequiredError, AuthTimeoutError, Relay, RelayClosedError, SyncDirection } from "../relay.js";
 import { RelayInformation } from "../types";
+import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";
 
 const defaultMockInfo: RelayInformation = {
@@ -3059,5 +3060,114 @@ describe("message$", () => {
     expect(seen.filter((m) => m[0] === "EOSE")).toHaveLength(1);
     expect(seen.filter((m) => m[0] === "OK" && m[1] === mockEvent.id)).toHaveLength(1);
     expect(seen.filter((m) => m[0] === "OK" && m[1] === "second-id")).toHaveLength(1);
+  });
+});
+
+describe(":auth sub-namespace (14-04)", () => {
+  // Every test runs inside withDebugCapture so the global debug enable-state and output sink
+  // are restored even if an assertion throws — a test that passes alone but not in the full
+  // file is the leaked-enable-state signature this convention prevents (RESEARCH Pitfall 4).
+
+  it("D-13: an auth line is visible under the broad relay glob", async () => {
+    const baseNamespace = (relay as any).log.namespace as string;
+    const broadGlob = `${baseNamespace}*`;
+
+    await withDebugCapture(broadGlob, async (lines) => {
+      subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-broad" }));
+      await server.connected;
+      server.send(["AUTH", "challenge-broad-glob"]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(lines().some((l) => l.includes("challenge-broad-glob"))).toBe(true);
+    });
+  });
+
+  it("D-13: the auth line is still visible under the narrow auth glob, while an ordinary non-auth relay line in the same window is not", async () => {
+    const authNamespace = (relay as any).authLog.namespace as string;
+
+    await withDebugCapture(authNamespace, async (lines) => {
+      subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-narrow" }));
+      await server.connected;
+      server.send(["AUTH", "challenge-narrow-glob"]);
+      // An ordinary base-namespace line, emitted in the same capture window, to prove the narrow
+      // auth glob filters it out rather than the base logger simply staying silent.
+      (relay as any).log("ordinary non-auth relay line");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const captured = lines();
+      expect(captured.some((l) => l.includes("challenge-narrow-glob"))).toBe(true);
+      expect(captured.some((l) => l.includes("ordinary non-auth relay line"))).toBe(false);
+    });
+  });
+
+  it("D-04/D-06: the bucketed auth-required line is gone, replaced by a line describing the actual refused REQ", async () => {
+    const authNamespace = (relay as any).authLog.namespace as string;
+
+    await withDebugCapture(authNamespace, async (lines) => {
+      subscribeSpyTo(relay.req([{ kinds: [1, 7] }], { id: "sub-refusal-line" }));
+      await expect(server).toReceiveMessage(["REQ", "sub-refusal-line", { kinds: [1, 7] }]);
+      server.send(["CLOSED", "sub-refusal-line", "auth-required: need to authenticate"]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const captured = lines();
+      // The old fixed bucketed text is gone.
+      expect(captured.some((l) => l.includes("Auth required for REQ"))).toBe(false);
+      // A line describing the actual refused REQ (its id prefix and its kinds) is present.
+      expect(captured.some((l) => l.includes("sub-refu"))).toBe(true);
+      expect(captured.some((l) => l.includes("kinds=[1,7]"))).toBe(true);
+    });
+  });
+
+  it("D-12: resetState stays silent on a reconnect that had nothing to invalidate", async () => {
+    const authNamespace = (relay as any).authLog.namespace as string;
+    relay.reconnectTimer = () => timer(0);
+
+    await withDebugCapture(authNamespace, async (lines) => {
+      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-silent-reset" }), { expectErrors: true });
+      await server.connected;
+
+      // Never authenticated — disconnect and let the relay reconnect.
+      server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+      await server.closed;
+      await expect(server.connected).resolves.toBeDefined();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(lines().some((l) => l.toLowerCase().includes("invalidat"))).toBe(false);
+
+      // Cleanup mirrors the file's existing reconnect-test convention (e.g. "should reconnect
+      // when the websocket errors and reconnect is enabled") — prevents a dangling reconnected
+      // subscription from bleeding into a later test.
+      spy.unsubscribe();
+      await server.closed;
+    });
+  });
+
+  it("D-12: resetState names the invalidated auth state when a reconnect had something to invalidate", async () => {
+    const authNamespace = (relay as any).authLog.namespace as string;
+    const pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+    // No auto-reconnect here (reconnectTimer left at its default, un-overridden pace) — the close$
+    // handler's own resetState() call is the only one that can fire within the assertion window.
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-loud-reset" }), { expectErrors: true });
+    await server.connected;
+
+    // One authenticated pubkey and a held challenge, set directly on the public subjects the
+    // real NIP-42 flow would otherwise populate.
+    relay.authentications$.next({ [pubkey]: { event: mockEvent as any, response: { ok: true, from: "wss://test" } } });
+    relay.challenge$.next("held-challenge-value");
+
+    await withDebugCapture(authNamespace, async (lines) => {
+      server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+      await server.closed;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const invalidationLines = lines().filter((l) => l.toLowerCase().includes("invalidat"));
+      expect(invalidationLines).toHaveLength(1);
+      expect(invalidationLines[0]).toContain("1");
+      expect(invalidationLines[0].toLowerCase()).toContain("challenge");
+    });
+
+    // Cleanup mirrors the file's existing reconnect-test convention — prevents the armed reconnect
+    // timer from bleeding a stray connection attempt into a later test.
+    spy.unsubscribe();
   });
 });
