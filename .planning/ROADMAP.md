@@ -139,7 +139,7 @@ Plans:
   2. Retry, timeout, and rejection log lines identify the specific operation that triggered them, so two concurrent operations' auth attempts stay distinguishable in a shared log stream. (ALOG-02)
   3. Every `Debugger` in `packages/loaders/` is derived once per module load, per class construction, per context construction, or per function/operator invocation — never on a path a reactive pipeline can re-enter, such as inside a `switchMap`/`mergeMap` projector or a per-item loop body (a correlation logger derived once per call with a generated suffix remains compliant; restated from the original zero-hits-grep wording per D-17/D-18). (ALOG-03)
 
-**Plans**: 3/7 plans executed
+**Plans**: 5/7 plans executed
 
 Plans:
 **Wave 1**
@@ -150,8 +150,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 14-04-PLAN.md — The `:auth` namespace and the NIP-42 connection track (challenge, signing, sent, result, invalidation) (wave 2)
-- [ ] 14-05-PLAN.md — The per-operation track in the shared auth-retry operator (wave 2)
+- [x] 14-04-PLAN.md — The `:auth` namespace and the NIP-42 connection track (challenge, signing, sent, result, invalidation) (wave 2)
+- [x] 14-05-PLAN.md — The per-operation track in the shared auth-retry operator (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -193,7 +193,7 @@ Plans:
 | 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
-| 14. Auth Lifecycle Debug Logging | v1.2 | 3/7 | In Progress|  |
+| 14. Auth Lifecycle Debug Logging | v1.2 | 5/7 | In Progress|  |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 0/TBD | Not started | - |
 
 **Totals:** 19 phases across three milestones (16 shipped, 3 in progress); 98 plans shipped across v1.0/v1.1 — v1.2 plan count TBD until phases are planned.
