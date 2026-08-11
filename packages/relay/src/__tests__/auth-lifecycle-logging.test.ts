@@ -5,7 +5,7 @@ import { filter, take } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
-import { shortId } from "../helpers/auth-log.js";
+import { AUTH_LOG_TEXT_LIMIT, shortId } from "../helpers/auth-log.js";
 import { Relay } from "../relay.js";
 import { RelayInformation } from "../types.js";
 import { withDebugCapture } from "./debug-capture.js";
@@ -150,5 +150,224 @@ describe("auth lifecycle logging (14-06)", () => {
 
       spy.unsubscribe();
     });
+  });
+
+  // D-09's load-bearing pair: the signing line is what separates "the signer never answered" from
+  // "the relay never replied" -- without it both scenarios would be identical silence.
+
+  it("D-09: a hung signer produces a signing line but no AUTH-sent line", async () => {
+    const hungSigner = { signEvent: () => new Promise<NostrEvent>(() => {}) };
+    const reqId = "hung-signer";
+
+    const onAuthRequired = vi.fn(async () => {
+      if (!relay.challenge) {
+        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+      }
+      await relay.authenticate(hungSigner);
+    });
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
+        expectErrors: true,
+      });
+
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      server.send(["AUTH", "challenge-hung-signer"]);
+      server.send(["CLOSED", reqId, "auth-required: need to authenticate"]);
+
+      // Past the 50ms phase timeout; the signer never resolves so no AUTH frame is ever written.
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const captured = lines();
+      expect(captured.some((l) => l.includes("Signing AUTH event"))).toBe(true);
+      expect(captured.some((l) => l.includes("Sending AUTH event for pubkey"))).toBe(false);
+
+      spy.unsubscribe();
+    });
+  });
+
+  it("D-09: a sent AUTH with no relay reply produces a sent line but no result line", async () => {
+    const user = new FakeUser();
+    const reqId = "unresponsive-relay";
+    // Bounds auth()'s own OK-wait so no long-lived real timer from this test's relay instance
+    // outlives the test (Phase 13's D-20 real-timer convention, kept short deliberately here).
+    relay.eventTimeout = 300;
+
+    const onAuthRequired = vi.fn(async () => {
+      if (!relay.challenge) {
+        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+      }
+      await relay.authenticate(user).catch(() => {});
+    });
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
+        expectErrors: true,
+      });
+
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      server.send(["AUTH", "challenge-unresponsive-relay"]);
+      server.send(["CLOSED", reqId, "auth-required: need to authenticate"]);
+
+      // The AUTH frame is sent, but the relay stays silent -- never send an OK.
+      await server.nextMessage;
+
+      // Past the 50ms phase timeout, well before the 300ms eventTimeout would manufacture its own
+      // "Timeout" result -- this window is what proves no result line exists yet.
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const captured = lines();
+      expect(captured.some((l) => l.includes("Signing AUTH event"))).toBe(true);
+      expect(captured.some((l) => l.includes("Sending AUTH event for pubkey") && l.includes(user.pubkey))).toBe(true);
+      expect(captured.some((l) => l.includes("accepted AUTH for") || l.includes("rejected AUTH for"))).toBe(false);
+
+      spy.unsubscribe();
+      // Let the bounded eventTimeout settle so no real timer outlives this test.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+  });
+
+  it("T-14-01/D-09: an oversized CLOSED reason and OK rejection message are bounded, and the rejection's reason plus a terminal outcome line are legible", async () => {
+    const user = new FakeUser();
+    const reqId = "reject-oversized";
+    const oversizedClosedReason = `auth-required: ${"x".repeat(AUTH_LOG_TEXT_LIMIT * 2)}`;
+    const oversizedOkMessage = "y".repeat(AUTH_LOG_TEXT_LIMIT * 2);
+
+    const onAuthRequired = vi.fn(async () => {
+      if (!relay.challenge) {
+        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+      }
+      await relay.authenticate(user).catch(() => {});
+    });
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 100 }), {
+        expectErrors: true,
+      });
+
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      server.send(["AUTH", "challenge-reject-oversized"]);
+      server.send(["CLOSED", reqId, oversizedClosedReason]);
+
+      const authMsg = (await server.nextMessage) as [string, NostrEvent];
+      server.send(["OK", authMsg[1].id, false, oversizedOkMessage]);
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const captured = lines();
+      const refusalLine = captured.find((l) => l.includes("Relay refused") && l.includes("authentication required"));
+      const rejectionLine = captured.find((l) => l.includes("rejected AUTH for") && l.includes(user.pubkey));
+
+      expect(refusalLine).toBeDefined();
+      expect(refusalLine).not.toContain(oversizedClosedReason);
+      expect(refusalLine!.length).toBeLessThan(oversizedClosedReason.length);
+      expect(refusalLine).toContain("more chars)");
+
+      expect(rejectionLine).toBeDefined();
+      expect(rejectionLine).not.toContain(oversizedOkMessage);
+      expect(rejectionLine!.length).toBeLessThan(oversizedOkMessage.length);
+      expect(rejectionLine).toContain("more chars)");
+
+      // D-09/ALOG-01: the operation track's terminal outcome line is present -- the rejection alone
+      // never satisfies the wait, so the phase spends its authTimeout budget.
+      expect(captured.some((l) => l.includes("timed out after"))).toBe(true);
+
+      spy.unsubscribe();
+    });
+  });
+
+  it("the retries-exhausted outcome names the configured budget", async () => {
+    const user = new FakeUser();
+    const reqId = "exhaust-budget";
+    const authRetries = 1;
+
+    const onAuthRequired = vi.fn(async () => {
+      if (relay.isAuthenticated(user.pubkey)) return;
+      if (!relay.challenge) {
+        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+      }
+      await relay.authenticate(user);
+    });
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authRetries }), {
+        expectErrors: true,
+      });
+
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      server.send(["AUTH", "challenge-exhaust-1"]);
+      server.send(["CLOSED", reqId, "auth-required: need to authenticate"]);
+
+      const authMsg = (await server.nextMessage) as [string, NostrEvent];
+      server.send(["OK", authMsg[1].id, true, ""]);
+
+      // The resent REQ is refused again -- a second consecutive refusal with no progress since the
+      // first phase started, spending the configured budget of 1.
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      server.send(["CLOSED", reqId, "auth-required: need to authenticate"]);
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      const captured = lines();
+      expect(captured.some((l) => l.includes(`phase 1/${authRetries}`))).toBe(true);
+      expect(captured.some((l) => l.includes(`auth retry budget of ${authRetries} phase(s) is exhausted`))).toBe(
+        true,
+      );
+
+      spy.unsubscribe();
+    });
+  });
+
+  // D-12: the reconnect-invalidation pair -- makes the expected re-auth-per-reconnect cycle legible
+  // rather than appearing as an unexplained disconnect.
+
+  it("D-12: dropping a connection after a real successful authentication reports one dropped pubkey", async () => {
+    const user = new FakeUser();
+    const reqId = "reconnect-authenticated";
+
+    const onAuthRequired = vi.fn(async () => {
+      if (!relay.challenge) {
+        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+      }
+      await relay.authenticate(user);
+    });
+
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired }), { expectErrors: true });
+
+    await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+    server.send(["AUTH", "challenge-reconnect-authenticated"]);
+    server.send(["CLOSED", reqId, "auth-required: need to authenticate"]);
+
+    const authMsg = (await server.nextMessage) as [string, NostrEvent];
+    server.send(["OK", authMsg[1].id, true, ""]);
+    await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+      await server.closed;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const invalidationLines = lines().filter((l) => l.toLowerCase().includes("invalidat"));
+      expect(invalidationLines).toHaveLength(1);
+      expect(invalidationLines[0]).toContain("1");
+    });
+
+    spy.unsubscribe();
+  });
+
+  it("D-12: dropping a connection that never authenticated reports no invalidation line", async () => {
+    const reqId = "reconnect-never-authenticated";
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId }), { expectErrors: true });
+    await server.connected;
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+      await server.closed;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(lines().some((l) => l.toLowerCase().includes("invalidat"))).toBe(false);
+    });
+
+    spy.unsubscribe();
   });
 });
