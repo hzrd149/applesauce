@@ -23,7 +23,7 @@ import {
   timeout,
 } from "rxjs";
 
-import { describeAuthRequirement, describeWireRequest } from "../helpers/auth-log.js";
+import { describeAuthRequirement, describeWireRequest, truncateForLog } from "../helpers/auth-log.js";
 import type { AuthRequirement, RelayAuthContext, RelayAuthHandler } from "../types.js";
 
 /**
@@ -267,10 +267,18 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
         }
 
         // RAUTH-06: waitForAuth false terminates immediately, handler is never invoked
-        if (waitForAuth === false) return throwError(() => config.errors.exhausted(signal.reason));
+        if (waitForAuth === false) {
+          phaseLine(
+            "relay requires auth for this request but the operation opted out of waiting — no handler is invoked and the request fails",
+          );
+          return throwError(() => config.errors.exhausted(signal.reason));
+        }
 
         // D-03/D-07: retries exhausted, terminal
-        if (consecutive >= authRetries) return throwError(() => config.errors.exhausted(signal.reason));
+        if (consecutive >= authRetries) {
+          phaseLine(`auth retry budget of ${authRetries} phase(s) is exhausted — giving up`);
+          return throwError(() => config.errors.exhausted(signal.reason));
+        }
 
         consecutive++;
         // D-05: `phase n/N` uses the post-increment counter over the configured budget.
@@ -295,12 +303,18 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
           try {
             result = config.onAuthRequired?.(context);
           } catch (cause) {
+            // D-14: distinct from the promise-rejection line below — this tells an operator the
+            // handler failed before it ever returned, not after.
+            phaseLine(`onAuthRequired threw synchronously (${phase}): ${truncateForLog(cause)}`);
             return throwError(() => config.errors.handler(signal.reason, cause));
           }
           const handled$ = result instanceof Promise ? from(result) : of(undefined);
 
           return handled$.pipe(
-            catchError((cause) => throwError(() => config.errors.handler(signal.reason, cause))),
+            catchError((cause) => {
+              phaseLine(`onAuthRequired's returned promise rejected (${phase}): ${truncateForLog(cause)}`);
+              return throwError(() => config.errors.handler(signal.reason, cause));
+            }),
             // D-14: the handler-resolved/now-waiting state, reachable on both the handler-present and
             // handler-absent paths (handled$ resolves to `of(undefined)` either way).
             tap(() => phaseLine(`handler completed (${phase}) — now waiting for ${describeAuthRequirement(waitForAuth)}`)),
@@ -308,6 +322,16 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
               config.authSatisfied$(waitForAuth).pipe(
                 filter((satisfied) => satisfied),
                 take(1),
+                // D-08: the join key an operation track hangs its "who satisfied this" line off — read
+                // at the moment the wait resolves, not when the phase began.
+                tap(() => {
+                  const pubkeys = config.satisfiedPubkeys();
+                  phaseLine(
+                    pubkeys.length > 0
+                      ? `wait satisfied (${phase}) — satisfied by ${pubkeys.join(",")}`
+                      : `wait satisfied (${phase}) — no pubkeys reported`,
+                  );
+                }),
               ),
             ),
           );
@@ -322,7 +346,10 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
             : phase$.pipe(
                 timeout({
                   first: authTimeout ?? 30_000,
-                  with: () => throwError(() => config.errors.timeout(signal.reason)),
+                  with: () => {
+                    phaseLine(`${phase} timed out after ${authTimeout ?? 30_000}ms covering the handler and the wait`);
+                    return throwError(() => config.errors.timeout(signal.reason));
+                  },
                 }),
               );
 
@@ -343,6 +370,8 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
         // (e.g. req()'s synthetic OPEN) must never reset it, or a persistently auth-gated relay could
         // drive an unbounded retry loop regardless of authRetries.
         tap((value) => {
+          // D-07: the consecutive-counter reset intentionally emits no line of its own — the per-line
+          // phase counter restarting at 1 on the next auth phase is what makes the reset observable.
           if (config.isProgress(value)) consecutive = 0;
         }),
       );
