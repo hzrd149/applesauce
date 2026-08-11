@@ -1110,5 +1110,22 @@ describe("14-02: sync-loader's request logger is derived once per relay (D-18)",
     // Design: one relay -> one request-logger derivation (D-18), regardless of which loading path
     // (negentropy vs paginated request) actually ends up being used for this load
     expect(extendCalls.filter((ns) => ns === "request")).toHaveLength(1);
+    // WR-07: also assert the TOTAL extend() count for this run, not just one filtered namespace — a
+    // guard that inspects only "request" cannot observe a violation introduced anywhere else in this
+    // scope, which is exactly how paginatedRequest's own "backward" + nanoid(8) derivations survived
+    // this describe block's original (14-02) guard. Every extend() call below is expected to happen
+    // exactly once, unconditionally, per relay, regardless of which loading path actually ends up
+    // being used: "sync-loader" (module logger), the per-load-call nanoid(4), the per-relay url,
+    // "request", and WR-07's own "backward" + its per-relay nanoid(8) correlation suffix.
+    expect(extendCalls).toHaveLength(6);
+    // The two non-fixed entries (indices 1 and 5) are per-relay/per-run nanoid correlation suffixes —
+    // assert every OTHER position by value so the total-length check can't be satisfied by six calls
+    // that happen to land on the wrong namespaces.
+    expect([extendCalls[0], extendCalls[2], extendCalls[3], extendCalls[4]]).toEqual([
+      "sync-loader",
+      "wss://relay/",
+      "request",
+      "backward",
+    ]);
   });
 });
