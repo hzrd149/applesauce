@@ -313,3 +313,21 @@ Plans:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.15: NIP-29 group address parsing must support ports and ws:// / wss:// protocols (BACKLOG)
+
+**Goal:** [Captured for future planning] NIP-29 group identifiers (`<host>'<group-id>`) round-trip lossily through `packages/common/src/helpers/groups.ts`, dropping both the port and a non-default protocol.
+
+`encodeGroupPointer` (`groups.ts:52-56`) builds the identifier from `new URL(pointer.relay).hostname`. `URL.hostname` excludes the port by definition, so `wss://relay.example.com:7777` encodes to `relay.example.com'<id>` — the port is silently gone. The protocol is dropped unconditionally, so a `ws://` relay loses its scheme too.
+
+`decodeGroupPointer` (`groups.ts:38-49`) then re-hydrates with `if (!relay.match(/^wss?:/)) relay = \`wss://${relay}\``, defaulting to `wss://`. Net effect on a `ws://localhost:4869` pointer: encode → `localhost'<id>` → decode → `wss://localhost`. Wrong port **and** wrong scheme — which breaks exactly the local/self-hosted and non-standard-port relays where `ws://` and explicit ports are normal.
+
+**Fix shape:** preserve what the URL already carries rather than re-deriving a default. `URL.host` (not `.hostname`) includes the port; the scheme needs to survive encoding whenever it is not the implied `wss://`. Decode's `wss://`-default is fine as a fallback for bare hosts — the bug is that encode discards information decode then has to guess at. Worth deciding at promotion whether the encoded form should carry `ws://` explicitly or whether a `localhost`/loopback rule is preferable, since the identifier is user-facing.
+
+**Worth checking at promotion:** the same `.hostname`-vs-`.host` truncation in any other pointer encoder in the repo (same defect class, not just this instance), and whether `groups.test.ts` has round-trip coverage for ported/`ws://` relays — the current lossy behavior suggests it does not.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
