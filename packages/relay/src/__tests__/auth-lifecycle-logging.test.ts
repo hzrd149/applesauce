@@ -370,4 +370,89 @@ describe("auth lifecycle logging (14-06)", () => {
 
     spy.unsubscribe();
   });
+
+  it("ALOG-02: two concurrent operations' lines stay individually attributable, and resolving one leaves the other genuinely blocked", async () => {
+    const userA = new FakeUser();
+    const userB = new FakeUser();
+    const reqId = "reqop-alog02";
+    const pubEvent: NostrEvent = { ...mockEvent, id: "evtop-alog02-event-id-9d21" };
+    // Wire keys computed from the test's own id values through the same prefix length the
+    // formatter uses (AUTH_LOG_ID_LENGTH via shortId) — never a transcribed rendered literal.
+    const reqKey = `REQ ${shortId(reqId)}`;
+    const eventKey = `EVENT ${shortId(pubEvent.id)}`;
+    // The connection-drop-mid-auth-wait-at-low-keepAlive gap (14-RESEARCH.md Open Question 3) is a
+    // pre-existing, out-of-scope condition this test must not accidentally exercise: two concurrent
+    // operations briefly transitioning between attempts can momentarily drop refCount to zero under
+    // the file's default keepAlive:0, tearing down the one shared connection this test's two-key
+    // attribution depends on.
+    relay.keepAlive = 10_000;
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const reqSpy = subscribeSpyTo(
+        relay.req([{ kinds: [1] }], { id: reqId, waitForAuth: userA.pubkey, authTimeout: false }),
+        { expectErrors: true },
+      );
+      const eventPromise = relay
+        .publish(pubEvent, { waitForAuth: userB.pubkey, authTimeout: false })
+        .catch((err) => err);
+
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      await expect(server).toReceiveMessage(["EVENT", pubEvent]);
+
+      server.send(["AUTH", "challenge-alog02"]);
+      server.send(["CLOSED", reqId, "auth-required: need to authenticate"]);
+      server.send(["OK", pubEvent.id, false, "auth-required: need to authenticate"]);
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      let captured = lines();
+      const reqLines1 = captured.filter((l) => l.includes(reqKey));
+      const eventLines1 = captured.filter((l) => l.includes(eventKey));
+
+      // Every operation-track line carries one of the two wire keys, and no captured line is
+      // ambiguous between the two operations.
+      expect(reqLines1.length).toBeGreaterThan(0);
+      expect(eventLines1.length).toBeGreaterThan(0);
+      for (const line of [...reqLines1, ...eventLines1]) {
+        expect(line.includes(reqKey) && line.includes(eventKey)).toBe(false);
+      }
+
+      // Authenticate ONLY userA, out of band -- the two operations wait on different pubkeys, so
+      // resolving one must leave the other's own group showing it still blocked.
+      const authAPromise = relay.authenticate(userA);
+      const authMsgA = (await server.nextMessage) as [string, NostrEvent];
+      server.send(["OK", authMsgA[1].id, true, ""]);
+      await authAPromise;
+
+      // The REQ's wait is now satisfied and it resends its own frame.
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      captured = lines();
+      const reqLines2 = captured.filter((l) => l.includes(reqKey));
+      const eventLines2 = captured.filter((l) => l.includes(eventKey));
+
+      // Each operation's own retry/wait/outcome lines filter into two disjoint groups: the REQ
+      // group shows its wait satisfied by userA and grew from the resend; the EVENT group is
+      // unchanged in size and still names userB as what it is waiting for -- genuinely independent,
+      // not merely differently labelled.
+      expect(reqLines2.some((l) => l.includes("wait satisfied") && l.includes(userA.pubkey))).toBe(true);
+      expect(eventLines2.some((l) => l.includes("wait satisfied"))).toBe(false);
+      expect(eventLines2.some((l) => l.includes(userB.pubkey))).toBe(true);
+      expect(eventLines2.length).toBe(eventLines1.length);
+      expect(reqLines2.length).toBeGreaterThan(reqLines1.length);
+
+      // Let the EVENT operation resolve too (authenticate userB), so no subscription outlives this
+      // test with a still-pending auth wait.
+      const authBPromise = relay.authenticate(userB);
+      const authMsgB = (await server.nextMessage) as [string, NostrEvent];
+      server.send(["OK", authMsgB[1].id, true, ""]);
+      await authBPromise;
+      await expect(server).toReceiveMessage(["EVENT", pubEvent]);
+      server.send(["OK", pubEvent.id, true, ""]);
+      await eventPromise;
+
+      reqSpy.unsubscribe();
+    });
+  });
 });
