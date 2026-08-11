@@ -607,7 +607,7 @@ export class Relay {
       map((m) => m[1]),
       // Update the challenge state
       tap((challenge) => {
-        this.log("Received AUTH challenge", challenge);
+        this.authLog(`Relay sent NIP-42 auth challenge: ${truncateForLog(challenge)}`);
         this.challenge$.next(challenge);
       }),
     );
@@ -1257,6 +1257,11 @@ export class Relay {
     const { [event.pubkey]: _replaced, ...rest } = this.authentications$.value;
     this.authentications$.next({ ...rest, [event.pubkey]: { event: authEvent, response: null } });
 
+    // D-10: lives here (not inside event()'s generic send path) so a consumer who signs their own AUTH
+    // event and calls auth() directly still sees this line. Present progressive: accurate whether or not
+    // waitForReady defers the actual socket write.
+    this.authLog(`Sending AUTH event for pubkey ${event.pubkey}`);
+
     return lastValueFrom(
       this.event(event, "AUTH").pipe(
         tap((result) => {
@@ -1270,6 +1275,12 @@ export class Relay {
 
           // Update the deprecated mirror of the last AUTH response
           this.authenticationResponse$.next(result);
+
+          // D-09: the connection track's result line — the relay's own OK message carried verbatim (only
+          // bounded) as the "why", joined to the challenge/signing/sent lines above by the full pubkey.
+          this.authLog(
+            `Relay ${result.ok ? "accepted" : "rejected"} AUTH for ${event.pubkey}: ${truncateForLog(result.message)}`,
+          );
         }),
       ),
     );
@@ -1362,6 +1373,11 @@ export class Relay {
   /** Authenticate with the relay using a signer */
   authenticate(signer: AuthSigner): Promise<PublishResponse> {
     if (!this.challenge) throw new Error("Have not received authentication challenge");
+
+    // D-09/D-10: authenticate() is the only place signing happens, which is why this line lives here
+    // rather than in auth() — it is the only thing that separates "the signer never answered" (a hung
+    // NIP-46 bunker or an unanswered extension dialog) from "the relay never replied".
+    this.authLog(`Signing AUTH event for challenge ${truncateForLog(this.challenge)}, waiting on signer`);
 
     const p = signer.signEvent(makeAuthEvent(this.url, this.challenge));
     const start = p instanceof Promise ? from(p) : of(p);
