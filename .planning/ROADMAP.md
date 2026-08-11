@@ -331,3 +331,23 @@ Plans:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.16: Phase 14 code-review residuals (BACKLOG)
+
+**Goal:** [Captured for future planning] Three warnings and five info findings from Phase 14's code review (`phases/14-auth-lifecycle-debug-logging/14-REVIEW.md`), deliberately deferred on 2026-08-11 by user decision after the CR-01 blocker and the requirement-affecting warnings were closed in gap plans 14-08 and 14-09. Full analysis and suggested fixes live in that REVIEW.md — this entry records what was left and why it matters.
+
+**WR-06 — the publish `error` discriminator is not total, and a shipped changeset claims otherwise.** `relay.ts:1263-1267` manufactures a `PublishResponse` locally when the auth retry budget is exhausted — a client-side give-up by definition — but omits the `error` field. `relay.ts:1180` and `:1218` state that the *absence* of `error` means "received from the relay's own OK frame", so a consumer applying the documented rule misclassifies this as a relay rejection. `group.ts`'s `errorToPublishResponse` gets this right for every other locally-manufactured response. **This is the highest-priority item here**: `.changeset/relay-publish-timeout-marks-itself.md` ships the claim that a caller can distinguish the two "without inspecting the message", which is not true while this path exists. Either set the field or correct the changeset and the two comments — the release note and the code must agree before publish.
+
+**WR-05 — the test capture harness clobbers the process-wide `DEBUG` filter.** `__tests__/debug-capture.ts:24-41` restores the sink but not the namespace filter. `debugFactory.enable()` replaces the entire enabled list and `disable()` clears everything, so pre-existing `DEBUG` namespaces are wiped for the rest of the worker process. `debug`'s `disable()` returns the string it cleared, which is the round-trip primitive the harness needs. Test-infrastructure only, but it silently degrades any debugging session run alongside the suite.
+
+**WR-08 — `negentropySync` logs an unbounded filter and local-set fingerprint.** `negentropy.ts:81` dumps the caller's whole `Filter` (its `authors`/`ids` arrays verbatim — user pubkeys and event ids) plus a hex fingerprint over the caller's *local* event set. Pre-existing, but Phase 14 established both the bounding tooling (`summarizeFilter`, `truncateForLog`) and the standard, and `describeWireRequest`'s `NEG-OPEN` arm three lines away in `relay.ts` already routes through `summarizeFilters` precisely to avoid this. The inconsistency is now the odd one out.
+
+**IN-01..IN-05:** two unbounded log interpolations; a throwaway `applesauce:Relay:auth` Debugger constructed per `Relay` instantiation; `RELAY_AUTH_ERROR_NAMES` duplicated with each copy's comment pointing at the other; the D-12 oracles asserting on a bare digit; and the auth-required tap also running for `verb === "AUTH"`.
+
+**Worth checking at promotion:** whether WR-06 should instead be folded into the next release prep, since it gates changeset accuracy rather than behavior alone.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
