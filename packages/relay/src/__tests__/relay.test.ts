@@ -537,7 +537,10 @@ describe("event", () => {
     await Promise.resolve();
 
     expect(spy.receivedComplete()).toBe(true);
-    expect(spy.getLastValue()).toEqual({ ok: false, from: "wss://test", message: "Timeout" });
+    // D-11: the manufactured timeout now carries the structural `error` discriminator.
+    const lastValue = spy.getLastValue();
+    expect(lastValue).toMatchObject({ ok: false, from: "wss://test", message: "Timeout" });
+    expect(lastValue?.error).toBeInstanceOf(Error);
   });
 
   it("should complete when connection is closed", async () => {

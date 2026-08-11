@@ -1175,7 +1175,9 @@ export class Relay {
     // (the main merge and the takeUntil notifier) don't register duplicate filter/map chains.
     const messages: Observable<PublishResponse> = this.socket.pipe(
       filter((m) => m[0] === "OK" && m[1] === event.id),
-      // format OK message
+      // format OK message. D-11: no `error` field here — this response was received from the
+      // relay's own OK frame, and that absence is load-bearing (the other half of the
+      // manufactured-timeout discriminator below), not an oversight.
       map((m) => ({ ok: m[2] as boolean, message: m[3] as string, from: this.url })),
       share(),
     );
@@ -1213,7 +1215,17 @@ export class Relay {
       // waiting for the OK on a single EVENT send and lives inside the shared operator's resend loop.
       timeout({
         first: this.eventTimeout,
-        with: () => of<PublishResponse>({ ok: false, from: this.url, message: "Timeout" }),
+        // D-11: this response is manufactured locally because no OK frame ever arrived, so it
+        // carries an `error` field — the structural discriminator that lets a consumer tell a
+        // client-side give-up apart from a relay rejection (which never sets `error`) without
+        // inspecting the message text.
+        with: () =>
+          of<PublishResponse>({
+            ok: false,
+            from: this.url,
+            message: "Timeout",
+            error: new Error(`Timed out waiting for OK response from ${this.url}`),
+          }),
       }),
     );
 
