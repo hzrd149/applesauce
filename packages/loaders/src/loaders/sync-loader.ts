@@ -242,10 +242,13 @@ function paginatedRequest(
   relay: string,
   filter: Filter,
   limit = 500,
-  logger?: debug.Debugger,
+  // D-18/WR-07: already the fully-derived "backward" logger, threaded in from buildRelayStream's
+  // top level rather than derived here — this function is invoked from request$(), which lives
+  // inside the switchMap projector below (a re-enterable reactive callback), so deriving on entry
+  // would repeat the exact defect the requestLog hoist (14-02) fixed.
+  log?: debug.Debugger,
   opts?: SyncMethodOptions,
 ): Observable<NostrEvent> {
-  const log = logger?.extend("backward").extend(nanoid(8));
   const since = filter.since;
   const initialUntil = filter.until;
 
@@ -394,6 +397,15 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
         // request-logger derivation must not live inside. requestLog joins the other per-relay values
         // already derived at this level (authPhases, authPhaseChange$, the close-callback set).
         const requestLog = log.extend(url).extend("request");
+
+        // WR-07: paginatedRequest's own logger, hoisted here for the identical reason requestLog was
+        // hoisted above — paginatedRequest is invoked from request$(), which is defined inside the
+        // switchMap projector below (a re-enterable reactive callback), so deriving it there would be
+        // the same defect the requestLog hoist fixed, just at the paginatedRequest call site instead.
+        // The "backward" sub-namespace and its per-relay nanoid(8) correlation suffix are both fixed
+        // once here, unconditionally, and threaded into paginatedRequest directly rather than derived
+        // on each call.
+        const backwardLog = requestLog.extend("backward").extend(nanoid(8));
 
         // D-16: this relay's own auth-phase suspension, constructed per relay/url (not once for the
         // whole loader) so one relay's auth wait can never pause another relay's stall clock. A counter
@@ -607,7 +619,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
 
             // Part 1: paginated REQ
             const request$ = () =>
-              toMessages(withTimeout(paginatedRequest(request, url, filter, limit, requestLog, relayMethodOptions)));
+              toMessages(withTimeout(paginatedRequest(request, url, filter, limit, backwardLog, relayMethodOptions)));
 
             // A relay without NIP-77 just pages through a REQ
             if (!negentropy) return concat(status(), request$());
