@@ -1,8 +1,10 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
+import type { NostrEvent } from "applesauce-core/helpers/event";
 import { NEVER, Observable, of, Subject, throwError, timer } from "rxjs";
 import { map } from "rxjs/operators";
 import { describe, expect, it, vi } from "vitest";
 
+import { describeWireRequest } from "../helpers/auth-log.js";
 import type { RelayAuthContext } from "../types.js";
 import {
   AuthPhaseGate,
@@ -79,6 +81,11 @@ function makePersistentSignalSource() {
     subscriber.complete();
   });
   return { source, getSubscribeCount: () => subscribeCount };
+}
+
+/** Renders an injected `log` spy's captured calls as plain strings, in call order */
+function collectLines(log: ReturnType<typeof vi.fn>): string[] {
+  return log.mock.calls.map((call) => String(call[0]));
 }
 
 describe("authRetry", () => {
@@ -284,6 +291,264 @@ describe("authRetry", () => {
     ctrl.emit(authRequiredSignal("auth-required: already satisfied"));
 
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 14-05: the operation track's per-phase line set (D-05/D-07/D-08/D-14/D-15), including ALOG-02
+// attribution between two concurrent operations sharing one log stream. Every expectation below is
+// derived from the D-14 line enumeration (14-CONTEXT.md) or from the independently-tested
+// describeWireRequest formatter — never copied from the operator's own rendered output.
+describe("authRetry — operation track logging (14-05)", () => {
+  it("opted-out short circuit logs exactly one line, prefixed by the wire key, naming the opt-out, with no phase counter", async () => {
+    const log = vi.fn();
+    const errors = makeErrors();
+    const persistent = makePersistentSignalSource();
+    const expectedLabel = describeWireRequest(FAKE_CONTEXT.request);
+    const spy = subscribeSpyTo(
+      persistent.source.pipe(authRetry(baseConfig({ waitForAuth: false, log, errors }))),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    const lines = collectLines(log);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].startsWith(expectedLabel)).toBe(true);
+    expect(lines[0]).toContain("opted out");
+    expect(lines[0]).not.toMatch(/phase \d+\/\d+/);
+  });
+
+  it("retries-exhausted logs one line naming the exhausted budget, with no phase counter of its own", async () => {
+    const log = vi.fn();
+    const errors = makeErrors();
+    const persistent = makePersistentSignalSource();
+    const spy = subscribeSpyTo(
+      persistent.source.pipe(authRetry(baseConfig({ authRetries: 1, log, errors }))),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    const lines = collectLines(log);
+    const exhaustedLine = lines.find((l) => l.includes("exhausted"));
+    expect(exhaustedLine).toBeDefined();
+    expect(exhaustedLine).toContain("1");
+    expect(exhaustedLine).not.toMatch(/phase \d+\/\d+/);
+  });
+
+  it("a successful phase (handler present) emits begin, handler-invoked, resolved-and-waiting, and wait-satisfied lines in order", async () => {
+    const log = vi.fn();
+    const onAuthRequired = vi.fn();
+    const ctrl = makeControllableSource<number>();
+    subscribeSpyTo(
+      ctrl.source.pipe(authRetry(baseConfig({ onAuthRequired, log, satisfiedPubkeys: () => ["pk1"] }))),
+    );
+
+    ctrl.emit(authRequiredSignal("auth-required: go"));
+
+    const lines = collectLines(log);
+    const beginIdx = lines.findIndex((l) => l.includes("entering phase 1/1"));
+    const invokedIdx = lines.findIndex((l) => l.includes("invoking the configured onAuthRequired handler"));
+    const waitingIdx = lines.findIndex((l) => l.includes("now waiting for"));
+    const satisfiedIdx = lines.findIndex((l) => l.includes("wait satisfied") && l.includes("pk1"));
+
+    expect(beginIdx).toBeGreaterThanOrEqual(0);
+    expect(invokedIdx).toBeGreaterThan(beginIdx);
+    expect(waitingIdx).toBeGreaterThan(invokedIdx);
+    expect(satisfiedIdx).toBeGreaterThan(waitingIdx);
+  });
+
+  it("a handler-absent phase emits begin, handler-absent, and wait-satisfied lines", async () => {
+    const log = vi.fn();
+    const ctrl = makeControllableSource<number>();
+    subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ log }))));
+
+    ctrl.emit(authRequiredSignal("auth-required: go"));
+
+    const lines = collectLines(log);
+    expect(lines.some((l) => l.includes("entering phase 1/1"))).toBe(true);
+    expect(lines.some((l) => l.includes("no onAuthRequired handler is configured"))).toBe(true);
+    expect(lines.some((l) => l.includes("wait satisfied"))).toBe(true);
+    // The handler-invoked branch must never fire when no handler is configured
+    expect(lines.some((l) => l.includes("invoking the configured onAuthRequired handler"))).toBe(false);
+  });
+
+  it("a synchronous handler throw logs the throw distinctly, carrying the cause's message", async () => {
+    const log = vi.fn();
+    const thrown = new Error("sync boom");
+    const onAuthRequired = vi.fn(() => {
+      throw thrown;
+    });
+    const errors = makeErrors();
+    const persistent = makePersistentSignalSource();
+    const spy = subscribeSpyTo(
+      persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, log, errors }))),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    const lines = collectLines(log);
+    expect(lines.some((l) => l.includes("threw synchronously") && l.includes("sync boom"))).toBe(true);
+    expect(lines.some((l) => l.includes("promise rejected"))).toBe(false);
+  });
+
+  it("an asynchronous handler rejection logs the rejection distinctly, carrying the cause's message", async () => {
+    const log = vi.fn();
+    const rejection = new Error("handler blew up");
+    const onAuthRequired = vi.fn().mockRejectedValue(rejection);
+    const errors = makeErrors();
+    const persistent = makePersistentSignalSource();
+    const spy = subscribeSpyTo(
+      persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, log, errors }))),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    const lines = collectLines(log);
+    expect(lines.some((l) => l.includes("promise rejected") && l.includes("handler blew up"))).toBe(true);
+    expect(lines.some((l) => l.includes("threw synchronously"))).toBe(false);
+  });
+
+  it("a per-phase timeout logs the timeout naming the configured budget", async () => {
+    const log = vi.fn();
+    const errors = makeErrors();
+    const persistent = makePersistentSignalSource();
+    const spy = subscribeSpyTo(
+      persistent.source.pipe(
+        authRetry(baseConfig({ authTimeout: 50, authSatisfied$: () => NEVER, log, errors })),
+      ),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    const lines = collectLines(log);
+    expect(lines.some((l) => l.includes("timed out") && l.includes("50ms"))).toBe(true);
+  });
+
+  it("ALOG-02: two concurrent operations against different wire requests are individually attributable in one shared log stream", async () => {
+    const log = vi.fn();
+
+    const reqRequest: RelayAuthContext["request"] = {
+      verb: "REQ",
+      id: "req-alpha-attribution-id",
+      filters: [{ kinds: [1] }],
+    };
+    const eventPayload: NostrEvent = {
+      kind: 7,
+      id: "event-beta-attribution-id-0000000000000000000000000000000000",
+      pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+      created_at: 1743712795,
+      tags: [],
+      content: "+",
+      sig: "5a57b5a12bba4b7cf0121077b1421cf4df402c5c221376c076204fc4f7519e28ce6508f26ddc132c406ccfe6e62cc6db857b96c788565cdca9674fe9a0710ac2",
+    };
+    const eventRequest: RelayAuthContext["request"] = { verb: "EVENT", event: eventPayload };
+
+    // Derived from the same already-tested formatter the operator itself calls — not a hardcoded
+    // rendered-line literal copied from the implementation.
+    const reqLabel = describeWireRequest(reqRequest);
+    const eventLabel = describeWireRequest(eventRequest);
+    expect(reqLabel).not.toBe(eventLabel);
+
+    const reqSource = makePersistentSignalSource();
+    const eventSource = makePersistentSignalSource();
+    const errorsA = makeErrors();
+    const errorsB = makeErrors();
+
+    const spyA = subscribeSpyTo(
+      reqSource.source.pipe(
+        authRetry(
+          baseConfig({
+            buildContext: (reason) => ({ ...FAKE_CONTEXT, request: reqRequest, reason }),
+            log,
+            errors: errorsA,
+          }),
+        ),
+      ),
+      { expectErrors: true },
+    );
+    const spyB = subscribeSpyTo(
+      eventSource.source.pipe(
+        authRetry(
+          baseConfig({
+            buildContext: (reason) => ({ ...FAKE_CONTEXT, request: eventRequest, reason }),
+            log,
+            errors: errorsB,
+          }),
+        ),
+      ),
+      { expectErrors: true },
+    );
+
+    await Promise.all([spyA.onError(), spyB.onError()]);
+
+    const lines = collectLines(log);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      const belongsToReq = line.startsWith(reqLabel);
+      const belongsToEvent = line.startsWith(eventLabel);
+      // Exactly one — never both (ambiguous), never neither (unattributable)
+      expect(belongsToReq !== belongsToEvent).toBe(true);
+    }
+    expect(lines.some((l) => l.startsWith(reqLabel))).toBe(true);
+    expect(lines.some((l) => l.startsWith(eventLabel))).toBe(true);
+  });
+
+  it("D-08: the wait-satisfied line names every pubkey an array requirement's wait was satisfied by", async () => {
+    const log = vi.fn();
+    const ctrl = makeControllableSource<number>();
+    subscribeSpyTo(
+      ctrl.source.pipe(
+        authRetry(baseConfig({ waitForAuth: ["pk-alpha", "pk-beta"], log, satisfiedPubkeys: () => ["pk-alpha", "pk-beta"] })),
+      ),
+    );
+
+    ctrl.emit(authRequiredSignal("auth-required: go"));
+
+    const lines = collectLines(log);
+    const satisfiedLine = lines.find((l) => l.includes("wait satisfied"));
+    expect(satisfiedLine).toBeDefined();
+    expect(satisfiedLine).toContain("pk-alpha");
+    expect(satisfiedLine).toContain("pk-beta");
+  });
+
+  it("D-08: a boolean requirement satisfied with no pubkeys reported says so explicitly rather than trailing off", async () => {
+    const log = vi.fn();
+    const ctrl = makeControllableSource<number>();
+    // baseConfig's default satisfiedPubkeys already returns []
+    subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ log }))));
+
+    ctrl.emit(authRequiredSignal("auth-required: go"));
+
+    const lines = collectLines(log);
+    const satisfiedLine = lines.find((l) => l.includes("wait satisfied"));
+    expect(satisfiedLine).toBeDefined();
+    expect(satisfiedLine).toContain("no pubkeys reported");
+  });
+
+  it("D-07: the consecutive-counter reset emits no line, and the phase counter demonstrably restarts at 1", async () => {
+    const log = vi.fn();
+    const ctrl = makeControllableSource<number>();
+    subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ authRetries: 1, log }))));
+
+    // Cycle 1: one auth phase, resolved by a real value which also resets the counter
+    ctrl.emit(authRequiredSignal("auth-required: cycle 1"));
+    ctrl.emit(1);
+
+    // Cycle 2: a fresh phase — if the reset above had not happened, authRetries: 1 would already be
+    // exhausted and this signal would produce the "exhausted" line instead of a second "entering" line.
+    ctrl.emit(authRequiredSignal("auth-required: cycle 2"));
+    ctrl.emit(2);
+
+    const lines = collectLines(log);
+    const enteringLines = lines.filter((l) => l.includes("entering phase"));
+    expect(enteringLines).toHaveLength(2);
+    expect(enteringLines[0]).toContain("entering phase 1/1");
+    expect(enteringLines[1]).toContain("entering phase 1/1");
+    expect(lines.some((l) => /reset/i.test(l))).toBe(false);
   });
 });
 
