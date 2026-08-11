@@ -19,13 +19,36 @@ const EMPTY_FILTER_PLACEHOLDER = "(empty filter)";
 const EMPTY_FILTERS_PLACEHOLDER = "(no filters)";
 
 /**
+ * Matches ASCII control characters (0x00-0x1F) and DEL (0x7F) — see {@link truncateForLog} (CR-01).
+ * Built from a string via the `RegExp` constructor (rather than a `/…/` regex literal embedding the raw
+ * control-character range) so the pattern stays plain, greppable ASCII source text.
+ */
+const CONTROL_CHARS_RE = new RegExp("[\\u0000-\\u001f\\u007f]", "g");
+
+/**
  * Bounds a relay-supplied free-text value (`reason`, `message`, `challenge`) at `limit` characters before
- * it is interpolated into a log line (T-14-01, the DoS mitigation for T-14-01). Coerces a non-string value
- * to a string, using an empty string for `null`/`undefined`. A string no longer than `limit` is returned
- * unchanged; a longer one is cut to `limit` characters with a suffix naming how many characters were dropped.
+ * it is interpolated into a log line (T-14-01, the DoS mitigation for T-14-01), and neutralizes it so it
+ * can neither be interpreted as a `debug`/`util.format` specifier nor introduce a new physical line
+ * (CR-01). Coerces a non-string value to a string, using an empty string for `null`/`undefined`. A string
+ * no longer than `limit` (after neutralization) is returned unchanged; a longer one is cut to `limit`
+ * characters with a suffix naming how many characters were dropped.
+ *
+ * CR-01: `debug` (`common.js`) treats the string handed to it as a printf-style format string — it runs a
+ * `%`-replacement pass before `util.formatWithOptions` ever sees it. Every relay-controlled string that
+ * reaches this function is later interpolated into that same first argument at its call site, so left
+ * unneutralized a hostile relay can (1) destroy its own log line's content — `%o`/`%O` are real
+ * `createDebug.formatters` entries that consume a non-existent argument and render `undefined` — or (2)
+ * forge an entire extra physical line via an embedded newline, byte-identical to a genuine connection-track
+ * line (CWE-117). Doubling `%` relies on this value always being interpolated into the format argument
+ * (never passed as a separate `%s` argument) — drop the doubling if a sink is ever changed to do that.
+ * Escaping control characters as `\xHH` (rather than deleting them) keeps the operator able to tell a
+ * hostile value was received, while making it structurally impossible for it to start a new physical line.
  */
 export function truncateForLog(value: unknown, limit: number = AUTH_LOG_TEXT_LIMIT): string {
-  const text = value === null || value === undefined ? "" : String(value);
+  const raw = value === null || value === undefined ? "" : String(value);
+  const text = raw
+    .replace(/%/g, "%%")
+    .replace(CONTROL_CHARS_RE, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
   if (text.length <= limit) return text;
   return `${text.slice(0, limit)}…(+${text.length - limit} more chars)`;
 }

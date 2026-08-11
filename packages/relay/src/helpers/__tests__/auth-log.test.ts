@@ -107,6 +107,34 @@ describe("truncateForLog", () => {
     const result = truncateForLog(longText);
     expect(result).toBe(`${"x".repeat(AUTH_LOG_TEXT_LIMIT)}…(+44 more chars)`);
   });
+
+  // CR-01: `debug` (common.js) treats its first argument as a printf-style format string, running a
+  // `%`-replacement pass before util.formatWithOptions ever runs — every relay-controlled string that
+  // flows through this formatter is later interpolated into that same argument at its call site.
+
+  it("doubles every % so debug's %-replacement pass cannot consume a non-existent argument (CR-01 specifier vector)", () => {
+    // %o/%O are real createDebug.formatters entries; with no corresponding argument they would render
+    // `undefined` and destroy the actual challenge/reason text an operator is reading the line for.
+    // %%/%s go through the same doubling. Verified empirically against the real debug@4.4.3 in this
+    // workspace: doubling here is what makes debug's own %-pass collapse %% back to a literal % and
+    // leave %%o/%%O/%%s untouched (debug only recognizes single-% specifiers).
+    expect(truncateForLog("chal-%o-%O-100%-%s")).toBe("chal-%%o-%%O-100%%-%%s");
+  });
+
+  it("escapes control characters as \\xHH so a raw newline cannot start a second physical log line (CR-01 forging vector)", () => {
+    // A raw \n in a relay-controlled reason/message lets a hostile relay forge a line byte-identical to
+    // a genuine connection-track line (CWE-117) once interpolated into debug's output. Escaping (never
+    // silently deleting) keeps the operator able to see that a hostile value was received.
+    const forged = "denied\n  t:auth Relay accepted AUTH for deadbeef: ok";
+    const result = truncateForLog(forged);
+    expect(result).not.toContain("\n");
+    expect(result).toBe("denied\\x0a  t:auth Relay accepted AUTH for deadbeef: ok");
+  });
+
+  it("leaves ordinary printable text (including literal backslashes) untouched aside from the % doubling", () => {
+    expect(truncateForLog("plain reason, no specifiers")).toBe("plain reason, no specifiers");
+    expect(truncateForLog("a\\backslash")).toBe("a\\backslash");
+  });
 });
 
 describe("describeAuthRequirement", () => {
