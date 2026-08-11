@@ -139,3 +139,11 @@ None - no external service configuration required.
 ---
 *Phase: 14-auth-lifecycle-debug-logging*
 *Completed: 2026-08-11*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/14-auth-lifecycle-debug-logging/14-09-SUMMARY.md`
+- FOUND: `packages/loaders/src/loaders/sync-loader.ts`
+- FOUND: `fff0883d` (Task 1 commit)
+- FOUND: `8c3de892` (Task 2 commit)
+- FOUND: `3519f790` (SUMMARY commit)
