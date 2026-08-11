@@ -216,6 +216,10 @@ no `onAuthRequired` exists yet, and concord's churn mechanism is `relay-auth.ts:
 evidence, but that file was never committed — the mechanism is confirmed independently, the
 reproduction is not.*
 
+*Updated 2026-08-11 — Phase 14 (auth lifecycle debug logging) complete: 9/9 plans, ALOG-01/02/03
+verified, suite at 2,647 passing. Two code-review findings were closed as gap plans (14-08, 14-09);
+eight were deliberately backlogged as ROADMAP item 999.16. Next: Phase 15, Concord stream-auth cleanup.*
+
 *Prior: 2026-08-04 after the v1.1 first-fixes milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.1 was a conformance milestone in `applesauce-concord`; it did not shift what the SDK is or what matters most about it); all eight v1.1 Active requirements moved to Validated; Out of Scope audited with each reason re-confirmed; six Key Decisions resolved to outcomes; Context updated with shipped state.*
 
 *Prior: 2026-08-01 — Phase 12 complete (document & caps conformance; re-verification passed 7/7 after a gap wave closed CR-01, the channel-fold type-validation regression, as a class via type-derived rule tables rather than by enumeration).*
