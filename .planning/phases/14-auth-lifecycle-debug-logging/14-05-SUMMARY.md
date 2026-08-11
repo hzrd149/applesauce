@@ -189,6 +189,15 @@ None - no external service configuration required.
 - 14-06 (the `:auth` namespace end-to-end sequence oracle) can build its scripted-scenario line inventory directly against the ordered line set documented above — no further changes to `auth-retry.ts` are needed for that plan to proceed.
 - No blockers. This plan touched only `packages/relay/src/operators/auth-retry.ts` and its test file, per its declared `files_modified` scope; it did not touch `relay.ts` or `relay.test.ts` (owned by the concurrent 14-04 agent in this wave).
 
+## Self-Check: PASSED
+
+- FOUND: `packages/relay/src/operators/auth-retry.ts`
+- FOUND: `packages/relay/src/__tests__/auth-retry.test.ts`
+- FOUND: `.planning/phases/14-auth-lifecycle-debug-logging/14-05-SUMMARY.md`
+- FOUND: commit `ff38feea` (Task 1)
+- FOUND: commit `970d9d8b` (Task 2)
+- FOUND: commit `1fabdc17` (Task 3)
+
 ---
 *Phase: 14-auth-lifecycle-debug-logging*
 *Completed: 2026-08-11*
