@@ -39,6 +39,26 @@ structural: a predicate total over its own union with no cast, so a new message 
 error rather than a silent default. Requiring a parameter only helps where a cast cannot erase the
 question.
 
+**Phase 14 complete (2026-08-11)** — the auth surface Phase 13 built is now observable. ALOG-01/02/03
+all verified; 9 plans across 4 waves, suite at **2,647 passing / 2 skipped** across 277 files. A NIP-42
+attempt's position in its lifecycle and its outcome are readable from the `:auth` namespace, and the
+coarse three-value `operation` bucket gave way to an exhaustive wire-verb union so two concurrent
+operations stay attributable in one log stream.
+
+The carry-forward lesson here is about *verifiability*, not auth. ALOG-03 originally read as a
+zero-hits grep — a criterion that could be satisfied while being false — and had to be restated mid-phase
+into a derive-once property before it could be honestly checked. Even then the sweep missed a second
+derivation, and the regression guard written to prevent exactly that class was structurally blind to it
+because it filtered on one namespace segment. Two lessons compound: a criterion phrased as *absence of
+evidence* is not a criterion, and a guard that has never been observed to fail is not yet a guard.
+Widening it to a total count over the scope is what closed the class.
+
+Phase 14 also shipped a defect of its own kind: relay-controlled text flowed into `debug`'s *format*
+argument, so a hostile relay could erase its own log line or forge one identical to a genuine
+`accepted AUTH` line. Length-bounding the input looked like the mitigation and wasn't. It was caught by
+code review, not by the phase's own oracles, because those oracles only exercised long strings. Fixed at
+the single shared formatter so all seven sinks inherit it.
+
 ## Current Milestone: v1.2 operation-scoped-relay-auth
 
 **Goal:** Move NIP-42 authentication out of ambient, relay-wide cached state and into the
