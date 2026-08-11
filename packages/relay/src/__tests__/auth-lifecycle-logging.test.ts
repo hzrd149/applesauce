@@ -276,6 +276,71 @@ describe("auth lifecycle logging (14-06)", () => {
     });
   });
 
+  // CR-01: the T-14-01/D-09 oracle above only exercised "x".repeat(...), which bounds length but says
+  // nothing about `debug`'s own printf-style %-replacement pass or a raw newline in the value -- exactly
+  // why neither vector was caught. These two prove both against real captured `debug` output from a live
+  // Relay, not just against the formatter in isolation (helpers/__tests__/auth-log.test.ts covers that).
+
+  it("CR-01: a challenge containing debug format specifiers survives verbatim in the captured trace", async () => {
+    const reqId = "cr01-specifier-challenge";
+    const hostileChallenge = "chal-%o-%O-100%-%s";
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, authTimeout: false }), {
+        expectErrors: true,
+      });
+
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      server.send(["AUTH", hostileChallenge]);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const captured = lines();
+      const challengeLine = captured.find((l) => l.includes("auth challenge"));
+
+      expect(challengeLine).toBeDefined();
+      // Verified against the real debug@4.4.3 in this workspace: an unneutralized challenge collapses
+      // %o/%O into the literal string "undefined" (real createDebug.formatters entries consuming a
+      // non-existent argument), silently destroying the value an operator is reading the line to see.
+      expect(challengeLine).toContain(hostileChallenge);
+      expect(challengeLine).not.toContain("undefined");
+
+      spy.unsubscribe();
+    });
+  });
+
+  it("CR-01: a CLOSED reason containing a newline cannot forge a second captured line", async () => {
+    const reqId = "cr01-forging-reason";
+    const forgedPubkey = "deadbeef".repeat(8);
+    const hostileReason = `auth-required: denied\n  t:auth Relay accepted AUTH for ${forgedPubkey}: ok`;
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, authTimeout: false }), {
+        expectErrors: true,
+      });
+
+      await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
+      server.send(["CLOSED", reqId, hostileReason]);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const captured = lines();
+      const refusalLine = captured.find((l) => l.includes("Relay refused") && l.includes("authentication required"));
+
+      expect(refusalLine).toBeDefined();
+      // A bare substring assertion (e.g. captured.some(l => l.includes("accepted AUTH for " + forgedPubkey)))
+      // would pass even while forged: the capture harness records one array entry per debug() call
+      // regardless of any embedded newline inside that call's own string, so a successful forge never
+      // shows up as an extra array entry -- only as a second physical line inside the one entry that
+      // already exists. Assert that entry itself stays exactly one physical line.
+      expect(refusalLine!.split("\n")).toHaveLength(1);
+      // The hostile text is still visible -- never silently deleted, so an operator can tell a hostile
+      // value was received -- but escaped, not raw, so it cannot start a new physical line.
+      expect(refusalLine).toContain("\\x0a");
+      expect(refusalLine).toContain(`accepted AUTH for ${forgedPubkey}`);
+
+      spy.unsubscribe();
+    });
+  });
+
   it("the retries-exhausted outcome names the configured budget", async () => {
     const user = new FakeUser();
     const reqId = "exhaust-budget";
