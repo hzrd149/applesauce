@@ -431,6 +431,17 @@ export class Relay {
   authRequiredForPublish$: Observable<boolean>;
 
   protected resetState() {
+    // D-12: read BEFORE the guarded clears below run, so the counts describe what is about to be
+    // dropped rather than what has already been cleared. Makes the expected re-auth-per-reconnect
+    // cycle legible as its own line instead of appearing as an unexplained disconnect.
+    const authenticatedCount = Object.keys(this.authentications$.value).length;
+    const challengeHeld = this.challenge$.value !== null;
+    if (authenticatedCount > 0 || challengeHeld) {
+      this.authLog(
+        `Invalidating auth state on reset: dropping ${authenticatedCount} authenticated pubkey${authenticatedCount === 1 ? "" : "s"}${challengeHeld ? ", and the held challenge" : ""}`,
+      );
+    }
+
     // NOTE: only update the values if they need to be changed, otherwise this will cause an infinite loop
     if (this.challenge$.value !== null) this.challenge$.next(null);
     if (Object.keys(this.authentications$.value).length > 0) this.authentications$.next({});
