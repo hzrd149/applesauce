@@ -160,6 +160,20 @@ forbids it). No new proactive/ambient auth of any kind.
   `relay.authenticate()` (`relay.ts:1416`) has no in-flight dedupe of its own, correctly, and none
   is to be added at any layer.
 
+### Examples
+
+- **D-19: The four concord examples migrate in this phase.** Surfaced by 15-RESEARCH.md, not by the
+  discussion — CONTEXT.md never mentioned `apps/examples`, but `apps/*` is in the pnpm workspace and
+  root `pnpm build` runs `turbo build` across it, so deleting `ConcordRelayAuth` breaks the build.
+  Three files construct it and call `authenticateStreamKeys` (`direct-invites.tsx:8,34,257`,
+  `crypto-history.tsx:8,47,133,139,428,432,443`, `rumor-stores.tsx:10,41,130,143,355,359,392` — the
+  latter two also hand-roll their own `ensureAuth`), and `admin-management.tsx:111,112,341,342` reads
+  the removed `status.authenticated`. Ruled in-phase: rewrite the three consumers onto operation-scoped
+  `onAuthRequired` so the examples demonstrate the new pattern, and drop or replace the
+  `status.authenticated` badges. This is what makes CAUTH-03's zero-remaining-call-sites claim honest
+  rather than scoped-around. Note `pnpm test` alone would not have caught this — it filters to
+  `./packages/*`, so `pnpm --filter applesauce-examples build` is the gate that matters.
+
 ### Claude's Discretion
 
 - Naming and file placement of the scope-owned signer holder (D-06), and its exact API for
