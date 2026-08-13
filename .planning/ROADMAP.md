@@ -355,3 +355,26 @@ Plans:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.17: Replace the `debug` dependency with something simpler (BACKLOG)
+
+**Goal:** [Captured for future planning] Drop the npm `debug` package (`4.4.3`, one transitive dep `ms@2.1.3`, CJS with a `browser` field swap) in favor of either [`@grammyjs/debug`](https://jsr.io/@grammyjs/debug) or a hand-rolled module vendored from its source (MIT, ~4 KB across 5 files, zero dependencies, declares `browser`/`deno`/`node`/`bun`/`workerd` compat).
+
+**Current footprint.** `debug` is a runtime dependency of five published packages — `core`, `relay`, `signers`, `wallet`, `concord` — with `@types/debug` in those plus `actions`, `wallet-connect`, and `common`. The only construction site is `packages/core/src/logger.ts` (a 4-line module exporting `logger = debug("applesauce")`); everything else derives from it. Across `packages/*/src` there are **109 `.extend()` call sites**, **52 references to the `Debugger` type**, and ~125 string literals carrying printf-style formatters (`%s`/`%o`/`%O`/`%d`/`%j`).
+
+**The API gap is the whole cost of this change.** `@grammyjs/debug` exports exactly one function, `createDebug(namespace) -> DebugFn` with a single mutable `enabled` boolean. It does **not** provide:
+
+- **`.extend()`** — the 109 call sites are the dominant blocker. Trivially reimplementable as `createDebug(parent + ":" + child)`, but it must be added, and per the repo convention the extended Debugger is hoisted once rather than re-derived per log call.
+- **printf formatters** — `debug` runs `util.format`-style substitution over `%s/%d/%o/%O/%j` plus custom `%` formatters; grammy just forwards rest args to `console.debug`. Browsers coincidentally handle `%s`/`%d`/`%o`, but Node's `console.debug` also does — worth confirming rather than assuming the ~125 sites are unaffected, especially `%j`, which no console implements.
+- **`enable()` / `disable()` / `enabled(ns)` / a settable `.log` sink** — used by the two test capture harnesses, `packages/relay/src/__tests__/debug-capture.ts` and `packages/concord/src/helpers/__tests__/relays.test.ts:237-255`, both of which snapshot `debugFactory.log`, force-enable a namespace, and restore. Grammy reads `DEBUG` **once at module load** into a `const` and exposes no runtime toggle, so both harnesses need a replacement mechanism designed alongside the shim. This interacts with 999.16's WR-05 (the harness already leaks the process-wide `DEBUG` filter) — fixing that on top of `debug` may be wasted work if this lands.
+- **`Debugger`** as a type name — grammy calls it `DebugFn`, so a re-export alias avoids touching 52 sites.
+
+**Vendor-vs-depend.** `@grammyjs/debug` is JSR-only and Deno-flavored (`.ts` extension imports); consuming it from npm packages means the `@jsr/grammyjs__debug` shim and a JSR registry entry in consumers' `.npmrc`, which is a real cost to push onto downstream users of five published packages. Vendoring the ~4 KB of MIT source into `applesauce-core` and extending it with `.extend()`, a namespace/`Debugger` type alias, and a testable sink is likely the better shape — it also lets the sink be a first-class export instead of a monkey-patched global, which is what both test harnesses actually want.
+
+**Worth checking at promotion:** whether `logger.ts` should expose a factory (so the sink and enable-state are injectable) rather than a single pre-built root Debugger; whether any consumer imports `debug` types transitively through applesauce's published `.d.ts` (the `dist/**/*.d.ts` files currently do `import type { Debugger } from "debug"`, so removing the dep is a **public type surface change** and needs a changeset per affected package with the right bump); and whether `DEBUG=` env parsing needs to keep `debug`'s `-` negation and `*` wildcard semantics that grammy's `Namespaces` may or may not match.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
