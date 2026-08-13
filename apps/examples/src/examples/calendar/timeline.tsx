@@ -1,7 +1,7 @@
 /**
  * Display a timeline of calendar events with filtering and details
  * @tags nip-52, calendar, timeline, events
- * @related calendar/create-event, calendar/map
+ * @related calendar/map
  */
 import {
   DATE_BASED_CALENDAR_EVENT_KIND,

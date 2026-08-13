@@ -164,7 +164,7 @@ export default function NbunksecExample() {
 
   if (connected) {
     return (
-      <main className="mx-auto flex min-h-full w-full max-w-2xl items-center px-4 py-10">
+      <main className="mx-auto flex w-full max-w-2xl items-center px-4 py-10">
         <div className="w-full border border-base-300 bg-base-100 p-5 sm:p-8">
           <div className="mb-8 border-l-4 border-success pl-4">
             <p className="text-sm font-medium uppercase tracking-wide text-success">Remote signer connected</p>
@@ -234,7 +234,7 @@ export default function NbunksecExample() {
   }
 
   return (
-    <main className="mx-auto grid min-h-full w-full max-w-4xl items-center gap-8 px-4 py-8 md:grid-cols-[minmax(0,1.1fr)_minmax(18rem,0.9fr)]">
+    <main className="mx-auto grid w-full max-w-4xl items-center gap-8 px-4 py-8 md:grid-cols-[minmax(0,1.1fr)_minmax(18rem,0.9fr)]">
       <section>
         <p className="mb-2 text-sm font-medium uppercase tracking-wide text-primary">NIP-46 remote signer</p>
         <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">Scan to connect</h1>
