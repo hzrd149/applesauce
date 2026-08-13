@@ -5,8 +5,8 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 15
 current_phase_name: Concord Stream-Auth Cleanup
 status: executing
-stopped_at: Phase 14 context gathered
-last_updated: "2026-08-11T14:54:18.785Z"
+stopped_at: Phase 15 context gathered
+last_updated: "2026-08-13T15:48:22.461Z"
 last_activity: 2026-08-11
 last_activity_desc: Phase 14 complete, transitioned to Phase 15
 progress:
@@ -382,9 +382,9 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-08T15:01:03.201Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-auth-lifecycle-debug-logging/14-CONTEXT.md
+Last session: 2026-08-13T15:48:22.451Z
+Stopped at: Phase 15 context gathered
+Resume file: .planning/phases/15-concord-stream-auth-cleanup/15-CONTEXT.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
