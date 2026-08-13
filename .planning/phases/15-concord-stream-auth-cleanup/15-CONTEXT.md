@@ -65,8 +65,8 @@ forbids it). No new proactive/ambient auth of any kind.
   between syncs holds no live operation, so nothing re-auths until its next operation. This is a
   behavior change from the driver, which re-authed every held key on every `challenge$` emission
   whether anything needed it or not. Accepted as correct under demand-driven auth.
-- **D-05: `authRetries` stays at its default of `1`; `authTimeout` stays at its default of
-  `30_000`.** The connection-level retry already grants a fresh budget per reconnect, and a relay
+- **D-05: `authRetries` stays at its default of `1`; `authTimeout` stays at its default of `30_000`.**
+  The connection-level retry already grants a fresh budget per reconnect, and a relay
   that refuses a correctly-signed AUTH twice within one connection is refusing for a
   non-transient reason. Stream-key signing is local and instant, so the 30s budget is almost
   entirely the relay's `OK` reply. This retains the per-operation retry CAUTH-04 requires.
@@ -105,8 +105,8 @@ forbids it). No new proactive/ambient auth of any kind.
   `ConcordPrivateChannelStatus` (`types.ts:304`), and the `authenticated` leg of the `status$`
   composite (`community.ts:448`). Concord is unreleased, so this costs nothing downstream. Marked
   as revisitable if an app asks for it.
-- **D-11: It had to go — the old definition breaks under per-operation auth, in two independent
-  ways.** (a) Its gate leaks across scopes: `relay-auth.ts:110` counts a relay satisfied when
+- **D-11: It had to go — the old definition breaks under per-operation auth, in two independent ways.**
+  (a) Its gate leaks across scopes: `relay-auth.ts:110` counts a relay satisfied when
   neither `authRequiredForRead` nor `authRequiredForPublish` is set, but those flags are relay-wide
   and set by *any* operation's refusal — so community A's `authenticated$` drops because community
   B's REQ was refused on a shared relay, and A can never recover it (A has no operation running, so
@@ -123,8 +123,8 @@ forbids it). No new proactive/ambient auth of any kind.
   sync returned nothing, write it there so the UI can say *why* a community looks empty rather than
   showing a silent blank. **No new status surface** — this replaces the earlier idea of a per-relay
   auth-state field, which `authenticated$`'s removal made unnecessary.
-- **D-14: Neither concord path dies on a single relay's auth failure — this is already true
-  upstream and must not regress.** `RelayGroup.internalSubscription` wraps each relay in
+- **D-14: Neither concord path dies on a single relay's auth failure — this is already true upstream and must not regress.**
+  `RelayGroup.internalSubscription` wraps each relay in
   `catchError` → an `ERROR` message, then merges (`group.ts:177-183`), so the live subscription
   survives. `syncAuthors`' `events$` completes when every relay has finished *completed or errored*
   (`sync.ts:112`), so the sync just returns fewer events. The engine catches at its own boundary

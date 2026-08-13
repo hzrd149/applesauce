@@ -174,7 +174,38 @@ Plans:
   3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. (CAUTH-03)
   4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
 
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 15-01-PLAN.md — Scope-owned auth primitives: the `StreamSigners` holder, the user-handler factory, and the lifted `connected$` derivation (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 15-02-PLAN.md — Remove the standing `authenticated` status surface from all three status types, both engines, the client fold, and the example badges (wave 2)
+- [ ] 15-03-PLAN.md — Migrate the three example apps off the client-wide auth class onto reactive per-operation handlers (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 15-04-PLAN.md — Rewire both engines and both sync walks onto scope-owned handlers, plus the CAUTH-02 scoped-AUTH oracle (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 15-05-PLAN.md — Auth options on every publish and every user-key operation, with the client-wide user handler (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 15-06-PLAN.md — Invite-watcher reactive user auth and the removal of `autoAuthenticate` from both classes (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 15-07-PLAN.md — Delete `relay-auth.ts` and add the repo-wide structural guard against reintroduction (wave 6)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 15-08-PLAN.md — Requirement amendment, the full gate run, the validation contract, and live-relay human verification (wave 7)
 
 ## Progress
 
