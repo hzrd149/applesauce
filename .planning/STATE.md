@@ -5,16 +5,16 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 15
 current_phase_name: concord-stream-auth-cleanup
 status: executing
-stopped_at: Phase 15 context gathered
-last_updated: "2026-08-15T08:53:47.819Z"
+stopped_at: Phase 15 complete (plan 15-08 closed)
+last_updated: "2026-08-15T11:30:23.737Z"
 last_activity: 2026-08-15
-last_activity_desc: Phase 15 execution started
+last_activity_desc: Plan 15-08 closed the phase
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 31
-  completed_plans: 23
-  percent: 67
+  completed_plans: 31
+  percent: 100
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 ## Current Position
 
-Phase: 15 (concord-stream-auth-cleanup) — EXECUTING
-Plan: 1 of 8
-Status: Executing Phase 15
-Last activity: 2026-08-15 — Phase 15 execution started
+Phase: 15 (concord-stream-auth-cleanup) — COMPLETE
+Plan: 8 of 8
+Status: Phase 15 complete (all CAUTH-01..04 requirements satisfied, human-verify checkpoint approved 2026-08-15)
+Last activity: 2026-08-15 — Plan 15-08 closed the phase
 
 ## Performance Metrics
 
@@ -116,6 +116,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P11 | 10min | 3 tasks | 2 files |
 | Phase 13 P12 | ~20min | 3 tasks | 10 files |
 | Phase 13 P14 | ~10min | 3 tasks | 3 files |
+| Phase 15 P08 | ~25min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -299,6 +300,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 13]: 13-12: RAUTH-03/07/08 flipped to Complete in REQUIREMENTS.md only after every phase-touched suite ran green and each requirement was mapped to a named test with its recorded RED symptom, closing the gap-closure wave 13-VERIFICATION.md opened
 - [Phase 13]: 13-14: isGroupReqProgress narrows GroupReqMessage (ERROR -> not progress, early return) then delegates to isReqProgress with no cast, closing CR-02 at group.ts's suspendableTimeout firstWhen — a future GroupReqMessage arm is now a compile error at this call site, not a silent default to progress
 - [Phase 13]: 13-14: CR-02 regression tests pass reconnect: false explicitly — without it, relay.req()'s own connection-retry backoff delays relay1's manufactured ERROR value past the test's clock budget, so neither the buggy nor fixed predicate is exercised by the ERROR value at all (discovered when the defect test unexpectedly passed against the reverted pre-fix predicate)
+- [Phase 15]: Phase 15 closed: plan 15-08's Task 3 human-verify checkpoint (live auth-gating relay) approved 2026-08-15, confirming auth trace lines appear only after a relay refusal, not on connect or every status change
 
 ### Pending Todos
 
@@ -382,9 +384,9 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 
 ## Session Continuity
 
-Last session: 2026-08-13T15:48:22.451Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-concord-stream-auth-cleanup/15-CONTEXT.md
+Last session: 2026-08-15T11:30:23.727Z
+Stopped at: Phase 15 complete (plan 15-08 closed)
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
