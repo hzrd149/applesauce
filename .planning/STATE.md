@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: operation-scoped-relay-auth
 current_phase: 15
-current_phase_name: Concord Stream-Auth Cleanup
+current_phase_name: concord-stream-auth-cleanup
 status: executing
 stopped_at: Phase 15 context gathered
-last_updated: "2026-08-13T16:50:50.153Z"
-last_activity: 2026-08-11
-last_activity_desc: Phase 14 complete, transitioned to Phase 15
+last_updated: "2026-08-15T08:53:47.819Z"
+last_activity: 2026-08-15
+last_activity_desc: Phase 15 execution started
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 23
+  total_plans: 31
   completed_plans: 23
   percent: 67
 ---
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 14 — auth-lifecycle-debug-logging
+**Current focus:** Phase 15 — concord-stream-auth-cleanup
 
 ## Current Position
 
-Phase: 15 — Concord Stream-Auth Cleanup
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-11 — Phase 14 complete, transitioned to Phase 15
+Phase: 15 (concord-stream-auth-cleanup) — EXECUTING
+Plan: 1 of 8
+Status: Executing Phase 15
+Last activity: 2026-08-15 — Phase 15 execution started
 
 ## Performance Metrics
 
