@@ -102,4 +102,4 @@ created: 2026-08-13
 
 Structural confirmation: `grep -rn 'ConcordRelayAuth' packages apps --include='*.ts' --include='*.tsx'` returns exactly one hit — the guard's own regex literal at `packages/concord/src/__tests__/no-ambient-auth.test.ts:54`.
 
-**Approval:** 2026-08-15 — all four gates green together; manual live-relay verification (see Manual-Only Verifications above) remains outstanding as a separate blocking human checkpoint in plan 15-08's own task sequence.
+**Approval:** 2026-08-15 — all four gates green together; the manual live-relay verification (see Manual-Only Verifications above) was run by the user against a live auth-gating relay and approved the same day, in plan 15-08's Task 3. All Manual-Only Verifications are discharged and the phase's validation contract is fully complete.
