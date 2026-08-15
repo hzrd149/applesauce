@@ -14,10 +14,11 @@ import { setHiddenContentCache } from "applesauce-core/helpers";
 import { finalizeEvent } from "applesauce-core/helpers/event";
 import { getPublicKey } from "applesauce-core/helpers/keys";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import type { RelayPool } from "applesauce-relay";
+import type { RelayAuthHandler, RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
 import { logger } from "../logger.js";
+import { StreamSigners } from "./auth.js";
 import type { ConcordInviteList } from "../casts/index.js";
 import { canonicalJson } from "../helpers/community-list.js";
 import { parseInviteLink } from "../helpers/invite-bundle.js";
@@ -73,6 +74,11 @@ export interface ConcordInviteManagerOptions {
    *  deduplicated (`mergeRelaySets`), which changes the shape of relay-target
    *  strings and `pool.status$` lookup keys for that configuration. */
   extraRelays?: ExtraRelaysOption;
+  /** The user's own auth handler, built ONCE by {@link ConcordClient} (D-08) — answers the
+   *  two user-signed publishes/reads in this manager (the invite-list read and `save()`'s
+   *  publish, D-17). Never used for `revokeBundle()`'s publish, which is signed by the
+   *  invite-LINK key, not the user's. */
+  userOnAuthRequired?: RelayAuthHandler;
   /** A custom debug logger (defaults to the "applesauce:concord" namespace, extended
    *  with "invite" when threaded from {@link ConcordClient}). */
   logger?: Debugger;
@@ -107,6 +113,12 @@ export class ConcordInviteManager {
   /** The per-engine transport-only extras holder (D-04) — merges into every
    *  network target this manager dials; `this.relays` itself is never touched. */
   private readonly extras: ExtraRelays;
+  /** The user's own auth handler, threaded through from `ConcordClient` (D-08). */
+  private readonly userOnAuthRequired?: RelayAuthHandler;
+  /** This manager's own scope: holds the invite-LINK signer keys for the links this
+   *  user minted, which are neither the user's identity key nor any community's stream
+   *  keys — kept separate from both (T-15-01). */
+  private readonly signers = new StreamSigners();
 
   private pubkey?: string;
   private sub?: Subscription;
@@ -134,6 +146,7 @@ export class ConcordInviteManager {
     this.autoUnlock = options.autoUnlock ?? false;
     this.getCommunity = options.getCommunity;
     this.extras = new ExtraRelays(options.extraRelays);
+    this.userOnAuthRequired = options.userOnAuthRequired;
   }
 
   /** The merged transport target for this manager: `base` (defaulting to
@@ -194,7 +207,10 @@ export class ConcordInviteManager {
     if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
     await firstValueFrom(
       this.pool
-        .request(this.transport(), [{ kinds: [INVITE_LIST_KIND], authors: [this.pubkey] }])
+        .request(this.transport(), [{ kinds: [INVITE_LIST_KIND], authors: [this.pubkey] }], {
+          waitForAuth: [this.pubkey],
+          onAuthRequired: this.userOnAuthRequired,
+        })
         .pipe(mapEventsToStore(this.eventStore), toArray(), timeout(8000)),
     ).catch(() => []);
   }
@@ -247,6 +263,10 @@ export class ConcordInviteManager {
    *  stored link key to its own bootstrap relays. The community-side registry unregister is skipped —
    *  it needs a membership we no longer have, and a stale registry link resolves to a revoked bundle. */
   private async revokeBundle(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
+    // D-17: this publish is signed by the invite-LINK key, not the user — the two
+    // publishes in this file have different authors, so this deliberately takes the
+    // link's own handler rather than `this.userOnAuthRequired`. Do not conflate them.
+    this.signers.addSecretKey(hexToBytes(invite.signerSk));
     const signed = finalizeEvent(await InviteBundleFactory.revoke(), hexToBytes(invite.signerSk));
     this.eventStore.add(signed);
     // The revoke path merges the extras onto the LINK's own bootstrap relays
@@ -254,10 +274,15 @@ export class ConcordInviteManager {
     // directly (D-12) — the base-vs-merged split is kept visible here.
     const bootstrapRelays = parseInviteLink(invite.url).bootstrapRelays;
     const base = bootstrapRelays.length ? bootstrapRelays : this.relays;
-    await this.pool.publish(this.transport(base), signed).catch((err) => {
-      this.log("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
-      console.warn("bundle revocation publish failed", err);
-    });
+    await this.pool
+      .publish(this.transport(base), signed, {
+        waitForAuth: [signed.pubkey],
+        onAuthRequired: this.signers.onAuthRequired,
+      })
+      .catch((err) => {
+        this.log("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
+        console.warn("bundle revocation publish failed", err);
+      });
     return { ...invite, revoked: true };
   }
 
@@ -294,10 +319,14 @@ export class ConcordInviteManager {
     const signed = await this.signer.signEvent({ kind: INVITE_LIST_KIND, content, tags: [], created_at: createdAt });
     setHiddenContentCache(signed, plaintext);
     this.eventStore.add(signed);
-    this.pool.publish(this.transport(), signed).catch((err) => {
-      this.log("invite list publish failed: %s", (err as Error)?.message ?? err);
-      console.warn("invite list publish failed", err);
-    });
+    // D-17: this is D-17's OTHER user-signed publish — not in a loop, so a prompting
+    // signer is asked at most once per save.
+    this.pool
+      .publish(this.transport(), signed, { waitForAuth: [this.pubkey], onAuthRequired: this.userOnAuthRequired })
+      .catch((err) => {
+        this.log("invite list publish failed: %s", (err as Error)?.message ?? err);
+        console.warn("invite list publish failed", err);
+      });
     this.publishedFingerprint = fingerprint;
     this.dirty$.next(false);
   }

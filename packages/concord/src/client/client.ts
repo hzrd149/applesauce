@@ -29,10 +29,11 @@ import { castUser, type User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import { getReplaceableIdentifier, setHiddenContentCache } from "applesauce-core/helpers";
 import { unixNow } from "applesauce-core/helpers/time";
-import type { RelayPool } from "applesauce-relay";
+import type { RelayAuthHandler, RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
 import { logger } from "../logger.js";
+import { createUserAuthHandler } from "./auth.js";
 import { defaultStorage, type ConcordStorage, type ConcordStoreFactory, type ConcordUploader } from "./storage.js";
 // Side-effect import: registers the `User.concord*List$` getters used below (the named
 // imports are type-only, so without this bare import the registration would be elided).
@@ -229,6 +230,11 @@ export class ConcordClient {
   readonly invites: ConcordInviteManager;
 
   private readonly pool: RelayPool;
+  /** The user's own auth handler — built ONCE here (never per call, D-08) and threaded
+   *  into {@link invites} and every {@link ConcordCommunity} this client constructs
+   *  ({@link addCommunity}). Answers only the resolved user pubkey; `InviteWatcher`
+   *  builds its own SEPARATE instance (D-09) rather than sharing this one. */
+  private readonly userOnAuthRequired: RelayAuthHandler;
   private readonly eventStore: EventStore;
   private readonly storage: ConcordStorage;
   private readonly uploader?: ConcordUploader;
@@ -350,6 +356,10 @@ export class ConcordClient {
     this.autoAuthenticate = options.autoAuthenticate ?? false;
     this.autoSaveCommunityList = options.autoSaveCommunityList ?? false;
     this.watchDirectInvites = options.watchDirectInvites ?? true;
+    // Built ONCE, before the invite manager is constructed, so it can be threaded in —
+    // a thunk (never `this.pubkey`, which throws pre-start) so it resolves to `undefined`
+    // and no-ops until `start()` sets `this.user$` (D-08).
+    this.userOnAuthRequired = createUserAuthHandler(this.signer, () => this.user$.value?.pubkey);
     this.invites = new ConcordInviteManager({
       signer: this.signer,
       pool: this.pool,
@@ -357,6 +367,7 @@ export class ConcordClient {
       relays: this.defaultRelays,
       extraRelays: this.extraRelaysOption,
       autoUnlock: this.autoUnlock,
+      userOnAuthRequired: this.userOnAuthRequired,
       getCommunity: (communityId) => this.getCommunity(communityId),
       logger: this.inviteLog,
     });
@@ -624,9 +635,15 @@ export class ConcordClient {
     // completion and yields the fully-accumulated timeline.
     // INVITE-01/D-02: scope to the empty `d` identifier so a sibling coordinate
     // (same author+kind, different `d`) can never pollute the union.
+    // D-16/D-17: we hold no key for the link signer at this moment — fetching the
+    // bundle IS how we'd learn it — so the only identity that can satisfy a gating
+    // bootstrap relay here is the user's own.
     const events = await lastValueFrom(
       this.pool
-        .request(requestRelays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner], "#d": [""] }])
+        .request(requestRelays, [{ kinds: [INVITE_BUNDLE_KIND], authors: [parsed.linkSigner], "#d": [""] }], {
+          waitForAuth: true,
+          onAuthRequired: this.userOnAuthRequired,
+        })
         .pipe(mapEventsToTimeline(), timeout(10000)),
       { defaultValue: [] as NostrEvent[] },
     ).catch(() => [] as NostrEvent[]);
@@ -854,6 +871,9 @@ export class ConcordClient {
       storeFactory: this.storeFactory
         ? (_cid, planeKey) => this.storeFactory!(material.community_id, planeKey)
         : undefined,
+      // Threaded through so the one NIP-59 Direct-Invite grant publish (D-16/D-17
+      // exception) has a handler — see ConcordCommunityOptions.userOnAuthRequired.
+      userOnAuthRequired: this.userOnAuthRequired,
       logger: this.log.extend("community").extend(material.community_id.slice(0, 8)),
       onMaterialChange: (changed) => {
         // Fold the engine's new snapshot into the document in place, so the mirror we persist and
@@ -1042,7 +1062,10 @@ export class ConcordClient {
   private fetchList(kind: number): Promise<unknown> {
     return firstValueFrom(
       this.pool
-        .request(this.transport(), [{ kinds: [kind], authors: [this.pubkey] }])
+        .request(this.transport(), [{ kinds: [kind], authors: [this.pubkey] }], {
+          waitForAuth: [this.pubkey],
+          onAuthRequired: this.userOnAuthRequired,
+        })
         .pipe(mapEventsToStore(this.eventStore), toArray(), timeout(8000)),
     ).catch(() => [] as NostrEvent[]);
   }
@@ -1276,10 +1299,14 @@ export class ConcordClient {
       // otherwise auto-unlock would re-issue a redundant user-signer decrypt of a list we just wrote.
       setHiddenContentCache(signed, plaintext);
       this.eventStore.add(signed);
-      this.pool.publish(targets, signed).catch((err) => {
-        this.publishLog("list publish failed: %s", (err as Error)?.message ?? err);
-        console.warn("list publish failed", err);
-      });
+      // D-17: this is one of the two user-signed publishes — `signed` comes from
+      // `this.signer.signEvent`, so `this.pubkey` IS its author.
+      this.pool
+        .publish(targets, signed, { waitForAuth: [this.pubkey], onAuthRequired: this.userOnAuthRequired })
+        .catch((err) => {
+          this.publishLog("list publish failed: %s", (err as Error)?.message ?? err);
+          console.warn("list publish failed", err);
+        });
       // Record what we just put on the relay so an immediate re-save (or the echo) is a no-op.
       this.publishedListFingerprint = fingerprint;
       this.clearCommunityListDirty();

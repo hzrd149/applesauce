@@ -57,6 +57,10 @@ function fakePool(opts: { challenge?: string } = {}): {
    *  ever invoked by a relay's own `auth-required:` refusal, never by
    *  registration or `challenge$` presence alone) and invoke it directly. */
   subscriptionOptions: Record<string, unknown>[];
+  /** Every `publish()` call's options bag, in call order, paired by index with
+   *  `published` — lets a test capture and invoke `saveCommunityList`'s
+   *  `onAuthRequired` handler directly (15-05 Task 3). */
+  publishOptions: Record<string, unknown>[];
 } {
   const authenticated = new Set<string>();
   const authenticatedPubkeys: string[] = [];
@@ -79,6 +83,7 @@ function fakePool(opts: { challenge?: string } = {}): {
   };
   const published: NostrEvent[] = [];
   const subscriptionOptions: Record<string, unknown>[] = [];
+  const publishOptions: Record<string, unknown>[] = [];
   const pool = {
     status$: challenge
       ? new BehaviorSubject({
@@ -102,12 +107,13 @@ function fakePool(opts: { challenge?: string } = {}): {
       return NEVER;
     },
     request: () => EMPTY,
-    publish: vi.fn(async (_relays: string[], event: NostrEvent) => {
+    publish: vi.fn(async (_relays: string[], event: NostrEvent, options: Record<string, unknown> = {}) => {
       published.push(event);
+      publishOptions.push(options);
       return [];
     }),
   } as unknown as RelayPool;
-  return { pool, published, authenticatedPubkeys, subscriptionOptions };
+  return { pool, published, authenticatedPubkeys, subscriptionOptions, publishOptions };
 }
 
 // A real genesis community + the self-encrypted 13302 that lists it as a live membership.
@@ -133,7 +139,7 @@ async function setup() {
   const listEvent = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: 1 });
 
   const store = new EventStore();
-  const { pool, published } = fakePool();
+  const { pool, published, publishOptions } = fakePool();
   const client = new ConcordClient({
     signer,
     pool,
@@ -141,7 +147,7 @@ async function setup() {
     storage: memoryStorage(),
     relays: ["wss://fake"],
   });
-  return { signer, pubkey, decrypt, genesis, cid, listEvent, store, client, pool, published };
+  return { signer, pubkey, decrypt, genesis, cid, listEvent, store, client, pool, published, publishOptions };
 }
 
 const firstList = (client: ConcordClient) =>
@@ -149,6 +155,13 @@ const firstList = (client: ConcordClient) =>
 
 const listPublishes = (published: NostrEvent[]) => published.filter((e) => e.kind === COMMUNITY_LIST_KIND);
 const inviteListPublishes = (published: NostrEvent[]) => published.filter((e) => e.kind === INVITE_LIST_KIND);
+
+/** Pairs each recorded `publish()` call's event with its options bag (same push order,
+ *  same index) and filters to the Community List publishes — 15-05 Task 3. */
+const listPublishOptions = (published: NostrEvent[], publishOptions: Record<string, unknown>[]) =>
+  published
+    .map((event, i) => ({ event, options: publishOptions[i]! }))
+    .filter(({ event }) => event.kind === COMMUNITY_LIST_KIND);
 
 async function decryptInviteList(signer: PrivateKeySigner, event: NostrEvent) {
   const pubkey = await signer.getPublicKey();
@@ -365,6 +378,49 @@ describe("ConcordClient community list (DI, no network)", () => {
     // A redundant save is a fingerprint no-op — no second publish.
     await client.saveCommunityList();
     expect(listPublishes(published).length).toBe(1);
+
+    client.stop();
+  });
+
+  it("saveCommunityList's publish carries waitForAuth: [pubkey] answered by the user's own handler (15-05 Task 3)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
+    const material: JoinMaterial = { ...genesis.material, held_roots: genesis.material.held_roots ?? [] };
+    const storage = memoryStorage();
+    await storage.setItem(pubkey, JSON.stringify([material]));
+
+    const { pool, published, publishOptions, authenticatedPubkeys } = fakePool();
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage,
+      relays: ["wss://fake"],
+      autoSaveCommunityList: false,
+    });
+
+    await client.start();
+    await settle();
+    await client.saveCommunityList();
+
+    const listCalls = listPublishOptions(published, publishOptions);
+    expect(listCalls.length).toBe(1);
+    const { options } = listCalls[0]!;
+    expect(options.waitForAuth).toEqual([pubkey]);
+    expect(typeof options.onAuthRequired).toBe("function");
+
+    const handler = options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    await handler({
+      relay: pool.relay("wss://fake"),
+      url: "wss://fake",
+      challenge: null,
+      request: { verb: "EVENT" as const, id: "list-1", filters: [] },
+      requirement: [pubkey],
+      missingPubkeys: [pubkey],
+      reason: "auth-required",
+    });
+    expect(authenticatedPubkeys).toEqual([pubkey]);
 
     client.stop();
   });
@@ -1051,6 +1107,7 @@ describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02
     expect(requestSpy).toHaveBeenCalledWith(
       expect.anything(),
       expect.arrayContaining([expect.objectContaining({ kinds: [INVITE_BUNDLE_KIND], authors: [linkPub], "#d": [""] })]),
+      expect.objectContaining({ waitForAuth: true, onAuthRequired: expect.any(Function) }),
     );
 
     client.stop();
