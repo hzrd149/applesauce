@@ -7,7 +7,7 @@ import { EventStore, RumorStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import type { NostrEvent, Rumor } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { ConcordRelayAuth, Helpers, type DecodedEvent, type InviteBundle, type JoinMaterial } from "applesauce-concord";
+import { Helpers, StreamSigners, type DecodedEvent, type InviteBundle, type JoinMaterial } from "applesauce-concord";
 import { ConcordCommunityStateModel } from "applesauce-concord/models";
 
 const {
@@ -31,14 +31,16 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BehaviorSubject, firstValueFrom, Subscription, takeUntil, timer, toArray } from "rxjs";
+import { BehaviorSubject, firstValueFrom, takeUntil, timer, toArray } from "rxjs";
 
 import LoginView from "../../components/login-view";
 
 // ---- module singletons (a manual, functional walk — no ConcordClient) -------
 
 const pool = new RelayPool();
-const relayAuth = new ConcordRelayAuth(pool);
+// This walk covers one community, so this module-level holder is that scope's
+// holder — a multi-community app builds one per community (D-06).
+const streamSigners = new StreamSigners();
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
@@ -101,7 +103,10 @@ async function fetchWraps(relays: string[], authors: string[]): Promise<NostrEve
   if (authors.length === 0) return [];
   return firstValueFrom(
     pool
-      .request(relays, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], { waitForAuth: authors })
+      .request(relays, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
+        waitForAuth: authors,
+        onAuthRequired: streamSigners.onAuthRequired,
+      })
       .pipe(takeUntil(timer(10_000)), toArray()),
   ).catch(() => [] as NostrEvent[]);
 }
@@ -127,7 +132,6 @@ async function loadEpoch(
   self: string,
   signer: ISigner,
   relays: string[],
-  ensureAuth: (relays: string[]) => void,
   chainHasNext: boolean,
   route: (entry: RoutedRumor) => void,
 ): Promise<LoadResult> {
@@ -137,10 +141,11 @@ async function loadEpoch(
     count++;
   };
 
-  // 1. Derive with no channels yet; register the core planes and authenticate.
+  // 1. Derive with no channels yet; register the core planes. Registration no longer
+  //    triggers anything — the handler fires reactively when a relay actually refuses
+  //    a request (D-01), so registration and the auth attempt are decoupled by design.
   let keys = deriveConcordKeys(epochMaterial, [], prior);
-  relayAuth.registerStreamKeys([keys.control, keys.guestbook, keys.dissolved, keys.nextBaseRekey.key]);
-  ensureAuth(relays);
+  streamSigners.register([keys.control, keys.guestbook, keys.dissolved, keys.nextBaseRekey.key]);
 
   // 2. Fetch control / guestbook / dissolved / next-rekey wraps and route by plane.
   const authorsA = [keys.control.pk, keys.guestbook.pk, keys.dissolved.pk, keys.nextBaseRekey.key.pk];
@@ -162,7 +167,7 @@ async function loadEpoch(
   const state0 = foldControl(control, epochMaterial);
   const channelName = new Map(state0.channels.map((c) => [c.channel_id, c.name] as const));
   keys = deriveConcordKeys(epochMaterial, state0.channels, prior);
-  relayAuth.registerStreamKeys([...keys.channels.values()]);
+  streamSigners.register([...keys.channels.values()]);
   for (const ev of await fetchWraps(
     relays,
     [...keys.channels.values()].map((k) => k.pk),
@@ -349,16 +354,6 @@ function Walker({
   const [error, setError] = useState<string | null>(null);
 
   const relays = relaysFor(material);
-  const driversSub = useRef<Subscription>(new Subscription());
-  const seenRelays = useRef(new Set<string>());
-
-  const ensureAuth = (rs: string[]) => {
-    for (const url of rs) {
-      if (seenRelays.current.has(url)) continue;
-      seenRelays.current.add(url);
-      driversSub.current.add(relayAuth.authenticateStreamKeys(pool.relay(url)));
-    }
-  };
 
   // Route one decoded rumor into its plane's store, registering the plane the first time we see it.
   const route = useCallback((entry: RoutedRumor) => {
@@ -389,7 +384,7 @@ function Walker({
         let chain = buildChain(material);
         let i = 0;
         while (alive && i < chain.length) {
-          const res = await loadEpoch(chain[i], prior, self, signer, relays, ensureAuth, i + 1 < chain.length, route);
+          const res = await loadEpoch(chain[i], prior, self, signer, relays, i + 1 < chain.length, route);
           if (!alive) return;
           prior = res.summary.keys;
           setEpochs((prev) => [...prev, res.summary]);
@@ -405,7 +400,6 @@ function Walker({
     })();
     return () => {
       alive = false;
-      driversSub.current.unsubscribe();
       for (const store of storesRef.current.values()) store.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
