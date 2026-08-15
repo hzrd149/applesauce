@@ -39,7 +39,7 @@
 
 - [x] **CAUTH-01**: Each community and private-channel engine authenticates only the `waitForAuth` pubkeys its own operation is missing, using the keys held by that scope
 - [x] **CAUTH-02**: A relay is asked to authenticate only the stream keys the operations actually using that relay require — not every key in the client-wide registry — and a reconnect re-authenticates only that same scoped set
-- [x] **CAUTH-03**: The client-wide driver machinery is removed or narrowed once callers migrate — `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication
+- [x] **CAUTH-03**: The client-wide driver machinery is removed or narrowed once callers migrate — `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, the client-wide `autoAuthenticate` user-key option, and the invite watcher's two relay-wide auth-required flag readers. Widened past the letter of the original stream-key-only wording because the same ambient status-driven pattern drove both the stream-key and user-key halves, and leaving the user half behind would have kept relay-status-driven authentication alive in the package
 - [x] **CAUTH-04**: Per-operation auth retries are preserved through the migration
 
 ## Future Requirements

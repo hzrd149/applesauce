@@ -171,7 +171,7 @@ Plans:
 
   1. A community or private-channel engine's operation authenticates only the `waitForAuth` pubkeys its own scope is missing, drawn from keys held by that scope, never the full client-wide registry. (CAUTH-01)
   2. A relay observed during a scoped operation receives AUTH only for the k pubkeys that scope's own operations require — not every key in the client-wide registry — and a reconnect re-authenticates exactly that same scoped set. Assessed against this design, since no "before" recording of the prior churn behavior was ever committed. (CAUTH-02)
-  3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. (CAUTH-03)
+  3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, the client-wide `autoAuthenticate` user-key option, and the invite watcher's two relay-wide auth-required flag readers are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. Widened past the original stream-key-only wording because the same ambient status-driven pattern drove both key classes, and leaving the user half behind would have kept relay-status-driven authentication alive in the package. (CAUTH-03)
   4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
 
 **Plans**: 7/8 plans executed
