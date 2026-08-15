@@ -1067,9 +1067,8 @@ describe("ConcordCommunity (DI, no network)", () => {
     // later phase's concern) — simulate its precondition directly so the D-03
     // trim's own contract ("an epoch no longer in held_roots gets its store
     // disposed") is exercised independent of whatever eventually ages it out.
-    const keys = (
-      community as unknown as { keys: { material: { held_roots: Array<{ epoch: number; key: string }> } } }
-    ).keys;
+    const keys = (community as unknown as { keys: { material: { held_roots: Array<{ epoch: number; key: string }> } } })
+      .keys;
     keys.material.held_roots = [];
 
     // Refound #2: epoch 1 → 2. Epoch 0 is now neither current nor held — trimmed.
@@ -1121,7 +1120,12 @@ describe("ConcordCommunity (DI, no network)", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    const roleEd = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(role),
+    });
     community.controlStore.add(rumorFromTemplate(roleEd, owner, 2_000));
 
     const grantEid = grantLocator(hexToBytes(genesis.material.community_id), member);
@@ -1211,7 +1215,9 @@ describe("ConcordCommunity (DI, no network)", () => {
     // (`planeStoreKey`'s `"channel"` branch is untouched — channel keying is Phase
     // 7 territory), so this message stays visible to `observed` across the
     // Refounding.
-    community.channelStore(general.channel_id).add(rumorFromTemplate({ kind: 9, content: "hi", tags: [] }, memberX, 1_000));
+    community
+      .channelStore(general.channel_id)
+      .add(rumorFromTemplate({ kind: 9, content: "hi", tags: [] }, memberX, 1_000));
     await settle();
     expect(community.state$.value.members.has(memberX)).toBe(true);
 
@@ -1529,7 +1535,10 @@ describe("wire conformance", () => {
     expect(tagValues(reply2.tags, "k")).toEqual(["1111"]);
 
     for (const name of ["E", "K", "P", "e", "k", "p"]) {
-      expect(reply2.tags.filter((t) => t[0] === name), `${name} tag count`).toHaveLength(1);
+      expect(
+        reply2.tags.filter((t) => t[0] === name),
+        `${name} tag count`,
+      ).toHaveLength(1);
     }
 
     community.dispose();
@@ -1643,14 +1652,24 @@ describe("wire conformance", () => {
 
     await community.sendEvent(
       channelId,
-      { kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind, content: VOICE_PRESENCE_JOINED_EXAMPLE.content, tags: joinedTags, created_at: 0 },
+      {
+        kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind,
+        content: VOICE_PRESENCE_JOINED_EXAMPLE.content,
+        tags: joinedTags,
+        created_at: 0,
+      },
       {},
     );
     // CORD-07 §4's joined and left forms carry different tag counts (left has
     // no identity/broker entries) — exercised alongside joined.
     await community.sendEvent(
       channelId,
-      { kind: VOICE_PRESENCE_LEFT_EXAMPLE.kind, content: VOICE_PRESENCE_LEFT_EXAMPLE.content, tags: leftTags, created_at: 0 },
+      {
+        kind: VOICE_PRESENCE_LEFT_EXAMPLE.kind,
+        content: VOICE_PRESENCE_LEFT_EXAMPLE.content,
+        tags: leftTags,
+        created_at: 0,
+      },
       {},
     );
     await settle();
@@ -1684,7 +1703,12 @@ describe("wire conformance", () => {
       .map((t) => [...t]);
     await community.sendEvent(
       channelId,
-      { kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind, content: VOICE_PRESENCE_JOINED_EXAMPLE.content, tags: joinedTags, created_at: 0 },
+      {
+        kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind,
+        content: VOICE_PRESENCE_JOINED_EXAMPLE.content,
+        tags: joinedTags,
+        created_at: 0,
+      },
       {},
     );
     await settle();
@@ -1701,7 +1725,12 @@ describe("wire conformance", () => {
     const mismatchedRumor = await bindToChannel(
       otherChannelId,
       rootEpoch,
-    )({ kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind, content: VOICE_PRESENCE_JOINED_EXAMPLE.content, tags: [], created_at: 0 });
+    )({
+      kind: VOICE_PRESENCE_JOINED_EXAMPLE.kind,
+      content: VOICE_PRESENCE_JOINED_EXAMPLE.content,
+      tags: [],
+      created_at: 0,
+    });
     await community.publishToPlane({ plane: "channel", channelId }, mismatchedRumor, {});
     await settle();
 
@@ -1731,7 +1760,13 @@ describe("wire conformance", () => {
       custom: { extension: { nested: true } },
       future_flag: "unknown-to-this-client",
     });
-    const v2 = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+    const v2 = await EditionFactory.create({
+      vsk: VSK.CHANNEL,
+      eid: channelId,
+      version: 2,
+      prevHash: v1Hash,
+      content: v2Content,
+    });
     await community.publishToPlane({ plane: "control" }, v2, { plaintext: true });
     await settle();
 
@@ -1759,7 +1794,11 @@ describe("wire conformance", () => {
     const decodedEditions = published
       .map((w) => decodeWrap(w, controlConvKey))
       .filter((d): d is NonNullable<typeof d> => d !== null)
-      .filter((d) => tagValues(d.rumor.tags, "vsk").includes(String(VSK.CHANNEL)) && tagValues(d.rumor.tags, "eid").includes(channelId));
+      .filter(
+        (d) =>
+          tagValues(d.rumor.tags, "vsk").includes(String(VSK.CHANNEL)) &&
+          tagValues(d.rumor.tags, "eid").includes(channelId),
+      );
     expect(decodedEditions).toHaveLength(1);
     const raw = JSON.parse(decodedEditions[0]!.rumor.content) as Record<string, unknown>;
     const keys = Object.keys(raw);
@@ -1804,7 +1843,13 @@ describe("wire conformance", () => {
       const v1Content = JSON.stringify({ name, private: false });
       const v1Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content: v1Content });
       const v2Content = JSON.stringify({ name, private: false, deleted });
-      const v2 = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+      const v2 = await EditionFactory.create({
+        vsk: VSK.CHANNEL,
+        eid: channelId,
+        version: 2,
+        prevHash: v1Hash,
+        content: v2Content,
+      });
       await community.publishToPlane({ plane: "control" }, v2, { plaintext: true });
     }
 
@@ -1889,7 +1934,13 @@ describe("wire conformance", () => {
       const v1Content = JSON.stringify({ name, private: true });
       const v1Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 1, content: v1Content });
       const v2Content = JSON.stringify({ name, private: true, deleted });
-      const v2 = await EditionFactory.create({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+      const v2 = await EditionFactory.create({
+        vsk: VSK.CHANNEL,
+        eid: channelId,
+        version: 2,
+        prevHash: v1Hash,
+        content: v2Content,
+      });
       await community.publishToPlane({ plane: "control" }, v2, { plaintext: true });
     }
 
@@ -2204,7 +2255,12 @@ describe("ConcordCommunity permissions + granular reads", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    const roleEd = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(role),
+    });
     community.controlStore.add(rumorFromTemplate(roleEd, owner, 2_000));
 
     const grantEid = grantLocator(hexToBytes(genesis.material.community_id), member);
@@ -2280,7 +2336,12 @@ describe("ConcordCommunity permissions + granular reads", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    const roleEd = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(role),
+    });
     community.controlStore.add(rumorFromTemplate(roleEd, owner, 2_000));
 
     const grantEid = grantLocator(hexToBytes(genesis.material.community_id), member);
@@ -3240,8 +3301,11 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[];
     authCalls: { pubkey: string; url: string }[];
   } {
-    const subscriptionCalls: { relays: string[]; filters: { authors?: string[] }[]; options: Record<string, unknown> }[] =
-      [];
+    const subscriptionCalls: {
+      relays: string[];
+      filters: { authors?: string[] }[];
+      options: Record<string, unknown>;
+    }[] = [];
     const requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[] = [];
     const authCalls: { pubkey: string; url: string }[] = [];
     const relay = {

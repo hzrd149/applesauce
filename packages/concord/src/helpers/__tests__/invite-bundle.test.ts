@@ -188,7 +188,12 @@ describe("validateInviteBundle field validation (CR-02, 12.3-11)", () => {
   });
 
   it("rejects a bundle whose root_epoch is a non-number", () => {
-    const bundle = { ...validOwnerFields, root_epoch: "0" as unknown as number, channels: [], relays: [] } as InviteBundle;
+    const bundle = {
+      ...validOwnerFields,
+      root_epoch: "0" as unknown as number,
+      channels: [],
+      relays: [],
+    } as InviteBundle;
     expect(validateInviteBundle(bundle)).toBeUndefined();
   });
 
@@ -294,7 +299,13 @@ describe("validateInviteBundle cardinality and text bounds (12.3-12)", () => {
       epoch: i,
       key: hexKey(i),
     }));
-    const overCapChannel = { id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "over-cap", held: oversizedHeld };
+    const overCapChannel = {
+      id: "11".repeat(32),
+      key: "22".repeat(32),
+      epoch: 0,
+      name: "over-cap",
+      held: oversizedHeld,
+    };
     const okChannel = { id: "33".repeat(32), key: "44".repeat(32), epoch: 0, name: "ok" };
     const bundle = { ...validOwnerFields, channels: [overCapChannel, okChannel], relays: [] } as InviteBundle;
     const result = validateInviteBundle(bundle);
@@ -564,8 +575,7 @@ describe("validateInviteBundle exhaustive rule tables (D-17/CR-01, 12.3-13)", ()
     const bundle = { ...validOwnerFields, channels: [], relays: [], ...unknownKeys } as InviteBundle;
     const result = validateInviteBundle(bundle);
     expect(result).toBeDefined();
-    for (let n = 0; n < 5; n++)
-      expect(Object.prototype.hasOwnProperty.call(result, `attacker${n}`)).toBe(false);
+    for (let n = 0; n < 5; n++) expect(Object.prototype.hasOwnProperty.call(result, `attacker${n}`)).toBe(false);
   });
 
   it("filters out a syntactically valid wss:// relay entry longer than the new per-URL cap, keeping a sibling short valid entry", () => {

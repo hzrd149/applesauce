@@ -808,7 +808,11 @@ export class Relay {
   }
 
   /** Assemble the {@link RelayAuthContext} passed to a caller's `onAuthRequired` handler (RAUTH-01) */
-  protected buildAuthContext(request: RelayAuthWireRequest, requirement: AuthRequirement, reason: string): RelayAuthContext {
+  protected buildAuthContext(
+    request: RelayAuthWireRequest,
+    requirement: AuthRequirement,
+    reason: string,
+  ): RelayAuthContext {
     return {
       relay: this,
       url: this.url,
@@ -1388,7 +1392,9 @@ export class Relay {
     // the per-phase timeout, retry counting/reset and error mapping. RAUTH-02: no pre-block — the
     // negotiation starts immediately regardless of any other operation's auth state. The boolean
     // negotiation result carries no bookkeeping value of its own, so every value is real progress.
-    const observable: Observable<boolean> = runSync.pipe(this.authRetryOperator(describeRequest, opts, gate, () => true));
+    const observable: Observable<boolean> = runSync.pipe(
+      this.authRetryOperator(describeRequest, opts, gate, () => true),
+    );
 
     // Resolve to false if aborted while waiting for auth (before negentropySync starts handling the signal itself)
     const signal = opts?.signal;

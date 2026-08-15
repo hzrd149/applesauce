@@ -558,10 +558,9 @@ describe("request() CR-02 gap closure — the group's own ERROR bookkeeping must
     // whole observable's completion — request()'s default complete condition also depends on relay1's
     // post-error OPEN/retry lifecycle (out of this test's scope), so waiting on it would entangle an
     // unrelated concern with the CR-02 property under test.
-    const spy = subscribeSpyTo(
-      group.request([{ kinds: [1] }], { id: "greq7", timeout: 100, reconnect: false }),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "greq7", timeout: 100, reconnect: false }), {
+      expectErrors: true,
+    });
 
     await expect(mockRelay1).toReceiveMessage(["REQ", "greq7", { kinds: [1] }]);
     await expect(mockRelay2).toReceiveMessage(["REQ", "greq7", { kinds: [1] }]);

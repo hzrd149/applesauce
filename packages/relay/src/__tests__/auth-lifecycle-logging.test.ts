@@ -84,7 +84,12 @@ describe("auth lifecycle logging (14-06)", () => {
     // challenge is already present would throw), then sign and authenticate via the real path.
     const onAuthRequired = vi.fn(async () => {
       if (!relay.challenge) {
-        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+        await firstValueFrom(
+          relay.challenge$.pipe(
+            filter((c): c is string => c !== null),
+            take(1),
+          ),
+        );
       }
       await relay.authenticate(user);
     });
@@ -125,9 +130,7 @@ describe("auth lifecycle logging (14-06)", () => {
       // array equality — extra operation-track lines are expected and must not make this brittle.
       const challengeIdx = captured.findIndex((l) => l.includes(challenge));
       const signedIdx = captured.findIndex((l) => l.includes("Signing AUTH event"));
-      const sentIdx = captured.findIndex(
-        (l) => l.includes("Sending AUTH event for pubkey") && l.includes(user.pubkey),
-      );
+      const sentIdx = captured.findIndex((l) => l.includes("Sending AUTH event for pubkey") && l.includes(user.pubkey));
       const resultIdx = captured.findIndex(
         (l) => l.includes("accepted AUTH for") && l.includes(user.pubkey) && l.includes(okMessage),
       );
@@ -169,7 +172,12 @@ describe("auth lifecycle logging (14-06)", () => {
 
     const onAuthRequired = vi.fn(async () => {
       if (!relay.challenge) {
-        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+        await firstValueFrom(
+          relay.challenge$.pipe(
+            filter((c): c is string => c !== null),
+            take(1),
+          ),
+        );
       }
       await relay.authenticate(hungSigner);
     });
@@ -203,7 +211,12 @@ describe("auth lifecycle logging (14-06)", () => {
 
     const onAuthRequired = vi.fn(async () => {
       if (!relay.challenge) {
-        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+        await firstValueFrom(
+          relay.challenge$.pipe(
+            filter((c): c is string => c !== null),
+            take(1),
+          ),
+        );
       }
       await relay.authenticate(user).catch(() => {});
     });
@@ -243,7 +256,12 @@ describe("auth lifecycle logging (14-06)", () => {
 
     const onAuthRequired = vi.fn(async () => {
       if (!relay.challenge) {
-        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+        await firstValueFrom(
+          relay.challenge$.pipe(
+            filter((c): c is string => c !== null),
+            take(1),
+          ),
+        );
       }
       await relay.authenticate(user).catch(() => {});
     });
@@ -357,7 +375,12 @@ describe("auth lifecycle logging (14-06)", () => {
     const onAuthRequired = vi.fn(async () => {
       if (relay.isAuthenticated(user.pubkey)) return;
       if (!relay.challenge) {
-        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+        await firstValueFrom(
+          relay.challenge$.pipe(
+            filter((c): c is string => c !== null),
+            take(1),
+          ),
+        );
       }
       await relay.authenticate(user);
     });
@@ -383,9 +406,7 @@ describe("auth lifecycle logging (14-06)", () => {
 
       const captured = lines();
       expect(captured.some((l) => l.includes(`phase 1/${authRetries}`))).toBe(true);
-      expect(captured.some((l) => l.includes(`auth retry budget of ${authRetries} phase(s) is exhausted`))).toBe(
-        true,
-      );
+      expect(captured.some((l) => l.includes(`auth retry budget of ${authRetries} phase(s) is exhausted`))).toBe(true);
 
       spy.unsubscribe();
     });
@@ -400,7 +421,12 @@ describe("auth lifecycle logging (14-06)", () => {
 
     const onAuthRequired = vi.fn(async () => {
       if (!relay.challenge) {
-        await firstValueFrom(relay.challenge$.pipe(filter((c): c is string => c !== null), take(1)));
+        await firstValueFrom(
+          relay.challenge$.pipe(
+            filter((c): c is string => c !== null),
+            take(1),
+          ),
+        );
       }
       await relay.authenticate(user);
     });

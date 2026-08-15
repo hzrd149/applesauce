@@ -47,9 +47,7 @@ describe("getHistoryContent — malformed tags return undefined", () => {
   // Finding #5 of the throw/undefined review. WalletHistory's meta$ maps getHistoryContent inside
   // an RxJS pipe, where a throw errors the observable and is terminal.
   const historyWithTags = async (tags: string[][]) => {
-    const event = await WalletHistoryFactory.create({ direction: "in", amount: 1000, created: [] })
-      .as(user)
-      .sign();
+    const event = await WalletHistoryFactory.create({ direction: "in", amount: 1000, created: [] }).as(user).sign();
     // Drop the memo written at sign time, then plant the tags the getter should choke on.
     Reflect.deleteProperty(event, HistoryContentSymbol);
     setHiddenTagsCache(event, tags);

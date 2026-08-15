@@ -105,8 +105,26 @@ describe("control fold", () => {
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
 
     const seniorRoleId = "01".repeat(32);
-    const seniorRole = { role_id: seniorRoleId, name: "senior", position: 1, permissions: "0", scope: { kind: "server" }, color: 0 };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: seniorRoleId, version: 1, content: JSON.stringify(seniorRole) }), genesis.material.owner, 2_000));
+    const seniorRole = {
+      role_id: seniorRoleId,
+      name: "senior",
+      position: 1,
+      permissions: "0",
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.ROLE,
+          eid: seniorRoleId,
+          version: 1,
+          content: JSON.stringify(seniorRole),
+        }),
+        genesis.material.owner,
+        2_000,
+      ),
+    );
 
     const juniorRoleId = "02".repeat(32);
     const juniorRole = {
@@ -117,7 +135,18 @@ describe("control fold", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_010));
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.ROLE,
+          eid: juniorRoleId,
+          version: 1,
+          content: JSON.stringify(juniorRole),
+        }),
+        genesis.material.owner,
+        2_010,
+      ),
+    );
 
     const seniorMember = "aa".repeat(32);
     const juniorMember = "bb".repeat(32);
@@ -179,7 +208,12 @@ describe("control fold", () => {
     const member = "cd".repeat(32);
     const roleId = "01".repeat(32);
     const role = { role_id: roleId, name: "mod", position: 5, permissions: "0", scope: { kind: "server" }, color: 0 };
-    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    const roleEd = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(role),
+    });
 
     const genuineEid = grantLocator(cidBytes, member);
     const genuine = await EditionFactory.create({
@@ -296,7 +330,12 @@ describe("control fold", () => {
     const member = "cd".repeat(32);
     const roleId = "01".repeat(32);
     const role = { role_id: roleId, name: "mod", position: 5, permissions: "0", scope: { kind: "server" }, color: 0 };
-    const roleEd = await EditionFactory.create({ vsk: VSK.ROLE, eid: roleId, version: 1, content: JSON.stringify(role) });
+    const roleEd = await EditionFactory.create({
+      vsk: VSK.ROLE,
+      eid: roleId,
+      version: 1,
+      content: JSON.stringify(role),
+    });
     events.push(decoded(roleEd, genesis.material.owner, 2_000));
 
     const eid = grantLocator(cidBytes, member);
@@ -335,8 +374,26 @@ describe("control fold", () => {
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
 
     const seniorRoleId = "01".repeat(32);
-    const seniorRole = { role_id: seniorRoleId, name: "senior", position: 1, permissions: "0", scope: { kind: "server" }, color: 0 };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: seniorRoleId, version: 1, content: JSON.stringify(seniorRole) }), genesis.material.owner, 2_000));
+    const seniorRole = {
+      role_id: seniorRoleId,
+      name: "senior",
+      position: 1,
+      permissions: "0",
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.ROLE,
+          eid: seniorRoleId,
+          version: 1,
+          content: JSON.stringify(seniorRole),
+        }),
+        genesis.material.owner,
+        2_000,
+      ),
+    );
 
     const juniorRoleId = "02".repeat(32);
     const juniorRole = {
@@ -347,14 +404,31 @@ describe("control fold", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_010));
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.ROLE,
+          eid: juniorRoleId,
+          version: 1,
+          content: JSON.stringify(juniorRole),
+        }),
+        genesis.material.owner,
+        2_010,
+      ),
+    );
 
     const seniorMember = "aa".repeat(32);
     const juniorMember = "bb".repeat(32);
 
     const seniorEid = grantLocator(cidBytes, seniorMember);
     const seniorGrantContent = JSON.stringify({ member: seniorMember, role_ids: [seniorRoleId] });
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.GRANT, eid: seniorEid, version: 1, content: seniorGrantContent }), genesis.material.owner, 2_100));
+    events.push(
+      decoded(
+        await EditionFactory.create({ vsk: VSK.GRANT, eid: seniorEid, version: 1, content: seniorGrantContent }),
+        genesis.material.owner,
+        2_100,
+      ),
+    );
 
     const juniorEid = grantLocator(cidBytes, juniorMember);
     events.push(
@@ -372,7 +446,12 @@ describe("control fold", () => {
 
     // Junior (position 5) publishes a chained revoke against the SENIOR's
     // (position 1) Grant. 5 is NOT < 1, so this must never fold.
-    const seniorPrevHash = computeEditionHash({ vsk: VSK.GRANT, eid: seniorEid, version: 1, content: seniorGrantContent });
+    const seniorPrevHash = computeEditionHash({
+      vsk: VSK.GRANT,
+      eid: seniorEid,
+      version: 1,
+      content: seniorGrantContent,
+    });
     events.push(
       decoded(
         await EditionFactory.create({
@@ -413,12 +492,29 @@ describe("control fold", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_000));
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.ROLE,
+          eid: juniorRoleId,
+          version: 1,
+          content: JSON.stringify(juniorRole),
+        }),
+        genesis.material.owner,
+        2_000,
+      ),
+    );
 
     const juniorMember = "bb".repeat(32);
     const juniorEid = grantLocator(cidBytes, juniorMember);
     const v1Content = JSON.stringify({ member: juniorMember, role_ids: [juniorRoleId] });
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.GRANT, eid: juniorEid, version: 1, content: v1Content }), genesis.material.owner, 2_100));
+    events.push(
+      decoded(
+        await EditionFactory.create({ vsk: VSK.GRANT, eid: juniorEid, version: 1, content: v1Content }),
+        genesis.material.owner,
+        2_100,
+      ),
+    );
 
     const prevHash = computeEditionHash({ vsk: VSK.GRANT, eid: juniorEid, version: 1, content: v1Content });
     // Self-targeting: junior revokes their OWN Grant. grant.member===cand.author,
@@ -460,11 +556,35 @@ describe("control fold", () => {
       scope: { kind: "server" },
       color: 0,
     };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: juniorRoleId, version: 1, content: JSON.stringify(juniorRole) }), genesis.material.owner, 2_000));
+    events.push(
+      decoded(
+        await EditionFactory.create({
+          vsk: VSK.ROLE,
+          eid: juniorRoleId,
+          version: 1,
+          content: JSON.stringify(juniorRole),
+        }),
+        genesis.material.owner,
+        2_000,
+      ),
+    );
 
     const lowRoleId = "03".repeat(32);
-    const lowRole = { role_id: lowRoleId, name: "low", position: 10, permissions: "0", scope: { kind: "server" }, color: 0 };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: lowRoleId, version: 1, content: JSON.stringify(lowRole) }), genesis.material.owner, 2_010));
+    const lowRole = {
+      role_id: lowRoleId,
+      name: "low",
+      position: 10,
+      permissions: "0",
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(
+      decoded(
+        await EditionFactory.create({ vsk: VSK.ROLE, eid: lowRoleId, version: 1, content: JSON.stringify(lowRole) }),
+        genesis.material.owner,
+        2_010,
+      ),
+    );
 
     const juniorMember = "bb".repeat(32);
     const juniorEid = grantLocator(cidBytes, juniorMember);
@@ -545,7 +665,13 @@ describe("control fold", () => {
     const events = genesis.controlRumors.map((r) => decoded(r, genesis.material.owner));
 
     const badRoleBase = (roleId: string, position: unknown) => {
-      const base: Record<string, unknown> = { role_id: roleId, name: "bad", permissions: "0", scope: { kind: "server" }, color: 0 };
+      const base: Record<string, unknown> = {
+        role_id: roleId,
+        name: "bad",
+        permissions: "0",
+        scope: { kind: "server" },
+        color: 0,
+      };
       if (position !== undefined) base.position = position;
       return JSON.stringify(base);
     };
@@ -582,8 +708,21 @@ describe("control fold", () => {
     // A control case: a valid positive-integer position must still fold.
     const goodRoleId = "0a".repeat(32);
     const goodMember = "b0".repeat(32);
-    const goodRole = { role_id: goodRoleId, name: "good", position: 7, permissions: PERM.MANAGE_METADATA.toString(), scope: { kind: "server" }, color: 0 };
-    events.push(decoded(await EditionFactory.create({ vsk: VSK.ROLE, eid: goodRoleId, version: 1, content: JSON.stringify(goodRole) }), genesis.material.owner, 2_900));
+    const goodRole = {
+      role_id: goodRoleId,
+      name: "good",
+      position: 7,
+      permissions: PERM.MANAGE_METADATA.toString(),
+      scope: { kind: "server" },
+      color: 0,
+    };
+    events.push(
+      decoded(
+        await EditionFactory.create({ vsk: VSK.ROLE, eid: goodRoleId, version: 1, content: JSON.stringify(goodRole) }),
+        genesis.material.owner,
+        2_900,
+      ),
+    );
     events.push(
       decoded(
         await EditionFactory.create({
@@ -603,7 +742,10 @@ describe("control fold", () => {
     for (let i = 0; i < badCases.length; i++) {
       const roleId = roleIdFor(i);
       const member = memberFor(i);
-      expect(state.roles.some((r) => r.role_id === roleId), `role.position=${badCases[i].label} must be skipped`).toBe(false);
+      expect(
+        state.roles.some((r) => r.role_id === roleId),
+        `role.position=${badCases[i].label} must be skipped`,
+      ).toBe(false);
       // The owner-signed Grant may still record the (dead) role_id — an
       // owner's authority to grant is separate from a role's own validity.
       // What matters is the CONFERRED permission bits: since the role never
@@ -736,7 +878,13 @@ describe("control fold", () => {
     events.push(decoded(v2, genesis.material.owner, 3_000));
 
     // A higher-version "resurrection" edition citing v2 as its prev.
-    const v2Hash = computeEditionHash({ vsk: VSK.CHANNEL, eid: channelId, version: 2, prevHash: v1Hash, content: v2Content });
+    const v2Hash = computeEditionHash({
+      vsk: VSK.CHANNEL,
+      eid: channelId,
+      version: 2,
+      prevHash: v1Hash,
+      content: v2Content,
+    });
     const v3Content = JSON.stringify({ name: "temp", private: false, deleted: false });
     const v3 = await EditionFactory.create({
       vsk: VSK.CHANNEL,
@@ -911,7 +1059,12 @@ describe("control fold — unknown-key round-trip (WIRE-09/WIRE-10/D-22/D-24)", 
     // test's linking pattern) so the fold's contiguous-chain walk actually
     // adopts it as the head, rather than falling back to the genesis v1.
     const v1Content = JSON.stringify({ name: "Test", description: "d", relays: ["wss://r"] });
-    const v1Hash = computeEditionHash({ vsk: VSK.METADATA, eid: genesis.material.community_id, version: 1, content: v1Content });
+    const v1Hash = computeEditionHash({
+      vsk: VSK.METADATA,
+      eid: genesis.material.community_id,
+      version: 1,
+      content: v1Content,
+    });
     const ed = await EditionFactory.create({
       vsk: VSK.METADATA,
       eid: genesis.material.community_id,
@@ -1106,7 +1259,9 @@ describe("control fold — unknown-key round-trip (WIRE-09/WIRE-10/D-22/D-24)", 
       for (const candidate of candidates) {
         if (!guard(candidate)) return candidate;
       }
-      throw new Error("hostileValueFor: every candidate satisfied the supplied guard — a guard that accepts everything is itself the defect");
+      throw new Error(
+        "hostileValueFor: every candidate satisfied the supplied guard — a guard that accepts everything is itself the defect",
+      );
     }
 
     const genesis = await newCommunity();

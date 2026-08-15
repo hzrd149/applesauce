@@ -49,7 +49,11 @@ export function authRequiredSignal(reason: string): AuthRequiredSignal {
 
 /** Type guard for {@link AuthRequiredSignal} */
 export function isAuthRequiredSignal(value: unknown): value is AuthRequiredSignal {
-  return typeof value === "object" && value !== null && (value as Record<PropertyKey, unknown>)[AUTH_REQUIRED_SIGNAL] === true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<PropertyKey, unknown>)[AUTH_REQUIRED_SIGNAL] === true
+  );
 }
 
 /**
@@ -317,7 +321,9 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
             }),
             // D-14: the handler-resolved/now-waiting state, reachable on both the handler-present and
             // handler-absent paths (handled$ resolves to `of(undefined)` either way).
-            tap(() => phaseLine(`handler completed (${phase}) — now waiting for ${describeAuthRequirement(waitForAuth)}`)),
+            tap(() =>
+              phaseLine(`handler completed (${phase}) — now waiting for ${describeAuthRequirement(waitForAuth)}`),
+            ),
             switchMap(() =>
               config.authSatisfied$(waitForAuth).pipe(
                 filter((satisfied) => satisfied),

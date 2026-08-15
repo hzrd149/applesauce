@@ -356,7 +356,11 @@ export class ConcordCommunity {
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
-    this.signers = new StreamSigners({ onAuthFailure: (message) => { this.authFailure = message; } });
+    this.signers = new StreamSigners({
+      onAuthFailure: (message) => {
+        this.authFailure = message;
+      },
+    });
     this.userOnAuthRequired = options.userOnAuthRequired;
     this.eventStore = options.eventStore ?? new EventStore();
     this.uploader = options.uploader;
@@ -413,12 +417,10 @@ export class ConcordCommunity {
       // re-emits (the reactivity gap RESEARCH.md surfaced).
       this.channels$ = combineLatest([slice((s) => s.channels), this.materialChanged$.pipe(startWith(undefined))]).pipe(
         map(([channels]) =>
-          channels.map(
-            (c): ChannelView => ({
-              ...c,
-              accessible: !c.private || hasChannelKey(this.material, c.channel_id),
-            }),
-          ),
+          channels.map((c): ChannelView => ({
+            ...c,
+            accessible: !c.private || hasChannelKey(this.material, c.channel_id),
+          })),
         ),
         distinctUntilChanged(sameChannelViews),
       );
@@ -445,12 +447,10 @@ export class ConcordCommunity {
         connected: this.connected$,
         error: this.error$,
       }).pipe(
-        map(
-          ({ dissolved, ...s }): ConcordCommunityStatus => ({
-            ...s,
-            phase: dissolved ? "dissolved" : s.phase,
-          }),
-        ),
+        map(({ dissolved, ...s }): ConcordCommunityStatus => ({
+          ...s,
+          phase: dissolved ? "dissolved" : s.phase,
+        })),
         distinctUntilChanged(
           (a, b) => a.phase === b.phase && a.epoch === b.epoch && a.connected === b.connected && a.error === b.error,
         ),
@@ -1217,7 +1217,9 @@ export class ConcordCommunity {
     // D-16: the rekey wraps are addressed at (and finalized by) the channel-rekey
     // GroupKey, recomputed here from the plan's own `newEpoch` (never guessed) so this
     // holder can actually answer the `waitForAuth` each publish declares.
-    this.signers.register([channelRekeyGroupKey(hexToBytes(this.material.community_root), hexToBytes(channelId), plan.newEpoch)]);
+    this.signers.register([
+      channelRekeyGroupKey(hexToBytes(this.material.community_root), hexToBytes(channelId), plan.newEpoch),
+    ]);
     this.publishLog("rotating channel=%s", channelId.slice(0, 8));
     for (const wrap of plan.rekeyWraps)
       await this.pool.publish(relays, wrap, this.streamPublishOptions(wrap)).catch((err) => {
@@ -1560,11 +1562,7 @@ export class ConcordCommunity {
     );
     for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
 
-    this.publishLog(
-      "refounding publish targets=%d protocol=%d",
-      transportRelays.length,
-      protocolRelays.length,
-    );
+    this.publishLog("refounding publish targets=%d protocol=%d", transportRelays.length, protocolRelays.length);
 
     // Only after every gated wrap clears majority: compaction/snapshot + adopt. Both
     // ride the NEW epoch's control/guestbook addresses (D-16) — register both once

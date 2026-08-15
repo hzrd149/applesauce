@@ -183,9 +183,7 @@ export class ConcordPrivateChannel {
       // Re-derive reactively on every extras emission (D-08) rather than once
       // from a construction-time snapshot — no first-value-only operator here, so
       // a later change on an `extraRelays` Observable keeps taking effect (D-11).
-      this.connected$ = this.extras.relays$.pipe(
-        switchMap(() => connectedRelays$(this.opts.pool, this.transport())),
-      );
+      this.connected$ = this.extras.relays$.pipe(switchMap(() => connectedRelays$(this.opts.pool, this.transport())));
       this.status$ = combineLatest({
         phase: this.phase$,
         epoch: this.epoch$,

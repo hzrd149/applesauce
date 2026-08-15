@@ -18,8 +18,7 @@ export const WALLET_LEGACY_NOTIFICATION_KIND = 23196;
 
 /** A type for validated wallet notification events */
 export type WalletNotificationEvent =
-  | KnownEvent<typeof WALLET_NOTIFICATION_KIND>
-  | KnownEvent<typeof WALLET_LEGACY_NOTIFICATION_KIND>;
+  KnownEvent<typeof WALLET_NOTIFICATION_KIND> | KnownEvent<typeof WALLET_LEGACY_NOTIFICATION_KIND>;
 
 /** A symbol used to cache the wallet notification on the event */
 export const WalletNotificationSymbol = Symbol("wallet-notification");

@@ -551,7 +551,9 @@ describe("seal signature verification", () => {
   // verifiedSymbol = true via plain (enumerable) assignment, so a spread of a finalized event
   // would carry a forged "already verified" verdict and make these tests vacuous.
   const sealFields = (user: FakeUser, content: string) =>
-    JSON.parse(JSON.stringify(finalizeEvent({ kind: kinds.Seal, created_at: 1700000000, tags: [], content }, user.key)));
+    JSON.parse(
+      JSON.stringify(finalizeEvent({ kind: kinds.Seal, created_at: 1700000000, tags: [], content }, user.key)),
+    );
 
   it("rejects a seal carrying an invalid signature", () => {
     const forged = { ...sealFields(alice, "sealed"), sig: "0".repeat(128) };
