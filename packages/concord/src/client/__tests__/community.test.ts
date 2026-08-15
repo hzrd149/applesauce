@@ -28,6 +28,7 @@ import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle
 import { bindToChannel } from "../../operations/channel.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
+import { createUserAuthHandler } from "../auth.js";
 import type { ConcordUploader } from "../storage.js";
 import {
   CORD_METADATA_CAPS,
@@ -3473,6 +3474,142 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     expect(authors.length).toBeGreaterThan(0);
     expect(first.options.waitForAuth).toEqual(authors);
     expect(typeof first.options.onAuthRequired).toBe("function");
+
+    community.dispose();
+  });
+});
+
+describe("ConcordCommunity publish-answerability oracle — T-15-10 (15-05 Task 3)", () => {
+  const PUB_AUTH_URL = "wss://publish-coverage.test";
+
+  /** Like `authOraclePool` above, but `publish` is a RECORDER (captures
+   *  `{ relays, event, options }` for every publish) rather than a bare
+   *  `okAll` stub — `okAll` itself still supplies the response shape
+   *  `refound()`'s majority gate depends on, so that shape must not change. */
+  function publishCoveragePool(): {
+    pool: RelayPool;
+    recorded: { relays: string[]; event: NostrEvent; options: Record<string, unknown> }[];
+    authCalls: { pubkey: string; url: string }[];
+  } {
+    const authCalls: { pubkey: string; url: string }[] = [];
+    const recorded: { relays: string[]; event: NostrEvent; options: Record<string, unknown> }[] = [];
+    const relay = {
+      url: PUB_AUTH_URL,
+      challenge: null,
+      challenge$: new BehaviorSubject<string | null>(null),
+      isAuthenticated: () => false,
+      authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+        const pk = await signer.getPublicKey();
+        authCalls.push({ pubkey: pk, url: PUB_AUTH_URL });
+        return { ok: true, pubkey: pk, url: PUB_AUTH_URL } as unknown as PublishResponse;
+      }),
+      getSupported: async () => null,
+      sync: () => EMPTY,
+      request: () => EMPTY,
+    };
+    const pool = {
+      status$: new Subject(),
+      relay: () => relay,
+      subscription: () => NEVER,
+      request: () => EMPTY,
+      publish: async (relays: string[], event: NostrEvent, options: Record<string, unknown> = {}) => {
+        recorded.push({ relays, event, options });
+        return okAll(relays);
+      },
+    } as unknown as RelayPool;
+    return { pool, recorded, authCalls };
+  }
+
+  /** Synthesizes a `RelayAuthContext`-shaped value the same way the CAUTH-01/02/04
+   *  oracle above does — the ONLY input this suite feeds a captured handler. */
+  function authRequiredCtx(pool: RelayPool, missingPubkeys: string[] | null, id: string) {
+    return {
+      relay: pool.relay(PUB_AUTH_URL) as unknown as Relay,
+      url: PUB_AUTH_URL,
+      challenge: null,
+      request: { verb: "EVENT" as const, id, filters: [] },
+      requirement: missingPubkeys ?? true,
+      missingPubkeys,
+      reason: "auth-required",
+    };
+  }
+
+  it("every publish a community makes declares an author its own holder can answer for, and the one NIP-59 grant answers with the user's key", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const member = new PrivateKeySigner(generateSecretKey());
+    const memberPubkey = await member.getPublicKey();
+    const { pool, recorded, authCalls } = publishCoveragePool();
+    // The client-wide user handler this scenario's ConcordClient would have built
+    // once (D-08) — passed through exactly as ConcordClient.addCommunity does.
+    const userOnAuthRequired = createUserAuthHandler(signer, () => pubkey);
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [PUB_AUTH_URL] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [PUB_AUTH_URL],
+      userOnAuthRequired,
+    });
+    await community.start();
+    // Genesis publishes.
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const channelId = await community.createChannel("secret", { private: true });
+    await settle();
+
+    // An invite mint + revoke.
+    const invite = await community.createInvite({ base: "https://example.com/join" });
+    await community.revokeInvite(invite);
+    // The one NIP-59 Direct-Invite grant (D-16/D-17 exception).
+    await community.grantChannelAccess(channelId, memberPubkey);
+    // A channel rotation.
+    await community.rotateChannel(channelId, { keep: [pubkey] });
+    await settle();
+
+    // Anti-vacuity: a scenario that silently published nothing cannot pass.
+    expect(recorded.length).toBeGreaterThan(3);
+
+    // Every recorded publish EXCEPT the Direct-Invite grant carries
+    // `waitForAuth: [event.pubkey]` — matched structurally (on the grant's own
+    // `waitForAuth: true` marker), not by enumerating sites, so a tenth publish
+    // added later without options fails this loop automatically.
+    const streamRecords = recorded.filter((r) => r.options.waitForAuth !== true);
+    const grantRecords = recorded.filter((r) => r.options.waitForAuth === true);
+    expect(grantRecords.length).toBe(1);
+
+    for (const record of streamRecords) {
+      expect(record.options.waitForAuth).toEqual([record.event.pubkey]);
+      expect(typeof record.options.onAuthRequired).toBe("function");
+      // Answerability: the recorded handler can actually authenticate the author
+      // it declared — reset the recorder so each publish's claim is checked
+      // independently.
+      authCalls.length = 0;
+      const handler = record.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+      await handler(authRequiredCtx(pool, [record.event.pubkey], `pub-${record.event.id.slice(0, 8)}`));
+      expect(authCalls.map((c) => c.pubkey)).toEqual([record.event.pubkey]);
+    }
+
+    // The Direct-Invite grant: waits on any authenticated user, answered by the
+    // USER's own handler — never a stream key.
+    const grant = grantRecords[0]!;
+    expect(typeof grant.options.onAuthRequired).toBe("function");
+    authCalls.length = 0;
+    const grantHandler = grant.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    await grantHandler(authRequiredCtx(pool, null, "grant-1"));
+    expect(authCalls.map((c) => c.pubkey)).toEqual([pubkey]);
+
+    // D-05: no recorded publish overrides the upstream auth-retry defaults.
+    for (const record of recorded) {
+      expect(record.options.authRetries).toBeUndefined();
+      expect(record.options.authTimeout).toBeUndefined();
+    }
 
     community.dispose();
   });
