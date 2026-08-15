@@ -18,14 +18,14 @@
 
 import type { Debugger } from "debug";
 import { firstValueFrom, toArray } from "rxjs";
-import { createSyncLoader } from "applesauce-loaders/loaders";
+import { createSyncLoader, type SyncAuthHandler } from "applesauce-loaders/loaders";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";
-import type { RelayPool } from "applesauce-relay";
+import type { RelayAuthHandler, RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 
-import type { ConcordRelayAuth } from "./relay-auth.js";
+import type { StreamSigners } from "./auth.js";
 import { deriveConcordKeys, readRekey, type ConcordKeys, type PlaneInfo } from "../helpers/keys.js";
 import { BACKFILL_KINDS, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
@@ -68,7 +68,9 @@ export interface EpochWalkResult {
 /** Everything the sync walk needs, injected by the {@link ConcordCommunity}. */
 export interface SyncContext {
   pool: RelayPool;
-  relayAuth: ConcordRelayAuth;
+  /** This scope's own pubkey→signer holder (D-02/D-06) — never shared across
+   *  engines, so two scopes on the same relay never cross-authenticate. */
+  signers: StreamSigners;
   /** Wrap-level store: dedups kind-1059 wraps and doubles as the NIP-77 local store. */
   eventStore: EventStore;
   signer: ISigner;
@@ -78,8 +80,11 @@ export interface SyncContext {
   /** Route one decoded plane event into its plane's RumorStore (the community applies
    *  the CORD-03 channel binding). */
   route: (info: PlaneInfo, decoded: DecodedEvent) => void;
-  /** Register the per-relay NIP-42 auth drivers for the currently-held stream keys. */
-  ensureAuth: (relays: string[]) => void;
+  /** The scope's own reactive auth handler — invoked by the relay when it
+   *  refuses THIS operation, never called by the walk itself (D-01). Threaded
+   *  into every loader request beside `waitForAuth` so the relay can answer its
+   *  own challenge against exactly this scope's held keys. */
+  onAuthRequired: RelayAuthHandler;
   /** Cooperative cancellation: return false to abort the walk between epochs. */
   alive?: () => boolean;
   /** The sync-scoped debug logger (always a real value — constructed internally by
@@ -98,8 +103,9 @@ export interface SyncContext {
  * relay for NIP-77 and reconciles via negentropy when supported, otherwise pages
  * backward through REQ blocks. Passing `waitForAuth: authors` makes an auth-gating
  * relay hold BOTH the negentropy sync and the paginated REQ until the derived
- * stream keys are NIP-42-authenticated (by the already-registered
- * {@link ConcordRelayAuth} driver) and retry once they are, rather than erroring.
+ * stream keys are NIP-42-authenticated; when a relay refuses the request it
+ * invokes `ctx.onAuthRequired` with `missingPubkeys` narrowed to this operation's
+ * own `waitForAuth`, and the shared retry operator resends once the keys land.
  */
 export async function syncAuthors(ctx: SyncContext, authors: string[]): Promise<NostrEvent[]> {
   if (authors.length === 0) return [];
@@ -108,6 +114,12 @@ export async function syncAuthors(ctx: SyncContext, authors: string[]): Promise<
     relays: ctx.relays,
     filter: { kinds: BACKFILL_KINDS, authors },
     waitForAuth: authors,
+    // The sync loader's SyncAuthContext is a narrower, package-local mirror of
+    // applesauce-relay's RelayAuthContext (it omits `request`, which this
+    // scope's handler never reads) — deliberately not structurally assignable
+    // the other direction, so this boundary cast is the documented bridge
+    // rather than a workaround.
+    onAuthRequired: ctx.onAuthRequired as unknown as SyncAuthHandler,
   });
   // events$ completes when every relay has finished (completed or errored), so this
   // awaits the whole epoch's traffic — nothing advances until it resolves.
@@ -131,10 +143,11 @@ export async function syncEpoch(
     rumors++;
   };
 
-  // 1. Derive with no channels yet; register the core planes and authenticate.
+  // 1. Derive with no channels yet; register the core planes. Registration only
+  //    makes the keys resolvable — it no longer triggers an AUTH itself; the
+  //    handler fires only when a relay actually refuses the request (D-01).
   let keys = deriveConcordKeys(epochMaterial, [], prior);
-  ctx.relayAuth.registerStreamKeys([keys.control, keys.guestbook, keys.dissolved, keys.nextBaseRekey.key]);
-  ctx.ensureAuth(ctx.relays);
+  ctx.signers.register([keys.control, keys.guestbook, keys.dissolved, keys.nextBaseRekey.key]);
 
   // 2. Full-sync control / guestbook / dissolved / next-rekey (ATOMIC), routing by plane.
   const coreAuthors = [keys.control.pk, keys.guestbook.pk, keys.dissolved.pk, keys.nextBaseRekey.key.pk];
@@ -187,8 +200,7 @@ export async function syncEpoch(
   keys = deriveConcordKeys(epochMaterial, state0.channels, prior);
   const publicIds = new Set(state0.channels.filter((c) => !c.private && !c.deleted).map((c) => c.channel_id));
   const publicKeys = [...keys.channels.entries()].filter(([id]) => publicIds.has(id)).map(([, k]) => k);
-  ctx.relayAuth.registerStreamKeys(publicKeys);
-  ctx.ensureAuth(ctx.relays);
+  ctx.signers.register(publicKeys);
   const channelDecoded: DecodedEvent[] = [];
   const channelFetched = await syncAuthors(
     ctx,

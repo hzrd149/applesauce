@@ -33,7 +33,6 @@ import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
 import { logger } from "../logger.js";
-import { ConcordRelayAuth } from "./relay-auth.js";
 import { defaultStorage, type ConcordStorage, type ConcordStoreFactory, type ConcordUploader } from "./storage.js";
 // Side-effect import: registers the `User.concord*List$` getters used below (the named
 // imports are type-only, so without this bare import the registration would be elided).
@@ -243,7 +242,6 @@ export class ConcordClient {
    *  or published content. */
   private readonly extras: ExtraRelays;
   private readonly storeFactory?: ConcordStoreFactory;
-  private readonly relayAuth: ConcordRelayAuth;
   private readonly autoUnlock: boolean;
   private readonly autoAuthenticate: boolean;
   private readonly autoSaveCommunityList: boolean;
@@ -352,7 +350,6 @@ export class ConcordClient {
     this.autoAuthenticate = options.autoAuthenticate ?? false;
     this.autoSaveCommunityList = options.autoSaveCommunityList ?? false;
     this.watchDirectInvites = options.watchDirectInvites ?? true;
-    this.relayAuth = new ConcordRelayAuth(options.pool);
     this.invites = new ConcordInviteManager({
       signer: this.signer,
       pool: this.pool,
@@ -850,7 +847,6 @@ export class ConcordClient {
       signer: this.signer,
       pubkey: this.pubkey,
       pool: this.pool,
-      relayAuth: this.relayAuth,
       eventStore: this.eventStore,
       uploader: this.uploader,
       relays: this.defaultRelays,
