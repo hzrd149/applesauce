@@ -29,7 +29,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
 import { DeleteFactory, type Emoji } from "applesauce-core/factories";
 import type { ISigner } from "applesauce-signers";
-import type { RelayPool } from "applesauce-relay";
+import type { PublishOptions, RelayAuthHandler, RelayPool } from "applesauce-relay";
 
 import { logger } from "../logger.js";
 import { StreamSigners, connectedRelays$ } from "./auth.js";
@@ -46,7 +46,7 @@ import {
   type PlaneInfo,
   type WrapTarget,
 } from "../helpers/keys.js";
-import type { GroupKey } from "../helpers/crypto.js";
+import { channelRekeyGroupKey, type GroupKey } from "../helpers/crypto.js";
 import { hasChannelKey } from "../helpers/community.js";
 import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
@@ -143,6 +143,14 @@ export interface ConcordCommunityOptions {
   onRefounded?: (communityId: string) => void;
   /** A custom debug logger (defaults to the "applesauce:concord" namespace). */
   logger?: Debugger;
+  /** The user's own auth handler (built ONCE by `ConcordClient`, D-08) — used ONLY by the
+   *  Direct-Invite grant publish ({@link ConcordCommunity.grantChannelAccess}), whose author
+   *  is a NIP-59 ephemeral key that `DirectInviteFactory.create` generates and destroys
+   *  internally, never exposing it to this engine (D-16/D-17). A standalone community
+   *  constructed without it simply passes no handler at that one site, and a gating relay
+   *  refuses that one publish exactly as it does today. Do NOT use this anywhere else in
+   *  this class — the stream/user split is D-09 and must stay visible. */
+  userOnAuthRequired?: RelayAuthHandler;
 }
 
 /** Content equality for the member/ban sets, which are rebuilt on every fold. */
@@ -285,6 +293,10 @@ export class ConcordCommunity {
   /** This community's own pubkey→signer holder (D-02/D-06) — constructed here,
    *  never shared with a spawned private channel or the client (T-15-01). */
   private readonly signers: StreamSigners;
+  /** The user's own auth handler, threaded through from `ConcordClient` (D-08) — used ONLY
+   *  by the one Direct-Invite grant publish in {@link grantChannelAccess}. See
+   *  {@link ConcordCommunityOptions.userOnAuthRequired}. */
+  private readonly userOnAuthRequired?: RelayAuthHandler;
   /** The most recent NIP-42 failure seen during the current walk (D-13) — folded
    *  into `error$` rather than into a new status surface. */
   private authFailure: string | null = null;
@@ -345,6 +357,7 @@ export class ConcordCommunity {
     this.pubkey = options.pubkey;
     this.pool = options.pool;
     this.signers = new StreamSigners({ onAuthFailure: (message) => { this.authFailure = message; } });
+    this.userOnAuthRequired = options.userOnAuthRequired;
     this.eventStore = options.eventStore ?? new EventStore();
     this.uploader = options.uploader;
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
@@ -1201,9 +1214,13 @@ export class ConcordCommunity {
     });
 
     const relays = this.transport();
+    // D-16: the rekey wraps are addressed at (and finalized by) the channel-rekey
+    // GroupKey, recomputed here from the plan's own `newEpoch` (never guessed) so this
+    // holder can actually answer the `waitForAuth` each publish declares.
+    this.signers.register([channelRekeyGroupKey(hexToBytes(this.material.community_root), hexToBytes(channelId), plan.newEpoch)]);
     this.publishLog("rotating channel=%s", channelId.slice(0, 8));
     for (const wrap of plan.rekeyWraps)
-      await this.pool.publish(relays, wrap).catch((err) => {
+      await this.pool.publish(relays, wrap, this.streamPublishOptions(wrap)).catch((err) => {
         this.publishLog("channel rekey publish failed: %s", (err as Error)?.message ?? err);
         console.warn("channel rekey publish failed", err);
       });
@@ -1234,6 +1251,9 @@ export class ConcordCommunity {
     const token = newInviteToken();
     const linkSk = generateSecretKey();
     const linkPub = getPublicKey(linkSk);
+    // D-16: register the fresh link-signer key immediately so this holder can answer
+    // for it below — the invite bundle is signed by `linkSk`, not a community stream key.
+    this.signers.addSecretKey(linkSk);
 
     const state = this.state$.value;
     const bundle = buildInviteBundle(this.material, {
@@ -1257,7 +1277,7 @@ export class ConcordCommunity {
     const protocolRelays = this.relays();
     const transportRelays = this.transport();
     this.publishLog("publishing invite bundle link=%s", linkPub.slice(0, 8));
-    this.pool.publish(transportRelays, signed).catch((err) => {
+    this.pool.publish(transportRelays, signed, this.streamPublishOptions(signed)).catch((err) => {
       this.publishLog("bundle publish failed: %s", (err as Error)?.message ?? err);
       console.warn("bundle publish failed", err);
     });
@@ -1306,10 +1326,13 @@ export class ConcordCommunity {
           expires_at: link.expiresAt,
           channels: link.channels,
         });
+        // D-16: register this link's signer key before publishing so this holder can
+        // answer for it — the refreshed bundle is signed by the link key, not a stream key.
+        this.signers.addSecretKey(hexToBytes(link.signerSk));
         const template = await InviteBundleFactory.create(bundle, hexToBytes(link.token));
         const signed = finalizeEvent(template, hexToBytes(link.signerSk));
         this.eventStore.add(signed);
-        this.pool.publish(transportRelays, signed).catch((err) => {
+        this.pool.publish(transportRelays, signed, this.streamPublishOptions(signed)).catch((err) => {
           this.publishLog("invite bundle refresh publish failed: %s", (err as Error)?.message ?? err);
           console.warn("invite bundle refresh publish failed", err);
         });
@@ -1329,10 +1352,13 @@ export class ConcordCommunity {
 
   async revokeInvite(invite: ConcordInviteLink): Promise<ConcordInviteLink> {
     this.publishLog("revoking invite link=%s", invite.signerPubkey.slice(0, 8));
+    // D-16: register the link's signer key before publishing — the revocation is
+    // signed by the link key, not a community stream key.
+    this.signers.addSecretKey(hexToBytes(invite.signerSk));
     const template = await InviteBundleFactory.revoke();
     const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
     this.eventStore.add(signed);
-    await this.pool.publish(this.transport(), signed).catch((err) => {
+    await this.pool.publish(this.transport(), signed, this.streamPublishOptions(signed)).catch((err) => {
       this.publishLog("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
       console.warn("bundle revocation publish failed", err);
     });
@@ -1371,10 +1397,20 @@ export class ConcordCommunity {
     const wrap = await DirectInviteFactory.create(bundle, member, this.signer);
     this.eventStore.add(wrap);
     this.publishLog("granting channel access channels=%d member=%s", ids.length, member.slice(0, 8));
-    await this.pool.publish(this.transport(), wrap).catch((err) => {
-      this.publishLog("channel grant publish failed: %s", (err as Error)?.message ?? err);
-      console.warn("channel grant publish failed", err);
-    });
+    // D-16/D-17 deviation, deliberate: this is a NIP-59 Direct Invite whose ephemeral
+    // author key `DirectInviteFactory.create` generates and destroys internally, never
+    // exposing it to this engine — `streamPublishOptions` cannot name a key no client can
+    // ever hold, and doing so would make the requirement unsatisfiable by construction
+    // rather than merely unmet. The key a gating relay actually checks here is the
+    // connection's authenticated identity, so this ONE site waits on any authenticated
+    // user and answers with the user's own handler. No other publish in this class
+    // takes this shape — every other one names its own author.
+    await this.pool
+      .publish(this.transport(), wrap, { waitForAuth: true, onAuthRequired: this.userOnAuthRequired })
+      .catch((err) => {
+        this.publishLog("channel grant publish failed: %s", (err as Error)?.message ?? err);
+        console.warn("channel grant publish failed", err);
+      });
   }
 
   // ---- CORD-06 refounding (rekey) -----------------------------------------
@@ -1500,7 +1536,7 @@ export class ConcordCommunity {
       }
     };
     const requireMajority = async (wrap: NostrEvent, what: string) => {
-      const responses = await this.pool.publish(transportRelays, wrap);
+      const responses = await this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap));
       const okCount = responses.filter((r) => {
         if (r.ok !== true) return false;
         const origin = normalizeAckOrigin(r.from);
@@ -1510,8 +1546,18 @@ export class ConcordCommunity {
         throw new Error(`refounding aborted: ${what} not confirmed by a majority of relays`);
     };
 
-    // Rekey blobs (root + channels) gate convergence, so land them first.
+    // Rekey blobs (root + channels) gate convergence, so land them first. The
+    // root-roll wraps ride `this.keys.nextBaseRekey.key`, already registered by the
+    // walk/openLive(); each bundled channel rekey wrap rides that channel's own
+    // channel-rekey GroupKey (D-16) — recomputed the same way as `rotateChannel`, one
+    // per entry in `channelRekeys`, addressed under the PRIOR (current) root since
+    // `buildChannelRekey` seals under it by default.
     for (const wrap of plan.rekeyWraps) await requireMajority(wrap, "root roll");
+    this.signers.register(
+      channelRekeys.map(({ channel }) =>
+        channelRekeyGroupKey(hexToBytes(this.material.community_root), hexToBytes(channel.id), channel.epoch + 1),
+      ),
+    );
     for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
 
     this.publishLog(
@@ -1520,15 +1566,38 @@ export class ConcordCommunity {
       protocolRelays.length,
     );
 
-    // Only after every gated wrap clears majority: compaction/snapshot + adopt.
-    for (const wrap of plan.compactionWraps) this.pool.publish(transportRelays, wrap).catch(() => {});
-    for (const wrap of plan.snapshotWraps) this.pool.publish(transportRelays, wrap).catch(() => {});
+    // Only after every gated wrap clears majority: compaction/snapshot + adopt. Both
+    // ride the NEW epoch's control/guestbook addresses (D-16) — register both once
+    // before either loop.
+    this.signers.register([plan.next.control, plan.next.guestbook]);
+    for (const wrap of plan.compactionWraps)
+      this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap)).catch(() => {});
+    for (const wrap of plan.snapshotWraps)
+      this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap)).catch(() => {});
 
     this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
     this.adoptRefounding(plan.next);
   }
 
   // ---- publishing ---------------------------------------------------------
+
+  /** D-01/D-15/D-16: every publish this engine makes derives its `waitForAuth` from
+   *  the event it is publishing, never from a hand-typed key — a concord wrap is
+   *  finalized with the STREAM secret key (`buildWrap` in `operations/gift-wrap.ts`),
+   *  so the pubkey a gating relay wants authenticated IS `event.pubkey`. Answered by this scope's own
+   *  {@link StreamSigners} holder, never the user's. `this.signers.get` is checked only
+   *  for a diagnostic trace — this helper never throws and never gates the publish
+   *  itself: a relay that doesn't gate writes accepts the event regardless, and
+   *  refusing to publish here would turn an auth question into an availability bug. */
+  private streamPublishOptions(event: NostrEvent): PublishOptions {
+    if (!this.signers.get(event.pubkey))
+      this.publishLog(
+        "publishing wrap=%s with no registered signer for author=%s",
+        event.id.slice(0, 8),
+        event.pubkey.slice(0, 8),
+      );
+    return { waitForAuth: [event.pubkey], onAuthRequired: this.signers.onAuthRequired };
+  }
 
   /** Seal + wrap a rumor onto a plane, echo it locally, and publish it. For a
    *  channel prefer {@link sendEvent}, which appends the CORD-03 binding; this is
@@ -1541,7 +1610,9 @@ export class ConcordCommunity {
     const { wrap, rumorId } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
     // Optimistic local echo first, so the UI updates before relays ack.
     if (!opts.ephemeral) this.onWrap(wrap);
-    this.pool.publish(this.transport(), wrap).catch((err) => {
+    // The plane key that finalized `wrap` is already registered by the walk and by
+    // `openLive()` (D-16) — no registration needed here.
+    this.pool.publish(this.transport(), wrap, this.streamPublishOptions(wrap)).catch((err) => {
       this.publishLog("publish failed plane=%s: %s", target.plane, (err as Error)?.message ?? err);
       console.warn("publish failed", err);
     });
