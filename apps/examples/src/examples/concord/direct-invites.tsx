@@ -5,8 +5,8 @@
  */
 import { getRumorGiftWraps } from "applesauce-common/helpers/gift-wrap";
 import {
-  ConcordRelayAuth,
   InviteWatcher,
+  StreamSigners,
   type CommunityListCommunity,
   type InviteBundle,
   type JoinMaterial,
@@ -31,7 +31,9 @@ import { CommunityListFactory, JoinLeaveFactory } from "applesauce-concord/facto
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const relayAuth = new ConcordRelayAuth(pool);
+// This example joins one community at a time, so this module-level holder IS
+// that single scope's holder — a multi-community app builds one per community (D-06).
+const streamSigners = new StreamSigners();
 const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
 
 const signer$ = new BehaviorSubject<ISigner | null>(null);
@@ -242,6 +244,9 @@ function ConcordDirectInvites() {
     if (!signer?.nip44) throw new Error("This signer does not support NIP-44 encryption.");
     const signed = await listFactory().join(entryFromMaterial(material)).sign(signer);
     await eventStore.add(signed);
+    // This publish is signed by the USER, not a stream key — a user-authored publish would
+    // take the user handler instead (D-09's split); see ConcordClient's community-list publish
+    // for the in-package example.
     if (relays?.length) await pool.publish(relays, signed);
   }
 
@@ -253,13 +258,8 @@ function ConcordDirectInvites() {
       invite: bundle.creator_npub ? { creator: bundle.creator_npub, label: bundle.label } : undefined,
     });
     const { wrap } = await wrapForTarget(keys, { plane: "guestbook" }, signer, rumor, {});
-    relayAuth.registerStreamKeys([keys.guestbook]);
-    const authDrivers = relays.map((relay) => relayAuth.authenticateStreamKeys(pool.relay(relay)));
-    try {
-      await pool.publish(relays, wrap, { waitForAuth: keys.guestbook.pk });
-    } finally {
-      authDrivers.forEach((sub) => sub.unsubscribe());
-    }
+    streamSigners.register([keys.guestbook]);
+    await pool.publish(relays, wrap, { waitForAuth: [wrap.pubkey], onAuthRequired: streamSigners.onAuthRequired });
   }
 
   async function accept(invite: ConcordDirectInvite) {
