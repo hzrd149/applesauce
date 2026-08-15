@@ -178,10 +178,6 @@ export interface ConcordClientOptions {
    *  (`.unlock(signer)` on the exposed cast, {@link InviteWatcher.readPending}). Community-plane
    *  decryptions (derived group keys, no prompt) always happen automatically regardless. */
   autoUnlock?: boolean;
-  /** Automatically NIP-42-authenticate as the user on the Direct Invite inbox relays when they
-   *  challenge. Defaults to `false` — the app authenticates on demand via
-   *  {@link InviteWatcher.authenticateUser} (watch {@link InviteWatcher.needsAuth$}). */
-  autoAuthenticate?: boolean;
   /** Automatically publish an updated kind 13302 after a sync when the community list has
    *  changed locally (an epoch caught up, a refounding removal). Defaults to `false` so the
    *  initial sync has **zero** side effects — no signer calls, no publishes. When `true`, a
@@ -223,8 +219,10 @@ export class ConcordClient {
    *  across every joined community), for UI to react to as one value. */
   readonly status$: Observable<ConcordClientStatus>;
   /** The active Direct Invite inbox watcher, or `undefined` before it starts. Reactive so UI can
-   *  subscribe to its {@link InviteWatcher.needsAuth$} / {@link InviteWatcher.pendingCount$} once
-   *  it exists (see {@link watchDirectInvites} / {@link startDirectInviteWatcher}). */
+   *  subscribe to its {@link InviteWatcher.pendingCount$} once it exists (see
+   *  {@link watchDirectInvites} / {@link startDirectInviteWatcher}). It answers a gating inbox
+   *  relay's refusal of one of its own reads with the user's key on demand — there is no
+   *  separate proactive-auth entry point to watch or call. */
   readonly directInviteWatcher$ = new BehaviorSubject<InviteWatcher | undefined>(undefined);
   /** The user's public invite-link manager (private kind-13303 list + community invite creation). */
   readonly invites: ConcordInviteManager;
@@ -249,7 +247,6 @@ export class ConcordClient {
   private readonly extras: ExtraRelays;
   private readonly storeFactory?: ConcordStoreFactory;
   private readonly autoUnlock: boolean;
-  private readonly autoAuthenticate: boolean;
   private readonly autoSaveCommunityList: boolean;
   private readonly watchDirectInvites: boolean;
   /** The logged-in user as a cast over the shared event store — the source of the exposed
@@ -353,7 +350,6 @@ export class ConcordClient {
     this.log("extras configured=%s", options.extraRelays !== undefined);
     this.storeFactory = options.storeFactory;
     this.autoUnlock = options.autoUnlock ?? false;
-    this.autoAuthenticate = options.autoAuthenticate ?? false;
     this.autoSaveCommunityList = options.autoSaveCommunityList ?? false;
     this.watchDirectInvites = options.watchDirectInvites ?? true;
     // Built ONCE, before the invite manager is constructed, so it can be threaded in —
@@ -549,11 +545,11 @@ export class ConcordClient {
       storage: this.storage,
       relays: this.defaultRelays,
       extraRelays: this.extraRelaysOption,
-      // Two independent gates, mirroring the client's: `autoUnlock` decrypts incoming Direct
-      // Invites, `autoAuthenticate` NIP-42-authenticates as the user. Off by default so the app
-      // drives each explicitly via the exposed watcher (`readPending` / `authenticateUser`).
+      // One gate, mirroring the client's `autoUnlock`: whether incoming Direct Invites are
+      // decrypted automatically. Off by default so the app decrypts on demand via the exposed
+      // watcher (`readPending`). The watcher answers a gating inbox relay's refusal of one of
+      // its own reads with the user's key on demand — there is no separate auth gate here.
       autoDecrypt: this.autoUnlock,
-      autoAuthenticate: this.autoAuthenticate,
       logger: this.inviteLog,
     });
     this.directInviteSub = this.inviteWatcher.invites$.subscribe((invites) => {
