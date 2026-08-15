@@ -1518,7 +1518,7 @@ export class ConcordCommunity {
     // configured protocol relay list is already well-formed and duplicate-free;
     // it fails soft (drops the offending entry) rather than crashing when it is
     // not (T-12.3-09-01/02). Acks are attributed to the protocol set with the
-    // same normalized-URL tolerance `relay-auth.ts`'s status lookup already
+    // same normalized-URL tolerance `auth.ts`'s status lookup already
     // applies, since a relay's ack `from` may or may not come back normalized,
     // may be absent, or may be malformed — none of which may ever surface as a
     // parse error in place of the intended majority-abort error (T-12.3-09-03).
@@ -1526,7 +1526,7 @@ export class ConcordCommunity {
     const protocolRelaySet = new Set(protocolRelays);
     /** Tolerant ack-origin normalization: returns undefined for an absent or
      *  unparseable `from`, swallowing the parse failure, mirroring the
-     *  established tolerance shape in relay-auth.ts's `lookupStatus`. */
+     *  established tolerance shape in auth.ts's `lookupRelayStatus`. */
     const normalizeAckOrigin = (from: string | undefined): string | undefined => {
       if (!from) return undefined;
       try {

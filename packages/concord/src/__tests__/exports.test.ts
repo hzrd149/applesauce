@@ -13,7 +13,6 @@ describe("concord exports", () => {
         "ConcordCommunityAdminInvites",
         "ConcordInviteManager",
         "ConcordPrivateChannel",
-        "ConcordRelayAuth",
         "Factories",
         "Helpers",
         "InviteWatcher",

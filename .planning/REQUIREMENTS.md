@@ -39,7 +39,7 @@
 
 - [x] **CAUTH-01**: Each community and private-channel engine authenticates only the `waitForAuth` pubkeys its own operation is missing, using the keys held by that scope
 - [x] **CAUTH-02**: A relay is asked to authenticate only the stream keys the operations actually using that relay require — not every key in the client-wide registry — and a reconnect re-authenticates only that same scoped set
-- [ ] **CAUTH-03**: The client-wide driver machinery is removed or narrowed once callers migrate — `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication
+- [x] **CAUTH-03**: The client-wide driver machinery is removed or narrowed once callers migrate — `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication
 - [x] **CAUTH-04**: Per-operation auth retries are preserved through the migration
 
 ## Future Requirements
@@ -89,7 +89,7 @@ Deferred; tracked but not in this roadmap.
 | ALOG-03 | Phase 14 | Complete |
 | CAUTH-01 | Phase 15 | Complete |
 | CAUTH-02 | Phase 15 | Complete |
-| CAUTH-03 | Phase 15 | Pending |
+| CAUTH-03 | Phase 15 | Complete |
 | CAUTH-04 | Phase 15 | Complete |
 
 ## Verification Standard

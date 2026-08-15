@@ -2,7 +2,6 @@
 // (`ConcordCommunity`), a thin multi-community manager (`ConcordClient`), and the
 // epoch-atomic sync primitives that connect them to relays.
 
-export * from "./relay-auth.js";
 // Named (not `export *`) re-export: `createUserAuthHandler`, `lookupRelayStatus`,
 // and `connectedRelays$` stay internal to the package; only `StreamSigners` and
 // its options type are public.

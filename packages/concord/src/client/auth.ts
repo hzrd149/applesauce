@@ -1,7 +1,7 @@
 // Scope-owned NIP-42 auth primitives (D-02/D-06/D-07/D-08/D-09/D-12).
 //
-// Replaces `ConcordRelayAuth`'s registry half with an instance-scoped, pure
-// pubkey→signer map whose `onAuthRequired` handler answers exactly the
+// An instance-scoped, pure pubkey→signer map whose `onAuthRequired` handler
+// answers exactly the
 // relay-supplied `missingPubkeys` it holds a signer for. Every engine owns its
 // own `StreamSigners` (community, private channel, invite watcher) so two
 // independently-constructed holders sharing one relay never authenticate each
@@ -154,16 +154,16 @@ export function createUserAuthHandler(
 }
 
 /** Look up a relay's status in a `pool.status$` snapshot, tolerating un/normalized
- *  URLs — lifted verbatim from `relay-auth.ts:76-78`. */
+ *  URLs. */
 export function lookupRelayStatus(statuses: Record<string, RelayStatus>, url: string): RelayStatus | undefined {
   return statuses[normalizeURL(url)] ?? statuses[url];
 }
 
 /**
  * Whether at least one of `relays` has an open socket, as a derived boolean
- * observable over `pool.status$` (D-12, lifted from `relay-auth.ts:85-91`). Reads
- * only the connected flag — never the auth-required-for-read/publish flags or the
- * authenticated-pubkeys/challenge fields, which are relay-wide, not operation-scoped.
+ * observable over `pool.status$` (D-12). Reads only the connected flag — never
+ * the auth-required-for-read/publish flags or the authenticated-pubkeys/challenge
+ * fields, which are relay-wide, not operation-scoped.
  */
 export function connectedRelays$(pool: RelayPool, relays: string[]): Observable<boolean> {
   return pool.status$.pipe(
