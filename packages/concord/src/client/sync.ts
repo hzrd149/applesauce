@@ -104,8 +104,9 @@ export interface SyncContext {
  * backward through REQ blocks. Passing `waitForAuth: authors` makes an auth-gating
  * relay hold BOTH the negentropy sync and the paginated REQ until the derived
  * stream keys are NIP-42-authenticated; when a relay refuses the request it
- * invokes `ctx.onAuthRequired` with `missingPubkeys` narrowed to this operation's
- * own `waitForAuth`, and the shared retry operator resends once the keys land.
+ * invokes `ctx.onAuthRequired` with the relay-reported still-needed pubkeys
+ * narrowed to this operation's own `waitForAuth`, and the shared retry operator
+ * resends once the keys land.
  */
 export async function syncAuthors(ctx: SyncContext, authors: string[]): Promise<NostrEvent[]> {
   if (authors.length === 0) return [];
