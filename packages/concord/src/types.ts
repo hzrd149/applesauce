@@ -288,10 +288,9 @@ export interface ConcordCommunityStatus {
   epoch: number;
   /** At least one of the community's relays has an open socket. */
   connected: boolean;
-  /** The community's stream keys are NIP-42-authenticated on every connected
-   *  relay (or none of them gate reads/publishes behind auth). */
-  authenticated: boolean;
-  /** The last sync error message, or null. */
+  /** The last sync error message, or null. Auth is a property of an individual
+   *  operation now (D-10/D-11), not standing state — a failed NIP-42 AUTH
+   *  surfaces here rather than through a dedicated status field. */
   error: string | null;
 }
 
@@ -301,7 +300,6 @@ export interface ConcordPrivateChannelStatus {
   /** The channel's current epoch (bumps on each adopted channel Rekey). */
   epoch: number;
   connected: boolean;
-  authenticated: boolean;
   error: string | null;
 }
 
@@ -317,6 +315,4 @@ export interface ConcordClientStatus {
   live: number;
   /** At least one community relay has an open socket. */
   connected: boolean;
-  /** Every connected community relay is authenticated for our stream keys. */
-  authenticated: boolean;
 }

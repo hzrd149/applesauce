@@ -33,6 +33,7 @@ import type { RelayPool } from "applesauce-relay";
 
 import { logger } from "../logger.js";
 import type { ConcordRelayAuth } from "./relay-auth.js";
+import { connectedRelays$ } from "./auth.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import {
   addChannelKey,
@@ -254,15 +255,6 @@ export class ConcordCommunity {
    *  community relay is down; UI reading "live" may be reading the local cache —
    *  an accepted, documented consequence (D-07), not a defect. */
   readonly connected$: Observable<boolean>;
-  /** Whether the community's stream keys are NIP-42-authenticated on every
-   *  connected relay in the merged transport set, re-deriving on every later
-   *  `extraRelays` emission (D-08). Because this is an all-of check over
-   *  connected relays, an extra that challenges and rejects our stream keys
-   *  holds this flag low indefinitely — an accepted, documented consequence
-   *  (D-07), not a defect. If several engines should share one live extras
-   *  source, pass a hot/shared Observable (D-10) — each engine subscribes its
-   *  own otherwise. */
-  readonly authenticated$: Observable<boolean>;
   /** A flat snapshot of the community's status, for UI to react to as one value. */
   readonly status$: Observable<ConcordCommunityStatus>;
 
@@ -369,7 +361,7 @@ export class ConcordCommunity {
     this.onRefounded = options.onRefounded;
     this.extraRelaysOption = options.extraRelays;
     // Constructed BEFORE any observable derivation below so its synchronous
-    // snapshot is already seeded when connected$/authenticated$ build (D-04).
+    // snapshot is already seeded when connected$ builds (D-04).
     // Its position here is unchanged (D-04 is load-bearing) — but EVERYTHING
     // after it, to the end of the constructor, is now wrapped: `ExtraRelays`'s
     // constructor subscribes to an APP-SUPPLIED source (`options.extraRelays`,
@@ -433,20 +425,16 @@ export class ConcordCommunity {
       );
 
       // Reactive (D-08): switchMap over the extras holder's relays$ so a later
-      // extraRelays emission re-derives both statuses, rather than freezing at a
-      // construction-time snapshot. Both route their merge through transport()
-      // (not the switchMap's own emitted value) so it stays the class's one
-      // literal merge point (D-04).
-      this.connected$ = this.extras.relays$.pipe(switchMap(() => this.relayAuth.connected$(this.transport())));
-      this.authenticated$ = this.extras.relays$.pipe(
-        switchMap(() => this.relayAuth.authenticated$(this.transport(), () => this.currentAuthors())),
-      );
+      // extraRelays emission re-derives connected$, rather than freezing at a
+      // construction-time snapshot. Routes its merge through transport() (not
+      // the switchMap's own emitted value) so it stays the class's one literal
+      // merge point (D-04).
+      this.connected$ = this.extras.relays$.pipe(switchMap(() => connectedRelays$(this.pool, this.transport())));
       this.status$ = combineLatest({
         phase: this.phase$,
         epoch: this.epoch$,
         dissolved: this.dissolved$,
         connected: this.connected$,
-        authenticated: this.authenticated$,
         error: this.error$,
       }).pipe(
         map(
@@ -456,12 +444,7 @@ export class ConcordCommunity {
           }),
         ),
         distinctUntilChanged(
-          (a, b) =>
-            a.phase === b.phase &&
-            a.epoch === b.epoch &&
-            a.connected === b.connected &&
-            a.authenticated === b.authenticated &&
-            a.error === b.error,
+          (a, b) => a.phase === b.phase && a.epoch === b.epoch && a.connected === b.connected && a.error === b.error,
         ),
         shareReplay(1),
       );

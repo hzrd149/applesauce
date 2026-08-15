@@ -160,11 +160,9 @@ export interface ConcordClientOptions {
    * `BehaviorSubject` or a `shareReplay(1)`-wrapped Observable — if they should all react to
    * the same live extras stream (D-10).
    *
-   * Two status consequences follow from widening transport targets (D-07 — see
-   * {@link ConcordCommunity.connected$} / {@link ConcordCommunity.authenticated$}): an
-   * always-up local relay can keep a community's `connected$` high even while every one of its
-   * real community relays is down, and an extra that gates and rejects our stream keys can
-   * hold `authenticated$` low.
+   * One status consequence follows from widening transport targets (D-07 — see
+   * {@link ConcordCommunity.connected$}): an always-up local relay can keep a community's
+   * `connected$` high even while every one of its real community relays is down.
    *
    * To release every engine's subscription to this source (so the app's Observable has no
    * remaining Concord subscriber), call {@link ConcordClient.dispose} — {@link ConcordClient.stop}
@@ -388,7 +386,6 @@ export class ConcordClient {
           syncing: children.length - live,
           live,
           connected: connectedChildren.length > 0,
-          authenticated: connectedChildren.length > 0 && connectedChildren.every((s) => s.authenticated),
         };
       }),
       distinctUntilChanged(
@@ -397,8 +394,7 @@ export class ConcordClient {
           a.communities === b.communities &&
           a.syncing === b.syncing &&
           a.live === b.live &&
-          a.connected === b.connected &&
-          a.authenticated === b.authenticated,
+          a.connected === b.connected,
       ),
       shareReplay(1),
     );
