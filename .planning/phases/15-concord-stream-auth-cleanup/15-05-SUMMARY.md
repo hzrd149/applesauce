@@ -200,3 +200,11 @@ The failure names the exact publish's own recorded `event.pubkey` as the missing
 ---
 *Phase: 15-concord-stream-auth-cleanup*
 *Completed: 2026-08-15*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/15-concord-stream-auth-cleanup/15-05-SUMMARY.md
+- FOUND: 08455740 (Task 1 commit)
+- FOUND: 7742ea31 (Task 2 commit)
+- FOUND: 64b75479 (Task 3 commit)
+- FOUND: 5d3afdbf (SUMMARY commit)
