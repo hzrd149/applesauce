@@ -22,6 +22,7 @@ describe("concord exports", () => {
         "Operations",
         "PERM",
         "Storage",
+        "StreamSigners",
         "VSK",
         "buildChain",
         "channelLiveAuthors",
