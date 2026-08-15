@@ -16,8 +16,7 @@ import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
 
 import { logger } from "../logger.js";
-import type { ConcordRelayAuth } from "./relay-auth.js";
-import { connectedRelays$ } from "./auth.js";
+import { StreamSigners, connectedRelays$ } from "./auth.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo } from "../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
@@ -44,7 +43,6 @@ export interface ConcordPrivateChannelOptions {
   signer: ISigner;
   pubkey: string;
   pool: RelayPool;
-  relayAuth: ConcordRelayAuth;
   /** Shared wrap-level store (dedup + NIP-77 local store). */
   eventStore: EventStore;
   /** The `channel:<id>` rumor store (owned by the community's store factory). */
@@ -115,6 +113,12 @@ export class ConcordPrivateChannel {
   /** The per-engine transport-only extras holder (D-04) — merges into every
    *  network target this engine dials; `opts.relays` itself is never touched. */
   private readonly extras: ExtraRelays;
+  /** This channel's own pubkey→signer holder (D-02/D-06) — constructed here,
+   *  never shared with the parent community (T-15-01). */
+  private readonly signers: StreamSigners;
+  /** The most recent NIP-42 failure seen during the current walk (D-13) —
+   *  folded into `error$` rather than into a new status surface. */
+  private authFailure: string | null = null;
   private channelKey: ChannelKey;
   private keys: ChannelKeys;
   /** Retained channel-rekey events, for the live rotation check. */
@@ -127,11 +131,6 @@ export class ConcordPrivateChannel {
    *  later change re-derives the merged set via `openLive()`'s own widened
    *  churn guard (Pitfall 4). */
   private extrasSub: Subscription;
-  /** URL → the Subscription {@link relay-auth.js}'s `authenticateStreamKeys`
-   *  returned for it (WR-04) — see `community.ts`'s identical field for the
-   *  full rationale (prune on removal, fresh driver on re-add, no churn on an
-   *  unchanged set, D-09). */
-  private authDrivers = new Map<string, Subscription>();
   private liveAuthors = "";
   private rekeyTimer?: ReturnType<typeof setTimeout>;
   /** epoch → lowest adopted channel key (D-04 down-only anti-refork latch). A
@@ -171,6 +170,11 @@ export class ConcordPrivateChannel {
     // the cleanup this failure path needs — no more, no less. Mirrors
     // `ConcordCommunity`'s identical constructor guard (12.3-12).
     this.extras = new ExtraRelays(options.extraRelays);
+    this.signers = new StreamSigners({
+      onAuthFailure: (message) => {
+        this.authFailure = message;
+      },
+    });
     try {
       this.channelKey = options.channelKey;
       this.keys = deriveChannelKeys(options.material(), options.channelKey);
@@ -228,8 +232,6 @@ export class ConcordPrivateChannel {
   dispose(): void {
     this.disposed = true;
     this.liveSub?.unsubscribe();
-    for (const sub of this.authDrivers.values()) sub.unsubscribe();
-    this.authDrivers.clear();
     this.extrasSub.unsubscribe();
     this.extras.dispose();
     if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
@@ -237,6 +239,9 @@ export class ConcordPrivateChannel {
   }
 
   private async walk(): Promise<void> {
+    // D-13: reset at the top of the method (before phase$.next("syncing")), so
+    // a refreshForCommunityEpoch() re-walk starts clean.
+    this.authFailure = null;
     this.phase$.next("syncing");
     try {
       const result = await syncChannelEpochs(this.syncContext(), this.channelKey);
@@ -251,7 +256,9 @@ export class ConcordPrivateChannel {
         if (rolled) this.opts.onKeyChange?.(result.tipKey);
         this.openLive();
       }
-      this.error$.next(null);
+      // D-13: a walk that returned nothing because a relay refused our stream
+      // keys says so, instead of showing a silent blank.
+      this.error$.next(this.authFailure);
       this.phase$.next("live");
       this.log("channel epoch walk complete tip_epoch=%d", this.channelKey.epoch);
     } catch (err) {
@@ -327,7 +334,7 @@ export class ConcordPrivateChannel {
   private syncContext(): ChannelSyncContext {
     return {
       pool: this.opts.pool,
-      relayAuth: this.opts.relayAuth,
+      signers: this.signers,
       eventStore: this.opts.eventStore,
       signer: this.opts.signer,
       self: this.opts.pubkey,
@@ -337,33 +344,17 @@ export class ConcordPrivateChannel {
       canRemoveSelf: this.opts.canRemoveSelf,
       verifyVac: this.opts.verifyVac,
       route: (info, decoded) => this.route(info, decoded),
-      ensureAuth: (relays) => this.ensureAuth(relays),
+      onAuthRequired: this.signers.onAuthRequired,
       alive: () => !this.disposed,
       logger: this.syncLog,
       decodeLogger: this.decodeLog,
     };
   }
 
-  /** Synchronise the per-URL auth-driver registry against `relays` (WR-04) —
-   *  mirrors `community.ts`'s identical method: prune any driver whose URL
-   *  left the set, register a fresh one for anything new (including a re-add
-   *  after removal), and leave an entry untouched if it's still wanted (no
-   *  churn, D-09). MUST always be called with the COMPLETE current transport
-   *  set, never a subset — both call sites below (`syncContext()`,
-   *  `openLive()`) pass a full transport snapshot. */
-  private ensureAuth(relays: string[]): void {
-    const wanted = new Set(relays);
-    for (const [url, sub] of this.authDrivers) {
-      if (wanted.has(url)) continue;
-      sub.unsubscribe();
-      this.authDrivers.delete(url);
-    }
-    for (const url of wanted) {
-      if (this.authDrivers.has(url)) continue;
-      this.authDrivers.set(url, this.opts.relayAuth.authenticateStreamKeys(this.opts.pool.relay(url)));
-    }
-  }
-
+  // D-03/D-04: a reconnect gets a fresh auth budget from the shared retry
+  // operator (`resetState()`/the `defer`-scoped `consecutive` counter), so this
+  // engine adds no reconnect mechanism of its own. D-14: a single relay's auth
+  // failure does not kill either path (`RelayGroup`'s per-relay `catchError`).
   private openLive(): void {
     this.keys = deriveChannelKeys(this.opts.material(), this.channelKey);
     const { authors } = channelLiveAuthors(this.opts.material(), this.channelKey);
@@ -381,12 +372,12 @@ export class ConcordPrivateChannel {
     const sig = `${[...authors].sort().join(",")}|${[...targets].sort().join(",")}`;
     if (sig === this.liveAuthors && this.liveSub) return;
     this.liveAuthors = sig;
-    this.opts.relayAuth.registerStreamKeys([this.keys.current, ...this.keys.nextRekey.map((r) => r.key)]);
-    this.ensureAuth(targets);
+    this.signers.register([this.keys.current, ...this.keys.nextRekey.map((r) => r.key)]);
     this.liveSub?.unsubscribe();
     this.liveSub = this.opts.pool
       .subscription(targets, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
         waitForAuth: authors,
+        onAuthRequired: this.signers.onAuthRequired,
       })
       .subscribe((event) => this.onWrap(event as NostrEvent));
     this.log("live subscription open targets=%d", targets.length);

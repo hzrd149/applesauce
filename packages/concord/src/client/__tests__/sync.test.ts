@@ -14,7 +14,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { RelayPool } from "applesauce-relay";
 
-import { ConcordRelayAuth } from "../relay-auth.js";
+import { StreamSigners } from "../auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { EditionFactory } from "../../factories/control.js";
 import { buildRefounding, deriveConcordKeys, rollForward, wrapForTarget } from "../../helpers/keys.js";
@@ -148,13 +148,13 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
     const pool = servingPool(events);
     const ctx: SyncContext = {
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
+      signers: new StreamSigners(),
       eventStore: new EventStore(),
       signer: self,
       self: selfPub,
       relays: ["wss://fake"],
       route: () => {},
-      ensureAuth: () => {},
+      onAuthRequired: () => {},
       logger: logger.extend("test"),
       decodeLogger: logger.extend("test").extend("decode"),
     };
@@ -244,13 +244,13 @@ describe("syncEpochs — D-04 down-only re-read spine (ROTATE-06)", () => {
     const pool = servingPool(events);
     const ctx: SyncContext = {
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
+      signers: new StreamSigners(),
       eventStore: new EventStore(),
       signer: self,
       self: selfPub,
       relays: ["wss://fake"],
       route: () => {},
-      ensureAuth: () => {},
+      onAuthRequired: () => {},
       logger: logger.extend("test"),
       decodeLogger: logger.extend("test").extend("decode"),
     };
@@ -280,13 +280,13 @@ describe("syncAuthors — backfill filter requests only the retained kind (D-01/
     const pool = servingPool([], captured);
     const ctx: SyncContext = {
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
+      signers: new StreamSigners(),
       eventStore: new EventStore(),
       signer: self,
       self: selfPub,
       relays: ["wss://fake"],
       route: () => {},
-      ensureAuth: () => {},
+      onAuthRequired: () => {},
       logger: logger.extend("test"),
       decodeLogger: logger.extend("test").extend("decode"),
     };

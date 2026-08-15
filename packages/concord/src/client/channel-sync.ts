@@ -45,8 +45,7 @@ export interface ChannelWalkResult {
 async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): Promise<void> {
   const keys = deriveChannelKeys(ctx.material, channel);
   const streamKeys = [keys.current, ...keys.held.map((h) => h.key)];
-  ctx.relayAuth.registerStreamKeys(streamKeys);
-  ctx.ensureAuth(ctx.relays);
+  ctx.signers.register(streamKeys);
   const fetched = await syncAuthors(
     ctx,
     streamKeys.map((k) => k.pk),
@@ -92,8 +91,7 @@ async function syncRekeyAndAdvance(
   channel: ChannelKey,
 ): Promise<{ next?: ChannelKey; removed: boolean; done: boolean }> {
   const keys = deriveChannelKeys(ctx.material, channel);
-  ctx.relayAuth.registerStreamKeys(keys.nextRekey.map((r) => r.key));
-  ctx.ensureAuth(ctx.relays);
+  ctx.signers.register(keys.nextRekey.map((r) => r.key));
   const rekeyEvents: DecodedEvent[] = [];
   const fetched = await syncAuthors(
     ctx,

@@ -32,8 +32,7 @@ import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
 
 import { logger } from "../logger.js";
-import type { ConcordRelayAuth } from "./relay-auth.js";
-import { connectedRelays$ } from "./auth.js";
+import { StreamSigners, connectedRelays$ } from "./auth.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import {
   addChannelKey,
@@ -99,8 +98,6 @@ export interface ConcordCommunityOptions {
   pubkey: string;
   /** The applesauce RelayPool used for all subscriptions/publishes. */
   pool: RelayPool;
-  /** NIP-42 stream-key authenticator (shared across communities by the manager). */
-  relayAuth: ConcordRelayAuth;
   /** Wrap-level store for kind-1059 dedup + the NIP-77 negentropy local store.
    *  Defaults to a fresh {@link EventStore}. */
   eventStore?: EventStore;
@@ -285,7 +282,12 @@ export class ConcordCommunity {
    *  epoch (a live Refounding adoption or an involuntary removal). */
   private readonly foldLog: Debugger;
   private readonly pool: RelayPool;
-  private readonly relayAuth: ConcordRelayAuth;
+  /** This community's own pubkey→signer holder (D-02/D-06) — constructed here,
+   *  never shared with a spawned private channel or the client (T-15-01). */
+  private readonly signers: StreamSigners;
+  /** The most recent NIP-42 failure seen during the current walk (D-13) — folded
+   *  into `error$` rather than into a new status surface. */
+  private authFailure: string | null = null;
   private readonly eventStore: EventStore;
   private readonly uploader?: ConcordCommunityOptions["uploader"];
   private readonly defaultRelays: string[];
@@ -323,13 +325,6 @@ export class ConcordCommunity {
    *  has ever gone live cannot prematurely open a socket, and a real later
    *  change re-derives the merged set via `openLive()`'s own widened guard. */
   private extrasSub: Subscription;
-  /** URL → the Subscription {@link relay-auth.js}'s `authenticateStreamKeys`
-   *  returned for it (WR-04). Keyed by URL rather than a single aggregate
-   *  Subscription so {@link ensureAuth} can PRUNE an entry whose relay left the
-   *  transport set — a de-configured relay's driver must actually tear down,
-   *  not just accumulate forever, and a relay re-added after removal must
-   *  register a genuinely fresh driver rather than being silently suppressed. */
-  private authDrivers = new Map<string, Subscription>();
   private liveAuthors = "";
   private rekeyTimer?: ReturnType<typeof setTimeout>;
   /** epoch → lowest adopted root key (D-04 down-only anti-refork latch). A
@@ -349,7 +344,7 @@ export class ConcordCommunity {
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
-    this.relayAuth = options.relayAuth;
+    this.signers = new StreamSigners({ onAuthFailure: (message) => { this.authFailure = message; } });
     this.eventStore = options.eventStore ?? new EventStore();
     this.uploader = options.uploader;
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
@@ -528,6 +523,7 @@ export class ConcordCommunity {
   async start(): Promise<void> {
     if (this.started || this.disposed) return;
     this.started = true;
+    this.authFailure = null;
     this.phase$.next("syncing");
     this.log("epoch walk starting");
     try {
@@ -546,7 +542,9 @@ export class ConcordCommunity {
         this.epoch$.next(this.keys.material.root_epoch);
         if (this.keys.material !== this.state$.value.material) this.onMaterialChange?.(this.keys.material);
       }
-      this.error$.next(null);
+      // D-13: a walk that returned nothing because a relay refused our stream
+      // keys says so, instead of showing a silent blank.
+      this.error$.next(this.authFailure);
       this.phase$.next("live");
       this.log("epoch walk complete tip_epoch=%d", this.keys.material.root_epoch);
     } catch (err) {
@@ -562,8 +560,6 @@ export class ConcordCommunity {
     this.liveSub?.unsubscribe();
     this.extrasSub.unsubscribe();
     this.extras.dispose();
-    for (const sub of this.authDrivers.values()) sub.unsubscribe();
-    this.authDrivers.clear();
     if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
     for (const engine of this.privateChannels.values()) engine.dispose();
     this.privateChannels.clear();
@@ -693,45 +689,17 @@ export class ConcordCommunity {
   private syncContext(): SyncContext {
     return {
       pool: this.pool,
-      relayAuth: this.relayAuth,
+      signers: this.signers,
       eventStore: this.eventStore,
       signer: this.signer,
       self: this.pubkey,
       relays: this.transport(),
       route: (info, decoded) => this.route(info, decoded),
-      ensureAuth: (relays) => this.ensureAuth(relays),
+      onAuthRequired: this.signers.onAuthRequired,
       alive: () => !this.disposed,
       logger: this.syncLog,
       decodeLogger: this.decodeLog,
     };
-  }
-
-  /**
-   * Synchronise the per-URL auth-driver registry against `relays` (WR-04): any
-   * registered driver whose URL is no longer in `relays` is unsubscribed and
-   * dropped (so a de-configured relay stops receiving NIP-42 responses driven
-   * by the community's stream keys), and a fresh driver is registered for every
-   * URL in `relays` that has none yet — including a URL that was previously
-   * removed and is now being re-added. An entry already present and still
-   * wanted is left completely untouched (no unsubscribe/re-create), so a
-   * no-op re-emission of an unchanged transport set churns nothing (D-09).
-   *
-   * MUST always be called with the COMPLETE current transport set, never a
-   * subset — every call site (both `syncContext()` callers and both
-   * `openLive()` callers) passes a full transport snapshot, because this now
-   * prunes anything absent from its argument.
-   */
-  private ensureAuth(relays: string[]): void {
-    const wanted = new Set(relays);
-    for (const [url, sub] of this.authDrivers) {
-      if (wanted.has(url)) continue;
-      sub.unsubscribe();
-      this.authDrivers.delete(url);
-    }
-    for (const url of wanted) {
-      if (this.authDrivers.has(url)) continue;
-      this.authDrivers.set(url, this.relayAuth.authenticateStreamKeys(this.pool.relay(url)));
-    }
   }
 
   /** The PUBLIC channel stream keys — private channels sync on their own engines. */
@@ -749,10 +717,18 @@ export class ConcordCommunity {
     return [control.pk, guestbook.pk, dissolved.pk, nextBaseRekey.key.pk, ...this.publicChannelKeys().map((k) => k.pk)];
   }
 
+  // D-03/D-04: a reconnect gets a fresh auth budget from the shared retry
+  // operator — `resetState()` clears the relay's auth state, and `authRetry`'s
+  // `consecutive` counter lives in a `defer` closure the reconnect resubscribes
+  // — so this engine adds no reconnect mechanism of its own; an idle scope with
+  // no live operation re-authenticates nothing on reconnect, by design. D-14: a
+  // single relay's auth failure does not kill either path — `RelayGroup` wraps
+  // each relay in `catchError` before merging, and `syncAuthors`' `events$`
+  // completes only once every relay has finished (completed or errored).
   /** Open (or reopen) the live subscription at the current epoch's addresses. */
   private openLive(): void {
     const authors = this.currentAuthors();
-    // Computed ONCE and reused for the guard, the auth registration, and the
+    // Computed ONCE and reused for the guard, the registration, and the
     // subscription target, so the guard can never disagree with what was
     // dialled (D-09/Pitfall 4). The guard key now covers BOTH the sorted
     // authors list and the sorted merged transport set, so a no-op extras
@@ -761,18 +737,18 @@ export class ConcordCommunity {
     const sig = `${[...authors].sort().join(",")}|${[...targets].sort().join(",")}`;
     if (sig === this.liveAuthors && this.liveSub) return;
     this.liveAuthors = sig;
-    this.relayAuth.registerStreamKeys([
+    this.signers.register([
       this.keys.control,
       this.keys.guestbook,
       this.keys.dissolved,
       this.keys.nextBaseRekey.key,
       ...this.publicChannelKeys(),
     ]);
-    this.ensureAuth(targets);
     this.liveSub?.unsubscribe();
     this.liveSub = this.pool
       .subscription(targets, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
         waitForAuth: authors,
+        onAuthRequired: this.signers.onAuthRequired,
       })
       .subscribe((event) => this.onWrap(event as NostrEvent));
     this.log("live subscription open targets=%d", targets.length);
@@ -793,8 +769,7 @@ export class ConcordCommunity {
       .map(([, k]) => k.pk);
     if (fresh.length > 0) {
       this.log("catching up %d newly revealed public channel(s)", fresh.length);
-      this.relayAuth.registerStreamKeys(this.publicChannelKeys());
-      this.ensureAuth(this.transport());
+      this.signers.register(this.publicChannelKeys());
       void syncAuthors(this.syncContext(), fresh).then((events) => {
         for (const ev of events) this.onWrap(ev);
       });
@@ -850,7 +825,9 @@ export class ConcordCommunity {
       signer: this.signer,
       pubkey: this.pubkey,
       pool: this.pool,
-      relayAuth: this.relayAuth,
+      // Each private channel owns its own StreamSigners holder (D-06) — the
+      // community never passes its own down, so a channel's keys are never
+      // authenticated by the community's operations and vice versa (T-15-01).
       eventStore: this.eventStore,
       store: this.storeFor(`channel:${channelKey.id}`),
       relays: this.relays(),

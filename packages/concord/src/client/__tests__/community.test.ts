@@ -10,14 +10,13 @@ import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
-import type { PublishResponse, RelayPool, RelayStatus } from "applesauce-relay";
+import type { PublishResponse, Relay, RelayPool, RelayStatus } from "applesauce-relay";
 
 import { getEventHash, kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import type { ConcordCommunityStatus } from "../../types.js";
 
-import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { JoinLeaveFactory, SnapshotFactory } from "../../factories/guestbook.js";
 import { EditionFactory } from "../../factories/control.js";
@@ -129,7 +128,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -178,7 +176,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -248,7 +245,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -287,7 +283,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -347,7 +342,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -392,7 +386,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -463,7 +456,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -514,7 +506,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -558,7 +549,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer: member,
       pubkey: memberPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -595,7 +585,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -632,7 +621,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer: member,
       pubkey: memberPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -667,7 +655,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
       onRefounded: (cid) => {
@@ -732,7 +719,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -781,7 +767,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -823,7 +808,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -896,7 +880,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays,
       onRefounded: () => refoundedCount++,
@@ -945,7 +928,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1015,7 +997,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1063,7 +1044,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1122,7 +1102,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer: memberSigner,
       pubkey: member,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1175,7 +1154,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1216,7 +1194,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1261,7 +1238,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1325,7 +1301,6 @@ describe("ConcordCommunity (DI, no network)", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1380,7 +1355,6 @@ describe("wire conformance", () => {
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -1872,7 +1846,7 @@ describe("wire conformance", () => {
     expect(registeredPks).toContain(expectedLivePk);
 
     // 4. The subscription actually covers it — `currentAuthors()` is exactly
-    // what `openLive()` dials and registers with `relayAuth` for NIP-42.
+    // what `openLive()` dials and registers with `signers` for NIP-42.
     const authors = gateAccess.currentAuthors();
     expect(authors).toContain(expectedHostilePk);
 
@@ -1981,7 +1955,6 @@ describe("ConcordCommunity permissions + granular reads", () => {
       signer: memberSigner,
       pubkey: member,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       uploader,
       relays: ["wss://fake"],
@@ -2051,7 +2024,6 @@ describe("ConcordCommunity permissions + granular reads", () => {
       signer,
       pubkey: owner,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -2102,7 +2074,6 @@ describe("ConcordCommunity permissions + granular reads", () => {
       signer,
       pubkey: owner,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -2158,7 +2129,6 @@ describe("ConcordCommunity permissions + granular reads", () => {
       signer,
       pubkey: owner,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -2215,7 +2185,6 @@ describe("ConcordCommunity permissions + granular reads", () => {
       signer: memberSigner,
       pubkey: member,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -2292,7 +2261,6 @@ describe("ConcordCommunity permissions + granular reads", () => {
       signer: memberSigner,
       pubkey: member,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -2365,7 +2333,6 @@ describe("ConcordCommunity permissions + granular reads", () => {
       signer,
       pubkey: owner,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
     });
@@ -2501,7 +2468,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: EXTRAS_PROTOCOL_RELAYS,
       extraRelays: extras$,
@@ -2545,7 +2511,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: EXTRAS_PROTOCOL_RELAYS,
       extraRelays: extras$,
@@ -2581,7 +2546,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: EXTRAS_PROTOCOL_RELAYS,
       extraRelays: extras$,
@@ -2620,7 +2584,7 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
     community.dispose();
   });
 
-  it("the per-relay NIP-42 auth driver registration covers the extras endpoint as well as the protocol relays (D-03)", async () => {
+  it("the epoch walk's per-relay backfill requests cover the extras endpoint as well as the protocol relays (D-03)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool, relayCalls } = extrasPool();
@@ -2632,7 +2596,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: EXTRAS_PROTOCOL_RELAYS,
       extraRelays: extras$,
@@ -2643,10 +2606,11 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
-    // `ensureAuth` is the only observable signal for per-relay auth-driver
-    // registration in this DI harness — assert on which relay handles were
-    // requested (`pool.relay(url)`), which is what `authenticateStreamKeys`
-    // is handed for each one.
+    // No per-relay auth-driver registration exists any more (D-01) — the sync
+    // loader itself reaches each relay in the transport set via
+    // `pool.relay(url).request(...)` for its own backfill sync, so this
+    // asserts the merged transport set (protocol + extras) is what the walk
+    // actually reads from, not a registration side effect.
     expect(relayCalls.length).toBeGreaterThan(0);
     expect(relayCalls.some((u) => u.includes("extras-proto-a"))).toBe(true);
     expect(relayCalls.some((u) => u.includes("extras-proto-b"))).toBe(true);
@@ -2678,7 +2642,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: REFOUND_PROTOCOL_RELAYS,
       extraRelays: [REFOUND_EXTRA],
@@ -2717,7 +2680,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: REFOUND_PROTOCOL_RELAYS,
       extraRelays: [REFOUND_EXTRA],
@@ -2757,7 +2719,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: REFOUND_PROTOCOL_RELAYS,
       extraRelays: [REFOUND_EXTRA],
@@ -2805,7 +2766,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays,
     });
@@ -2839,7 +2799,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays,
     });
@@ -2875,7 +2834,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays,
     });
@@ -2908,7 +2866,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: REFOUND_PROTOCOL_RELAYS,
     });
@@ -2942,7 +2899,6 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: REFOUND_PROTOCOL_RELAYS,
     });
@@ -2961,27 +2917,37 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
   });
 });
 
-// Gap closure (WR-04): the auth-driver registry must PRUNE on every ensureAuth
-// call, not just monotonically append — a relay removed from the extras set
-// must have its NIP-42 driver torn down, and a later re-add must register a
-// genuinely FRESH driver (the old monotonic seen-set masked both defects).
-describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune-and-refresh, no churn on no-op (WR-04)", () => {
+// Gap closure (WR-04), re-derived for D-01/D-02: there is no per-relay auth
+// driver any more — a relay is authenticated only in reactive response to its
+// own `auth-required:` refusal of an operation that actually targets it
+// (Task 1). The underlying question this suite protects is still meaningful,
+// answered differently: a de-configured relay stops being TARGETED at all
+// (so nothing ever asks it to authenticate), and re-adding it is targeted
+// again; a no-op extras re-emission doesn't churn the live subscription.
+describe("ConcordCommunity live-subscription transport narrowing — retarget on extras change, no churn on no-op (WR-04)", () => {
   const AUTH_PROTOCOL = "wss://cmty-auth-protocol.test";
   const AUTH_PROTOCOL_RELAYS = [AUTH_PROTOCOL];
   const AUTH_EXTRA = "wss://cmty-auth-extra.test";
-  // `ensureAuth` receives the merged transport set — already normalized by
-  // `mergeRelaySets` (a trailing slash) — so `pool.relay(url)` (and thus the
-  // recorded driver key below) sees the NORMALIZED form, never the raw
-  // literal. Normalize these two constants once for every map lookup below.
+  // The live subscription's target list is the merged transport set — already
+  // normalized by `mergeRelaySets` (a trailing slash) — so the recorded
+  // subscription's relay list carries the NORMALIZED form, never the raw
+  // literal. Normalize these two constants once for every assertion below.
   const AUTH_PROTOCOL_KEY = normalizeURL(AUTH_PROTOCOL);
   const AUTH_EXTRA_KEY = normalizeURL(AUTH_EXTRA);
 
-  // Distinct relay objects per URL (unlike `extrasPool()` above, which shares
-  // one relay object for every URL) — so `ConcordRelayAuth`'s internal
-  // per-relay driver map (keyed by `relay.url`) genuinely tracks each URL
-  // independently, and spying on `authenticateStreamKeys` lets these tests
-  // assert teardown/re-creation via the returned Subscription's `closed` flag.
-  function authDriverPool(): { pool: RelayPool } {
+  /** Distinct relay objects per URL (unlike `extrasPool()` above, which shares
+   *  one relay object for every URL), so a per-relay `authenticate` call can
+   *  be attributed to the URL it was actually made against. `pool.subscription`
+   *  records every call's `{ relays, filters, options }` and returns a
+   *  duck-typed Observable whose `.subscribe()` captures the real
+   *  `Subscription` object `openLive()` receives — so a test can assert
+   *  `.closed` on exactly what the engine holds, without reaching into any
+   *  private field. */
+  function authDriverPool(): {
+    pool: RelayPool;
+    subscriptions: { relays: string[]; filters: unknown; options: Record<string, unknown> }[];
+    liveSubs: Subscription[];
+  } {
     const relays = new Map<string, ReturnType<typeof makeRelay>>();
     function makeRelay(url: string) {
       return {
@@ -2989,48 +2955,43 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
         challenge: null,
         challenge$: new BehaviorSubject<string | null>(null),
         isAuthenticated: () => false,
-        authenticate: async () => ({ ok: true }),
+        authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+          const pk = await signer.getPublicKey();
+          return { ok: true, pubkey: pk, url } as unknown as PublishResponse;
+        }),
         getSupported: async () => null,
         request: () => EMPTY,
         sync: () => EMPTY,
       };
     }
+    const subscriptions: { relays: string[]; filters: unknown; options: Record<string, unknown> }[] = [];
+    const liveSubs: Subscription[] = [];
     const pool = {
       status$: new Subject(),
       relay: (url: string) => {
         if (!relays.has(url)) relays.set(url, makeRelay(url));
         return relays.get(url)!;
       },
-      subscription: () => NEVER,
+      subscription: (relayUrls: string[], filters: unknown, options: Record<string, unknown>) => {
+        subscriptions.push({ relays: relayUrls, filters, options });
+        return {
+          subscribe: (observerOrNext: unknown) => {
+            const sub = NEVER.subscribe(observerOrNext as never);
+            liveSubs.push(sub);
+            return sub;
+          },
+        } as unknown as Observable<NostrEvent>;
+      },
       request: () => EMPTY,
       publish: okAll,
     } as unknown as RelayPool;
-    return { pool };
+    return { pool, subscriptions, liveSubs };
   }
 
-  /** Spies on `relayAuth.authenticateStreamKeys`, recording every returned
-   *  Subscription keyed by the relay URL it was registered for, so a test can
-   *  assert on `.closed` per call without reaching into `community`'s own
-   *  private `authDrivers` field. */
-  function spyOnDrivers(relayAuth: ConcordRelayAuth): Map<string, Subscription[]> {
-    const driverSubs = new Map<string, Subscription[]>();
-    const original = relayAuth.authenticateStreamKeys.bind(relayAuth);
-    vi.spyOn(relayAuth, "authenticateStreamKeys").mockImplementation((relay) => {
-      const sub = original(relay);
-      const arr = driverSubs.get(relay.url) ?? [];
-      arr.push(sub);
-      driverSubs.set(relay.url, arr);
-      return sub;
-    });
-    return driverSubs;
-  }
-
-  it("removing a relay from the extras set unsubscribes its auth driver, and re-adding it registers a FRESH driver (WR-04)", async () => {
+  it("removing a relay from the extras set stops targeting it, and re-adding it targets it again", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
-    const { pool } = authDriverPool();
-    const relayAuth = new ConcordRelayAuth(pool);
-    const driverSubs = spyOnDrivers(relayAuth);
+    const { pool, subscriptions } = authDriverPool();
 
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: AUTH_PROTOCOL_RELAYS });
     const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
@@ -3039,7 +3000,6 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
       signer,
       pubkey,
       pool,
-      relayAuth,
       eventStore: new EventStore(),
       relays: AUTH_PROTOCOL_RELAYS,
       extraRelays: extras$,
@@ -3050,33 +3010,41 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false);
+    // ExtraRelays.merge's identity fast path (D-14) returns `relays()` UNCHANGED
+    // (no normalization) once the extras set is empty, so membership is checked
+    // through `normalizeURL` rather than the raw recorded strings.
+    const latestUrls = () => subscriptions[subscriptions.length - 1].relays.map(normalizeURL);
+    expect(latestUrls()).toContain(AUTH_EXTRA_KEY);
+    expect(latestUrls()).toContain(AUTH_PROTOCOL_KEY);
 
     // Narrow the extras set — the extra relay leaves the transport.
     extras$.next([]);
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // torn down (WR-04)
+    expect(latestUrls()).not.toContain(AUTH_EXTRA_KEY);
+    expect(latestUrls()).toContain(AUTH_PROTOCOL_KEY);
 
-    // Re-add: a FRESH driver must register — the monotonic seen-set previously
-    // suppressed this entirely (WR-04's second half).
+    // Re-add: the extra relay is targeted again.
     extras$.next([AUTH_EXTRA]);
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(2);
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![1].closed).toBe(false);
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // the removed one stays torn down
+    expect(latestUrls()).toContain(AUTH_EXTRA_KEY);
+    expect(latestUrls()).toContain(AUTH_PROTOCOL_KEY);
+
+    // Direct replacement for the old teardown assertion: with no per-relay
+    // driver mechanism left (D-01), and this DI'd pool never manufacturing an
+    // `auth-required:` refusal, nothing ever asked the extra relay to
+    // authenticate across the whole test — a relay only ever learns the
+    // pubkeys an operation that actually reaches it names (T-15-08/CAUTH-02).
+    expect(pool.relay(AUTH_EXTRA_KEY).authenticate).not.toHaveBeenCalled();
 
     community.dispose();
   });
 
-  it("a re-emission with identical membership does not unsubscribe or re-create any existing driver (no churn, D-09)", async () => {
+  it("a re-emission with identical membership does not re-open the live subscription (no churn, D-09)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
-    const { pool } = authDriverPool();
-    const relayAuth = new ConcordRelayAuth(pool);
-    const driverSubs = spyOnDrivers(relayAuth);
+    const { pool, subscriptions } = authDriverPool();
 
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: AUTH_PROTOCOL_RELAYS });
     const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
@@ -3085,7 +3053,6 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
       signer,
       pubkey,
       pool,
-      relayAuth,
       eventStore: new EventStore(),
       relays: AUTH_PROTOCOL_RELAYS,
       extraRelays: extras$,
@@ -3096,26 +3063,22 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
-    expect(driverSubs.get(AUTH_PROTOCOL_KEY)?.length).toBe(1);
+    const countBefore = subscriptions.length;
 
     // A no-op re-emission — same membership, new array instance.
     extras$.next([AUTH_EXTRA]);
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1); // no re-create
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false); // no unsubscribe
-    expect(driverSubs.get(AUTH_PROTOCOL_KEY)?.length).toBe(1);
+    // openLive()'s `sig` guard (Task 1) suppresses the re-open entirely.
+    expect(subscriptions.length).toBe(countBefore);
 
     community.dispose();
   });
 
-  it("dispose() unsubscribes every registered auth driver", async () => {
+  it("dispose() closes the live subscription", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
-    const { pool } = authDriverPool();
-    const relayAuth = new ConcordRelayAuth(pool);
-    const driverSubs = spyOnDrivers(relayAuth);
+    const { pool, liveSubs } = authDriverPool();
 
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: AUTH_PROTOCOL_RELAYS });
     const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
@@ -3124,7 +3087,6 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
       signer,
       pubkey,
       pool,
-      relayAuth,
       eventStore: new EventStore(),
       relays: AUTH_PROTOCOL_RELAYS,
       extraRelays: extras$,
@@ -3135,9 +3097,14 @@ describe("ConcordCommunity auth-driver lifecycle (transport narrowing) — prune
     for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
     await settle();
 
+    const sub = liveSubs[liveSubs.length - 1];
+    expect(sub.closed).toBe(false);
+
     community.dispose();
 
-    for (const subs of driverSubs.values()) for (const sub of subs) expect(sub.closed).toBe(true);
+    expect(sub.closed).toBe(true);
+    // No auth machinery outlives it (D-01): there is no driver map, reference
+    // count, or `challenge$` subscription left for `dispose()` to have missed.
   });
 });
 
@@ -3193,7 +3160,6 @@ describe("ConcordCommunity constructor — self-cleaning extras on throw (WR-01,
           signer,
           pubkey,
           pool,
-          relayAuth: new ConcordRelayAuth(pool),
           eventStore: new EventStore(),
           relays: ["wss://fake"],
           extraRelays: throwingExtras,
@@ -3214,7 +3180,6 @@ describe("ConcordCommunity constructor — self-cleaning extras on throw (WR-01,
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
       extraRelays: okExtras,
@@ -3240,7 +3205,6 @@ describe("ConcordCommunity constructor — self-cleaning extras on throw (WR-01,
       signer,
       pubkey,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       relays: ["wss://fake"],
       extraRelays: extras,
@@ -3251,5 +3215,265 @@ describe("ConcordCommunity constructor — self-cleaning extras on throw (WR-01,
     // Guards against a regression where the new constructor failure path
     // double-disposes, or the success path stops disposing on dispose().
     expect(count()).toBe(0);
+  });
+});
+
+// CAUTH-02 scoped-AUTH oracle + CAUTH-04 no-suppression assertions. DESIGN-DERIVED
+// (15-VALIDATION.md § Requirement -> Oracle Map): no recording of the prior
+// client-wide churn behavior was ever committed, so every expected value here is
+// read off the operation's own declared requirement (the recorded filter's
+// `authors`), never off any community method (`currentAuthors()` and friends stay
+// unread by this file).
+describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
+  const AUTH_URL = "wss://cauth-oracle.test";
+
+  /** One shared relay object (so two communities can be proven not to
+   *  cross-authenticate against the SAME relay) whose `authenticate` is a
+   *  `vi.fn` recording `{ pubkey, url }`. The pool records every
+   *  `subscription()` call's `{ relays, filters, options }` and every
+   *  `relay(url).request()` call's `{ filters, options }` — the two seams
+   *  the oracle inspects. */
+  function authOraclePool(): {
+    pool: RelayPool;
+    subscriptionCalls: { relays: string[]; filters: { authors?: string[] }[]; options: Record<string, unknown> }[];
+    requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[];
+    authCalls: { pubkey: string; url: string }[];
+  } {
+    const subscriptionCalls: { relays: string[]; filters: { authors?: string[] }[]; options: Record<string, unknown> }[] =
+      [];
+    const requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[] = [];
+    const authCalls: { pubkey: string; url: string }[] = [];
+    const relay = {
+      url: AUTH_URL,
+      challenge: null,
+      challenge$: new BehaviorSubject<string | null>(null),
+      isAuthenticated: () => false,
+      authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+        const pk = await signer.getPublicKey();
+        authCalls.push({ pubkey: pk, url: AUTH_URL });
+        return { ok: true, pubkey: pk, url: AUTH_URL } as unknown as PublishResponse;
+      }),
+      getSupported: async () => null,
+      sync: () => EMPTY,
+      request: (filters: unknown, options: Record<string, unknown> = {}) => {
+        const fs = (Array.isArray(filters) ? filters : [filters]) as { authors?: string[] }[];
+        requestCalls.push({ filters: fs, options });
+        return EMPTY;
+      },
+    };
+    const pool = {
+      status$: new Subject(),
+      relay: () => relay,
+      subscription: (relays: string[], filters: unknown, options: Record<string, unknown> = {}) => {
+        const fs = (Array.isArray(filters) ? filters : [filters]) as { authors?: string[] }[];
+        subscriptionCalls.push({ relays, filters: fs, options });
+        return NEVER;
+      },
+      request: (_relays: string[], filters: unknown) => relay.request(filters),
+      publish: okAll,
+    } as unknown as RelayPool;
+    return { pool, subscriptionCalls, requestCalls, authCalls };
+  }
+
+  /** Synthesizes a `RelayAuthContext`-shaped value the way a relay's own
+   *  `auth-required:` refusal would (RAUTH-01's shape) — the ONLY input this
+   *  file feeds a captured handler. `missingPubkeys` defaults to `authors`
+   *  (the operation's own declared requirement) but can be overridden — the
+   *  isolation test below deliberately widens it to a UNION with the OTHER
+   *  community's authors, so the isolation guarantee under test is the
+   *  handler's own registry lookup (T-15-09: a relay-named pubkey the scope
+   *  holds no signer for gets no signature), not merely an echo of an
+   *  already-narrow input. */
+  function authRequiredCtx(pool: RelayPool, authors: string[], id: string, missingPubkeys: string[] = authors) {
+    return {
+      relay: pool.relay(AUTH_URL) as unknown as Relay,
+      url: AUTH_URL,
+      challenge: null,
+      request: { verb: "REQ" as const, id, filters: [] },
+      requirement: authors,
+      missingPubkeys,
+      reason: "auth-required",
+    };
+  }
+
+  it("waitForAuth matches the filter's own authors, and invoking the captured handler authenticates exactly that scoped set (CAUTH-01)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionCalls, authCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
+    // Expected pubkey set is read off the recorded filter's OWN `authors`
+    // array — never off `community.currentAuthors()` or any other
+    // engine-internal accessor (TEST-01/CAUTH-02).
+    const authors = latest.filters[0]!.authors!;
+    expect(authors.length).toBeGreaterThan(0);
+    expect(latest.options.waitForAuth).toEqual(authors); // CAUTH-01 half
+    expect(typeof latest.options.onAuthRequired).toBe("function");
+
+    const onAuthRequired = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    await onAuthRequired(authRequiredCtx(pool, authors, "sub-1"));
+
+    expect(authCalls.map((c) => c.pubkey).sort()).toEqual([...authors].sort());
+
+    community.dispose();
+  });
+
+  it("two communities sharing one relay each authenticate only their own authors, and a reconnect cycle re-authenticates that same scoped set (CAUTH-02)", async () => {
+    const signerA = new PrivateKeySigner(generateSecretKey());
+    const pubkeyA = await signerA.getPublicKey();
+    const signerB = new PrivateKeySigner(generateSecretKey());
+    const pubkeyB = await signerB.getPublicKey();
+
+    const { pool, subscriptionCalls, authCalls } = authOraclePool();
+
+    const genesisA = await createCommunity({ ownerPubkey: pubkeyA, name: "A", relays: [AUTH_URL] });
+    const communityA = new ConcordCommunity({
+      material: genesisA.material,
+      signer: signerA,
+      pubkey: pubkeyA,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await communityA.start();
+    for (const rumor of genesisA.controlRumors)
+      await communityA.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesisA.guestbookRumors) await communityA.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+    const latestA = subscriptionCalls[subscriptionCalls.length - 1]!;
+    const authorsA = latestA.filters[0]!.authors!;
+    const handlerA = latestA.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+
+    const genesisB = await createCommunity({ ownerPubkey: pubkeyB, name: "B", relays: [AUTH_URL] });
+    const communityB = new ConcordCommunity({
+      material: genesisB.material,
+      signer: signerB,
+      pubkey: pubkeyB,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await communityB.start();
+    for (const rumor of genesisB.controlRumors)
+      await communityB.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesisB.guestbookRumors) await communityB.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+    const latestB = subscriptionCalls[subscriptionCalls.length - 1]!;
+    const authorsB = latestB.filters[0]!.authors!;
+    const handlerB = latestB.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+
+    // Anti-vacuity: both non-empty and disjoint — a fixture that produced two
+    // empty author sets would otherwise satisfy "disjoint" trivially.
+    expect(authorsA.length).toBeGreaterThan(0);
+    expect(authorsB.length).toBeGreaterThan(0);
+    expect(authorsA.some((pk) => authorsB.includes(pk))).toBe(false);
+
+    // The `missingPubkeys` fed to each handler is the UNION of both
+    // communities' authors — a relay-controlled input naming a pubkey the
+    // scope does not hold gets no signature (T-15-09), regardless of what the
+    // relay reports. This is what a shared, client-wide registry would fail:
+    // with one registry answering for both scopes, A's handler would find B's
+    // keys in ITS OWN map too and sign for them.
+    const union = [...authorsA, ...authorsB];
+
+    await handlerA(authRequiredCtx(pool, authorsA, "a-1", union));
+    expect(authCalls.map((c) => c.pubkey).sort()).toEqual([...authorsA].sort());
+    expect(authCalls.some((c) => authorsB.includes(c.pubkey))).toBe(false);
+
+    await handlerB(authRequiredCtx(pool, authorsB, "b-1", union));
+    const afterB = authCalls.slice(authCalls.length - authorsB.length);
+    expect(afterB.map((c) => c.pubkey).sort()).toEqual([...authorsB].sort());
+    expect(afterB.some((c) => authorsA.includes(c.pubkey))).toBe(false);
+
+    // Reconnect: a second auth-required cycle on the SAME operation
+    // re-authenticates the same scoped set again — never a union with B's.
+    const beforeSecondA = authCalls.length;
+    await handlerA(authRequiredCtx(pool, authorsA, "a-2", union));
+    const secondACalls = authCalls.slice(beforeSecondA);
+    expect(secondACalls.map((c) => c.pubkey).sort()).toEqual([...authorsA].sort());
+    expect(secondACalls.some((c) => authorsB.includes(c.pubkey))).toBe(false);
+
+    communityA.dispose();
+    communityB.dispose();
+  });
+
+  it("the recorded live-subscription options leave authRetries/authTimeout undefined (D-05/CAUTH-04), and a second auth-required cycle is never suppressed", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionCalls, authCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
+    // D-05: omitting both selects the documented upstream defaults
+    // (authRetries=1, authTimeout=30_000) rather than concord overriding them.
+    expect(latest.options.authRetries).toBeUndefined();
+    expect(latest.options.authTimeout).toBeUndefined();
+
+    const authors = latest.filters[0]!.authors!;
+    const handler = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+
+    await handler(authRequiredCtx(pool, authors, "cycle-1"));
+    const countAfterFirst = authCalls.length;
+    expect(countAfterFirst).toBeGreaterThan(0);
+
+    // No dedupe/suppression of a second auth-required cycle (D-18).
+    await handler(authRequiredCtx(pool, authors, "cycle-2"));
+    expect(authCalls.length).toBeGreaterThan(countAfterFirst);
+
+    community.dispose();
+  });
+
+  it("the sync path's per-relay request options carry waitForAuth matching that request's own authors and an onAuthRequired function", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, requestCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    await settle();
+
+    expect(requestCalls.length).toBeGreaterThan(0);
+    const first = requestCalls[0]!;
+    const authors = first.filters[0]!.authors!;
+    expect(authors.length).toBeGreaterThan(0);
+    expect(first.options.waitForAuth).toEqual(authors);
+    expect(typeof first.options.onAuthRequired).toBe("function");
+
+    community.dispose();
   });
 });
