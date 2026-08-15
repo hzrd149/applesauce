@@ -186,3 +186,14 @@ The failure was caught by the FIRST assertion in the test — the empty-recorder
 ---
 *Phase: 15-concord-stream-auth-cleanup*
 *Completed: 2026-08-15*
+
+## Self-Check: PASSED
+
+- FOUND: packages/concord/src/client/invite-watcher.ts
+- FOUND: packages/concord/src/client/client.ts
+- FOUND: packages/concord/src/client/__tests__/invite-watcher.test.ts
+- FOUND: apps/examples/src/examples/concord/admin-management.tsx
+- FOUND: .planning/phases/15-concord-stream-auth-cleanup/15-06-SUMMARY.md
+- FOUND: 36e6f187 (Task 1 commit)
+- FOUND: 81309919 (Task 2 commit)
+- FOUND: a3f89df9 (SUMMARY commit)
