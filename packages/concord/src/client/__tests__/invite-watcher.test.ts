@@ -134,60 +134,107 @@ describe("InviteWatcher", () => {
     expect(w.invites$.value).toHaveLength(2);
   });
 
-  it("autoAuthenticate:false — authenticateUser satisfies needsAuth$", async () => {
-    const signer = new PrivateKeySigner(generateSecretKey());
-    const pubkey = await signer.getPublicKey();
-    const authenticated = new Set<string>();
-    const challenge = "challenge-abc";
-    const relay = {
-      url: "wss://relay.example",
-      challenge,
-      challenge$: new BehaviorSubject<string | null>(challenge),
-      isAuthenticated: (pk: string | string[]) => (Array.isArray(pk) ? pk : [pk]).every((p) => authenticated.has(p)),
-      authenticate: async (s: { getPublicKey: () => Promise<string> }) => {
-        authenticated.add(await s.getPublicKey());
-        return { ok: true, from: "wss://relay.example" };
-      },
-      getSupported: async () => null,
-    };
-    const pool = {
-      // Keyed by the normalized URL (trailing slash) — this mirrors RelayPool.relay()'s
-      // real normalizeURL() call, which invite-watcher's transport()-merged relay set
-      // now always passes through (D-03/D-12: the needs-auth check and the per-relay
-      // user-auth loop both operate on the merged, mergeRelaySets-normalized set).
-      status$: new BehaviorSubject({
-        "wss://relay.example/": {
-          url: "wss://relay.example/",
-          connected: true,
-          authenticated: false,
-          authenticatedAs: null,
-          authenticatedPubkeys: [],
-          authentications: {},
-          ready: true,
-          authRequiredForRead: true,
-          authRequiredForPublish: true,
-          challenge,
+  // Plan 15-06: replaces the old proactive-auth-option test, which asserted on
+  // the two removed relay-wide-flag readers. Proves D-01 instead: the watcher
+  // authenticates the user only when an inbox relay refuses one of its own
+  // reads, never ambiently on connect or on a status emission.
+  describe("reactive user auth (D-01/D-09) — the watcher authenticates only when an inbox relay refuses one of its own reads", () => {
+    const AUTH_RELAY = "wss://iw-auth-relay.test";
+
+    /** Records the historical `pool.request` and live `pool.subscription` calls'
+     *  `{ filters, options }`, and every `relay.authenticate` call — mirrors
+     *  community.test.ts's publish-answerability oracle pool (15-05 Task 3). */
+    function authAnswerPool(): {
+      pool: RelayPool;
+      authenticateCalls: { pubkey: string; url: string }[];
+      calls: {
+        request?: { filters: unknown; options: Record<string, unknown> };
+        subscription?: { filters: unknown; options: Record<string, unknown> };
+      };
+    } {
+      const authenticateCalls: { pubkey: string; url: string }[] = [];
+      const calls: {
+        request?: { filters: unknown; options: Record<string, unknown> };
+        subscription?: { filters: unknown; options: Record<string, unknown> };
+      } = {};
+      const relay = {
+        url: AUTH_RELAY,
+        isAuthenticated: () => false,
+        authenticate: async (s: { getPublicKey: () => Promise<string> }) => {
+          const pubkey = await s.getPublicKey();
+          authenticateCalls.push({ pubkey, url: AUTH_RELAY });
+          return { ok: true, from: AUTH_RELAY };
         },
-      }),
-      relay: () => relay,
-      request: () => EMPTY,
-      subscription: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }),
-    } as unknown as RelayPool;
+        getSupported: async () => null,
+      };
+      const pool = {
+        relay: () => relay,
+        request: (_relays: string[], filters: unknown, options: Record<string, unknown> = {}) => {
+          calls.request = { filters, options };
+          return EMPTY;
+        },
+        subscription: (_relays: string[], filters: unknown, options: Record<string, unknown> = {}) => {
+          calls.subscription = { filters, options };
+          return { subscribe: () => ({ unsubscribe: () => {} }) };
+        },
+      } as unknown as RelayPool;
+      return { pool, authenticateCalls, calls };
+    }
 
-    const w = new InviteWatcher({
-      signer,
-      pool,
-      inboxRelays: ["wss://relay.example"],
-      autoAuthenticate: false,
+    /** Synthesizes a `RelayAuthContext`-shaped value the same way community.test.ts's
+     *  publish-answerability oracle does — the ONLY input this suite feeds a captured handler. */
+    function authRequiredCtx(pool: RelayPool, missingPubkeys: string[] | null) {
+      return {
+        relay: pool.relay(AUTH_RELAY),
+        url: AUTH_RELAY,
+        challenge: null,
+        request: { verb: "REQ" as const, id: "sub-1", filters: [] },
+        requirement: missingPubkeys ?? true,
+        missingPubkeys,
+        reason: "auth-required",
+      };
+    }
+
+    it("authenticates the user only when an inbox relay refuses one of its own reads", async () => {
+      const signer = new PrivateKeySigner(generateSecretKey());
+      const pubkey = await signer.getPublicKey();
+      const { pool, authenticateCalls, calls } = authAnswerPool();
+
+      const w = new InviteWatcher({ signer, pool, inboxRelays: [AUTH_RELAY] });
+
+      await w.start();
+
+      // D-01: zero ambient authentication before any relay refuses anything —
+      // asserted BEFORE anything else, so this claim is checked first.
+      expect(authenticateCalls).toEqual([]);
+
+      // Both the historical request and the live subscription carry waitForAuth
+      // for the user's own pubkey plus a callable onAuthRequired.
+      expect(calls.request?.options.waitForAuth).toEqual([pubkey]);
+      expect(typeof calls.request?.options.onAuthRequired).toBe("function");
+      expect(calls.subscription?.options.waitForAuth).toEqual([pubkey]);
+      expect(typeof calls.subscription?.options.onAuthRequired).toBe("function");
+
+      // Invoking either captured handler with the user's own pubkey in
+      // missingPubkeys records exactly one AUTH for that pubkey.
+      const requestHandler = calls.request?.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+      await requestHandler(authRequiredCtx(pool, [pubkey]));
+      expect(authenticateCalls).toEqual([{ pubkey, url: AUTH_RELAY }]);
+
+      authenticateCalls.length = 0;
+      const subscriptionHandler = calls.subscription?.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+      await subscriptionHandler(authRequiredCtx(pool, [pubkey]));
+      expect(authenticateCalls).toEqual([{ pubkey, url: AUTH_RELAY }]);
+
+      // An unrelated pubkey in missingPubkeys records nothing — the handler
+      // owns exactly one identity (T-15-03).
+      authenticateCalls.length = 0;
+      const other = await new PrivateKeySigner(generateSecretKey()).getPublicKey();
+      await requestHandler(authRequiredCtx(pool, [other]));
+      expect(authenticateCalls).toEqual([]);
+
+      w.stop();
     });
-
-    await w.start();
-    expect(await firstValueFrom(w.needsAuth$)).toBe(true);
-    await w.authenticateUser();
-    expect(authenticated.has(pubkey)).toBe(true);
-    expect(await firstValueFrom(w.needsAuth$)).toBe(false);
-
-    w.stop();
   });
 });
 

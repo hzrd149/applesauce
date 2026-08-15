@@ -152,7 +152,6 @@ function ActionBanners({ client, signer }: { client: ConcordClient; signer: ISig
   const inviteList = use$(client.inviteList$);
   const dirty = use$(client.communityListDirty$);
   const watcher = use$(client.directInviteWatcher$);
-  const needsAuth = use$(() => watcher?.needsAuth$, [watcher]);
   const pending = use$(() => watcher?.pendingCount$, [watcher]) ?? 0;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -173,7 +172,7 @@ function ActionBanners({ client, signer }: { client: ConcordClient; signer: ISig
   const inviteLocked = !!inviteList && !inviteList.unlocked;
   const noSigner = !signer.nip44;
 
-  if (!error && !listLocked && !inviteLocked && !needsAuth && !dirty && pending === 0) return null;
+  if (!error && !listLocked && !inviteLocked && !dirty && pending === 0) return null;
 
   return (
     <div className="space-y-2">
@@ -207,17 +206,6 @@ function ActionBanners({ client, signer }: { client: ConcordClient; signer: ISig
           busy={busy === "unlock-invites"}
           disabled={noSigner}
           onClick={() => run("unlock-invites", () => inviteList!.unlock(signer))}
-        />
-      )}
-
-      {needsAuth && (
-        <Banner
-          tone="warning"
-          title="Inbox authentication required"
-          body="Your inbox relays require NIP-42 authentication before they will deliver Direct Invites."
-          action="Authenticate"
-          busy={busy === "auth"}
-          onClick={() => run("auth", () => watcher!.authenticateUser())}
         />
       )}
 
