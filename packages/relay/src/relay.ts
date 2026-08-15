@@ -234,9 +234,7 @@ export type RelayOptions = {
 
 export class Relay {
   protected log: typeof logger = logger.extend("Relay");
-  /** D-13/D-20: the relay's NIP-42 connection-track and refusal lines land here, a dedicated `auth`
-   *  sub-namespace derived once per relay. The constructor re-derives it as `Relay:auth:<url>` so the
-   *  `auth` segment sits at a fixed depth and `applesauce:Relay:auth:*` filters every relay at once. */
+  /** D-13/D-20: the relay's NIP-42 lines, re-derived in the constructor as `Relay:auth:<url>`. */
   protected authLog: typeof logger = this.log.extend("auth");
   protected socket: WebSocketSubject<any>;
 
@@ -447,7 +445,8 @@ export class Relay {
     // pubkeys" being dropped — a false positive in a line whose only job is to explain the re-auth cycle.
     const authenticatedCount = this.authenticatedPubkeys.length;
     const challengeHeld = this.challenge$.value !== null;
-    if (authenticatedCount > 0 || challengeHeld) {
+    // Count alone gates the line: a held challenge with nothing authenticated has no re-auth to explain.
+    if (authenticatedCount > 0) {
       this.authLog(
         `Invalidating auth state on reset: dropping ${authenticatedCount} authenticated pubkey${authenticatedCount === 1 ? "" : "s"}${challengeHeld ? ", and the held challenge" : ""}`,
       );
@@ -483,12 +482,7 @@ export class Relay {
     public url: string,
     opts?: RelayOptions,
   ) {
-    // Re-derive authLog off the still-url-less this.log so the namespace reads `Relay:auth:<url>`
-    // rather than `Relay:<url>:auth`: the `auth` segment stays at a fixed depth, so
-    // `applesauce:Relay:auth:*` filters every relay's auth trace at once and the dynamic url lands
-    // last. Without this re-derivation the class field initializer above — which ran before the
-    // constructor body — would leave every relay colliding on one url-less namespace.
-    // Order matters: this MUST precede the url extension of this.log below.
+    // Derive off the still-url-less this.log for `Relay:auth:<url>` — must precede the line below.
     this.authLog = this.log.extend("auth").extend(url);
     this.log = this.log.extend(url);
 

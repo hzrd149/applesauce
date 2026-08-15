@@ -3136,11 +3136,6 @@ describe(":auth sub-namespace (14-04)", () => {
   // file is the leaked-enable-state signature this convention prevents (RESEARCH Pitfall 4).
 
   it("D-13: an auth line is visible under the broad all-relays glob", async () => {
-    // The auth namespace is `applesauce:Relay:auth:<url>`, a SIBLING of `applesauce:Relay:<url>`
-    // rather than a child of it, so that `applesauce:Relay:auth:*` filters every relay's auth
-    // trace at once. The consequence, deliberate and asserted below: the per-relay glob
-    // `applesauce:Relay:<url>*` no longer sweeps up that relay's auth lines. Use
-    // `applesauce:Relay:auth:<url>` for one relay's auth, or the all-relays glob for both streams.
     const allRelaysGlob = "applesauce:Relay:*";
 
     await withDebugCapture(allRelaysGlob, async (lines) => {
@@ -3160,7 +3155,7 @@ describe(":auth sub-namespace (14-04)", () => {
       subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-per-relay" }));
       await server.connected;
       server.send(["AUTH", "challenge-per-relay-glob"]);
-      // An ordinary base-namespace line proves the capture is live rather than simply empty.
+      // Proves the capture is live rather than simply empty.
       (relay as any).log("ordinary non-auth relay line");
       await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -3259,17 +3254,14 @@ describe(":auth sub-namespace (14-04)", () => {
     spy.unsubscribe();
   });
 
-  it("WR-02: resetState's invalidation line names the count of actually-authenticated pubkeys, not every AUTH attempt", async () => {
+  it("WR-02: a queued-but-never-answered AUTH attempt is not an authenticated pubkey, so resetState stays silent even with a held challenge", async () => {
     const authNamespace = (relay as any).authLog.namespace as string;
     const neverAuthedPubkey = "never00000000000000000000000000000000000000000000000000000000";
 
     const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-wr02-reset" }), { expectErrors: true });
     await server.connected;
 
-    // An AUTH attempt that was queued but never resolved -- response: null is exactly the shape auth()
-    // writes the instant an AUTH event is queued (relay.ts's auth()), not a real authentication. The
-    // held challenge is what forces resetState's line to fire at all, so the wrong count is directly
-    // observable rather than being masked by the whole line staying silent.
+    // response: null is what auth() writes when an AUTH is queued -- a miscount would report 1 and log.
     relay.authentications$.next({ [neverAuthedPubkey]: { event: mockEvent as any, response: null } });
     relay.challenge$.next("wr02-held-challenge");
 
@@ -3279,11 +3271,7 @@ describe(":auth sub-namespace (14-04)", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       const invalidationLines = lines().filter((l) => l.toLowerCase().includes("invalidat"));
-      expect(invalidationLines).toHaveLength(1);
-      // A response: null AUTH attempt is not an authenticated pubkey -- the count must be 0, not 1
-      // (the old Object.keys(authentications$.value).length would have reported 1 here).
-      expect(invalidationLines[0]).toContain("dropping 0 authenticated pubkeys");
-      expect(invalidationLines[0].toLowerCase()).toContain("challenge");
+      expect(invalidationLines).toHaveLength(0);
     });
 
     spy.unsubscribe();
