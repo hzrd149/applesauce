@@ -174,7 +174,7 @@ Plans:
   3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, and relay-status-driven stream authentication are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. (CAUTH-03)
   4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
 
-**Plans**: 5/8 plans executed
+**Plans**: 6/8 plans executed
 
 Plans:
 
@@ -197,7 +197,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 15-06-PLAN.md — Invite-watcher reactive user auth and the removal of `autoAuthenticate` from both classes (wave 5)
+- [x] 15-06-PLAN.md — Invite-watcher reactive user auth and the removal of `autoAuthenticate` from both classes (wave 5)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -229,7 +229,7 @@ Plans:
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
-| 15. Concord Stream-Auth Cleanup | v1.2 | 5/8 | In Progress|  |
+| 15. Concord Stream-Auth Cleanup | v1.2 | 6/8 | In Progress|  |
 
 **Totals:** 19 phases across three milestones (16 shipped, 3 in progress); 98 plans shipped across v1.0/v1.1 — v1.2 plan count TBD until phases are planned.
 
