@@ -107,11 +107,6 @@ function StatusLine({ client }: { client: ConcordClient }) {
       <span className={`badge badge-sm ${status.connected ? "badge-success" : "badge-ghost"}`}>
         {status.connected ? "connected" : "offline"}
       </span>
-      {status.connected && (
-        <span className={`badge badge-sm ${status.authenticated ? "badge-success" : "badge-warning"}`}>
-          {status.authenticated ? "stream keys authed" : "stream keys pending"}
-        </span>
-      )}
     </div>
   );
 }
@@ -337,11 +332,6 @@ function OverviewTab({ community }: { community: ConcordCommunity }) {
             <span className={`badge badge-sm ${status.connected ? "badge-success" : "badge-ghost"}`}>
               {status.connected ? "connected" : "offline"}
             </span>
-            {status.connected && (
-              <span className={`badge badge-sm ${status.authenticated ? "badge-success" : "badge-warning"}`}>
-                {status.authenticated ? "authenticated" : "authenticating"}
-              </span>
-            )}
             {status.error && <span className="badge badge-sm badge-error">{status.error}</span>}
           </div>
         )}

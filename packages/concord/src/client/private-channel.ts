@@ -17,6 +17,7 @@ import type { RelayPool } from "applesauce-relay";
 
 import { logger } from "../logger.js";
 import type { ConcordRelayAuth } from "./relay-auth.js";
+import { connectedRelays$ } from "./auth.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo } from "../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
@@ -96,12 +97,6 @@ export class ConcordPrivateChannel {
    *  documented consequence of routing status through the merged set, not a
    *  defect. */
   readonly connected$: Observable<boolean>;
-  /** Whether the channel's stream keys are NIP-42-authenticated on every
-   *  connected relay in the merged transport set (D-07). Because this is an
-   *  all-of check over connected relays, an extra that challenges and rejects
-   *  our stream keys holds this flag low indefinitely; an accepted, documented
-   *  consequence of routing status through the merged set, not a defect. */
-  readonly authenticated$: Observable<boolean>;
   /** A flat snapshot of the channel's status, for UI to react to as one value. */
   readonly status$: Observable<ConcordPrivateChannelStatus>;
 
@@ -152,7 +147,7 @@ export class ConcordPrivateChannel {
     this.decodeLog = this.syncLog.extend("decode");
     this.opts = options;
     // Constructed BEFORE the status observables below so their synchronous
-    // snapshot is already seeded when connected$/authenticated$ build (D-04).
+    // snapshot is already seeded when connected$ builds (D-04).
     // Its position here is unchanged (load-bearing) — but EVERYTHING after it,
     // to the end of the constructor, is now wrapped: `ExtraRelays`'s
     // constructor subscribes to an APP-SUPPLIED source (`options.extraRelays`,
@@ -184,19 +179,13 @@ export class ConcordPrivateChannel {
       // Re-derive reactively on every extras emission (D-08) rather than once
       // from a construction-time snapshot — no first-value-only operator here, so
       // a later change on an `extraRelays` Observable keeps taking effect (D-11).
-      this.connected$ = this.extras.relays$.pipe(switchMap(() => options.relayAuth.connected$(this.transport())));
-      this.authenticated$ = this.extras.relays$.pipe(
-        switchMap(() =>
-          options.relayAuth.authenticated$(this.transport(), () =>
-            channelLiveAuthors(this.opts.material(), this.channelKey).authors,
-          ),
-        ),
+      this.connected$ = this.extras.relays$.pipe(
+        switchMap(() => connectedRelays$(this.opts.pool, this.transport())),
       );
       this.status$ = combineLatest({
         phase: this.phase$,
         epoch: this.epoch$,
         connected: this.connected$,
-        authenticated: this.authenticated$,
         error: this.error$,
       }).pipe(shareReplay(1));
 

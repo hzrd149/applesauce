@@ -1342,11 +1342,10 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(snap?.connected).toBe(false);
     expect(snap?.error).toBeNull();
 
-    // A relay socket opens (gates nothing behind auth) → connected + authenticated flip.
+    // A relay socket opens → connected flips.
     const url = normalizeURL("wss://fake");
     status$.next({ [url]: mkStatus({ url, connected: true }) });
     expect(snap?.connected).toBe(true);
-    expect(snap?.authenticated).toBe(true);
 
     sub.unsubscribe();
     community.dispose();
