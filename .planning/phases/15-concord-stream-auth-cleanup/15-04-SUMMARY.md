@@ -259,3 +259,16 @@ Both probes restored cleanly (empty `git diff --stat` against the committed `com
 ---
 *Phase: 15-concord-stream-auth-cleanup*
 *Completed: 2026-08-15*
+
+## Self-Check: PASSED
+
+- FOUND: packages/concord/src/client/sync.ts
+- FOUND: packages/concord/src/client/channel-sync.ts
+- FOUND: packages/concord/src/client/community.ts
+- FOUND: packages/concord/src/client/private-channel.ts
+- FOUND: packages/concord/src/client/client.ts
+- FOUND: .planning/phases/15-concord-stream-auth-cleanup/15-04-SUMMARY.md
+- FOUND: 4f8f7883 (Task 1 commit)
+- FOUND: eed5aefb (Task 2 commit)
+- FOUND: c34fdbcc (Task 3 commit)
+- FOUND: 1b922248 (SUMMARY/REQUIREMENTS.md docs commit)
