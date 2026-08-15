@@ -148,3 +148,10 @@ None beyond the doc-comment fix recorded above, which is the plan's own "no dang
 ---
 *Phase: 15-concord-stream-auth-cleanup*
 *Completed: 2026-08-15*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/15-concord-stream-auth-cleanup/15-02-SUMMARY.md
+- FOUND: f3d7c32a (Task 1 commit)
+- FOUND: baacf362 (Task 2 commit)
+- FOUND: 0d158605 (SUMMARY docs commit)
