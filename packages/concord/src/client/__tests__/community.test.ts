@@ -10,7 +10,7 @@ import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
-import type { PublishResponse, RelayPool, RelayStatus } from "applesauce-relay";
+import type { PublishResponse, Relay, RelayPool, RelayStatus } from "applesauce-relay";
 
 import { getEventHash, kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -3215,5 +3215,265 @@ describe("ConcordCommunity constructor — self-cleaning extras on throw (WR-01,
     // Guards against a regression where the new constructor failure path
     // double-disposes, or the success path stops disposing on dispose().
     expect(count()).toBe(0);
+  });
+});
+
+// CAUTH-02 scoped-AUTH oracle + CAUTH-04 no-suppression assertions. DESIGN-DERIVED
+// (15-VALIDATION.md § Requirement -> Oracle Map): no recording of the prior
+// client-wide churn behavior was ever committed, so every expected value here is
+// read off the operation's own declared requirement (the recorded filter's
+// `authors`), never off any community method (`currentAuthors()` and friends stay
+// unread by this file).
+describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
+  const AUTH_URL = "wss://cauth-oracle.test";
+
+  /** One shared relay object (so two communities can be proven not to
+   *  cross-authenticate against the SAME relay) whose `authenticate` is a
+   *  `vi.fn` recording `{ pubkey, url }`. The pool records every
+   *  `subscription()` call's `{ relays, filters, options }` and every
+   *  `relay(url).request()` call's `{ filters, options }` — the two seams
+   *  the oracle inspects. */
+  function authOraclePool(): {
+    pool: RelayPool;
+    subscriptionCalls: { relays: string[]; filters: { authors?: string[] }[]; options: Record<string, unknown> }[];
+    requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[];
+    authCalls: { pubkey: string; url: string }[];
+  } {
+    const subscriptionCalls: { relays: string[]; filters: { authors?: string[] }[]; options: Record<string, unknown> }[] =
+      [];
+    const requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[] = [];
+    const authCalls: { pubkey: string; url: string }[] = [];
+    const relay = {
+      url: AUTH_URL,
+      challenge: null,
+      challenge$: new BehaviorSubject<string | null>(null),
+      isAuthenticated: () => false,
+      authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+        const pk = await signer.getPublicKey();
+        authCalls.push({ pubkey: pk, url: AUTH_URL });
+        return { ok: true, pubkey: pk, url: AUTH_URL } as unknown as PublishResponse;
+      }),
+      getSupported: async () => null,
+      sync: () => EMPTY,
+      request: (filters: unknown, options: Record<string, unknown> = {}) => {
+        const fs = (Array.isArray(filters) ? filters : [filters]) as { authors?: string[] }[];
+        requestCalls.push({ filters: fs, options });
+        return EMPTY;
+      },
+    };
+    const pool = {
+      status$: new Subject(),
+      relay: () => relay,
+      subscription: (relays: string[], filters: unknown, options: Record<string, unknown> = {}) => {
+        const fs = (Array.isArray(filters) ? filters : [filters]) as { authors?: string[] }[];
+        subscriptionCalls.push({ relays, filters: fs, options });
+        return NEVER;
+      },
+      request: (_relays: string[], filters: unknown) => relay.request(filters),
+      publish: okAll,
+    } as unknown as RelayPool;
+    return { pool, subscriptionCalls, requestCalls, authCalls };
+  }
+
+  /** Synthesizes a `RelayAuthContext`-shaped value the way a relay's own
+   *  `auth-required:` refusal would (RAUTH-01's shape) — the ONLY input this
+   *  file feeds a captured handler. `missingPubkeys` defaults to `authors`
+   *  (the operation's own declared requirement) but can be overridden — the
+   *  isolation test below deliberately widens it to a UNION with the OTHER
+   *  community's authors, so the isolation guarantee under test is the
+   *  handler's own registry lookup (T-15-09: a relay-named pubkey the scope
+   *  holds no signer for gets no signature), not merely an echo of an
+   *  already-narrow input. */
+  function authRequiredCtx(pool: RelayPool, authors: string[], id: string, missingPubkeys: string[] = authors) {
+    return {
+      relay: pool.relay(AUTH_URL) as unknown as Relay,
+      url: AUTH_URL,
+      challenge: null,
+      request: { verb: "REQ" as const, id, filters: [] },
+      requirement: authors,
+      missingPubkeys,
+      reason: "auth-required",
+    };
+  }
+
+  it("waitForAuth matches the filter's own authors, and invoking the captured handler authenticates exactly that scoped set (CAUTH-01)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionCalls, authCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
+    // Expected pubkey set is read off the recorded filter's OWN `authors`
+    // array — never off `community.currentAuthors()` or any other
+    // engine-internal accessor (TEST-01/CAUTH-02).
+    const authors = latest.filters[0]!.authors!;
+    expect(authors.length).toBeGreaterThan(0);
+    expect(latest.options.waitForAuth).toEqual(authors); // CAUTH-01 half
+    expect(typeof latest.options.onAuthRequired).toBe("function");
+
+    const onAuthRequired = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    await onAuthRequired(authRequiredCtx(pool, authors, "sub-1"));
+
+    expect(authCalls.map((c) => c.pubkey).sort()).toEqual([...authors].sort());
+
+    community.dispose();
+  });
+
+  it("two communities sharing one relay each authenticate only their own authors, and a reconnect cycle re-authenticates that same scoped set (CAUTH-02)", async () => {
+    const signerA = new PrivateKeySigner(generateSecretKey());
+    const pubkeyA = await signerA.getPublicKey();
+    const signerB = new PrivateKeySigner(generateSecretKey());
+    const pubkeyB = await signerB.getPublicKey();
+
+    const { pool, subscriptionCalls, authCalls } = authOraclePool();
+
+    const genesisA = await createCommunity({ ownerPubkey: pubkeyA, name: "A", relays: [AUTH_URL] });
+    const communityA = new ConcordCommunity({
+      material: genesisA.material,
+      signer: signerA,
+      pubkey: pubkeyA,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await communityA.start();
+    for (const rumor of genesisA.controlRumors)
+      await communityA.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesisA.guestbookRumors) await communityA.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+    const latestA = subscriptionCalls[subscriptionCalls.length - 1]!;
+    const authorsA = latestA.filters[0]!.authors!;
+    const handlerA = latestA.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+
+    const genesisB = await createCommunity({ ownerPubkey: pubkeyB, name: "B", relays: [AUTH_URL] });
+    const communityB = new ConcordCommunity({
+      material: genesisB.material,
+      signer: signerB,
+      pubkey: pubkeyB,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await communityB.start();
+    for (const rumor of genesisB.controlRumors)
+      await communityB.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesisB.guestbookRumors) await communityB.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+    const latestB = subscriptionCalls[subscriptionCalls.length - 1]!;
+    const authorsB = latestB.filters[0]!.authors!;
+    const handlerB = latestB.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+
+    // Anti-vacuity: both non-empty and disjoint — a fixture that produced two
+    // empty author sets would otherwise satisfy "disjoint" trivially.
+    expect(authorsA.length).toBeGreaterThan(0);
+    expect(authorsB.length).toBeGreaterThan(0);
+    expect(authorsA.some((pk) => authorsB.includes(pk))).toBe(false);
+
+    // The `missingPubkeys` fed to each handler is the UNION of both
+    // communities' authors — a relay-controlled input naming a pubkey the
+    // scope does not hold gets no signature (T-15-09), regardless of what the
+    // relay reports. This is what a shared, client-wide registry would fail:
+    // with one registry answering for both scopes, A's handler would find B's
+    // keys in ITS OWN map too and sign for them.
+    const union = [...authorsA, ...authorsB];
+
+    await handlerA(authRequiredCtx(pool, authorsA, "a-1", union));
+    expect(authCalls.map((c) => c.pubkey).sort()).toEqual([...authorsA].sort());
+    expect(authCalls.some((c) => authorsB.includes(c.pubkey))).toBe(false);
+
+    await handlerB(authRequiredCtx(pool, authorsB, "b-1", union));
+    const afterB = authCalls.slice(authCalls.length - authorsB.length);
+    expect(afterB.map((c) => c.pubkey).sort()).toEqual([...authorsB].sort());
+    expect(afterB.some((c) => authorsA.includes(c.pubkey))).toBe(false);
+
+    // Reconnect: a second auth-required cycle on the SAME operation
+    // re-authenticates the same scoped set again — never a union with B's.
+    const beforeSecondA = authCalls.length;
+    await handlerA(authRequiredCtx(pool, authorsA, "a-2", union));
+    const secondACalls = authCalls.slice(beforeSecondA);
+    expect(secondACalls.map((c) => c.pubkey).sort()).toEqual([...authorsA].sort());
+    expect(secondACalls.some((c) => authorsB.includes(c.pubkey))).toBe(false);
+
+    communityA.dispose();
+    communityB.dispose();
+  });
+
+  it("the recorded live-subscription options leave authRetries/authTimeout undefined (D-05/CAUTH-04), and a second auth-required cycle is never suppressed", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionCalls, authCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
+    // D-05: omitting both selects the documented upstream defaults
+    // (authRetries=1, authTimeout=30_000) rather than concord overriding them.
+    expect(latest.options.authRetries).toBeUndefined();
+    expect(latest.options.authTimeout).toBeUndefined();
+
+    const authors = latest.filters[0]!.authors!;
+    const handler = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+
+    await handler(authRequiredCtx(pool, authors, "cycle-1"));
+    const countAfterFirst = authCalls.length;
+    expect(countAfterFirst).toBeGreaterThan(0);
+
+    // No dedupe/suppression of a second auth-required cycle (D-18).
+    await handler(authRequiredCtx(pool, authors, "cycle-2"));
+    expect(authCalls.length).toBeGreaterThan(countAfterFirst);
+
+    community.dispose();
+  });
+
+  it("the sync path's per-relay request options carry waitForAuth matching that request's own authors and an onAuthRequired function", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, requestCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    await settle();
+
+    expect(requestCalls.length).toBeGreaterThan(0);
+    const first = requestCalls[0]!;
+    const authors = first.filters[0]!.authors!;
+    expect(authors.length).toBeGreaterThan(0);
+    expect(first.options.waitForAuth).toEqual(authors);
+    expect(typeof first.options.onAuthRequired).toBe("function");
+
+    community.dispose();
   });
 });
