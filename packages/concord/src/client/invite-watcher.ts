@@ -11,7 +11,6 @@ import {
   BehaviorSubject,
   Observable,
   Subscription,
-  combineLatest,
   distinctUntilChanged,
   firstValueFrom,
   map,
@@ -20,10 +19,10 @@ import {
 } from "rxjs";
 import { EventStore } from "applesauce-core";
 import { castEvent } from "applesauce-core/casts";
-import { kinds, normalizeURL, type NostrEvent } from "applesauce-core/helpers";
+import { kinds, type NostrEvent } from "applesauce-core/helpers";
 import { getGiftWrapRumor } from "applesauce-common/helpers/gift-wrap";
 import { castUser } from "applesauce-common/casts";
-import type { RelayPool } from "applesauce-relay";
+import type { RelayAuthHandler, RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
 import { logger } from "../logger.js";
@@ -35,7 +34,7 @@ import {
   unlockDirectInvite,
 } from "../helpers/direct-invite.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
-import { ConcordRelayAuth } from "./relay-auth.js";
+import { createUserAuthHandler } from "./auth.js";
 import { defaultStorage, type ConcordStorage } from "./storage.js";
 
 interface DirectInviteRecord {
@@ -59,23 +58,21 @@ export interface InviteWatcherOptions {
   /** Explicit inbox relays to read from instead of discovering 10050/NIP-65 relays. */
   inboxRelays?: string[];
   /** Additional transport-only relays unioned onto every request/subscription this
-   *  watcher performs, and onto the per-relay user-AUTH loop (D-03/D-12). Distinct
-   *  from both `relays` (fallback inboxes) and `inboxRelays` (an explicit inbox
-   *  override): extras are additive transport targets, never a source of
-   *  discovered inboxes, and never written into any published content. Purely
-   *  additive: with no extras configured, {@link ExtraRelays.merge}'s identity
-   *  fast path returns whatever this watcher resolves on its own completely
-   *  unchanged (D-14). When extras ARE configured, the merged transport set is
-   *  normalized and deduplicated (`mergeRelaySets`), which changes the shape of
-   *  relay-target strings and `pool.status$` lookup keys for that configuration. */
+   *  watcher performs — including the reactive user-AUTH answer a gating relay
+   *  among them triggers on refusal (D-03/D-12). Distinct from both `relays`
+   *  (fallback inboxes) and `inboxRelays` (an explicit inbox override): extras
+   *  are additive transport targets, never a source of discovered inboxes, and
+   *  never written into any published content. Purely additive: with no extras
+   *  configured, {@link ExtraRelays.merge}'s identity fast path returns whatever
+   *  this watcher resolves on its own completely unchanged (D-14). When extras
+   *  ARE configured, the merged transport set is normalized and deduplicated
+   *  (`mergeRelaySets`), which changes the shape of relay-target strings for
+   *  that configuration. */
   extraRelays?: ExtraRelaysOption;
   /** Override the storage namespace for cursors/dismissals. */
   cursorKey?: string;
   /** Decrypt invites as they arrive instead of exposing them via `pending$`. */
   autoDecrypt?: boolean;
-  /** NIP-42-authenticate as the user when relays challenge. Defaults to `true`; set `false`
-   *  and call {@link authenticateUser} when {@link needsAuth$} is true. */
-  autoAuthenticate?: boolean;
   /** Also scan all `#p=me` gift wraps to catch unindexed kind-3313 rumors. */
   scanUntagged?: boolean;
   /** Seconds to overlap cursor-based fetches. Defaults to two hours for NIP-59 timestamp randomization. */
@@ -105,8 +102,6 @@ export class InviteWatcher {
   readonly invites$ = new BehaviorSubject<ConcordDirectInvite[]>([]);
   readonly dismissed$ = new BehaviorSubject<Set<string>>(new Set());
   readonly status$ = new BehaviorSubject<string>("");
-  /** Whether any connected inbox relay requires user NIP-42 auth that hasn't been satisfied yet. */
-  readonly needsAuth$: Observable<boolean>;
 
   /** The watcher's debug logger — `options.logger` when threaded from
    *  {@link ConcordClient}, otherwise the `applesauce:concord:invite` module base
@@ -117,9 +112,13 @@ export class InviteWatcher {
   private readonly storage: ConcordStorage;
   private readonly fallbackRelays: string[];
   private readonly inboxRelays?: string[];
-  private readonly relayAuth: ConcordRelayAuth;
+  /** This watcher's OWN user-auth handler (D-09) — a separate `createUserAuthHandler`
+   *  instance from `ConcordClient`'s, since the two engines' latency and user-visible
+   *  auth consequences differ even though they resolve the same identity. Answers a
+   *  gating inbox relay's refusal of one of this watcher's own reads with the user's
+   *  key, never proactively (D-01). */
+  private readonly userOnAuthRequired: RelayAuthHandler;
   private readonly autoDecrypt: boolean;
-  private readonly autoAuthenticate: boolean;
   private readonly scanUntagged: boolean;
   private readonly overlapSeconds: number;
   private readonly requestTimeout: number;
@@ -130,7 +129,6 @@ export class InviteWatcher {
   private readonly extras: ExtraRelays;
 
   private readonly records = new Map<string, DirectInviteRecord>();
-  private authSub?: Subscription;
   private liveSub?: Subscription;
   /** Reacts to every later `extraRelays` emission (D-09): re-opens the live
    *  subscription once one already exists, so a no-op emission before the
@@ -153,11 +151,13 @@ export class InviteWatcher {
     this.storage = options.storage ?? defaultStorage();
     this.fallbackRelays = options.relays ?? [];
     this.inboxRelays = options.inboxRelays;
-    this.relayAuth = new ConcordRelayAuth(options.pool);
+    // This watcher's OWN instance (D-09) — never shared with ConcordClient's.
+    // `() => this.pubkey` rather than a bare value since this watcher resolves
+    // its pubkey asynchronously in `start()`.
+    this.userOnAuthRequired = createUserAuthHandler(this.signer, () => this.pubkey);
     this.autoDecrypt = options.autoDecrypt ?? false;
-    this.autoAuthenticate = options.autoAuthenticate ?? true;
-    // Constructed before needsAuth$ below so its synchronous snapshot is
-    // already seeded when the derivation first builds (D-04). Its position
+    // Constructed before the tail below so its synchronous snapshot is
+    // already seeded when later derivations first build (D-04). Its position
     // here is unchanged (load-bearing) — but EVERYTHING after it, to the end
     // of the constructor, is now wrapped for shape-consistency with
     // `ConcordCommunity`'s and `ConcordPrivateChannel`'s identical guards
@@ -168,15 +168,6 @@ export class InviteWatcher {
     // source-level acceptance criterion covers it.
     this.extras = new ExtraRelays(options.extraRelays);
     try {
-      // Re-derive on every extras emission too (D-11: no first-value-only
-      // operator), computing the merged set locally via `transport()` rather
-      // than widening the public `relays$` subject — a gating extras relay now
-      // factors into needsAuth$ because we authenticate against it (D-03), but
-      // relays$ itself must keep reporting only what discovery found.
-      this.needsAuth$ = combineLatest([this.relays$, this.extras.relays$, this.pool.status$, this.pubkey$]).pipe(
-        map(([relays, , statuses, pubkey]) => this.userNeedsAuth(this.transport(relays), statuses, pubkey)),
-        distinctUntilChanged(),
-      );
       this.pendingCount$ = this.pending$.pipe(
         map((pending) => pending.length),
         distinctUntilChanged(),
@@ -199,9 +190,9 @@ export class InviteWatcher {
    * so {@link start} can re-establish it after {@link stop} closed it —
    * `stop()` is pause-only and must not leave the watcher frozen on a stale
    * extras snapshot forever (WR-06); `dispose()` is what actually releases the
-   * holder. Does NOT rebuild `this.extras` itself — `needsAuth$`'s
-   * `combineLatest` is closed over that same holder's stream, so replacing the
-   * object would silently detach that derivation.
+   * holder. Does NOT rebuild `this.extras` itself — `openLive()`'s churn guard
+   * and `transport()` both close over that same holder's stream, so replacing
+   * the object would silently detach that reactivity.
    */
   private subscribeExtras(): void {
     this.extrasSub = this.extras.relays$.subscribe(() => {
@@ -240,34 +231,11 @@ export class InviteWatcher {
     this.ingestLocalEvents();
     const relays = await this.resolveRelays();
     this.relays$.next(relays);
-    if (this.autoAuthenticate) this.authSub = this.relayAuth.autoAuthenticate(this.signer, this.pubkey);
     await this.refresh();
     this.openLive();
   }
 
-  /** NIP-42-authenticate as the user on every connected inbox relay that requires auth. */
-  async authenticateUser(): Promise<void> {
-    if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
-    // Merged so a gating extras relay also receives the user's AUTH (D-03).
-    const relays = this.transport(this.relays$.value);
-    if (relays.length === 0) return;
-    const statuses = await firstValueFrom(this.pool.status$);
-    for (const url of relays) {
-      const status = statuses[normalizeURL(url)] ?? statuses[url];
-      if (!status?.connected) continue;
-      if (!status.authRequiredForRead && !status.authRequiredForPublish) continue;
-      const relay = this.pool.relay(url);
-      if (relay.isAuthenticated(this.pubkey)) continue;
-      try {
-        await relay.authenticate(this.signer);
-      } catch (err) {
-        this.log("user AUTH to %s failed: %s", url, (err as Error)?.message ?? err);
-        console.warn(`user AUTH to ${url} failed`, err);
-      }
-    }
-  }
-
-  /** Pause: unsubscribes the live/auth/extras-reactivity subscriptions but
+  /** Pause: unsubscribes the live/extras-reactivity subscriptions but
    *  leaves the extras holder ({@link ExtraRelays}) itself alive and
    *  subscribed to the app-supplied source — restartable via {@link start},
    *  which re-establishes the extras reactivity `stop()` closed (WR-06). To
@@ -276,8 +244,6 @@ export class InviteWatcher {
   stop(): void {
     this.log("stopping direct invite watcher");
     this.started = false;
-    this.authSub?.unsubscribe();
-    this.authSub = undefined;
     this.liveSub?.unsubscribe();
     this.liveSub = undefined;
     this.extrasSub.unsubscribe();
@@ -305,7 +271,12 @@ export class InviteWatcher {
 
     this.status$.next("Fetching direct invites...");
     const events = await firstValueFrom(
-      this.pool.request(this.transport(relays), requestFilters).pipe(toArray(), timeout(this.requestTimeout)),
+      this.pool
+        .request(this.transport(relays), requestFilters, {
+          waitForAuth: [this.pubkey],
+          onAuthRequired: this.userOnAuthRequired,
+        })
+        .pipe(toArray(), timeout(this.requestTimeout)),
     ).catch(() => [] as NostrEvent[]);
 
     for (const event of events) await this.ingest(event);
@@ -423,20 +394,6 @@ export class InviteWatcher {
 
   // ---- relay setup --------------------------------------------------------
 
-  private userNeedsAuth(
-    relays: string[],
-    statuses: Record<string, { connected?: boolean; authRequiredForRead?: boolean; authRequiredForPublish?: boolean }>,
-    pubkey?: string,
-  ): boolean {
-    if (!pubkey || relays.length === 0) return false;
-    return relays.some((url) => {
-      const status = statuses[normalizeURL(url)] ?? statuses[url];
-      if (!status?.connected) return false;
-      if (!status.authRequiredForRead && !status.authRequiredForPublish) return false;
-      return !this.pool.relay(url).isAuthenticated(pubkey);
-    });
-  }
-
   private async resolveRelays(): Promise<string[]> {
     if (this.inboxRelays) return this.uniqueRelays(this.inboxRelays);
     if (!this.pubkey) this.pubkey = await this.signer.getPublicKey();
@@ -464,7 +421,12 @@ export class InviteWatcher {
     if (sig === this.liveSignature && this.liveSub) return;
     this.liveSignature = sig;
     this.liveSub?.unsubscribe();
-    this.liveSub = this.pool.subscription(target, this.filters()).subscribe((event) => void this.ingest(event));
+    this.liveSub = this.pool
+      .subscription(target, this.filters(), {
+        waitForAuth: [this.pubkey],
+        onAuthRequired: this.userOnAuthRequired,
+      })
+      .subscribe((event) => void this.ingest(event));
   }
 
   private filters(): Array<{ kinds: number[]; "#p": string[]; "#k"?: string[]; since?: number }> {
