@@ -1,9 +1,9 @@
 ---
 phase: 15
 slug: concord-stream-auth-cleanup
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-13
 ---
 
@@ -44,10 +44,11 @@ created: 2026-08-13
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 15-XX-XX | XX | N | CAUTH-01 | — | Scope handler authenticates only signers its own scope holds | unit | `pnpm vitest run packages/concord/src/client/__tests__/community.test.ts` | ✅ | ⬜ pending |
-| 15-XX-XX | XX | N | CAUTH-02 | T-15-01 | Relay receives AUTH for exactly the scope's k pubkeys, never the client-wide union | unit | `pnpm vitest run packages/concord/src/client/__tests__/community.test.ts` | ❌ W0 | ⬜ pending |
-| 15-XX-XX | XX | N | CAUTH-03 | — | Zero remaining call sites for the five removed mechanisms | structural | `pnpm vitest run packages/concord/src/__tests__/<guard>.test.ts` | ❌ W0 | ⬜ pending |
-| 15-XX-XX | XX | N | CAUTH-04 | — | Failed auth retries per-operation, bounded by `authRetries` | unit | `pnpm vitest run packages/concord/src/client/__tests__/community.test.ts` | ❌ W0 | ⬜ pending |
+| 15-01-T2 | 01 | 1 | CAUTH-01 | T-15-01 | `StreamSigners.onAuthRequired` authenticates only the intersection of a relay's `missingPubkeys` and the scope's own registry; a `null` `missingPubkeys` authenticates nothing, even across two disjoint holders sharing one relay | unit | `pnpm vitest run packages/concord/src/client/__tests__/auth.test.ts` | ✅ | ✅ green |
+| 15-04-T3 | 04 | 3 | CAUTH-02 | T-15-01, T-15-09 | Two communities sharing one relay each authenticate only their own authors, proven under a relay-supplied `missingPubkeys` deliberately widened to the union of both scopes' authors (so the isolation claim cannot pass vacuously); a reconnect cycle re-authenticates that same scoped set, never a union | unit | `pnpm vitest run packages/concord/src/client/__tests__/community.test.ts` | ✅ | ✅ green |
+| 15-07-T2 | 07 | 6 | CAUTH-03 | T-15-15, T-15-16 | Source-tree-walk guard (two roots: `packages/concord/src` and `apps/examples/src/examples/concord`) fails CI on reintroduction of any of the five removed mechanisms, any new ambient-auth trigger (`challenge$`/`authRequiredForRead`/`authRequiredForPublish`), any retry-budget override (`authRetries`/`authTimeout`), or any second missing-pubkeys handler outside `client/auth.ts` | structural | `pnpm vitest run packages/concord/src/__tests__/no-ambient-auth.test.ts` | ✅ | ✅ green |
+| 15-04-T3 | 04 | 3 | CAUTH-04 | T-15-04 | Recorded live-subscription options leave `authRetries`/`authTimeout` undefined so the upstream defaults (`1`, `30_000`) govern, and a second auth-required cycle is never suppressed or deduped | unit | `pnpm vitest run packages/concord/src/client/__tests__/community.test.ts` | ✅ | ✅ green |
+| 15-01-T2 | 01 | 1 | CAUTH-04 | T-15-04 | Invoking the same handler twice with the same `missingPubkeys` sends two AUTHs — no dedupe, no suppression of a second auth-required cycle (D-18) | unit | `pnpm vitest run packages/concord/src/client/__tests__/auth.test.ts` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -66,10 +67,10 @@ created: 2026-08-13
 
 ## Wave 0 Requirements
 
-- [ ] **CAUTH-02 oracle** — extend `fakePool()` / `fakePoolWithStatus()` (`packages/concord/src/client/__tests__/community.test.ts:57-98`) with an `authenticate` spy recording `(pubkey, relayUrl)`; fixture with two scopes sharing a relay; assert (a) per-scope isolation, (b) reconnect re-auths the same scoped set.
-- [ ] **CAUTH-04 retry-parity test** — bounded-retry assertions against the documented `authRetries: 1` contract.
-- [ ] **CAUTH-03 structural guard** — a real Vitest source-walk test, not a manual one-off grep, so reintroduction fails CI.
-- [ ] **Non-vacuity probes** — RED→GREEN for each new test (revert the fix, confirm the test fails for the stated reason, restore). Required **with particular force for CAUTH-02**, whose oracle is design-derived.
+- [x] **CAUTH-02 oracle** — extended `fakePool()` / `fakePoolWithStatus()` (`packages/concord/src/client/__tests__/community.test.ts`) with a captured-handler oracle: two communities share one relay, `missingPubkeys` is deliberately widened to the union of both scopes' authors, and the test asserts (a) per-scope isolation, (b) reconnect re-auths the same scoped set. Landed in plan 15-04, Task 3 — `15-04-SUMMARY.md` coverage item D2.
+- [x] **CAUTH-04 retry-parity test** — bounded-retry assertions against the documented `authRetries`/`authTimeout` defaults staying undefined, plus a no-suppression assertion on a second auth-required cycle. Landed in plan 15-04, Task 3 — `15-04-SUMMARY.md` coverage item D3 — and reinforced by plan 15-01's no-dedupe unit test — `15-01-SUMMARY.md` coverage item D3.
+- [x] **CAUTH-03 structural guard** — `packages/concord/src/__tests__/no-ambient-auth.test.ts`, a real two-root Vitest source-walk test (not a manual grep), asserting zero reintroduction of the five removed mechanisms, no new ambient-auth trigger, no retry-budget override, and no second missing-pubkeys handler outside `client/auth.ts`. Landed in plan 15-07, Task 2 — `15-07-SUMMARY.md` coverage item D2.
+- [x] **Non-vacuity probes** — RED→GREEN recorded for every new oracle: plan 15-01's `auth.test.ts` probe (whole-registry-fallback regression, 2 assertions RED then restored — `15-01-SUMMARY.md`); plan 15-04's CAUTH-02 oracle, two probes (shared-`StreamSigners` regression and `onAuthRequired` omission, both RED then restored — `15-04-SUMMARY.md`); plan 15-07's structural guard, two probes (a reintroduced `autoAuthenticate` literal and a second `missingPubkeys` handler, both RED then restored — `15-07-SUMMARY.md`). All five probes named the offending file/assertion and returned to green after restore.
 
 *Existing fixtures (`fakePool`, `fakePoolWithStatus`, `mkStatus`, `spyOnDrivers`) cover fixture construction; no new framework or config is needed — only new assertions and fixtures within existing files.*
 
@@ -85,11 +86,20 @@ created: 2026-08-13
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (CAUTH-02, CAUTH-03, CAUTH-04)
-- [ ] No watch-mode flags (`pnpm vitest run`, never bare `vitest`)
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (CAUTH-02, CAUTH-03, CAUTH-04)
+- [x] No watch-mode flags (`pnpm vitest run`, never bare `vitest`)
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Full-gate run (2026-08-15, plan 15-08 Task 2), recorded verbatim:**
+
+1. `pnpm --filter applesauce-concord build` — exit 0 (`rimraf dist && tsc`, no errors).
+2. `pnpm --filter applesauce-concord test` — exit 0, `Test Files 55 passed (55)`, `Tests 584 passed (584)`, zero failures, zero skipped.
+3. `pnpm --filter applesauce-examples build` — exit 0, `✓ built in 1.55s` (only pre-existing, unrelated warnings: a third-party `dashjs` CJS/ESM interop notice and a chunk-size-limit notice).
+4. `pnpm build` (repo-wide `turbo build`) — exit 0, `Tasks: 18 successful, 18 total`, `FULL TURBO`.
+
+Structural confirmation: `grep -rn 'ConcordRelayAuth' packages apps --include='*.ts' --include='*.tsx'` returns exactly one hit — the guard's own regex literal at `packages/concord/src/__tests__/no-ambient-auth.test.ts:54`.
+
+**Approval:** 2026-08-15 — all four gates green together; manual live-relay verification (see Manual-Only Verifications above) remains outstanding as a separate blocking human checkpoint in plan 15-08's own task sequence.
