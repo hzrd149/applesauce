@@ -155,3 +155,10 @@ Automated coverage is green (this plan's own gate run, above). What automation c
 *Phase: 15-concord-stream-auth-cleanup*
 *Tasks 1-2 completed: 2026-08-15*
 *Task 3 (blocking human checkpoint): approved 2026-08-15*
+
+## Self-Check: PASSED
+
+- Commits `26bc60a6`, `83b34b12`, `853973c4`, `40ff562c`, `afba2d52` all found in `git log --oneline --all`.
+- `15-08-SUMMARY.md` and `15-VALIDATION.md` both present on disk.
+- `15-08-SUMMARY.md` frontmatter reads `status: complete`.
+- `ROADMAP.md` shows `15-08-PLAN.md` ticked `[x]`, Phase 15 ticked `[x]` with `(completed 2026-08-15)`, and the Progress table row reads `8/8 | Complete | 2026-08-15`.
