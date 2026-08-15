@@ -1051,6 +1051,7 @@ describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02
     expect(requestSpy).toHaveBeenCalledWith(
       expect.anything(),
       expect.arrayContaining([expect.objectContaining({ kinds: [INVITE_BUNDLE_KIND], authors: [linkPub], "#d": [""] })]),
+      expect.objectContaining({ waitForAuth: true, onAuthRequired: expect.any(Function) }),
     );
 
     client.stop();
