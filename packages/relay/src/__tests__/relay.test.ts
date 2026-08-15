@@ -3135,17 +3135,38 @@ describe(":auth sub-namespace (14-04)", () => {
   // are restored even if an assertion throws — a test that passes alone but not in the full
   // file is the leaked-enable-state signature this convention prevents (RESEARCH Pitfall 4).
 
-  it("D-13: an auth line is visible under the broad relay glob", async () => {
-    const baseNamespace = (relay as any).log.namespace as string;
-    const broadGlob = `${baseNamespace}*`;
+  it("D-13: an auth line is visible under the broad all-relays glob", async () => {
+    // The auth namespace is `applesauce:Relay:auth:<url>`, a SIBLING of `applesauce:Relay:<url>`
+    // rather than a child of it, so that `applesauce:Relay:auth:*` filters every relay's auth
+    // trace at once. The consequence, deliberate and asserted below: the per-relay glob
+    // `applesauce:Relay:<url>*` no longer sweeps up that relay's auth lines. Use
+    // `applesauce:Relay:auth:<url>` for one relay's auth, or the all-relays glob for both streams.
+    const allRelaysGlob = "applesauce:Relay:*";
 
-    await withDebugCapture(broadGlob, async (lines) => {
+    await withDebugCapture(allRelaysGlob, async (lines) => {
       subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-broad" }));
       await server.connected;
       server.send(["AUTH", "challenge-broad-glob"]);
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(lines().some((l) => l.includes("challenge-broad-glob"))).toBe(true);
+    });
+  });
+
+  it("D-13: the per-relay glob no longer sweeps up that relay's auth lines (the cost of auth-first ordering)", async () => {
+    const perRelayGlob = `${(relay as any).log.namespace as string}*`;
+
+    await withDebugCapture(perRelayGlob, async (lines) => {
+      subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub-per-relay" }));
+      await server.connected;
+      server.send(["AUTH", "challenge-per-relay-glob"]);
+      // An ordinary base-namespace line proves the capture is live rather than simply empty.
+      (relay as any).log("ordinary non-auth relay line");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const captured = lines();
+      expect(captured.some((l) => l.includes("ordinary non-auth relay line"))).toBe(true);
+      expect(captured.some((l) => l.includes("challenge-per-relay-glob"))).toBe(false);
     });
   });
 

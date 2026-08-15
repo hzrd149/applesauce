@@ -234,7 +234,9 @@ export type RelayOptions = {
 
 export class Relay {
   protected log: typeof logger = logger.extend("Relay");
-  /** D-13/D-20: the relay's NIP-42 connection-track and refusal lines land here, a dedicated `:auth` sub-namespace derived once per relay */
+  /** D-13/D-20: the relay's NIP-42 connection-track and refusal lines land here, a dedicated `auth`
+   *  sub-namespace derived once per relay. The constructor re-derives it as `Relay:auth:<url>` so the
+   *  `auth` segment sits at a fixed depth and `applesauce:Relay:auth:*` filters every relay at once. */
   protected authLog: typeof logger = this.log.extend("auth");
   protected socket: WebSocketSubject<any>;
 
@@ -481,11 +483,14 @@ export class Relay {
     public url: string,
     opts?: RelayOptions,
   ) {
+    // Re-derive authLog off the still-url-less this.log so the namespace reads `Relay:auth:<url>`
+    // rather than `Relay:<url>:auth`: the `auth` segment stays at a fixed depth, so
+    // `applesauce:Relay:auth:*` filters every relay's auth trace at once and the dynamic url lands
+    // last. Without this re-derivation the class field initializer above — which ran before the
+    // constructor body — would leave every relay colliding on one url-less namespace.
+    // Order matters: this MUST precede the url extension of this.log below.
+    this.authLog = this.log.extend("auth").extend(url);
     this.log = this.log.extend(url);
-    // Re-derive authLog AFTER this.log is extended with the url: the class field initializer above ran
-    // before the constructor body, off the pre-url this.log, so without this re-derivation every relay's
-    // auth lines would collide on one url-less namespace instead of each getting its own.
-    this.authLog = this.log.extend("auth");
 
     // Set common options
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;

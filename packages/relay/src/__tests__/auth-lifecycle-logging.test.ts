@@ -61,6 +61,16 @@ function authNamespaceOf(target: Relay): string {
 }
 
 describe("auth lifecycle logging (14-06)", () => {
+  it("ALOG-00: the auth namespace puts `auth` at a fixed depth with the url last, so `applesauce:Relay:auth:*` filters every relay", () => {
+    // Every other test here reads the namespace dynamically, which would silently accept a
+    // reordering back to `Relay:<url>:auth`. This is the one place that pins the shape: the
+    // `auth` segment must precede the dynamic url so a single glob catches all relays at once.
+    const relay = new Relay("wss://namespace-shape.example");
+
+    expect(authNamespaceOf(relay)).toBe("applesauce:Relay:auth:wss://namespace-shape.example");
+    expect((relay as any).log.namespace).toBe("applesauce:Relay:wss://namespace-shape.example");
+  });
+
   it("ALOG-01: a scripted successful NIP-42 exchange produces a readable challenge -> signing -> sent -> result trace", async () => {
     const user = new FakeUser();
     const bystanderA = new FakeUser();

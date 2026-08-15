@@ -12,7 +12,7 @@ import { format } from "node:util";
 //    including failure paths.
 // 2. `debug`'s wildcard matching is regex-based and crosses `:`-delimited namespace segments: a
 //    namespace glob ending in `*` (e.g. `applesauce:Relay:*`) also matches deeper children (e.g.
-//    `applesauce:Relay:wss://foo:auth`). A broad capture will therefore also collect sub-namespace
+//    `applesauce:Relay:auth:wss://foo`). A broad capture will therefore also collect sub-namespace
 //    lines — narrow the namespace passed to `captureDebugOutput`/`withDebugCapture` if that is
 //    undesired for a given test.
 
