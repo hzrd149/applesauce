@@ -15,7 +15,6 @@ import { ChatMessageFactory } from "applesauce-common/factories";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { RelayPool } from "applesauce-relay";
 
-import { ConcordRelayAuth } from "../relay-auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { buildChannelRekey, deriveChannelKeys } from "../../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../../helpers/gift-wrap.js";
@@ -110,7 +109,6 @@ describe("ConcordPrivateChannel (DI, served wraps)", () => {
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store,
       relays: ["wss://fake"],
@@ -188,7 +186,6 @@ describe("ConcordPrivateChannel (DI, served wraps)", () => {
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store,
       relays: ["wss://fake"],
@@ -246,7 +243,6 @@ describe("ConcordPrivateChannel — live subscription requests both retained + e
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store,
       relays: ["wss://fake"],
@@ -271,16 +267,16 @@ describe("ConcordPrivateChannel — live subscription requests both retained + e
 // reader recognises all three engines' extras coverage at a glance — reactivity,
 // churn-guard, and the no-extras byte-identical baseline (D-08/D-09/D-14).
 describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivity, churn, no-extras baseline (D-08/D-09/D-14)", () => {
-  /** Records every `subscription`/`relay()` call's relay-TARGET argument, so
-   *  these tests can assert on what was actually dialled. Local to this
-   *  describe block only — `servingPool` above is untouched. */
+  /** Records every `subscription()` call's relay-TARGET argument, so these
+   *  tests can assert on what was actually dialled live. Local to this
+   *  describe block only — `servingPool` above is untouched. `pool.relay()`
+   *  is no longer a driver-registration seam (D-01) — it's only ever reached
+   *  by the sync loader's own backfill requests, so it isn't tracked here. */
   function extrasPrivateChannelPool(): {
     pool: RelayPool;
     subscriptionTargets: string[][];
-    relayCalls: string[];
   } {
     const subscriptionTargets: string[][] = [];
-    const relayCalls: string[] = [];
     const relay = {
       url: "wss://fake",
       challenge: null,
@@ -293,10 +289,7 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
     };
     const pool = {
       status$: new Subject(),
-      relay: (url: string) => {
-        relayCalls.push(url);
-        return relay;
-      },
+      relay: () => relay,
       subscription: (relays: string[]) => {
         subscriptionTargets.push([...relays]);
         return NEVER;
@@ -304,7 +297,7 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
       request: () => EMPTY,
       publish: async () => [],
     } as unknown as RelayPool;
-    return { pool, subscriptionTargets, relayCalls };
+    return { pool, subscriptionTargets };
   }
 
   // Distinct, non-overlapping hostnames so no assertion can pass by coincidence.
@@ -321,7 +314,7 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
     };
   }
 
-  it("a second extras emission changes the live subscription's relay target and auth registrations, while the channel's own relays stay present (D-08/D-09)", async () => {
+  it("a second extras emission changes the live subscription's relay target, while the channel's own relays stay present (D-08/D-09)", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
     const me = new PrivateKeySigner(generateSecretKey());
@@ -330,7 +323,7 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
     const material = g.material;
     const channel = makeChannelKey();
 
-    const { pool, subscriptionTargets, relayCalls } = extrasPrivateChannelPool();
+    const { pool, subscriptionTargets } = extrasPrivateChannelPool();
     const extras$ = new BehaviorSubject<string[]>([EXTRA_ONE]);
     const store = new RumorStore();
     const sub = new ConcordPrivateChannel({
@@ -339,7 +332,6 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store,
       relays: CHANNEL_RELAYS,
@@ -356,7 +348,6 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
     expect(before.some((u) => u.includes("extras-extra-one"))).toBe(true);
     expect(before.some((u) => u.includes("extras-channel-a"))).toBe(true);
     expect(before.some((u) => u.includes("extras-channel-b"))).toBe(true);
-    expect(relayCalls.some((u) => u.includes("extras-extra-one"))).toBe(true);
 
     // Push a SECOND, DIFFERENT extras value (D-11) — a first-value-only
     // resolver would leave the target frozen on EXTRA_ONE forever.
@@ -369,7 +360,6 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
     expect(after.some((u) => u.includes("extras-extra-one"))).toBe(false);
     expect(after.some((u) => u.includes("extras-channel-a"))).toBe(true);
     expect(after.some((u) => u.includes("extras-channel-b"))).toBe(true);
-    expect(relayCalls.some((u) => u.includes("extras-extra-two"))).toBe(true);
 
     sub.dispose();
   });
@@ -392,7 +382,6 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store,
       relays: CHANNEL_RELAYS,
@@ -434,7 +423,6 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store,
       relays: CHANNEL_RELAYS,
@@ -456,17 +444,18 @@ describe("ConcordPrivateChannel extras (transport-only relay merge) — reactivi
   });
 });
 
-// Gap closure (WR-04): mirrors community.test.ts's identical describe block —
-// the auth-driver registry must PRUNE on every ensureAuth call, not just
-// monotonically append.
-describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — prune-and-refresh, no churn on no-op (WR-04)", () => {
+// Gap closure (WR-04), re-derived for D-01/D-02: mirrors community.test.ts's
+// identical describe block — there is no per-relay auth driver any more, so
+// this suite now proves the channel's live subscription retargets on an
+// extras change and doesn't churn on a no-op re-emission.
+describe("ConcordPrivateChannel live-subscription transport narrowing — retarget on extras change, no churn on no-op (WR-04)", () => {
   const AUTH_CHANNEL_RELAY = "wss://pc-auth-channel.test";
   const AUTH_CHANNEL_RELAYS = [AUTH_CHANNEL_RELAY];
   const AUTH_EXTRA = "wss://pc-auth-extra.test";
-  // `ensureAuth` receives the merged transport set — already normalized by
-  // `mergeRelaySets` (a trailing slash) — so `pool.relay(url)` (and thus the
-  // recorded driver key below) sees the NORMALIZED form, never the raw
-  // literal. Normalize once for every map lookup below.
+  // The live subscription's target list is the merged transport set — already
+  // normalized by `mergeRelaySets` (a trailing slash) — so the recorded
+  // subscription's relay list carries the NORMALIZED form, never the raw
+  // literal. Normalize once for every assertion below.
   const AUTH_CHANNEL_RELAY_KEY = normalizeURL(AUTH_CHANNEL_RELAY);
   const AUTH_EXTRA_KEY = normalizeURL(AUTH_EXTRA);
 
@@ -479,12 +468,19 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     };
   }
 
-  // Distinct relay objects per URL (unlike `extrasPrivateChannelPool()` above,
-  // which shares one relay object for every URL) — so `ConcordRelayAuth`'s
-  // internal per-relay driver map (keyed by `relay.url`) genuinely tracks each
-  // URL independently, and spying on `authenticateStreamKeys` lets these tests
-  // assert teardown/re-creation via the returned Subscription's `closed` flag.
-  function authDriverPool(): { pool: RelayPool } {
+  /** Distinct relay objects per URL (unlike `extrasPrivateChannelPool()` above,
+   *  which shares one relay object for every URL), so a per-relay `authenticate`
+   *  call can be attributed to the URL it was actually made against.
+   *  `pool.subscription` records every call's `{ relays, filters, options }`
+   *  and returns a duck-typed Observable whose `.subscribe()` captures the
+   *  real `Subscription` object `openLive()` receives — so a test can assert
+   *  `.closed` on exactly what the engine holds, without reaching into any
+   *  private field. */
+  function authDriverPool(): {
+    pool: RelayPool;
+    subscriptions: { relays: string[]; filters: unknown; options: Record<string, unknown> }[];
+    liveSubs: Subscription[];
+  } {
     const relays = new Map<string, ReturnType<typeof makeRelay>>();
     function makeRelay(url: string) {
       return {
@@ -492,41 +488,40 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
         challenge: null,
         challenge$: new BehaviorSubject<string | null>(null),
         isAuthenticated: () => false,
-        authenticate: async () => ({ ok: true }),
+        authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+          const pk = await signer.getPublicKey();
+          return { ok: true, pubkey: pk, url } as unknown as PublishResponse;
+        }),
         getSupported: async () => null,
         request: () => EMPTY,
         sync: () => EMPTY,
       };
     }
+    const subscriptions: { relays: string[]; filters: unknown; options: Record<string, unknown> }[] = [];
+    const liveSubs: Subscription[] = [];
     const pool = {
       status$: new Subject(),
       relay: (url: string) => {
         if (!relays.has(url)) relays.set(url, makeRelay(url));
         return relays.get(url)!;
       },
-      subscription: () => NEVER,
+      subscription: (relayUrls: string[], filters: unknown, options: Record<string, unknown>) => {
+        subscriptions.push({ relays: relayUrls, filters, options });
+        return {
+          subscribe: (observerOrNext: unknown) => {
+            const sub = NEVER.subscribe(observerOrNext as never);
+            liveSubs.push(sub);
+            return sub;
+          },
+        } as unknown as Observable<NostrEvent>;
+      },
       request: () => EMPTY,
       publish: async () => [],
     } as unknown as RelayPool;
-    return { pool };
+    return { pool, subscriptions, liveSubs };
   }
 
-  /** Spies on `relayAuth.authenticateStreamKeys`, recording every returned
-   *  Subscription keyed by the (normalized) relay URL it was registered for. */
-  function spyOnDrivers(relayAuth: ConcordRelayAuth): Map<string, Subscription[]> {
-    const driverSubs = new Map<string, Subscription[]>();
-    const original = relayAuth.authenticateStreamKeys.bind(relayAuth);
-    vi.spyOn(relayAuth, "authenticateStreamKeys").mockImplementation((relay) => {
-      const sub = original(relay);
-      const arr = driverSubs.get(relay.url) ?? [];
-      arr.push(sub);
-      driverSubs.set(relay.url, arr);
-      return sub;
-    });
-    return driverSubs;
-  }
-
-  it("removing a relay from the extras set unsubscribes its auth driver, and re-adding it registers a FRESH driver (WR-04)", async () => {
+  it("removing a relay from the extras set stops targeting it, and re-adding it targets it again", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
     const me = new PrivateKeySigner(generateSecretKey());
@@ -535,9 +530,7 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     const material = g.material;
     const channel = makeChannelKey();
 
-    const { pool } = authDriverPool();
-    const relayAuth = new ConcordRelayAuth(pool);
-    const driverSubs = spyOnDrivers(relayAuth);
+    const { pool, subscriptions } = authDriverPool();
     const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
     const store = new RumorStore();
     const sub = new ConcordPrivateChannel({
@@ -546,7 +539,6 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth,
       eventStore: new EventStore(),
       store,
       relays: AUTH_CHANNEL_RELAYS,
@@ -558,27 +550,39 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     await sub.start();
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false);
+    // ExtraRelays.merge's identity fast path (D-14) returns `opts.relays`
+    // UNCHANGED (no normalization) once the extras set is empty, so
+    // membership is checked through `normalizeURL` rather than the raw
+    // recorded strings.
+    const latestUrls = () => subscriptions[subscriptions.length - 1].relays.map(normalizeURL);
+    expect(latestUrls()).toContain(AUTH_EXTRA_KEY);
+    expect(latestUrls()).toContain(AUTH_CHANNEL_RELAY_KEY);
 
     // Narrow the extras set — the extra relay leaves the transport.
     extras$.next([]);
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // torn down (WR-04)
+    expect(latestUrls()).not.toContain(AUTH_EXTRA_KEY);
+    expect(latestUrls()).toContain(AUTH_CHANNEL_RELAY_KEY);
 
-    // Re-add: a FRESH driver must register.
+    // Re-add: the extra relay is targeted again.
     extras$.next([AUTH_EXTRA]);
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(2);
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![1].closed).toBe(false);
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(true); // the removed one stays torn down
+    expect(latestUrls()).toContain(AUTH_EXTRA_KEY);
+    expect(latestUrls()).toContain(AUTH_CHANNEL_RELAY_KEY);
+
+    // Direct replacement for the old teardown assertion: with no per-relay
+    // driver mechanism left (D-01), and this DI'd pool never manufacturing an
+    // `auth-required:` refusal, nothing ever asked the extra relay to
+    // authenticate across the whole test — a relay only ever learns the
+    // pubkeys an operation that actually reaches it names (T-15-08/CAUTH-02).
+    expect(pool.relay(AUTH_EXTRA_KEY).authenticate).not.toHaveBeenCalled();
 
     sub.dispose();
   });
 
-  it("a re-emission with identical membership does not unsubscribe or re-create any existing driver (no churn, D-09)", async () => {
+  it("a re-emission with identical membership does not re-open the live subscription (no churn, D-09)", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
     const me = new PrivateKeySigner(generateSecretKey());
@@ -587,9 +591,7 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     const material = g.material;
     const channel = makeChannelKey();
 
-    const { pool } = authDriverPool();
-    const relayAuth = new ConcordRelayAuth(pool);
-    const driverSubs = spyOnDrivers(relayAuth);
+    const { pool, subscriptions } = authDriverPool();
     const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
     const store = new RumorStore();
     const sub = new ConcordPrivateChannel({
@@ -598,7 +600,6 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth,
       eventStore: new EventStore(),
       store,
       relays: AUTH_CHANNEL_RELAYS,
@@ -610,21 +611,19 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     await sub.start();
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1);
-    expect(driverSubs.get(AUTH_CHANNEL_RELAY_KEY)?.length).toBe(1);
+    const countBefore = subscriptions.length;
 
     // A no-op re-emission — same membership, new array instance.
     extras$.next([AUTH_EXTRA]);
     await settle();
 
-    expect(driverSubs.get(AUTH_EXTRA_KEY)?.length).toBe(1); // no re-create
-    expect(driverSubs.get(AUTH_EXTRA_KEY)![0].closed).toBe(false); // no unsubscribe
-    expect(driverSubs.get(AUTH_CHANNEL_RELAY_KEY)?.length).toBe(1);
+    // openLive()'s `sig` guard (Task 1) suppresses the re-open entirely.
+    expect(subscriptions.length).toBe(countBefore);
 
     sub.dispose();
   });
 
-  it("dispose() unsubscribes every registered auth driver", async () => {
+  it("dispose() closes the live subscription", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
     const me = new PrivateKeySigner(generateSecretKey());
@@ -633,9 +632,7 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     const material = g.material;
     const channel = makeChannelKey();
 
-    const { pool } = authDriverPool();
-    const relayAuth = new ConcordRelayAuth(pool);
-    const driverSubs = spyOnDrivers(relayAuth);
+    const { pool, liveSubs } = authDriverPool();
     const extras$ = new BehaviorSubject<string[]>([AUTH_EXTRA]);
     const store = new RumorStore();
     const sub = new ConcordPrivateChannel({
@@ -644,7 +641,6 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth,
       eventStore: new EventStore(),
       store,
       relays: AUTH_CHANNEL_RELAYS,
@@ -656,9 +652,14 @@ describe("ConcordPrivateChannel auth-driver lifecycle (transport narrowing) — 
     await sub.start();
     await settle();
 
+    const liveSub = liveSubs[liveSubs.length - 1];
+    expect(liveSub.closed).toBe(false);
+
     sub.dispose();
 
-    for (const subs of driverSubs.values()) for (const s of subs) expect(s.closed).toBe(true);
+    expect(liveSub.closed).toBe(true);
+    // No auth machinery outlives it (D-01): there is no driver map, reference
+    // count, or `challenge$` subscription left for `dispose()` to have missed.
   });
 });
 
@@ -711,7 +712,6 @@ describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (W
           signer: me,
           pubkey: myPub,
           pool,
-          relayAuth: new ConcordRelayAuth(pool),
           eventStore: new EventStore(),
           store: new RumorStore(),
           relays: ["wss://fake"],
@@ -736,7 +736,6 @@ describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (W
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store: new RumorStore(),
       relays: ["wss://fake"],
@@ -763,7 +762,6 @@ describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (W
       signer: me,
       pubkey: myPub,
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
       eventStore: new EventStore(),
       store: new RumorStore(),
       relays: ["wss://fake"],

@@ -30,6 +30,7 @@ import {
 import { CORD_COMMUNITY_LIST_MEMBERSHIP_CAP } from "../../__tests__/cord-wire-fixtures.js";
 import { INVITE_LIST_KIND } from "../../helpers/invite-list.js";
 import { createCommunity } from "../../helpers/community.js";
+import { deriveConcordKeys } from "../../helpers/keys.js";
 import {
   INVITE_BUNDLE_KIND,
   buildInviteBundle,
@@ -51,6 +52,11 @@ function fakePool(opts: { challenge?: string } = {}): {
   pool: RelayPool;
   published: NostrEvent[];
   authenticatedPubkeys: string[];
+  /** Every live-`subscription()` call's options bag, in call order — lets a
+   *  test capture a scope's `onAuthRequired` handler (CAUTH-01/02: it's only
+   *  ever invoked by a relay's own `auth-required:` refusal, never by
+   *  registration or `challenge$` presence alone) and invoke it directly. */
+  subscriptionOptions: Record<string, unknown>[];
 } {
   const authenticated = new Set<string>();
   const authenticatedPubkeys: string[] = [];
@@ -72,6 +78,7 @@ function fakePool(opts: { challenge?: string } = {}): {
     sync: () => EMPTY,
   };
   const published: NostrEvent[] = [];
+  const subscriptionOptions: Record<string, unknown>[] = [];
   const pool = {
     status$: challenge
       ? new BehaviorSubject({
@@ -90,14 +97,17 @@ function fakePool(opts: { challenge?: string } = {}): {
         })
       : new Subject(),
     relay: () => relay,
-    subscription: () => NEVER,
+    subscription: (_relays: string[], _filters: unknown, options: Record<string, unknown> = {}) => {
+      subscriptionOptions.push(options);
+      return NEVER;
+    },
     request: () => EMPTY,
     publish: vi.fn(async (_relays: string[], event: NostrEvent) => {
       published.push(event);
       return [];
     }),
   } as unknown as RelayPool;
-  return { pool, published, authenticatedPubkeys };
+  return { pool, published, authenticatedPubkeys, subscriptionOptions };
 }
 
 // A real genesis community + the self-encrypted 13302 that lists it as a live membership.
@@ -201,7 +211,7 @@ describe("ConcordClient community list (DI, no network)", () => {
     client.stop();
   });
 
-  it("community startup authenticates stream keys, not the user key", async () => {
+  it("community startup's live-subscription onAuthRequired handler authenticates stream keys, not the user key", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const genesis = await createCommunity({
@@ -214,14 +224,37 @@ describe("ConcordClient community list (DI, no network)", () => {
     const storage = memoryStorage();
     await storage.setItem(pubkey, JSON.stringify([material]));
 
-    const { pool, authenticatedPubkeys } = fakePool({ challenge: "challenge-abc" });
+    const { pool, authenticatedPubkeys, subscriptionOptions } = fakePool({ challenge: "challenge-abc" });
     const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage, relays: ["wss://fake"] });
 
     await client.start();
     await settle();
 
     expect(client.getCommunity(material.community_id)).toBeDefined();
+
+    // No registration- or challenge$-triggered proactive AUTH exists any more
+    // (D-01) — the community's live-subscription options carry its OWN
+    // onAuthRequired handler; capture it and invoke it the way a relay's
+    // `auth-required:` refusal would (CAUTH-01/02), naming the community's
+    // own core stream-plane pubkeys, derived independently via
+    // `deriveConcordKeys`, never read off the engine itself.
+    const captured = subscriptionOptions.find((o) => typeof o.onAuthRequired === "function");
+    expect(captured).toBeDefined();
+    const keys = deriveConcordKeys(material, []);
+    const streamPubkeys = [keys.control.pk, keys.guestbook.pk, keys.dissolved.pk, keys.nextBaseRekey.key.pk];
+
+    await (captured!.onAuthRequired as (ctx: unknown) => Promise<void>)({
+      relay: pool.relay("wss://fake"),
+      url: "wss://fake",
+      challenge: "challenge-abc",
+      request: { verb: "REQ", id: "sub", filters: [] },
+      requirement: streamPubkeys,
+      missingPubkeys: streamPubkeys,
+      reason: "auth-required",
+    });
+
     expect(authenticatedPubkeys.length).toBeGreaterThan(0);
+    expect(authenticatedPubkeys).toEqual(expect.arrayContaining(streamPubkeys));
     expect(authenticatedPubkeys).not.toContain(pubkey);
 
     client.stop();

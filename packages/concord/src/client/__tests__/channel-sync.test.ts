@@ -15,7 +15,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { RelayPool } from "applesauce-relay";
 
-import { ConcordRelayAuth } from "../relay-auth.js";
+import { StreamSigners } from "../auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { buildChannelRekey } from "../../helpers/keys.js";
 import type { ChannelKey } from "../../types.js";
@@ -121,13 +121,13 @@ describe("syncChannelEpochs — D-04 backward re-read spine (ROTATE-06, channel 
     const pool = servingPool(events);
     const ctx: ChannelSyncContext = {
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
+      signers: new StreamSigners(),
       eventStore: new EventStore(),
       signer: self,
       self: selfPub,
       relays: ["wss://fake"],
       route: () => {},
-      ensureAuth: () => {},
+      onAuthRequired: () => {},
       material,
       isAuthorized: (r) => r === rotatorAPub || r === rotatorBPub,
       logger: logger.extend("test"),
@@ -184,13 +184,13 @@ describe("syncChannelEpochs — D-04 backward re-read spine (ROTATE-06, channel 
     const pool = servingPool([...highPlan.rekeyWraps]);
     const ctx: ChannelSyncContext = {
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
+      signers: new StreamSigners(),
       eventStore: new EventStore(),
       signer: self,
       self: selfPub,
       relays: ["wss://fake"],
       route: () => {},
-      ensureAuth: () => {},
+      onAuthRequired: () => {},
       material,
       isAuthorized: (r) => r === rotatorAPub,
       logger: logger.extend("test"),

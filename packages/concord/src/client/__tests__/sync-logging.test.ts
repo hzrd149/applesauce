@@ -25,7 +25,7 @@ import { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { RelayPool } from "applesauce-relay";
 
-import { ConcordRelayAuth } from "../relay-auth.js";
+import { StreamSigners } from "../auth.js";
 import { createCommunity } from "../../helpers/community.js";
 import { deriveConcordKeys } from "../../helpers/keys.js";
 import { toRumor, sealRumor, wrapSeal } from "../../operations/gift-wrap.js";
@@ -98,13 +98,13 @@ describe("syncEpoch decode-boundary logging — D-05/D-06/D-07 litmus (D-11/TEST
     const decode = spyLogger();
     const ctx: SyncContext = {
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
+      signers: new StreamSigners(),
       eventStore: new EventStore(),
       signer: self,
       self: selfPub,
       relays: ["wss://fake"],
       route: () => {},
-      ensureAuth: () => {},
+      onAuthRequired: () => {},
       logger: aggregate.log,
       decodeLogger: decode.log,
     };
@@ -163,13 +163,13 @@ describe("syncEpoch decode-boundary logging — D-05/D-06/D-07 litmus (D-11/TEST
     const decode = spyLogger();
     const ctx: SyncContext = {
       pool,
-      relayAuth: new ConcordRelayAuth(pool),
+      signers: new StreamSigners(),
       eventStore: new EventStore(),
       signer: self,
       self: selfPub,
       relays: ["wss://fake"],
       route: () => {},
-      ensureAuth: () => {},
+      onAuthRequired: () => {},
       logger: aggregate.log,
       decodeLogger: decode.log,
     };
