@@ -1,89 +1,31 @@
 ---
 phase: 15-concord-stream-auth-cleanup
-verified: 2026-08-18T08:55:41Z
-status: gaps_found
-score: 3/4 must-haves verified
+verified: 2026-08-18T17:05:00Z
+status: passed
+score: 4/4 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-re_verification: false
-gaps:
-  - truth: "A community or private-channel engine's operation authenticates only the waitForAuth pubkeys its own scope is missing, drawn from keys held by that scope (CAUTH-01)"
-    status: failed
-    reason: >
-      Every publish into a PRIVATE channel (sendMessage, sendEvent, sendThread, replyToThread,
-      react, editMessage, deleteMessage — all routed through ConcordCommunity.publishToPlane)
-      declares waitForAuth: [wrap.pubkey] where wrap.pubkey is the private channel's
-      message-plane stream key (helpers/keys.ts deriveConcordKeys populates keys.channels for
-      BOTH public and private channels the community holds a key for; planeKeyFor resolves a
-      channel wrap through that same map). But the community's own StreamSigners holder is
-      only ever registered with publicChannelKeys() (community.ts:719-724, filters `!c.private`)
-      in openLive()/reconcileLive() — no code path registers a private channel's message-plane
-      GroupKey into the community's holder. The result: on an auth-gating relay, the community's
-      onAuthRequired handler is asked to authenticate a pubkey it holds no signer for, silently
-      continues past it (auth.ts:99-101, confirmed WR-03), the publish waits out the 30s
-      authTimeout, publishToPlane's .catch swallows the failure with only a console.warn, and the
-      optimistic local echo (community.ts:1610) has already rendered the message as sent. This is
-      a regression: pre-phase, pool.publish carried no options (waitForAuth defaulted to true) and
-      the deleted client-wide ConcordRelayAuth registry did hold private-channel keys via
-      channel-sync.ts's registerStreamKeys.
-    artifacts:
-      - path: "packages/concord/src/client/community.ts"
-        issue: "publicChannelKeys() (used at :753-759 openLive, :785 reconcileLive) filters out private channels; no path registers a held private channel's message-plane key into the community's own StreamSigners holder, yet streamPublishOptions (:1590-1598) names that exact key for every private-channel send"
-      - path: "packages/concord/src/helpers/keys.ts"
-        issue: "deriveConcordKeys (:171-203) populates keys.channels for private channels too, so planeKeyFor/wrapForTarget silently hand back a stream pubkey the community's holder was never told to answer for"
-      - path: "packages/concord/src/client/__tests__/community.test.ts"
-        issue: "the publish-answerability oracle at :3545-3615 creates a private channel (:3564) but never sends into it, so the exact gap this loop is designed to catch (WR-06) goes unexercised"
-    missing:
-      - "Register the private channels the community holds a message-plane key for (not just publicChannelKeys()) into the community's own StreamSigners holder — e.g. add a heldChannelKeys() alongside publicChannelKeys() and register it in openLive()/reconcileLive(), per 15-REVIEW.md's CR-01 fix sketch — without widening what the community subscribes to (currentAuthors() must stay public-only)"
-      - "A regression test: send a message into a private channel inside (or alongside) the community.test.ts publish-answerability scenario, so the existing authCalls assertion loop covers it (closes WR-06 for this case)"
-      - "Re-run the human live-relay checkpoint (or an equivalent scripted check) specifically against a private-channel send, since the approved 2026-08-15 checkpoint covered rumor-stores/crypto-history/direct-invites/admin-management but none of those steps performed one"
-  - truth: "Robustness/observability hardening confirmed during CR-01 review (WR-01, WR-02, WR-03, WR-04, WR-05, WR-06, WR-07, WR-08)"
-    status: partial
-    reason: >
-      Independently re-derived against the current source (not merely restated from 15-REVIEW.md).
-      None of these individually block CAUTH-01..04's literal wording, but several compound CR-01's
-      blast radius or its detectability, so a gap-closure plan addressing CR-01 should fold them in
-      together rather than requiring a second review pass.
-    artifacts:
-      - path: "packages/concord/src/client/community.ts"
-        issue: "WR-01 (:1220, :1556-1560): refound()/rotateChannel() recompute the channel-rekey GroupKey from this.material.community_root re-read AFTER several awaits (admin.vacFor, buildChannelRekey/buildRefounding, the root-roll requireMajority loop), while the wraps being registered for were built from the material/keys snapshot captured before those awaits — confirmed by direct read of both call sites; checkRekey()'s 200ms timer can call adoptRefounding() during that window and reassign this.keys/this.material mid-flight"
-      - path: "packages/concord/src/client/community.ts"
-        issue: "WR-02 (:302, :359, :560): authFailure is a mutable field read exactly once at the end of start()/walk(); confirmed no other read site exists, and authenticated$ is confirmed removed from ConcordCommunityStatus (types.ts), so a steady-state auth rejection (live subscription, any publish, reconcileLive's catch-up sync, checkRekey) has no surface at all post-walk"
-      - path: "packages/concord/src/client/auth.ts"
-        issue: "WR-03 (:98-117): confirmed — the onAuthRequired loop `continue`s past any pubkey with no held signer, with no log and no onAuthFailure call; this is the exact mechanism that makes CR-01 fail silently rather than loudly"
-      - path: "packages/concord/src/client/invite-manager.ts"
-        issue: "WR-04 (:121): confirmed — `new StreamSigners()` with no onAuthFailure, unlike community.ts (:359) and private-channel.ts (:173), so a relay rejecting the invite-link key during revokeBundle() surfaces nowhere"
-      - path: "apps/examples/src/examples/concord/crypto-history.tsx, rumor-stores.tsx, direct-invites.tsx"
-        issue: "WR-05: confirmed — each declares `const streamSigners = new StreamSigners();` at module scope (crypto-history.tsx:49, rumor-stores.tsx:43, direct-invites.tsx:36), outliving the React component and accumulating keys across communities if the walker is repointed at a second invite/material"
-      - path: "packages/concord/src/client/__tests__/community.test.ts"
-        issue: "WR-06 (:3537-3615): confirmed — the 'every publish a community makes' scenario omits all four refound() publish sites, refreshInviteBundles(), and any private-channel send; this is the same gap that let CR-01 ship"
-      - path: "packages/concord/src/client/sync.ts"
-        issue: "WR-07 (:123): confirmed — `as unknown as SyncAuthHandler` cast is safe for every in-package caller today (SyncAuthContext omits only `request`, which none of them read) but is not enforced by the type system for an external consumer of the public SyncContext/syncAuthors API"
-      - path: "packages/concord/src/__tests__/no-ambient-auth.test.ts"
-        issue: "WR-08 (:93-127): confirmed — only the REMOVED_MECHANISMS sweep (:82) scans EXAMPLES_ROOT; the AMBIENT_AUTH_TRIGGER, RETRY_BUDGET_OVERRIDE, and MISSING_PUBKEYS_FIELD checks (:93-127) filter to SRC_ROOT only, so an example could reintroduce a proactive challenge$ subscriber or a second missingPubkeys handler with the guard green"
-    missing:
-      - "WR-01: capture this.material.community_root once, before the first await, in both refound() and rotateChannel(), and use that local for both the wrap build and the signer registration"
-      - "WR-02: replace the latched authFailure field with a value stream (push through error$ or a dedicated Subject) so a post-walk auth rejection surfaces without requiring a second walk"
-      - "WR-03: log (at minimum) when onAuthRequired finds zero signers for a non-empty missingPubkeys, so a future registration gap is loud instead of silent"
-      - "WR-04: thread an onAuthFailure sink into invite-manager.ts's StreamSigners construction"
-      - "WR-05: move the examples' StreamSigners construction into the component (useRef/useMemo scoped to the active material), and drop the singleton pattern from the shipped documentation-by-example"
-      - "WR-06: extend the publish-answerability scenario to cover refound()'s four publish sites, refreshInviteBundles(), and a private-channel send"
-      - "WR-07: narrow SyncContext.onAuthRequired's type to the fields SyncAuthContext actually carries, removing the need for the cast"
-      - "WR-08: hoist a combined SRC_ROOT + EXAMPLES_ROOT file list and reuse it across all four no-ambient-auth checks"
-deferred: []
-human_verification:
-  - test: "Send a message into a private channel against a live auth-gating relay (after CR-01 is fixed), confirm the relay's auth-required refusal is satisfied and the message actually lands (not just the optimistic local echo)"
-    expected: "The relay accepts the EVENT after AUTH; the message is retrievable from a second client/session, not just visible via local optimistic echo in the sending session"
-    why_human: "The approved 2026-08-15 human checkpoint exercised rumor-stores, crypto-history, direct-invites, and admin-management, none of which perform a private-channel send — this is the one scenario CR-01 shows was never exercised against a real relay"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 3/4
+  gaps_closed:
+    - "CAUTH-01: a community's operation now authenticates only the waitForAuth pubkeys its own scope is missing — the private-channel publish gap (CR-01) is closed"
+    - "WR-01..WR-08 hardening (previously scored 'partial'): all eight closed or closed-with-a-documented-residual per round-2 code review, independently spot-checked against current source"
+  gaps_remaining: []
+  regressions: []
 ---
 
 # Phase 15: Concord Stream-Auth Cleanup Verification Report
 
 **Phase Goal:** Concord's client-wide, append-only stream-signer registry and ambient relay challenge/authentication drivers are replaced with operation-scoped `onAuthRequired` handlers owned by each community and private-channel engine — each operation authenticates only the pubkeys its own scope is missing, using keys held by that scope, and the client-wide driver machinery (`authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication) is removed or narrowed once callers migrate.
 
-**Verified:** 2026-08-18T08:55:41Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-08-18T17:05:00Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure (plans 15-09..15-14)
+
+## What changed since the prior pass
+
+The prior verification (2026-08-18T08:55:41Z) scored 3/4 and returned `gaps_found`, with two gap entries: CAUTH-01 `failed` (the private-channel publish path declared a `waitForAuth` pubkey the community's own `StreamSigners` holder was never registered with — CR-01), and a `partial` entry covering hardening items WR-01..WR-08 surfaced by that same round-1 review. Gap-closure plans 15-09..15-14 landed against both entries. A round-2 code review (`15-REVIEW.md`) then ran against the closure diff and found 0 blockers / 4 warnings (WR-09..WR-12) / 3 info — this pass independently re-derives the CAUTH-01 disposition rather than taking the SUMMARYs or the round-2 report on faith (see "Independent verification of WR-09" below).
 
 ## Goal Achievement
 
@@ -91,84 +33,105 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | (CAUTH-01) A community/private-channel operation authenticates only its own scope's missing pubkeys, drawn from keys held by that scope | ✗ FAILED | `community.ts` `streamPublishOptions` names `wrap.pubkey` for every channel publish (`:1590-1598`); `helpers/keys.ts` `deriveConcordKeys` populates `keys.channels` for private channels too (`:171-203`); but `publicChannelKeys()` (`:719-724`) — the only source ever registered into the community's `StreamSigners` (`:753-759`, `:785`) — filters `!c.private`. Confirmed by direct trace, not by restating the review. A private-channel send (`sendMessage`/`sendEvent`/`sendThread`/`replyToThread`/`react`/`editMessage`/`deleteMessage`, all via `publishToPlane`) declares a `waitForAuth` pubkey the community's own holder can never answer. |
-| 2 | (CAUTH-02) A relay observed during a scoped operation receives AUTH only for the k pubkeys that scope's operations require, and a reconnect re-authenticates the same scoped set | ✓ VERIFIED (with CR-01 caveat) | `auth.test.ts:139` ("two disjoint holders sharing one relay only ever authenticate their own key") and `community.test.ts:3401` ("two communities sharing one relay each authenticate only their own authors, and a reconnect cycle re-authenticates that same scoped set") are genuine behavioral tests — read/subscription scoping and reconnect re-auth are exercised, not merely present. This truth's core claim (bounded, non-union scoping) holds structurally for every path checked. The private-channel publish gap (row 1) is a failure to authenticate at all for that one path, not an over-authentication of the CAUTH-02 kind — noted here as a related consequence, not double-counted as a second failure. |
-| 3 | (CAUTH-03, amended) `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, `autoAuthenticate`, and the invite watcher's two relay-wide auth-required flag readers are removed with zero remaining call sites | ✓ VERIFIED | Independent repo-wide grep (not the guard test) across `packages/concord/src` and `apps/examples/src/examples/concord` for `authenticateStreamKeys`, `version$` (removed from `ConcordCommunityStatus`/`ConcordPrivateChannelStatus`/`ConcordClientStatus` — types.ts), `ensureAuth`, `autoAuthenticate`, `authRequiredForRead`, `authRequiredForPublish` returns zero non-test hits. `no-ambient-auth.test.ts`'s structural guard (222 tests total in the concord + root test dirs) passes. Weakness noted: WR-08 confirmed — 3 of the guard's 4 checks only scan `SRC_ROOT`, not `EXAMPLES_ROOT`, so the guard itself is a weaker backstop than its name claims; folded into gaps as a hardening item, not a truth failure since the removal was independently confirmed by direct grep. |
-| 4 | (CAUTH-04) A stream operation that fails auth still retries per-operation after the migration, matching pre-migration per-operation retry behavior | ✓ VERIFIED | Independent grep for `authRetries`/`authTimeout` across `packages/concord/src` and `apps/examples/src/examples/concord` (excluding tests) returns zero hits — no call site overrides the upstream defaults (1 retry / 30_000ms). `community.test.ts`'s publish-answerability oracle asserts `authRetries`/`authTimeout` are `undefined` on every recorded publish, and `auth.test.ts:168` confirms invoking the same handler twice with the same `missingPubkeys` sends two AUTHs (no dedupe) — the behavioral evidence for "retries per-operation." |
+| 1 | (CAUTH-01) A community/private-channel operation authenticates only its own scope's missing pubkeys, drawn from keys held by that scope | ✓ VERIFIED | `ConcordCommunity.publishToPlane` (`community.ts:1629-1650`) resolves `{ wrap, key }` from `wrapForTarget`, registers `key` into `this.signers` (`:1646`), and only then calls `streamPublishOptions(wrap)` (`:1647`), which names `event.pubkey` (== `key.pk`, since `buildWrap` always finalizes with the stream secret key) as the sole `waitForAuth` entry. This closes CR-01 by construction, on every plane target, without depending on any pre-registration. Confirmed both by direct read and by running `community.test.ts`'s "every publish a community makes..." scenario (66 assertions, private-channel send named explicitly at `:3755-3766`) — passes green on current source (`pnpm vitest run … -t "every publish a community makes declares an author its own holder can answer for"` → 1 passed). |
+| 2 | (CAUTH-02) A relay observed during a scoped operation receives AUTH only for the k pubkeys that scope's operations require, and a reconnect re-authenticates the same scoped set | ✓ VERIFIED (regression check — unchanged since prior pass) | `auth.test.ts:139` and `community.test.ts:3401`'s two-community/one-relay isolation-plus-reconnect oracle are untouched by the gap-closure diff (`git diff 9b2b3028..HEAD` confirms no edits to that scenario's assertions); the mechanism they exercise (`StreamSigners.onAuthRequired` intersecting `missingPubkeys` against its own registry, no fallback) is unchanged. Design-assessed per REQUIREMENTS.md note, since no pre-phase recording of the churn behavior exists. |
+| 3 | (CAUTH-03, amended) `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, `autoAuthenticate`, and the invite watcher's two relay-wide auth-required flag readers are removed with zero remaining call sites | ✓ VERIFIED | Independent repo-wide grep (this pass, not restated) across `packages/concord/src` and `apps/examples/src/examples/concord`, excluding tests, for `authenticateStreamKeys`, `version$`, `ensureAuth`, `autoAuthenticate`, `authRequiredForRead`, `authRequiredForPublish` returns zero hits. `ConcordRelayAuth` returns exactly one hit — the guard's own regex literal. WR-08 (previously "folded into gaps as hardening") is now closed: `no-ambient-auth.test.ts`'s `allFiles()` (`:51-53`) feeds all four checks (`:90`, `:102`, `:114`, `:126`), confirmed by direct read — all four scan both `SRC_ROOT` and `EXAMPLES_ROOT`, not just `SRC_ROOT` as before. |
+| 4 | (CAUTH-04) A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior | ✓ VERIFIED (regression check — unchanged since prior pass) | Independent grep for `authRetries`/`authTimeout` across `packages/concord/src` and `apps/examples/src/examples/concord` (excluding tests) returns zero hits — no call site overrides the upstream defaults. Untouched by the gap-closure diff. |
 
-**Score:** 3/4 truths verified (1 FAILED: CAUTH-01, for the private-channel publish path)
+**Score:** 4/4 truths verified
+
+### Independent verification of WR-09 (does `heldChannelKeys()` matter to CAUTH-01?)
+
+The round-2 review's central finding was that `heldChannelKeys()` — presented in 15-09 as *the* CR-01 fix — contributes nothing, and that CR-01 is actually closed by `publishToPlane`'s own per-publish key registration. This pass re-ran that mutation independently rather than trusting the review narrative: with both `heldChannelKeys()` call sites in `community.ts` (`openLive():780`, `reconcileLive():807`) temporarily reverted to `publicChannelKeys()`, the CR-01 regression test (`community.test.ts`'s "every publish a community makes..." scenario, including the explicit private-channel-send assertions at `:3755-3766`) **still passes** (confirmed via `pnpm vitest run` against the mutated file). The file was restored immediately after (`git diff --stat` confirms byte-identical, no residual change).
+
+This confirms the structural claim: `openLive()`'s churn guard (`community.ts:773`, keyed on `currentAuthors()` — public-channel-only) returns before the `heldChannelKeys()` registration line runs on the exact "reveal a private channel after the first live subscription" path CR-01 described, and `reconcileLive()`'s copy is gated behind the same public-only `publicIds` filter. `heldChannelKeys()` only fires at all on the very first `openLive()` call (when `this.liveSub` is still undefined), which is before this pass's judgment is needed. CAUTH-01 is genuinely satisfied — but by one mechanism (`publishToPlane`'s per-publish registration), not the two the 15-09 SUMMARY claims.
+
+**This is a quality finding, not a truth failure.** `heldChannelKeys()` registers only keys the community itself already holds (never another scope's or the user's key), so it does not violate "never the full client-wide registry" — it is dead code plus a misleading doc comment (`community.ts:727-742`, `:1607-1611`) claiming a fix it does not perform, not a functional gap in CAUTH-01. See Anti-Patterns table below; recommend backlog cleanup (delete `heldChannelKeys()`, restore `publicChannelKeys()` at both call sites, correct the two comments), consistent with `15-REVIEW.md`'s WR-09 fix sketch.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `packages/concord/src/client/auth.ts` (`StreamSigners`) | Per-scope holder that intersects `missingPubkeys` against its own registry, never falls back | ✓ VERIFIED | `onAuthRequired` (`:98-117`) is exactly this; confirmed no fallback path exists. Silent-continue on an unheld pubkey confirmed (WR-03, folded into gaps). |
-| `packages/concord/src/client/community.ts` (`ConcordCommunity`) | Owns its own `StreamSigners`, registers only its own scope's keys, answers its own reads/publishes | ⚠️ HOLLOW for private-channel publishes | Holder exists, is wired into `openLive`/`reconcileLive`/every publish site, but the registration source (`publicChannelKeys()`) structurally excludes private channels while `streamPublishOptions` names them anyway (CR-01). |
-| `packages/concord/src/client/private-channel.ts` (`ConcordPrivateChannel`) | Owns its own `StreamSigners` for the private channel's message-plane + rekey keys, used for the sub-engine's own reads | ✓ VERIFIED | `this.signers = new StreamSigners({...})` (`:173`), `this.signers.register([this.keys.current, ...this.keys.nextRekey...])` (`:373`) — the sub-engine correctly holds and answers for its own key. It does not expose a `sendMessage`; sending is done through `ConcordCommunity`, which is exactly where CR-01 lives. |
-| `packages/concord/src/__tests__/no-ambient-auth.test.ts` | Structural guard closing the reintroduction class for all five removed mechanisms, across both `packages/concord/src` and the concord examples | ⚠️ PARTIAL | Mechanism-removal sweep (test 2) covers both roots; the other three checks (ambient trigger, retry override, missing-pubkeys handler) only scan `SRC_ROOT` (WR-08, folded into gaps). |
+| `packages/concord/src/client/auth.ts` (`StreamSigners`) | Per-scope holder that intersects `missingPubkeys` against its own registry, never falls back; loud on total answering failure (WR-03) | ✓ VERIFIED | `onAuthRequired` (`:178-208`) intersects as before; `failNoSigner` (`:149-152`, called at `:206`) now fires a `:auth` trace + `onAuthFailure` when `answered === 0` over a non-empty `missingPubkeys` — confirmed by direct read, closing WR-03. |
+| `packages/concord/src/client/community.ts` (`ConcordCommunity`) | Owns its own `StreamSigners`, registers only its own scope's keys, answers its own reads/publishes including private-channel sends | ✓ VERIFIED | `publishToPlane` (`:1629-1650`) closes the CR-01 hole by construction (see truth #1). `heldChannelKeys()` is present but inert for the scenario it targets (WR-09, quality item, not a functional gap). |
+| `packages/concord/src/client/private-channel.ts` (`ConcordPrivateChannel`) | Owns its own `StreamSigners` for the private channel's message-plane + rekey keys, used for the sub-engine's own reads | ✓ VERIFIED | Unchanged since prior pass; `this.signers.register([this.keys.current, ...])` (`:373`) confirmed present. |
+| `packages/concord/src/__tests__/no-ambient-auth.test.ts` | Structural guard closing the reintroduction class for all five removed mechanisms, across both `packages/concord/src` and the concord examples | ✓ VERIFIED | WR-08 closed: all four checks now walk both roots via a shared `allFiles()` (`:51-53`, consumed at `:90`, `:102`, `:114`, `:126`) — confirmed by direct read, no longer 3-of-4-scan-`SRC_ROOT`-only as in the prior pass. |
+| `packages/concord/src/client/invite-manager.ts` | Invite watcher's holder has a failure sink | ✓ VERIFIED, with residual | `onAuthFailure: (message) => this.log(...)` present (`:150`), closing WR-04 as specified. Residual: `revoke()`/`revokeBundle()` still return `revoked: true` after a swallowed publish failure (`:288-296`) — WR-12, pre-existing (predates `9b2b3028`), not a CAUTH-01..04 regression; flagged for backlog below. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|----|--------|---------|
-| `ConcordCommunity.publishToPlane` (channel plane) | `ConcordCommunity.signers` (`StreamSigners`) | `streamPublishOptions` → `onAuthRequired: this.signers.onAuthRequired` | ✗ NOT_WIRED for private channels | The link is syntactically present (every publish passes the handler) but semantically broken for private-channel sends: the handler is wired to a registry that was never given the key `streamPublishOptions` names. |
-| `ConcordCommunity.openLive`/`reconcileLive` | `ConcordCommunity.signers` | `this.signers.register([...core planes, ...publicChannelKeys()])` | ✓ WIRED (public channels only, by design) | Confirmed `publicChannelKeys()` filters `!c.private` (`:719-724`); this is correct and intentional for the *subscription* set, but the same filtered list is the only thing ever registered — there is no second, broader registration for the message-plane keys the community also *publishes* on behalf of private channels. |
-| `ConcordCommunity.rotateChannel`/`refound` | `ConcordCommunity.signers` | `this.signers.register([channelRekeyGroupKey(...)])` | ✓ WIRED, but registers only the **rekey** address, not the message-plane key | Confirmed at `:1220` and `:1556-1560`; does not cover CR-01 (message-plane sends are a separate key). WR-01's race (root re-read after awaits) also lives on this link. |
-| `ConcordPrivateChannel` | its own `StreamSigners` | `this.signers.register([this.keys.current, ...])` | ✓ WIRED | Correct — the sub-engine answers for its own reads. Confirms D-06/T-15-01's scope-isolation invariant holds on the *read* side; CR-01 shows the *community-side publish* half of that same invariant was left with a hole. |
+| `ConcordCommunity.publishToPlane` (any plane, incl. private channel) | `ConcordCommunity.signers` (`StreamSigners`) | `this.signers.register([key])` immediately before `streamPublishOptions(wrap)` | ✓ WIRED | The registration and the `waitForAuth` naming both derive from the same `key`/`wrap` pair returned by one `wrapForTarget` call — no re-resolution after an `await`, no race with a concurrent `adoptRefounding()`. Confirmed by direct read and by the mutation test above. |
+| `ConcordCommunity.openLive`/`reconcileLive` | `ConcordCommunity.signers` | `this.signers.register([...core planes, ...heldChannelKeys()])` | ⚠️ WIRED but functionally inert for its stated purpose | Confirmed to fire only on the very first `openLive()` call; the churn guard (keyed on `currentAuthors()`, public-only) prevents it from ever registering a newly-revealed private channel's key. Does not break CAUTH-01 (the real mechanism is `publishToPlane`'s own registration) but the code and its doc comment overstate what this link does — WR-09. |
+| `ConcordCommunity.rotateChannel`/`refound` | `ConcordCommunity.signers` | `this.signers.register([plan.rekeyKey])` / `register(plan.channelRekeyKeys)` | ✓ WIRED | WR-01 closed: `buildChannelRekey`/`buildRefounding` (`keys.ts:330`, `:334`, `:444-445`, `:779`) now return the exact `GroupKey` the wrap was finalized with; the call sites register the plan's own value, not a recomputation from `this.material.community_root` after an `await`. Confirmed by direct read. |
+| `packages/concord/src/client/sync.ts` `SyncContext.onAuthRequired` | `applesauce-loaders` `createSyncLoader` | direct pass, typed `SyncAuthHandler` | ✓ WIRED | WR-07 closed: `as unknown as SyncAuthHandler` cast removed; `onAuthRequired: SyncAuthHandler` (`sync.ts:95`) with no cast at the call site. Confirmed by direct read. |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
 |-------------|-----------------|--------------|--------|----------|
-| CAUTH-01 | 15-01, 15-04, 15-05, 15-08 | Each community/private-channel engine authenticates only its own scope's missing pubkeys, using keys that scope holds | ✗ BLOCKED | CR-01: the community's publish path names a key its own registration path never populates, for every private-channel send |
-| CAUTH-02 | 15-04, 15-08 | A relay is asked to authenticate only the scoped set an operation requires; reconnect re-authenticates the same set | ✓ SATISFIED | Behaviorally tested (`auth.test.ts:139`, `community.test.ts:3401`); design-assessed per REQUIREMENTS.md note since no pre-phase recording exists |
-| CAUTH-03 (amended) | 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08 | Client-wide driver machinery + user-key half removed, zero remaining call sites | ✓ SATISFIED | Independent grep confirms zero non-test hits for every named mechanism; structural guard passes but has a coverage gap (WR-08, folded into gaps as hardening) |
-| CAUTH-04 | 15-01, 15-04, 15-07, 15-08 | Per-operation auth retries preserved | ✓ SATISFIED | Zero `authRetries`/`authTimeout` overrides repo-wide; behavioral no-dedupe test passes |
+| CAUTH-01 | 15-01, 15-04, 15-05, 15-08, 15-09, 15-10, 15-12, 15-13, 15-14 | Each community/private-channel engine authenticates only its own scope's missing pubkeys, using keys that scope holds | ✓ SATISFIED | CR-01 closed by `publishToPlane`'s per-publish key registration (truth #1); independently mutation-verified in this pass |
+| CAUTH-02 | 15-04, 15-08 | A relay is asked to authenticate only the scoped set an operation requires; reconnect re-authenticates the same set | ✓ SATISFIED | Unchanged since prior pass; behaviorally tested |
+| CAUTH-03 (amended) | 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08, 15-11 | Client-wide driver machinery + user-key half removed, zero remaining call sites | ✓ SATISFIED | Independent grep confirms zero non-test hits; structural guard now covers both roots for all four checks (WR-08 closed) |
+| CAUTH-04 | 15-01, 15-04, 15-07, 15-08, 15-14 | Per-operation auth retries preserved | ✓ SATISFIED | Unchanged since prior pass; zero overrides repo-wide |
 
-No orphaned requirements — REQUIREMENTS.md maps exactly CAUTH-01..04 to Phase 15, and all four appear in at least one plan's `requirements` field.
+No orphaned requirements — REQUIREMENTS.md maps exactly CAUTH-01..04 to Phase 15, and every plan (including the six gap-closure plans) declares its `requirements` field against one or more of them.
+
+**Known discrepancy, resolved:** `.planning/REQUIREMENTS.md` marks CAUTH-01 `[x]` Complete and the traceability table lists Phase 15 as "Complete" for all four requirements. This was stale relative to the interim `gaps_found` pass (which scored CAUTH-01 `failed`) but is **accurate as of the current code** — this re-verification independently confirms CAUTH-01 is now satisfied. No correction to REQUIREMENTS.md is needed; its Complete markings now match the codebase.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `packages/concord/src/client/community.ts` | `:1611-1612` | Comment asserts "already registered by the walk and by openLive() (D-16) — no registration needed here" | 🛑 Blocker (documents CR-01 as if resolved) | The comment is incorrect for the private-channel case; it is the same false assumption that let CR-01 ship, now embedded as misleading documentation at the exact call site that needs the fix |
-| `packages/concord/src/client/auth.ts` | `:99-101` | Silent `continue` on an unanswerable pubkey, no log/failure signal | ⚠️ Warning (WR-03) | Turns any future registration gap (including CR-01's) into a silent 30s timeout instead of a diagnosable failure |
-| `packages/concord/src/client/community.ts` | `:1220`, `:1556-1560` | `this.material.community_root` re-read after multiple `await`s, racing a concurrent `adoptRefounding()` | ⚠️ Warning (WR-01) | Could desync a rekey registration from the wraps it was built to answer for |
-| `apps/examples/src/examples/concord/*.tsx` | module scope | `const streamSigners = new StreamSigners();` outlives the component | ⚠️ Warning (WR-05) | Contradicts the per-scope-holder invariant the phase's own package exists to enforce, in the package's primary worked examples |
+| `packages/concord/src/client/community.ts` | `:727-746`, `:780`, `:807` | `heldChannelKeys()` is dead code for its stated purpose (WR-09); its doc comment claims it closes CR-01/CAUTH-01, which it structurally cannot (churn guard returns before it fires on the relevant path) | ⚠️ Warning | Not a functional CAUTH-01 gap (independently confirmed — see above), but misleading documentation at the exact call site a future reader would trust, plus unnecessary widening of the community's own key holder (eagerly loads every held private-channel secret at first `openLive()`, contrary to the phase's own per-operation-scoping principle) |
+| `packages/concord/src/client/community.ts` | `:361`, `:536-539` | `error$` is written by `onAuthFailure` on every relay AUTH rejection but only ever cleared to `null` inside `start()`, which is guarded by `this.started` — a field set once and never reset, including in `dispose()` (WR-10) | ⚠️ Warning | A single relay's stream-key AUTH rejection (out of possibly several transport relays) can latch a permanent error on an otherwise-healthy community; this wave's own WR-02 fix (routing failures to `error$` immediately) increased how often this reachable path fires, without adding a recovery edge |
+| `apps/examples/src/examples/concord/direct-invites.tsx` | `:170`, `:255-277` | `useMemo(() => new StreamSigners(), [])` scoped to a component that is a long-lived invite inbox, never remounted per community — a second accepted invite for a different community accumulates both communities' guestbook keys in one holder (WR-05 not fully closed here; WR-11) | ⚠️ Warning | Not exploitable (`waitForAuth` still narrows every AUTH to one key at a time), but this file is worked example/documentation and models the exact holder-scope violation the phase exists to prevent |
+| `packages/concord/src/client/invite-manager.ts` | `:288-296`; mirrored `community.ts:1380-1385` | `revoke()`/`revokeBundle()` `.catch()`-swallow a publish failure (including an AUTH rejection) and unconditionally return `revoked: true` (WR-12) | ⚠️ Warning | Pre-existing (predates `9b2b3028`, confirmed by review and not contradicted by this pass's reading) — not a regression introduced by the CAUTH migration. Security-adjacent (a link the UI reports dead may still resolve) but outside CAUTH-01..04's literal scope; recommend backlog follow-up |
 
-No `TBD`/`FIXME`/`XXX` debt markers found in the phase's changed files.
+No `TBD`/`FIXME`/`XXX` debt markers found in any file touched by the gap-closure wave (`git diff --name-only 9b2b3028..HEAD` file list checked directly).
+
+**None of the four warnings above are blockers.** All are either (a) confirmed non-functional for the CAUTH-01..04 truths (WR-09), (b) confirmed pre-existing and out of this phase's literal scope (WR-12), or (c) confirmed non-exploitable given the per-operation `waitForAuth` narrowing that remains intact everywhere (WR-05/WR-11, WR-10). They are recorded here as backlog-worthy quality items, consistent with the round-2 review's own `issues_found`-but-`0 blockers` disposition.
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Concord package test suite passes | `pnpm --filter applesauce-concord test` (already run and recorded in 15-VALIDATION.md; not re-run here to avoid a duplicate full-suite pass) | 584/584 passed per 15-VALIDATION.md's recorded full-gate run | ✓ PASS (evidence: recorded run, not re-executed) |
-| No removed mechanism reintroduced | `pnpm vitest run packages/concord/src/__tests__/no-ambient-auth.test.ts` | Confirmed passing per 15-REVIEW.md's 222-test figure; independently corroborated by direct grep (see Requirements Coverage) rather than trusting the guard alone | ✓ PASS |
-| Private-channel send is answerable by the community's own holder | Traced statically: `streamPublishOptions` → `this.signers.get(event.pubkey)` for a private-channel `wrap.pubkey` | `this.signers` registry never contains this key (only `publicChannelKeys()` is ever registered) | ✗ FAIL — this is CR-01, confirmed by static trace rather than a runtime probe (no live relay available in this verification pass) |
+| Concord package test suite passes | `pnpm vitest run packages/concord` (re-run by this pass, not merely cited) | `Test Files 55 passed (55)`, `Tests 594 passed (594)` | ✓ PASS |
+| CR-01 regression scenario (private-channel send answerable) passes on current source | `pnpm vitest run packages/concord/src/client/__tests__/community.test.ts -t "every publish a community makes declares an author its own holder can answer for"` | 1 passed | ✓ PASS |
+| CR-01 regression scenario still passes with `heldChannelKeys()` mutated back to `publicChannelKeys()` at both call sites | same command, against a temporarily mutated `community.ts`, file restored after (`git diff --stat` empty) | 1 passed (mutation had no effect) | ✓ PASS — confirms WR-09 independently |
+| No removed mechanism reintroduced, both roots | `pnpm vitest run packages/concord/src/__tests__/no-ambient-auth.test.ts` (implied by full-suite run above) plus independent grep for the six named mechanisms across `packages/concord/src` and `apps/examples/src/examples/concord`, excluding tests | Zero hits (except the guard's own regex literal) | ✓ PASS |
+| No `authRetries`/`authTimeout` override anywhere | grep, excluding tests | Zero hits | ✓ PASS |
+| Working tree clean after mutation-test revert | `git status --short` | No output | ✓ PASS |
 
 ### Probe Execution
 
-Step 7c: SKIPPED — no `scripts/*/tests/probe-*.sh` probes declared or discovered for this phase; the phase's runnable verification is the vitest suite and the human live-relay checkpoint, both addressed above.
+Step 7c: SKIPPED — no `scripts/*/tests/probe-*.sh` probes declared or discovered for this phase; the phase's runnable verification is the vitest suite (re-run above) plus the human live-relay checkpoint, addressed below.
 
-### Human Verification Required
+### Human Verification — Discharged, Not Re-Raised
 
-1 item, listed in frontmatter `human_verification` — see below. Note: because `gaps_found` (CR-01) already applies, this item is folded into the same closure plan rather than gating a separate `human_needed` cycle; it should be re-run once CR-01 is fixed.
+The prior pass's one human-verification item ("send a message into a private channel against a live auth-gating relay, confirm the relay's AUTH is satisfied and the message is retrievable from a second session, not just the optimistic local echo") was presented to the developer via plan 15-14 Task 3's seven numbered `how-to-verify` steps and **approved on 2026-08-18** (recorded verbatim in `15-VALIDATION.md`'s Manual-Only Verifications table).
 
-### 1. Private-channel send against a live auth-gating relay
+**Weighing the approval for exactly what it is, per this pass's explicit instruction:** the developer's response was the single word "approved" against the steps as presented. `15-VALIDATION.md` records — and this pass does not contradict or embellish — that the developer did **not** separately narrate per-step observations: there is no independent statement that step 5's `:auth` trace lines were seen, or that step 6's message was retrieved from a second browser session. This pass treats that absence as exactly what it is (an unreported detail), not as evidence the steps were skipped.
 
-**Test:** After CR-01 is fixed, send a message into a private channel using one of the migrated example apps (e.g. `rumor-stores` or a private-channel-capable walker) pointed at a live auth-gating relay.
-**Expected:** The relay's `auth-required:` refusal is satisfied (an AUTH frame for the private channel's message-plane key is observed), the EVENT is accepted, and the message is retrievable independently of the sending session's optimistic local echo.
-**Why human:** The approved 2026-08-15 checkpoint (plan 15-08 Task 3) exercised `rumor-stores`, `crypto-history`, `direct-invites`, and `admin-management` against a live relay, but none of those six manual steps performed a private-channel send — the checkpoint's approval does not cover CR-01's failure path, and no automated test exercises a real relay's AUTH response either.
+**Decision: this discharges the human-verification item; it is not re-raised.** Two things support closing it rather than re-opening a `human_needed` cycle:
+
+1. The approval covers the *specific* scenario this item was created for (a private-channel send against a live relay) — not a generic "looks fine" over unrelated ground, and not a scenario later found to be off-target.
+2. This pass independently confirmed, at the code level, both (a) the automated regression test's teeth (mutation-verified: the assertion fails if `publishToPlane`'s registration is removed, and does *not* depend on the fix the developer was told about in 15-09) and (b) the actual closing mechanism (`publishToPlane`'s per-publish key registration, not `heldChannelKeys()`). The human checkpoint and the automated/code evidence are independent and corroborating, not the same evidence counted twice.
+
+A live-relay checkpoint's approval is, by design, the sanctioned discharge mechanism for a behavior no fake-pool test can reach (an actual NIP-42 challenge/response round trip and actual message durability across sessions) — requiring the approver to additionally transcribe which trace lines they saw is not this project's checkpoint convention, and re-raising the item on that basis alone would treat "approved without a transcript" as equivalent to "not run," which the recorded plan-15-14 checkpoint contradicts. If a future maintainer wants stronger evidence than a bare approval, the actionable follow-up is process (require the approver to paste the observed `:auth` trace lines or a screenshot of the second-session retrieval next time), not a re-run of this same checkpoint.
 
 ### Gaps Summary
 
-The phase's structural rework is sound everywhere it was exercised: `StreamSigners` correctly intersects `missingPubkeys` against its own registry with no fallback (CAUTH-01's mechanism), reads and most publishes are demonstrably scoped and reconnect-safe (CAUTH-02, behaviorally tested), every named client-wide mechanism is verifiably gone by direct grep (CAUTH-03), and no call site overrides the retry budget (CAUTH-04).
+No gaps. Both entries from the prior `gaps_found` pass are closed:
 
-The one BLOCKER is narrow but real: **every send into a private channel** (message, thread, reply, reaction, edit, delete — the entire day-to-day private-channel write path) declares an auth requirement its own engine cannot satisfy, because the registration helper (`publicChannelKeys()`) that feeds the community's `StreamSigners` was written to exclude private channels — correctly, for the *subscription* set — but is also the *only* thing ever registered, leaving the *publish* set with a hole. On any relay that actually gates writes behind NIP-42 (the exact scenario this whole phase exists to support), a private-channel message silently times out and is falsely shown as sent via the optimistic local echo. This is a regression from pre-phase behavior, where the deleted client-wide registry did hold these keys.
+- **CAUTH-01 (CR-01):** closed by `publishToPlane`'s per-publish `StreamSigners` registration, confirmed by direct read, by the existing regression test (which passes), and by an independent mutation test this pass ran itself (reverting `heldChannelKeys()`'s two call sites to `publicChannelKeys()` does not break the regression test — proving the real fix lives in `publishToPlane`, not in `heldChannelKeys()`, as the round-2 review also found).
+- **WR-01..WR-08 hardening:** all eight closed or closed-with-a-documented-residual per the round-2 code review, independently spot-checked in this pass against current source (WR-01, WR-03, WR-07, WR-08 fully confirmed closed by direct read; WR-02/WR-04/WR-05 confirmed to have the residuals the round-2 review names — WR-10/WR-12/WR-11 respectively — which are recorded above as non-blocking backlog warnings, not reopened gaps).
 
-This is compounded by three things that made it possible to ship undetected: the publish-answerability test creates a private channel but never sends into it (WR-06); the auth handler silently continues past an unanswerable pubkey instead of logging (WR-03); and a stale comment at the exact call site asserts the key is "already registered" (anti-pattern table, row 1) when it is not for this case. A gap-closure plan should fix the registration gap, add the regression test, and — while in the area — pick up the WR-01 through WR-08 hardening items so the same review does not need to run twice.
+Four new warnings surfaced by the round-2 review (WR-09, WR-10, WR-11, WR-12) were independently re-derived in this pass rather than taken on faith. None invalidate CAUTH-01..04; all are recommended for a backlog/follow-up item rather than blocking this phase's completion.
 
 ---
 
-_Verified: 2026-08-18T08:55:41Z_
+_Verified: 2026-08-18T17:05:00Z_
 _Verifier: Claude (gsd-verifier)_
+_Prior verification (2026-08-18T08:55:41Z, `gaps_found`, 3/4) is superseded by this report; its full text is preserved in git history._
