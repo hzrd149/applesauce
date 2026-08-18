@@ -156,13 +156,9 @@ describe("ConcordKeys", () => {
     };
     const channel: ChannelMetadata = { channel_id: channelId, name: "secret-room", private: true };
     const channelKeys = deriveConcordKeys(withChannelKey, [channel]);
-    const channelResult = await wrapForTarget(
-      channelKeys,
-      { plane: "channel", channelId },
-      owner,
-      rumor,
-      { plaintext: true },
-    );
+    const channelResult = await wrapForTarget(channelKeys, { plane: "channel", channelId }, owner, rumor, {
+      plaintext: true,
+    });
     expect(channelResult.key.pk).toBe(channelResult.wrap.pubkey);
     expect(channelResult.key.pk).toBe(channelKeys.channels.get(channelId)?.pk);
 
