@@ -46,7 +46,7 @@ import {
   type PlaneInfo,
   type WrapTarget,
 } from "../helpers/keys.js";
-import { channelRekeyGroupKey, type GroupKey } from "../helpers/crypto.js";
+import type { GroupKey } from "../helpers/crypto.js";
 import { hasChannelKey } from "../helpers/community.js";
 import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
@@ -297,9 +297,6 @@ export class ConcordCommunity {
    *  by the one Direct-Invite grant publish in {@link grantChannelAccess}. See
    *  {@link ConcordCommunityOptions.userOnAuthRequired}. */
   private readonly userOnAuthRequired?: RelayAuthHandler;
-  /** The most recent NIP-42 failure seen during the current walk (D-13) — folded
-   *  into `error$` rather than into a new status surface. */
-  private authFailure: string | null = null;
   private readonly eventStore: EventStore;
   private readonly uploader?: ConcordCommunityOptions["uploader"];
   private readonly defaultRelays: string[];
@@ -356,10 +353,12 @@ export class ConcordCommunity {
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
+    // D-13/WR-02: a NIP-42 rejection at ANY time — the live subscription, any
+    // publish, reconcileLive's catch-up sync, or checkRekey — surfaces on
+    // `error$` immediately, without waiting for or requiring a second walk. This
+    // sink is the whole mechanism: no latched field, no new status surface.
     this.signers = new StreamSigners({
-      onAuthFailure: (message) => {
-        this.authFailure = message;
-      },
+      onAuthFailure: (message) => this.error$.next(message),
     });
     this.userOnAuthRequired = options.userOnAuthRequired;
     this.eventStore = options.eventStore ?? new EventStore();
@@ -536,7 +535,8 @@ export class ConcordCommunity {
   async start(): Promise<void> {
     if (this.started || this.disposed) return;
     this.started = true;
-    this.authFailure = null;
+    // A fresh walk clears any stale auth error a prior session left behind.
+    this.error$.next(null);
     this.phase$.next("syncing");
     this.log("epoch walk starting");
     try {
@@ -555,9 +555,6 @@ export class ConcordCommunity {
         this.epoch$.next(this.keys.material.root_epoch);
         if (this.keys.material !== this.state$.value.material) this.onMaterialChange?.(this.keys.material);
       }
-      // D-13: a walk that returned nothing because a relay refused our stream
-      // keys says so, instead of showing a silent blank.
-      this.error$.next(this.authFailure);
       this.phase$.next("live");
       this.log("epoch walk complete tip_epoch=%d", this.keys.material.root_epoch);
     } catch (err) {
@@ -1239,12 +1236,12 @@ export class ConcordCommunity {
     });
 
     const relays = this.transport();
-    // D-16: the rekey wraps are addressed at (and finalized by) the channel-rekey
-    // GroupKey, recomputed here from the plan's own `newEpoch` (never guessed) so this
-    // holder can actually answer the `waitForAuth` each publish declares.
-    this.signers.register([
-      channelRekeyGroupKey(hexToBytes(this.material.community_root), hexToBytes(channelId), plan.newEpoch),
-    ]);
+    // WR-01: register the exact key `buildChannelRekey` finalized the wraps with —
+    // never recompute the address from `this.material.community_root`, which can
+    // roll forward mid-flight (via a concurrent `adoptRefounding()` on `checkRekey`'s
+    // 200ms timer) after the awaits above, desyncing a recomputed address from what
+    // the wraps actually carry.
+    this.signers.register([plan.rekeyKey]);
     this.publishLog("rotating channel=%s", channelId.slice(0, 8));
     for (const wrap of plan.rekeyWraps)
       await this.pool.publish(relays, wrap, this.streamPublishOptions(wrap)).catch((err) => {
@@ -1573,18 +1570,19 @@ export class ConcordCommunity {
         throw new Error(`refounding aborted: ${what} not confirmed by a majority of relays`);
     };
 
-    // Rekey blobs (root + channels) gate convergence, so land them first. The
-    // root-roll wraps ride `this.keys.nextBaseRekey.key`, already registered by the
-    // walk/openLive(); each bundled channel rekey wrap rides that channel's own
-    // channel-rekey GroupKey (D-16) — recomputed the same way as `rotateChannel`, one
-    // per entry in `channelRekeys`, addressed under the PRIOR (current) root since
-    // `buildChannelRekey` seals under it by default.
+    // Rekey blobs (root + channels) gate convergence, so land them first. WR-01:
+    // register the exact keys `buildRefounding` finalized these wraps with —
+    // `plan.rekeyKey` for the root-roll and `plan.channelRekeyKeys` for the
+    // bundled channel rekeys — rather than relying on `this.keys.nextBaseRekey.key`
+    // having already been registered by the walk/openLive(), or recomputing the
+    // channel-rekey address from `this.material.community_root`. Either
+    // recomputation can be stale: `checkRekey()`'s 200ms timer can call
+    // `adoptRefounding()` during the awaits above, rolling `this.keys`/`this.material`
+    // forward before this line runs, which is exactly when the plan's own key and a
+    // freshly recomputed one diverge.
+    this.signers.register([plan.rekeyKey]);
     for (const wrap of plan.rekeyWraps) await requireMajority(wrap, "root roll");
-    this.signers.register(
-      channelRekeys.map(({ channel }) =>
-        channelRekeyGroupKey(hexToBytes(this.material.community_root), hexToBytes(channel.id), channel.epoch + 1),
-      ),
-    );
+    this.signers.register(plan.channelRekeyKeys);
     for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
 
     this.publishLog("refounding publish targets=%d protocol=%d", transportRelays.length, protocolRelays.length);

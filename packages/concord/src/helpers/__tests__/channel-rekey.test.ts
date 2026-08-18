@@ -18,7 +18,7 @@ import {
   readChannelRekey,
   rollForwardChannel,
 } from "../keys.js";
-import { channelGroupKey } from "../crypto.js";
+import { channelGroupKey, channelRekeyGroupKey } from "../crypto.js";
 import { decodeWrap } from "../gift-wrap.js";
 import type { ChannelKey, DecodedEvent, JoinMaterial } from "../../types.js";
 
@@ -135,6 +135,11 @@ describe("channel-scoped rekey", () => {
     expect(plan.next.key).toBe(bytesToHex(newKey));
     expect(plan.next.held?.[0]).toMatchObject({ epoch: 1, key: channel.key });
 
+    // WR-01: the returned `rekeyKey` is the exact address every wrap above was
+    // finalized under — one address seals the whole set.
+    expect(plan.rekeyKey.pk).toBe(plan.rekeyWraps[0].pubkey);
+    for (const wrap of plan.rekeyWraps) expect(wrap.pubkey).toBe(plan.rekeyKey.pk);
+
     const isOwner = (rotator: string) => rotator === ownerPub;
 
     const keptOutcome = await readChannelRekey(
@@ -182,6 +187,16 @@ describe("channel-scoped rekey", () => {
     });
     expect(plan.channelRekeyWraps.length).toBeGreaterThan(0);
 
+    // WR-01: the returned `rekeyKey` is the address every root-roll `rekeyWraps`
+    // entry was finalized under; `channelRekeyKeys` carries one entry per bundled
+    // channel rekey, and its set of pubkeys equals the distinct pubkeys seen
+    // across `channelRekeyWraps`.
+    for (const wrap of plan.rekeyWraps) expect(wrap.pubkey).toBe(plan.rekeyKey.pk);
+    expect(plan.channelRekeyKeys).toHaveLength(1);
+    expect(new Set(plan.channelRekeyKeys.map((k) => k.pk))).toEqual(
+      new Set(plan.channelRekeyWraps.map((w) => w.pubkey)),
+    );
+
     // After adopting the new root, the kept member reads the bundled channel rekey
     // at the OLD-root address (retained in held_roots) and adopts the new key.
     const postMaterial = plan.next.material; // new root, held_roots = [old]
@@ -206,6 +221,31 @@ describe("channel-scoped rekey", () => {
       isOwner,
     );
     expect(droppedOutcome.kind).toBe("removed");
+  });
+
+  // WR-01: this is the case a caller-side recomputation from `material` would get
+  // wrong. `priorRoot` seals the wraps under an address that DIFFERS from
+  // `material.community_root` (the shape a Refounding uses, CORD-06 §3) — a
+  // caller that recomputed `channelRekeyGroupKey(material.community_root, ...)`
+  // instead of using the returned `rekeyKey` would register the wrong address.
+  it("buildChannelRekey's rekeyKey matches the wraps even when priorRoot differs from material.community_root", async () => {
+    const { owner, ownerPub, material } = await genesis();
+    const channel = privateChannel();
+    const priorRoot = bytesToHex(generateSecretKey());
+    expect(priorRoot).not.toBe(material.community_root);
+
+    const plan = await buildChannelRekey(material, channel, owner, {
+      recipients: [ownerPub],
+      self: ownerPub,
+      priorRoot,
+    });
+
+    // The returned key is derived from `priorRoot`, not `material.community_root`.
+    const expected = channelRekeyGroupKey(hexToBytes(priorRoot), hexToBytes(channel.id), plan.newEpoch);
+    expect(plan.rekeyKey.pk).toBe(expected.pk);
+    // …and it still matches what actually finalized the wraps — the property a
+    // caller-side recomputation off `material` cannot get right in this scenario.
+    expect(plan.rekeyKey.pk).toBe(plan.rekeyWraps[0].pubkey);
   });
 
   it("ignores a removal from a rotator who does not outrank the removed member (CORD-04)", async () => {

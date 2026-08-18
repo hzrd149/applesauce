@@ -321,6 +321,17 @@ export interface RefoundingPlan {
   /** The key state to adopt once the rekey blobs are published. */
   next: ConcordKeys;
   newEpoch: number;
+  /** The base-rekey address every entry in `rekeyWraps` was finalized under
+   *  (`baseRekeyGroupKey(oldRoot, cidBytes, newEpoch)`). A caller that must
+   *  NIP-42-authenticate the root-roll wraps MUST register this value, not
+   *  recompute the address from `this.material.community_root` after an await —
+   *  a concurrent `adoptRefounding()` can roll `material` forward mid-flight and
+   *  desync a recomputed address from what the wraps actually carry (WR-01). */
+  rekeyKey: GroupKey;
+  /** One `GroupKey` per bundled channel rekey in `opts.channelRekeys`, in the same
+   *  order, each the address that channel's own `channelRekeyWraps` entries were
+   *  finalized under. Same registration hazard as `rekeyKey`, per-channel. */
+  channelRekeyKeys: GroupKey[];
 }
 
 /**
@@ -387,9 +398,11 @@ export async function buildRefounding(
   //     base fork under a racing Refounding. The rolled channel keys are NOT baked
   //     into `next` — each channel's sub-engine reads its own rekey and persists.
   const channelRekeyWraps: NostrEvent[] = [];
+  const channelRekeyKeys: GroupKey[] = [];
   for (const { channel, recipients } of opts.channelRekeys ?? []) {
     const cr = await buildChannelRekey(material, channel, signer, { recipients, self: opts.self, vac: opts.vac });
     channelRekeyWraps.push(...cr.rekeyWraps);
+    channelRekeyKeys.push(cr.rekeyKey);
   }
 
   // 2. Compaction: re-wrap each Control-Plane head's plaintext seal into the new
@@ -421,7 +434,16 @@ export async function buildRefounding(
   }
 
   const next = rollForward(keys, newRoot, newEpoch, opts.self, opts.channels);
-  return { rekeyWraps, channelRekeyWraps, compactionWraps, snapshotWraps, next, newEpoch };
+  return {
+    rekeyWraps,
+    channelRekeyWraps,
+    compactionWraps,
+    snapshotWraps,
+    next,
+    newEpoch,
+    rekeyKey: rekeyAddr,
+    channelRekeyKeys,
+  };
 }
 
 /** The outcome of folding the rekey blobs at the next-epoch base-rekey address. */
@@ -715,7 +737,7 @@ export async function buildChannelRekey(
     /** The rotator's own Grant citation (CORD-04 `vac`, D-08) — omitted for the owner. */
     vac?: [string, string, string];
   },
-): Promise<{ rekeyWraps: NostrEvent[]; next: ChannelKey; newEpoch: number }> {
+): Promise<{ rekeyWraps: NostrEvent[]; next: ChannelKey; newEpoch: number; rekeyKey: GroupKey }> {
   if (!signer.nip44) throw new Error("this signer can't rotate keys (NIP-44 unsupported)");
   const channelId = hexToBytes(channel.id);
   const oldEpoch = channel.epoch;
@@ -745,7 +767,17 @@ export async function buildChannelRekey(
     rekeyWraps.push(await giftWrap(rekeyAddr.sk, rekeyAddr.convKey, signer)(await rumor));
   }
 
-  return { rekeyWraps, next: rollForwardChannel(channel, bytesToHex(newKey), newEpoch), newEpoch };
+  return {
+    rekeyWraps,
+    next: rollForwardChannel(channel, bytesToHex(newKey), newEpoch),
+    newEpoch,
+    // The exact address every wrap above was finalized under (`giftWrap(rekeyAddr.sk, ...)`).
+    // A caller that must NIP-42-authenticate these wraps MUST register this value, not
+    // recompute the address from `material` after this call — `material` (and therefore a
+    // recomputed address) can roll forward mid-await if a concurrent Refounding is adopted,
+    // desyncing the registration from what the wraps actually carry (WR-01).
+    rekeyKey: rekeyAddr,
+  };
 }
 
 /**

@@ -3398,6 +3398,56 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     community.dispose();
   });
 
+  // WR-02: with `authenticated$` removed (D-10), `error$` is the only signal an
+  // app has that a relay is rejecting the community's stream keys. Before this
+  // plan, a rejection occurring at any point AFTER `start()`'s walk completed
+  // was invisible until the NEXT walk read the latched `authFailure` field —
+  // this proves the fix surfaces it immediately, with no second walk.
+  it("a post-walk zero-answer auth rejection reaches error$ immediately with no second start() call, and status$'s error leg reflects it (WR-02)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // The walk finished cleanly — no stale error left over.
+    expect(community.error$.value).toBeNull();
+    expect(community.phase$.value).toBe("live");
+
+    // AFTER the walk: the live subscription's own recorded handler is asked
+    // about a pubkey this community holds no signer for at all — plan 15-10's
+    // zero-answer path (WR-03's failNoSigner), reused here to drive WR-02's
+    // steady-state error$ surface with no dependency on a real relay rejection.
+    const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
+    const onAuthRequired = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    const unknownPubkey = "0".repeat(64);
+    await onAuthRequired(authRequiredCtx(pool, [unknownPubkey], "live-1", [unknownPubkey]));
+
+    expect(community.error$.value).not.toBeNull();
+    expect(community.error$.value).toContain("no signer held");
+    // Still "live" — nothing re-entered start()'s "syncing" phase to surface this.
+    expect(community.phase$.value).toBe("live");
+
+    // The message reaches the status$ composite's error leg.
+    const status = await firstValueFrom(community.status$);
+    expect(status.error).toBe(community.error$.value);
+
+    community.dispose();
+  });
+
   it("two communities sharing one relay each authenticate only their own authors, and a reconnect cycle re-authenticates that same scoped set (CAUTH-02)", async () => {
     const signerA = new PrivateKeySigner(generateSecretKey());
     const pubkeyA = await signerA.getPublicKey();
@@ -3699,6 +3749,78 @@ describe("ConcordCommunity publish-answerability oracle — T-15-10 (15-05 Task 
     for (const record of recorded) {
       expect(record.options.authRetries).toBeUndefined();
       expect(record.options.authTimeout).toBeUndefined();
+    }
+
+    community.dispose();
+  });
+
+  // WR-01: `rotateChannel` must register the exact `GroupKey` `buildChannelRekey`
+  // finalized the wraps with, not a second recomputation from `this.material`
+  // taken after the build — that recomputation observes whatever `this.keys` is
+  // pointing at BY THE TIME it runs, which a concurrent `adoptRefounding()`
+  // (`checkRekey()`'s 200ms timer) can have rolled forward mid-flight. Reproduced
+  // here by mutating the engine's key state (a same-shape reassignment of the
+  // private `keys` field, the suite's established `as unknown as` convention —
+  // plan 12.3-14 used the same mechanism to drive `handleRemoved`) from inside
+  // `buildChannelRekey`'s own internal `nip44.encrypt` await, which is strictly
+  // BETWEEN the wraps being sealed under the pre-mutation root and `rotateChannel`'s
+  // post-build registration reading `this.material` again.
+  it("rotateChannel registers the key that actually finalized the wraps, even if the community's root changes mid-flight (WR-01)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, recorded, authCalls } = publishCoveragePool();
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [PUB_AUTH_URL] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [PUB_AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const channelId = await community.createChannel("secret", { private: true });
+    await settle();
+
+    // Mutate the engine's key state to a DIFFERENT community root the moment
+    // buildChannelRekey's own signer.nip44.encrypt is invoked — i.e., strictly
+    // after buildChannelRekey has captured its `material` argument (protecting
+    // the wraps' actual seal address) but before rotateChannel's post-build code
+    // re-reads `this.material`.
+    const keysAccess = community as unknown as {
+      keys: { material: Record<string, unknown> } & Record<string, unknown>;
+    };
+    let mutated = false;
+    const originalEncrypt = signer.nip44!.encrypt.bind(signer.nip44);
+    const encryptSpy = vi.spyOn(signer.nip44!, "encrypt");
+    encryptSpy.mockImplementation(async (pk: string, plain: string) => {
+      if (!mutated) {
+        mutated = true;
+        const differentRoot = bytesToHex(generateSecretKey());
+        const priorKeys = keysAccess.keys;
+        keysAccess.keys = { ...priorKeys, material: { ...priorKeys.material, community_root: differentRoot } };
+      }
+      return originalEncrypt(pk, plain);
+    });
+
+    const beforeCount = recorded.length;
+    await community.rotateChannel(channelId, { keep: [pubkey] });
+    await settle();
+    encryptSpy.mockRestore();
+
+    const rekeyRecords = recorded.slice(beforeCount);
+    expect(rekeyRecords.length).toBeGreaterThan(0);
+    for (const record of rekeyRecords) {
+      authCalls.length = 0;
+      const handler = record.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+      await handler(authRequiredCtx(pool, [record.event.pubkey], `pub-${record.event.id.slice(0, 8)}`));
+      expect(authCalls.map((c) => c.pubkey)).toEqual([record.event.pubkey]);
     }
 
     community.dispose();
