@@ -3398,6 +3398,56 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     community.dispose();
   });
 
+  // WR-02: with `authenticated$` removed (D-10), `error$` is the only signal an
+  // app has that a relay is rejecting the community's stream keys. Before this
+  // plan, a rejection occurring at any point AFTER `start()`'s walk completed
+  // was invisible until the NEXT walk read the latched `authFailure` field —
+  // this proves the fix surfaces it immediately, with no second walk.
+  it("a post-walk zero-answer auth rejection reaches error$ immediately with no second start() call, and status$'s error leg reflects it (WR-02)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, subscriptionCalls } = authOraclePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    // The walk finished cleanly — no stale error left over.
+    expect(community.error$.value).toBeNull();
+    expect(community.phase$.value).toBe("live");
+
+    // AFTER the walk: the live subscription's own recorded handler is asked
+    // about a pubkey this community holds no signer for at all — plan 15-10's
+    // zero-answer path (WR-03's failNoSigner), reused here to drive WR-02's
+    // steady-state error$ surface with no dependency on a real relay rejection.
+    const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
+    const onAuthRequired = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    const unknownPubkey = "0".repeat(64);
+    await onAuthRequired(authRequiredCtx(pool, [unknownPubkey], "live-1", [unknownPubkey]));
+
+    expect(community.error$.value).not.toBeNull();
+    expect(community.error$.value).toContain("no signer held");
+    // Still "live" — nothing re-entered start()'s "syncing" phase to surface this.
+    expect(community.phase$.value).toBe("live");
+
+    // The message reaches the status$ composite's error leg.
+    const status = await firstValueFrom(community.status$);
+    expect(status.error).toBe(community.error$.value);
+
+    community.dispose();
+  });
+
   it("two communities sharing one relay each authenticate only their own authors, and a reconnect cycle re-authenticates that same scoped set (CAUTH-02)", async () => {
     const signerA = new PrivateKeySigner(generateSecretKey());
     const pubkeyA = await signerA.getPublicKey();

@@ -116,9 +116,6 @@ export class ConcordPrivateChannel {
   /** This channel's own pubkey→signer holder (D-02/D-06) — constructed here,
    *  never shared with the parent community (T-15-01). */
   private readonly signers: StreamSigners;
-  /** The most recent NIP-42 failure seen during the current walk (D-13) —
-   *  folded into `error$` rather than into a new status surface. */
-  private authFailure: string | null = null;
   private channelKey: ChannelKey;
   private keys: ChannelKeys;
   /** Retained channel-rekey events, for the live rotation check. */
@@ -170,10 +167,12 @@ export class ConcordPrivateChannel {
     // the cleanup this failure path needs — no more, no less. Mirrors
     // `ConcordCommunity`'s identical constructor guard (12.3-12).
     this.extras = new ExtraRelays(options.extraRelays);
+    // D-13/WR-02: a NIP-42 rejection at ANY time — the live subscription, any
+    // publish, catch-up sync, or a rekey check — surfaces on `error$`
+    // immediately, without waiting for or requiring a second walk. This sink is
+    // the whole mechanism: no latched field, no new status surface.
     this.signers = new StreamSigners({
-      onAuthFailure: (message) => {
-        this.authFailure = message;
-      },
+      onAuthFailure: (message) => this.error$.next(message),
     });
     try {
       this.channelKey = options.channelKey;
@@ -238,8 +237,9 @@ export class ConcordPrivateChannel {
 
   private async walk(): Promise<void> {
     // D-13: reset at the top of the method (before phase$.next("syncing")), so
-    // a refreshForCommunityEpoch() re-walk starts clean.
-    this.authFailure = null;
+    // a refreshForCommunityEpoch() re-walk starts clean and does not keep
+    // displaying a previous session's stale auth failure.
+    this.error$.next(null);
     this.phase$.next("syncing");
     try {
       const result = await syncChannelEpochs(this.syncContext(), this.channelKey);
@@ -254,9 +254,6 @@ export class ConcordPrivateChannel {
         if (rolled) this.opts.onKeyChange?.(result.tipKey);
         this.openLive();
       }
-      // D-13: a walk that returned nothing because a relay refused our stream
-      // keys says so, instead of showing a silent blank.
-      this.error$.next(this.authFailure);
       this.phase$.next("live");
       this.log("channel epoch walk complete tip_epoch=%d", this.channelKey.epoch);
     } catch (err) {

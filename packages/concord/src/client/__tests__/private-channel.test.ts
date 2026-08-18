@@ -13,7 +13,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore, RumorStore } from "applesauce-core";
 import { ChatMessageFactory } from "applesauce-common/factories";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import type { RelayPool } from "applesauce-relay";
+import type { PublishResponse, Relay, RelayPool } from "applesauce-relay";
 
 import { createCommunity } from "../../helpers/community.js";
 import { buildChannelRekey, deriveChannelKeys } from "../../helpers/keys.js";
@@ -788,5 +788,118 @@ describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (W
     // Guards against a regression where the new constructor failure path
     // double-disposes, or the success path stops disposing on dispose().
     expect(count()).toBe(0);
+  });
+});
+
+// WR-02: with `authenticated$` removed (D-10), `error$` is the only signal an
+// app has that a relay is rejecting a private channel's stream keys. Mirrors
+// community.test.ts's identical WR-02 coverage on the sub-engine.
+describe("ConcordPrivateChannel post-walk auth failure -> error$ (WR-02)", () => {
+  const AUTH_URL = "wss://pc-error-oracle.test";
+
+  /** Records every `subscription()` call's `{ relays, filters, options }` — the
+   *  seam this test needs to capture the live subscription's own recorded
+   *  `onAuthRequired` handler, mirroring `community.test.ts`'s `authOraclePool`. */
+  function authOraclePool(): {
+    pool: RelayPool;
+    subscriptionCalls: { relays: string[]; filters: unknown; options: Record<string, unknown> }[];
+  } {
+    const relay = {
+      url: AUTH_URL,
+      challenge: null,
+      challenge$: new BehaviorSubject<string | null>(null),
+      isAuthenticated: () => false,
+      authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+        const pk = await signer.getPublicKey();
+        return { ok: true, pubkey: pk, url: AUTH_URL } as unknown as PublishResponse;
+      }),
+      getSupported: async () => null,
+      sync: () => EMPTY,
+      request: () => EMPTY,
+    };
+    const subscriptionCalls: { relays: string[]; filters: unknown; options: Record<string, unknown> }[] = [];
+    const pool = {
+      status$: new Subject(),
+      relay: () => relay,
+      subscription: (relays: string[], filters: unknown, options: Record<string, unknown> = {}) => {
+        subscriptionCalls.push({ relays, filters, options });
+        return NEVER;
+      },
+      request: () => EMPTY,
+      publish: async () => [],
+    } as unknown as RelayPool;
+    return { pool, subscriptionCalls };
+  }
+
+  /** Synthesizes a `RelayAuthContext`-shaped value the same way a relay's own
+   *  `auth-required:` refusal would — the ONLY input this test feeds a captured
+   *  handler. */
+  function authRequiredCtx(pool: RelayPool, missingPubkeys: string[] | null, id: string) {
+    return {
+      relay: pool.relay(AUTH_URL) as unknown as Relay,
+      url: AUTH_URL,
+      challenge: null,
+      request: { verb: "REQ" as const, id, filters: [] },
+      requirement: missingPubkeys ?? true,
+      missingPubkeys,
+      reason: "auth-required",
+    };
+  }
+
+  it("a post-walk zero-answer auth rejection reaches error$ immediately with no second walk, and status$'s error leg reflects it", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: [AUTH_URL] });
+    const material = g.material;
+    const channel: ChannelKey = {
+      id: bytesToHex(generateSecretKey()),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 1,
+      name: "secret",
+    };
+
+    const { pool, subscriptionCalls } = authOraclePool();
+    const store = new RumorStore();
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool,
+      eventStore: new EventStore(),
+      store,
+      relays: [AUTH_URL],
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: () => {},
+    });
+
+    await sub.start();
+    await settle();
+
+    // The walk finished cleanly — no stale error left over.
+    expect(sub.error$.value).toBeNull();
+    expect(sub.phase$.value).toBe("live");
+
+    // AFTER the walk: the live subscription's own recorded handler is asked
+    // about a pubkey this channel holds no signer for at all — plan 15-10's
+    // zero-answer path (WR-03's failNoSigner), reused here to drive WR-02's
+    // steady-state error$ surface with no dependency on a real relay rejection.
+    const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
+    const onAuthRequired = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    const unknownPubkey = "0".repeat(64);
+    await onAuthRequired(authRequiredCtx(pool, [unknownPubkey], "live-1"));
+
+    expect(sub.error$.value).not.toBeNull();
+    expect(sub.error$.value).toContain("no signer held");
+    // Still "live" — nothing re-entered the walk's "syncing" phase to surface this.
+    expect(sub.phase$.value).toBe("live");
+
+    // The message reaches the status$ composite's error leg.
+    const status = await firstValueFrom(sub.status$);
+    expect(status.error).toBe(sub.error$.value);
+
+    sub.dispose();
   });
 });

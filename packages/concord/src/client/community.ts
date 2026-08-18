@@ -297,9 +297,6 @@ export class ConcordCommunity {
    *  by the one Direct-Invite grant publish in {@link grantChannelAccess}. See
    *  {@link ConcordCommunityOptions.userOnAuthRequired}. */
   private readonly userOnAuthRequired?: RelayAuthHandler;
-  /** The most recent NIP-42 failure seen during the current walk (D-13) — folded
-   *  into `error$` rather than into a new status surface. */
-  private authFailure: string | null = null;
   private readonly eventStore: EventStore;
   private readonly uploader?: ConcordCommunityOptions["uploader"];
   private readonly defaultRelays: string[];
@@ -356,10 +353,12 @@ export class ConcordCommunity {
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
+    // D-13/WR-02: a NIP-42 rejection at ANY time — the live subscription, any
+    // publish, reconcileLive's catch-up sync, or checkRekey — surfaces on
+    // `error$` immediately, without waiting for or requiring a second walk. This
+    // sink is the whole mechanism: no latched field, no new status surface.
     this.signers = new StreamSigners({
-      onAuthFailure: (message) => {
-        this.authFailure = message;
-      },
+      onAuthFailure: (message) => this.error$.next(message),
     });
     this.userOnAuthRequired = options.userOnAuthRequired;
     this.eventStore = options.eventStore ?? new EventStore();
@@ -536,7 +535,8 @@ export class ConcordCommunity {
   async start(): Promise<void> {
     if (this.started || this.disposed) return;
     this.started = true;
-    this.authFailure = null;
+    // A fresh walk clears any stale auth error a prior session left behind.
+    this.error$.next(null);
     this.phase$.next("syncing");
     this.log("epoch walk starting");
     try {
@@ -555,9 +555,6 @@ export class ConcordCommunity {
         this.epoch$.next(this.keys.material.root_epoch);
         if (this.keys.material !== this.state$.value.material) this.onMaterialChange?.(this.keys.material);
       }
-      // D-13: a walk that returned nothing because a relay refused our stream
-      // keys says so, instead of showing a silent blank.
-      this.error$.next(this.authFailure);
       this.phase$.next("live");
       this.log("epoch walk complete tip_epoch=%d", this.keys.material.root_epoch);
     } catch (err) {
