@@ -3703,4 +3703,76 @@ describe("ConcordCommunity publish-answerability oracle — T-15-10 (15-05 Task 
 
     community.dispose();
   });
+
+  // WR-01: `rotateChannel` must register the exact `GroupKey` `buildChannelRekey`
+  // finalized the wraps with, not a second recomputation from `this.material`
+  // taken after the build — that recomputation observes whatever `this.keys` is
+  // pointing at BY THE TIME it runs, which a concurrent `adoptRefounding()`
+  // (`checkRekey()`'s 200ms timer) can have rolled forward mid-flight. Reproduced
+  // here by mutating the engine's key state (a same-shape reassignment of the
+  // private `keys` field, the suite's established `as unknown as` convention —
+  // plan 12.3-14 used the same mechanism to drive `handleRemoved`) from inside
+  // `buildChannelRekey`'s own internal `nip44.encrypt` await, which is strictly
+  // BETWEEN the wraps being sealed under the pre-mutation root and `rotateChannel`'s
+  // post-build registration reading `this.material` again.
+  it("rotateChannel registers the key that actually finalized the wraps, even if the community's root changes mid-flight (WR-01)", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const { pool, recorded, authCalls } = publishCoveragePool();
+
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [PUB_AUTH_URL] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [PUB_AUTH_URL],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const channelId = await community.createChannel("secret", { private: true });
+    await settle();
+
+    // Mutate the engine's key state to a DIFFERENT community root the moment
+    // buildChannelRekey's own signer.nip44.encrypt is invoked — i.e., strictly
+    // after buildChannelRekey has captured its `material` argument (protecting
+    // the wraps' actual seal address) but before rotateChannel's post-build code
+    // re-reads `this.material`.
+    const keysAccess = community as unknown as {
+      keys: { material: Record<string, unknown> } & Record<string, unknown>;
+    };
+    let mutated = false;
+    const originalEncrypt = signer.nip44!.encrypt.bind(signer.nip44);
+    const encryptSpy = vi.spyOn(signer.nip44!, "encrypt");
+    encryptSpy.mockImplementation(async (pk: string, plain: string) => {
+      if (!mutated) {
+        mutated = true;
+        const differentRoot = bytesToHex(generateSecretKey());
+        const priorKeys = keysAccess.keys;
+        keysAccess.keys = { ...priorKeys, material: { ...priorKeys.material, community_root: differentRoot } };
+      }
+      return originalEncrypt(pk, plain);
+    });
+
+    const beforeCount = recorded.length;
+    await community.rotateChannel(channelId, { keep: [pubkey] });
+    await settle();
+    encryptSpy.mockRestore();
+
+    const rekeyRecords = recorded.slice(beforeCount);
+    expect(rekeyRecords.length).toBeGreaterThan(0);
+    for (const record of rekeyRecords) {
+      authCalls.length = 0;
+      const handler = record.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+      await handler(authRequiredCtx(pool, [record.event.pubkey], `pub-${record.event.id.slice(0, 8)}`));
+      expect(authCalls.map((c) => c.pubkey)).toEqual([record.event.pubkey]);
+    }
+
+    community.dispose();
+  });
 });
