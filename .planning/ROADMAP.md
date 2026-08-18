@@ -174,7 +174,7 @@ Plans:
   3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, the client-wide `autoAuthenticate` user-key option, and the invite watcher's two relay-wide auth-required flag readers are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. Widened past the original stream-key-only wording because the same ambient status-driven pattern drove both key classes, and leaving the user half behind would have kept relay-status-driven authentication alive in the package. (CAUTH-03)
   4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
 
-**Plans**: 8/8 plans complete
+**Plans**: 14 plans (8/8 original complete; 6 gap-closure plans pending — see 15-VERIFICATION.md)
 
 Plans:
 
@@ -206,6 +206,23 @@ Plans:
 **Wave 7** *(blocked on Wave 6 completion)*
 
 - [x] 15-08-PLAN.md — Requirement amendment, the full gate run, the validation contract, and live-relay human verification (wave 7)
+
+**Gap closure** — 15-VERIFICATION.md (2026-08-18) scored 3/4: CAUTH-01 FAILED for the private-channel publish path (CR-01), and WR-01..WR-08 were confirmed as a second, non-blocking bundle. The plans below carry `wave: 1|2|3` in their own frontmatter and run after every wave above.
+
+**Gap-closure Wave 1** *(frontmatter `wave: 1`; runs after Wave 7 above)*
+
+- [ ] 15-09-PLAN.md — CR-01: the community's holder answers for every key it publishes under, including private channels (gap wave 1)
+- [ ] 15-10-PLAN.md — WR-03 + WR-04: no silent auth sink — a total answering failure and a rejected invite-link AUTH both report (gap wave 1)
+- [ ] 15-11-PLAN.md — WR-05 + WR-08: per-scope holders in the examples, and a structural guard that watches both roots for all four checks (gap wave 1)
+
+**Gap-closure Wave 2** *(frontmatter `wave: 2`; blocked on Gap-closure Wave 1 completion)*
+
+- [ ] 15-12-PLAN.md — WR-01 + WR-02: rekey registration derived from the builder's own key, and auth failure as a live `error$` value (gap wave 2)
+- [ ] 15-13-PLAN.md — WR-07: one auth handler typed against exactly what it reads, removing the sync-loader boundary assertion (gap wave 2)
+
+**Gap-closure Wave 3** *(frontmatter `wave: 3`; blocked on Gap-closure Wave 2 completion)*
+
+- [ ] 15-14-PLAN.md — WR-06 universal publish-answerability oracle, the full gate run, and the live-relay private-channel human checkpoint (gap wave 3)
 
 ## Progress
 
