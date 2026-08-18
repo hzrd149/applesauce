@@ -30,7 +30,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, firstValueFrom, takeUntil, timer, toArray } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -38,9 +38,6 @@ import LoginView from "../../components/login-view";
 // ---- module singletons (a manual, functional walk — no ConcordClient) -------
 
 const pool = new RelayPool();
-// This walk covers one community, so this module-level holder is that scope's
-// holder — a multi-community app builds one per community (D-06).
-const streamSigners = new StreamSigners();
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
@@ -99,13 +96,13 @@ function relaysFor(material: JoinMaterial): string[] {
 }
 
 /** One-shot fetch of every gift wrap at `authors`, completing gracefully at 10s. */
-async function fetchWraps(relays: string[], authors: string[]): Promise<NostrEvent[]> {
+async function fetchWraps(signers: StreamSigners, relays: string[], authors: string[]): Promise<NostrEvent[]> {
   if (authors.length === 0) return [];
   return firstValueFrom(
     pool
       .request(relays, [{ kinds: [GIFT_WRAP_KIND, EPHEMERAL_GIFT_WRAP_KIND], authors }], {
         waitForAuth: authors,
-        onAuthRequired: streamSigners.onAuthRequired,
+        onAuthRequired: signers.onAuthRequired,
       })
       .pipe(takeUntil(timer(10_000)), toArray()),
   ).catch(() => [] as NostrEvent[]);
@@ -134,6 +131,7 @@ async function loadEpoch(
   relays: string[],
   chainHasNext: boolean,
   route: (entry: RoutedRumor) => void,
+  signers: StreamSigners,
 ): Promise<LoadResult> {
   let count = 0;
   const emit = (kind: PlaneKind, decoded: DecodedEvent, channelId?: string, channelName?: string) => {
@@ -145,13 +143,13 @@ async function loadEpoch(
   //    triggers anything — the handler fires reactively when a relay actually refuses
   //    a request (D-01), so registration and the auth attempt are decoupled by design.
   let keys = deriveConcordKeys(epochMaterial, [], prior);
-  streamSigners.register([keys.control, keys.guestbook, keys.dissolved, keys.nextBaseRekey.key]);
+  signers.register([keys.control, keys.guestbook, keys.dissolved, keys.nextBaseRekey.key]);
 
   // 2. Fetch control / guestbook / dissolved / next-rekey wraps and route by plane.
   const authorsA = [keys.control.pk, keys.guestbook.pk, keys.dissolved.pk, keys.nextBaseRekey.key.pk];
   const control: DecodedEvent[] = [];
   const rekey: DecodedEvent[] = [];
-  for (const ev of await fetchWraps(relays, authorsA)) {
+  for (const ev of await fetchWraps(signers, relays, authorsA)) {
     const info = keys.planes.get(ev.pubkey);
     if (!info) continue;
     const d = decodeWrap(ev, info.convKey);
@@ -167,8 +165,9 @@ async function loadEpoch(
   const state0 = foldControl(control, epochMaterial);
   const channelName = new Map(state0.channels.map((c) => [c.channel_id, c.name] as const));
   keys = deriveConcordKeys(epochMaterial, state0.channels, prior);
-  streamSigners.register([...keys.channels.values()]);
+  signers.register([...keys.channels.values()]);
   for (const ev of await fetchWraps(
+    signers,
     relays,
     [...keys.channels.values()].map((k) => k.pk),
   )) {
@@ -343,6 +342,10 @@ function Walker({
   self: string;
   onReset: () => void;
 }) {
+  // A fresh holder per material: a walk repointed at a different invite/community must
+  // start from an empty holder rather than accumulating the previous community's keys.
+  const signers = useMemo(() => new StreamSigners(), [material]);
+
   // Each plane's rumors live in their own RumorStore; the sidebar + timeline read them reactively.
   const storesRef = useRef<Map<string, RumorStore>>(new Map());
   const seenRef = useRef<Set<string>>(new Set());
@@ -384,7 +387,7 @@ function Walker({
         let chain = buildChain(material);
         let i = 0;
         while (alive && i < chain.length) {
-          const res = await loadEpoch(chain[i], prior, self, signer, relays, i + 1 < chain.length, route);
+          const res = await loadEpoch(chain[i], prior, self, signer, relays, i + 1 < chain.length, route, signers);
           if (!alive) return;
           prior = res.summary.keys;
           setEpochs((prev) => [...prev, res.summary]);

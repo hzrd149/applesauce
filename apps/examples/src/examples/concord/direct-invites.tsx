@@ -31,9 +31,6 @@ import { CommunityListFactory, JoinLeaveFactory } from "applesauce-concord/facto
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
-// This example joins one community at a time, so this module-level holder IS
-// that single scope's holder — a multi-community app builds one per community (D-06).
-const streamSigners = new StreamSigners();
 const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
 
 const signer$ = new BehaviorSubject<ISigner | null>(null);
@@ -166,6 +163,11 @@ function ConcordDirectInvites() {
   const extraRelays = use$(extraRelays$);
   const relays = use$(relays$);
   const inboxRelays = use$(inboxRelays$);
+
+  // This inbox accepts invites for different communities from one place, so there's no
+  // single community/material to key a holder on — the honest scope here is the
+  // component instance itself, which is why this lives here rather than at module scope.
+  const streamSigners = useMemo(() => new StreamSigners(), []);
 
   const communityList = use$(() => user?.concordCommunityList$, [user]);
   const liveCommunities = use$(() => communityList?.liveCommunities$, [communityList]);
