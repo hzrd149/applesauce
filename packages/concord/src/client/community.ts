@@ -715,12 +715,37 @@ export class ConcordCommunity {
     };
   }
 
-  /** The PUBLIC channel stream keys — private channels sync on their own engines. */
+  /** The PUBLIC channel stream keys — the SUBSCRIPTION/read set only, consumed
+   *  solely by {@link currentAuthors}. Private channels sync on their own
+   *  engines, so this must stay public-only or the community would subscribe to
+   *  a private channel's plane (D-06 scope bleed). For the wider PUBLISH-side
+   *  registration set, see {@link heldChannelKeys}. */
   private publicChannelKeys(): GroupKey[] {
     const publicIds = new Set(
       this.state$.value.channels.filter((c) => !c.private && !c.deleted).map((c) => c.channel_id),
     );
     return [...this.keys.channels.entries()].filter(([id]) => publicIds.has(id)).map(([, k]) => k);
+  }
+
+  /** Every channel stream key this community HOLDS — public AND private — for
+   *  registering into its own {@link StreamSigners} so a private-channel PUBLISH
+   *  is answerable (CR-01/CAUTH-01). This intentionally differs from
+   *  {@link publicChannelKeys}: the sub-engine (`ConcordPrivateChannel`) does the
+   *  READING for a private channel and holds that key in its own holder
+   *  (D-06/T-15-01), but the COMMUNITY does the PUBLISHING for it —
+   *  `sendMessage`, `sendEvent`, `sendThread`, `replyToThread`, `react`,
+   *  `editMessage` and `deleteMessage` all route through
+   *  `ConcordCommunity.publishToPlane` — so the publish-side signer registry is
+   *  legitimately wider than the subscription set. These are keys this same user
+   *  in this same community scope already holds; registering them crosses no
+   *  scope boundary, and the per-operation `waitForAuth` narrowing still keeps
+   *  them unusable by any other operation (D-07/D-16). `this.keys.channels` is
+   *  already the exact set of channels we hold a key for — `deriveConcordKeys`
+   *  skips a keyless private channel entirely (CHAN-01), so no extra guard is
+   *  needed here. */
+  private heldChannelKeys(): GroupKey[] {
+    const liveIds = new Set(this.state$.value.channels.filter((c) => !c.deleted).map((c) => c.channel_id));
+    return [...this.keys.channels.entries()].filter(([id]) => liveIds.has(id)).map(([, k]) => k);
   }
 
   /** The current-epoch stream pubkeys the community subscribes: core planes +
@@ -755,7 +780,7 @@ export class ConcordCommunity {
       this.keys.guestbook,
       this.keys.dissolved,
       this.keys.nextBaseRekey.key,
-      ...this.publicChannelKeys(),
+      ...this.heldChannelKeys(),
     ]);
     this.liveSub?.unsubscribe();
     this.liveSub = this.pool
@@ -782,7 +807,7 @@ export class ConcordCommunity {
       .map(([, k]) => k.pk);
     if (fresh.length > 0) {
       this.log("catching up %d newly revealed public channel(s)", fresh.length);
-      this.signers.register(this.publicChannelKeys());
+      this.signers.register(this.heldChannelKeys());
       void syncAuthors(this.syncContext(), fresh).then((events) => {
         for (const ev of events) this.onWrap(ev);
       });
