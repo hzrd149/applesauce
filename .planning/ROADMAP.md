@@ -174,7 +174,7 @@ Plans:
   3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, the client-wide `autoAuthenticate` user-key option, and the invite watcher's two relay-wide auth-required flag readers are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. Widened past the original stream-key-only wording because the same ambient status-driven pattern drove both key classes, and leaving the user half behind would have kept relay-status-driven authentication alive in the package. (CAUTH-03)
   4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
 
-**Plans**: 14 plans (8/8 original complete; 6 gap-closure plans pending — see 15-VERIFICATION.md)
+**Plans**: 11/14 plans executed
 
 Plans:
 
@@ -211,9 +211,9 @@ Plans:
 
 **Gap-closure Wave 1** *(frontmatter `wave: 1`; runs after Wave 7 above)*
 
-- [ ] 15-09-PLAN.md — CR-01: the community's holder answers for every key it publishes under, including private channels (gap wave 1)
-- [ ] 15-10-PLAN.md — WR-03 + WR-04: no silent auth sink — a total answering failure and a rejected invite-link AUTH both report (gap wave 1)
-- [ ] 15-11-PLAN.md — WR-05 + WR-08: per-scope holders in the examples, and a structural guard that watches both roots for all four checks (gap wave 1)
+- [x] 15-09-PLAN.md — CR-01: the community's holder answers for every key it publishes under, including private channels (gap wave 1)
+- [x] 15-10-PLAN.md — WR-03 + WR-04: no silent auth sink — a total answering failure and a rejected invite-link AUTH both report (gap wave 1)
+- [x] 15-11-PLAN.md — WR-05 + WR-08: per-scope holders in the examples, and a structural guard that watches both roots for all four checks (gap wave 1)
 
 **Gap-closure Wave 2** *(frontmatter `wave: 2`; blocked on Gap-closure Wave 1 completion)*
 
@@ -246,7 +246,7 @@ Plans:
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
-| 15. Concord Stream-Auth Cleanup | v1.2 | 8/8 | Gaps Found | —          |
+| 15. Concord Stream-Auth Cleanup | v1.2 | 11/14 | In Progress|  |
 
 **Totals:** 19 phases across three milestones (16 shipped, 3 in progress); 98 plans shipped across v1.0/v1.1 — v1.2 plan count TBD until phases are planned.
 
