@@ -174,7 +174,7 @@ Plans:
   3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, the client-wide `autoAuthenticate` user-key option, and the invite watcher's two relay-wide auth-required flag readers are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. Widened past the original stream-key-only wording because the same ambient status-driven pattern drove both key classes, and leaving the user half behind would have kept relay-status-driven authentication alive in the package. (CAUTH-03)
   4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
 
-**Plans**: 11/14 plans executed
+**Plans**: 13/14 plans executed
 
 Plans:
 
@@ -217,8 +217,8 @@ Plans:
 
 **Gap-closure Wave 2** *(frontmatter `wave: 2`; blocked on Gap-closure Wave 1 completion)*
 
-- [ ] 15-12-PLAN.md — WR-01 + WR-02: rekey registration derived from the builder's own key, and auth failure as a live `error$` value (gap wave 2)
-- [ ] 15-13-PLAN.md — WR-07: one auth handler typed against exactly what it reads, removing the sync-loader boundary assertion (gap wave 2)
+- [x] 15-12-PLAN.md — WR-01 + WR-02: rekey registration derived from the builder's own key, and auth failure as a live `error$` value (gap wave 2)
+- [x] 15-13-PLAN.md — WR-07: one auth handler typed against exactly what it reads, removing the sync-loader boundary assertion (gap wave 2)
 
 **Gap-closure Wave 3** *(frontmatter `wave: 3`; blocked on Gap-closure Wave 2 completion)*
 
@@ -246,7 +246,7 @@ Plans:
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
-| 15. Concord Stream-Auth Cleanup | v1.2 | 11/14 | In Progress|  |
+| 15. Concord Stream-Auth Cleanup | v1.2 | 13/14 | In Progress|  |
 
 **Totals:** 19 phases across three milestones (16 shipped, 3 in progress); 98 plans shipped across v1.0/v1.1 — v1.2 plan count TBD until phases are planned.
 
