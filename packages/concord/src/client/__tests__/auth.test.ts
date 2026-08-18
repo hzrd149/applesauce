@@ -211,6 +211,58 @@ describe("StreamSigners.onAuthRequired failure reporting", () => {
   });
 });
 
+// ---- StreamSigners.onAuthRequired: total answering failure (T-15-24/WR-03) --
+
+describe("StreamSigners.onAuthRequired total answering failure", () => {
+  it("reports a distinct message when a holder answers NONE of a non-empty missingPubkeys, and never calls authenticate", async () => {
+    const onAuthFailure = vi.fn();
+    const holder = new StreamSigners({ onAuthFailure });
+    const a = makeGroupKey();
+    const b = makeGroupKey();
+    holder.register([a]);
+    const { relay, recorder } = authSpyRelay("wss://relay.example", "ok");
+
+    await expect(holder.onAuthRequired(ctx(relay, [b.pk]))).resolves.toBeUndefined();
+
+    expect(relay.authenticate).not.toHaveBeenCalled();
+    expect(recorder).toEqual([]);
+    expect(onAuthFailure).toHaveBeenCalledTimes(1);
+    const [message] = onAuthFailure.mock.calls[0];
+    expect(message).toContain("wss://relay.example");
+    // Distinguishable from the per-pubkey "relay rejected the AUTH" message.
+    expect(message).not.toContain("relay rejected the AUTH");
+  });
+
+  it("stays silent on a partial answer — this scope holds SOME of missingPubkeys (the union-widened cross-scope case)", async () => {
+    const onAuthFailure = vi.fn();
+    const holder = new StreamSigners({ onAuthFailure });
+    const a = makeGroupKey();
+    const b = makeGroupKey();
+    holder.register([a]);
+    const { relay, recorder } = authSpyRelay("wss://relay.example", "ok");
+
+    await holder.onAuthRequired(ctx(relay, [a.pk, b.pk]));
+
+    expect(relay.authenticate).toHaveBeenCalledTimes(1);
+    expect(recorder).toEqual([{ pubkey: a.pk, url: "wss://relay.example" }]);
+    expect(onAuthFailure).not.toHaveBeenCalled();
+  });
+
+  it("stays silent when missingPubkeys is null — the client-wide user-auth path, never this holder's concern", async () => {
+    const onAuthFailure = vi.fn();
+    const holder = new StreamSigners({ onAuthFailure });
+    const a = makeGroupKey();
+    holder.register([a]);
+    const { relay, recorder } = authSpyRelay("wss://relay.example", "ok");
+
+    await holder.onAuthRequired(ctx(relay, null));
+
+    expect(relay.authenticate).not.toHaveBeenCalled();
+    expect(recorder).toEqual([]);
+    expect(onAuthFailure).not.toHaveBeenCalled();
+  });
+});
+
 // ---- createUserAuthHandler (D-08/D-09/T-15-03) -------------------------------
 
 describe("createUserAuthHandler", () => {

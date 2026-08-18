@@ -86,6 +86,17 @@ export class StreamSigners {
     this.options.onAuthFailure?.(message);
   }
 
+  /** Reports a TOTAL answering failure — this scope held no signer for ANY of a
+   *  non-empty `missingPubkeys` request. Distinct from {@link fail}, which reports
+   *  a relay refusing (or erroring on) a correctly-signed AUTH: this is the scope
+   *  being unable to sign at all, the registration-gap signature CR-01 exposed
+   *  (T-15-24/WR-03). Never fires on a partial answer or a `null` request — see
+   *  the two guards at the {@link onAuthRequired} call site. */
+  private failNoSigner(url: string, requestedCount: number): void {
+    const message = `no signer held for any of the ${requestedCount} pubkey(s) the relay asked about on ${url} — this scope's onAuthRequired answered none of them`;
+    this.options.onAuthFailure?.(message);
+  }
+
   /**
    * Answer a relay's `onAuthRequired` signal by authenticating exactly the
    * pubkeys in `missingPubkeys` this holder has a signer for. `missingPubkeys:
@@ -94,11 +105,22 @@ export class StreamSigners {
    * throws — a failed AUTH is a value reported through `onAuthFailure`, not an
    * exception (13-D-01/D-02). Declared as an arrow-function class field so a call
    * site can pass `holder.onAuthRequired` unbound directly into an options bag.
+   *
+   * Invariant (D-13/T-15-24/WR-03): a TOTAL answering failure over a non-empty
+   * `missingPubkeys` — this scope answered zero of the pubkeys the relay asked
+   * about — is reported on both the `:auth` trace and `onAuthFailure`. Under
+   * per-operation narrowing, `missingPubkeys` is always computed from THIS
+   * operation's own `waitForAuth`, so answering none of it can only mean a
+   * registration gap in this scope, never a routine cross-scope skip. A partial
+   * answer (this scope owns some, not all, of a union-widened request) and a
+   * `null` request (the client-wide user-auth path) both stay silent by design.
    */
   readonly onAuthRequired: RelayAuthHandler = async (ctx) => {
+    let answered = 0;
     for (const pk of ctx.missingPubkeys ?? []) {
       const signer = this.registry.get(pk);
       if (!signer) continue;
+      answered++;
       authLog("stream-key auth requested pk=%s relay=%s", pk.slice(0, 8), ctx.url);
       try {
         const res = await ctx.relay.authenticate(signer);
@@ -113,6 +135,11 @@ export class StreamSigners {
         authLog("stream-key AUTH to %s failed pk=%s: %s", ctx.url, pk.slice(0, 8), message);
         this.fail(ctx.url, pk, message);
       }
+    }
+
+    if (Array.isArray(ctx.missingPubkeys) && ctx.missingPubkeys.length > 0 && answered === 0) {
+      authLog("stream-key auth: no signer held for any of %d requested pubkeys relay=%s", ctx.missingPubkeys.length, ctx.url);
+      this.failNoSigner(ctx.url, ctx.missingPubkeys.length);
     }
   };
 }
