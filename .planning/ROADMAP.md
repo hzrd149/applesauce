@@ -54,7 +54,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 
 - [x] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (waves 1-6 complete 2026-08-06; reopened by verification — gap closure in waves 7-9; reopened again 2026-08-06 by code review CR-02, a WR-01-class regression introduced at group.ts:275 by plan 13-11 — closing in plan 13-14) (completed 2026-08-07)
 - [x] **Phase 14: Auth Lifecycle Debug Logging** - A NIP-42 auth attempt's lifecycle and outcome become observable in debug output, and every `packages/loaders/` logger is derived once instead of `.extend()`-ed inline (completed 2026-08-11)
-- [x] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine (completed 2026-08-15)
+- [ ] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine (8/8 plans executed; verification 2026-08-18 found CAUTH-01 unmet for private channels — gap closure pending)
 
 ## Phase Details
 
@@ -229,7 +229,7 @@ Plans:
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
-| 15. Concord Stream-Auth Cleanup | v1.2 | 8/8 | Complete   | 2026-08-15 |
+| 15. Concord Stream-Auth Cleanup | v1.2 | 8/8 | Gaps Found | —          |
 
 **Totals:** 19 phases across three milestones (16 shipped, 3 in progress); 98 plans shipped across v1.0/v1.1 — v1.2 plan count TBD until phases are planned.
 

@@ -5,16 +5,16 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 15
 current_phase_name: concord-stream-auth-cleanup
 status: executing
-stopped_at: Phase 15 complete (plan 15-08 closed)
-last_updated: "2026-08-15T11:30:23.737Z"
-last_activity: 2026-08-15
-last_activity_desc: Plan 15-08 closed the phase
+stopped_at: Phase 15 verification found gaps — CAUTH-01 unmet for private channels
+last_updated: "2026-08-18T08:55:41Z"
+last_activity: 2026-08-18
+last_activity_desc: Verification returned gaps_found (3/4); gap closure pending
 progress:
   total_phases: 3
-  completed_phases: 3
+  completed_phases: 2
   total_plans: 31
   completed_plans: 31
-  percent: 100
+  percent: 67
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 ## Current Position
 
-Phase: 15 (concord-stream-auth-cleanup) — COMPLETE
-Plan: 8 of 8
-Status: Phase 15 complete (all CAUTH-01..04 requirements satisfied, human-verify checkpoint approved 2026-08-15)
-Last activity: 2026-08-15 — Plan 15-08 closed the phase
+Phase: 15 (concord-stream-auth-cleanup) — GAPS FOUND
+Plan: 8 of 8 executed; gap-closure plan pending
+Status: Verification 2026-08-18 scored 3/4. CAUTH-02/03/04 verified. CAUTH-01 failed for the private-channel case — every private-channel publish declares a `waitForAuth` the community's `StreamSigners` can never answer (15-VERIFICATION.md, 15-REVIEW.md CR-01). WR-01..WR-08 confirmed as a second non-blocking bundle. The human-verify checkpoint approved 2026-08-15 did not exercise a private-channel send.
+Last activity: 2026-08-18 — verification returned gaps_found
 
 ## Performance Metrics
 
