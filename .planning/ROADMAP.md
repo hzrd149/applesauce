@@ -54,7 +54,7 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 
 - [x] **Phase 13: Operation-Scoped NIP-42 Auth Hooks** - `onAuthRequired`/`authTimeout`/`authRetries` land across every request-like operation in `applesauce-relay` and thread through `applesauce-loaders`' `SyncLoader` (waves 1-6 complete 2026-08-06; reopened by verification — gap closure in waves 7-9; reopened again 2026-08-06 by code review CR-02, a WR-01-class regression introduced at group.ts:275 by plan 13-11 — closing in plan 13-14) (completed 2026-08-07)
 - [x] **Phase 14: Auth Lifecycle Debug Logging** - A NIP-42 auth attempt's lifecycle and outcome become observable in debug output, and every `packages/loaders/` logger is derived once instead of `.extend()`-ed inline (completed 2026-08-11)
-- [ ] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine (8/8 plans executed; verification 2026-08-18 found CAUTH-01 unmet for private channels — gap closure pending)
+- [ ] **Phase 15: Concord Stream-Auth Cleanup** - Concord's client-wide stream-signer registry and relay drivers are retired in favor of per-operation `onAuthRequired` handlers owned by each community/private-channel engine (8/8 plans executed; verification 2026-08-18 found CAUTH-01 unmet for private channels — gap closure complete 2026-08-18 in plans 15-09..15-14; phase-level verification pending)
 
 ## Phase Details
 
@@ -174,7 +174,7 @@ Plans:
   3. `authenticateStreamKeys`, `version$`, relay driver reference counting, `ensureAuth()`, relay-status-driven stream authentication, the client-wide `autoAuthenticate` user-key option, and the invite watcher's two relay-wide auth-required flag readers are removed or narrowed to zero remaining call sites once every caller migrates to operation-scoped handlers. Widened past the original stream-key-only wording because the same ambient status-driven pattern drove both key classes, and leaving the user half behind would have kept relay-status-driven authentication alive in the package. (CAUTH-03)
   4. A stream operation that fails auth still retries per-operation after the migration, matching the pre-migration per-operation retry behavior. (CAUTH-04)
 
-**Plans**: 13/14 plans executed
+**Plans**: 14/14 plans complete
 
 Plans:
 
@@ -222,7 +222,7 @@ Plans:
 
 **Gap-closure Wave 3** *(frontmatter `wave: 3`; blocked on Gap-closure Wave 2 completion)*
 
-- [ ] 15-14-PLAN.md — WR-06 universal publish-answerability oracle, the full gate run, and the live-relay private-channel human checkpoint (gap wave 3)
+- [x] 15-14-PLAN.md — WR-06 universal publish-answerability oracle, the full gate run, and the live-relay private-channel human checkpoint (gap wave 3)
 
 ## Progress
 
@@ -246,7 +246,7 @@ Plans:
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
-| 15. Concord Stream-Auth Cleanup | v1.2 | 13/14 | In Progress|  |
+| 15. Concord Stream-Auth Cleanup | v1.2 | 14/14 | In Progress|  |
 
 **Totals:** 19 phases across three milestones (16 shipped, 3 in progress); 98 plans shipped across v1.0/v1.1 — v1.2 plan count TBD until phases are planned.
 
