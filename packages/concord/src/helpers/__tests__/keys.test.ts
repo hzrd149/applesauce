@@ -137,6 +137,47 @@ describe("ConcordKeys", () => {
     expect(pTagD).toBe(expectedPk);
   });
 
+  it("wrapForTarget returns the GroupKey that finalized the wrap (CR-01)", async () => {
+    const { owner, material } = await genesis();
+    const rumor = { kind: 3302, content: "hi", tags: [] };
+
+    // A control-plane target.
+    const controlKeys = deriveConcordKeys(material, []);
+    const controlResult = await wrapForTarget(controlKeys, { plane: "control" }, owner, rumor, { plaintext: true });
+    expect(controlResult.key.pk).toBe(controlResult.wrap.pubkey);
+    expect(controlResult.key.pk).toBe(controlKeys.control.pk);
+
+    // A private-channel target.
+    const channelId = "55".repeat(32);
+    const channelKey = bytesToHex(generateSecretKey());
+    const withChannelKey: JoinMaterial = {
+      ...material,
+      channels: [...material.channels, { id: channelId, key: channelKey, epoch: 1, name: "secret-room" }],
+    };
+    const channel: ChannelMetadata = { channel_id: channelId, name: "secret-room", private: true };
+    const channelKeys = deriveConcordKeys(withChannelKey, [channel]);
+    const channelResult = await wrapForTarget(
+      channelKeys,
+      { plane: "channel", channelId },
+      owner,
+      rumor,
+      { plaintext: true },
+    );
+    expect(channelResult.key.pk).toBe(channelResult.wrap.pubkey);
+    expect(channelResult.key.pk).toBe(channelKeys.channels.get(channelId)?.pk);
+
+    // A call passing ephemeralSk — the decoy key must never become the wrap author.
+    const decoySk = generateSecretKey();
+    const decoyPk = getPublicKey(decoySk);
+    const ephemeralResult = await wrapForTarget(controlKeys, { plane: "control" }, owner, rumor, {
+      plaintext: true,
+      ephemeralSk: decoySk,
+    });
+    expect(ephemeralResult.key.pk).toBe(ephemeralResult.wrap.pubkey);
+    expect(ephemeralResult.key.pk).toBe(controlKeys.control.pk);
+    expect(ephemeralResult.wrap.pubkey).not.toBe(decoyPk);
+  });
+
   it("addChannelKey appends a private-channel key immutably", async () => {
     const { material } = await genesis();
     const keys = deriveConcordKeys(material, []);

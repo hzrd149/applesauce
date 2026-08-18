@@ -3628,6 +3628,18 @@ describe("ConcordCommunity publish-answerability oracle — T-15-10 (15-05 Task 
     const channelId = await community.createChannel("secret", { private: true });
     await settle();
 
+    // A private-channel send (CR-01): the community itself publishes it (D-06 —
+    // the sub-engine only reads), so this must be answerable by the community's
+    // OWN holder. Captured independently of `community`'s internals — the record
+    // this call appends to the recorder is the pool's own observation, not a
+    // readback of `community`'s `StreamSigners`.
+    const beforeSendCount = recorded.length;
+    await community.sendMessage(channelId, "hi");
+    await settle();
+    expect(recorded.length).toBe(beforeSendCount + 1);
+    const privateChannelSend = recorded[beforeSendCount]!;
+    const privateChannelPubkey = privateChannelSend.event.pubkey;
+
     // An invite mint + revoke.
     const invite = await community.createInvite({ base: "https://example.com/join" });
     await community.revokeInvite(invite);
@@ -3638,7 +3650,8 @@ describe("ConcordCommunity publish-answerability oracle — T-15-10 (15-05 Task 
     await settle();
 
     // Anti-vacuity: a scenario that silently published nothing cannot pass.
-    expect(recorded.length).toBeGreaterThan(3);
+    // Raised from >3 to >4 to account for the added private-channel send.
+    expect(recorded.length).toBeGreaterThan(4);
 
     // Every recorded publish EXCEPT the Direct-Invite grant carries
     // `waitForAuth: [event.pubkey]` — matched structurally (on the grant's own
@@ -3659,6 +3672,19 @@ describe("ConcordCommunity publish-answerability oracle — T-15-10 (15-05 Task 
       await handler(authRequiredCtx(pool, [record.event.pubkey], `pub-${record.event.id.slice(0, 8)}`));
       expect(authCalls.map((c) => c.pubkey)).toEqual([record.event.pubkey]);
     }
+
+    // Named explicitly (CR-01): the private-channel send's pubkey specifically —
+    // the structural loop above would not say WHICH publish broke if this
+    // regressed. (a) it is the sole waitForAuth entry on its own recorded publish.
+    expect(privateChannelSend.options.waitForAuth).toEqual([privateChannelPubkey]);
+    // (b) invoking its own recorded handler authenticates exactly that pubkey —
+    // proving the community's own StreamSigners holder (widened by CR-01's
+    // heldChannelKeys()) can answer for it, not just that the loop above happened
+    // to pass.
+    authCalls.length = 0;
+    const privateChannelHandler = privateChannelSend.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    await privateChannelHandler(authRequiredCtx(pool, [privateChannelPubkey], "private-channel-send"));
+    expect(authCalls.map((c) => c.pubkey)).toEqual([privateChannelPubkey]);
 
     // The Direct-Invite grant: waits on any authenticated user, answered by the
     // USER's own handler — never a stream key.
