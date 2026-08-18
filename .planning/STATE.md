@@ -5,14 +5,14 @@ milestone_name: operation-scoped-relay-auth
 current_phase: 15
 current_phase_name: concord-stream-auth-cleanup
 status: executing
-stopped_at: Phase 15 verification found gaps — CAUTH-01 unmet for private channels
-last_updated: "2026-08-18T08:55:41Z"
+stopped_at: Phase 15 gap-closure plans 15-09..15-14 ready to execute — CAUTH-01 still unmet for private channels
+last_updated: "2026-08-18T10:30:00Z"
 last_activity: 2026-08-18
-last_activity_desc: Verification returned gaps_found (3/4); gap closure pending
+last_activity_desc: Gap-closure plans 15-09..15-14 created and verified; ready to execute
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 31
+  total_plans: 37
   completed_plans: 31
   percent: 67
 ---
@@ -29,9 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 15 (concord-stream-auth-cleanup) — GAPS FOUND
-Plan: 8 of 8 executed; gap-closure plan pending
+Plan: 8 of 8 original executed; 6 gap-closure plans (15-09..15-14) planned, 0 executed
 Status: Verification 2026-08-18 scored 3/4. CAUTH-02/03/04 verified. CAUTH-01 failed for the private-channel case — every private-channel publish declares a `waitForAuth` the community's `StreamSigners` can never answer (15-VERIFICATION.md, 15-REVIEW.md CR-01). WR-01..WR-08 confirmed as a second non-blocking bundle. The human-verify checkpoint approved 2026-08-15 did not exercise a private-channel send.
-Last activity: 2026-08-18 — verification returned gaps_found
+
+Gap closure planned 2026-08-18: 15-09 (CR-01 registration + one-source key), 15-10 (WR-03/WR-04 auth failure reporting), 15-11 (WR-05/WR-08 example holders + guard roots) in wave 1; 15-12 (WR-01/WR-02 rekey key + `error$`), 15-13 (WR-07 handler type) in wave 2; 15-14 (WR-06 oracle, full gate, live-relay private-channel human checkpoint) in wave 3. Plan-checker passed on iteration 1. Note: REQUIREMENTS.md still marks CAUTH-01 Complete despite the FAILED score — deliberately left for the re-verification pass to resolve, not edited during gap closure.
+Last activity: 2026-08-18 — gap-closure plans created and verified
 
 ## Performance Metrics
 
