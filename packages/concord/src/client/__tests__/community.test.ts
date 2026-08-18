@@ -3690,23 +3690,52 @@ describe("ConcordCommunity publish-answerability oracle — T-15-10 (15-05 Task 
     const privateChannelSend = recorded[beforeSendCount]!;
     const privateChannelPubkey = privateChannelSend.event.pubkey;
 
-    // An invite mint + revoke.
+    // An invite mint, refresh (against the still-live invite, WR-06), then revoke.
     const invite = await community.createInvite({ base: "https://example.com/join" });
+    await settle();
+    await community.refreshInviteBundles([invite]);
+    await settle();
     await community.revokeInvite(invite);
+    await settle();
     // The one NIP-59 Direct-Invite grant (D-16/D-17 exception).
     await community.grantChannelAccess(channelId, memberPubkey);
+    await settle();
     // A channel rotation.
     await community.rotateChannel(channelId, { keep: [pubkey] });
     await settle();
+    // refound() LAST (WR-06): rolls the epoch and adopts new key state, so
+    // anything after it would be operating on a different epoch than the rest
+    // of this scenario. Exercises all four refound() publish sites in one call:
+    // the root-roll requireMajority publish, the channel-rekey requireMajority
+    // publish (via channelRekeys), the compaction publish, and the snapshot
+    // publish. A single PUB_AUTH_URL relay gives majorityThreshold = ceil((1+1)/2)
+    // = 1, which the fixture's okAll ack clears.
+    await community.refound({ keep: [pubkey], channelRekeys: [{ channelId, keep: [pubkey] }] });
+    await settle();
 
     // Anti-vacuity: a scenario that silently published nothing cannot pass.
-    // Raised from >3 to >4 to account for the added private-channel send.
-    expect(recorded.length).toBeGreaterThan(4);
+    // Raised to account for refreshInviteBundles and refound()'s four sites.
+    expect(recorded.length).toBeGreaterThan(10);
+
+    // The loop's universality claim is now a CHECKED PROPERTY, not a comment:
+    // assert a lower bound on the number of DISTINCT publishing authors this
+    // scenario exercised. Each of the following is a structurally distinct
+    // `event.pubkey`: genesis control, genesis guestbook, the private channel's
+    // message-plane key (the send), the invite-link key (shared by mint/refresh/
+    // revoke — one author, three publishes), the NIP-59 grant's ephemeral key,
+    // rotateChannel's new channel-rekey address, refound()'s root-roll address,
+    // refound()'s bundled channel-rekey address (a second, later epoch than
+    // rotateChannel's), refound()'s new-epoch control address (compaction), and
+    // refound()'s new-epoch guestbook address (snapshot) — 10 distinct authors.
+    // A future refactor that stops driving one of these sites shrinks this count
+    // and fails here, rather than silently narrowing the oracle.
+    const distinctAuthors = new Set(recorded.map((r) => r.event.pubkey));
+    expect(distinctAuthors.size).toBeGreaterThanOrEqual(10);
 
     // Every recorded publish EXCEPT the Direct-Invite grant carries
     // `waitForAuth: [event.pubkey]` — matched structurally (on the grant's own
-    // `waitForAuth: true` marker), not by enumerating sites, so a tenth publish
-    // added later without options fails this loop automatically.
+    // `waitForAuth: true` marker), not by enumerating sites, so a new publish
+    // site added later without options fails this loop automatically.
     const streamRecords = recorded.filter((r) => r.options.waitForAuth !== true);
     const grantRecords = recorded.filter((r) => r.options.waitForAuth === true);
     expect(grantRecords.length).toBe(1);
