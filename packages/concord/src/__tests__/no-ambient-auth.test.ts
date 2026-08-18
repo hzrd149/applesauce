@@ -7,8 +7,10 @@
 // its per-relay drivers, its version counter, its reference counting, and its
 // status-driven authentication — have zero call sites and zero definitions
 // left anywhere in `packages/concord/src` OR `apps/examples/src/examples/concord`,
-// and that no non-test file has grown a new ambient-auth trigger, a retry-budget
-// override, or a second handler implementation. Mirrors `cord-citations.test.ts`'s
+// and that no non-test file in EITHER root has grown a new ambient-auth
+// trigger, a retry-budget override, or a second handler implementation. The
+// examples are the code most likely to be copied, so they are the MORE
+// important root for these checks, not the less. Mirrors `cord-citations.test.ts`'s
 // source-tree-walk precedent, adapted to two roots (RESEARCH.md § Validation
 // Architecture, PATTERNS.md § CAUTH-03 structural guard).
 
@@ -45,6 +47,12 @@ function collectFiles(dir: string, extensions: string[]): string[] {
 
 const isTestPath = (path: string): boolean => path.includes("__tests__");
 
+/** Every `.ts`/`.tsx` file under both roots — the shared file list every check below scans. */
+const allFiles = (): string[] => [
+  ...collectFiles(SRC_ROOT, [".ts", ".tsx"]),
+  ...collectFiles(EXAMPLES_ROOT, [".ts", ".tsx"]),
+];
+
 // The five removed mechanisms — the deleted class name, the driver-authentication
 // method, the old key-registration method name, the status-driven user-auth
 // option, the removed per-engine driver-synchronisation method, the removed
@@ -79,7 +87,7 @@ describe("no ambient auth guard (CAUTH-03/D-06)", () => {
   });
 
   it("no file in either root names any of the five removed mechanisms (tests included)", () => {
-    const files = [...collectFiles(SRC_ROOT, [".ts", ".tsx"]), ...collectFiles(EXAMPLES_ROOT, [".ts", ".tsx"])];
+    const files = allFiles();
     const offenders: string[] = [];
 
     for (const file of files) {
@@ -90,8 +98,8 @@ describe("no ambient auth guard (CAUTH-03/D-06)", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("no non-test file under packages/concord/src subscribes to a relay challenge stream or reads a relay-wide auth-required flag", () => {
-    const files = collectFiles(SRC_ROOT, [".ts", ".tsx"]).filter((f) => !isTestPath(f));
+  it("no non-test file under packages/concord/src or the concord examples subscribes to a relay challenge stream or reads a relay-wide auth-required flag", () => {
+    const files = allFiles().filter((f) => !isTestPath(f));
     const offenders: string[] = [];
 
     for (const file of files) {
@@ -102,8 +110,8 @@ describe("no ambient auth guard (CAUTH-03/D-06)", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("no non-test file under packages/concord/src overrides the auth retry count or the auth timeout", () => {
-    const files = collectFiles(SRC_ROOT, [".ts", ".tsx"]).filter((f) => !isTestPath(f));
+  it("no non-test file under packages/concord/src or the concord examples overrides the auth retry count or the auth timeout", () => {
+    const files = allFiles().filter((f) => !isTestPath(f));
     const offenders: string[] = [];
 
     for (const file of files) {
@@ -114,8 +122,8 @@ describe("no ambient auth guard (CAUTH-03/D-06)", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("only client/auth.ts implements a handler over the relay-supplied missing-pubkeys field — one handler, not a family of hand-rolled copies", () => {
-    const files = collectFiles(SRC_ROOT, [".ts", ".tsx"]).filter((f) => f !== AUTH_HANDLER_FILE && !isTestPath(f));
+  it("only client/auth.ts implements a handler over the relay-supplied missing-pubkeys field across packages/concord/src and the concord examples — one handler, not a family of hand-rolled copies", () => {
+    const files = allFiles().filter((f) => f !== AUTH_HANDLER_FILE && !isTestPath(f));
     const offenders: string[] = [];
 
     for (const file of files) {
