@@ -11,14 +11,14 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers/time";
 import "applesauce-common/casts";
-import type { RelayPool } from "applesauce-relay";
+import type { Relay, RelayPool } from "applesauce-relay";
 import type { Debugger } from "debug";
 import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
-import { hexToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
 
 import { ConcordClient } from "../client.js";
-import { ConcordInviteManager } from "../invite-manager.js";
+import { ConcordInviteManager, type ConcordInviteLink } from "../invite-manager.js";
 import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
 import {
@@ -1472,6 +1472,85 @@ describe("ConcordClient extras lifecycle — dispose() releases the source, stop
     expect(extras$.observed).toBe(false);
     extras$.next(["wss://after.test"]);
     expect(extras$.observed).toBe(false);
+  });
+
+  it("revokeBundle's rejected invite-link AUTH reports on the invite manager's own logger (T-15-26/WR-04)", async () => {
+    const REVOKE_AUTH_URL = "wss://revoke-auth.test";
+    const spy = spyLogger();
+    const relay = {
+      url: REVOKE_AUTH_URL,
+      challenge: null,
+      challenge$: new BehaviorSubject<string | null>(null),
+      isAuthenticated: () => false,
+      // The rejected AUTH this test drives — proves the sink is reachable, not
+      // merely present.
+      authenticate: vi.fn(async () => ({ ok: false, from: REVOKE_AUTH_URL })),
+      getSupported: async () => null,
+      sync: () => EMPTY,
+      request: () => EMPTY,
+    };
+    const recorded: { relays: string[]; event: NostrEvent; options: Record<string, unknown> }[] = [];
+    const pool = {
+      status$: new Subject(),
+      relay: () => relay,
+      subscription: () => NEVER,
+      request: () => EMPTY,
+      publish: async (relays: string[], event: NostrEvent, options: Record<string, unknown> = {}) => {
+        recorded.push({ relays, event, options });
+        return [{ ok: true, from: REVOKE_AUTH_URL }];
+      },
+    } as unknown as RelayPool;
+    const signer = new PrivateKeySigner(generateSecretKey());
+
+    const manager = new ConcordInviteManager({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      relays: [REVOKE_AUTH_URL],
+      getCommunity: () => undefined,
+      logger: spy.log,
+    });
+
+    // Revocation with no reachable community takes the revokeBundle() branch
+    // (mirrors the "cleanup after leaving the community" case above).
+    const linkSk = generateSecretKey();
+    const linkPubkey = getPublicKey(linkSk);
+    const token = newInviteToken();
+    const url = buildInviteLink("https://app.example", linkPubkey, token, [REVOKE_AUTH_URL]);
+    const invite: ConcordInviteLink = {
+      token: bytesToHex(token),
+      signerSk: bytesToHex(linkSk),
+      signerPubkey: linkPubkey,
+      communityId: "d".repeat(64),
+      url,
+      createdAt: unixNow(),
+      revoked: false,
+    };
+
+    const revoked = await manager.revoke(invite);
+    expect(revoked.revoked).toBe(true);
+
+    // revoke() also tombstones + saves the invite list (the user-signed 13303
+    // publish), so isolate the bundle revocation's own record by author — the
+    // invite-LINK pubkey, not the user's.
+    const bundlePublish = recorded.find((r) => r.event.pubkey === invite.signerPubkey);
+    expect(bundlePublish).toBeDefined();
+    const { event, options } = bundlePublish!;
+    const onAuthRequired = options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    expect(typeof onAuthRequired).toBe("function");
+
+    await onAuthRequired({
+      relay: relay as unknown as Relay,
+      url: REVOKE_AUTH_URL,
+      challenge: null,
+      request: { verb: "EVENT" as const, id: "revoke-1", filters: [] },
+      requirement: [event.pubkey],
+      missingPubkeys: [event.pubkey],
+      reason: "auth-required",
+    });
+
+    const messages = spy.calls.map((call) => format(...(call as [unknown, ...unknown[]])));
+    expect(messages.some((m) => m.includes("invite-link auth failed"))).toBe(true);
   });
 });
 

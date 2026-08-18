@@ -117,8 +117,10 @@ export class ConcordInviteManager {
   private readonly userOnAuthRequired?: RelayAuthHandler;
   /** This manager's own scope: holds the invite-LINK signer keys for the links this
    *  user minted, which are neither the user's identity key nor any community's stream
-   *  keys — kept separate from both (T-15-01). */
-  private readonly signers = new StreamSigners();
+   *  keys — kept separate from both (T-15-01). Constructed in the constructor body
+   *  (not a field initializer) because it needs `this.log`, which a field
+   *  initializer cannot reference (T-15-26/WR-04). */
+  private readonly signers: StreamSigners;
 
   private pubkey?: string;
   private sub?: Subscription;
@@ -139,6 +141,14 @@ export class ConcordInviteManager {
 
   constructor(options: ConcordInviteManagerOptions) {
     this.log = options.logger ?? logger.extend("invite");
+    // Reports a rejected/erroring invite-LINK AUTH on this manager's own logger
+    // (D-13's remedy for this scope: no error$ equivalent exists here, and D-10
+    // deliberately removed the standing status surface — a log line on :invite
+    // is the whole fix, T-15-26/WR-04). Built here, not as a field initializer,
+    // because it needs `this.log`, which is assigned immediately above.
+    this.signers = new StreamSigners({
+      onAuthFailure: (message) => this.log("invite-link auth failed: %s", message),
+    });
     this.signer = options.signer;
     this.pool = options.pool;
     this.eventStore = options.eventStore;
