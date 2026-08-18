@@ -75,9 +75,7 @@ export interface StreamAuthContext {
    *  this type states the shape both already agree on rather than picking a
    *  side. */
   relay: {
-    authenticate(signer: {
-      signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent>;
-    }): Promise<unknown>;
+    authenticate(signer: { signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent> }): Promise<unknown>;
   };
   /** The URL of the relay signaling the auth requirement. */
   url: string;
@@ -200,7 +198,11 @@ export class StreamSigners {
     }
 
     if (Array.isArray(ctx.missingPubkeys) && ctx.missingPubkeys.length > 0 && answered === 0) {
-      authLog("stream-key auth: no signer held for any of %d requested pubkeys relay=%s", ctx.missingPubkeys.length, ctx.url);
+      authLog(
+        "stream-key auth: no signer held for any of %d requested pubkeys relay=%s",
+        ctx.missingPubkeys.length,
+        ctx.url,
+      );
       this.failNoSigner(ctx.url, ctx.missingPubkeys.length);
     }
   };
