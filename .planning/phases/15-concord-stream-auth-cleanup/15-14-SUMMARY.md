@@ -63,28 +63,29 @@ coverage:
         status: pass
     human_judgment: false
   - id: D3
-    description: "A developer has sent a message into a private channel against a live auth-gating relay and confirmed the message actually landed — retrievable from a second client/session, not merely shown by the sending session's optimistic local echo"
+    description: "The developer approved the private-channel live-relay checkpoint with the single word \"approved\" against the seven numbered how-to-verify steps as presented, without volunteering per-step observations"
     verification: []
     human_judgment: true
-    rationale: "No live auth-gating relay and no browser is available to this autonomous executor — this is the phase's designated blocking human-verify checkpoint. Task 3 has not yet been presented to the user in this session; this SUMMARY is committed now, before the checkpoint resolves, so Tasks 1-2's completed work is never lost across a return."
+    rationale: "No live auth-gating relay and no browser is available to this autonomous executor — this is the phase's designated blocking human-verify checkpoint. The developer's response was a bare approval; no per-step detail (step 5's auth trace lines, step 6's second-session retrieval) was reported, so none is recorded here as observed. The approval itself discharges the checkpoint per the plan's Task 3 acceptance criteria (\"On approval, 15-VALIDATION.md's new Manual-Only Verification row is marked discharged with the date\"), but the phase's re-verification pass should weigh that the approval carried no per-step detail."
 
 # Metrics
-duration: ~9min (Tasks 1-2 only; Task 3 checkpoint outstanding)
+duration: ~9min (Tasks 1-2) + checkpoint resolution (Task 3)
 completed: 2026-08-18
-status: checkpoint_pending
+status: complete
 ---
 
-# Phase 15 Plan 14: Publish-Answerability Oracle Widened (WR-06) + Full Gate Run — Checkpoint Pending Summary
+# Phase 15 Plan 14: Publish-Answerability Oracle Widened (WR-06) + Full Gate Run + Live-Relay Checkpoint Summary
 
-**The publish-answerability scenario in `community.test.ts` now drives every `ConcordCommunity` publish site — including all four `refound()` sites and `refreshInviteBundles()` — and asserts a checked lower bound on the number of distinct publishing authors instead of an unchecked comment; all four phase gates pass together in one recorded run covering every gap-closure plan (15-09..15-14); Task 3's blocking live-relay private-channel checkpoint has not yet been resolved.**
+**The publish-answerability scenario in `community.test.ts` now drives every `ConcordCommunity` publish site — including all four `refound()` sites and `refreshInviteBundles()` — and asserts a checked lower bound on the number of distinct publishing authors instead of an unchecked comment; all four phase gates pass together in one recorded run covering every gap-closure plan (15-09..15-14); the blocking live-relay private-channel checkpoint was approved by the developer with a bare "approved," without per-step detail.**
 
 ## Performance
 
-- **Duration:** ~9 min for Tasks 1-2
+- **Duration:** ~9 min for Tasks 1-2, plus Task 3's checkpoint resolution in a continuation session
 - **Started:** 2026-08-18T14:24:33+01:00 (Task 1 commit)
 - **Completed (Tasks 1-2):** 2026-08-18T14:32:59+01:00 (Task 2 commit)
-- **Tasks:** 2/3 (Task 3 is the blocking checkpoint, not yet presented)
-- **Files modified:** 4
+- **Completed (Task 3, checkpoint discharge):** 2026-08-18 (continuation session)
+- **Tasks:** 3/3
+- **Files modified:** 5 (4 from Tasks 1-2, plus this SUMMARY)
 
 ## Accomplishments
 
@@ -94,7 +95,8 @@ status: checkpoint_pending
 - Proved the extended scenario non-vacuous: reverted `refound()`'s `plan.channelRekeyKeys` registration to register nothing, reran — RED, naming the unanswered channel-rekey publish; restored (byte-identical `git diff`) and reran — GREEN, 66/66
 - Ran all four phase gates from the repo root and recorded their real output verbatim: `pnpm --filter applesauce-concord build` (exit 0), `pnpm --filter applesauce-concord test` (exit 0, 55 files / 594 tests / 0 failures / 0 skipped), `pnpm --filter applesauce-examples build` (exit 0), `pnpm build` (exit 0, repo-wide turbo, 18/18 tasks)
 - `npx prettier --check` over every file the gap-closure wave (15-09..15-14) touched initially flagged 2 pre-existing files from wave 1/2 (`auth.ts`, `keys.test.ts`); fixed with `npx prettier --write` (formatting-only diff, confirmed by inspection and a green rebuild/retest), committed separately; a second `--check` pass is clean
-- Extended `15-VALIDATION.md`: 9 new Per-Task Verification Map rows for the gap-closure tasks that produced an oracle, a new Wave 0 bullet citing each plan's non-vacuity probe, a new pending Manual-Only Verifications row for the private-channel live-relay checkpoint, and a new dated (2026-08-18) full-gate block recorded below the intact 2026-08-15 block — the four pre-existing Per-Task Verification Map rows are unchanged (verified via `git diff`, additions only)
+- Extended `15-VALIDATION.md`: 9 new Per-Task Verification Map rows for the gap-closure tasks that produced an oracle, a new Wave 0 bullet citing each plan's non-vacuity probe, a new Manual-Only Verifications row for the private-channel live-relay checkpoint, and a new dated (2026-08-18) full-gate block recorded below the intact 2026-08-15 block — the four pre-existing Per-Task Verification Map rows are unchanged (verified via `git diff`, additions only)
+- **Task 3:** the blocking live-relay checkpoint was presented to the developer verbatim (the `what-built` summary and the seven numbered `how-to-verify` steps from `15-14-PLAN.md`). The developer's complete and verbatim response was the single word "approved," with no separate narration of any individual step's outcome. Per the resume instructions constraining this continuation, nothing about step 5 (the `auth` trace lines, the absence of the zero-answer report) or step 6 (second-session retrieval) is recorded as observed — the developer did not report those details, and attributing them would fabricate verification evidence, exactly the failure mode that let CR-01 ship past a green suite and the 2026-08-15 checkpoint. `15-VALIDATION.md`'s private-channel Manual-Only Verification row is marked discharged, dated 2026-08-18, describing the approval exactly as it was given.
 
 ## Task Commits
 
@@ -103,16 +105,17 @@ Each completed task was committed atomically:
 1. **Task 1: Make the publish-answerability scenario cover every publish a community makes** - `61a05514` (test)
 2. **Formatting fix (part of Task 2's prettier gate)** - `63e47387` (style)
 3. **Task 2: Run every phase gate together and extend the validation contract** - `3750f1c1` (docs)
-4. **Task 3: Human verification — a private-channel send against a live auth-gating relay** - BLOCKING CHECKPOINT, not yet presented to the user in this session
-
-**Plan metadata:** not yet issued — the checkpoint has not resolved. This SUMMARY is committed now so Tasks 1-2's completed work is never lost across the return.
+4. **Interim SUMMARY recording Tasks 1-2; Task 3 outstanding** - `474023dc` (docs)
+5. **Task 3: Discharge the private-channel live-relay checkpoint in `15-VALIDATION.md`** - `b59655d5` (docs)
+6. **This finalized SUMMARY** - committed alongside this file per the required order (write, then commit, before returning)
 
 ## Files Created/Modified
 
 - `packages/concord/src/client/__tests__/community.test.ts` - Extended the publish-answerability scenario with `refreshInviteBundles()`/`refound()`, added the distinct-authors lower-bound assertion, raised the anti-vacuity floor
 - `packages/concord/src/client/auth.ts` - Formatting-only: line-wrap fix in `StreamAuthContext.relay`'s type and the `authLog` call (pre-existing from plan 15-10, flagged by this plan's `npx prettier --check`)
 - `packages/concord/src/helpers/__tests__/keys.test.ts` - Formatting-only: line-wrap fix in a multi-line `wrapForTarget` call (pre-existing from plan 15-09)
-- `.planning/phases/15-concord-stream-auth-cleanup/15-VALIDATION.md` - 9 new Per-Task Verification Map rows, a gap-closure Wave 0 non-vacuity bullet, an extended Manual-Only Verifications table, and a new dated full-gate run block
+- `.planning/phases/15-concord-stream-auth-cleanup/15-VALIDATION.md` - 9 new Per-Task Verification Map rows, a gap-closure Wave 0 non-vacuity bullet, an extended Manual-Only Verifications table (private-channel row now discharged 2026-08-18), and a new dated full-gate run block
+- `.planning/phases/15-concord-stream-auth-cleanup/15-14-SUMMARY.md` - this file, finalized from its interim (checkpoint_pending) state to complete
 
 ## Decisions Made
 
@@ -175,22 +178,27 @@ Full verbatim record also lives in `.planning/phases/15-concord-stream-auth-clea
 
 ## Issues Encountered
 
-None beyond the pre-existing formatting issue documented above under Deviations.
+None beyond the pre-existing formatting issue documented above under Deviations. Task 3's checkpoint was approved without per-step detail — see "Checkpoint Approval Detail" below; this is noted as an item for the re-verification pass to weigh, not treated as a defect in this plan's own execution.
+
+## Checkpoint Approval Detail (Task 3)
+
+The developer's complete and verbatim response to the checkpoint was the single word "approved," given against the seven numbered `how-to-verify` steps as presented in `15-14-PLAN.md`. They did not separately narrate what they observed at step 5 (whether the `auth` trace lines appeared for the private channel's message-plane key, and whether the zero-answer report was absent) or at step 6 (whether the message was retrieved from a second session).
+
+This SUMMARY records only that bare approval. It does NOT state that the `auth` trace lines were seen, that the zero-answer report was absent, or that the message was retrieved from a second session — none of those were reported, and recording them would fabricate verification evidence. That fabrication is precisely the failure mode that let CR-01 ship past a green suite and the approved 2026-08-15 checkpoint (see this plan's `<objective>`). The approval is real and discharges the checkpoint per Task 3's acceptance criteria, but it carries no per-step detail — the re-verification pass should treat that absence as a known limitation of this discharge, not assume the missing detail was favorable.
 
 ## User Setup Required
 
-None for Tasks 1-2. Task 3 requires the user to run the `how-to-verify` steps in `15-14-PLAN.md` against a live auth-gating relay and a browser — see the CHECKPOINT REACHED message returned alongside this SUMMARY.
+None. Task 3's checkpoint has been presented and resolved (developer approval, "approved," no per-step detail) — see Checkpoint Approval Detail above.
 
 ## Next Phase Readiness
 
-- Tasks 1-2 are complete and committed; Task 3 (the phase's designated blocking human-verify checkpoint) is outstanding
-- `REQUIREMENTS.md`'s CAUTH-01 checkbox is intentionally left untouched by this plan (`git diff --stat` confirms) — the Complete-vs-failed discrepancy against `15-VERIFICATION.md`'s 2026-08-18 score is surfaced in `15-VALIDATION.md` for the re-verification pass, not corrected here
-- Once Task 3 resolves (approved or a specific failure reported), the phase is ready for a re-verification pass (`re_verification: true`) against `15-VERIFICATION.md`'s two gap entries — per this plan's `<output>` instruction
+- All three tasks are complete and committed. Tasks 1-2 landed in the prior session; Task 3 (the phase's designated blocking human-verify checkpoint) is discharged in this continuation session, recorded per the constraint above.
+- `REQUIREMENTS.md`'s CAUTH-01 checkbox is intentionally left untouched by this plan (`git diff --stat` confirms) — `REQUIREMENTS.md` still marks CAUTH-01 `[x]` Complete while `15-VERIFICATION.md` (2026-08-18) scored it `failed` for the private-channel-send gap this wave closes. This discrepancy is carried forward as an item for the re-verification pass to resolve — it is surfaced here again, not corrected.
+- The phase is now ready for a re-verification pass (`re_verification: true`) against `15-VERIFICATION.md`'s two gap entries, per this plan's `<output>` instruction. That pass should weigh two open items together: (1) the CAUTH-01 status discrepancy above, and (2) that Task 3's checkpoint approval carried no per-step detail (see Checkpoint Approval Detail) — the re-verification pass is the right place to decide whether either warrants further action before the phase is declared complete.
 
 ---
 *Phase: 15-concord-stream-auth-cleanup*
-*Tasks 1-2 completed: 2026-08-18*
-*Task 3 (blocking human checkpoint): outstanding*
+*Plan 15-14 completed: 2026-08-18 (Tasks 1-2 in the initial session; Task 3's checkpoint discharge in a continuation session)*
 
 ## Self-Check: PASSED
 
@@ -201,3 +209,5 @@ None for Tasks 1-2. Task 3 requires the user to run the `how-to-verify` steps in
 - FOUND commit: 61a05514 (Task 1)
 - FOUND commit: 63e47387 (formatting fix)
 - FOUND commit: 3750f1c1 (Task 2)
+- FOUND commit: 474023dc (interim SUMMARY)
+- FOUND commit: b59655d5 (Task 3 — checkpoint discharge in 15-VALIDATION.md)
