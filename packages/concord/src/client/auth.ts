@@ -17,9 +17,11 @@ import { PrivateKeySigner } from "applesauce-signers";
 import type { ISigner } from "applesauce-signers";
 import { Observable, distinctUntilChanged, map, startWith } from "rxjs";
 import { normalizeURL } from "applesauce-core/helpers";
+import type { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { RelayAuthHandler, RelayPool, RelayStatus } from "applesauce-relay";
+import type { SyncAuthHandler } from "applesauce-loaders/loaders";
 import type { GroupKey } from "../helpers/crypto.js";
 import { logger } from "../logger.js";
 
@@ -27,11 +29,65 @@ import { logger } from "../logger.js";
  *  never `.extend()`d again at an individual log call site (SEED-001/14-D-18). */
 const authLog = logger.extend("auth");
 
+/** Narrows an `authenticate()` response down to its `ok` flag. `StreamAuthContext.relay.authenticate`
+ *  is declared `Promise<unknown>` (the shape both `RelayAuthContext`'s `Relay.authenticate` —
+ *  `Promise<PublishResponse>` — and `SyncAuthContext`'s `SyncAuthRelay.authenticate` actually
+ *  satisfy), so reading `.ok` off the resolved value needs a runtime-checked narrowing rather than
+ *  an unchecked assertion. Both real return shapes carry a boolean `ok` field at runtime. */
+function isOkResponse(response: unknown): response is { ok: boolean } {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "ok" in response &&
+    typeof (response as { ok: unknown }).ok === "boolean"
+  );
+}
+
 export interface StreamSignersOptions {
   /** Called with a human-readable message whenever an AUTH this holder attempts is
    *  rejected by the relay or throws. The holder never touches any status observable
    *  itself — the owning engine records/surfaces the message (D-13). */
   onAuthFailure?: (message: string) => void;
+}
+
+/**
+ * `StreamSigners.onAuthRequired`'s real contract — exactly the fields the
+ * handler body reads (`ctx.relay.authenticate`, `ctx.url`, `ctx.missingPubkeys`)
+ * and nothing else. A structural SUPERTYPE of both `RelayAuthContext`
+ * (`applesauce-relay`, the pool subscription/request/publish path) and
+ * `SyncAuthContext` (`applesauce-loaders`, the sync-loader path): each of those
+ * carries every field this type asks for, plus more, so either is assignable
+ * here with no cast at either boundary (contravariance is what makes one
+ * function value satisfy both consumer handler types).
+ *
+ * `request` is DELIBERATELY ABSENT. `RelayAuthContext.request` names the exact
+ * wire verb a relay refused, but `SyncAuthContext` carries no `request` field
+ * at all — the sync loader's own auth context never had one to give. A handler
+ * that branched on `ctx.request` would be unsound the moment it ran on the
+ * sync path, which is exactly the hole the boundary type-cast previously at
+ * `sync.ts`'s loader call site used to paper over.
+ */
+export interface StreamAuthContext {
+  /** The relay to authenticate against, narrowed to the one method this
+   *  handler calls. Both a real `Relay` (`applesauce-relay`) and a
+   *  `SyncAuthRelay` (`applesauce-loaders`) satisfy this shape structurally —
+   *  neither package's concrete relay type is imported here on purpose, so
+   *  this type states the shape both already agree on rather than picking a
+   *  side. */
+  relay: {
+    authenticate(signer: {
+      signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent>;
+    }): Promise<unknown>;
+  };
+  /** The URL of the relay signaling the auth requirement. */
+  url: string;
+  /** The pubkeys not yet authenticated for this operation's requirement, or
+   *  `null` when the requirement is `true` (any authenticated user) — the
+   *  stream path never receives a `null` request in practice (every stream
+   *  operation's `waitForAuth` is a concrete pubkey list), but the type stays
+   *  honest about the wider contract both `RelayAuthContext` and
+   *  `SyncAuthContext` declare. */
+  missingPubkeys: string[] | null;
 }
 
 /**
@@ -114,8 +170,14 @@ export class StreamSigners {
    * registration gap in this scope, never a routine cross-scope skip. A partial
    * answer (this scope owns some, not all, of a union-widened request) and a
    * `null` request (the client-wide user-auth path) both stay silent by design.
+   *
+   * Typed `RelayAuthHandler & SyncAuthHandler`: its declared parameter
+   * ({@link StreamAuthContext}) is a structural supertype of both consumer
+   * context types, so this one function value is directly assignable to both
+   * the pool subscription/request/publish handler type AND the sync loader's
+   * handler type — no cast at either boundary.
    */
-  readonly onAuthRequired: RelayAuthHandler = async (ctx) => {
+  readonly onAuthRequired: RelayAuthHandler & SyncAuthHandler = async (ctx: StreamAuthContext) => {
     let answered = 0;
     for (const pk of ctx.missingPubkeys ?? []) {
       const signer = this.registry.get(pk);
@@ -124,7 +186,7 @@ export class StreamSigners {
       authLog("stream-key auth requested pk=%s relay=%s", pk.slice(0, 8), ctx.url);
       try {
         const res = await ctx.relay.authenticate(signer);
-        if (res.ok) {
+        if (isOkResponse(res) && res.ok) {
           authLog("stream-key auth succeeded pk=%s relay=%s", pk.slice(0, 8), ctx.url);
         } else {
           authLog("stream-key auth rejected pk=%s relay=%s", pk.slice(0, 8), ctx.url);

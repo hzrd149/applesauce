@@ -352,3 +352,25 @@ describe("buildChain — per-epoch refounder attribution (ROTATE-12/L01)", () =>
     for (const entry of chain) expect(entry.refounder).toBe(expected[entry.root_epoch]);
   });
 });
+
+describe("SyncContext.onAuthRequired type narrowing (WR-07 regression guard)", () => {
+  it("accepts a StreamSigners handler and rejects a request-reading handler at compile time", () => {
+    // Positive: every syncContext() in this codebase assigns this.signers.onAuthRequired
+    // (a StreamSigners instance's handler, RelayAuthHandler & SyncAuthHandler) directly
+    // here — it must type-check with no cast, proving Task 1's contravariant typing holds
+    // at this boundary too.
+    const positiveHandler: SyncContext["onAuthRequired"] = new StreamSigners().onAuthRequired;
+    void positiveHandler;
+
+    // Negative: a handler declared over a context that reads `request` must be REJECTED —
+    // the loader's own auth context (what SyncContext["onAuthRequired"] is narrowed to)
+    // never carries a `request` field at all. If this narrowing ever regresses (e.g. the
+    // field is widened back to RelayAuthHandler), this line stops erroring and
+    // `@ts-expect-error` fails the build.
+    // @ts-expect-error - a handler reading `request` is not assignable to SyncContext's narrowed onAuthRequired
+    const negativeHandler: SyncContext["onAuthRequired"] = (ctx: { request: unknown }) => {
+      void ctx.request;
+    };
+    void negativeHandler;
+  });
+});
