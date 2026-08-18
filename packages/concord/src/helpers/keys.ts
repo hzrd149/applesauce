@@ -227,7 +227,12 @@ export function planeKeyFor(keys: ConcordKeys, target: WrapTarget): GroupKey {
 /**
  * Seal + gift-wrap a rumor for a plane, purely from the key state + a signer.
  * Any build-time `created_at` is dropped so the envelope stamps the rumor at
- * wrap time (CORD-02). Returns the kind-1059 wrap and the inner rumor id.
+ * wrap time (CORD-02). Returns the kind-1059 wrap, the inner rumor id, and
+ * `key` — the exact {@link GroupKey} that finalized `wrap` (`wrap.pubkey ===
+ * key.pk`). A caller that must be able to NIP-42-authenticate the wrap's
+ * author registers this returned value rather than re-resolving the target
+ * through {@link planeKeyFor} a second time — a second resolution after an
+ * `await` can race a concurrent key change (see `ConcordCommunity.publishToPlane`).
  */
 export async function wrapForTarget(
   keys: ConcordKeys,
@@ -235,7 +240,7 @@ export async function wrapForTarget(
   author: ISigner,
   rumor: RumorTemplate,
   opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
-): Promise<{ wrap: NostrEvent; rumorId: string }> {
+): Promise<{ wrap: NostrEvent; rumorId: string; key: GroupKey }> {
   const key = planeKeyFor(keys, target);
   // Drop any build-time created_at and re-stamp at wrap time (CORD-02). Build the
   // rumor first so we can return its id, then seal + wrap it onto the plane.
@@ -243,7 +248,7 @@ export async function wrapForTarget(
   const stamped = await toRumor(author)({ ...template, created_at: unixNow() });
   const seal = await sealRumor(key.convKey, author, { plaintext: opts.plaintext })(stamped);
   const wrap = await wrapSeal(key.sk, key.convKey, { ephemeral: opts.ephemeral, ephemeralSk: opts.ephemeralSk })(seal);
-  return { wrap, rumorId: stamped.id };
+  return { wrap, rumorId: stamped.id, key };
 }
 
 /**

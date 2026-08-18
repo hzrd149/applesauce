@@ -1608,10 +1608,13 @@ export class ConcordCommunity {
    *  the event it is publishing, never from a hand-typed key — a concord wrap is
    *  finalized with the STREAM secret key (`buildWrap` in `operations/gift-wrap.ts`),
    *  so the pubkey a gating relay wants authenticated IS `event.pubkey`. Answered by this scope's own
-   *  {@link StreamSigners} holder, never the user's. `this.signers.get` is checked only
-   *  for a diagnostic trace — this helper never throws and never gates the publish
-   *  itself: a relay that doesn't gate writes accepts the event regardless, and
-   *  refusing to publish here would turn an auth question into an availability bug. */
+   *  {@link StreamSigners} holder, never the user's. After CR-01, every plane publish
+   *  registers its own key (see {@link publishToPlane}) and every rekey publish
+   *  registers from its plan, so `this.signers.get` finding nothing here now means a
+   *  genuine registration gap — this trace firing is no longer benign. This helper
+   *  still never throws and never gates the publish itself: a relay that doesn't gate
+   *  writes accepts the event regardless, and refusing to publish here would turn an
+   *  auth question into an availability bug. */
   private streamPublishOptions(event: NostrEvent): PublishOptions {
     if (!this.signers.get(event.pubkey))
       this.publishLog(
@@ -1630,11 +1633,19 @@ export class ConcordCommunity {
     rumor: { kind: number; content: string; tags: string[][]; created_at?: number },
     opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
   ): Promise<string> {
-    const { wrap, rumorId } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
+    const { wrap, rumorId, key } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
     // Optimistic local echo first, so the UI updates before relays ack.
     if (!opts.ephemeral) this.onWrap(wrap);
-    // The plane key that finalized `wrap` is already registered by the walk and by
-    // `openLive()` (D-16) — no registration needed here.
+    // The key that finalized this wrap is registered here, from `wrapForTarget`'s own
+    // return value (CR-01), so the pubkey `streamPublishOptions` names in `waitForAuth`
+    // is answerable by construction for every plane target, present and future. Never
+    // re-resolved by looking the target back up against `this.keys` after the `await` —
+    // `this.keys` can be reassigned by a concurrent `adoptRefounding()` during
+    // `wrapForTarget`'s await, which would resolve a different key than the one the
+    // wrap was finalized with (the same race WR-01 documents on the rekey path).
+    // `register()` is already idempotent, so this adds no allocation for the common
+    // already-registered case.
+    this.signers.register([key]);
     this.pool.publish(this.transport(), wrap, this.streamPublishOptions(wrap)).catch((err) => {
       this.publishLog("publish failed plane=%s: %s", target.plane, (err as Error)?.message ?? err);
       console.warn("publish failed", err);
