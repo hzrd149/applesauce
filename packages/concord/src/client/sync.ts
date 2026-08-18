@@ -21,7 +21,7 @@ import { firstValueFrom, toArray } from "rxjs";
 import { createSyncLoader, type SyncAuthHandler } from "applesauce-loaders/loaders";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";
-import type { RelayAuthHandler, RelayPool } from "applesauce-relay";
+import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 
@@ -83,8 +83,16 @@ export interface SyncContext {
   /** The scope's own reactive auth handler — invoked by the relay when it
    *  refuses THIS operation, never called by the walk itself (D-01). Threaded
    *  into every loader request beside `waitForAuth` so the relay can answer its
-   *  own challenge against exactly this scope's held keys. */
-  onAuthRequired: RelayAuthHandler;
+   *  own challenge against exactly this scope's held keys.
+   *
+   *  Typed `SyncAuthHandler`, not `RelayAuthHandler`: the loader's own auth
+   *  context carries `relay`/`url`/`challenge`/`requirement`/the still-needed
+   *  pubkey list/`reason` and NOT `request`, so a handler assigned here must
+   *  not read `request`. That is the whole point of the narrower type — it
+   *  makes the constraint visible to an external consumer of the public
+   *  `SyncContext` / `syncAuthors` API
+   *  rather than leaving it as an in-package convention. */
+  onAuthRequired: SyncAuthHandler;
   /** Cooperative cancellation: return false to abort the walk between epochs. */
   alive?: () => boolean;
   /** The sync-scoped debug logger (always a real value — constructed internally by
@@ -115,12 +123,7 @@ export async function syncAuthors(ctx: SyncContext, authors: string[]): Promise<
     relays: ctx.relays,
     filter: { kinds: BACKFILL_KINDS, authors },
     waitForAuth: authors,
-    // The sync loader's SyncAuthContext is a narrower, package-local mirror of
-    // applesauce-relay's RelayAuthContext (it omits `request`, which this
-    // scope's handler never reads) — deliberately not structurally assignable
-    // the other direction, so this boundary cast is the documented bridge
-    // rather than a workaround.
-    onAuthRequired: ctx.onAuthRequired as unknown as SyncAuthHandler,
+    onAuthRequired: ctx.onAuthRequired,
   });
   // events$ completes when every relay has finished (completed or errored), so this
   // awaits the whole epoch's traffic — nothing advances until it resolves.
