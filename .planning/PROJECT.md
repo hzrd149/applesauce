@@ -59,6 +59,29 @@ argument, so a hostile relay could erase its own log line or forge one identical
 code review, not by the phase's own oracles, because those oracles only exercised long strings. Fixed at
 the single shared formatter so all seven sinks inherit it.
 
+**Phase 15 complete (2026-08-18)** — Concord's stream auth is now operation-scoped, closing v1.2.
+All four CAUTH requirements verified; 14 plans (8 original + 6 gap-closure) across 10 waves, suite at
+**2,684 passing / 2 skipped** across 278 files. `ConcordRelayAuth` is gone, and `no-ambient-auth.test.ts`
+makes its reintroduction fail loudly rather than merely being absent.
+
+The phase took two verification rounds. The first passed its own gates, was marked complete, and was
+then reopened by code review: every send into a private channel declared a `waitForAuth` pubkey the
+community's own holder was never registered with, so on a gating relay the publish waited out a 30s
+timeout, the `.catch` swallowed it, and the optimistic local echo had already rendered the message as
+sent. The publish-answerability oracle that existed to catch exactly this had a scenario too narrow to
+back its own name — it never performed a private-channel send.
+
+Two lessons compound, and both are about how a fix is *checked*, not how it is written. First: the
+gap-closure plan shipped two mechanisms for that blocker — an enumerated one (register the held private
+channel keys) and a structural one (carry the finalizing `GroupKey` out of the builder so the declared
+and registered key cannot drift). The suite went green and both were assumed load-bearing. Round-2
+review established by mutation that only the structural one does any work; the enumerated one is
+unreachable on that path and left dead code behind a comment that will mislead the next reader. A
+passing test does not tell you *which* of two changes closed the gap. Second: the same review's earlier
+round had asserted a Prettier finding was "introduced by this phase" — checking against the phase base
+refuted it outright, while the same check confirmed the real blocker. Severity labels are hypotheses
+until someone checks them against the base, in both directions.
+
 ## Current Milestone: v1.2 operation-scoped-relay-auth
 
 **Goal:** Move NIP-42 authentication out of ambient, relay-wide cached state and into the
@@ -207,7 +230,7 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-05 — started milestone v1.2 operation-scoped-relay-auth from three promoted
+*Last updated: 2026-08-18 — Phase 15 complete; milestone v1.2 operation-scoped-relay-auth fully executed. Started from three promoted
 backlog items (999.5, 999.4, 999.11) plus SEED-001's loaders sweep. Every premise was verified
 against the code before scoping: the relay-wide pre-block is live at `relay.ts:846/944/995/1063`,
 no `onAuthRequired` exists yet, and concord's churn mechanism is `relay-auth.ts:174`'s
