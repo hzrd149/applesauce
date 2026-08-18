@@ -191,6 +191,15 @@ GREEN (final, restored): `Test Files  1 passed (1)` / `Tests  5 passed (5)`.
 - WR-05 and WR-08 (this plan's gap-closure scope) are closed: zero module-scope `StreamSigners` declarations remain in the concord examples, and all four structural-guard checks now cover both roots with proven non-vacuity.
 - No blockers for plan 15-14 (final phase gate) or any future concord example additions — the `useMemo`-scoped-holder pattern established here is the one to follow.
 
+## Self-Check: PASSED
+
+- FOUND: apps/examples/src/examples/concord/crypto-history.tsx
+- FOUND: apps/examples/src/examples/concord/rumor-stores.tsx
+- FOUND: apps/examples/src/examples/concord/direct-invites.tsx
+- FOUND: packages/concord/src/__tests__/no-ambient-auth.test.ts
+- FOUND: d9850e91 (fix(15-11): bind concord example StreamSigners lifetime to its scope)
+- FOUND: f1e65064 (test(15-11): widen all four no-ambient-auth checks to scan both roots)
+
 ---
 *Phase: 15-concord-stream-auth-cleanup*
 *Completed: 2026-08-18*
