@@ -181,3 +181,17 @@ None - no external service configuration required.
 ---
 *Phase: 15-concord-stream-auth-cleanup*
 *Completed: 2026-08-18*
+
+## Self-Check: PASSED
+
+- FOUND: packages/concord/src/helpers/keys.ts
+- FOUND: packages/concord/src/client/community.ts
+- FOUND: packages/concord/src/client/private-channel.ts
+- FOUND: packages/concord/src/helpers/__tests__/channel-rekey.test.ts
+- FOUND: packages/concord/src/client/__tests__/community.test.ts
+- FOUND: packages/concord/src/client/__tests__/private-channel.test.ts
+- FOUND: .planning/phases/15-concord-stream-auth-cleanup/15-12-SUMMARY.md
+- FOUND commit: c701ef07 (Task 1)
+- FOUND commit: 2b18ce64 (Task 2)
+- FOUND commit: b1a3a8e6 (Task 3)
+- FOUND commit: 9c50872a (SUMMARY commit)
