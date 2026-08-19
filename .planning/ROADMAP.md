@@ -623,3 +623,122 @@ Moving the `authLog` line and the `this.challenge` read inside the `defer` keeps
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.23: Amend D-01 and record the low/high method layering rule (BACKLOG)
+
+**Goal:** [Captured for future planning] Narrow Phase 13's D-01 from a blanket ban on throw-as-internal-signal to the rule that actually holds, and write down the layering principle its correction depends on. This entry is small and carries no code beyond comments — but 999.24 and 999.25 both cite it, so it lands first.
+
+**The rule today.** D-01 (`phases/13-.../13-CONTEXT.md`) states that auth-required is signalled as a value, never by throwing, and that `AuthRequiredError`/`AuthTimeoutError`/`AuthHandlerError` are constructed **only at the caller boundary**. It is the direct application of the standing principle recorded in the same document: *"any time an internal method throws and the wrapper method is using it as a signal or expected state, that is a bad thing and code smell."*
+
+**The amendment (user, 2026-08-19).** Throwing as an internal signal stays a smell **except where the immediate consumer is an aggregator over upstream calls, or a retry layer over upstream calls** — in those cases catching is the consumer's whole purpose, and the throw is being handled deliberately rather than filtered out of somebody else's channel.
+
+**Why the original was over-broad.** D-01 justified itself with four costs, and every one of them is the same complaint — *the signal travelled through intermediaries that did not care about it*:
+
+1. `customConnectionRetryOperator` special-casing `RelayClosedError`;
+2. `AuthRequiredError extends RelayClosedError` encoding routing rather than describing the error;
+3. `count()` catching and re-throwing only because someone else's signal passed through it;
+4. a stream teardown per signal forcing `retry()` + resubscribe where a value could drive a resend.
+
+Costs 1–3 do not arise when there is one hop and the consumer is the intended handler. Cost 4 inverts outright at a retry boundary: teardown-and-resubscribe *is* the resend. So D-01 is correct for `req()`, where the signal must survive `request()`, `subscription()`, and the group operators — and over-broad for `event()` → `publish()`, where exactly one consumer exists and its job is to catch.
+
+**The carve-out already describes accepted code.** `internalSubscription` and `internalPublish` (`group.ts:177`, `:78`) intentionally `catchError` upstream throws to aggregate them per relay, and nobody reads that as a smell. `customRetryOperator` and `customConnectionRetryOperator` deliberately catch `RelayClosedError` to decide what not to retry. The amendment is descriptive of the codebase's own practice, not a new licence.
+
+**The companion layering rule.** The reason the carve-out is safe is that the boundaries are principled:
+
+> **Low-level methods (`event()`, `req()`) are a single interaction with the relay.** They send one frame, wait for its reply, and report the outcome — throwing on failure.
+>
+> **High-level methods (`publish()`, `request()`, `subscription()`) are many interactions.** They own the configurable policy: retries, reconnects, auth retries, resubscribes, and the operation clock.
+
+**Where the rule needs a decision rather than an application.** Four method families exist and only two of them pair cleanly:
+
+| Low | High | Fits? |
+|---|---|---|
+| `req()` | `request()`, `subscription()` | yes — 999.25 |
+| `event()` | `publish()` | yes — 999.24 |
+| `negentropy()` | `sync()` | yes — untracked; `negentropy()` owns the auth retry today |
+| `count()` | *(nothing)* | **no counterpart exists** |
+
+`Relay.count()` has no high-level wrapper, so a strict reading leaves its auth retry homeless. Either count keeps both roles as a documented exception, or a wrapper is introduced. Decide here, before 999.24/999.25 set a precedent that count then contradicts.
+
+**Propagation is the real work.** Phase 13's D-01 is cited **14 times in shipped source** — `relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1 — plus its definition in `13-CONTEXT.md`. An amendment that does not reach those leaves comments asserting a rule the code no longer follows, which is the same failure mode as 999.16's WR-06. Treat updating them as in-scope, not cleanup. (Note: `D-01` also appears in v1.1 phase docs under a different phase's numbering and is unrelated — match by phase before editing.)
+
+**Two deferred ideas need re-evaluation under the amendment.** `13-CONTEXT.md` defers (a) *"value-signal the remaining `CLOSED` prefixes so no relay reply anywhere is signalled by a throw"* — partly unnecessary if the consumer is a retry layer; and (b) *"a lint rule enforcing no-throw-as-an-internal-signal"* — a naive rule would now flag correct code, so it would have to understand the boundary or not exist.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.24: Re-layer the EVENT family — `event()` is one attempt, `publish()` owns policy (BACKLOG)
+
+**Goal:** [Captured for future planning] Move the auth retry loop out of `Relay.event()` and into `Relay.publish()`, so `event()` is exactly one EVENT write and one reply, and `publish()` owns every retry dimension. Depends on 999.23's amended D-01, which is what makes `event()` throwing to `publish()` correct rather than a smell.
+
+**`authRetries` in `event()` is a resend loop — confirmed against source.** `control` (`relay.ts:1207-1221`) is an **unshared** `defer` whose body is `this.socket.next([verb, event])`, deliberately unshared so it "always re-sends on every subscription." The operator drives it at `operators/auth-retry.ts:366-371`:
+
+```
+expand((value) => isAuthRequiredSignal(value) ? concat(runPhase(value), source) : EMPTY)
+```
+
+Re-subscribing `source` re-runs `control` and writes the EVENT frame again. With the default `authRetries: 1`, `event()` writes the same event to the socket **twice**. `publish()`'s own comment concedes it: *"max EVENT sends is authRetries + 1, independent of `retries`."*
+
+**Target shape.** `event()` sends once, waits for the OK, and **throws `AuthRequiredError`** when the relay refuses. `publish()` — a retry layer, and therefore permitted to catch under 999.23 — catches it, runs the handler, waits for auth, and resubscribes `event()` to resend. What that removes:
+
+- **The string round-trip.** Today `event()` flattens its own `AuthRequiredError` into `{ok:false, message: err.reason}` and `publish()` reconstructs it via `result.message?.startsWith(AUTH_REQUIRED_PREFIX)` (`relay.ts:1607`). Of the five uses of that constant, four are genuine wire parsing; this is the only one re-parsing a string the same file already parsed. The error object would pass directly instead, losing nothing.
+- **A discriminator the relay controls.** `message` is remote-supplied text carrying an internal signal between two of this class's own methods. Under `waitForAuth: false` the raw relay response passes straight through (`:1257`), so "I declined to try" and "I tried twice and gave up" currently reach `publish()` as byte-identical values.
+- **The `AUTH_PHASE_GATE` module-private symbol**, which exists only so `publish()` can thread its gate into `event()` to suspend the publish clock. With the auth loop inside `publish()`, the gate is local and the option disappears.
+
+**A live bug this fixes.** `event()`'s 10 s clock manufactures a **value** (`{ok:false, message:"Timeout", error}`) rather than throwing, and `customRetryOperator` only ever sees errors — so **`publish({retries: 3})` does not retry a timed-out publish today.** The timeout sails past the retry operator and is returned to the caller. Once `event()` throws on failure, a timeout becomes retryable by the layer that owns retry policy; decide explicitly whether it should be (it probably should).
+
+**Also closes 999.16's WR-06 structurally.** Once every client-side failure leaves `event()` as an error and only genuine relay verdicts leave as values, the `.error` contract the comments at `relay.ts:1180`/`:1218`/`:1238-1242` already assert becomes *true* rather than aspirational. Fold the WR-06 item out of 999.16 into this phase rather than fixing it there as a comment edit.
+
+**`waitForReady()` moves up too.** It is not a retry — it `take(1)`s — but it silently waits out an entire reconnect backoff, **unbounded**, because `timeout({first: eventTimeout})` is applied *inside* the observable `waitForReady` wraps, so the 10 s clock does not start until the gate opens. "Keep waiting for the relay to come back" is policy. `merge(this.watchTower, control)` stays in `event()` — that is connection lifecycle, and one attempt legitimately needs the socket alive.
+
+**Consequences to decide before planning:**
+1. **`Relay.sync()`'s SEND path calls `event()` directly** (`:1670`), not `publish()`, and gets auth retries for free today. It would silently lose them. Rewire to `publish()`, or have `sync()` own the retry.
+2. **`RelayGroup.event()` also calls `relay.event()` directly** and would become a raw per-relay single attempt while `group.publish()` keeps full policy. Defensible and arguably clarifying, but a behavior change.
+3. **This re-opens RAUTH-07**, which explicitly lists `event` among the eight operations exposing `onAuthRequired`/`authTimeout`/`authRetries`. Needs a recorded restatement with provenance, in the manner of ALOG-03 and CAUTH-03 — not a silent edit, and not before v1.2 closes.
+4. **D-07's hot-loop guard needs re-deriving.** `customRetryOperator` skips `RelayClosedError` precisely so publish's reconnect retries cannot multiply against event()'s auth retries. With both loops inside `publish()`, their ordering and interaction must be made explicit rather than inherited. This is where the bug risk concentrates.
+
+**Release impact.** Behavior change on a published package: `event()` stops erroring for auth reasons and starts erroring for relay refusals. No in-repo consumers outside `packages/relay` (checked `concord` and `loaders`: zero call sites), so the blast radius is external users. Minor changeset.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.25: Re-layer the REQ family — move `reconnect` and `resubscribe` up to `request()` and `subscription()` (BACKLOG)
+
+**Goal:** [Captured for future planning] Make `Relay.req()` a single REQ interaction and move every multi-interaction mechanism — `reconnect`, `resubscribe`, and the auth retry — up into **both** `Relay.request()` and `Relay.subscription()`. Depends on 999.23 for the principle and follows 999.24 so the pattern is proven on the smaller surface first. The largest and highest-risk of the three.
+
+**The current layering is inverted.** `req()` — nominally the low-level method — owns three multi-interaction mechanisms plus the ready gate (`relay.ts:1062-1070`):
+
+```
+this.authRetryOperator(...)                          // auth retries
+this.customConnectionRetryOperator(opts?.reconnect)  // reconnect retries
+this.customRepeatOperator(opts?.resubscribe, ...)    // resubscribe after a clean CLOSED
+```
+
+`request()` and `subscription()` own **none** of them. They are pure shaping wrappers — completion condition, operation clock, `filter`/`map` — that forward `reconnect` downward.
+
+**The policy choice already lives at the right layer; only the mechanism does not.** `request()` and `subscription()` each supply their own default before delegating (`reconnect: opts?.reconnect ?? this.requestReconnect` / `?? this.subscriptionReconnect`), and `RelayGroup` mirrors that at `group.ts:284` and `:311`. Per-method reconnect *defaults* are already a wrapper concern. This phase moves the machinery to join them.
+
+**Public type changes.** `RelayReqOptions` currently carries `id`, `resubscribe`, `reconnect`, intersected with `RelayAuthOptions`; `RelayRequestOptions = RelayReqOptions & { timeout, complete }` and `RelaySubscriptionOptions = RelayReqOptions` both inherit them. After the move, `RelayReqOptions` sheds `reconnect` and `resubscribe` — and, under 999.24's principle, the auth options too — reducing toward `{ id }`, while `RelayRequestOptions` and `RelaySubscriptionOptions` declare them explicitly. A consumer passing `reconnect` to `req()` becomes a type error, which is the desired signal but is breaking.
+
+**Central design decision — `subscription()` is long-lived.** A strict single-interaction `req()` cannot survive a reconnect at all, so `subscription()` becomes the owner of the re-establish loop rather than a filter over a self-healing `req()`. That is coherent and arguably where it always belonged, but it is a rewrite of the most-used read path in the package, not a refactor. Settle it before any plan is written:
+- Does a reconnect mid-subscription re-send the same REQ id, or mint a new one?
+- Does `resubscribe`-after-clean-CLOSED remain distinct from `reconnect`-after-socket-error once both live in the same layer, or do they collapse into one policy?
+- What does a re-established subscription emit — does the consumer see a second `OPEN`, and does `filterDuplicateEvents` still hold across the boundary?
+
+**Interaction with 999.20.** That phase adds error conditions and a suspendable idle clock to `RelayGroup.request()`/`subscription()`. Both phases touch the same two methods and the same clock. Sequence them deliberately — most likely 999.20 first (additive, release-targeted) and this one after, rather than in parallel.
+
+**Watch the closed defects.** `req()`'s per-attempt `defer` factory, the `resubscribeHolder` call-scoped object, and `isReqProgress`'s exclusion of the synthetic `OPEN` all exist because plans 13-08..13-14 closed specific reentrancy and retry-counting defects (CR-01/CR-02/CR-03, WR-01). Any re-layering must carry those invariants forward, with their regression tests still discriminating — re-verify them RED/GREEN rather than assuming a passing suite means they survived.
+
+**Release impact.** Breaking on a published package: option types move between interfaces and `req()` loses behavior callers may rely on. Major changeset, and it wants a migration note.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
