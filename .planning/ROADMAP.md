@@ -5,6 +5,7 @@
 - ✅ **v1.0 event-store-supports-rumors** — Phases 1–4 (shipped 2026-07-09)
 - ✅ **v1.1 first-fixes** — Phases 5–12.3 (shipped 2026-08-04)
 - ✅ **v1.2 operation-scoped-relay-auth** — Phases 13–15 (shipped 2026-08-19)
+- 🚧 **v7.0.0 relay-method-layering** — Phases 16–26 (in progress)
 
 ## Phases
 
@@ -59,6 +60,184 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 
 </details>
 
+### 🚧 v7.0.0 relay-method-layering (Phases 16–26) (In Progress)
+
+**Milestone Goal:** Make every relay method family honour one rule — a low-level method (`event()`, `req()`, `negentropy()`) is a single interaction with the relay; a high-level method (`publish()`, `request()`, `subscription()`, `count()`, `sync()`, `authenticate()`) owns the configurable policy: retries, reconnects, auth retries, resubscribes, timeouts, and concurrency — then ship the result, plus v1.2's held changesets, as the coordinated `applesauce-*@7.0.0` major.
+
+**Origin:** assembled from backlog entries 999.12, 999.14, 999.15, 999.16 (WR-06 folded into Phase 18), 999.18 (residual re-verification folded throughout the re-layer phases), 999.19, 999.20–999.28, plus three ecosystem seeds (SEED-002/003/004). Continues phase numbering from v1.2's Phase 15 — real phases run 1–15; the `999.x` directories under `.planning/phases/` are backlog placeholders, not completed phases. Full requirements: [`REQUIREMENTS.md`](REQUIREMENTS.md). Full research: [`research/SUMMARY.md`](research/SUMMARY.md), [`research/ARCHITECTURE.md`](research/ARCHITECTURE.md).
+
+**Hard sequencing.** Phase 16 (the amended D-01) gates every other phase — four requirement clusters cite it directly. Phase 18 (EVENT) lands before Phase 22 (REQ) so the pattern proves on the smaller surface first. Phase 19 (COUNT high-level) lands before Phase 23 (COUNT isolation), which consumes its re-shaped response type. Phase 21 (GROUP) lands before Phase 22 (REQ) — both touch `group.ts`'s `request()`/`subscription()` bodies and the same suspendable clock. Two dependencies came from research rather than the original backlog: Phase 24 (SYNC) needs both Phase 18 and Phase 22, since `Relay.sync()` calls `event()`/`req()` directly, bypassing their high-level siblings; and Phase 20 (AUTH) must close any new terminal auth error class in the same phase that adds it, since `applesauce-loaders`' duck-typed `RELAY_AUTH_ERROR_NAMES` breaks silently rather than at compile time.
+
+- [ ] **Phase 16: Method Layering Foundation & TypeScript 7** - Amend D-01's throw-as-signal rule everywhere it's cited and land the workspace on TypeScript 7 before anything else builds under it
+- [ ] **Phase 17: Correctness Fixes & Concord Residuals** - Independent relay/sqlite/NIP-29 bug fixes plus two Concord auth/publish-honesty gaps, none gated by the re-layering
+- [ ] **Phase 18: EVENT Family Re-layer** - `event()` sends once and throws; `publish()` becomes sole owner of the auth retry loop
+- [ ] **Phase 19: COUNT Becomes the High-Level Member** - `count()` gains `reconnect`/`retries`/`timeout` and a validated NIP-45 response shape with an HLL merge helper
+- [ ] **Phase 20: AUTH Family Re-layer** - `authenticate()` acquires and re-verifies a challenge instead of racing a stale one under a slow signer
+- [ ] **Phase 21: Group Error Surface — request()/subscription()** - Total group failure raises a real aggregate error instead of completing empty or hanging forever
+- [ ] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop
+- [ ] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively
+- [ ] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions
+- [ ] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work
+- [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
+
+## Phase Details
+
+### Phase 16: Method Layering Foundation & TypeScript 7
+
+**Goal**: The relay package's low/high layering rule is stated correctly everywhere D-01 is cited, and the whole workspace builds and tests clean under TypeScript 7 before any behavior change lands on top of it.
+**Depends on**: Nothing (first phase of v7.0.0)
+**Requirements**: LAYER-01, LAYER-02, ECO-01
+**Success Criteria** (what must be TRUE):
+
+  1. Reading D-01 at its source of record states the actual rule: throw-as-signal is acceptable at a one-hop aggregator or retry boundary, and still a smell across a multi-hop chain — not the old blanket ban.
+  2. Every one of the 14 shipped-source citations of D-01 (`relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1) reads consistently with the amended rule.
+  3. `pnpm run build` and the full test suite pass with `typescript@^7` as the workspace compiler, with no package needing a TS7-specific code change.
+
+**Plans**: TBD
+
+### Phase 17: Correctness Fixes & Concord Residuals
+
+**Goal**: Five independent, low-risk defects — a relay-controlled prototype-chain lookup, an all-or-nothing SQLite peer dependency, a lossy NIP-29 address round-trip, and two Concord auth/publish-honesty gaps — are fixed without waiting on any of the re-layering work.
+**Depends on**: Nothing (independent of the layering work; can run any time)
+**Requirements**: FIX-01, FIX-02, FIX-03, RESID-01, RESID-02
+**Success Criteria** (what must be TRUE):
+
+  1. A relay sending a CLOSED reason like `"constructor: ..."` or `"__proto__: ..."` cannot make `parseClosedError` resolve to an inherited `Object.prototype` value — D-07's retry-skip behavior is unaffected by an attacker-chosen prefix.
+  2. A consumer of `applesauce-sqlite` who installs only the backend they use (e.g. `better-sqlite3` alone) is not asked to install the other three drivers.
+  3. A NIP-29 group pointer on `ws://localhost:4869` round-trips through encode→decode with its port and scheme intact.
+  4. One relay's AUTH rejection in a Concord community no longer leaves `error$` permanently latched — a later successful auth clears it.
+  5. `revoke()`/`revokeBundle()` report a failed publish to the caller instead of unconditionally returning `revoked: true`.
+
+**Plans**: TBD
+
+### Phase 18: EVENT Family Re-layer
+
+**Goal**: `event()` becomes exactly one EVENT write and one reply; `publish()` becomes the sole owner of the retry, auth, and timeout policy around it.
+**Depends on**: Phase 16 (amended D-01 is what makes `event()` throwing to `publish()` correct rather than a smell)
+**Requirements**: EVT-01, EVT-02, EVT-03, EVT-04, EVT-05, EVT-06, RESID-04
+**Success Criteria** (what must be TRUE):
+
+  1. A relay auth refusal reaches a caller of `event()` as a thrown `AuthRequiredError`, not as `{ok:false, message}` for the caller to inspect.
+  2. `publish({retries: N})` retries a publish that timed out — today the synthetic timeout value sails past the retry operator untouched.
+  3. A `PublishResponse.error` field is present exactly when the relay itself supplied a verdict, never when `publish()` gave up client-side — a caller can trust the discriminator without inspecting the message string.
+  4. `RelayGroup.event()`'s and `Relay.sync()`'s SEND path's auth-retry behavior after this change is a recorded, deliberate decision, not a silent loss.
+  5. The `event`/`publish` progress-predicate comment and RAUTH-07's `onAuthRequired`/`authTimeout`/`authRetries` claim on `event` both describe what the code actually does, with the restatement's provenance recorded.
+
+**Plans**: TBD
+
+### Phase 19: COUNT Becomes the High-Level Member
+
+**Goal**: `count()` gains the same configurable policy every other high-level method has, and its response models what NIP-45 actually defines instead of one field reached by an unchecked cast.
+**Depends on**: Phase 16
+**Requirements**: COUNT-01, COUNT-02, COUNT-03
+**Success Criteria** (what must be TRUE):
+
+  1. A caller can pass `reconnect`, `retries`, and `timeout` to `count()` the same way they can to `publish()` — the hardcoded 10s clock with no override is gone.
+  2. A COUNT failure (timeout, refusal, malformed reply) reaches the caller as a rejected promise instead of a value to inspect.
+  3. `RelayCountResponse` carries validated `approximate`/`hll` fields when a relay sends them; a malformed payload rejects instead of becoming a typed lie via cast.
+  4. Merging two relays' `hll` registers with the shipped register-wise max-merge helper against an independently hand-computed union cardinality produces the correct total.
+
+**Plans**: TBD
+
+### Phase 20: AUTH Family Re-layer
+
+**Goal**: `authenticate()` becomes the high-level owner of challenge acquisition and freshness, so a challenge that moves under a slow signer produces a retried auth instead of a misreported relay refusal — and any new terminal auth error class this introduces is recognized by `applesauce-loaders` in the same change.
+**Depends on**: Phase 16
+**Requirements**: AUTHF-01, AUTHF-02, AUTHF-03, AUTHF-04, AUTHF-05
+**Success Criteria** (what must be TRUE):
+
+  1. Calling `authenticate()` before a challenge has arrived waits, bounded, instead of throwing synchronously — a relay that never sends a challenge fails on a clock, not a hang.
+  2. A challenge that changes mid-sign produces a re-sign and resend within a small explicit bound, instead of writing an AUTH against a stale challenge and reporting the relay's rejection as a refusal.
+  3. Every failure `authenticate()` can produce reaches both `.catch()` and `try`/`await` callers identically.
+  4. `auth()` still sends exactly one AUTH frame via `event()`, never `publish()`, so it cannot recurse into the EVENT family's retry loop.
+  5. If this phase adds a new terminal auth error class, `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes it in the same change — a dedicated test proves the loader classifies it as an auth failure, not a generic one.
+
+**Plans**: TBD
+
+### Phase 21: Group Error Surface — request()/subscription()
+
+**Goal**: A `RelayGroup.request()` or `subscription()` that loses every relay reports that as a real error, and the aggregate's per-relay causes settle the "one representation" question the group count-isolation work will reuse.
+**Depends on**: Phase 16
+**Requirements**: GROUP-01, GROUP-02, GROUP-03, GROUP-04, GROUP-05
+**Success Criteria** (what must be TRUE):
+
+  1. `RelayGroup.request()` against every-relay-failed raises an error by default instead of completing with zero events.
+  2. `RelayGroup.subscription()` against every-relay-failed raises an error instead of hanging forever — it has an operation clock for the first time.
+  3. The raised aggregate exposes each relay's own failure cause keyed by URL, and that per-source-outcome shape is the one shape Phase 23's progressive count record reuses rather than inventing its own.
+  4. Time-to-first-progress and idle-since-last-emission are separately configurable — one early event no longer permanently disarms the group's clock.
+  5. A 60s group condition suspends across a 30s auth wait instead of racing it.
+
+**Plans**: TBD
+
+### Phase 22: REQ Family Re-layer
+
+**Goal**: `req()` becomes a single REQ interaction; `request()` and `subscription()` become owners of reconnect, resubscribe, and the auth retry — with `subscription()` gaining its own re-establish loop for the first time.
+**Depends on**: Phase 18 (EVENT proves the pattern on the smaller surface first), Phase 21 (shared `group.ts` request/subscription surface and clock shape)
+**Requirements**: REQ-01, REQ-02, REQ-03, REQ-04, REQ-05
+**Success Criteria** (what must be TRUE):
+
+  1. Passing `reconnect` or `resubscribe` to `req()` is a compile-time type error; passing either to `request()`/`subscription()` still works.
+  2. A `subscription()` that loses its connection re-establishes automatically, and what a consumer observes across the reconnect — REQ id reuse vs. fresh, a second `OPEN` or not, whether duplicate-event filtering still holds — is specified and tested, not incidental.
+  3. `request()` and `subscription()` each own reconnect, resubscribe, and the auth retry; `req()` owns none of the three.
+  4. The reentrancy/retry-counting regression tests closed by plans 13-08..13-14 (the per-attempt `defer` factory, `resubscribeHolder`, `isReqProgress`'s synthetic-`OPEN` exclusion) fail RED against a deliberate revert and pass GREEN against the re-layered code.
+
+**Plans**: TBD
+
+### Phase 23: Group count() Isolation
+
+**Goal**: One failing or offline relay in a group count costs the caller that relay's number, not every relay's, and results arrive as each relay answers instead of all at once.
+**Depends on**: Phase 19 (consumes `count()`'s re-shaped high-level response), Phase 21 (reuses its per-source-outcome representation for GROUP-03)
+**Requirements**: COUNT-04, COUNT-05
+**Success Criteria** (what must be TRUE):
+
+  1. `RelayGroup.count()` across 5 relays where 1 is offline returns the other 4 relays' counts instead of failing the whole call.
+  2. `RelayGroup.count()` emits a partial record as each relay answers, rather than withholding every count until the slowest relay replies.
+  3. A failed relay's entry in the count record uses the same per-source-outcome shape Phase 21 defined for the group aggregate error, not a second, independently invented shape.
+
+**Plans**: TBD
+
+### Phase 24: Negentropy & Sync Re-layer
+
+**Goal**: Multi-round negentropy reconciliation actually reaches the wire and runs at protocol speed, and `sync()` owns one coherent policy — auth, clock, reconnect, transfer concurrency — across both directions instead of three independent auth budgets and no clock.
+**Depends on**: Phase 18 (EVENT), Phase 22 (REQ) — `Relay.sync()` calls `event()`/`req()` directly today and must be rewired onto their re-layered high-level siblings
+**Requirements**: SYNC-01, SYNC-02, SYNC-03, SYNC-04, RESID-03
+**Success Criteria** (what must be TRUE):
+
+  1. A sync between two stores whose difference exceeds one negentropy frame completes correctly — proven by a fixture that deliberately exceeds the ~32-item frame-size threshold to force a second round.
+  2. `negentropy()` emits what it learns per round without waiting on the caller's transfers to finish first.
+  3. `sync()` runs one auth budget, one operation clock, and bounded transfer concurrency for the whole operation.
+  4. A SEND direction where every upload was rejected does not print "Upload complete" — the caller can observe send failures as values, not just received events.
+  5. The non-auth negentropy fallback force-closes any open auth phase, and a zero-event EOSE on `sync()`'s RECEIVE branch no longer rejects the whole sync with an `EmptyError`.
+
+**Plans**: TBD
+
+### Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2
+
+**Goal**: `applesauce-react`'s already-declared React 19 support is backed by real tests, and `apps/examples` runs on the current `@snort/worker-relay` major — both fully independent of the relay re-layering.
+**Depends on**: Nothing (independent of every other phase in this milestone)
+**Requirements**: ECO-02, ECO-03
+**Success Criteria** (what must be TRUE):
+
+  1. `packages/react` has rendering tests for `use$`/`useObservableState` and its providers, and they pass against both React 18 and React 19.
+  2. `apps/examples` runs correctly on `@snort/worker-relay@2`, with the removed `insertBatchSize` option and the now-synchronous `setEventMetadata` handled at every call site.
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 26: Release Coordination — v7.0.0
+
+**Goal**: The v7.0.0 major publishes exactly what it is supposed to — all fourteen packages, v1.2's held changesets, and Concord's first official stable release — verified by a dry run rather than assumed from the `linked` config.
+**Depends on**: Phases 16–25 (every package's intended v7.0.0 change must be finalized before the release can be verified and cut)
+**Requirements**: REL-01, REL-02, REL-03, REL-04
+**Success Criteria** (what must be TRUE):
+
+  1. A `changeset status --verbose --since=master` dry run shows all fourteen packages bumping to 7.0.0, checked off an explicit per-package checklist — including packages with no code changes of their own — rather than assumed from one major changeset.
+  2. `applesauce-concord` publishes to the `latest` npm dist-tag as `7.0.0`, with a changelog that starts from a stable baseline rather than explaining removals from `next` snapshots.
+  3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
+  4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
+
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -83,7 +262,19 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 14/14 | Complete    | 2026-08-18 |
 
-**Totals:** 19 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2).
+| 16. Method Layering Foundation & TypeScript 7 | v7.0.0 | 0/TBD | Not started | - |
+| 17. Correctness Fixes & Concord Residuals | v7.0.0 | 0/TBD | Not started | - |
+| 18. EVENT Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
+| 19. COUNT Becomes the High-Level Member | v7.0.0 | 0/TBD | Not started | - |
+| 20. AUTH Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
+| 21. Group Error Surface — request()/subscription() | v7.0.0 | 0/TBD | Not started | - |
+| 22. REQ Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
+| 23. Group count() Isolation | v7.0.0 | 0/TBD | Not started | - |
+| 24. Negentropy & Sync Re-layer | v7.0.0 | 0/TBD | Not started | - |
+| 25. Ecosystem Riders — React 19 & @snort/worker-relay v2 | v7.0.0 | 0/TBD | Not started | - |
+| 26. Release Coordination — v7.0.0 | v7.0.0 | 0/TBD | Not started | - |
+
+**Totals:** 19 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 adds 11 more phases (Phases 16–26), not yet started; 46/46 requirements mapped, 0 executed.
 
 ## Backlog
 

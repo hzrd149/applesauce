@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-08-19T17:28:03.101Z"
 last_activity: 2026-08-19
 progress:
-  total_phases: 0
+  total_phases: 11
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** v7.0.0 relay-method-layering — defining requirements
+**Current focus:** v7.0.0 relay-method-layering — roadmap complete, Phase 16 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-08-19 — Milestone v7.0.0 started
+Phase: 16 of 26 (Method Layering Foundation & TypeScript 7)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-08-19 — ROADMAP.md created: 11 phases (16–26), 46/46 v1 requirements mapped, 0 orphans
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -318,6 +320,8 @@ None yet.
 - [RESOLVED 2026-07-30] Plans 12-07/12-08 both deferred WIRE-09's completion, noting the client-publish-tier closure (saveCommunityList/invite-manager.save() hand-rolling the document from reduced arrays) was plan 12-09's scope per D-23 -- 12-09 landed a `documentExtras` snapshot in both ConcordClient and ConcordInviteManager (spread-first, assign-after at every write site), proven via a six-test cross-cutting suite (document-caps-conformance.test.ts) with three mandatory non-vacuity mutations observed RED at the exact pre-phase defect sites. WIRE-09 marked Complete in REQUIREMENTS.md.
 - Phase 13 deferred-items.md: a connection can drop mid-auth-wait at very low keepAlive (verified pre-existing, not a regression) — worth a backlog entry once Phase 14's auth lifecycle logging work gives it a place to land
 - 13-13 closed WR-03/WR-04 in sync-loader.ts (RAUTH-08's stall-guard suspension and timer-lifetime gaps), but REQUIREMENTS.md leaves RAUTH-08 In Progress -- plan 13-12 (which depends on 13-13) is the designated closing plan that flips RAUTH-03/07/08 to Complete once every gap-closure plan in this wave sequence has landed
+- [Roadmap, 2026-08-19] v7.0.0's changesets config uses `linked`, not `fixed` — a package bumps only via its own changeset or a real dependency cascade. Phase 26 (Release Coordination) owns an explicit per-package changeset checklist and a `changeset status --verbose --since=master` dry run before cutting, or `applesauce-concord`/`applesauce-react`/`applesauce-sqlite` can silently stay on 6.x while the other 11 packages jump to 7.0.0.
+- [Roadmap, 2026-08-19] v7.0.0 Phase 24 (SYNC) and Phase 20 (AUTH) each carry a dependency confirmed by architecture research rather than the original backlog text — see the Roadmap Evolution entry above for both. Plan-phase for Phase 24 should re-verify `Relay.sync()`'s SEND/RECEIVE call sites have actually been rewired onto Phase 18/22's high-level methods before assuming the rewrite is complete.
 
 ### Quick Tasks Completed
 
@@ -337,6 +341,7 @@ None yet.
 - Phase 12.1 inserted after Phase 12: Promoted from backlog 999.3: Concord sync skips ephemeral kind 21059
 - Phase 12.2 inserted after Phase 12: Promoted from backlog 999.1: Concord sync debug logging
 - Phase 12.3 inserted after Phase 12: Promoted from backlog 999.6: Transport-only extra relays in applesauce-concord
+- v7.0.0 roadmap created 2026-08-19: 11 phases (16–26, continuing from v1.2's Phase 15) derived from the 46 v1 requirements (LAYER/EVT/REQ/AUTHF/COUNT/SYNC/GROUP/FIX/RESID/REL/ECO). Sequencing: 999.23 (Phase 16, LAYER) gates every other phase; 999.24 (Phase 18, EVENT) before 999.25 (Phase 22, REQ); 999.27 (Phase 19, COUNT high-level) before 999.21 (Phase 23, COUNT isolation); 999.20 (Phase 21, GROUP) before 999.25 (Phase 22, REQ). Two dependencies came from architecture research rather than the original backlog, not previously recorded in ROADMAP.md: Phase 24 (SYNC/999.28) needs both Phase 18 and Phase 22 to land first, since `Relay.sync()` calls `event()`/`req()` directly at relay.ts:1677/:1689, bypassing their high-level siblings; and AUTHF-05 (the applesauce-loaders duck-typed `RELAY_AUTH_ERROR_NAMES` gap) is mapped into Phase 20 (AUTH) rather than its own phase, so any new terminal auth error class is recognized by the loader in the same change that introduces it. GROUP-03 (one shared per-relay-outcome representation) is mapped to Phase 21, where it is first defined; Phase 23 consumes it rather than inventing a second shape. Ecosystem riders split: ECO-01 (TypeScript 7) folded into Phase 16 since both are zero-behavior-risk foundation work; ECO-02/ECO-03 merged into one Phase 25 since both are independent single-requirement riders with no other natural neighbor. Release (REL-01..04) is its own final Phase 26, depending on all 10 prior phases, per the explicit instruction that it needs a real per-package changeset checklist and a `changeset status --verbose --since=master` dry run, not a closeout formality.
 
 ## Deferred Items
 
@@ -411,8 +416,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-15T11:30:23.727Z
-Stopped at: Phase 15 complete (plan 15-08 closed)
+Last session: 2026-08-19 (roadmap creation)
+Stopped at: v7.0.0 ROADMAP.md written (11 phases, 16–26) and REQUIREMENTS.md traceability filled — Phase 16 ready to plan
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
@@ -421,4 +426,4 @@ Recoverable from commit `c3be26c2` if ever needed.
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Run /gsd-plan-phase 16 to begin the first phase of v7.0.0

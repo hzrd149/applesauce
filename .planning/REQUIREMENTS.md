@@ -130,17 +130,63 @@ Tracked, not in this roadmap.
 
 ## Traceability
 
-Populated during roadmap creation.
+Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exactly one of the 11 phases (16–26) in ROADMAP.md.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (pending roadmap) | — | Pending |
+| LAYER-01 | Phase 16 | Pending |
+| LAYER-02 | Phase 16 | Pending |
+| EVT-01 | Phase 18 | Pending |
+| EVT-02 | Phase 18 | Pending |
+| EVT-03 | Phase 18 | Pending |
+| EVT-04 | Phase 18 | Pending |
+| EVT-05 | Phase 18 | Pending |
+| EVT-06 | Phase 18 | Pending |
+| REQ-01 | Phase 22 | Pending |
+| REQ-02 | Phase 22 | Pending |
+| REQ-03 | Phase 22 | Pending |
+| REQ-04 | Phase 22 | Pending |
+| REQ-05 | Phase 22 | Pending |
+| AUTHF-01 | Phase 20 | Pending |
+| AUTHF-02 | Phase 20 | Pending |
+| AUTHF-03 | Phase 20 | Pending |
+| AUTHF-04 | Phase 20 | Pending |
+| AUTHF-05 | Phase 20 | Pending |
+| COUNT-01 | Phase 19 | Pending |
+| COUNT-02 | Phase 19 | Pending |
+| COUNT-03 | Phase 19 | Pending |
+| COUNT-04 | Phase 23 | Pending |
+| COUNT-05 | Phase 23 | Pending |
+| SYNC-01 | Phase 24 | Pending |
+| SYNC-02 | Phase 24 | Pending |
+| SYNC-03 | Phase 24 | Pending |
+| SYNC-04 | Phase 24 | Pending |
+| GROUP-01 | Phase 21 | Pending |
+| GROUP-02 | Phase 21 | Pending |
+| GROUP-03 | Phase 21 | Pending |
+| GROUP-04 | Phase 21 | Pending |
+| GROUP-05 | Phase 21 | Pending |
+| FIX-01 | Phase 17 | Pending |
+| FIX-02 | Phase 17 | Pending |
+| FIX-03 | Phase 17 | Pending |
+| RESID-01 | Phase 17 | Pending |
+| RESID-02 | Phase 17 | Pending |
+| RESID-03 | Phase 24 | Pending |
+| RESID-04 | Phase 18 | Pending |
+| REL-01 | Phase 26 | Pending |
+| REL-02 | Phase 26 | Pending |
+| REL-03 | Phase 26 | Pending |
+| REL-04 | Phase 26 | Pending |
+| ECO-01 | Phase 16 | Pending |
+| ECO-02 | Phase 25 | Pending |
+| ECO-03 | Phase 25 | Pending |
 
 **Coverage:**
 - v1 requirements: 46 total
-- Mapped to phases: 0
-- Unmapped: 46 ⚠️
+- Mapped to phases: 46
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-19*
 *Last updated: 2026-08-19 after initial definition*
+*Traceability populated: 2026-08-19 during roadmap creation — 46/46 v1 requirements mapped across 11 phases (16–26), 0 orphans.*
