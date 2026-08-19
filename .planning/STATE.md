@@ -1,42 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: operation-scoped-relay-auth
-current_phase: none
-status: Awaiting next milestone
-stopped_at: v1.2 shipped and archived — 3/3 phases verified, 16/16 requirements, 37/37 plans
-last_updated: "2026-08-19T14:04:26.752Z"
+milestone: v7.0.0
+milestone_name: relay-method-layering
+status: planning
+last_updated: "2026-08-19T17:28:03.101Z"
 last_activity: 2026-08-19
-last_activity_desc: Milestone v1.2 completed and archived
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 37
-  completed_plans: 37
-  percent: 100
-current_phase_name: Awaiting next milestone
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-04)
+See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 15 — concord-stream-auth-cleanup
+**Current focus:** v7.0.0 relay-method-layering — defining requirements
 
 ## Current Position
 
-Phase: Milestone v1.2 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-19 — Milestone v1.2 completed and archived
-
-**Next milestone is pre-scoped.** The relay/auth re-layering cluster (999.23–999.28, plus 999.20/999.21)
-is breaking and ships as **applesauce v7.0.0**; no npm release goes out from v1.2. Promotion order is
-constrained: **999.23 first** — it carries the amended D-01 and the low/high layering rule that four
-other entries assume — then 999.27 before 999.21. See ROADMAP.md → Backlog → "v7 release coordination".
+Status: Defining requirements
+Last activity: 2026-08-19 — Milestone v7.0.0 started
 
 ## Performance Metrics
 

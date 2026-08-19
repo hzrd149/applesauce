@@ -19,12 +19,13 @@ that hook and deleted its client-wide registry driver.
 v1.2: 3 phases, 37 plans, 16/16 requirements, all three phases Nyquist-compliant. 1,029 tests pass
 across `relay`/`loaders`/`concord`; the full workspace builds 14/14.
 
-**No release has been cut from v1.2.** The next milestone is **applesauce v7.0.0** — the closing
-design review of v1.2 established that the relay method families are layered wrongly (low-level
-methods own retry, reconnect and auth policy that belongs to their high-level counterparts), and
-correcting that is breaking across `applesauce-relay`. v1.2's held changesets ship with it. See
-ROADMAP.md → Backlog → "v7 release coordination"; **999.23 must be planned first**, as it carries the
-amended D-01 and the layering rule four other entries assume.
+**No release has been cut from v1.2.** Its held changesets ship with the milestone now in
+flight — **v7.0.0 relay-method-layering**, scoped 2026-08-19. The closing design review of v1.2
+established that the relay method families are layered wrongly (low-level methods own retry,
+reconnect and auth policy that belongs to their high-level counterparts), and correcting that is
+breaking across `applesauce-relay`. See ROADMAP.md → Backlog → "v7 release coordination"; **999.23
+must be planned first**, as it carries the amended D-01 and the layering rule four other entries
+assume.
 
 Full record: [`milestones/v1.1-ROADMAP.md`](milestones/v1.1-ROADMAP.md) ·
 [`milestones/v1.1-REQUIREMENTS.md`](milestones/v1.1-REQUIREMENTS.md) ·
@@ -89,14 +90,64 @@ round had asserted a Prettier finding was "introduced by this phase" — checkin
 refuted it outright, while the same check confirmed the real blocker. Severity labels are hypotheses
 until someone checks them against the base, in both directions.
 
-## Next Milestone: v7.0.0 relay/auth re-layering (not yet scoped)
+## Current Milestone: v7.0.0 relay-method-layering
 
-**Goal (provisional):** Make every relay method family honour one rule — a low-level method
-(`event()`, `req()`, `negentropy()`) is a single interaction with the relay; a high-level method
-(`publish()`, `request()`, `subscription()`, `count()`, `sync()`, `authenticate()`) owns the
-configurable policy: retries, reconnects, auth retries, resubscribes, timeouts, and concurrency.
-Nine backlog entries (999.20, 999.21, 999.23–999.28) carry the design, each with its open decisions
-recorded. Scope it with `/gsd-new-milestone`.
+**Goal:** Make every relay method family honour one rule — a low-level method (`event()`, `req()`,
+`negentropy()`) is a single interaction with the relay; a high-level method (`publish()`, `request()`,
+`subscription()`, `count()`, `sync()`, `authenticate()`) owns the configurable policy: retries,
+reconnects, auth retries, resubscribes, timeouts, and concurrency — then ship the result, plus v1.2's
+held changesets, as the coordinated `applesauce-*@7.0.0` major.
+
+**Target features:**
+
+- **Re-layering core (999.23–999.28).** 999.23 amends D-01 to permit throw-as-signal where the consumer
+  is an aggregator or a retry layer, and records the low/high layering rule — comments and docs only,
+  but D-01 is cited **14 times in shipped source** and updating those is in scope. It lands first;
+  four entries cite it. Then: 999.24 EVENT family (`event()` sends once and throws, `publish()` owns the
+  auth loop; absorbs 999.16's WR-06, re-opens RAUTH-07 with a recorded restatement); 999.25 REQ family
+  (`reconnect`/`resubscribe`/auth retry move up; `subscription()` becomes owner of the re-establish loop —
+  largest and highest-risk); 999.26 AUTH family (`authenticate()` acquires a challenge rather than
+  reading one and re-signs when it moves under a slow signer; **subsumes 999.22**); 999.27 `count()`
+  becomes its family's only member, gaining `reconnect`/`retries`/`timeout` and NIP-45's `approximate`
+  and `hll` with validation instead of an unchecked cast; 999.28 negentropy (`negentropy()` emits per
+  round without blocking, `sync()` owns auth/clock/reconnect/transfer concurrency and widens to a
+  `received`/`sent`/`send-failed` union; **absorbs 999.13**).
+- **Group error surface (999.20, 999.21).** Caller-supplied error conditions for `RelayGroup.request()`
+  and `subscription()`, defaulting to "every relay failed" and raising an aggregate carrying per-relay
+  causes; the operation clock becomes a condition, which is what gives `subscription()` a clock at all.
+  999.21 brings per-relay isolation to `RelayGroup.count()` — one dead relay currently destroys every
+  relay's number — plus progressive record accumulation and the same error vocabulary.
+- **Fixes and review residuals.** 999.14 `parseClosedError`'s prototype-chain lookup; 999.16 / 999.18 /
+  999.19 (Phase 14, 13 and 15 residuals — WR-06 must be settled before publish, and 999.19's WR-10
+  permanent `error$` latch is the one to fix first there); 999.12 `applesauce-sqlite` optional peer
+  dependencies; 999.15 NIP-29 group address ports and `ws://`.
+- **Ecosystem riders.** SEED-002 TypeScript 7, SEED-003 React 19 while keeping 18, SEED-004
+  `@snort/worker-relay` v2. All three are minor-eligible on their own; pulled in because every package
+  republishes under the lockstep major anyway.
+
+**Key context:**
+
+- **Lockstep majors.** `.changeset/config.json` puts all fourteen packages in one `linked` group, so one
+  `major` changeset bumps every member. Do not hand-write eleven changesets — write against the package
+  that actually changed. Confirm on a dry run before cutting, since `linked` and
+  `updateInternalDependencies: "minor"` interact.
+- **v7 is `applesauce-concord`'s first official stable release (user, 2026-08-19).** It has only ever
+  published as `next`-tagged snapshots, so its changelog starts from zero rather than explaining removals
+  from snapshots — Phase 15's deletions need no migration note. The consequence to accept deliberately:
+  999.19's residuals and the FUT-01 channel-conversion gap ship as-is in a stable release.
+- **v1.2 cut no npm release.** Its held `applesauce-relay` and `applesauce-loaders` changesets go out here.
+- **Sequencing is load-bearing.** 999.23 first; 999.24 before 999.25 so the pattern proves on the smaller
+  surface; 999.27 before 999.21, which consumes it; 999.20 before 999.25, since both touch the same two
+  methods and the same clock.
+- **Carry the closed defects forward.** `req()`'s per-attempt `defer` factory, the `resubscribeHolder`
+  call-scoped object, and `isReqProgress`'s exclusion of the synthetic `OPEN` each exist because plans
+  13-08..13-14 closed specific reentrancy and retry-counting defects (CR-01/CR-02/CR-03, WR-01).
+  Re-verify them RED/GREEN rather than assuming a green suite means they survived.
+- **999.28 has no working behavior to preserve** — multi-round sync has never reached the wire — and no
+  current test can see it: `relay.test.ts:2748` deliberately keeps both sides under 32 items. Any test
+  here must exceed the frame-size threshold to force a second round.
+- **Deliberately out of scope:** 999.17 (`debug` replacement — wants a major, but the largest rider by far);
+  999.2 / 999.7 / 999.9 concord entries; FUT-01 / FUT-02; the three Nyquist validation gaps.
 
 <details>
 <summary>Shipped: v1.2 operation-scoped-relay-auth (2026-08-19)</summary>
@@ -177,10 +228,16 @@ follow-ups todo; and eight still-dormant seeds.
 
 ### Active
 
-<!-- v7.0.0 relay/auth re-layering — not yet scoped. Run /gsd-new-milestone to define REQ-IDs. -->
+<!-- v7.0.0 relay-method-layering. REQ-IDs live in REQUIREMENTS.md; these are the outcomes they serve. -->
 
-Not yet defined. The candidate scope is the nine backlog entries listed under "Next Milestone" above;
-`/gsd-new-milestone` turns them into REQ-IDs and phases.
+- [ ] Every relay method family splits cleanly: a low-level method is one interaction with the relay and reports its outcome; a high-level method owns retries, reconnects, auth retries, resubscribes, the operation clock, and concurrency
+- [ ] D-01 states the rule that actually holds — throw-as-internal-signal is a smell *except* where the immediate consumer is an aggregator or a retry layer — and all 14 shipped citations say so too
+- [ ] A group operation reports total failure as an event: `RelayGroup.request()`/`subscription()` error through a caller-supplied condition raising an aggregate with per-relay causes, instead of completing empty or hanging silently
+- [ ] One failing relay costs the caller that relay's result, not the whole group's — `RelayGroup.count()` isolates per relay and accumulates progressively
+- [ ] `count()` returns what NIP-45 defines (`approximate`, `hll`) through validation rather than an unchecked cast, so a cross-relay aggregate is constructible at all
+- [ ] `authenticate()` acquires a challenge rather than reading one, and a challenge that moves under a slow signer produces a retried auth rather than a misreported relay refusal
+- [ ] Multi-round negentropy reconciliation reaches the wire, transfers per round without stalling the protocol, and reports both directions honestly
+- [ ] The v7.0.0 major publishes: all fourteen packages in lockstep, v1.2's held changesets included, `applesauce-concord` cut as its first official stable release, and no changeset claiming behavior the code does not have
 
 ### Out of Scope
 
@@ -254,6 +311,18 @@ This document evolves at phase transitions and milestone boundaries.
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
+
+---
+*Last updated: 2026-08-19 — milestone v7.0.0 relay-method-layering scoped via /gsd-new-milestone.
+Scope assembled from the backlog rather than fresh discovery: the 999.23–999.28 re-layering core,
+999.20/999.21's group error surface, four residual entries (999.14, 999.16, 999.18, 999.19), two
+unrelated package fixes (999.12, 999.15), and three ecosystem seeds (SEED-002/003/004) pulled in
+because the lockstep major republishes every package anyway. Two decisions taken at scoping: the
+milestone carries the release version rather than continuing the v1.x planning sequence — this is
+the first milestone that maps 1:1 to a package release — and **v7 is `applesauce-concord`'s first
+official stable release** (user), which settles the open question recorded in ROADMAP.md's v7
+release coordination note. 999.17 (`debug` replacement) was considered and deliberately left in the
+backlog: it is the one rider that genuinely needs a major, but also the largest by far.*
 
 ---
 *Last updated: 2026-08-18 — Phase 15 complete; milestone v1.2 operation-scoped-relay-auth fully executed. Started from three promoted
