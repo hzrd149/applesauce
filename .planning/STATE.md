@@ -2,15 +2,19 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-status: planning
-last_updated: "2026-08-19T17:28:03.101Z"
+current_phase: 16
+current_phase_name: Method Layering Foundation & TypeScript 7
+status: blocked
+stopped_at: Completed 16-07-PLAN.md
+last_updated: "2026-08-19T18:51:33.899Z"
 last_activity: 2026-08-19
+last_activity_desc: Build/tests pass; roadmap's no-TS7-source-change criterion needs remediation or override
 progress:
   total_phases: 11
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 7
+  completed_plans: 7
+  percent: 9
 ---
 
 # Project State
@@ -20,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** v7.0.0 relay-method-layering — roadmap complete, Phase 16 ready to plan
+**Current focus:** v7.0.0 relay-method-layering — Phase 16 verification found one contract gap
 
 ## Current Position
 
 Phase: 16 of 26 (Method Layering Foundation & TypeScript 7)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-08-19 — ROADMAP.md created: 11 phases (16–26), 46/46 v1 requirements mapped, 0 orphans
+Plan: 7 of 7
+Status: Verification gap (9/10)
+Last activity: 2026-08-19 — Build/tests pass; roadmap's no-TS7-source-change criterion needs remediation or override
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -115,6 +119,17 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 13 P12 | ~20min | 3 tasks | 10 files |
 | Phase 13 P14 | ~10min | 3 tasks | 3 files |
 | Phase 15 P08 | ~25min | 3 tasks | 3 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 16 P01 | 3m | 2 tasks | 4 files |
+| Phase 16 P02 | 1m | 2 tasks | 9 files |
+| Phase 16 P03 | 1m | 2 tasks | 9 files |
+| Phase 16 P04 | 1m | 1 tasks | 5 files |
+| Phase 16 P05 | 1m | 1 tasks | 5 files |
+| Phase 16 P06 | 1m | 1 tasks | 4 files |
+| Phase 16 P07 | 12m | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -299,6 +314,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 13]: 13-14: isGroupReqProgress narrows GroupReqMessage (ERROR -> not progress, early return) then delegates to isReqProgress with no cast, closing CR-02 at group.ts's suspendableTimeout firstWhen — a future GroupReqMessage arm is now a compile error at this call site, not a silent default to progress
 - [Phase 13]: 13-14: CR-02 regression tests pass reconnect: false explicitly — without it, relay.req()'s own connection-retry backoff delays relay1's manufactured ERROR value past the test's clock budget, so neither the buggy nor fixed predicate is exercised by the ERROR value at all (discovered when the defect test unexpectedly passed against the reverted pre-fix predicate)
 - [Phase 15]: Phase 15 closed: plan 15-08's Task 3 human-verify checkpoint (live auth-gating relay) approved 2026-08-15, confirming auth trace lines appear only after a relay refusal, not on connect or every status change
+- [Phase ?]: Phase 16: Throws may signal failure to an immediate retry or aggregation consumer; multi-hop expected state remains value-shaped.
+- [Phase ?]: Phase 16: Keep the llms AST scanner on @typescript/typescript6 while CLI compilation uses TypeScript 7.
 
 ### Pending Todos
 
@@ -322,6 +339,7 @@ None yet.
 - 13-13 closed WR-03/WR-04 in sync-loader.ts (RAUTH-08's stall-guard suspension and timer-lifetime gaps), but REQUIREMENTS.md leaves RAUTH-08 In Progress -- plan 13-12 (which depends on 13-13) is the designated closing plan that flips RAUTH-03/07/08 to Complete once every gap-closure plan in this wave sequence has landed
 - [Roadmap, 2026-08-19] v7.0.0's changesets config uses `linked`, not `fixed` — a package bumps only via its own changeset or a real dependency cascade. Phase 26 (Release Coordination) owns an explicit per-package changeset checklist and a `changeset status --verbose --since=master` dry run before cutting, or `applesauce-concord`/`applesauce-react`/`applesauce-sqlite` can silently stay on 6.x while the other 11 packages jump to 7.0.0.
 - [Roadmap, 2026-08-19] v7.0.0 Phase 24 (SYNC) and Phase 20 (AUTH) each carry a dependency confirmed by architecture research rather than the original backlog text — see the Roadmap Evolution entry above for both. Plan-phase for Phase 24 should re-verify `Relay.sync()`'s SEND/RECEIVE call sites have actually been rewired onto Phase 18/22's high-level methods before assuming the rewrite is complete.
+- Phase 16 verification: Roadmap SC3 prohibits TS7-specific production-source changes, but TS7 required five runtime-neutral compatibility edits in ba8a3da6; revise implementation/criterion or record an accepted override.
 
 ### Quick Tasks Completed
 
@@ -416,8 +434,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-19 (roadmap creation)
-Stopped at: v7.0.0 ROADMAP.md written (11 phases, 16–26) and REQUIREMENTS.md traceability filled — Phase 16 ready to plan
+Last session: 2026-08-19T18:47:12.314Z
+Stopped at: Completed 16-07-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

@@ -16,8 +16,8 @@ findings changed the plan and are marked **[research]** below.
 
 ### Method Layering
 
-- [ ] **LAYER-01**: D-01 states the rule that actually holds — throwing as an internal signal is a smell *except* where the immediate consumer is an aggregator over upstream calls or a retry layer over them — with the low/high layering rule recorded alongside it
-- [ ] **LAYER-02**: All 14 shipped D-01 citations (`relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1) state the amended rule, so no comment asserts a rule the code no longer follows
+- [x] **LAYER-01**: D-01 states the rule that actually holds — throwing as an internal signal is a smell *except* where the immediate consumer is an aggregator over upstream calls or a retry layer over them — with the low/high layering rule recorded alongside it
+- [x] **LAYER-02**: All 14 shipped D-01 citations (`relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1) state the amended rule, so no comment asserts a rule the code no longer follows
 
 ### EVENT Family
 
@@ -89,7 +89,7 @@ findings changed the plan and are marked **[research]** below.
 
 ### Ecosystem
 
-- [ ] **ECO-01**: The workspace builds, tests, and emits declarations under TypeScript 7
+- [x] **ECO-01**: The workspace builds, tests, and emits declarations under TypeScript 7
 - [ ] **ECO-02**: **[research]** `applesauce-react`'s already-declared React 19 support is backed by evidence — the package's first rendering tests exist and pass against both React 18 and 19, covering `use$`/`useObservableState` and the providers
 - [ ] **ECO-03**: `apps/examples` runs on `@snort/worker-relay` v2, with the removed `insertBatchSize` option and the now-synchronous `setEventMetadata` handled at both call sites
 
@@ -134,8 +134,8 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LAYER-01 | Phase 16 | Pending |
-| LAYER-02 | Phase 16 | Pending |
+| LAYER-01 | Phase 16 | Complete |
+| LAYER-02 | Phase 16 | Complete |
 | EVT-01 | Phase 18 | Pending |
 | EVT-02 | Phase 18 | Pending |
 | EVT-03 | Phase 18 | Pending |
@@ -177,11 +177,12 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | REL-02 | Phase 26 | Pending |
 | REL-03 | Phase 26 | Pending |
 | REL-04 | Phase 26 | Pending |
-| ECO-01 | Phase 16 | Pending |
+| ECO-01 | Phase 16 | Complete |
 | ECO-02 | Phase 25 | Pending |
 | ECO-03 | Phase 25 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 46 total
 - Mapped to phases: 46
 - Unmapped: 0 ✓

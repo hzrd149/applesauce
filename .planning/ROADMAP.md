@@ -93,16 +93,17 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
   2. Every one of the 14 shipped-source citations of D-01 (`relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1) reads consistently with the amended rule.
   3. `pnpm run build` and the full test suite pass with `typescript@^7` as the workspace compiler, with no package needing a TS7-specific code change.
 
-**Plans**: 7 plans
+**Plans**: 7/7 plans executed
 
 Plans:
-- [ ] 16-01-PLAN.md — Amend D-01 and all 14 shipped citations without runtime changes
-- [ ] 16-02-PLAN.md — Pin the root, apps, and first package batch to TypeScript 7
-- [ ] 16-03-PLAN.md — Pin the remaining package manifests to TypeScript 7
-- [ ] 16-04-PLAN.md — Remove the retired compiler option from accounts through content
-- [ ] 16-05-PLAN.md — Remove the retired compiler option from core through relay
-- [ ] 16-06-PLAN.md — Remove the retired compiler option from signers through wallet
-- [ ] 16-07-PLAN.md — Resolve the compiler graph and run full workspace acceptance gates
+
+- [x] 16-01-PLAN.md — Amend D-01 and all 14 shipped citations without runtime changes
+- [x] 16-02-PLAN.md — Pin the root, apps, and first package batch to TypeScript 7
+- [x] 16-03-PLAN.md — Pin the remaining package manifests to TypeScript 7
+- [x] 16-04-PLAN.md — Remove the retired compiler option from accounts through content
+- [x] 16-05-PLAN.md — Remove the retired compiler option from core through relay
+- [x] 16-06-PLAN.md — Remove the retired compiler option from signers through wallet
+- [x] 16-07-PLAN.md — Resolve the compiler graph and run full workspace acceptance gates
 
 ### Phase 17: Correctness Fixes & Concord Residuals
 
@@ -271,7 +272,7 @@ Plans:
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 14/14 | Complete    | 2026-08-18 |
 
-| 16. Method Layering Foundation & TypeScript 7 | v7.0.0 | 0/TBD | Not started | - |
+| 16. Method Layering Foundation & TypeScript 7 | v7.0.0 | 7/7 | Gaps found | - |
 | 17. Correctness Fixes & Concord Residuals | v7.0.0 | 0/TBD | Not started | - |
 | 18. EVENT Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 19. COUNT Becomes the High-Level Member | v7.0.0 | 0/TBD | Not started | - |
@@ -306,6 +307,7 @@ Plans:
 **RESOLVED — v7 is a coordinated suite-wide major (user, 2026-08-19).** A major version bumps **every** applesauce package, whether or not its own surface changed. This is an intentional property of the release process, not an accident of tooling: a consumer can tell at a glance that `applesauce-*@7.x` packages work together, without cross-checking a compatibility matrix. Minor and patch versions remain per-package, which is why the suite sits at 6.0.0 / 6.2.0 / 6.2.1 / 6.2.2 today — all on 6.x, drifting only below the major.
 
 Two consequences for planning v7:
+
 - **The tooling already enforces this — do not hand-write eleven changesets.** `.changeset/config.json` puts all fourteen packages in a single `linked` group, so one `major` changeset on any member bumps every member to the same major. Write the changeset against the package that actually changed and let changesets carry the rest. (Worth confirming the intended behavior on a dry run before cutting, since `linked` groups and `updateInternalDependencies: "minor"` interact.)
 - **The dependency-cascade analysis stops being the deciding factor.** Only `applesauce-wallet` depends on `applesauce-relay` (`^6.0.3`); `applesauce-loaders` deliberately carries **no** relay dependency (D-06 — it mirrors the types structurally). Under lockstep majors that narrowness no longer limits the release, though it does still mean very few packages need *code* changes.
 
@@ -580,6 +582,7 @@ Plans:
 **This also fixes a semantics bug, not just a shape.** The group's current clock is **first-progress-only**: `suspendableTimeout`'s `next` handler runs `if (!firstEmitted && opts.firstWhen(value)) { firstEmitted = true; clearTimer(); }` (`operators/auth-retry.ts`), so a single EVENT permanently disarms it. `RelayGroup.request()` therefore bounds *time to first progress* and nothing after — one event at t=1s and the stream may hang forever. An idle/silence timeout of the kind this extension describes does not exist anywhere in `applesauce-relay` today. It does exist in `applesauce-loaders`: `sync-loader.ts`'s `withTimeout` resets `remaining = timeoutMs` and re-arms on every emission. **The two suspendable clocks have diverged in behavior, not merely in code** — which sharpens 999.18's WR-10 from "near-duplicate implementations, undocumented" to "two different timeout semantics wearing similar names." Decide deliberately which one the group wants; idle is very likely the right answer, and it is a behavior change either way.
 
 **Hard constraint — a time-based condition must stay suspendable across auth phases.** The current clock is not a bare rxjs `timeout()`; it is `suspendableTimeout` driven by an `AuthPhaseGate`, and the call site carries an explicit "do NOT simplify this back to a bare rxjs `timeout()`, which cannot pause" warning. A 60 s condition that keeps counting through a 30 s auth wait re-introduces exactly the clock-race Phase 13 was built to remove. But an error condition is typed `OperatorFunction<GroupReqMessage, unknown>` — it observes the *message* stream, and the gate is a separate object created inside `request()`, invisible to it. Three ways out, and this is the load-bearing decision for the extension:
+
 1. **Give time-based builders the gate.** Change the condition type from an operator to a factory the method invokes with context — `(ctx: { gate: AuthPhaseGate }) => OperatorFunction<GroupReqMessage, unknown>`. Event-driven conditions ignore `ctx`; only time-based ones use it. Keeps the gate private and costs one level of indirection in the public type.
 2. **Put auth phases on the message stream** as a new `GroupReqMessage` arm. A condition could then see them with no extra plumbing — but it widens a public union, and 13-14 deliberately made `isGroupReqProgress` *total* over that union so a new arm is a compile error rather than a silent default. That guardrail firing is a feature; paying its cost here needs to be a choice.
 3. **Leave the clock where it is** and let conditions own failure detection only. No regression risk, but the timeout stays a second mechanism and `subscription()` still has none — which forfeits most of what this extension is for.
@@ -587,6 +590,7 @@ Plans:
 Option 1 looks right. Whichever is chosen, the suspendability requirement is not negotiable — a plan that reaches for a plain `timeout()` here is reintroducing a closed defect.
 
 **Open decision — complete and error race on the same event.** `completeOnAllEose()` already treats `ERROR` as terminal, so under the current default, all-relays-errored satisfies the *completion* condition. Adding an error condition means both fire on the same message and the error must win. Two candidate resolutions, and the planner should pick deliberately rather than discover it in review:
+
 1. Order `errorWhen` before `completeWhen` in the pipe so the error propagates first. Cheap, but relies on operator ordering for correctness — the kind of implicit invariant that decays.
 2. Narrow `completeOnAllEose()` to only count `EOSE` as terminal, letting the error condition own the all-`ERROR` case outright. Cleaner separation, but it changes a public static's semantics and any caller composing it by hand.
 
@@ -617,6 +621,7 @@ combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(f
 **Second, quieter defect in the same operator.** `combineLatest` does not emit until *every* input has emitted at least once, so even when nothing errors, the consumer gets no record at all until the slowest relay answers. One sluggish relay delays every count by up to its full 10s budget. Isolation alone does not fix this — a `catchError` per relay still leaves the all-or-nothing gate in place. Worth deciding in the same pass whether the record should instead accumulate (a `scan` emitting a partial record as each relay answers), which turns `count()` from all-or-nothing into progressive and is probably the larger practical win.
 
 **Open decision — how a failed relay appears in the record.** The return type is `Observable<Record<string, RelayCountResponse>>` and has nowhere to put a failure. Three candidates, each a public type change:
+
 1. **Omit the relay** — the consumer sees fewer keys than relays and cannot tell "failed" from "not answered yet."
 2. **Widen the value** to `RelayCountResponse | { error: unknown }` — honest and self-describing, but every existing consumer's narrowing breaks. Most likely correct.
 3. **A parallel errors map** alongside the counts — non-breaking for the value type, but splits one relay's outcome across two places.
@@ -768,6 +773,7 @@ Re-subscribing `source` re-runs `control` and writes the EVENT frame again. With
 **`waitForReady()` moves up too.** It is not a retry — it `take(1)`s — but it silently waits out an entire reconnect backoff, **unbounded**, because `timeout({first: eventTimeout})` is applied *inside* the observable `waitForReady` wraps, so the 10 s clock does not start until the gate opens. "Keep waiting for the relay to come back" is policy. `merge(this.watchTower, control)` stays in `event()` — that is connection lifecycle, and one attempt legitimately needs the socket alive.
 
 **Consequences to decide before planning:**
+
 1. **`Relay.sync()`'s SEND path calls `event()` directly** (`:1670`), not `publish()`, and gets auth retries for free today. It would silently lose them. Rewire to `publish()`, or have `sync()` own the retry.
 2. **`RelayGroup.event()` also calls `relay.event()` directly** and would become a raw per-relay single attempt while `group.publish()` keeps full policy. Defensible and arguably clarifying, but a behavior change.
 3. **This re-opens RAUTH-07**, which explicitly lists `event` among the eight operations exposing `onAuthRequired`/`authTimeout`/`authRetries`. Needs a recorded restatement with provenance, in the manner of ALOG-03 and CAUTH-03 — not a silent edit, and not before v1.2 closes.
@@ -800,6 +806,7 @@ this.customRepeatOperator(opts?.resubscribe, ...)    // resubscribe after a clea
 **Public type changes.** `RelayReqOptions` currently carries `id`, `resubscribe`, `reconnect`, intersected with `RelayAuthOptions`; `RelayRequestOptions = RelayReqOptions & { timeout, complete }` and `RelaySubscriptionOptions = RelayReqOptions` both inherit them. After the move, `RelayReqOptions` sheds `reconnect` and `resubscribe` — and, under 999.24's principle, the auth options too — reducing toward `{ id }`, while `RelayRequestOptions` and `RelaySubscriptionOptions` declare them explicitly. A consumer passing `reconnect` to `req()` becomes a type error, which is the desired signal but is breaking.
 
 **Central design decision — `subscription()` is long-lived.** A strict single-interaction `req()` cannot survive a reconnect at all, so `subscription()` becomes the owner of the re-establish loop rather than a filter over a self-healing `req()`. That is coherent and arguably where it always belonged, but it is a rewrite of the most-used read path in the package, not a refactor. Settle it before any plan is written:
+
 - Does a reconnect mid-subscription re-send the same REQ id, or mint a new one?
 - Does `resubscribe`-after-clean-CLOSED remain distinct from `reconnect`-after-socket-error once both live in the same layer, or do they collapse into one policy?
 - What does a re-established subscription emit — does the consumer see a second `OPEN`, and does `filterDuplicateEvents` still hold across the boundary?
@@ -837,6 +844,7 @@ Nothing recovers, and the report is misleading. `authenticate()` returns `{ok:fa
 This is the signing-path sibling of 999.18's deferred item (a connection dropping mid-auth-*wait* at low `keepAlive`); same root, different half of the flow.
 
 **What `authenticate()` should take on:**
+
 1. **Acquire a challenge rather than read one.** Wait for `challenge$` to emit non-null instead of throwing when it happens to be null — "no challenge yet" is a transient state on a fresh connection, and callers should not have to poll.
 2. **Keep the signed challenge fresh.** Capture what was signed against, verify it still matches before the frame goes out, and re-sign + resend when it has moved. This is the retry policy, and it is what makes the method high-level.
 3. **Retry / reconnect options** sharing `publish()`'s vocabulary, per 999.23.
@@ -866,6 +874,7 @@ Plans:
 **Where count sits now.** It is a low-level method with policy accidentally attached, the same shape `event()` is in (999.24): named for the wire verb, takes an explicit wire `id`, returns the wire reply type, `take(1)` on one frame and one reply — but carrying an auth retry loop that resends COUNT, a **hardcoded 10 s clock with no option to change it** (`relay.ts:1175`, the only operation clock in the package a caller cannot configure), and `waitForReady`. `RelayCountOptions = RelayAuthOptions`, so it has none of the policy vocabulary despite owning the policy.
 
 **Work:**
+
 1. `RelayCountOptions` gains `reconnect`, `retries`, and `timeout` alongside the auth options, matching `PublishOptions`.
 2. The 10 s fuse becomes `opts.timeout`, defaulting to a named field on `Relay` in the manner of `publishTimeout` / `eventTimeout`.
 3. Keep the auth retry where it is — under 999.23 it belongs to the high-level member, and `count()` now *is* that member.
@@ -939,6 +948,7 @@ This is the same mechanism as three other open items, which is the argument for 
 **Open — emit `sent` on success?** Recommended yes: it is the only output the SEND direction would ever produce, and it is what makes the docs example honest. **Open — should a sync ever error outright** (e.g. every send failed), or only report failures as values? 999.20's caller-supplied error condition is the natural vocabulary if so.
 
 **What moves up to `sync()`:**
+
 1. **The auth retry.** `negentropy()` owns it today (`relay.ts:1419`). Note what that currently costs: one `sync()` threads `authOptions` into **three** sites — the negotiation, each `event()`, and the `req()` — so a single sync can burn three independent auth budgets. One operation should have one budget.
 2. **An operation clock**, which does not exist on this path at all (999.13's closing note). It belongs on `sync()`, and should be the suspendable, idle-resetting kind from 999.20 rather than a bare `timeout()`.
 3. **`waitForReady` / reconnect handling**, as in the other families.
