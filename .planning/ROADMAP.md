@@ -554,6 +554,10 @@ combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(f
 2. **Widen the value** to `RelayCountResponse | { error: unknown }` — honest and self-describing, but every existing consumer's narrowing breaks. Most likely correct.
 3. **A parallel errors map** alongside the counts — non-breaking for the value type, but splits one relay's outcome across two places.
 
+**Depends on 999.27's re-shaping of `Relay.count()`.** Once the single-relay `count()` is the high-level method (owning retry, reconnect and a configurable timeout, and throwing on failure), the group's isolation becomes the same `catchError`-per-relay wrap that `internalPublish` already applies — decide this phase's mechanics against that shape, not today's.
+
+**NIP-45 makes this bigger than isolation: the group cannot produce a correct aggregate.** NIP-45 defines the COUNT response as `{"count": <int>, "approximate"?: <bool>, "hll"?: "<512-char hex>"}`, and its HyperLogLog section exists precisely so counts from several relays can be **merged** rather than summed — summing double-counts every event present on more than one relay. `RelayCountResponse` models only `{ count }` (populated by an unchecked `m[2] as RelayCountResponse`), so the `hll` registers never reach the consumer and a correct cross-relay total is not currently constructible. Returning `Record<url, …>` and leaving the arithmetic to the caller is therefore not a neutral choice — it hands them a job the current types make impossible. Decide whether this phase surfaces `hll` and offers a merge helper, or explicitly documents that the record must not be summed. 999.27 covers widening the response type.
+
 **Open decision — what the condition operator observes.** 999.20's `GroupRequestErrorOperator` is typed over `GroupReqMessage` because `request()`/`subscription()` flow through `internalSubscription`, which already manufactures `{type:"ERROR", from, error}`. **`count()` does not use `internalSubscription` and has no status-message stream at all** — so a condition operator has nothing to observe until one exists. Either give `count()` an internal per-relay status stream analogous to `internalSubscription`'s, or define a narrower count-specific condition type over the record itself. The first is more work and more consistent; the second is cheaper and risks a second, divergent vocabulary for the same idea.
 
 **Default behavior** should match 999.20: error only once every relay has failed, raising the same aggregate error carrying per-relay causes. Anything less than total failure is a partial result, not an error.
@@ -658,9 +662,9 @@ Costs 1–3 do not arise when there is one hop and the consumer is the intended 
 | `req()` | `request()`, `subscription()` | yes — 999.25 |
 | `event()` | `publish()` | yes — 999.24 |
 | `negentropy()` | `sync()` | yes — untracked; `negentropy()` owns the auth retry today |
-| `count()` | *(nothing)* | **no counterpart exists** |
+| `count()` | *(none — see below)* | **resolved 2026-08-19** |
 
-`Relay.count()` has no high-level wrapper, so a strict reading leaves its auth retry homeless. Either count keeps both roles as a documented exception, or a wrapper is introduced. Decide here, before 999.24/999.25 set a precedent that count then contradicts.
+**Resolved for `count()` (user, 2026-08-19): the count family has only a high-level member.** Rather than pairing a low-level COUNT method with a wrapper, `count()` itself becomes the high-level method — it gains the policy vocabulary (`reconnect`, `retries`, a configurable `timeout`, the auth options) and no low-level counterpart is introduced. Rationale: the raw form has exactly one consumer in the repo (`RelayGroup.count()`), and the group can wrap the high-level method per relay exactly as `group.publish()` already wraps `relay.publish()`. Extract a low-level form later only if real demand appears. Tracked as 999.27. The rule therefore reads: a family has a low member only where something actually needs raw single-interaction access.
 
 **Propagation is the real work.** Phase 13's D-01 is cited **14 times in shipped source** — `relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1 — plus its definition in `13-CONTEXT.md`. An amendment that does not reach those leaves comments asserting a rule the code no longer follows, which is the same failure mode as 999.16's WR-06. Treat updating them as in-scope, not cleanup. (Note: `D-01` also appears in v1.1 phase docs under a different phase's numbering and is unrelated — match by phase before editing.)
 
@@ -779,6 +783,43 @@ This is the signing-path sibling of 999.18's deferred item (a connection droppin
 **Consumers to check.** `packages/concord/src/client/auth.ts` ×2 (the Phase 15 `StreamSigners.onAuthRequired` and `createUserAuthHandler` paths) plus four example apps. None retry today, so all of them inherit the fix rather than needing changes — but concord's two handlers differ in how they read the response (`isOkResponse(res) && res.ok` vs a bare `res.ok`), which is worth reconciling while in there.
 
 **Release impact.** Mostly additive: callers that pass no options keep working, and the stale-challenge path changes from a misleading rejection to a successful auth. The missing-challenge behavior change is the one breaking edge, depending on the decision above. Minor changeset for `applesauce-relay`; `applesauce-concord` is unreleased and needs none.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.27: Make `Relay.count()` the high-level member of its family (BACKLOG)
+
+**Goal:** [Captured for future planning] Give `count()` the policy vocabulary the other high-level methods have — `reconnect`, `retries`, a configurable `timeout`, the auth options — and widen its response to what NIP-45 actually defines. Per 999.23's resolution the count family has **only** a high-level member: no low-level COUNT method is introduced.
+
+**Why count is the odd family.** For every other pair the wire verb and the intent are different words (EVENT/`publish`, REQ/`request`, negentropy/`sync`), so both members get a natural name. COUNT's wire verb *is* its intent. Rather than manufacture a second name for a method nobody needs, `count()` simply becomes the high-level member. The raw form has exactly one consumer in the repo — `RelayGroup.count()` — and the group can wrap the high-level method per relay the way `group.publish()` wraps `relay.publish()` today.
+
+**Where count sits now.** It is a low-level method with policy accidentally attached, the same shape `event()` is in (999.24): named for the wire verb, takes an explicit wire `id`, returns the wire reply type, `take(1)` on one frame and one reply — but carrying an auth retry loop that resends COUNT, a **hardcoded 10 s clock with no option to change it** (`relay.ts:1175`, the only operation clock in the package a caller cannot configure), and `waitForReady`. `RelayCountOptions = RelayAuthOptions`, so it has none of the policy vocabulary despite owning the policy.
+
+**Work:**
+1. `RelayCountOptions` gains `reconnect`, `retries`, and `timeout` alongside the auth options, matching `PublishOptions`.
+2. The 10 s fuse becomes `opts.timeout`, defaulting to a named field on `Relay` in the manner of `publishTimeout` / `eventTimeout`.
+3. Keep the auth retry where it is — under 999.23 it belongs to the high-level member, and `count()` now *is* that member.
+4. Failure surfaces as an error, consistent with the rest of the high-level layer.
+5. The wire `id` parameter stays, since `RelayGroup.count()` needs one id across the fan-out. A wire concern on a high-level method is a known, accepted impurity here.
+
+**Widen the response type — NIP-45 defines three fields and we model one.** The spec returns `{"count": <integer>}`, optionally with `"approximate": <bool>` when the relay counted probabilistically, and optionally with `"hll": "<512-char hex>"` (256 single-byte registers) so clients can merge counts across relays. Today:
+
+```
+export type RelayCountResponse = { count: number };
+...
+if (m[0] === "COUNT") return m[2] as RelayCountResponse;   // unchecked cast
+```
+
+Both optional fields are silently discarded, and the cast means a malformed payload becomes a typed lie rather than an error. Widen to `{ count: number; approximate?: boolean; hll?: string }` and validate rather than cast. **Do not unwrap the return to a bare `number`** — a caller handed `93412452` with no `approximate` flag cannot tell an exact count from an estimate, and dropping `hll` is what makes a correct group aggregate impossible (see 999.21). Return `Promise<RelayCountResponse>`.
+
+**Open decision — `Promise` or `Observable`?** `count()` is `take(1)`, so one question and one answer; `publish()` is the precedent for returning a `Promise` in that situation, and it reads better at a call site. But it is a breaking return-type change on a published package, and `RelayGroup.count()` currently composes the per-relay observables with `combineLatest` — 999.21 is rewriting that anyway, so the two should agree. Decide across both phases, not in one.
+
+**Open decision — does anything want the raw form after all?** This phase deliberately ships no low-level COUNT. If 999.21 finds the group genuinely needs raw per-relay wire access rather than a caught high-level call, that is the signal to extract one — and it should be named for the wire verb, consistent with `event`/`req`.
+
+**Release impact.** Breaking on a published package: the return type changes and the options widen. Major or minor depending on the `Promise` decision above. Sequence with 999.21, which consumes it.
 **Requirements:** TBD
 **Plans:** 0 plans
 
