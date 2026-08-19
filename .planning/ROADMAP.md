@@ -343,6 +343,8 @@ Plans:
 **Provenance — this is NOT a Phase 13 regression.** `git log -L 144,148` traces the loop to `f649d6dd` ("Fix abort signal being ignored in `negentropySync`"), dated **2025-10-27**, ten months before Phase 13 opened. Phase 13 touched this file for auth threading only. Surfaced by the Phase 13 code review (`phases/13-operation-scoped-nip-42-auth-hooks/13-REVIEW.md`, finding CR-01) and deferred by explicit user decision on 2026-08-06 as out of that phase's scope.
 
 **Worth checking at promotion:** whether the negentropy path should also carry an operation clock (every other operation in the phase got `suspendableTimeout`; this one has none, which is why the symptom is a hang rather than a timeout).
+
+**ABSORBED BY 999.28 (2026-08-19).** That phase restructures this exact loop from a blocking callback into a non-blocking per-round emission, so fixing the dropped follow-up here first would mean writing the multi-round regression test twice against two different shapes. Plan them as one. This entry stays for its provenance and its "must exceed the frame-size threshold" testing note, which 999.28 depends on.
 **Requirements:** TBD
 **Plans:** 0 plans
 
@@ -820,6 +822,49 @@ Both optional fields are silently discarded, and the cast means a malformed payl
 **Open decision — does anything want the raw form after all?** This phase deliberately ships no low-level COUNT. If 999.21 finds the group genuinely needs raw per-relay wire access rather than a caught high-level call, that is the signal to extract one — and it should be named for the wire verb, consistent with `event`/`req`.
 
 **Release impact.** Breaking on a published package: the return type changes and the options widen. Major or minor depending on the `Promise` decision above. Sequence with 999.21, which consumes it.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.28: Re-layer the negentropy family — `negentropy()` negotiates, `sync()` owns policy (BACKLOG)
+
+**Goal:** [Captured for future planning] Apply 999.23's layering rule to `Relay.negentropy()` / `Relay.sync()`: `negentropy()` runs one NEG-OPEN..NEG-CLOSE negotiation and emits what it learns per round **without blocking on the caller**, while `sync()` owns auth, the operation clock, reconnect, direction, and transfer concurrency. **Absorbs 999.13**, whose dropped-follow-up bug lives in the same loop this phase restructures.
+
+**The protocol question was investigated before the design, not assumed.** Two things were checked:
+
+1. **NIP-77 explicitly endorses transferring during the negotiation.** *"Given these IDs, the client can upload events it has with `EVENT`, and/or download events it needs with `REQ`. This can be performed over the same websocket connection **in parallel with subsequent `NEG-MSG` messages**."* The spec also notes a client may skip transfer entirely (counting unique events), treating negotiation and transfer as separate concerns — which is the layering this phase implements.
+2. **The per-round sets are increments, not cumulative.** `lib/negentropy.ts:314-316` re-initializes `haveIds`/`needIds` on every `reconcile()` call and pushes only ids from ranges resolved in *that* message (`:386`, `:399`). With the spec's guarantee that ranges never overlap and resolved ranges become `Skip`, **each id is reported in exactly one round.** Acting per round therefore transfers each id exactly once, with no dedupe.
+
+**Conclusion: reconciling during the sync is both expected and the performant choice.** Deferring to the end is viable but strictly worse — the caller must accumulate across rounds and no byte moves until the last round completes.
+
+**The defect is not "during" — it is the `await`.** `negentropy.ts:146` does `await reconcile(have, need)` inside the round loop, so the negotiation does not request the next NEG-MSG until the caller's transfers finish. That is exactly the serialization the spec's "in parallel" language rules out, and nothing in the protocol asks for it — it fell out of typing the hook as a `Promise`-returning callback.
+
+**Target shape.**
+
+```
+negentropy(store, filter, opts): Observable<{ have: string[]; need: string[] }>
+```
+
+The negotiation emits per round and runs to completion at protocol speed. `sync()` subscribes, performs the transfer per emission, and completes when the negotiation completes *and* the transfers settle. Control flow points the right way: the low-level method reports, the high-level one decides and acts — instead of a caller-supplied callback reaching back in to stall the protocol.
+
+**Dropping the `await` is not free — it is currently accidental backpressure.** `sync()`'s SEND already does `Promise.allSettled(events.map(...))` with no cap *within* a round; remove the `await` and it is uncapped *across* rounds too, so a large diff could open thousands of concurrent publishes. This is not a reason to keep the `await` — it is the reason **transfer concurrency must become explicit policy on `sync()`** (a bounded `mergeMap`, configurable) rather than serialization inherited from a callback's shape.
+
+**What moves up to `sync()`:**
+1. **The auth retry.** `negentropy()` owns it today (`relay.ts:1419`). Note what that currently costs: one `sync()` threads `authOptions` into **three** sites — the negotiation, each `event()`, and the `req()` — so a single sync can burn three independent auth budgets. One operation should have one budget.
+2. **An operation clock**, which does not exist on this path at all (999.13's closing note). It belongs on `sync()`, and should be the suspendable, idle-resetting kind from 999.20 rather than a bare `timeout()`.
+3. **`waitForReady` / reconnect handling**, as in the other families.
+4. **Transfer concurrency**, per above.
+
+**Absorbed from 999.13.** `negentropySync` computes the next client message and drops it — `msg = newMsg`, and `socket.next` is never called anywhere in the file, so only the initial NEG-OPEN reaches the wire. **Multi-round sync has therefore never worked**, which means this phase has no working behavior to preserve and can restructure freely. It also means the existing suite proves nothing here: `relay.test.ts:2748` deliberately keeps both sides under 32 items so reconciliation completes in one round (its own comment says so). **Any test for this phase must exceed the frame-size threshold to force a second round** — no current test does. Provenance for the bug is in 999.13: it traces to `f649d6dd` (2025-10-27), ten months before Phase 13, and is not a Phase 13 regression.
+
+**A non-consequence, recorded so it is not re-derived.** `SyncLoader` calls `pool.relay(relay).sync(eventStore, filter, undefined, opts)` (`sync-loader.ts:307`) — the **high-level** method, already receiving the auth options. Moving auth from `negentropy()` up to `sync()` therefore leaves `SyncLoader` and RAUTH-08 untouched. Unlike 999.24, this phase does not re-open a shipped requirement.
+
+**Open — the group forms are not resolved here.** `RelayGroup.negentropy()` discards every per-relay result via `Promise.allSettled` and returns a literal `true`; `RelayGroup.sync()` drops a failed relay to `EMPTY` plus a debug line (D-19). Both are real, both are in this family, and neither is designed yet. Deliberately left open — decide whether they fold into this phase or follow it, once the relay-level shape settles. Note `RelayGroup.negentropy()` is a group-level *low*-level method, which does not fit the layering rule at all and may simply not deserve to exist.
+
+**Release impact.** Breaking on a published package: `negentropy()`'s signature changes from a callback plus `Promise<boolean>` to an `Observable`, and `sync()` gains options. Major changeset with a migration note. `negentropy()` has no consumers in this repo outside `relay.sync()` and `RelayGroup.negentropy()`.
 **Requirements:** TBD
 **Plans:** 0 plans
 
