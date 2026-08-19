@@ -837,8 +837,9 @@ export class Relay {
    * Resolves `waitForAuth`/`onAuthRequired`/`authTimeout`/`authRetries` off `opts` (defaults: waitForAuth
    * true, authTimeout 30_000, authRetries 1) and injects the three terminal error constructors here so the
    * value-level dependency stays one-way — `relay.ts` imports the operator module, never the reverse, and
-   * `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError` are constructed only at this caller boundary
-   * (D-01). `isProgress` is required (CR-01) — every call site must state what counts as progress for its
+   * D-01 keeps auth-required value-shaped across this multi-hop operator chain; terminal
+   * `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError` instances are constructed at its caller boundary.
+   * `isProgress` is required (CR-01) — every call site must state what counts as progress for its
    * own stream shape; there is no permissive default.
    *
    * SEND/LISTEN INVARIANT (13-10, closing CR-02/CR-03 as a class rather than per-site): any call site
@@ -980,14 +981,14 @@ export class Relay {
           // EOSE
           return { type: "EOSE", from: this.url, id: m[1] } satisfies RelayReqEoseMessage;
         }),
-        // D-01/D-02/D-03: signal auth-required as a value instead of throwing (the shared auth operator
-        // consumes and never forwards it); every other prefixed CLOSED still throws its typed error
+        // D-01/D-02/D-03: auth-required crosses a multi-hop operator chain, so signal it as a value
+        // that the shared auth operator consumes; every other prefixed CLOSED still throws its typed error
         // unchanged. Mark relay-closed before takeWhile sees either outcome.
         map<RelayReqMessage, RelayReqMessage | AuthRequiredSignal>((m) => {
           if (m.type === "CLOSED") {
             relayClosedSub = true;
 
-            // D-01/D-02/D-03: only auth-required is signalled as a value; check the reason prefix
+            // D-01/D-02/D-03: only multi-hop auth-required is signalled as a value; check the reason prefix
             // directly (mirrors event()'s existing value-signal check) rather than parsing then
             // narrowing by instanceof
             if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
@@ -1114,7 +1115,7 @@ export class Relay {
       // completed for the previous attempt.
       const messages: Observable<RelayCountResponse | AuthRequiredSignal> = this.socket.pipe(
         filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
-        // Map to typed response. D-01/D-02/D-03: only auth-required is signalled as a value (the
+        // Map to typed response. D-01/D-02/D-03: multi-hop auth-required is signalled as a value (the
         // shared auth operator consumes and never forwards it) — check the reason prefix directly
         // (mirrors req()'s existing value-signal check) rather than parsing then narrowing by
         // instanceof. Every other recognized CLOSED prefix still throws its typed error unchanged.
@@ -1263,7 +1264,7 @@ export class Relay {
     const waitForAuth = opts?.waitForAuth ?? true;
     if (verb === "AUTH" || !waitForAuth) return this.waitForReady(observable).pipe(share());
 
-    // D-01/D-02: event()'s existing value-shaped response is the model the rest of the phase follows.
+    // D-01/D-02: this path currently keeps auth-required value-shaped across its operator chain.
     // Map a genuine auth-required OK response into the internal signal so the shared operator can run
     // the handler, wait, and drive the resend (RAUTH-02: no pre-block — the EVENT above is already sent
     // immediately, regardless of any other publish's auth state).
@@ -1282,10 +1283,10 @@ export class Relay {
     return this.waitForReady(signalled)
       .pipe(this.authRetryOperator(describeRequest, opts, gate, () => true)) // PublishResponse carries no bookkeeping value
       .pipe(
-        // D-01: on exhaustion the shared operator throws AuthRequiredError (config.errors.exhausted).
+        // D-01: on exhaustion the shared operator throws AuthRequiredError to its immediate consumer.
         // event() converts that back into the relay's final `{ ok: false, message: "auth-required:..." }`
         // value rather than letting it propagate, because publish() is the caller boundary that
-        // reconstructs AuthRequiredError from a value (D-01) and RelayGroup.event consumers already
+        // reconstructs AuthRequiredError from a value (D-01); that one-hop retry boundary may consume a throw,
         // branch on the response shape. A handler rejection (AuthHandlerError) or a phase timeout
         // (AuthTimeoutError) are genuine errors and DO propagate here (D-17) — RelayGroup's per-relay
         // catch converts those into a response carrying the error object once plan 13-07 lands D-18.
@@ -1370,7 +1371,8 @@ export class Relay {
     // at this edge — its reason is parsed by parseClosedError, because translating a lower layer's error at
     // the boundary is not throw-as-signal. What changes is the result: when the parse yields
     // AuthRequiredError, the translation produces an auth-required signal value instead of re-throwing
-    // (D-01), flipping the informational flag at the same point so authRequiredForRead$ keeps updating
+    // (D-01), keeping expected state value-shaped across this multi-hop chain and flipping the informational
+    // flag at the same point so authRequiredForRead$ keeps updating
     // (RAUTH-09). Every other parsed prefix still re-throws its typed error, and an unparseable reason
     // still re-throws the original.
     const runSync: Observable<boolean | AuthRequiredSignal> = defer(() =>
@@ -1603,7 +1605,7 @@ export class Relay {
         mergeMap((result) => {
           // event() only reaches this point with a value-shaped auth-required response once its own
           // internal auth-retry budget is exhausted (D-01/D-02) — construct the terminal AuthRequiredError
-          // here, at the single caller boundary D-01 designates.
+          // here for publish(), its immediate retry consumer; D-01 permits that one-hop throw boundary.
           if (result.ok === false && result.message?.startsWith(AUTH_REQUIRED_PREFIX))
             return throwError(() => new AuthRequiredError(result.message ?? ""));
 

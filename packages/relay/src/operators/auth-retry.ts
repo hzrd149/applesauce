@@ -36,7 +36,7 @@ import type { AuthRequirement, RelayAuthContext, RelayAuthHandler } from "../typ
 /** Module-level unique symbol used as the discriminant key for an internal auth-required signal */
 const AUTH_REQUIRED_SIGNAL = Symbol("auth-required-signal");
 
-/** Internal value carrying an auth-required signal off the RxJS error channel (D-01) */
+/** D-01: internal value carrying auth-required across this multi-hop operator chain. */
 export type AuthRequiredSignal = {
   readonly [AUTH_REQUIRED_SIGNAL]: true;
   readonly reason: string;
@@ -245,7 +245,7 @@ export type AuthRetryConfig<T> = {
 
 /**
  * D-04 shared operator. Consumes a stream that may carry {@link AuthRequiredSignal} values and produces a
- * stream that never does — the signal is never thrown and never re-emitted downstream (D-01). Owns handler
+ * stream that never does — D-01 keeps this multi-hop signal off the error channel and downstream. Owns handler
  * invocation, the per-phase timeout, retry counting/reset, error mapping, and operation-clock suspension
  * (via `gate`, consumed by {@link suspendableTimeout} at the call site).
  */
@@ -369,7 +369,7 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
           // that only ever completes or errors — it has no `next` emission for switchMap to project on.
           isAuthRequiredSignal(value) ? concat(runPhase(value), source) : EMPTY,
         ),
-        // D-01: the raw signal never reaches the subscriber
+        // D-01: consume the multi-hop value signal before it reaches the subscriber.
         filter((value): value is T => !isAuthRequiredSignal(value)),
         // D-08/CR-01: only a value config.isProgress accepts as real progress resets the consecutive
         // counter — a per-cycle budget, not a per-lifetime one. A call site's own bookkeeping value
