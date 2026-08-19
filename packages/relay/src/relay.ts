@@ -431,8 +431,16 @@ export class Relay {
     }
   }
 
-  // Computed observables that track if auth is required for REQ or EVENT
+  /**
+   * Computed observables that track if auth is required for REQ
+   * @deprecated
+   */
   authRequiredForRead$: Observable<boolean>;
+
+  /**
+   * Computed observables that track if auth is required for EVENT
+   * @deprecated
+   */
   authRequiredForPublish$: Observable<boolean>;
 
   protected resetState() {
