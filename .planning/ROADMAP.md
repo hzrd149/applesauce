@@ -485,3 +485,124 @@ Plans:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.20: Group error conditions for `request()` and `subscription()` (BACKLOG)
+
+**Goal:** [Captured for future planning] Give `RelayGroup.request()` and `RelayGroup.subscription()` an **error condition** — a caller-supplied operator, symmetric with the existing completion condition, that decides *when* the observable errors and *what* error it raises. Default it to "every relay in the group has failed." Surfaced by the 2026-08-19 error-surface audit of all public relay/group/pool methods; **targeted for the v1.2 release rather than deferred**, since both methods currently report total failure as a non-event.
+
+**What each method does today.** Both drop per-relay failures on the floor: `internalSubscription` demotes a relay's throw to a `{type:"ERROR", from, error}` message (`group.ts:177`), and both methods then filter for `type === "EVENT"` (`:296`, `:314`), removing exactly those messages. What differs is what the consumer observes when *every* relay fails:
+
+- **`subscription()` hangs silently, forever.** No error, no value, no completion, and no clock — it has neither a completion condition nor a timeout. A subscription to five dead relays is indistinguishable from a subscription to five quiet ones.
+- **`request()` completes empty, successfully.** Its default completion condition includes `completeOnAllEose()`, which scans `OPEN`/`EOSE`/`ERROR` per relay and fires once no relay is still `OPEN` (`:406-412`) — so all-relays-errored satisfies it. The consumer cannot distinguish "every relay refused" from "no events matched the filter." (Note for planning: this is *not* a 30s timeout hang; an earlier draft of the audit said so and was corrected against source.)
+
+**Proposed shape — mirror the completion condition.** The existing machinery is `GroupRequestCompleteOperator = OperatorFunction<GroupReqMessage, any>` consumed by `completeWhen` (`operators/complete-when.ts`), with static builders (`completeAfterFirstRelay`, `completeOnAllEose`, `completeOnAny`, `completeOnAll`). The error side should read the same way:
+
+- `GroupRequestErrorOperator = OperatorFunction<GroupReqMessage, unknown>` — **the emitted value *is* the error to raise**, and the first non-nullish emission wins. This is the one deliberate asymmetry with the complete side (which only needs a truthy signal): the user's ask was an operator that decides both *when* and *how* the observable errors, and returning the error object carries both.
+- `errorWhen(operator)` in `operators/error-when.ts`, mirroring `complete-when.ts`'s `connect(shared$ => …)` structure so the condition observes the same shared upstream the values flow through, without a second subscription.
+- `RelayGroup.errorOnAllRelaysFailed()` as the default builder — the same `scan` over `OPEN`/`EOSE`/`ERROR` that `completeOnAllEose()` uses, emitting when every known relay is `ERROR` and at least one relay exists.
+- `RelayGroup.errorOnAny(...)` for composition. An `errorOnAll` analogue is probably not worth adding until something wants it.
+
+**The error object is part of the design, not an afterthought.** `errorOnAllRelaysFailed()` should raise an aggregate carrying every relay's cause — e.g. a `GroupAllRelaysFailedError` with `errors: Record<string, unknown>` keyed by relay url — so the consumer gets the per-relay reasons the ERROR messages were carrying all along. Raising a bare `Error("All relays failed")` would trade one information loss for another.
+
+**Open decision — complete and error race on the same event.** `completeOnAllEose()` already treats `ERROR` as terminal, so under the current default, all-relays-errored satisfies the *completion* condition. Adding an error condition means both fire on the same message and the error must win. Two candidate resolutions, and the planner should pick deliberately rather than discover it in review:
+1. Order `errorWhen` before `completeWhen` in the pipe so the error propagates first. Cheap, but relies on operator ordering for correctness — the kind of implicit invariant that decays.
+2. Narrow `completeOnAllEose()` to only count `EOSE` as terminal, letting the error condition own the all-`ERROR` case outright. Cleaner separation, but it changes a public static's semantics and any caller composing it by hand.
+
+**Open decision — is the default a breaking change?** `applesauce-relay` is published. Turning "completes empty" into "throws" for `request()` is a real behavior change for any consumer treating an empty result as normal, and turning a silent hang into a throw for `subscription()` is one too (though nobody can be depending on the hang deliberately). Needs a changeset either way; the question is whether the aggregate-error default ships on by default in this release or whether the option lands first with the default arriving in a follow-up. Recommend on-by-default — the current behavior is not a contract anyone chose — but it is the user's call.
+
+**Scope notes.** `subscription()` currently accepts no completion condition at all, so this adds the first condition-style option to it. `req()` is deliberately excluded — it already surfaces `{type:"ERROR"}` to the consumer and is the honest member of the family; it is the escape hatch for anyone who wants the raw per-relay signal. `RelayGroup.count()` (no per-relay isolation at all — `combineLatest`) and `RelayGroup.sync()` / `negentropy()` (per-relay failure dropped to `EMPTY`, and a hardcoded `return true` respectively) have the same underlying disease and are tracked separately.
+
+**Reference:** the full audit of which methods use the error channel and for what is at [Relay Error Surface](https://claude.ai/code/artifact/56499ac7-bad6-4ce1-9806-e1fa9c373c3e).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.21: Per-relay isolation and an error condition for `RelayGroup.count()` (BACKLOG)
+
+**Goal:** [Captured for future planning] Stop a single failing relay from destroying a whole group count, and give `count()` the same caller-supplied error condition 999.20 defines for `request()`/`subscription()`. Same release target as 999.20 — a dead or offline relay in a pool should cost you that relay's number, not every relay's number.
+
+**Why it breaks today.** `count()` is the one group read with no per-relay isolation at all (`group.ts:330-336`):
+
+```
+combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(filters, id, opts)])))
+```
+
+`combineLatest` propagates the first error from any input, so one relay's failure ends the stream for every relay. Concrete trace for the offline case: `RelayPool.count()` builds its group with `ignoreOffline` hardcoded `false` (`pool.ts:248`), so an offline relay is *always* included rather than being waited out the way `ignoreOffline: true` would; `Relay.count()` then defers the send behind `waitForReady`, its hardcoded 10s fuse fires `Error("COUNT timeout")`, and `combineLatest` tears down the healthy relays' counts along with it. Every other group read method isolates; this one does not.
+
+**Second, quieter defect in the same operator.** `combineLatest` does not emit until *every* input has emitted at least once, so even when nothing errors, the consumer gets no record at all until the slowest relay answers. One sluggish relay delays every count by up to its full 10s budget. Isolation alone does not fix this — a `catchError` per relay still leaves the all-or-nothing gate in place. Worth deciding in the same pass whether the record should instead accumulate (a `scan` emitting a partial record as each relay answers), which turns `count()` from all-or-nothing into progressive and is probably the larger practical win.
+
+**Open decision — how a failed relay appears in the record.** The return type is `Observable<Record<string, RelayCountResponse>>` and has nowhere to put a failure. Three candidates, each a public type change:
+1. **Omit the relay** — the consumer sees fewer keys than relays and cannot tell "failed" from "not answered yet."
+2. **Widen the value** to `RelayCountResponse | { error: unknown }` — honest and self-describing, but every existing consumer's narrowing breaks. Most likely correct.
+3. **A parallel errors map** alongside the counts — non-breaking for the value type, but splits one relay's outcome across two places.
+
+**Open decision — what the condition operator observes.** 999.20's `GroupRequestErrorOperator` is typed over `GroupReqMessage` because `request()`/`subscription()` flow through `internalSubscription`, which already manufactures `{type:"ERROR", from, error}`. **`count()` does not use `internalSubscription` and has no status-message stream at all** — so a condition operator has nothing to observe until one exists. Either give `count()` an internal per-relay status stream analogous to `internalSubscription`'s, or define a narrower count-specific condition type over the record itself. The first is more work and more consistent; the second is cheaper and risks a second, divergent vocabulary for the same idea.
+
+**Default behavior** should match 999.20: error only once every relay has failed, raising the same aggregate error carrying per-relay causes. Anything less than total failure is a partial result, not an error.
+
+**Worth folding in at promotion.** `Relay.count()`'s 10s timeout is hardcoded with no option to change it (`relay.ts:1175`) — the only operation clock in the package that a caller cannot configure. It is the fuse that makes this defect fire, so exposing it belongs in the same conversation.
+
+**Sequencing.** Depends on 999.20 for the `errorWhen` operator, the `errorOnAllRelaysFailed` builder, and the aggregate error type — reuse that vocabulary rather than inventing a parallel one. The two could reasonably be promoted as a single phase; keep them separate only if 999.20's shape needs to settle first. `RelayGroup.sync()` and `RelayGroup.negentropy()` have the same disease (per-relay failure dropped to `EMPTY`; a hardcoded `return true`) and are still untracked.
+
+**Reference:** [Relay Error Surface](https://claude.ai/code/artifact/56499ac7-bad6-4ce1-9806-e1fa9c373c3e).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.22: `Relay.authenticate()` throws synchronously instead of rejecting (BACKLOG)
+
+**Goal:** [Captured for future planning] Move `authenticate()`'s missing-challenge guard inside the observable pipeline so the failure reaches the caller through the error channel — as a promise rejection — rather than as a synchronous throw from a `Promise`-returning method. Same release target as 999.20/999.21; surfaced by the 2026-08-19 error-surface audit.
+
+**The defect.** `relay.ts:1429-1430`:
+
+```
+authenticate(signer: AuthSigner): Promise<PublishResponse> {
+  if (!this.challenge) throw new Error("Have not received authentication challenge");
+```
+
+The method is **not** `async` — it returns a promise by way of `lastValueFrom(...)` at the end. So this guard throws *before any promise exists*, and the idiomatic caller never sees it:
+
+```
+relay.authenticate(signer).catch(handleAuthFailure);   // handleAuthFailure never runs; the throw escapes
+```
+
+`try { await relay.authenticate(signer) } catch {}` does catch it, which is why this has survived — the two call styles disagree, and only one of them works. Every other failure this method can produce (a signer rejection, the relay's own verdict, a connection error) arrives as a rejection, so the missing-challenge case is the lone exception to the method's own contract.
+
+**The guard must stay.** Failing when no challenge has been received is correct and should keep failing — the issue is purely *how* it surfaces.
+
+**Fix shape.** Wrap the body in `defer()` so the guard runs at subscribe time and its throw travels the observable error channel into the returned promise:
+
+```
+authenticate(signer: AuthSigner): Promise<PublishResponse> {
+  return lastValueFrom(
+    defer(() => {
+      if (!this.challenge) throw new Error("Have not received authentication challenge");
+      this.authLog(`Signing AUTH event for challenge ${truncateForLog(this.challenge)}, waiting on signer`);
+      const p = signer.signEvent(makeAuthEvent(this.url, this.challenge));
+      return p instanceof Promise ? from(p) : of(p);
+    }).pipe(switchMap((event) => this.auth(event))),
+  );
+}
+```
+
+Moving the `authLog` line and the `this.challenge` read inside the `defer` keeps them consistent with the guard — the challenge is then read once, at subscribe time, rather than split across call time and subscribe time.
+
+**Worth deciding at promotion — should this be a typed error?** It is currently a bare `Error`, so a consumer can only match on the message string. The package already exports an error family (`RelayClosedError` and its three auth subclasses) precisely so callers can branch structurally, and 999.20 proposes adding an aggregate group error. A `MissingChallengeError` would fit that vocabulary, but it widens the public surface — decide alongside 999.20's error type rather than separately.
+
+**Structural note.** `authenticate()` is the **only** live instance of this shape. `Relay.negentropy()` and `RelayGroup.negentropy()` both declare `async`, so their guards already become rejections, and `RelayGroup`'s `relays` getter (`group.ts:98-101`) throws synchronously by design, which is idiomatic for a getter. What permits the bug is the shape "non-`async` method returning `Promise`" — there are four (`Relay.auth`, `Relay.authenticate`, `Relay.publish`, `RelayGroup.publish`), and only `authenticate` does work before reaching `lastValueFrom`. Marking the other three as unaffected here so a future reader does not re-derive it; if a guard is ever added to one of them, it belongs inside the pipeline.
+
+**Release impact.** Low risk and not breaking: callers using `try`/`await` are unaffected, and callers using `.catch()` go from a crash to a handled rejection. Needs a single-sentence patch changeset for `applesauce-relay`.
+
+**Reference:** [Relay Error Surface](https://claude.ai/code/artifact/56499ac7-bad6-4ce1-9806-e1fa9c373c3e).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
