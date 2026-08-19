@@ -10,14 +10,21 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 
 ## Current State
 
-**Shipped v1.1 first-fixes (2026-08-04).** Two milestones are complete: v1.0 made the event layer
-generic over unsigned rumors, and v1.1 brought `applesauce-concord` into conformance with the
-CORD-01..07 protocol specs. All 43 findings from the 2026-07-15 audit are closed, along with the
-shared `applesauce-core` cache defect that caused three of them.
+**Shipped v1.2 operation-scoped-relay-auth (2026-08-19).** Three milestones are complete: v1.0 made
+the event layer generic over unsigned rumors, v1.1 brought `applesauce-concord` into conformance with
+the CORD-01..07 protocol specs, and v1.2 moved NIP-42 authentication out of ambient relay-wide state
+into the operation that actually receives `auth-required:` — then migrated Concord's stream auth onto
+that hook and deleted its client-wide registry driver.
 
-12 phases, 87 plans, 54/54 requirements. Test suite grew from a 1,989-test baseline to **2,466
-passing / 2 skipped** across 272 files; concord alone from 189 to 554 — and, more to the point,
-its load-bearing derivations now assert against spec oracles rather than against themselves.
+v1.2: 3 phases, 37 plans, 16/16 requirements, all three phases Nyquist-compliant. 1,029 tests pass
+across `relay`/`loaders`/`concord`; the full workspace builds 14/14.
+
+**No release has been cut from v1.2.** The next milestone is **applesauce v7.0.0** — the closing
+design review of v1.2 established that the relay method families are layered wrongly (low-level
+methods own retry, reconnect and auth policy that belongs to their high-level counterparts), and
+correcting that is breaking across `applesauce-relay`. v1.2's held changesets ship with it. See
+ROADMAP.md → Backlog → "v7 release coordination"; **999.23 must be planned first**, as it carries the
+amended D-01 and the layering rule four other entries assume.
 
 Full record: [`milestones/v1.1-ROADMAP.md`](milestones/v1.1-ROADMAP.md) ·
 [`milestones/v1.1-REQUIREMENTS.md`](milestones/v1.1-REQUIREMENTS.md) ·
@@ -82,7 +89,19 @@ round had asserted a Prettier finding was "introduced by this phase" — checkin
 refuted it outright, while the same check confirmed the real blocker. Severity labels are hypotheses
 until someone checks them against the base, in both directions.
 
-## Current Milestone: v1.2 operation-scoped-relay-auth
+## Next Milestone: v7.0.0 relay/auth re-layering (not yet scoped)
+
+**Goal (provisional):** Make every relay method family honour one rule — a low-level method
+(`event()`, `req()`, `negentropy()`) is a single interaction with the relay; a high-level method
+(`publish()`, `request()`, `subscription()`, `count()`, `sync()`, `authenticate()`) owns the
+configurable policy: retries, reconnects, auth retries, resubscribes, timeouts, and concurrency.
+Nine backlog entries (999.20, 999.21, 999.23–999.28) carry the design, each with its open decisions
+recorded. Scope it with `/gsd-new-milestone`.
+
+<details>
+<summary>Shipped: v1.2 operation-scoped-relay-auth (2026-08-19)</summary>
+
+## Milestone: v1.2 operation-scoped-relay-auth — SHIPPED
 
 **Goal:** Move NIP-42 authentication out of ambient, relay-wide cached state and into the
 operation that actually receives `auth-required:`, then migrate Concord's stream auth onto that
@@ -119,6 +138,8 @@ epoch state, so there may be nothing to audit. **999.10** shipped 2026-08-05 as 
 gaps (`/gsd-validate-phase` on 10, 12.1, 12.2); five accepted overrides; the `low` 05.1
 follow-ups todo; and eight still-dormant seeds.
 
+</details>
+
 ## Requirements
 
 ### Validated
@@ -148,13 +169,18 @@ follow-ups todo; and eight still-dormant seeds.
 - ✓ Event time is one clock read: `created_at * 1000 + ms` is a true decomposition of a single instant — v1.1 (Phase 10, TIME-01/02/03; a single `splitTime` read threads through snapshot chunking so all N chunks share one instant)
 - ✓ Attacker-crafted invite bundles fail closed at the validation boundary — v1.1 (Phase 12.3; `validateInviteBundle` rewritten as four exhaustive mapped-type rule tables plus a rebuild-never-spread walker, closing the class rather than adding another named check)
 
+- ✓ NIP-42 auth is operation-scoped: `onAuthRequired`/`authTimeout`/`authRetries` on all eight request-like operations, passing through `RelayPool`/`RelayGroup` and both `SyncLoader` paths — v1.2 (Phase 13, RAUTH-01..09). An operation that never received `auth-required:` is no longer pre-blocked by one that did; the relay-wide flags survive as informational status only
+- ✓ A single NIP-42 auth attempt is legible from debug output alone — challenge, signing, AUTH sent, result, and why it failed — with outcomes attributable to the operation that triggered them — v1.2 (Phase 14, ALOG-01/02). Proven against real captured `debug` output, not implementation strings
+- ✓ Every `Debugger` in `packages/loaders/` is derived once per lifetime, never on a path a reactive pipeline can re-enter — v1.2 (Phase 14, ALOG-03; closes SEED-001). Restated from the original wording, which tested for a pattern that does not exist in this monorepo and so passed vacuously
+- ✓ Concord authenticates per scope, not per client: each community and private-channel engine answers only the `missingPubkeys` its own scope holds keys for, and a reconnect re-authenticates exactly that set — v1.2 (Phase 15, CAUTH-01/02/04)
+- ✓ Concord's client-wide auth driver machinery is gone — `relay-auth.ts` deleted along with `authenticateStreamKeys`, `version$`, driver reference counting, `ensureAuth()`, relay-status-driven authentication and `autoAuthenticate`, with a two-root structural guard failing CI on reintroduction — v1.2 (Phase 15, CAUTH-03, widened from stream-keys-only to cover the user-key half)
+
 ### Active
 
-<!-- v1.2 operation-scoped-relay-auth — REQ-IDs defined in REQUIREMENTS.md, mapped to phases in ROADMAP.md. -->
+<!-- v7.0.0 relay/auth re-layering — not yet scoped. Run /gsd-new-milestone to define REQ-IDs. -->
 
-Being defined for v1.2 — see [`REQUIREMENTS.md`](REQUIREMENTS.md). Scope is the three promoted
-backlog items above (999.5 → relay auth hooks, 999.4 → auth lifecycle logging, 999.11 → concord
-cleanup).
+Not yet defined. The candidate scope is the nine backlog entries listed under "Next Milestone" above;
+`/gsd-new-milestone` turns them into REQ-IDs and phases.
 
 ### Out of Scope
 
@@ -242,6 +268,8 @@ reproduction is not.*
 *Updated 2026-08-11 — Phase 14 (auth lifecycle debug logging) complete: 9/9 plans, ALOG-01/02/03
 verified, suite at 2,647 passing. Two code-review findings were closed as gap plans (14-08, 14-09);
 eight were deliberately backlogged as ROADMAP item 999.16. Next: Phase 15, Concord stream-auth cleanup.*
+
+*Last updated: 2026-08-19 after the v1.2 operation-scoped-relay-auth milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.2 restructured how auth reaches an operation, not what the SDK is); all v1.2 requirements moved to Validated; Current State rewritten with the v7 release constraint; the next milestone recorded as v7.0.0 relay/auth re-layering with 999.23 flagged as the required first phase.*
 
 *Prior: 2026-08-04 after the v1.1 first-fixes milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.1 was a conformance milestone in `applesauce-concord`; it did not shift what the SDK is or what matters most about it); all eight v1.1 Active requirements moved to Validated; Out of Scope audited with each reason re-confirmed; six Key Decisions resolved to outcomes; Context updated with shipped state.*
 

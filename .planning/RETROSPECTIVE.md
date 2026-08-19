@@ -93,6 +93,70 @@
 
 ---
 
+## Milestone: v1.2 — operation-scoped-relay-auth
+
+**Shipped:** 2026-08-19
+**Phases:** 3 | **Plans:** 37 | **Tasks:** 100 | **Commits:** 269 | **Timeline:** 14 days (2026-08-05 → 2026-08-19)
+
+### What Was Built
+
+NIP-42 authentication moved from ambient, relay-wide cached flags into the operation that receives
+`auth-required:`. One shared `authRetry` operator serves all eight request-like operations and passes
+through `RelayPool`/`RelayGroup` and both `SyncLoader` paths. A `:auth` debug namespace made a single
+auth attempt's lifecycle and failure reason readable from log output. Concord's client-wide
+stream-signer registry and relay drivers were deleted in favour of per-scope `StreamSigners` holders.
+
+### What Worked
+
+- **Value-signalling instead of throw-as-signal (D-01).** Making auth-required a value on an internal
+  type removed four accumulated costs at once, including `count()` catching and re-throwing a signal
+  that was never its own. The principle held up well enough that the milestone's closing review
+  refined rather than abandoned it.
+- **Structural fixes over enumerated ones.** Plan 13-08 made "what counts as progress" a *required*
+  typed parameter rather than special-casing `req()`'s `OPEN` message, so omitting the answer became a
+  compile error. When the same defect class reappeared one layer up (CR-02), 13-14 closed it the same
+  way — a total predicate with no cast.
+- **Re-verification that distrusted the SUMMARYs.** Phase 15's pass ran its own mutation test and
+  disproved the SUMMARY's account of which code closed the blocking gap — the real fix was in
+  `publishToPlane`, not `heldChannelKeys()`. That finding became WR-09.
+
+### What Was Inefficient
+
+- **Phase 13 needed three verification rounds.** Round 1 passed incorrectly and marked three
+  requirements Complete; round 2 reopened RAUTH-03/07/08; round 3 caught a regression that plan 13-11
+  had introduced at the exact site 13-08's guardrail was built to prevent. Fourteen plans for one
+  phase, roughly half of them gap closure.
+- **Residuals were dispositioned but not filed.** Both Phase 13 and Phase 15 recorded their review
+  warnings in a VERIFICATION.md and stopped there. Sixteen items had no backlog entry until the
+  milestone audit caught it — and re-verifying them before filing found two already closed.
+
+### Patterns Established
+
+- **Suspendable operation clocks (D-15).** Every operation timeout pauses across an auth phase rather
+  than racing it. A bare `rxjs` `timeout()` cannot express this, which is now stated at each call site.
+- **Two-root structural guards.** `no-ambient-auth.test.ts` walks both `packages/concord/src` and the
+  concord examples, so a removed mechanism cannot return through a worked example.
+- **Verify the premise before designing on it.** The negentropy re-layering design was held until
+  NIP-77 and the vendored library were actually read; both confirmed the assumption, but the check
+  also revealed the blocking `await` was never a protocol requirement.
+
+### Key Lessons
+
+- **A passing suite proves nothing about a defect it never exercises.** 13-14's regression test
+  initially passed against the *reverted* buggy predicate — the relay's connection-retry backoff
+  delayed the discriminating value past the test's clock budget. Only `reconnect: false` made it real.
+- **Comments that over-promise become defects.** Phase 14's WR-06 was read as "a shipped changeset is
+  wrong" by two successive reviews, including this one's first pass. Re-reading the code showed the
+  changeset accurate and the *comments* over-broad. The fix is structural (999.24), not a reword.
+- **A design review at milestone close can outgrow the milestone.** Auditing which methods surface
+  errors produced nine backlog entries and a decision to cut a major version. Worth budgeting for.
+
+### Cost Observations
+
+Three phases, but 37 plans — gap closure dominated. Phase 13 alone ran 14 plans across 13 waves. The
+milestone's most valuable output may be the closing audit rather than the code: it found four group
+methods that silently swallow failures, none of which any requirement covered.
+
 ## Cross-Milestone Trends
 
 ### Process Evolution

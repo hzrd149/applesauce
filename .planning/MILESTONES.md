@@ -1,5 +1,32 @@
 # Milestones
 
+## v1.2 operation-scoped-relay-auth (Shipped: 2026-08-19)
+
+**Phases completed:** 3 phases, 37 plans, 100 tasks
+
+**Delivered:** NIP-42 authentication moved out of ambient, relay-wide cached state and into the operation that actually receives `auth-required:` — then Concord's stream auth migrated onto that hook and off its own client-wide registry driver.
+
+**Stats:** 269 commits (`e03939d4`..`e5ece2e9`), 208 files changed (+30,492 / −2,326), 14 days (2026-08-05 → 2026-08-19).
+
+**Closeout:** `override_closeout` — 16/16 requirements satisfied, 3/3 phases verified, all three `nyquist_compliant: true`, but one `low` todo and eight dormant seeds were acknowledged rather than resolved at close. See STATE.md → Deferred Items.
+
+**Key accomplishments:**
+
+- **Auth became operation-scoped** (Phase 13) — `onAuthRequired`/`authTimeout`/`authRetries` reach all eight request-like operations (`req`, `request`, `subscription`, `count`, `publish`, `event`, `sync`, negentropy) through one shared `authRetry` operator, and pass through `RelayPool`/`RelayGroup`. `authRequiredForRead$`/`authRequiredForPublish$` survive as informational status only — their use as a *pre-block gate* is gone, so an operation that never saw `auth-required:` is never made to wait behind one that did.
+- **Throw-as-internal-signal removed from the auth path** (Phase 13, D-01) — auth-required is carried as a value on an internal type and the error classes are constructed only at the caller boundary. This retired four costs the old model imposed, including `count()` catching and re-throwing a signal that was never its own.
+- **Operation clocks learned to pause** (Phase 13, D-15) — every operation timeout became a `suspendableTimeout` that stops during an auth phase, so a 10s COUNT budget can absorb a 30s `authTimeout` instead of racing it.
+- **A single auth attempt became legible** (Phase 14) — a `:auth` debug namespace traces the NIP-42 lifecycle (challenge → signing → AUTH sent → result) with per-operation attribution, so two concurrent attempts stay distinguishable in one log stream. Proven by an oracle reading real captured `debug` output rather than implementation strings, and hardened at `truncateForLog` against printf-specifier and CWE-117 newline injection from relay-controlled text.
+- **Concord's ambient auth machinery deleted** (Phase 15) — `relay-auth.ts` removed outright along with `authenticateStreamKeys`, `version$`, driver reference counting, `ensureAuth()`, relay-status-driven authentication and the client-wide `autoAuthenticate` option. Each community and private-channel engine now owns a `StreamSigners` holder answering only the `missingPubkeys` its own scope holds keys for, and `no-ambient-auth.test.ts` walks both source roots to fail CI on any reintroduction.
+- **Verification caught what the suite could not** (Phases 13 and 15) — Phase 13 needed three rounds: round 1 passed incorrectly, round 2 reopened RAUTH-03/07/08, and round 3 caught a regression that reintroduced the same defect class one layer up behind a cast, closed structurally by making the predicate total. Phase 15's re-verification ran its own mutation test and disproved the SUMMARY's account of which code closed the blocking gap.
+
+**Known gaps carried forward:** 23 open review residuals, all now filed — Phase 13's in 999.18 (re-verified before filing; two were already closed), Phase 14's in 999.16, Phase 15's in 999.19. Three Nyquist gaps and five accepted overrides still carried from v1.1. Full detail in [`milestones/v1.2-MILESTONE-AUDIT.md`](milestones/v1.2-MILESTONE-AUDIT.md).
+
+**No release cut.** v1.2 ships no npm release. Its held `applesauce-relay` and `applesauce-loaders` changesets go out with **v7.0.0**, which also carries the relay/auth re-layering cluster (999.23–999.28) — breaking work that came directly out of this milestone's closing design review. Phase 14's WR-06, where a shipped changeset claims a discriminator the code does not make total, is absorbed into 999.24 and corrected before anything publishes.
+
+**Not tagged:** this repo tags per-package via changesets; `v1.2` is a planning milestone, and releases are cut separately.
+
+---
+
 ## v1.1 first-fixes (Shipped: 2026-08-04)
 
 **Phases completed:** 12 phases, 87 plans, 203 tasks

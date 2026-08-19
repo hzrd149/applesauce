@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: operation-scoped-relay-auth
-current_phase: 999.2
-current_phase_name: BACKLOG
-status: executing
-stopped_at: Phase 15 complete (14/14 plans; re-verification passed 4/4)
-last_updated: "2026-08-18T15:54:53.028Z"
-last_activity: 2026-08-18
-last_activity_desc: Phase 15 complete, transitioned to Phase 999.2
+current_phase: none
+status: Awaiting next milestone
+stopped_at: v1.2 shipped and archived — 3/3 phases verified, 16/16 requirements, 37/37 plans
+last_updated: "2026-08-19T14:04:26.752Z"
+last_activity: 2026-08-19
+last_activity_desc: Milestone v1.2 completed and archived
 progress:
   total_phases: 3
   completed_phases: 3
   total_plans: 37
   completed_plans: 37
   percent: 100
+current_phase_name: Awaiting next milestone
 ---
 
 # Project State
@@ -28,12 +28,15 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 ## Current Position
 
-Phase: 999.2 — Concord media epoch key decryption audit (BACKLOG)
-Plan: Not started
-Status: Executing Phase 15
+Phase: Milestone v1.2 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-19 — Milestone v1.2 completed and archived
 
-Gap closure planned 2026-08-18: 15-09 (CR-01 registration + one-source key), 15-10 (WR-03/WR-04 auth failure reporting), 15-11 (WR-05/WR-08 example holders + guard roots) in wave 1; 15-12 (WR-01/WR-02 rekey key + `error$`), 15-13 (WR-07 handler type) in wave 2; 15-14 (WR-06 oracle, full gate, live-relay private-channel human checkpoint) in wave 3. Plan-checker passed on iteration 1. Note: REQUIREMENTS.md still marks CAUTH-01 Complete despite the FAILED score — deliberately left for the re-verification pass to resolve, not edited during gap closure.
-Last activity: 2026-08-18 — Phase 15 complete, transitioned to Phase 999.2
+**Next milestone is pre-scoped.** The relay/auth re-layering cluster (999.23–999.28, plus 999.20/999.21)
+is breaking and ships as **applesauce v7.0.0**; no npm release goes out from v1.2. Promotion order is
+constrained: **999.23 first** — it carries the amended D-01 and the low/high layering rule that four
+other entries assume — then 999.27 before 999.21. See ROADMAP.md → Backlog → "v7 release coordination".
 
 ## Performance Metrics
 
@@ -384,6 +387,37 @@ making this an `override_closeout`. None blocks a v1.1 requirement — all 54 ar
 | nyquist | Phases 10 and 12.2 `nyquist_compliant: false`, both still `status: draft` — `/gsd-validate-phase 10`, `/gsd-validate-phase 12.2` | Partial |
 | nyquist | Phase 12.1 has no VALIDATION.md — `/gsd-validate-phase 12.1` | Missing |
 
+### Acknowledged at v1.2 milestone close (2026-08-19)
+
+The pre-close artifact audit surfaced 9 open items, all carried forward from the v1.1 close and none
+related to v1.2's relay-auth work. All acknowledged and deferred, making this an `override_closeout`.
+None blocks a v1.2 requirement — all 16 are satisfied.
+
+**Seed files are not removed by acknowledgement.** Verified at this close: every `SEED-*.md` deferred
+at v1.1 is still on disk, and `SEED-001` left the audit list only because its frontmatter now reads
+`status: resolved` / `resolved_in: phase-14`. Resolution is a status change, never a deletion, and
+`complete-milestone` never touches `.planning/seeds/`.
+
+| Category | Item | Status |
+|----------|------|--------|
+| todo | `05.1-review-followups.md` — three cosmetic remainders from the Phase 05.1 review | Deferred (low) |
+| seed | SEED-002 update to TypeScript 7 | Dormant |
+| seed | SEED-003 update to React 19 while maintaining React 18 support | Dormant |
+| seed | SEED-004 update to `@snort/worker-relay` v2 | Dormant |
+| seed | SEED-005 legacy direct messages need a Client class + Manager | Dormant |
+| seed | SEED-006 wrapped messages need Client + Conversation classes | Dormant |
+| seed | SEED-007 gift wrap ingestion service | Dormant |
+| seed | SEED-008 evaluate first-class `nostr-double-ratchet` support | Dormant |
+| seed | SEED-009 first-class support for profile themes | Dormant |
+
+**v7 candidates — reconsider at next-milestone scoping rather than deferring again.** SEED-002
+(TypeScript 7), SEED-003 (React 19 + 18) and SEED-004 (`@snort/worker-relay` v2) are ecosystem bumps
+that pair naturally with the v7 major already being cut for the relay re-layering. Doing them inside
+a major that is happening anyway is cheaper than cutting a second one later.
+
+**Still carried from v1.1:** three Nyquist validation gaps (`/gsd-validate-phase` on Phases 10, 12.1,
+12.2) and five accepted overrides. v1.2's own three phases are all `nyquist_compliant: true`.
+
 ## Session Continuity
 
 Last session: 2026-08-15T11:30:23.727Z
@@ -393,3 +427,7 @@ Resume file: None
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
 Recoverable from commit `c3be26c2` if ever needed.
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
