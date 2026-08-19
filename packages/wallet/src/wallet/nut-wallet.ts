@@ -40,7 +40,7 @@ import { BehaviorSubject, combineLatest, isObservable, Observable, of, Subscript
 import { distinctUntilChanged, map, shareReplay, startWith, switchMap } from "rxjs/operators";
 
 // Ensure the User.wallet$ is setup
-import "../casts/__register__";
+import "../casts/__register__.js";
 
 import {
   CleanupDeletedTokens,

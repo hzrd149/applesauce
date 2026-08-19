@@ -9,6 +9,7 @@ import {
 } from "applesauce-core/helpers";
 import { bytesToHex, EventTemplate, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
+import type { Debugger } from "debug";
 import { nanoid } from "nanoid";
 import { filter, from, repeat, retry, Subscription } from "rxjs";
 import { isNIP04 } from "../helpers/encryption.js";
@@ -84,7 +85,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
   protected subscriptionMethod: NostrSubscriptionMethod;
 
   /** Internal logger */
-  protected log = logger.extend("NostrConnectProvider");
+  protected log: Debugger = logger.extend("NostrConnectProvider");
 
   /** A set of nostr requests that have been seen */
   protected seen = new Set<string>();

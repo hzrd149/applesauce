@@ -10,6 +10,7 @@ import {
   verifyEvent,
 } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
+import type { Debugger } from "debug";
 import { ISigner } from "../interop.js";
 
 type Callback = () => void;
@@ -44,7 +45,7 @@ function base64Decode(base64: string): Uint8Array {
 
 /** A signer that works with [nostr-signing-device](https://github.com/lnbits/nostr-signing-device) */
 export class SerialPortSigner implements ISigner {
-  protected log = logger.extend("SerialPortSigner");
+  protected log: Debugger = logger.extend("SerialPortSigner");
   protected writer: WritableStreamDefaultWriter<string> | null = null;
   pubkey?: string;
 

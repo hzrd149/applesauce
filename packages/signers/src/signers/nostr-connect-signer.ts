@@ -3,6 +3,7 @@ import { getHiddenContent, isHexKey, unixNow } from "applesauce-core/helpers";
 import { bytesToHex, EventTemplate, hexToBytes, NostrEvent, kinds, verifyEvent } from "applesauce-core/helpers/event";
 import { getPublicKey } from "applesauce-core/helpers/keys";
 import { Deferred, createDefer } from "applesauce-core/promise";
+import type { Debugger } from "debug";
 import {
   ISigner,
   NostrConnectionMethodsOptions,
@@ -67,7 +68,7 @@ export class NostrConnectSigner implements ISigner {
   /** The active nostr subscription */
   protected subscriptionMethod: NostrSubscriptionMethod;
 
-  protected log = logger.extend("NostrConnectSigner");
+  protected log: Debugger = logger.extend("NostrConnectSigner");
   /** The local client signer */
   public signer: PrivateKeySigner;
 

@@ -1,5 +1,6 @@
 import { logger } from "applesauce-core";
 import { EventSigner } from "applesauce-core";
+import type { Debugger } from "debug";
 import { verifyEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription, tap } from "rxjs";
@@ -85,7 +86,7 @@ export class WalletService<Methods extends TWalletMethod = CommonWalletMethods> 
   /** A method for publishing events */
   protected readonly publishMethod: NostrPublishMethod;
 
-  protected log = logger.extend("WalletService");
+  protected log: Debugger = logger.extend("WalletService");
 
   /** A special method for getting the generic wallet information */
   public getInfo?: () => Promise<WalletServiceInfo>;
