@@ -616,6 +616,8 @@ Moving the `authLog` line and the `this.challenge` read inside the `defer` keeps
 
 **Release impact.** Low risk and not breaking: callers using `try`/`await` are unaffected, and callers using `.catch()` go from a crash to a handled rejection. Needs a single-sentence patch changeset for `applesauce-relay`.
 
+**Superseded in scope by 999.26.** That phase re-layers `authenticate()` so challenge acquisition becomes a bounded wait rather than a synchronous read — which removes this throw instead of relocating it. Plan them together; shipping this fix first means rewriting it.
+
 **Reference:** [Relay Error Surface](https://claude.ai/code/artifact/56499ac7-bad6-4ce1-9806-e1fa9c373c3e).
 **Requirements:** TBD
 **Plans:** 0 plans
@@ -736,6 +738,47 @@ this.customRepeatOperator(opts?.resubscribe, ...)    // resubscribe after a clea
 **Watch the closed defects.** `req()`'s per-attempt `defer` factory, the `resubscribeHolder` call-scoped object, and `isReqProgress`'s exclusion of the synthetic `OPEN` all exist because plans 13-08..13-14 closed specific reentrancy and retry-counting defects (CR-01/CR-02/CR-03, WR-01). Any re-layering must carry those invariants forward, with their regression tests still discriminating — re-verify them RED/GREEN rather than assuming a passing suite means they survived.
 
 **Release impact.** Breaking on a published package: option types move between interfaces and `req()` loses behavior callers may rely on. Major changeset, and it wants a migration note.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.26: Re-layer the AUTH family — `authenticate()` owns challenge freshness and retry (BACKLOG)
+
+**Goal:** [Captured for future planning] Apply 999.23's layering rule to `Relay.auth()` / `Relay.authenticate()`: `auth()` stays a single AUTH frame and its one reply, while `authenticate()` becomes the high-level method that acquires a challenge, signs against it, and owns the retry policy — including re-signing when the challenge moves under a slow signer. **Subsumes 999.22**; do not plan them separately.
+
+**`auth(event)` already fits the low half.** It takes an already-signed AUTH event, sends it once via `event(event, "AUTH")`, and returns the relay's verdict. Its `{ok:false, message}` return is *correct* under 999.24's rule — an `OK false` on an AUTH is a genuine relay verdict, not a client-side failure, so a value is the right shape and should stay one. The only standing constraint is that `auth()` must keep calling `event()` and never `publish()`, or it would recurse into the auth loop 999.24 installs there. Its per-attempt bookkeeping (`authentications$`, and the deprecated `authentication$` / `authenticationResponse$` mirrors) is per-interaction state and belongs where it is.
+
+**`authenticate(signer)` owns no policy today** — it reads `this.challenge`, signs, and delegates. That is the whole method, and it is where the following defect lives.
+
+**The defect: a stale challenge is signed, sent, and rejected as if the relay refused.** `authenticate()` reads `this.challenge` **synchronously at call time** (twice — once for the log line, once for `makeAuthEvent`), then awaits `signer.signEvent(...)`. That signer may be a NIP-46 bunker or a browser-extension dialog with a human in the loop, so the window is seconds to minutes. If the socket cycles inside it:
+
+1. `resetState()` nulls `challenge$` (`relay.ts:464`) and drops all auth state;
+2. the reconnect brings a new challenge, written at `:638`;
+3. the signer resolves, and `switchMap → auth(event) → event(event, "AUTH") → waitForReady(...)`;
+4. `waitForReady`'s gate is now open, so **the AUTH event signed against the superseded challenge is written to the wire**;
+5. the relay rejects it as invalid.
+
+Nothing recovers, and the report is misleading. `authenticate()` returns `{ok:false}`; concord's handlers (`packages/concord/src/client/auth.ts:186` and `:232`) log "relay rejected the AUTH" and call `fail(...)`; and because `authRetries` defaults to `1`, the shared operator runs `onAuthRequired` **exactly once**, so no second phase exists to recover. **No layer retries authentication today** — not `authenticate()`, not concord, not the operation. The user is told their auth was refused when it was never validly attempted.
+
+This is the signing-path sibling of 999.18's deferred item (a connection dropping mid-auth-*wait* at low `keepAlive`); same root, different half of the flow.
+
+**What `authenticate()` should take on:**
+1. **Acquire a challenge rather than read one.** Wait for `challenge$` to emit non-null instead of throwing when it happens to be null — "no challenge yet" is a transient state on a fresh connection, and callers should not have to poll.
+2. **Keep the signed challenge fresh.** Capture what was signed against, verify it still matches before the frame goes out, and re-sign + resend when it has moved. This is the retry policy, and it is what makes the method high-level.
+3. **Retry / reconnect options** sharing `publish()`'s vocabulary, per 999.23.
+
+**Open decision — does the missing-challenge throw survive?** 999.22 exists to move that throw inside the pipeline so `.catch()` sees it. If acquisition becomes a wait, the throw disappears instead of moving, and 999.22's fix is moot. But a relay that never sends a challenge (no NIP-42 support) would then hang, so it is wait-with-timeout, or keep a relocated throw, or both — a bounded wait that throws on expiry. Pick one here; **fold 999.22 into this phase rather than shipping its fix first and rewriting it.**
+
+**Open decision — how many resigns, and does the outer budget already cover it?** A challenge that keeps moving means a reconnect loop, and re-signing forever would re-prompt a human signer forever. The bound must be small and explicit. Note it interacts with the operation-level `authRetries` one layer out: two nested budgets over the same failure need a deliberate relationship, the same hazard 999.24 flags for D-07.
+
+**Open decision — bookkeeping across a retry.** `auth()` writes `authentications$` keyed by pubkey, re-inserting on each attempt. A resign-and-resend would record two attempts for the same pubkey, the second overwriting the first. Probably fine, but confirm nothing reads it as a history.
+
+**Consumers to check.** `packages/concord/src/client/auth.ts` ×2 (the Phase 15 `StreamSigners.onAuthRequired` and `createUserAuthHandler` paths) plus four example apps. None retry today, so all of them inherit the fix rather than needing changes — but concord's two handlers differ in how they read the response (`isOkResponse(res) && res.ok` vs a bare `res.ok`), which is worth reconciling while in there.
+
+**Release impact.** Mostly additive: callers that pass no options keep working, and the stale-challenge path changes from a misleading rejection to a successful auth. The missing-challenge behavior change is the one breaking edge, depending on the decision above. Minor changeset for `applesauce-relay`; `applesauce-concord` is unreleased and needs none.
 **Requirements:** TBD
 **Plans:** 0 plans
 
