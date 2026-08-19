@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 const SKIP_PACKAGES = new Set(["sqlite", "extra"]);
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "__tests__", ".git"]);
