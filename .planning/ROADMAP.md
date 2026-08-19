@@ -93,7 +93,16 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
   2. Every one of the 14 shipped-source citations of D-01 (`relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1) reads consistently with the amended rule.
   3. `pnpm run build` and the full test suite pass with `typescript@^7` as the workspace compiler, with no package needing a TS7-specific code change.
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Amend D-01 and all 14 shipped citations without runtime changes
+- [ ] 16-02-PLAN.md — Pin the root, apps, and first package batch to TypeScript 7
+- [ ] 16-03-PLAN.md — Pin the remaining package manifests to TypeScript 7
+- [ ] 16-04-PLAN.md — Remove the retired compiler option from accounts through content
+- [ ] 16-05-PLAN.md — Remove the retired compiler option from core through relay
+- [ ] 16-06-PLAN.md — Remove the retired compiler option from signers through wallet
+- [ ] 16-07-PLAN.md — Resolve the compiler graph and run full workspace acceptance gates
 
 ### Phase 17: Correctness Fixes & Concord Residuals
 
