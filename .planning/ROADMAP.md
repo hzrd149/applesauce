@@ -426,3 +426,62 @@ Plans:
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.18: Phase 13 code-review residuals (BACKLOG)
+
+**Goal:** [Captured for future planning] The Warning- and Info-tier findings from Phase 13's code review (`phases/13-operation-scoped-nip-42-auth-hooks/13-REVIEW.md`) that gap-closure plan 13-14 did not cover — its scope was the CR-02 regression only. 13-VERIFICATION.md dispositioned all eleven as non-blocking against RAUTH-01..09 and listed them for follow-up, but no backlog entry was ever filed; the v1.2 milestone audit (2026-08-18) caught the omission. **Every item below was re-verified against source on 2026-08-19** — two of the original eleven have since been closed and are recorded here as closed so a future promoter does not chase them.
+
+**Also folded in:** the phase's one `deferred-items.md` entry, whose own note asked for a backlog entry "once Phase 14's auth lifecycle logging work gives it a place to land." Phase 14 has landed.
+
+**WR-01 (Warning) — a synchronous auth retry can wipe `req()`'s public `reqs$` tracking.** `relay.ts:1017` adds via `this.reqs$.next({ ...this.reqs$.value, [id]: filters })` and `:1025-1026` removes via a destructure of `this.reqs$.value` — both read-modify-write against the same `BehaviorSubject`, so a synchronous resend interleaving an add and a remove is last-writer-wins. Affects only the `reqs$` diagnostic subject, not message send/resend or retry bounding, and nothing in-package consumes `reqs$` today. Still live.
+
+**WR-03 (Warning) — `event()`/`publish()`'s progress predicate carries a false comment.** `relay.ts:1275` passes `() => true` annotated "PublishResponse carries no bookkeeping value", which is untrue for the synthetic timeout response manufactured at `:1244`. The review's own analysis notes the synthetic value also terminates the stream, so no unbounded retry loop results — the invariant is violated in the documentation sense only. Still live (mirrored at `:1610`).
+
+**WR-04 (Warning) — the negentropy non-auth fallback does not force-close open auth phases.** `sync-loader.ts:646-655` returns `concat(status(...), request$())` for a non-auth negentropy failure without calling `forceCloseAuthPhases()`; only the terminal `finalize` at `:684` ("WR-04 leak path 3") covers it. Narrow: manifests only when a non-auth negentropy failure lands while an auth phase is still open. Does not weaken D-16's "auth-required must not trigger fallback" guarantee, which is enforced separately at `:636` via `RELAY_AUTH_ERROR_NAMES`. Still live.
+
+**WR-05 (Warning) — `Relay.sync()`'s RECEIVE branch rejects with `EmptyError` on a zero-event EOSE.** `relay.ts:1677-1694` wraps the fetch in `lastValueFrom(...)` with no `defaultValue`, guarded only by `need.length > 0`; if the relay EOSEs having sent nothing, the pipe completes empty and the promise rejects. Orthogonal to auth — a pre-existing sync-correctness edge case in a call site Phase 13 threaded `authOptions` through, not a defect in the auth behavior. Still live.
+
+**WR-06 (Warning) — `RelayGroup.request()`'s timeout has no documented wall-clock ceiling across N auth-gated relays.** `group.ts:295` arms `suspendableTimeout(opts?.timeout ?? 30_000, gate, ...)`; the clock suspends per auth phase, so the real ceiling across a group of auth-gating relays is not the 30s a caller reads. Still bounded, not infinite — a documentation gap, not a hang. Still live.
+
+**WR-07 (Info) — `isReqProgress` is barrel-exported**, contradicting the package's stated "not barrel-exported" convention for internal predicates; pinned in the export snapshot at `__tests__/exports.test.ts:24`. API-surface hygiene only. Still live.
+
+**WR-08 (Info) — `suspendableTimeout`'s `arm()` does not clear a previously-armed timer.** `operators/auth-retry.ts`: `arm()` calls `setTimeout` without a preceding `clearTimer()`, so a double-arm would leak the earlier timer. Currently unreachable — `gate.active$` is `distinctUntilChanged` and both `arm`/`disarm` early-return on `settled || firstEmitted`. Still live but latent.
+
+**WR-09 (Info) — stale doc on `RelayRequestOptions.timeout`.** `types.ts:182-184` reads "Total timeout ... Passed to rjxs timeout() operator" (sic), which no longer describes the behavior: the option now feeds the suspendable clock, and `timeout: 0` silently disables it rather than firing immediately. Still live.
+
+**WR-10 (Info) — two near-duplicate suspendable-clock implementations have diverged undocumented:** `operators/auth-retry.ts`'s `suspendableTimeout` and `sync-loader.ts`'s `withTimeout`. Structural and by design (D-06 forbids sharing across the package boundary), but neither file points at the other. Still live.
+
+**Deferred item — a connection can drop mid-auth-wait at very low `keepAlive`.** While a REQ's auth phase waits on `authSatisfied$`, nothing keeps `Relay.watchTower` subscribed for that operation, so if `keepAlive` elapses with zero other subscribers the socket closes and `authentications$`/`challenge$` are wiped mid-retry. **Verified pre-existing, not a Phase 13 regression** — reproduced identically against `c3be26c2`'s pre-13-02 `req()`. With the real-world 30s default this only bites a genuinely slow out-of-band `authTimeout: false` wait with no other operation keeping the connection warm. Full analysis in `phases/13-operation-scoped-nip-42-auth-hooks/deferred-items.md`. The fix needs a design decision the phase's D-01..D-20 never took: whether `authRetry`'s wait phase should accept an optional keepalive observable to merge in, or whether `Relay`-level call sites should wrap the wait in `mergeWith(this.watchTower)`.
+
+**Closed since the review — do not re-scope:**
+
+- **WR-02** (no test pinned the `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError` `.name` strings that `RELAY_AUTH_ERROR_NAMES` duck-types against) is **closed** — `loaders/__tests__/sync-loader.test.ts:787` and `:1072` now assert those exact names, with the intent recorded at `:1014`.
+- **WR-11** (`.extend()` called inline at log call sites in `sync-loader.ts`) is **closed** by Phase 14's ALOG-03 derive-once sweep — the remaining `.extend()` calls are hoisted (`:336`, `:399`) or per-call correlation loggers with a generated suffix (`:349`, `:408`), which ALOG-03's D-17/D-18 restatement explicitly permits.
+
+**Worth checking at promotion:** whether WR-03 and WR-09 should be folded into whichever phase next touches those comments rather than run as their own plan — both are single-comment corrections. WR-04 and WR-05 are the only two with a reachable behavioral consequence and are the natural core of a scoped plan; WR-01 becomes worth fixing the moment anything starts consuming `reqs$`.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.19: Phase 15 code-review residuals (BACKLOG)
+
+**Goal:** [Captured for future planning] The four Warning-tier findings surfaced by Phase 15's round-2 code review and independently re-derived by 15-VERIFICATION.md's re-verification pass (2026-08-18), which recommended a backlog follow-up that was never filed; the v1.2 milestone audit caught the omission. None invalidates CAUTH-01..04. **All four re-verified against source on 2026-08-19 and still live.**
+
+**WR-10 — a single relay's AUTH rejection can latch a permanent error on a healthy community. This is the one to fix first.** `community.ts:361` wires `onAuthFailure: (message) => this.error$.next(message)`, which fires on every relay AUTH rejection. The only clear-to-`null` is `:539`, and it sits *after* `start()`'s `if (this.started || this.disposed) return; this.started = true;` guard at `:536-537` — and `this.started` is never reset anywhere, including `dispose()` (it is only ever read, at `:608` and `:640`). So a second `start()` returns early and never clears. One transport relay out of several rejecting AUTH leaves a permanent `error$` on an otherwise-working community. **This wave's own WR-02 fix made it more reachable**: routing auth failures to `error$` immediately was correct, but no recovery edge was added alongside it. Needs a clear-on-recovery path, not just a reset of `started`.
+
+**WR-09 — `heldChannelKeys()` is dead code for its stated purpose, and its doc comment says otherwise.** `community.ts:743`, called at `:780` and `:807`; the doc at `:719` points readers to it as the mechanism closing CR-01/CAUTH-01, which it structurally cannot be — the churn guard returns before it fires on the relevant path. 15-VERIFICATION.md proved this with a mutation test: reverting both call sites to `publicChannelKeys()` leaves the CR-01 regression test passing, because the real fix lives in `publishToPlane`'s per-publish registration. Two costs: misleading documentation at exactly the call site a future reader would trust, and an unnecessary widening of the community's own key holder (it eagerly loads every held private-channel secret at first `openLive()`, contrary to the phase's own per-operation-scoping principle). Removing it is the likely right answer, but confirm the mutation result still holds first.
+
+**WR-11 — a worked example models the holder-scope violation the phase exists to prevent.** `apps/examples/src/examples/concord/direct-invites.tsx:170` does `useMemo(() => new StreamSigners(), [])` in a component that is a long-lived invite inbox, never remounted per community, so a second accepted invite for a different community accumulates both communities' guestbook keys in one holder (`:255-277`). Not exploitable — `waitForAuth` still narrows every AUTH to one key at a time — but this file is documentation as much as code, and 15-11's per-scope-holder sweep did not fully reach it.
+
+**WR-12 — `revoke()`/`revokeBundle()` swallow publish failures and report success anyway.** `invite-manager.ts:288-296`, mirrored at `community.ts:1380-1385`: a `.catch()` absorbs the publish failure (an AUTH rejection included) and the method unconditionally returns `revoked: true`. **Pre-existing** — predates `9b2b3028`, so not a CAUTH-migration regression — and outside CAUTH-01..04's literal scope, but security-adjacent: a link the UI reports dead may still resolve against a relay that never accepted the revocation.
+
+**Worth checking at promotion:** whether WR-10 and WR-12 belong together as an "auth/publish failures must surface honestly" plan — both are cases where a failure is absorbed into a wrong-but-plausible state — leaving WR-09 and WR-11 as a smaller documentation-and-example cleanup. Note `applesauce-concord` is unreleased, so none of these need a changeset (see [[concord-unreleased-no-changesets]] convention recorded in REQUIREMENTS.md's Out of Scope table).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
