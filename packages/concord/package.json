@@ -110,7 +110,7 @@
     "applesauce-relay": "^6.2.0",
     "applesauce-signers": "^6.2.0",
     "rimraf": "^6.0.1",
-    "typescript": "^5.8.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.0.15"
   },
   "funding": {
