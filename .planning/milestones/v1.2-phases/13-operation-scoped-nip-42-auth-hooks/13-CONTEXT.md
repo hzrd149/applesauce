@@ -24,13 +24,17 @@ suppression (permanently out of scope per REQUIREMENTS.md).
 <decisions>
 ## Implementation Decisions
 
-### Signalling model — value, not throw
+### Signalling and method layering
 
-- **D-01:** Auth-required is signalled as a **value on an internal type**, not by throwing. The
-  shared operator consumes that signal and never forwards it downstream. `AuthRequiredError`,
-  `AuthTimeoutError`, and `AuthHandlerError` are constructed **only at the caller boundary** — when
-  the operation gives up. Rationale: a throw used as an internal signal travels on the shared error
-  channel, so every operator downstream must filter for a signal that isn't theirs. That has already
+- **D-01:** Low-level relay methods perform one wire interaction and surface its failure; high-level
+  methods own configurable policy such as authentication, retries, reconnects, resubscription,
+  clocks, and concurrency. A thrown expected-state signal is a smell when it crosses uninterested
+  intermediaries or a multi-hop chain, because every layer must understand a signal that is not
+  theirs. A throw is appropriate when the immediate consumer deliberately retries or aggregates the
+  upstream call. `req()` therefore signals auth-required as a **value on an internal type** because
+  that state crosses the shared operator chain; the operator consumes it and never forwards it
+  downstream. `AuthRequiredError`, `AuthTimeoutError`, and `AuthHandlerError` are constructed at the
+  caller boundary when the operation gives up. The former blanket throw-as-signal rule had already
   cost this file four things — `customConnectionRetryOperator` special-casing `RelayClosedError`
   (`relay.ts:1141-1148`), `AuthRequiredError extends RelayClosedError` (`:113`) encoding routing
   rather than describing the error, `count()` catching and re-throwing only because the signal
@@ -240,11 +244,11 @@ suppression (permanently out of scope per REQUIREMENTS.md).
 <specifics>
 ## Specific Ideas
 
-- **The user's standing principle, stated during this discussion:** "any time an internal method
-  throws and the wrapper method is using it as a signal or expected state, that is a bad thing and
-  code smell." D-01/D-02 are the direct application. Planner and executor should treat this as
-  general guidance, not a one-off: prefer a discriminated value on an internal type, and construct
-  the error only where a caller must handle it.
+- **The user's standing principle, amended by Phase 16:** a throw used as expected state across
+  uninterested intermediaries or a multi-hop chain is a code smell. D-01/D-02 apply that principle
+  to `req()` with a discriminated internal value. An immediate retry or aggregation boundary may
+  instead consume a thrown upstream failure directly; construct terminal errors where callers must
+  handle them.
 - Two published packages change behavior, so both need a changeset with a single-sentence body:
   `applesauce-relay` (operation-scoped auth callbacks, timeout/retry semantics, and `waitForAuth`
   no longer pre-blocking) and `applesauce-loaders` (sync loader pass-through). `applesauce-concord`

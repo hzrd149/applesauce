@@ -1794,7 +1794,7 @@ describe("operation-scoped REQ auth (13-02)", () => {
     expect(flagSpy.getLastValue()).toBe(true);
   });
 
-  it("D-01: a req() subscriber never observes a value that is not a RelayReqMessage", async () => {
+  it("D-01: req() keeps multi-hop auth signalling internal to its operator chain", async () => {
     const user = new FakeUser();
     const onAuthRequired = vi.fn(async () => {
       await relay.authenticate(user);
