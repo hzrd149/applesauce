@@ -252,6 +252,28 @@ Plans:
 
 ## Backlog
 
+## v7 release coordination
+
+**Recorded 2026-08-19.** The relay re-layering cluster below is breaking, so it ships as **applesauce v7.0.0**. Everything is on 6.x today (`applesauce-relay` 6.2.1, most of the suite 6.2.0, `applesauce-react`/`applesauce-sqlite` 6.0.0).
+
+| Entry | Breaking? | Why |
+|-------|-----------|-----|
+| 999.23 amend D-01 + layering rule | no | comments and docs only — but **gates every entry below** |
+| 999.24 EVENT re-layer | **yes** | `event()` stops erroring for auth, starts erroring for refusals |
+| 999.25 REQ re-layer | **yes** | `reconnect`/`resubscribe` move between public option types |
+| 999.26 AUTH re-layer | mostly additive | one breaking edge: the missing-challenge behavior |
+| 999.27 `count()` high-level | **yes** | return type changes, options widen |
+| 999.28 negentropy re-layer | **yes** | `negentropy()` signature, `sync()` emission type |
+| 999.20 group error conditions | **yes** if on by default | `request()` goes from completing empty to erroring |
+| 999.21 group `count()` isolation | **yes** | record value shape changes |
+| 999.18 / 999.19 residuals | no | non-breaking fixes; can ship on 6.x |
+
+**Blast radius is smaller than it looks.** Only `applesauce-wallet` depends on `applesauce-relay` (`^6.0.3`), so a relay major cascades to exactly one package. `applesauce-loaders` deliberately carries **no** dependency on `applesauce-relay` (D-06 — it mirrors the types structurally), so it is untouched by a relay major unless its own surface changes.
+
+**Open — is v7 a coordinated suite-wide major, or per-package?** Versions are close but not lockstep today (6.0.0 / 6.2.0 / 6.2.1 / 6.2.2), which suggests independent bumps. Decide before the first changeset lands, since it determines whether every package gets a major or only `applesauce-relay` and `applesauce-wallet`.
+
+**Pre-release check — is `applesauce-concord` actually published?** The project convention treats it as unreleased and exempt from changesets (recorded in `REQUIREMENTS.md`'s Out of Scope table and applied throughout v1.2), but `packages/concord/package.json` carries `version: 6.2.0` with no `private: true` and no `publishConfig`. If it *is* published, then v1.2's Phase 15 shipped a substantial set of breaking removals — `authenticateStreamKeys`, `version$`, `ensureAuth()`, `autoAuthenticate`, the deleted `relay-auth.ts` — with no changeset and no major bump. **Confirm against the registry before cutting v7**, and if it is published, v7 is where that gets reconciled.
+
 ### Phase 999.2: Concord media epoch key decryption audit (BACKLOG)
 
 **Goal:** [Captured for future planning] Review and check concord's file/media encryption and decryption to confirm that media sent in past epochs is decrypted with the correct keys **from that epoch**, not with the latest keys. Suspected failure mode: the decrypt path resolves keys from current epoch state rather than from the epoch the media was encrypted under, which would make historical media undecryptable after a rotation.
@@ -851,6 +873,27 @@ negentropy(store, filter, opts): Observable<{ have: string[]; need: string[] }>
 The negotiation emits per round and runs to completion at protocol speed. `sync()` subscribes, performs the transfer per emission, and completes when the negotiation completes *and* the transfers settle. Control flow points the right way: the low-level method reports, the high-level one decides and acts — instead of a caller-supplied callback reaching back in to stall the protocol.
 
 **Dropping the `await` is not free — it is currently accidental backpressure.** `sync()`'s SEND already does `Promise.allSettled(events.map(...))` with no cap *within* a round; remove the `await` and it is uncapped *across* rounds too, so a large diff could open thousands of concurrent publishes. This is not a reason to keep the `await` — it is the reason **transfer concurrency must become explicit policy on `sync()`** (a bounded `mergeMap`, configurable) rather than serialization inherited from a callback's shape.
+
+**`sync()`'s emission widens to cover both directions.** `Observable<NostrEvent>` is a RECEIVE-shaped type on a bidirectional operation — the SEND direction has literally nothing to emit, which is why the docs example (`apps/docs/loading/relays/relays.md:366`) can only subscribe to `complete`, and why its `"Upload complete"` log is currently a falsehood: completion means the negotiation finished and `Promise.allSettled` returned, not that a single event landed. A SEND whose every upload is rejected prints "Upload complete".
+
+```
+type SyncMessage =
+  | { type: "received";    event: NostrEvent }
+  | { type: "sent";        event: NostrEvent }
+  | { type: "send-failed"; event: NostrEvent; error: unknown }
+```
+
+This is the same mechanism as three other open items, which is the argument for doing it here:
+
+- **The SEND-direction swallow** — failures become values, and SEND gains any output at all.
+- **`RelayGroup.sync()`'s per-relay drop.** D-19's own comment states the constraint: *"sync() has no error channel (Observable<NostrEvent>), so the dropped relay is visible in debug output only — a status channel for it remains out of scope."* A union **is** that channel; add `{ type: "relay-failed"; from: string; error: unknown }` and the group stops swallowing.
+- **`RelayGroup.negentropy()`'s literal `true`** gains somewhere to report.
+
+**On the layering rule:** high-level methods unwrap to the domain value, so a union looks like a low-level shape. Two reasons it is right here — `subscription()` already returns `Observable<NostrEvent | "EOSE">`, so a union at the high level has precedent; and `sync()`'s domain value is not "events" but *the outcome of a bidirectional reconciliation*, which the union is.
+
+**Migration is cheap and well-timed.** Six consumers, every one of them RECEIVE (`sync-loader.ts:307` and concord by way of it, plus five example apps); each needs one `filter`. The only SEND callers in the repo are one test and one docs example. Since this phase is already making a breaking signature change to the same method, it is one migration rather than two.
+
+**Open — emit `sent` on success?** Recommended yes: it is the only output the SEND direction would ever produce, and it is what makes the docs example honest. **Open — should a sync ever error outright** (e.g. every send failed), or only report failures as values? 999.20's caller-supplied error condition is the natural vocabulary if so.
 
 **What moves up to `sync()`:**
 1. **The auth retry.** `negentropy()` owns it today (`relay.ts:1419`). Note what that currently costs: one `sync()` threads `authOptions` into **three** sites — the negotiation, each `event()`, and the `req()` — so a single sync can burn three independent auth budgets. One operation should have one budget.
