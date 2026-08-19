@@ -53,13 +53,13 @@
   "dependencies": {
     "@noble/secp256k1": "^3.1.0",
     "@scure/base": "^2.2.0",
+    "@types/debug": "^4.1.12",
     "applesauce-core": "^6.2.0",
     "debug": "^4.4.0",
     "nanoid": "^5.0.9",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@types/debug": "^4.1.12",
     "@types/dom-serial": "^1.0.6",
     "rimraf": "^6.0.1",
     "typescript": "^7.0.2",

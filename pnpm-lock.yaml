@@ -733,6 +733,9 @@ importers:
       '@scure/base':
         specifier: ^2.2.0
         version: 2.2.0
+      '@types/debug':
+        specifier: ^4.1.12
+        version: 4.1.13
       applesauce-core:
         specifier: ^6.2.0
         version: link:../core
@@ -746,9 +749,6 @@ importers:
         specifier: ^7.8.2
         version: 7.8.2
     devDependencies:
-      '@types/debug':
-        specifier: ^4.1.12
-        version: 4.1.13
       '@types/dom-serial':
         specifier: ^1.0.6
         version: 1.0.6
@@ -869,6 +869,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.2.0
         version: 2.2.0
+      '@types/debug':
+        specifier: ^4.1.12
+        version: 4.1.13
       applesauce-common:
         specifier: ^6.2.0
         version: link:../common
@@ -882,9 +885,6 @@ importers:
       '@hirez_io/observer-spy':
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
-      '@types/debug':
-        specifier: ^4.1.12
-        version: 4.1.13
       applesauce-signers:
         specifier: ^6.2.0
         version: link:../signers
