@@ -62,7 +62,7 @@
     "@types/debug": "^4.1.12",
     "@types/dom-serial": "^1.0.6",
     "rimraf": "^6.0.1",
-    "typescript": "^5.8.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.0.15",
     "vitest-websocket-mock": "^0.5.0"
   },
