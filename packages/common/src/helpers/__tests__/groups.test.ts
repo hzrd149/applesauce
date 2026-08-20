@@ -32,6 +32,18 @@ function createLockedGroupsBookmark(hiddenTags: string[][]): NostrEvent {
 }
 
 describe("Group pointer utilities", () => {
+  it("round-trips an explicit localhost endpoint and an apostrophe-bearing id", () => {
+    const pointer: GroupPointer = {
+      relay: "ws://localhost:4869",
+      id: "room'with'apostrophes",
+    };
+
+    expect(decodeGroupPointer(encodeGroupPointer(pointer))).toEqual({
+      relay: "ws://localhost:4869/",
+      id: "room'with'apostrophes",
+    });
+  });
+
   describe("decodeGroupPointer", () => {
     it("should decode a valid group pointer", () => {
       const pointer = decodeGroupPointer("relay.example.com'group123");
