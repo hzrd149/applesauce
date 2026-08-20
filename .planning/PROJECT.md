@@ -27,6 +27,11 @@ breaking across `applesauce-relay`. See ROADMAP.md → Backlog → "v7 release c
 must be planned first**, as it carries the amended D-01 and the layering rule four other entries
 assume.
 
+**Phase 17 complete (2026-08-20).** The v7 correctness riders now have prototype-safe relay
+CLOSED classification, independently optional SQLite backend peers, lossless group-pointer relay
+round trips, fatal-only Concord UI error state, and acknowledgement-checked invite revocation.
+Re-verification passed 14/14 after the exported-admin required-publication path was made fail closed.
+
 Full record: [`milestones/v1.1-ROADMAP.md`](milestones/v1.1-ROADMAP.md) ·
 [`milestones/v1.1-REQUIREMENTS.md`](milestones/v1.1-REQUIREMENTS.md) ·
 [`milestones/v1.1-MILESTONE-AUDIT.md`](milestones/v1.1-MILESTONE-AUDIT.md) ·
@@ -225,6 +230,7 @@ follow-ups todo; and eight still-dormant seeds.
 - ✓ Every `Debugger` in `packages/loaders/` is derived once per lifetime, never on a path a reactive pipeline can re-enter — v1.2 (Phase 14, ALOG-03; closes SEED-001). Restated from the original wording, which tested for a pattern that does not exist in this monorepo and so passed vacuously
 - ✓ Concord authenticates per scope, not per client: each community and private-channel engine answers only the `missingPubkeys` its own scope holds keys for, and a reconnect re-authenticates exactly that set — v1.2 (Phase 15, CAUTH-01/02/04)
 - ✓ Concord's client-wide auth driver machinery is gone — `relay-auth.ts` deleted along with `authenticateStreamKeys`, `version$`, driver reference counting, `ensureAuth()`, relay-status-driven authentication and `autoAuthenticate`, with a two-root structural guard failing CI on reintroduction — v1.2 (Phase 15, CAUTH-03, widened from stream-keys-only to cover the user-key half)
+- ✓ Relay/SQLite/group-pointer correctness and Concord residual publication honesty — v7.0.0 (Phase 17, FIX-01/02/03 and RESID-01/02). Hostile CLOSED prefixes cannot reach the prototype chain, SQLite consumers install one backend, compatibility pointers retain relay identity, transient AUTH stays out of fatal UI state, and invite revocation requires acknowledged publication
 
 ### Active
 
@@ -311,6 +317,11 @@ This document evolves at phase transitions and milestone boundaries.
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
+
+---
+*Last updated: 2026-08-20 — Phase 17 correctness fixes and Concord residuals verified complete (14/14 must-haves).
+The sole initial verification gap was closed by making exported-admin required publication fail closed
+when no strict publisher is configured; Phase 18 is next, with no automatic transition performed.*
 
 ---
 *Last updated: 2026-08-19 — milestone v7.0.0 relay-method-layering scoped via /gsd-new-milestone.
