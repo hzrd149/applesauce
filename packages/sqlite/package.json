@@ -118,6 +118,20 @@
     "@tursodatabase/database-wasm": "^0.2.2",
     "better-sqlite3": "^12.8.0"
   },
+  "peerDependenciesMeta": {
+    "@libsql/client": {
+      "optional": true
+    },
+    "@tursodatabase/database": {
+      "optional": true
+    },
+    "@tursodatabase/database-wasm": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@libsql/client": "^0.15.15",
