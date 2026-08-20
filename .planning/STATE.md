@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 18
-current_phase_name: EVENT Family Re-layer
-status: planning
-stopped_at: Completed 17-06-PLAN.md
-last_updated: "2026-08-20T13:22:52.646Z"
+current_phase_name: event-family-re-layer
+status: executing
+stopped_at: Completed 18-01-PLAN.md
+last_updated: "2026-08-20T16:00:32.569Z"
 last_activity: 2026-08-20
-last_activity_desc: Phase 17 complete, transitioned to Phase 18
+last_activity_desc: Phase 18 execution started
 progress:
   total_phases: 11
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 18
+  completed_plans: 14
   percent: 18
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 17 — correctness-fixes-concord-residuals
+**Current focus:** Phase 18 — event-family-re-layer
 
 ## Current Position
 
-Phase: 18 — EVENT Family Re-layer
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-20 — Phase 17 complete, transitioned to Phase 18
+Phase: 18 (event-family-re-layer) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-08-20 — Phase 18 execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
@@ -136,6 +136,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 17 P04 | 11m | 2 tasks | 5 files |
 | Phase 17 P05 | 9m | 3 tasks | 6 files |
 | Phase 17 P06 | 4m | 1 tasks | 2 files |
+| Phase 18 P01 | 12min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -330,6 +331,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: RESID-02: Invite revocation uses any-relay acknowledgement and stage-labelled aggregate errors before local mutation.
 - [Phase ?]: RESID-02: Registry unregister uses a dedicated required-ack path while ordinary control publishing remains optimistic.
 - [Phase ?]: 17-06: Keep publishRequired optional for ordinary exported-admin consumers, but reject required publication before invoking publish when it is absent.
+- [Phase ?]: 18-01: Raw event() owns readiness and exactly one write/reply interaction; publish() consumes its typed failures.
 
 ### Pending Todos
 
@@ -448,8 +450,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-20T13:18:26.891Z
-Stopped at: Completed 17-06-PLAN.md
+Last session: 2026-08-20T16:00:32.548Z
+Stopped at: Completed 18-01-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

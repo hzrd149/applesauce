@@ -21,9 +21,9 @@ findings changed the plan and are marked **[research]** below.
 
 ### EVENT Family
 
-- [ ] **EVT-01**: `event()` performs exactly one EVENT write and one reply, and throws `AuthRequiredError` when the relay refuses, instead of flattening it into `{ok:false, message}`
+- [x] **EVT-01**: `event()` performs exactly one EVENT write and one reply, and throws `AuthRequiredError` when the relay refuses, instead of flattening it into `{ok:false, message}`
 - [ ] **EVT-02**: `publish()` owns the auth retry loop — it catches `event()`'s throw, runs the handler, waits for auth, and resubscribes to resend
-- [ ] **EVT-03**: A publish that times out is retryable by `publish({retries})` — today the synthetic timeout *value* sails past `customRetryOperator`, which only sees errors
+- [x] **EVT-03**: A publish that times out is retryable by `publish({retries})` — today the synthetic timeout *value* sails past `customRetryOperator`, which only sees errors
 - [ ] **EVT-04**: The `AUTH_PHASE_GATE` module-private symbol and the `message`-string round-trip between `event()` and `publish()` are both gone, so a relay-supplied string no longer discriminates between "I declined to try" and "I tried and gave up"
 - [ ] **EVT-05**: RAUTH-07's shipped claim (that `event` exposes `onAuthRequired`/`authTimeout`/`authRetries`) is restated with recorded provenance rather than silently edited
 - [ ] **EVT-06**: `Relay.sync()`'s SEND path and `RelayGroup.event()` — both of which call `event()` directly and get auth retries for free today — have a deliberate, recorded disposition rather than silently losing them
@@ -136,9 +136,9 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 |-------------|-------|--------|
 | LAYER-01 | Phase 16 | Complete |
 | LAYER-02 | Phase 16 | Complete |
-| EVT-01 | Phase 18 | Pending |
+| EVT-01 | Phase 18 | Complete |
 | EVT-02 | Phase 18 | Pending |
-| EVT-03 | Phase 18 | Pending |
+| EVT-03 | Phase 18 | Complete |
 | EVT-04 | Phase 18 | Pending |
 | EVT-05 | Phase 18 | Pending |
 | EVT-06 | Phase 18 | Pending |
