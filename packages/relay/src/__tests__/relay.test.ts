@@ -12,6 +12,8 @@ import {
   AuthTimeoutError,
   Relay,
   RelayClosedError,
+  RelayEventTimeoutError,
+  RelayEventVerdictError,
   SyncDirection,
 } from "../relay.js";
 import { RelayInformation } from "../types";
@@ -463,31 +465,22 @@ describe("req", () => {
 });
 
 describe("event", () => {
-  it("should retry the EVENT after authenticating when relay responds with auth-required (13-05: superseded pre-block test)", async () => {
-    // 13-05 deviation (Rule 1): this test previously asserted event()'s ambient pre-block — a SECOND,
-    // unrelated event() call waiting behind the FIRST call's auth-required flag before sending its own
-    // EVENT frame. That pre-block is exactly what D-02/RAUTH-02 removes: an EVENT is now sent
-    // immediately regardless of any other publish's auth state, and the auth-required wait + resend
-    // happen entirely INSIDE the single event() call via the shared auth-retry operator. See
-    // 13-05-SUMMARY.md's RAUTH-02 coverage for the "a fresh publish is not blocked" test.
+  it("performs one raw EVENT attempt and throws AuthRequiredError without resending", async () => {
+    const spy = subscribeSpyTo(relay.event(mockEvent), { expectErrors: true });
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
+    expect(server.messages.filter((m: any) => m[0] === "EVENT")).toHaveLength(1);
+  });
+
+  it("keeps an ordinary relay rejection as a typed verdict value", async () => {
     const spy = subscribeSpyTo(relay.event(mockEvent));
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
-
-    // Send OK with auth-required message
-    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
-
-    // Simulate successful authentication
-    relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
-
-    // The shared auth-retry operator resends the EVENT automatically, from within the same call
-    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
-
-    // Send OK response to complete the event
-    server.send(["OK", mockEvent.id, true, ""]);
-
+    server.send(["OK", mockEvent.id, false, "blocked"]);
     await spy.onComplete();
-    expect(spy.receivedComplete()).toBe(true);
-    expect(spy.getValues()).toEqual([{ ok: true, from: "wss://test", message: "" }]);
+    expect(spy.getLastValue()).toMatchObject({ ok: false, message: "blocked", from: "wss://test" });
+    expect(spy.getLastValue()?.error).toBeInstanceOf(RelayEventVerdictError);
   });
 
   it("should trigger connection to relay", async () => {
@@ -543,11 +536,8 @@ describe("event", () => {
     vi.advanceTimersByTime(10000);
     await Promise.resolve();
 
-    expect(spy.receivedComplete()).toBe(true);
-    // D-11: the manufactured timeout now carries the structural `error` discriminator.
-    const lastValue = spy.getLastValue();
-    expect(lastValue).toMatchObject({ ok: false, from: "wss://test", message: "Timeout" });
-    expect(lastValue?.error).toBeInstanceOf(Error);
+    expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()).toBeInstanceOf(RelayEventTimeoutError);
   });
 
   it("should complete when connection is closed", async () => {
