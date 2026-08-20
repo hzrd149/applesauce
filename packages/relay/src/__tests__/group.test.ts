@@ -235,14 +235,6 @@ describe("auth options pass-through (13-07)", () => {
       },
     ],
     [
-      "event",
-      (opts) => {
-        const spy = vi.spyOn(relay1, "event");
-        group.event(mockEvent, opts).subscribe();
-        expect(spy).toHaveBeenCalledWith(mockEvent, "EVENT", expect.objectContaining(opts));
-      },
-    ],
-    [
       "sync",
       async (opts) => {
         vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
@@ -282,6 +274,18 @@ describe("auth options pass-through (13-07)", () => {
       await run(authOptions());
     },
   );
+
+  it("keeps group.event raw while group.publish owns policy options", async () => {
+    const event = vi.spyOn(relay1, "event");
+    group.event(mockEvent).subscribe();
+    expect(event).toHaveBeenCalledWith(mockEvent);
+
+    const opts = authOptions();
+    const publish = vi.spyOn(relay1, "publish").mockResolvedValue({ ok: true, from: relay1.url });
+    vi.spyOn(relay2, "publish").mockResolvedValue({ ok: true, from: relay2.url });
+    await group.publish(mockEvent, opts);
+    expect(publish).toHaveBeenCalledWith(mockEvent, expect.objectContaining(opts));
+  });
 });
 
 describe("RAUTH-05 group-level auth independence (13-07)", () => {
