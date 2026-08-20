@@ -96,7 +96,7 @@ export type RelayAuthHandler = (context: RelayAuthContext) => void | Promise<voi
 
 /**
  * D-05 mixin: the shared set of auth-related options intersected into every operation's option type
- * (`RelayReqOptions`, `PublishOptions`, `NegentropySyncOptions`, `RelayCountOptions`, `RelayEventOptions`,
+ * (`RelayReqOptions`, `PublishOptions`, `NegentropySyncOptions`, `RelayCountOptions`,
  * `RelaySyncOptions`) so `waitForAuth` and its siblings are declared exactly once.
  */
 export type RelayAuthOptions = {
@@ -157,9 +157,6 @@ export type RelayReqOptions = {
 
 /** Options for the count method on the pool and relay */
 export type RelayCountOptions = RelayAuthOptions;
-
-/** Options for the event method on the pool and relay */
-export type RelayEventOptions = RelayAuthOptions;
 
 /** Options for the sync method on the pool and relay */
 export type RelaySyncOptions = RelayAuthOptions;

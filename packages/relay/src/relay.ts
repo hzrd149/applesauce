@@ -81,7 +81,6 @@ import {
   PublishResponse,
   RelayCountOptions,
   RelayCountResponse,
-  RelayEventOptions,
   RelayInformation,
   RelayReqClosedMessage,
   RelayReqEoseMessage,
@@ -157,6 +156,22 @@ export class AuthTimeoutError extends RelayClosedError {
   constructor(reason: string) {
     super(reason);
     this.name = "AuthTimeoutError";
+  }
+}
+
+/** A genuine negative OK verdict returned by a relay for an EVENT or AUTH frame. */
+export class RelayEventVerdictError extends Error {
+  constructor(public readonly reason: string) {
+    super(reason);
+    this.name = "RelayEventVerdictError";
+  }
+}
+
+/** The fixed reply bound for one written EVENT or AUTH attempt expired. */
+export class RelayEventTimeoutError extends Error {
+  constructor(public readonly url: string) {
+    super(`Timed out waiting for OK response from ${url}`);
+    this.name = "RelayEventTimeoutError";
   }
 }
 
@@ -1184,119 +1199,47 @@ export class Relay {
   }
 
   /** Send an EVENT or AUTH message and return an observable of PublishResponse that completes or errors */
-  event(
-    event: NostrEvent,
-    verb: "EVENT" | "AUTH" = "EVENT",
-    opts?: RelayEventOptions & WithAuthPhaseGate,
-  ): Observable<PublishResponse> {
-    // A thunk describing the wire request this EVENT sent, for the shared operator's onAuthRequired context.
-    const describeRequest = (): RelayAuthWireRequest => ({ verb: "EVENT", event });
-
-    // Listen-only stream (no side effect) — shared so the two places below that reference it
-    // (the main merge and the takeUntil notifier) don't register duplicate filter/map chains.
-    const messages: Observable<PublishResponse> = this.socket.pipe(
-      filter((m) => m[0] === "OK" && m[1] === event.id),
-      // format OK message. D-11: no `error` field here — this response was received from the
-      // relay's own OK frame, and that absence is load-bearing (the other half of the
-      // manufactured-timeout discriminator below), not an oversight.
-      map((m) => ({ ok: m[2] as boolean, message: m[3] as string, from: this.url })),
-      share(),
-    );
-
-    // Send the EVENT/AUTH message as a side effect of subscribing, deliberately NOT shared (mirrors
-    // count()'s send/listen split): the shared operator's resend can be driven synchronously by a
-    // handler still nested inside the current OK-message dispatch, and a share()'d defer's
-    // refCount-reset timing is not guaranteed to have settled by the time that resubscription happens
-    // — bundling the send inside a shared defer silently dropped the resend under a synchronous
-    // handler (found via this plan's own non-vacuity check). An unshared `control` always re-sends on
-    // every subscription, independent of any share() reset race.
-    const control = defer(() => {
-      // WR-03: logged here, immediately before the actual write, rather than eagerly in auth() before
-      // this defer is even constructed. This defer only runs once waitForReady's gate (below, for the
-      // AUTH-verb path) has let the subscription through, so this line is now a statement of fact
-      // ("the AUTH frame was just written") instead of firing even when a reconnect is armed and the
-      // write is deferred indefinitely with no line ever following it.
-      if (verb === "AUTH") this.authLog(`Sending AUTH event for pubkey ${event.pubkey}`);
-      this.socket.next([verb, event]);
-      return messages;
-    });
-
-    // Start the watch tower and add complete operators
-    const observable = merge(this.watchTower, control).pipe(
-      // Complete the subscription when the messages observable completes
-      // This is to work around the fact that merge() waits for both observables to complete
-      takeUntil(messages.pipe(ignoreElements(), endWith(true))),
-      // complete on first value
-      take(1),
-      // listen for OK auth-required (kept as a value-level flag update regardless of whether this
-      // attempt is later retried by the shared operator, so authRequiredForPublish$ stays accurate — RAUTH-09)
-      // WR-01: logged on every refusal (unlike the old one-shot-per-connection guard) so it matches
-      // req()/count()/negentropy() — the flag write below is already idempotent (receivedAuthRequiredFor
-      // no-ops once already true), so the guard here was only ever gating the log line, not the write.
-      tap(({ ok, message }) => {
-        if (ok === false && message?.startsWith(AUTH_REQUIRED_PREFIX)) {
-          this.authLog(
-            `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(message)}`,
-          );
-          this.receivedAuthRequiredFor("EVENT");
-        }
-      }),
-      // if no message is seen in 10s, emit failed publish response. This is per-attempt: it bounds
-      // waiting for the OK on a single EVENT send and lives inside the shared operator's resend loop.
-      timeout({
-        first: this.eventTimeout,
-        // D-11: this response is manufactured locally because no OK frame ever arrived, so it
-        // carries an `error` field — the structural discriminator that lets a consumer tell a
-        // client-side give-up apart from a relay rejection (which never sets `error`) without
-        // inspecting the message text.
-        with: () =>
-          of<PublishResponse>({
-            ok: false,
-            from: this.url,
-            message: "Timeout",
-            error: new Error(`Timed out waiting for OK response from ${this.url}`),
+  event(event: NostrEvent, verb: "EVENT" | "AUTH" = "EVENT"): Observable<PublishResponse> {
+    // D-01: each subscription creates one fresh listener and one write. Readiness is outside this
+    // defer, so the fixed reply clock begins only after the socket is ready and the frame is written.
+    return this.waitForReady(
+      defer(() => {
+        const messages = this.socket.pipe(
+          filter((m) => m[0] === "OK" && m[1] === event.id),
+          map((m): PublishResponse => {
+            const ok = m[2] as boolean;
+            const message = m[3] as string;
+            if (verb === "EVENT" && !ok && message.startsWith(AUTH_REQUIRED_PREFIX)) {
+              this.authLog(
+                `Relay refused ${describeWireRequest({ verb: "EVENT", event })} — authentication required: ${truncateForLog(message)}`,
+              );
+              this.receivedAuthRequiredFor("EVENT");
+              throw new AuthRequiredError(message);
+            }
+            return {
+              ok,
+              message,
+              from: this.url,
+              ...(ok ? {} : { error: new RelayEventVerdictError(message) }),
+            };
           }),
+          take(1),
+          timeout({ first: this.eventTimeout, with: () => throwError(() => new RelayEventTimeoutError(this.url)) }),
+          share(),
+        );
+
+        const control = defer(() => {
+          if (verb === "AUTH") this.authLog(`Sending AUTH event for pubkey ${event.pubkey}`);
+          this.socket.next([verb, event]);
+          return messages;
+        });
+
+        return merge(this.watchTower, control).pipe(
+          takeUntil(messages.pipe(ignoreElements(), endWith(true))),
+          take(1),
+        );
       }),
     );
-
-    // skip wait for auth if verb is AUTH or waitForAuth is false (RAUTH-06) — no auth flow at all,
-    // which is also what keeps auth() from recursing into the auth machinery
-    const waitForAuth = opts?.waitForAuth ?? true;
-    if (verb === "AUTH" || !waitForAuth) return this.waitForReady(observable).pipe(share());
-
-    // D-01/D-02: this path currently keeps auth-required value-shaped across its operator chain.
-    // Map a genuine auth-required OK response into the internal signal so the shared operator can run
-    // the handler, wait, and drive the resend (RAUTH-02: no pre-block — the EVENT above is already sent
-    // immediately, regardless of any other publish's auth state).
-    const signalled: Observable<PublishResponse | AuthRequiredSignal> = observable.pipe(
-      map((response) =>
-        response.ok === false && response.message?.startsWith(AUTH_REQUIRED_PREFIX)
-          ? authRequiredSignal(response.message)
-          : response,
-      ),
-    );
-
-    // D-04: use the gate an outer operation (publish()) threaded in via the module-private symbol
-    // key, or make a fresh one for this call.
-    const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
-
-    return this.waitForReady(signalled)
-      .pipe(this.authRetryOperator(describeRequest, opts, gate, () => true)) // PublishResponse carries no bookkeeping value
-      .pipe(
-        // D-01: on exhaustion the shared operator throws AuthRequiredError to its immediate consumer.
-        // event() converts that back into the relay's final `{ ok: false, message: "auth-required:..." }`
-        // value rather than letting it propagate, because publish() is the caller boundary that
-        // reconstructs AuthRequiredError from a value (D-01); that one-hop retry boundary may consume a throw,
-        // branch on the response shape. A handler rejection (AuthHandlerError) or a phase timeout
-        // (AuthTimeoutError) are genuine errors and DO propagate here (D-17) — RelayGroup's per-relay
-        // catch converts those into a response carrying the error object once plan 13-07 lands D-18.
-        catchError((err) =>
-          err instanceof AuthRequiredError
-            ? of<PublishResponse>({ ok: false, from: this.url, message: err.reason })
-            : throwError(() => err),
-        ),
-        share(),
-      );
   }
 
   /** Send an AUTH message. Can be called multiple times with events from different pubkeys to authenticate multiple users */

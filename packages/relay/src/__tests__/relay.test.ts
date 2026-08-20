@@ -1136,16 +1136,19 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
   it('RAUTH-06: event(..., "AUTH") never invokes the handler even when the relay answers auth-required', async () => {
     const onAuthRequired = vi.fn();
     const authEvent = { ...mockEvent, id: "auth-event-id" };
-    const spy = subscribeSpyTo(relay.event(authEvent, "AUTH", { onAuthRequired }));
+    const spy = subscribeSpyTo(relay.event(authEvent, "AUTH"));
 
     await expect(server).toReceiveMessage(["AUTH", authEvent]);
     server.send(["OK", authEvent.id, false, "auth-required: need to authenticate"]);
 
     await spy.onComplete();
     expect(onAuthRequired).not.toHaveBeenCalled();
-    expect(spy.getValues()).toEqual([
-      { ok: false, from: "wss://test", message: "auth-required: need to authenticate" },
-    ]);
+    expect(spy.getLastValue()).toMatchObject({
+      ok: false,
+      from: "wss://test",
+      message: "auth-required: need to authenticate",
+    });
+    expect(spy.getLastValue()?.error).toBeInstanceOf(RelayEventVerdictError);
   });
 
   it("RAUTH-06: waitForAuth:false never invokes the handler", async () => {
@@ -3060,7 +3063,7 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
     await negPromise;
   });
 
-  it("RAUTH-08: sync()'s internal SEND-direction event() call invokes the caller's onAuthRequired", async () => {
+  it("RAUTH-08: sync()'s internal SEND direction invokes the caller's onAuthRequired", async () => {
     const onAuthRequired = vi.fn();
 
     const spy = subscribeSpyTo(
@@ -3309,12 +3312,12 @@ describe(":auth sub-namespace (14-04)", () => {
       // RAUTH-02's convention: this fixture's keepAlive=0 would otherwise drop the connection within a
       // few ms of nothing being subscribed, and firstSub staying subscribed (authTimeout: false parks
       // it pending, RAUTH-04) is what keeps the connection alive across both refusals.
-      const firstSub = relay.event(mockEvent, "EVENT", { authTimeout: false }).subscribe();
+      const firstSub = relay.event(mockEvent, "EVENT").subscribe({ error: () => undefined });
       await expect(server).toReceiveMessage(["EVENT", mockEvent]);
       server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
 
       const secondEvent = { ...mockEvent, id: "wr01-second-event-id" };
-      const secondSub = relay.event(secondEvent, "EVENT", { authTimeout: false }).subscribe();
+      const secondSub = relay.event(secondEvent, "EVENT").subscribe({ error: () => undefined });
       await expect(server).toReceiveMessage(["EVENT", secondEvent]);
       server.send(["OK", secondEvent.id, false, "auth-required: need to authenticate"]);
 
