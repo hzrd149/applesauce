@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 16
-current_phase_name: Method Layering Foundation & TypeScript 7
-status: ready
-stopped_at: Phase 16 verified complete
-last_updated: "2026-08-20T10:38:01Z"
+current_phase: 17
+current_phase_name: correctness-fixes-concord-residuals
+status: executing
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-08-20T11:52:57.980Z"
 last_activity: 2026-08-20
-last_activity_desc: Phase 16 passed re-verification after CR-01 fix and accepted TS7 compatibility override
+last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 11
   completed_phases: 1
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 12
+  completed_plans: 8
   percent: 9
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** v7.0.0 relay-method-layering — Phase 16 complete; ready for next phase
+**Current focus:** Phase 17 — correctness-fixes-concord-residuals
 
 ## Current Position
 
-Phase: 16 of 26 (Method Layering Foundation & TypeScript 7)
-Plan: 7 of 7
-Status: Complete (10/10, including 1 accepted override)
-Last activity: 2026-08-20 — Phase 16 passed re-verification after CR-01 fix and accepted TS7 compatibility override
+Phase: 17 (correctness-fixes-concord-residuals) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-08-20 — Phase 17 execution started
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -130,6 +130,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 16 P05 | 1m | 1 tasks | 5 files |
 | Phase 16 P06 | 1m | 1 tasks | 4 files |
 | Phase 16 P07 | 12m | 2 tasks | 8 files |
+| Phase 17 P01 | 2m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -316,6 +317,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 15]: Phase 15 closed: plan 15-08's Task 3 human-verify checkpoint (live auth-gating relay) approved 2026-08-15, confirming auth trace lines appear only after a relay refusal, not on connect or every status change
 - [Phase ?]: Phase 16: Throws may signal failure to an immediate retry or aggregation consumer; multi-hop expected state remains value-shaped.
 - [Phase ?]: Phase 16: Keep the llms AST scanner on @typescript/typescript6 while CLI compilation uses TypeScript 7.
+- [Phase ?]: Keep CLOSED prefix extension private while using a mutable Map for exact-key classification.
 
 ### Pending Todos
 
@@ -434,8 +436,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-19T18:47:12.314Z
-Stopped at: Completed 16-07-PLAN.md
+Last session: 2026-08-20T11:52:57.959Z
+Stopped at: Completed 17-01-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
