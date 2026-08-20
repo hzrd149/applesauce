@@ -933,6 +933,27 @@ describe("createReconnectTimer", () => {
 });
 
 describe("publish", () => {
+  it("keeps auth and transient retry budgets additive across one publish call", async () => {
+    relay.eventTimeout = 20;
+    const onAuthRequired = vi.fn(() => {
+      relay.authenticationResponse$.next({ ok: true, from: relay.url });
+    });
+    const result = relay
+      .publish(mockEvent, { authRetries: 1, retries: { count: 1, delay: 0 }, onAuthRequired, authTimeout: 50 })
+      .catch((error) => error);
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: first"]);
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, false, "auth-required: exhausted"]);
+
+    await expect(result).resolves.toBeInstanceOf(AuthRequiredError);
+    expect(server.messages.filter((m: any) => m[0] === "EVENT")).toHaveLength(3);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
   it("should retry when auth-required is received and authentication is completed", async () => {
     // First attempt to publish
     const spy = relay.publish(mockEvent, { reconnect: { count: Infinity, delay: 0 } }).catch(() => {});
