@@ -69,14 +69,14 @@ findings changed the plan and are marked **[research]** below.
 
 ### Correctness Fixes
 
-- [x] **FIX-01**: `parseClosedError`'s prefix lookup cannot reach the prototype chain at all (a `null`-prototype map or `Object.hasOwn` guard), rather than filtering `constructor`/`__proto__` by name and leaving the next inherited key open
-- [x] **FIX-02**: `applesauce-sqlite` declares its four SQLite drivers optional via `peerDependenciesMeta`, so a consumer installs only the backend it uses
-- [x] **FIX-03**: NIP-29 group identifiers round-trip their port and protocol — `ws://localhost:4869` survives encode→decode instead of becoming `wss://localhost`
+- [ ] **FIX-01**: `parseClosedError`'s prefix lookup cannot reach the prototype chain at all (a `null`-prototype map or `Object.hasOwn` guard), rather than filtering `constructor`/`__proto__` by name and leaving the next inherited key open
+- [ ] **FIX-02**: `applesauce-sqlite` declares its four SQLite drivers optional via `peerDependenciesMeta`, so a consumer installs only the backend it uses
+- [ ] **FIX-03**: NIP-29 group identifiers round-trip their port and protocol — `ws://localhost:4869` survives encode→decode instead of becoming `wss://localhost`
 
 ### Review Residuals
 
-- [x] **RESID-01**: A single relay's AUTH rejection no longer latches a permanent `error$` on an otherwise-working community — there is a clear-on-recovery path, not merely a reset of `started`
-- [x] **RESID-02**: `revoke()`/`revokeBundle()` report a publish failure rather than absorbing it and returning `revoked: true`, so the UI cannot call a link dead while it still resolves
+- [ ] **RESID-01**: A single relay's AUTH rejection no longer latches a permanent `error$` on an otherwise-working community — there is a clear-on-recovery path, not merely a reset of `started`
+- [ ] **RESID-02**: `revoke()`/`revokeBundle()` report a publish failure rather than absorbing it and returning `revoked: true`, so the UI cannot call a link dead while it still resolves
 - [ ] **RESID-03**: The two Phase 13 residuals with reachable behavioral consequence are closed — the negentropy non-auth fallback force-closes open auth phases, and `Relay.sync()`'s RECEIVE branch does not reject with `EmptyError` on a zero-event EOSE
 - [ ] **RESID-04**: No comment, doc, or changeset in the shipped packages asserts behavior the code does not have — covering WR-06's publish `error` discriminator, WR-03's false progress-predicate comment, and WR-09's stale `timeout` doc
 
@@ -166,11 +166,11 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | GROUP-03 | Phase 21 | Pending |
 | GROUP-04 | Phase 21 | Pending |
 | GROUP-05 | Phase 21 | Pending |
-| FIX-01 | Phase 17 | Complete |
-| FIX-02 | Phase 17 | Complete |
-| FIX-03 | Phase 17 | Complete |
-| RESID-01 | Phase 17 | Complete |
-| RESID-02 | Phase 17 | Complete |
+| FIX-01 | Phase 17 | Gaps Found |
+| FIX-02 | Phase 17 | Gaps Found |
+| FIX-03 | Phase 17 | Gaps Found |
+| RESID-01 | Phase 17 | Gaps Found |
+| RESID-02 | Phase 17 | Gaps Found |
 | RESID-03 | Phase 24 | Pending |
 | RESID-04 | Phase 18 | Pending |
 | REL-01 | Phase 26 | Pending |
