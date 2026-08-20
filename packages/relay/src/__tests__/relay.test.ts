@@ -1186,11 +1186,11 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
     // keepAlive=0 can drop the connection (and wipe the challenge) while nothing is subscribed
     // during a real async handler delay, which is orthogonal to what D-15 asserts here.
     const onAuthRequired = vi.fn(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) => setTimeout(resolve, 120));
       relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
     });
 
-    const spy = relay.publish(mockEvent, { onAuthRequired, timeout: 20, authTimeout: false });
+    const spy = relay.publish(mockEvent, { onAuthRequired, timeout: 50, authTimeout: false });
 
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
