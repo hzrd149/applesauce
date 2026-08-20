@@ -167,13 +167,10 @@ export class ConcordPrivateChannel {
     // the cleanup this failure path needs — no more, no less. Mirrors
     // `ConcordCommunity`'s identical constructor guard (12.3-12).
     this.extras = new ExtraRelays(options.extraRelays);
-    // D-13/WR-02: a NIP-42 rejection at ANY time — the live subscription, any
-    // publish, catch-up sync, or a rekey check — surfaces on `error$`
-    // immediately, without waiting for or requiring a second walk. This sink is
-    // the whole mechanism: no latched field, no new status surface.
-    this.signers = new StreamSigners({
-      onAuthFailure: (message) => this.error$.next(message),
-    });
+    // Phase 17 RESID-01 mirrors the community boundary: per-relay AUTH failures
+    // remain on the operation and structured `:auth` diagnostic paths. They
+    // never enter fatal lifecycle UI state and therefore need no recovery latch.
+    this.signers = new StreamSigners();
     try {
       this.channelKey = options.channelKey;
       this.keys = deriveChannelKeys(options.material(), options.channelKey);
@@ -236,9 +233,8 @@ export class ConcordPrivateChannel {
   }
 
   private async walk(): Promise<void> {
-    // D-13: reset at the top of the method (before phase$.next("syncing")), so
-    // a refreshForCommunityEpoch() re-walk starts clean and does not keep
-    // displaying a previous session's stale auth failure.
+    // Reset at the top of the method so a refreshForCommunityEpoch() re-walk
+    // starts clean and does not retain a prior fatal lifecycle/sync failure.
     this.error$.next(null);
     this.phase$.next("syncing");
     try {
