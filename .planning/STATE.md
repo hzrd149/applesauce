@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 17
 current_phase_name: correctness-fixes-concord-residuals
 status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-08-20T11:52:57.980Z"
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-08-20T11:57:25.453Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 9
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 ## Current Position
 
 Phase: 17 (correctness-fixes-concord-residuals) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-20 — Phase 17 execution started
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -131,6 +131,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 16 P06 | 1m | 1 tasks | 4 files |
 | Phase 16 P07 | 12m | 2 tasks | 8 files |
 | Phase 17 P01 | 2m | 2 tasks | 3 files |
+| Phase 17 P02 | 4m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -318,6 +319,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Phase 16: Throws may signal failure to an immediate retry or aggregation consumer; multi-hop expected state remains value-shaped.
 - [Phase ?]: Phase 16: Keep the llms AST scanner on @typescript/typescript6 while CLI compilation uses TypeScript 7.
 - [Phase ?]: Keep CLOSED prefix extension private while using a mutable Map for exact-key classification.
+- [Phase ?]: 17-02: Keep all four SQLite backends as range-preserving optional peers and verify the published tarball in an isolated npm consumer.
 
 ### Pending Todos
 
@@ -436,8 +438,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-20T11:52:57.959Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-08-20T11:57:25.432Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

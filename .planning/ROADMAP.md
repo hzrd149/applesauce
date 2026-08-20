@@ -118,12 +118,12 @@ Plans:
   4. One relay's rejected or thrown AUTH attempt never enters community or private-channel `error$`/`status.error`; those surfaces remain reserved for fatal lifecycle/sync failures, which is the accepted prevention-based restatement of RESID-01's earlier clear-on-recovery wording.
   5. `revoke()`/`revokeBundle()` report a failed publish to the caller instead of unconditionally returning `revoked: true`.
 
-**Plans**: 1/5 plans executed
+**Plans**: 2/5 plans executed
 
 Plans:
 
 - [x] 17-01-PLAN.md — Make CLOSED-prefix classification prototype-safe through public retry behavior
-- [ ] 17-02-PLAN.md — Mark all SQLite backend peers optional and prove the packed consumer boundary
+- [x] 17-02-PLAN.md — Mark all SQLite backend peers optional and prove the packed consumer boundary
 - [ ] 17-03-PLAN.md — Preserve complete normalized group-pointer relay endpoints
 - [ ] 17-04-PLAN.md — Prevent transient AUTH diagnostics from entering fatal Concord UI state
 - [ ] 17-05-PLAN.md — Enforce honest, ordered invite-revocation publication results
