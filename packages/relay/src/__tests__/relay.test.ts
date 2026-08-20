@@ -615,8 +615,8 @@ describe("event", () => {
   });
 });
 
-describe("D-11: publish-timeout structural discriminator", () => {
-  it("a relay rejection carries no error field", async () => {
+describe("EVENT verdict and client-failure error boundary", () => {
+  it("a relay rejection carries a typed verdict error", async () => {
     const spy = subscribeSpyTo(relay.event(mockEvent));
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
 
@@ -625,11 +625,10 @@ describe("D-11: publish-timeout structural discriminator", () => {
 
     const lastValue = spy.getLastValue();
     expect(lastValue).toMatchObject({ ok: false, from: "wss://test", message: "blocked: not allowed" });
-    // Assert absence explicitly — a falsy `error` is not the same as no `error` property at all.
-    expect(lastValue && "error" in lastValue).toBe(false);
+    expect(lastValue?.error).toBeInstanceOf(RelayEventVerdictError);
   });
 
-  it("a local timeout carries an error field holding a real Error", async () => {
+  it("a local timeout rejects with a typed client error", async () => {
     vi.useFakeTimers();
 
     // No OK frame is ever sent for this event — the manufactured timeout is the only possible
@@ -639,13 +638,11 @@ describe("D-11: publish-timeout structural discriminator", () => {
     vi.advanceTimersByTime(10_000);
     await Promise.resolve();
 
-    expect(spy.receivedComplete()).toBe(true);
-    const lastValue = spy.getLastValue();
-    expect(lastValue).toMatchObject({ ok: false, from: "wss://test", message: "Timeout" });
-    expect(lastValue?.error).toBeInstanceOf(Error);
+    expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()).toBeInstanceOf(RelayEventTimeoutError);
   });
 
-  it("the discriminator reaches the response recorded in authentications$", async () => {
+  it("AUTH timeout rejects while relay verdict errors are recorded in authentications$", async () => {
     relay.eventTimeout = 20;
 
     const timedOutUser = new FakeUser();
@@ -659,7 +656,7 @@ describe("D-11: publish-timeout structural discriminator", () => {
     // timedOutUser's AUTH event is sent, but the relay never replies within eventTimeout
     const timedOutPromise = relay.authenticate(timedOutUser);
     await server.nextMessage; // AUTH event sent, deliberately not answered
-    const timedOutResult = await timedOutPromise;
+    await expect(timedOutPromise).rejects.toBeInstanceOf(RelayEventTimeoutError);
 
     // rejectedUser's AUTH event is refused by the relay
     const rejectedPromise = relay.authenticate(rejectedUser);
@@ -667,15 +664,13 @@ describe("D-11: publish-timeout structural discriminator", () => {
     server.send(["OK", rejectedAuthMsg[1].id, false, "restricted: not allowed"]);
     const rejectedResult = await rejectedPromise;
 
-    expect(timedOutResult.error).toBeInstanceOf(Error);
-    expect("error" in rejectedResult).toBe(false);
+    expect(rejectedResult.error).toBeInstanceOf(RelayEventVerdictError);
 
     // D-11's actual concern: the shared consumer (authentications$) inherits the discriminator too,
     // not only the promise event() directly returns.
-    const timedOutRecorded = relay.authentications$.value[timedOutUser.pubkey]?.response;
     const rejectedRecorded = relay.authentications$.value[rejectedUser.pubkey]?.response;
-    expect(timedOutRecorded?.error).toBeInstanceOf(Error);
-    expect(rejectedRecorded && "error" in rejectedRecorded).toBe(false);
+    expect(relay.authentications$.value[timedOutUser.pubkey]?.response).toBeNull();
+    expect(rejectedRecorded?.error).toBeInstanceOf(RelayEventVerdictError);
   });
 });
 
@@ -1044,12 +1039,12 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
     // which would falsely "pass" even the old pre-blocked model — checking immediately is what actually
     // exercises RAUTH-02 rather than an unrelated timing quirk (matches this suite's established
     // convention, e.g. the COUNT/REQ RAUTH-09 tests).
-    const firstSub = relay.event(mockEvent, "EVENT", { authTimeout: false }).subscribe();
+    const firstSub = relay.event(mockEvent).subscribe({ error: () => undefined });
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
 
     const secondEvent = { ...mockEvent, id: "second-event-id" };
-    const secondSub = relay.event(secondEvent, "EVENT", { authTimeout: 30 }).subscribe();
+    const secondSub = relay.event(secondEvent).subscribe({ error: () => undefined });
 
     // The second EVENT must be sent immediately, before any AUTH frame is ever sent
     await expect(server).toReceiveMessage(["EVENT", secondEvent]);
@@ -1119,18 +1114,18 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
 
   it("RAUTH-04: authTimeout:false leaves the EVENT pending past a short window", async () => {
     const onAuthRequired = vi.fn(); // no-op — auth happens out of band, not through this handler
-    const spy = subscribeSpyTo(relay.event(mockEvent, "EVENT", { onAuthRequired, authTimeout: false }));
+    const promise = relay.publish(mockEvent, { onAuthRequired, authTimeout: false }).catch(() => undefined);
 
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
 
     // A short bound (e.g. 30ms) would already have errored/completed by now — authTimeout: false must not have
     await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(spy.receivedError()).toBe(false);
-    expect(spy.receivedComplete()).toBe(false);
+    let settled = false;
+    void promise.finally(() => (settled = true));
+    expect(settled).toBe(false);
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
 
-    spy.unsubscribe();
   });
 
   it('RAUTH-06: event(..., "AUTH") never invokes the handler even when the relay answers auth-required', async () => {
@@ -1153,16 +1148,13 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
 
   it("RAUTH-06: waitForAuth:false never invokes the handler", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay.event(mockEvent, "EVENT", { waitForAuth: false, onAuthRequired }));
+    const result = relay.publish(mockEvent, { waitForAuth: false, onAuthRequired }).catch((error) => error);
 
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
 
-    await spy.onComplete();
     expect(onAuthRequired).not.toHaveBeenCalled();
-    expect(spy.getValues()).toEqual([
-      { ok: false, from: "wss://test", message: "auth-required: need to authenticate" },
-    ]);
+    await expect(result).resolves.toBeInstanceOf(AuthRequiredError);
   });
 
   it("D-15: publish's timeout is suspended across the auth phase", async () => {

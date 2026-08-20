@@ -153,12 +153,8 @@ export class RelayPool {
   }
 
   /** Send an EVENT message to multiple relays */
-  event(
-    relays: PoolRelayInput,
-    event: NostrEvent,
-    opts?: Parameters<RelayGroup["event"]>[1],
-  ): Observable<PublishResponse> {
-    return this.group(relays).event(event, opts);
+  event(relays: PoolRelayInput, event: NostrEvent): Observable<PublishResponse> {
+    return this.group(relays).event(event);
   }
 
   /** Negentropy sync event ids with the relays and an event store */

@@ -1531,33 +1531,23 @@ export class Relay {
 
   /** Publishes an event to the relay and retries when relay errors or responds with auth-required ( default 3 retries ) */
   publish(event: NostrEvent, opts?: PublishOptions): Promise<PublishResponse> {
-    // D-15: a dedicated gate for this publish's EVENT auth phase, threaded into event() via the
-    // module-private symbol key so publishTimeout (below) can suspend across it
+    // D-07/D-15: all policy state is created once for this publish call. event() remains the raw,
+    // readiness-aware one-attempt primitive and knows nothing about this gate or these options.
     const gate = new AuthPhaseGate();
+    const describeRequest = (): RelayAuthWireRequest => ({ verb: "EVENT", event });
+    const attempt = defer(() =>
+      this.event(event).pipe(
+        catchError((error) =>
+          error instanceof AuthRequiredError ? of(authRequiredSignal(error.reason)) : throwError(() => error),
+        ),
+      ),
+    );
 
     return lastValueFrom(
-      this.event(event, "EVENT", {
-        // RAUTH-07: forward the full auth option set, not just waitForAuth, so onAuthRequired/authTimeout/
-        // authRetries are not silently inert on the highest-level publish API
-        waitForAuth: opts?.waitForAuth,
-        onAuthRequired: opts?.onAuthRequired,
-        authTimeout: opts?.authTimeout,
-        authRetries: opts?.authRetries,
-        [AUTH_PHASE_GATE]: gate,
-      }).pipe(
-        mergeMap((result) => {
-          // event() only reaches this point with a value-shaped auth-required response once its own
-          // internal auth-retry budget is exhausted (D-01/D-02) — construct the terminal AuthRequiredError
-          // here for publish(), its immediate retry consumer; D-01 permits that one-hop throw boundary.
-          if (result.ok === false && result.message?.startsWith(AUTH_REQUIRED_PREFIX))
-            return throwError(() => new AuthRequiredError(result.message ?? ""));
-
-          return of(result);
-        }),
+      attempt.pipe(
+        this.authRetryOperator(describeRequest, opts, gate, () => true),
         // Retry the publish until it succeeds or the number of retries is reached. D-07: with
-        // customRetryOperator's RelayClosedError skip, the AuthRequiredError thrown just above (and any
-        // AuthHandlerError/AuthTimeoutError event() itself threw) is never retried here — max EVENT sends
-        // is authRetries + 1, independent of `retries`.
+        // customRetryOperator's RelayClosedError skip, terminal auth failures are never retried here.
         this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, this.publishRetry),
         // D-15: suspend publishTimeout across the auth phase so it does not run while waiting for auth,
         // and gets its full budget for the real work afterwards. PublishResponse carries no bookkeeping
@@ -1619,7 +1609,7 @@ export class Relay {
                 // RAUTH-08/Phase 15: forward the caller's auth options — leaving this call unthreaded
                 // would make it default to waitForAuth: true with no handler and wait the 30s default
                 // for an unrelated pubkey, entirely disconnected from what the caller configured.
-                const response = await lastValueFrom(this.event(event, "EVENT", authOptions));
+                const response = await this.publish(event, authOptions);
                 if (response.ok) addSeenRelay(event, this.url);
                 return response;
               }),

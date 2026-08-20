@@ -231,8 +231,8 @@ export class RelayGroup {
   }
 
   /** Send an event to all relays */
-  event(event: NostrEvent, opts?: Parameters<Relay["event"]>[2]): Observable<PublishResponse> {
-    return this.internalPublish((relay) => relay.event(event, "EVENT", opts));
+  event(event: NostrEvent): Observable<PublishResponse> {
+    return this.internalPublish((relay) => relay.event(event));
   }
 
   /** Negentropy sync events with the relays and an event store */
