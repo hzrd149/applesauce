@@ -353,13 +353,11 @@ export class ConcordCommunity {
     this.signer = options.signer;
     this.pubkey = options.pubkey;
     this.pool = options.pool;
-    // D-13/WR-02: a NIP-42 rejection at ANY time — the live subscription, any
-    // publish, reconcileLive's catch-up sync, or checkRekey — surfaces on
-    // `error$` immediately, without waiting for or requiring a second walk. This
-    // sink is the whole mechanism: no latched field, no new status surface.
-    this.signers = new StreamSigners({
-      onAuthFailure: (message) => this.error$.next(message),
-    });
+    // Phase 17 RESID-01 supersedes Phase 15 WR-02's clear-on-recovery reading:
+    // per-relay AUTH failures stay on the operation and structured `:auth`
+    // diagnostic paths. Preventing transient AUTH from entering fatal UI state
+    // is stronger than latching it here and trying to clear it later.
+    this.signers = new StreamSigners();
     this.userOnAuthRequired = options.userOnAuthRequired;
     this.eventStore = options.eventStore ?? new EventStore();
     this.uploader = options.uploader;
@@ -535,7 +533,7 @@ export class ConcordCommunity {
   async start(): Promise<void> {
     if (this.started || this.disposed) return;
     this.started = true;
-    // A fresh walk clears any stale auth error a prior session left behind.
+    // A fresh lifecycle walk clears a prior fatal lifecycle/sync error.
     this.error$.next(null);
     this.phase$.next("syncing");
     this.log("epoch walk starting");

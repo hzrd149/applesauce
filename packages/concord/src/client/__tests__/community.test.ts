@@ -5,7 +5,7 @@
 // is covered by the puppeteer drivers.
 
 import { describe, expect, it, vi } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, Subscription, firstValueFrom, throwError } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, Subscription, firstValueFrom } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
@@ -3455,8 +3455,6 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     const pubkey = await signer.getPublicKey();
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
     const pool = fakePool();
-    (pool.relay(AUTH_URL) as unknown as { request: unknown }).request = () =>
-      throwError(() => new Error("fatal sync failure"));
     const community = new ConcordCommunity({
       material: genesis.material,
       signer,
@@ -3465,6 +3463,9 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
       eventStore: new EventStore(),
       relays: [AUTH_URL],
     });
+    (community as unknown as { syncContext: () => never }).syncContext = () => {
+      throw new Error("fatal sync failure");
+    };
 
     await community.start();
 
