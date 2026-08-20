@@ -34,25 +34,42 @@ export type GroupPointer = {
   name?: string;
 };
 
-/** decodes a group identifier into a group pointer object */
+/**
+ * Decodes Applesauce's apostrophe-delimited compatibility identifier.
+ * NIP-29 references use kind-39000 `naddr` values with relay hints instead.
+ */
 export function decodeGroupPointer(str: string): GroupPointer | null {
-  let [relay, id] = str.split("'");
+  const separator = str.indexOf("'");
+  let relay = separator === -1 ? str : str.slice(0, separator);
+  const id = separator === -1 ? "" : str.slice(separator + 1);
   if (!relay) return null;
 
   // Prepend wss:// if missing
   if (!relay.match(/^wss?:/)) relay = `wss://${relay}`;
 
-  // Normalize the relay url
-  relay = normalizeURL(relay);
+  try {
+    const url = new URL(relay);
+    if (url.hash) return null;
+    relay = normalizeURL(url).toString();
+  } catch {
+    return null;
+  }
 
   return { relay, id: id || "_" };
 }
 
-/** Converts a group pointer into a group identifier */
+/** Converts a group pointer into Applesauce's compatibility identifier. */
 export function encodeGroupPointer(pointer: GroupPointer): string {
-  const hostname = URL.canParse(pointer.relay) ? new URL(pointer.relay).hostname : pointer.relay;
+  const normalized = decodeGroupPointer(`${pointer.relay}'_`)?.relay;
+  if (!normalized) return `${pointer.relay}'${pointer.id}`;
 
-  return `${hostname}'${pointer.id}`;
+  let relay = normalized;
+  if (normalized.startsWith("wss://")) {
+    const url = new URL(normalized);
+    relay = url.pathname === "/" && !url.search ? url.host : normalized.slice("wss://".length);
+  }
+
+  return `${relay}'${pointer.id}`;
 }
 
 export const GroupsPublicSymbol = Symbol.for("groups-public");

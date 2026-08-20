@@ -88,7 +88,7 @@ describe("Group pointer utilities", () => {
       expect(encodeGroupPointer(pointer)).toBe("relay.example.com'group123");
     });
 
-    it("should strip protocol from relay", () => {
+    it("should only omit the default secure protocol", () => {
       const pointer: GroupPointer = {
         relay: "wss://relay.example.com",
         id: "group123",
@@ -99,7 +99,7 @@ describe("Group pointer utilities", () => {
         relay: "ws://relay.example.com",
         id: "group123",
       };
-      expect(encodeGroupPointer(wsPointer)).toBe("relay.example.com'group123");
+      expect(encodeGroupPointer(wsPointer)).toBe("ws://relay.example.com/'group123");
     });
 
     it("should handle invalid URLs by using the raw value", () => {
