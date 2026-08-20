@@ -142,7 +142,15 @@ Plans:
   4. `RelayGroup.event()`'s and `Relay.sync()`'s SEND path's auth-retry behavior after this change is a recorded, deliberate decision, not a silent loss.
   5. The `event`/`publish` progress-predicate comment and RAUTH-07's `onAuthRequired`/`authTimeout`/`authRetries` claim on `event` both describe what the code actually does, with the restatement's provenance recorded.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+
+- [ ] 18-01-PLAN.md — Establish the one-attempt raw EVENT/AUTH wire contract
+- [ ] 18-02-PLAN.md — Move bounded auth, retry, reconnect, and timeout policy into publish()
+- [ ] 18-03-PLAN.md — Propagate the raw/high split through Group, Pool, auth(), and sync()
+- [ ] 18-04-PLAN.md — Align D-01, D-07, RAUTH-07, and shipped source comments
+- [ ] 18-05-PLAN.md — Correct release metadata and run the complete static acceptance audit
 
 ### Phase 19: COUNT Becomes the High-Level Member
 

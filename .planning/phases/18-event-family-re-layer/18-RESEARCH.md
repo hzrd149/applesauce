@@ -369,22 +369,13 @@ const observable = project(relay).pipe(errorToPublishResponse(relay));
 |---|-------|---------|---------------|
 | — | None. All planning-relevant claims were verified against repository artifacts or cited from official RxJS documentation. | — | — |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Typed relay-verdict error class name and shape**
-   - What we know: every genuine `OK false` remains a value and carries a typed verdict error; this object must not cause generic retry. [VERIFIED: locked decision]
-   - What's unclear: the class name and whether it extends plain `Error` or a new non-terminal verdict base are discretionary.
-   - Recommendation: use a narrowly named exported or internal `RelayPublishError`/`RelayEventVerdictError` consistent with existing classes, but do not extend `RelayClosedError` if consumers would interpret that as a thrown terminal CLOSED condition.
+1. **Typed relay-verdict error class name and shape — resolved:** Add exported `RelayEventVerdictError extends Error`, carrying the relay's verdict message without inheriting from `RelayClosedError`; attach it only to genuine `OK false` response values, so retry classification never sees it as a thrown terminal or transient failure. [VERIFIED: locked decision; existing relay error taxonomy]
 
-2. **Raw `RelayEventOptions` remaining fields**
-   - What we know: auth/retry/reconnect/whole-operation timeout fields must be removed; readiness and fixed reply timeout are not caller policy. [VERIFIED: context]
-   - What's unclear: current `RelayEventOptions` is only an alias to `RelayAuthOptions`, so it may correctly become an empty/omitted options type rather than retaining fields.
-   - Recommendation: if no genuine raw-attempt input exists, remove the public opts parameter where source compatibility permits, or use an explicit empty object type only if needed for Group/Pool structural signatures; do not invent a caller-settable reply timeout.
+2. **Raw `RelayEventOptions` remaining fields — resolved:** Remove `RelayEventOptions` and the raw `event()` options parameter rather than preserving an empty bag. Exact call-site search found only auth-policy arguments in Relay tests/internal publish/sync paths, Group pass-through tests, and Pool pass-through tests; no genuine raw-attempt input exists, readiness is internal, and the fixed reply bound is not configurable. Update Relay, Group, and Pool signatures structurally and move internal policy callers to `publish()`. [VERIFIED: `rg -n "RelayEventOptions|\\.event\\([^\\n]*," packages/relay/src`]
 
-3. **Clean completion before `OK` at the Promise boundary**
-   - What we know: raw `event()` must complete without fabricating a response. [VERIFIED: locked decision]
-   - What's unclear: `lastValueFrom` rejects an empty completion, so the exact high-level classification should be locked by a test.
-   - Recommendation: treat the resulting client-side empty-completion error as transient only if it corresponds to reconnectable socket loss; otherwise preserve clean raw completion and document high-level behavior explicitly.
+3. **Clean completion before `OK` at the Promise boundary — resolved:** Preserve clean empty completion from raw `event()` exactly. At `publish()`'s `lastValueFrom` boundary, the resulting RxJS `EmptyError` is a terminal client-side outcome and is not eligible for generic retry/reconnect; only an explicit reconnectable socket-loss error may retry. Lock both raw completion and high-level rejection/no-second-write behavior with tests. [VERIFIED: locked clean-completion contract and explicit transient-only retry decision]
 
 ## Environment Availability
 
