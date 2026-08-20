@@ -40,6 +40,9 @@ suppression (permanently out of scope per REQUIREMENTS.md).
   rather than describing the error, `count()` catching and re-throwing only because the signal
   passes through it (`:929-935`), and a stream teardown per signal that forces `retry()` +
   resubscribe where a value could drive a resend.
+  **Phase 18 amendment (2026-08-20):** EVENT is the canonical one-hop exception: raw `event()` performs
+  one wire interaction and throws `AuthRequiredError` directly to its immediate `publish()` consumer.
+  REQ, COUNT, and negentropy retain value signalling because their auth state crosses multi-hop chains.
 - **D-02:** Applies at **all four** auth sites. `req` (`:845-869`) and `count` (`:929-946`) stop
   throwing **for auth-required** — they keep throwing for the other `CLOSED` prefixes, which are
   genuine failures. `event` (`:990-995`) already emits `{ ok: false, message: "auth-required:" }` as
@@ -74,10 +77,11 @@ suppression (permanently out of scope per REQUIREMENTS.md).
 
 ### Retry budget composition
 
-- **D-07:** **Separate budgets, auth innermost.** Auth-required is fully handled below
+- **D-07:** **Separate call-scoped budgets, additive bound.** Auth-required is fully handled below
   `customRetryOperator`; an exhausted auth failure surfaces as terminal and the generic publish
-  retry does **not** retry it. Max EVENT sends = `authRetries + 1`, independent of `retries`;
-  connection failures keep their own budget. Without this, removing the pre-block turns publish's
+  retry does **not** retry it. **Phase 18 amendment (2026-08-20):** publish retains independent auth
+  and transient counters across resubscriptions, so max EVENT sends = `1 + authRetries + retries`;
+  reconnectable connection failures consume only the transient budget. Without this, removing the pre-block turns publish's
   existing retry (`:1235`, count 3, linear backoff) into a hot loop — it currently only *appears*
   correct because the pre-block at `:995` is what gives it something to wait on.
 - **D-08:** The `authRetries` counter **resets on progress** — once the operation gets past auth and

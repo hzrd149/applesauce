@@ -117,7 +117,7 @@ export type RelayAuthOptions = {
   authRetries?: number;
 };
 
-/** Options for the publish method on the pool and relay */
+/** High-level EVENT policy owned by publish on the relay, group, and pool (D-01/D-07). */
 export type PublishOptions = {
   /** Number of times to retry the publish. default is 3 */
   retries?: boolean | number | Parameters<typeof retry>[0];
@@ -126,7 +126,7 @@ export type PublishOptions = {
    * @see https://rxjs.dev/api/index/function/retry
    */
   reconnect?: boolean | number | Parameters<typeof retry>[0];
-  /** Timeout for publish in milliseconds (default 30 seconds) */
+  /** Whole-operation timeout for publish, suspended only during an active auth phase (default 30 seconds) */
   timeout?: number | boolean;
 } & RelayAuthOptions;
 
@@ -135,7 +135,7 @@ export type PublishResponse = {
   ok: boolean;
   message?: string;
   from: string;
-  /** The original error object, alongside `message`, so consumers can branch structurally (D-18) */
+  /** Typed relay-verdict or group-converted failure; client attempt failures reject instead */
   error?: unknown;
 };
 

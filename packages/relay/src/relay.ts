@@ -1388,14 +1388,14 @@ export class Relay {
   }
 
   /**
-   * Internal operator for creating a retry() operator, used only by `publish()`. Skips (re-throws
+   * D-07 retry operator used only by `publish()`. Skips (re-throws
    * rather than retries) any `RelayClosedError`, mirroring `customConnectionRetryOperator`'s existing
    * skip (D-07): the auth family (`AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError`) all extend
    * `RelayClosedError` precisely so this one check covers exhausted-auth, handler-rejection and
    * phase-timeout alike, closing the hot-loop gap RESEARCH found — without it, this retry would
-   * multiply against the auth operator's own retries and repeatedly resend the caller's EVENT to a
-   * hostile relay. Since `event()` returns ordinary relay rejections as values (not errors), the auth
-   * family is the only `RelayClosedError` subtype that can ever reach this operator.
+   * multiply against the auth operator's own retries. The call-scoped auth counter persists across
+   * transient resubscriptions, enforcing the additive `1 + authRetries + retries` EVENT-write bound.
+   * Genuine negative OK verdicts stay values; only client/transport failures reach retry policy.
    */
   protected customRetryOperator<T extends unknown = unknown>(
     times: undefined | boolean | number | RetryConfig,

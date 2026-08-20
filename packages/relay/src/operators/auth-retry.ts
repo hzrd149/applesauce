@@ -93,8 +93,8 @@ export class AuthPhaseGate {
 }
 
 /**
- * Module-level symbol under which an outer operation (`request`, `publish`) hands its {@link AuthPhaseGate}
- * to the inner operation (`req`, `event`) it drives internally, without the gate ever appearing in any
+ * Module-level symbol under which `request` hands its {@link AuthPhaseGate}
+ * to the inner `req` operation it drives, without the gate ever appearing in any
  * public option type.
  */
 export const AUTH_PHASE_GATE = Symbol("auth-phase-gate");
