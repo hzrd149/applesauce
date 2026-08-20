@@ -82,12 +82,8 @@ import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync
 import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
 import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader, ConcordUploadProgress } from "./storage.js";
-import {
-  InviteRevocationPublishError,
-  requireInviteRevocationAck,
-  type ConcordInviteLink,
-  type CreateInviteOptions,
-} from "./invite-manager.js";
+import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
+import { InviteRevocationPublishError, requireInviteRevocationAck } from "./revocation.js";
 
 export interface ConcordSendMessageOptions {
   onUploadProgress?: (progress: ConcordUploadProgress) => void;
