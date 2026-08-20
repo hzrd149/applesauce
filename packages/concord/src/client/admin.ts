@@ -81,6 +81,8 @@ export interface ConcordCommunityAdminOptions {
   /** Seal + wrap + publish a rumor onto the Control Plane (a plaintext seal, so a
    *  later Refounding can re-wrap the signed edition into the new epoch). */
   publish: (rumor: RumorTemplate) => Promise<string>;
+  /** Publish a control rumor only after at least one relay acknowledges it. */
+  publishRequired?: (rumor: RumorTemplate) => Promise<string>;
   /** Mint + persist a private channel's key, before its edition is published — a
    *  key that never reaches `material` is lost on reload. */
   mintChannelKey: (channelId: string, name: string) => void;
@@ -141,12 +143,12 @@ export class ConcordCommunityAdmin {
   /** Publish the next version of an entity, chained to its current head. Versions
    *  must stay contiguous and cite the head's hash — an edition that doesn't link
    *  is an orphan the fold will only ever take as a bootstrap fallback. */
-  async publishEdition(vsk: number, eid: string, content: string): Promise<void> {
+  async publishEdition(vsk: number, eid: string, content: string, required = false): Promise<void> {
     const latest = await this.latestEdition(eid);
     const version = latest ? latest.version + 1 : 1;
     const vac = await this.vacFor(this.pubkey);
     const rumor = await EditionFactory.create({ vsk, eid, version, prevHash: latest?.hash, content, vac });
-    await this.opts.publish(rumor);
+    await (required && this.opts.publishRequired ? this.opts.publishRequired(rumor) : this.opts.publish(rumor));
   }
 
   // ---- metadata (vsk 0) ----------------------------------------------------
@@ -337,7 +339,7 @@ export class ConcordCommunityAdmin {
     }
     const next = links.filter((link) => link !== linkPubkey);
     if (next.length === links.length) return;
-    await this.publishEdition(VSK.INVITE_REGISTRY, eid, JSON.stringify(next));
+    await this.publishEdition(VSK.INVITE_REGISTRY, eid, JSON.stringify(next), true);
   }
 
   // ---- cross-plane composites ---------------------------------------------

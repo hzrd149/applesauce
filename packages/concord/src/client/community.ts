@@ -82,7 +82,12 @@ import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync
 import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
 import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader, ConcordUploadProgress } from "./storage.js";
-import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
+import {
+  InviteRevocationPublishError,
+  requireInviteRevocationAck,
+  type ConcordInviteLink,
+  type CreateInviteOptions,
+} from "./invite-manager.js";
 
 export interface ConcordSendMessageOptions {
   onUploadProgress?: (progress: ConcordUploadProgress) => void;
@@ -468,6 +473,11 @@ export class ConcordCommunity {
         pubkey: this.pubkey,
         uploader: this.uploader,
         publish: (rumor) => this.publishToPlane({ plane: "control" }, rumor, { plaintext: true }),
+        publishRequired: (rumor) =>
+          this.publishToPlane({ plane: "control" }, rumor, {
+            plaintext: true,
+            requiredAckStage: "invite registry unregister",
+          }),
         mintChannelKey: (channelId, name) => {
           this.keys = addChannelKey(this.keys, channelId, name);
           this.onMaterialChange?.(this.keys.material);
@@ -1379,12 +1389,20 @@ export class ConcordCommunity {
     this.signers.addSecretKey(hexToBytes(invite.signerSk));
     const template = await InviteBundleFactory.revoke();
     const signed = finalizeEvent(template, hexToBytes(invite.signerSk));
+    let responses;
+    try {
+      responses = await this.pool.publish(this.transport(), signed, this.streamPublishOptions(signed));
+    } catch (cause) {
+      throw new InviteRevocationPublishError("member bundle publication", [], { cause });
+    }
+    requireInviteRevocationAck("member bundle publication", responses);
     this.eventStore.add(signed);
-    await this.pool.publish(this.transport(), signed, this.streamPublishOptions(signed)).catch((err) => {
-      this.publishLog("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
-      console.warn("bundle revocation publish failed", err);
-    });
-    await this.admin.unregisterInviteLink(invite.signerPubkey);
+    try {
+      await this.admin.unregisterInviteLink(invite.signerPubkey);
+    } catch (cause) {
+      if (cause instanceof InviteRevocationPublishError) throw cause;
+      throw new Error("invite registry unregister failed after bundle publication", { cause });
+    }
 
     const revoked = { ...invite, revoked: true };
     await this.onInviteRevoked?.(revoked);
@@ -1627,11 +1645,9 @@ export class ConcordCommunity {
   async publishToPlane(
     target: WrapTarget,
     rumor: { kind: number; content: string; tags: string[][]; created_at?: number },
-    opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array } = {},
+    opts: { plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array; requiredAckStage?: string } = {},
   ): Promise<string> {
     const { wrap, rumorId, key } = await wrapForTarget(this.keys, target, this.signer, rumor, opts);
-    // Optimistic local echo first, so the UI updates before relays ack.
-    if (!opts.ephemeral) this.onWrap(wrap);
     // The key that finalized this wrap is registered here, from `wrapForTarget`'s own
     // return value (CR-01), so the pubkey `streamPublishOptions` names in `waitForAuth`
     // is answerable by construction for every plane target, present and future. Never
@@ -1642,10 +1658,23 @@ export class ConcordCommunity {
     // `register()` is already idempotent, so this adds no allocation for the common
     // already-registered case.
     this.signers.register([key]);
-    this.pool.publish(this.transport(), wrap, this.streamPublishOptions(wrap)).catch((err) => {
-      this.publishLog("publish failed plane=%s: %s", target.plane, (err as Error)?.message ?? err);
-      console.warn("publish failed", err);
-    });
+    if (opts.requiredAckStage) {
+      let responses;
+      try {
+        responses = await this.pool.publish(this.transport(), wrap, this.streamPublishOptions(wrap));
+      } catch (cause) {
+        throw new InviteRevocationPublishError(opts.requiredAckStage, [], { cause });
+      }
+      requireInviteRevocationAck(opts.requiredAckStage, responses);
+      if (!opts.ephemeral) this.onWrap(wrap);
+    } else {
+      // Optimistic local echo first, so ordinary UI operations update before relays ack.
+      if (!opts.ephemeral) this.onWrap(wrap);
+      this.pool.publish(this.transport(), wrap, this.streamPublishOptions(wrap)).catch((err) => {
+        this.publishLog("publish failed plane=%s: %s", target.plane, (err as Error)?.message ?? err);
+        console.warn("publish failed", err);
+      });
+    }
     return rumorId;
   }
 
