@@ -115,10 +115,18 @@ Plans:
   1. A relay sending a CLOSED reason like `"constructor: ..."` or `"__proto__: ..."` cannot make `parseClosedError` resolve to an inherited `Object.prototype` value — D-07's retry-skip behavior is unaffected by an attacker-chosen prefix.
   2. A consumer of `applesauce-sqlite` who installs only the backend they use (e.g. `better-sqlite3` alone) is not asked to install the other three drivers.
   3. A NIP-29 group pointer on `ws://localhost:4869` round-trips through encode→decode with its port and scheme intact.
-  4. One relay's AUTH rejection in a Concord community no longer leaves `error$` permanently latched — a later successful auth clears it.
+  4. One relay's rejected or thrown AUTH attempt never enters community or private-channel `error$`/`status.error`; those surfaces remain reserved for fatal lifecycle/sync failures, which is the accepted prevention-based restatement of RESID-01's earlier clear-on-recovery wording.
   5. `revoke()`/`revokeBundle()` report a failed publish to the caller instead of unconditionally returning `revoked: true`.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+
+- [ ] 17-01-PLAN.md — Make CLOSED-prefix classification prototype-safe through public retry behavior
+- [ ] 17-02-PLAN.md — Mark all SQLite backend peers optional and prove the packed consumer boundary
+- [ ] 17-03-PLAN.md — Preserve complete normalized group-pointer relay endpoints
+- [ ] 17-04-PLAN.md — Prevent transient AUTH diagnostics from entering fatal Concord UI state
+- [ ] 17-05-PLAN.md — Enforce honest, ordered invite-revocation publication results
 
 ### Phase 18: EVENT Family Re-layer
 
