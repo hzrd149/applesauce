@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, delay, filter, firstValueFrom, from } from "rxjs";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
-import { EventStore } from "applesauce-core";
+import { EventStore, RumorStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers/time";
 import "applesauce-common/casts";
 import type { PublishResponse, Relay, RelayPool } from "applesauce-relay";
@@ -18,6 +18,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
 
 import { ConcordClient } from "../client.js";
+import { ConcordCommunityAdmin } from "../admin.js";
 import { ConcordInviteManager, type ConcordInviteLink } from "../invite-manager.js";
 import type { ConcordCommunityList } from "../../casts/index.js";
 import { memoryStorage } from "../storage.js";
@@ -39,7 +40,9 @@ import {
   newInviteToken,
 } from "../../helpers/invite-bundle.js";
 import { InviteBundleFactory } from "../../factories/invite-bundle.js";
-import type { CommunityListCommunity, ConcordClientStatus, JoinMaterial } from "../../types.js";
+import { EditionFactory } from "../../factories/control.js";
+import { inviteLinksLocator } from "../../helpers/crypto.js";
+import { VSK, type CommunityListCommunity, type CommunityState, type ConcordClientStatus, type JoinMaterial, type Rumor } from "../../types.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
 // Longer than the client's post-sync auto-save debounce, so a single flush has fired.
@@ -179,6 +182,49 @@ async function decryptInviteList(signer: PrivateKeySigner, event: NostrEvent) {
 }
 
 describe("ConcordClient community list (DI, no network)", () => {
+  it("unregister invite requires publishRequired and never falls back to optimistic publish", async () => {
+    const owner = "11".repeat(32);
+    const link = "22".repeat(32);
+    const communityId = "33".repeat(32);
+    const store = new RumorStore();
+    const state: CommunityState = {
+      material: { community_id: communityId, owner, name: "Test", relays: ["wss://fake"], root_secret: "44".repeat(32) },
+      channels: [],
+      roles: [],
+      grants: new Map(),
+      banlist: new Set(),
+      inviteLinks: new Set(),
+      members: new Set([owner]),
+      dissolved: false,
+    };
+    const publish = vi.fn(async (rumor) => {
+      store.add(rumor as Rumor);
+      return (rumor as Rumor).id;
+    });
+    const options = {
+      community: {} as ConstructorParameters<typeof ConcordCommunityAdmin>[0]["community"],
+      store,
+      state: () => state,
+      pubkey: owner,
+      publish,
+      mintChannelKey: vi.fn(),
+    };
+    const admin = new ConcordCommunityAdmin(options);
+
+    await admin.registerInviteLink(link);
+    expect(publish).toHaveBeenCalledTimes(1);
+    publish.mockClear();
+
+    await expect(admin.unregisterInviteLink(link)).rejects.toThrow(/required publication.*publishRequired/i);
+    expect(publish).not.toHaveBeenCalled();
+
+    const publishRequired = vi.fn(async () => "required-id");
+    const configured = new ConcordCommunityAdmin({ ...options, publishRequired });
+    await configured.unregisterInviteLink(link);
+    expect(publishRequired).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("autoUnlock:false — exposes a locked cast, no signer prompt, bootstraps only on app .unlock()", async () => {
     const { signer, decrypt, cid, listEvent, store, client } = await setup();
     await client.start();
