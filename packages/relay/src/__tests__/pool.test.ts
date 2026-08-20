@@ -237,13 +237,13 @@ describe("waitForAuth pass-through", () => {
     expect(publish).toHaveBeenCalledWith(mockEvent, expect.objectContaining({ waitForAuth: pubkeys }));
   });
 
-  it("should pass waitForAuth pubkeys to relay.event", () => {
+  it("should call relay.event without policy options", () => {
     const relay = pool.relay(urls[0]);
     const event = vi.spyOn(relay, "event");
 
-    subscribeSpyTo(pool.event(urls, mockEvent, { waitForAuth: pubkeys }));
+    subscribeSpyTo(pool.event(urls, mockEvent));
 
-    expect(event).toHaveBeenCalledWith(mockEvent, "EVENT", expect.objectContaining({ waitForAuth: pubkeys }));
+    expect(event).toHaveBeenCalledWith(mockEvent);
   });
 
   it("should pass waitForAuth pubkeys to relay.count", () => {
@@ -304,15 +304,6 @@ describe("auth options pass-through (13-07)", () => {
         const spy = vi.spyOn(relay, "count");
         pool.count(urls, { kinds: [1] }, "id1", opts).subscribe({ error: () => {} });
         expect(spy).toHaveBeenCalledWith({ kinds: [1] }, "id1", expect.objectContaining(opts));
-      },
-    ],
-    [
-      "event",
-      (opts) => {
-        const relay = pool.relay(urls[0]);
-        const spy = vi.spyOn(relay, "event");
-        pool.event(urls, mockEvent, opts).subscribe();
-        expect(spy).toHaveBeenCalledWith(mockEvent, "EVENT", expect.objectContaining(opts));
       },
     ],
     [
