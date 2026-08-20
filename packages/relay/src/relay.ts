@@ -161,18 +161,18 @@ export class AuthTimeoutError extends RelayClosedError {
 }
 
 /** NIP-01 machine-readable prefixes that indicate an error condition on CLOSED/OK messages */
-const CLOSED_ERROR_PREFIXES = {
-  "auth-required": AuthRequiredError,
-  unsupported: RelayClosedError,
-  error: RelayClosedError,
-  blocked: RelayClosedError,
-  restricted: RelayClosedError,
-  "rate-limited": RelayClosedError,
-  pow: RelayClosedError,
-  invalid: RelayClosedError,
-  duplicate: RelayClosedError,
-  mute: RelayClosedError,
-} as const;
+const CLOSED_ERROR_PREFIXES = new Map<string, new (reason: string) => RelayClosedError>([
+  ["auth-required", AuthRequiredError],
+  ["unsupported", RelayClosedError],
+  ["error", RelayClosedError],
+  ["blocked", RelayClosedError],
+  ["restricted", RelayClosedError],
+  ["rate-limited", RelayClosedError],
+  ["pow", RelayClosedError],
+  ["invalid", RelayClosedError],
+  ["duplicate", RelayClosedError],
+  ["mute", RelayClosedError],
+]);
 
 /**
  * Parse a NIP-01 machine-readable CLOSED reason string into a typed error.
@@ -180,7 +180,7 @@ const CLOSED_ERROR_PREFIXES = {
  * and the observable should complete rather than error.
  */
 function parseClosedError(reason: string): RelayClosedError | null {
-  const ErrorClass = CLOSED_ERROR_PREFIXES[reason.split(":")[0] as keyof typeof CLOSED_ERROR_PREFIXES];
+  const ErrorClass = CLOSED_ERROR_PREFIXES.get(reason.split(":")[0]);
   if (ErrorClass) return new ErrorClass(reason);
   return null;
 }
