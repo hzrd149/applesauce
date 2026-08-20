@@ -21,12 +21,12 @@ findings changed the plan and are marked **[research]** below.
 
 ### EVENT Family
 
-- [x] **EVT-01**: `event()` performs exactly one EVENT write and one reply, and throws `AuthRequiredError` when the relay refuses, instead of flattening it into `{ok:false, message}`
-- [x] **EVT-02**: `publish()` owns the auth retry loop — it catches `event()`'s throw, runs the handler, waits for auth, and resubscribes to resend
-- [x] **EVT-03**: A publish that times out is retryable by `publish({retries})` — today the synthetic timeout *value* sails past `customRetryOperator`, which only sees errors
-- [x] **EVT-04**: The `AUTH_PHASE_GATE` module-private symbol and the `message`-string round-trip between `event()` and `publish()` are both gone, so a relay-supplied string no longer discriminates between "I declined to try" and "I tried and gave up"
-- [x] **EVT-05**: RAUTH-07's shipped claim (that `event` exposes `onAuthRequired`/`authTimeout`/`authRetries`) is restated with recorded provenance rather than silently edited
-- [x] **EVT-06**: `Relay.sync()`'s SEND path and `RelayGroup.event()` — both of which call `event()` directly and get auth retries for free today — have a deliberate, recorded disposition rather than silently losing them
+- [ ] **EVT-01**: `event()` performs exactly one EVENT write and one reply, and throws `AuthRequiredError` when the relay refuses, instead of flattening it into `{ok:false, message}`
+- [ ] **EVT-02**: `publish()` owns the auth retry loop — it catches `event()`'s throw, runs the handler, waits for auth, and resubscribes to resend
+- [ ] **EVT-03**: A publish that times out is retryable by `publish({retries})` — today the synthetic timeout *value* sails past `customRetryOperator`, which only sees errors
+- [ ] **EVT-04**: The `AUTH_PHASE_GATE` module-private symbol and the `message`-string round-trip between `event()` and `publish()` are both gone, so a relay-supplied string no longer discriminates between "I declined to try" and "I tried and gave up"
+- [ ] **EVT-05**: RAUTH-07's shipped claim (that `event` exposes `onAuthRequired`/`authTimeout`/`authRetries`) is restated with recorded provenance rather than silently edited
+- [ ] **EVT-06**: `Relay.sync()`'s SEND path and `RelayGroup.event()` — both of which call `event()` directly and get auth retries for free today — have a deliberate, recorded disposition rather than silently losing them
 
 ### REQ Family
 
@@ -78,7 +78,7 @@ findings changed the plan and are marked **[research]** below.
 - [x] **RESID-01**: A single relay's AUTH rejection no longer latches a permanent `error$` on an otherwise-working community — there is a clear-on-recovery path, not merely a reset of `started`
 - [x] **RESID-02**: `revoke()`/`revokeBundle()` report a publish failure rather than absorbing it and returning `revoked: true`, so the UI cannot call a link dead while it still resolves
 - [ ] **RESID-03**: The two Phase 13 residuals with reachable behavioral consequence are closed — the negentropy non-auth fallback force-closes open auth phases, and `Relay.sync()`'s RECEIVE branch does not reject with `EmptyError` on a zero-event EOSE
-- [x] **RESID-04**: No comment, doc, or changeset in the shipped packages asserts behavior the code does not have — covering WR-06's publish `error` discriminator, WR-03's false progress-predicate comment, and WR-09's stale `timeout` doc
+- [ ] **RESID-04**: No comment, doc, or changeset in the shipped packages asserts behavior the code does not have — covering WR-06's publish `error` discriminator, WR-03's false progress-predicate comment, and WR-09's stale `timeout` doc
 
 ### Release
 
@@ -136,12 +136,12 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 |-------------|-------|--------|
 | LAYER-01 | Phase 16 | Complete |
 | LAYER-02 | Phase 16 | Complete |
-| EVT-01 | Phase 18 | Complete |
-| EVT-02 | Phase 18 | Complete |
-| EVT-03 | Phase 18 | Complete |
-| EVT-04 | Phase 18 | Complete |
-| EVT-05 | Phase 18 | Complete |
-| EVT-06 | Phase 18 | Complete |
+| EVT-01 | Phase 18 | Gaps Found |
+| EVT-02 | Phase 18 | Gaps Found |
+| EVT-03 | Phase 18 | Gaps Found |
+| EVT-04 | Phase 18 | Gaps Found |
+| EVT-05 | Phase 18 | Gaps Found |
+| EVT-06 | Phase 18 | Gaps Found |
 | REQ-01 | Phase 22 | Pending |
 | REQ-02 | Phase 22 | Pending |
 | REQ-03 | Phase 22 | Pending |
@@ -172,7 +172,7 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | RESID-01 | Phase 17 | Gaps Found |
 | RESID-02 | Phase 17 | Complete |
 | RESID-03 | Phase 24 | Pending |
-| RESID-04 | Phase 18 | Complete |
+| RESID-04 | Phase 18 | Gaps Found |
 | REL-01 | Phase 26 | Pending |
 | REL-02 | Phase 26 | Pending |
 | REL-03 | Phase 26 | Pending |
