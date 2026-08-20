@@ -68,7 +68,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 
 **Hard sequencing.** Phase 16 (the amended D-01) gates every other phase — four requirement clusters cite it directly. Phase 18 (EVENT) lands before Phase 22 (REQ) so the pattern proves on the smaller surface first. Phase 19 (COUNT high-level) lands before Phase 23 (COUNT isolation), which consumes its re-shaped response type. Phase 21 (GROUP) lands before Phase 22 (REQ) — both touch `group.ts`'s `request()`/`subscription()` bodies and the same suspendable clock. Two dependencies came from research rather than the original backlog: Phase 24 (SYNC) needs both Phase 18 and Phase 22, since `Relay.sync()` calls `event()`/`req()` directly, bypassing their high-level siblings; and Phase 20 (AUTH) must close any new terminal auth error class in the same phase that adds it, since `applesauce-loaders`' duck-typed `RELAY_AUTH_ERROR_NAMES` breaks silently rather than at compile time.
 
-- [ ] **Phase 16: Method Layering Foundation & TypeScript 7** - Amend D-01's throw-as-signal rule everywhere it's cited and land the workspace on TypeScript 7 before anything else builds under it
+- [x] **Phase 16: Method Layering Foundation & TypeScript 7** - Amend D-01's throw-as-signal rule everywhere it's cited and land the workspace on TypeScript 7 before anything else builds under it
 - [ ] **Phase 17: Correctness Fixes & Concord Residuals** - Independent relay/sqlite/NIP-29 bug fixes plus two Concord auth/publish-honesty gaps, none gated by the re-layering
 - [ ] **Phase 18: EVENT Family Re-layer** - `event()` sends once and throws; `publish()` becomes sole owner of the auth retry loop
 - [ ] **Phase 19: COUNT Becomes the High-Level Member** - `count()` gains `reconnect`/`retries`/`timeout` and a validated NIP-45 response shape with an HLL merge helper
@@ -272,7 +272,7 @@ Plans:
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
 | 15. Concord Stream-Auth Cleanup | v1.2 | 14/14 | Complete    | 2026-08-18 |
 
-| 16. Method Layering Foundation & TypeScript 7 | v7.0.0 | 7/7 | Gaps found | - |
+| 16. Method Layering Foundation & TypeScript 7 | v7.0.0 | 7/7 | Complete | 2026-08-20 |
 | 17. Correctness Fixes & Concord Residuals | v7.0.0 | 0/TBD | Not started | - |
 | 18. EVENT Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 19. COUNT Becomes the High-Level Member | v7.0.0 | 0/TBD | Not started | - |

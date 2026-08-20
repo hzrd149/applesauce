@@ -4,11 +4,11 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 16
 current_phase_name: Method Layering Foundation & TypeScript 7
-status: blocked
-stopped_at: Completed 16-07-PLAN.md
-last_updated: "2026-08-19T18:51:33.899Z"
-last_activity: 2026-08-19
-last_activity_desc: Build/tests pass; roadmap's no-TS7-source-change criterion needs remediation or override
+status: ready
+stopped_at: Phase 16 verified complete
+last_updated: "2026-08-20T10:38:01Z"
+last_activity: 2026-08-20
+last_activity_desc: Phase 16 passed re-verification after CR-01 fix and accepted TS7 compatibility override
 progress:
   total_phases: 11
   completed_phases: 1
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** v7.0.0 relay-method-layering — Phase 16 verification found one contract gap
+**Current focus:** v7.0.0 relay-method-layering — Phase 16 complete; ready for next phase
 
 ## Current Position
 
 Phase: 16 of 26 (Method Layering Foundation & TypeScript 7)
 Plan: 7 of 7
-Status: Verification gap (9/10)
-Last activity: 2026-08-19 — Build/tests pass; roadmap's no-TS7-source-change criterion needs remediation or override
+Status: Complete (10/10, including 1 accepted override)
+Last activity: 2026-08-20 — Phase 16 passed re-verification after CR-01 fix and accepted TS7 compatibility override
 
 Progress: [██████████] 100%
 
@@ -339,7 +339,7 @@ None yet.
 - 13-13 closed WR-03/WR-04 in sync-loader.ts (RAUTH-08's stall-guard suspension and timer-lifetime gaps), but REQUIREMENTS.md leaves RAUTH-08 In Progress -- plan 13-12 (which depends on 13-13) is the designated closing plan that flips RAUTH-03/07/08 to Complete once every gap-closure plan in this wave sequence has landed
 - [Roadmap, 2026-08-19] v7.0.0's changesets config uses `linked`, not `fixed` — a package bumps only via its own changeset or a real dependency cascade. Phase 26 (Release Coordination) owns an explicit per-package changeset checklist and a `changeset status --verbose --since=master` dry run before cutting, or `applesauce-concord`/`applesauce-react`/`applesauce-sqlite` can silently stay on 6.x while the other 11 packages jump to 7.0.0.
 - [Roadmap, 2026-08-19] v7.0.0 Phase 24 (SYNC) and Phase 20 (AUTH) each carry a dependency confirmed by architecture research rather than the original backlog text — see the Roadmap Evolution entry above for both. Plan-phase for Phase 24 should re-verify `Relay.sync()`'s SEND/RECEIVE call sites have actually been rewired onto Phase 18/22's high-level methods before assuming the rewrite is complete.
-- Phase 16 verification: Roadmap SC3 prohibits TS7-specific production-source changes, but TS7 required five runtime-neutral compatibility edits in ba8a3da6; revise implementation/criterion or record an accepted override.
+- [RESOLVED 2026-08-20] Phase 16 verification: the developer selected option 1 and accepted an explicit verification override for the five runtime-neutral TS7 compatibility edits in ba8a3da6. Four are type-only `Debugger` annotations and one is a NodeNext `.js` side-effect-import extension; all required build, test, and declaration gates pass. Review fix 79c08103 also moved `@types/debug` into the published dependencies of signers and wallet-connect so emitted declarations remain consumable.
 
 ### Quick Tasks Completed
 
