@@ -14,7 +14,7 @@ import { setHiddenContentCache } from "applesauce-core/helpers";
 import { finalizeEvent } from "applesauce-core/helpers/event";
 import { getPublicKey } from "applesauce-core/helpers/keys";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import type { RelayAuthHandler, RelayPool } from "applesauce-relay";
+import type { PublishResponse, RelayAuthHandler, RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 
 import { logger } from "../logger.js";
@@ -50,6 +50,24 @@ export interface ConcordInviteLink {
   /** Unix seconds (D-05), matching the CommunityInvite bundle field. */
   expiresAt?: number;
   revoked: boolean;
+}
+
+/** Structured failure for a required invite-revocation publication stage. */
+export class InviteRevocationPublishError extends AggregateError {
+  constructor(
+    public readonly stage: string,
+    public readonly responses: PublishResponse[],
+    options?: ErrorOptions,
+  ) {
+    super(responses, `${stage} failed: no relay accepted the revocation`, options);
+    this.name = "InviteRevocationPublishError";
+  }
+}
+
+/** A multi-relay revocation is effective once any targeted relay accepts it. */
+export function requireInviteRevocationAck(stage: string, responses: PublishResponse[]): void {
+  if (responses.some((response) => response.ok)) return;
+  throw new InviteRevocationPublishError(stage, responses);
 }
 
 export interface ConcordInviteManagerOptions {
@@ -278,21 +296,22 @@ export class ConcordInviteManager {
     // link's own handler rather than `this.userOnAuthRequired`. Do not conflate them.
     this.signers.addSecretKey(hexToBytes(invite.signerSk));
     const signed = finalizeEvent(await InviteBundleFactory.revoke(), hexToBytes(invite.signerSk));
-    this.eventStore.add(signed);
     // The revoke path merges the extras onto the LINK's own bootstrap relays
     // (falling back to this manager's default set), never the manager's set
     // directly (D-12) — the base-vs-merged split is kept visible here.
     const bootstrapRelays = parseInviteLink(invite.url).bootstrapRelays;
     const base = bootstrapRelays.length ? bootstrapRelays : this.relays;
-    await this.pool
-      .publish(this.transport(base), signed, {
+    let responses: PublishResponse[];
+    try {
+      responses = await this.pool.publish(this.transport(base), signed, {
         waitForAuth: [signed.pubkey],
         onAuthRequired: this.signers.onAuthRequired,
-      })
-      .catch((err) => {
-        this.log("bundle revocation publish failed: %s", (err as Error)?.message ?? err);
-        console.warn("bundle revocation publish failed", err);
       });
+    } catch (cause) {
+      throw new InviteRevocationPublishError("membership-free bundle publication", [], { cause });
+    }
+    requireInviteRevocationAck("membership-free bundle publication", responses);
+    this.eventStore.add(signed);
     return { ...invite, revoked: true };
   }
 
