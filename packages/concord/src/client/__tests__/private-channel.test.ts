@@ -791,10 +791,10 @@ describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (W
   });
 });
 
-// WR-02: with `authenticated$` removed (D-10), `error$` is the only signal an
-// app has that a relay is rejecting a private channel's stream keys. Mirrors
-// community.test.ts's identical WR-02 coverage on the sub-engine.
-describe("ConcordPrivateChannel post-walk auth failure -> error$ (WR-02)", () => {
+// Phase 17 RESID-01 supersedes Phase 15 WR-02's clear-on-recovery reading:
+// transient per-relay AUTH remains operation/diagnostic state and never enters
+// the private channel's fatal lifecycle UI surface.
+describe("ConcordPrivateChannel fatal-only UI error boundary (RESID-01)", () => {
   const AUTH_URL = "wss://pc-error-oracle.test";
 
   /** Records every `subscription()` call's `{ relays, filters, options }` — the
@@ -803,16 +803,18 @@ describe("ConcordPrivateChannel post-walk auth failure -> error$ (WR-02)", () =>
   function authOraclePool(): {
     pool: RelayPool;
     subscriptionCalls: { relays: string[]; filters: unknown; options: Record<string, unknown> }[];
+    authenticate: ReturnType<typeof vi.fn>;
   } {
+    const authenticate = vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+      const pk = await signer.getPublicKey();
+      return { ok: true, pubkey: pk, url: AUTH_URL } as unknown as PublishResponse;
+    });
     const relay = {
       url: AUTH_URL,
       challenge: null,
       challenge$: new BehaviorSubject<string | null>(null),
       isAuthenticated: () => false,
-      authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
-        const pk = await signer.getPublicKey();
-        return { ok: true, pubkey: pk, url: AUTH_URL } as unknown as PublishResponse;
-      }),
+      authenticate,
       getSupported: async () => null,
       sync: () => EMPTY,
       request: () => EMPTY,
@@ -828,7 +830,7 @@ describe("ConcordPrivateChannel post-walk auth failure -> error$ (WR-02)", () =>
       request: () => EMPTY,
       publish: async () => [],
     } as unknown as RelayPool;
-    return { pool, subscriptionCalls };
+    return { pool, subscriptionCalls, authenticate };
   }
 
   /** Synthesizes a `RelayAuthContext`-shaped value the same way a relay's own
@@ -846,7 +848,7 @@ describe("ConcordPrivateChannel post-walk auth failure -> error$ (WR-02)", () =>
     };
   }
 
-  it("a post-walk zero-answer auth rejection reaches error$ immediately with no second walk, and status$'s error leg reflects it", async () => {
+  it("keeps rejected, thrown, and unanswered AUTH out of fatal UI error state", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
     const me = new PrivateKeySigner(generateSecretKey());
@@ -860,7 +862,7 @@ describe("ConcordPrivateChannel post-walk auth failure -> error$ (WR-02)", () =>
       name: "secret",
     };
 
-    const { pool, subscriptionCalls } = authOraclePool();
+    const { pool, subscriptionCalls, authenticate } = authOraclePool();
     const store = new RumorStore();
     const sub = new ConcordPrivateChannel({
       channelKey: channel,
@@ -882,24 +884,55 @@ describe("ConcordPrivateChannel post-walk auth failure -> error$ (WR-02)", () =>
     expect(sub.error$.value).toBeNull();
     expect(sub.phase$.value).toBe("live");
 
-    // AFTER the walk: the live subscription's own recorded handler is asked
-    // about a pubkey this channel holds no signer for at all — plan 15-10's
-    // zero-answer path (WR-03's failNoSigner), reused here to drive WR-02's
-    // steady-state error$ surface with no dependency on a real relay rejection.
     const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
     const onAuthRequired = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    const authors = (latest.filters as { authors?: string[] }[])[0]!.authors!;
+
+    authenticate.mockResolvedValueOnce({ ok: false, message: "denied", from: AUTH_URL });
+    await onAuthRequired(authRequiredCtx(pool, authors, "rejected"));
+    expect(sub.error$.value).toBeNull();
+
+    authenticate.mockRejectedValueOnce(new Error("relay auth transport failed"));
+    await onAuthRequired(authRequiredCtx(pool, authors, "thrown"));
+    expect(sub.error$.value).toBeNull();
+
     const unknownPubkey = "0".repeat(64);
     await onAuthRequired(authRequiredCtx(pool, [unknownPubkey], "live-1"));
-
-    expect(sub.error$.value).not.toBeNull();
-    expect(sub.error$.value).toContain("no signer held");
-    // Still "live" — nothing re-entered the walk's "syncing" phase to surface this.
+    expect(sub.error$.value).toBeNull();
     expect(sub.phase$.value).toBe("live");
 
-    // The message reaches the status$ composite's error leg.
     const status = await firstValueFrom(sub.status$);
-    expect(status.error).toBe(sub.error$.value);
+    expect(status.error).toBeNull();
 
+    sub.dispose();
+  });
+
+  it("still reports a genuine private-channel sync failure through fatal UI state", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: [AUTH_URL] });
+    const sub = new ConcordPrivateChannel({
+      channelKey: { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1, name: "secret" },
+      material: () => g.material,
+      signer: me,
+      pubkey: myPub,
+      pool: servingPool([]),
+      eventStore: new EventStore(),
+      store: new RumorStore(),
+      relays: [AUTH_URL],
+      isAuthorized: (r) => r === ownerPub,
+    });
+    (sub as unknown as { syncContext: () => never }).syncContext = () => {
+      throw new Error("fatal channel sync failure");
+    };
+
+    await sub.start();
+
+    expect(sub.error$.value).toBe("fatal channel sync failure");
+    expect(sub.phase$.value).toBe("error");
+    expect((await firstValueFrom(sub.status$)).error).toBe("fatal channel sync failure");
     sub.dispose();
   });
 });
