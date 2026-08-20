@@ -1708,6 +1708,38 @@ describe("operation-scoped REQ auth (13-02)", () => {
     expect(onAuthRequired).not.toHaveBeenCalled();
   });
 
+  it.each(["constructor: hostile", "__proto__: hostile", "unknown: hostile"])(
+    "FIX-01: treats %s as an untyped graceful close without reconnecting",
+    async (reason) => {
+      const spy = subscribeSpyTo(
+        relay.req([{ kinds: [1] }], { id: "sub1", reconnect: { count: 1, delay: 0 } }),
+        { expectErrors: true },
+      );
+
+      await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+      server.send(["CLOSED", "sub1", reason]);
+
+      await spy.onComplete();
+      expect(spy.receivedError()).toBe(false);
+      expect(server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "sub1")).toHaveLength(1);
+    },
+  );
+
+  it("FIX-01: keeps recognized CLOSED prefixes typed and excluded from reconnect", async () => {
+    const spy = subscribeSpyTo(
+      relay.req([{ kinds: [1] }], { id: "sub1", reconnect: { count: 1, delay: 0 } }),
+      { expectErrors: true },
+    );
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["CLOSED", "sub1", "restricted: not allowed"]);
+
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(RelayClosedError);
+    expect(spy.getError()).not.toBeInstanceOf(AuthRequiredError);
+    expect(server.messages.filter((m: any) => m[0] === "REQ" && m[1] === "sub1")).toHaveLength(1);
+  });
+
   it("D-15: request()'s operation clock is suspended across the auth phase", async () => {
     // Non-vacuity (13-09 Task 3 repair): the auth phase duration (100ms, the handler's own wait below)
     // deliberately EXCEEDS the operation timeout (40ms, passed to request() below) so the two are
