@@ -118,7 +118,7 @@ Plans:
   4. One relay's rejected or thrown AUTH attempt never enters community or private-channel `error$`/`status.error`; those surfaces remain reserved for fatal lifecycle/sync failures, which is the accepted prevention-based restatement of RESID-01's earlier clear-on-recovery wording.
   5. `revoke()`/`revokeBundle()` report a failed publish to the caller instead of unconditionally returning `revoked: true`.
 
-**Plans**: 5/5 plans executed
+**Plans**: 5/6 plans executed — gap closure planned
 
 Plans:
 
@@ -127,6 +127,7 @@ Plans:
 - [x] 17-03-PLAN.md — Preserve complete normalized group-pointer relay endpoints
 - [x] 17-04-PLAN.md — Prevent transient AUTH diagnostics from entering fatal Concord UI state
 - [x] 17-05-PLAN.md — Enforce honest, ordered invite-revocation publication results
+- [ ] 17-06-PLAN.md — Fail closed when required admin publication is not configured
 
 ### Phase 18: EVENT Family Re-layer
 
