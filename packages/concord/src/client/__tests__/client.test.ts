@@ -13,7 +13,7 @@ import { unixNow } from "applesauce-core/helpers/time";
 import "applesauce-common/casts";
 import type { PublishResponse, Relay, RelayPool } from "applesauce-relay";
 import type { Debugger } from "debug";
-import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
+import { finalizeEvent, getEventHash, type NostrEvent } from "applesauce-core/helpers/event";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";
 
@@ -40,9 +40,13 @@ import {
   newInviteToken,
 } from "../../helpers/invite-bundle.js";
 import { InviteBundleFactory } from "../../factories/invite-bundle.js";
-import { EditionFactory } from "../../factories/control.js";
-import { inviteLinksLocator } from "../../helpers/crypto.js";
-import { VSK, type CommunityListCommunity, type CommunityState, type ConcordClientStatus, type JoinMaterial, type Rumor } from "../../types.js";
+import type {
+  CommunityListCommunity,
+  CommunityState,
+  ConcordClientStatus,
+  JoinMaterial,
+  Rumor,
+} from "../../types.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
 // Longer than the client's post-sync auto-save debounce, so a single flush has fired.
@@ -188,7 +192,13 @@ describe("ConcordClient community list (DI, no network)", () => {
     const communityId = "33".repeat(32);
     const store = new RumorStore();
     const state: CommunityState = {
-      material: { community_id: communityId, owner, name: "Test", relays: ["wss://fake"], root_secret: "44".repeat(32) },
+      material: {
+        community_id: communityId,
+        owner,
+        name: "Test",
+        relays: ["wss://fake"],
+        root_secret: "44".repeat(32),
+      },
       channels: [],
       roles: [],
       grants: new Map(),
@@ -198,8 +208,10 @@ describe("ConcordClient community list (DI, no network)", () => {
       dissolved: false,
     };
     const publish = vi.fn(async (rumor) => {
-      store.add(rumor as Rumor);
-      return (rumor as Rumor).id;
+      const stored = { ...rumor, pubkey: owner, id: "" } as Rumor;
+      stored.id = getEventHash(stored);
+      store.add(stored);
+      return stored.id;
     });
     const options = {
       community: {} as ConstructorParameters<typeof ConcordCommunityAdmin>[0]["community"],

@@ -148,7 +148,13 @@ export class ConcordCommunityAdmin {
     const version = latest ? latest.version + 1 : 1;
     const vac = await this.vacFor(this.pubkey);
     const rumor = await EditionFactory.create({ vsk, eid, version, prevHash: latest?.hash, content, vac });
-    await (required && this.opts.publishRequired ? this.opts.publishRequired(rumor) : this.opts.publish(rumor));
+    if (required) {
+      if (!this.opts.publishRequired)
+        throw new Error("required publication is not configured: publishRequired is needed for this stage");
+      await this.opts.publishRequired(rumor);
+    } else {
+      await this.opts.publish(rumor);
+    }
   }
 
   // ---- metadata (vsk 0) ----------------------------------------------------
