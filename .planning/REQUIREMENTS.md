@@ -71,7 +71,7 @@ findings changed the plan and are marked **[research]** below.
 
 - [x] **FIX-01**: `parseClosedError`'s prefix lookup cannot reach the prototype chain at all (a `null`-prototype map or `Object.hasOwn` guard), rather than filtering `constructor`/`__proto__` by name and leaving the next inherited key open
 - [x] **FIX-02**: `applesauce-sqlite` declares its four SQLite drivers optional via `peerDependenciesMeta`, so a consumer installs only the backend it uses
-- [ ] **FIX-03**: NIP-29 group identifiers round-trip their port and protocol — `ws://localhost:4869` survives encode→decode instead of becoming `wss://localhost`
+- [x] **FIX-03**: NIP-29 group identifiers round-trip their port and protocol — `ws://localhost:4869` survives encode→decode instead of becoming `wss://localhost`
 
 ### Review Residuals
 
@@ -168,7 +168,7 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | GROUP-05 | Phase 21 | Pending |
 | FIX-01 | Phase 17 | Complete |
 | FIX-02 | Phase 17 | Complete |
-| FIX-03 | Phase 17 | Pending |
+| FIX-03 | Phase 17 | Complete |
 | RESID-01 | Phase 17 | Pending |
 | RESID-02 | Phase 17 | Pending |
 | RESID-03 | Phase 24 | Pending |
