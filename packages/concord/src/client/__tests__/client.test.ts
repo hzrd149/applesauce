@@ -11,7 +11,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers/time";
 import "applesauce-common/casts";
-import type { Relay, RelayPool } from "applesauce-relay";
+import type { PublishResponse, Relay, RelayPool } from "applesauce-relay";
 import type { Debugger } from "debug";
 import { finalizeEvent, type NostrEvent } from "applesauce-core/helpers/event";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -48,7 +48,7 @@ const settleFlush = () => new Promise((r) => setTimeout(r, 600));
 // A RelayPool stand-in whose per-relay methods are inert (no sockets) — the client's
 // list fetch (`request`) completes empty; we feed the 13302 into the store by hand.
 // `publish` records every event so tests can count kind-13302 republishes.
-function fakePool(opts: { challenge?: string } = {}): {
+function fakePool(opts: { challenge?: string; publishResponses?: PublishResponse[] } = {}): {
   pool: RelayPool;
   published: NostrEvent[];
   authenticatedPubkeys: string[];
@@ -110,7 +110,7 @@ function fakePool(opts: { challenge?: string } = {}): {
     publish: vi.fn(async (_relays: string[], event: NostrEvent, options: Record<string, unknown> = {}) => {
       published.push(event);
       publishOptions.push(options);
-      return [];
+      return opts.publishResponses ?? [{ ok: true, from: "wss://fake" }];
     }),
   } as unknown as RelayPool;
   return { pool, published, authenticatedPubkeys, subscriptionOptions, publishOptions };
@@ -695,6 +695,91 @@ describe("ConcordClient community list (DI, no network)", () => {
     expect(doc.tombstones).toContainEqual({ token: invite.token, community_id: community.communityId });
 
     client.stop();
+  });
+
+  it.each([
+    ["empty", []],
+    [
+      "all-failed",
+      [
+        { ok: false, from: "wss://one", message: "rejected", error: new Error("one") },
+        { ok: false, from: "wss://two", message: "blocked", error: new Error("two") },
+      ],
+    ],
+  ] satisfies Array<[string, PublishResponse[]]>)
+  ("membership-free revocation publish rejects %s responses without local tombstones", async (_name, responses) => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const store = new EventStore();
+    const add = vi.spyOn(store, "add");
+    const { pool, published } = fakePool({ publishResponses: responses });
+    const manager = new ConcordInviteManager({
+      signer,
+      pool,
+      eventStore: store,
+      relays: ["wss://fake"],
+      getCommunity: () => undefined,
+    });
+    const linkSk = generateSecretKey();
+    const signerPubkey = getPublicKey(linkSk);
+    const token = newInviteToken();
+    const invite: ConcordInviteLink = {
+      token: bytesToHex(token),
+      signerSk: bytesToHex(linkSk),
+      signerPubkey,
+      communityId: "d".repeat(64),
+      url: buildInviteLink("https://app.example", signerPubkey, token, ["wss://fake"]),
+      createdAt: unixNow(),
+      revoked: false,
+    };
+
+    const rejection = await manager.revoke(invite).catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(AggregateError);
+    expect((rejection as AggregateError).message).toContain("membership-free bundle publication");
+    expect((rejection as AggregateError).errors).toEqual(responses);
+    expect(add.mock.calls.some(([event]) => event.kind === INVITE_BUNDLE_KIND && event.pubkey === signerPubkey)).toBe(false);
+    expect(inviteListPublishes(published)).toEqual([]);
+  });
+
+  it("membership-free revocation publish accepts partial success before local tombstones", async () => {
+    const responses: PublishResponse[] = [
+      { ok: false, from: "wss://one", message: "rejected" },
+      { ok: true, from: "wss://two", message: "saved" },
+    ];
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const store = new EventStore();
+    const add = vi.spyOn(store, "add");
+    const { pool, published } = fakePool({ publishResponses: responses });
+    const manager = new ConcordInviteManager({
+      signer,
+      pool,
+      eventStore: store,
+      relays: ["wss://fake"],
+      getCommunity: () => undefined,
+    });
+    const linkSk = generateSecretKey();
+    const signerPubkey = getPublicKey(linkSk);
+    const token = newInviteToken();
+    const invite: ConcordInviteLink = {
+      token: bytesToHex(token),
+      signerSk: bytesToHex(linkSk),
+      signerPubkey,
+      communityId: "d".repeat(64),
+      url: buildInviteLink("https://app.example", signerPubkey, token, ["wss://fake"]),
+      createdAt: unixNow(),
+      revoked: false,
+    };
+
+    const revoked = await manager.revoke(invite);
+
+    expect(revoked.revoked).toBe(true);
+    const bundleAdd = add.mock.calls.findIndex(
+      ([event]) => event.kind === INVITE_BUNDLE_KIND && event.pubkey === signerPubkey,
+    );
+    const privateListAdd = add.mock.calls.findIndex(([event]) => event.kind === INVITE_LIST_KIND);
+    expect(bundleAdd).toBeGreaterThanOrEqual(0);
+    expect(privateListAdd).toBeGreaterThan(bundleAdd);
+    expect(inviteListPublishes(published)).toHaveLength(1);
   });
 
   // A leave on device A must stick when device B loads: B's mirror still holds the membership, so
