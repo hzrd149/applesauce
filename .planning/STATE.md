@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 18
-current_phase_name: event-family-re-layer
-status: verifying
-stopped_at: Phase 18 verification found 1 gap (12/13)
-last_updated: "2026-08-20T16:12:24.942Z"
+current_phase: 19
+current_phase_name: COUNT Becomes the High-Level Member
+status: planning
+stopped_at: Phase 18 passed re-verification (13/13); ready to plan Phase 19
+last_updated: "2026-08-20T16:22:35.613Z"
 last_activity: 2026-08-20
-last_activity_desc: Phase 18 execution started
+last_activity_desc: Phase 18 complete, transitioned to Phase 19
 progress:
   total_phases: 11
   completed_phases: 3
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 
 ## Current Position
 
-Phase: 18 (event-family-re-layer) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-08-20 — Phase 18 execution started
+Phase: 19 — COUNT Becomes the High-Level Member
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-20 — Phase 18 complete, transitioned to Phase 19
 
 Progress: [██████████] 100%
 
@@ -364,7 +364,7 @@ None yet.
 - [Roadmap, 2026-08-19] v7.0.0's changesets config uses `linked`, not `fixed` — a package bumps only via its own changeset or a real dependency cascade. Phase 26 (Release Coordination) owns an explicit per-package changeset checklist and a `changeset status --verbose --since=master` dry run before cutting, or `applesauce-concord`/`applesauce-react`/`applesauce-sqlite` can silently stay on 6.x while the other 11 packages jump to 7.0.0.
 - [Roadmap, 2026-08-19] v7.0.0 Phase 24 (SYNC) and Phase 20 (AUTH) each carry a dependency confirmed by architecture research rather than the original backlog text — see the Roadmap Evolution entry above for both. Plan-phase for Phase 24 should re-verify `Relay.sync()`'s SEND/RECEIVE call sites have actually been rewired onto Phase 18/22's high-level methods before assuming the rewrite is complete.
 - [RESOLVED 2026-08-20] Phase 16 verification: the developer selected option 1 and accepted an explicit verification override for the five runtime-neutral TS7 compatibility edits in ba8a3da6. Four are type-only `Debugger` annotations and one is a NodeNext `.js` side-effect-import extension; all required build, test, and declaration gates pass. Review fix 79c08103 also moved `@types/debug` into the published dependencies of signers and wallet-connect so emitted declarations remain consumable.
-- Phase 18 verification gap: publish generic retry must whitelist typed reply-timeout and reconnectable transport failures and reject arbitrary non-transient errors without resend.
+- [Phase 18]: Retry classification gap closed in 95c2531b — publish positively whitelists reply timeout and reconnectable transport loss, while arbitrary errors reject without resend.
 
 ### Quick Tasks Completed
 
@@ -460,8 +460,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 ## Session Continuity
 
 Last session: 2026-08-20T16:12:24.921Z
-Stopped at: Phase 18 verification found 1 gap (12/13)
-Resume file: .planning/phases/18-event-family-re-layer/18-VERIFICATION.md
+Stopped at: Phase 18 passed re-verification (13/13); ready to plan Phase 19
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.

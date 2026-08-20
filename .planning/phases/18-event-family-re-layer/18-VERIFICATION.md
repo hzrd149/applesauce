@@ -1,30 +1,25 @@
 ---
 phase: 18-event-family-re-layer
-verified: 2026-08-20T16:10:38Z
-status: gaps_found
-score: 12/13 must-haves verified
+verified: 2026-08-20T16:24:00Z
+status: passed
+score: 13/13 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "publish() retries only explicit transient reply-timeout and reconnectable transport failures, while terminal or unknown failures do not consume generic retry"
-    status: partial
-    reason: "The retry boundary is owned by publish(), but customRetryOperator is an exclusion list: it skips only RelayClosedError and retries every other thrown error. This does not implement the plan's explicit transient/terminal classifier and can retry an unexpected programming or parsing error."
-    artifacts:
-      - path: "packages/relay/src/relay.ts"
-        issue: "customRetryOperator.delay returns a retry notifier for every error that is not a RelayClosedError; it does not positively require RelayEventTimeoutError or a reconnectable socket/transport error."
-      - path: "packages/relay/src/__tests__/relay.test.ts"
-        issue: "Tests cover known terminal auth errors, verdict values, timeout, and connection errors, but do not prove that an arbitrary non-transient Error is rejected without another EVENT write."
-    missing:
-      - "Add an explicit retryability predicate/whitelist for RelayEventTimeoutError and reconnectable transport failures."
-      - "Add a real-wire regression showing an unexpected non-transient error produces no resend."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 12/13
+  gaps_closed:
+    - "publish() now retries only RelayEventTimeoutError and explicitly reconnectable unclean transport closes; arbitrary errors reject after one EVENT frame"
+  gaps_remaining: []
+  regressions: []
 ---
 
 # Phase 18: EVENT Family Re-layer Verification Report
 
 **Phase Goal:** `event()` becomes exactly one EVENT write and one reply; `publish()` becomes the sole owner of the retry, auth, and timeout policy around it.
-**Verified:** 2026-08-20T16:10:38Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-08-20T16:24:00Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure in `95c2531b`
 
 ## Goal Achievement
 
@@ -37,7 +32,7 @@ gaps:
 | 3 | A written attempt times out with a typed client error, while readiness delay and clean close do not fabricate a response. | ✓ VERIFIED | `RelayEventTimeoutError` at `relay.ts:171` and per-attempt timeout at `relay.ts:1229`; the focused timeout/readiness/close tests pass in the full suite. |
 | 4 | `publish()` owns call-scoped auth, retry/reconnect, and suspendable whole-operation timeout policy. | ✓ VERIFIED | Gate/counter/attempt composition is local to `publish()` at `relay.ts:1535-1559`; `event()` has no option bag. |
 | 5 | Auth and transient budgets are additive, and known terminal auth classifications do not consume generic retry. | ✓ VERIFIED | Call-scoped auth counter plus `RelayClosedError` skip; real-wire additive-budget and auth-exhaustion tests pass. |
-| 6 | Generic retry admits only explicit transient timeout/reconnectable transport failures. | ✗ FAILED | `customRetryOperator` at `relay.ts:1399-1413` retries every non-`RelayClosedError`, including unknown errors; no positive retryability classifier exists. |
+| 6 | Generic retry admits only explicit transient timeout/reconnectable transport failures. | ✓ VERIFIED | `isRetryablePublishError()` positively admits only `RelayEventTimeoutError` or an unclean close-shaped transport error. The new real-wire arbitrary-error test passes with exactly one EVENT, and a deliberate retry-by-default mutation makes that named test fail. |
 | 7 | Synchronous auth handling resends through a fresh attempt and concurrent publish calls have independent state. | ✓ VERIFIED | `defer(() => this.event(event))` creates fresh attempts; synchronous resend and concurrency tests pass. |
 | 8 | `RelayGroup.event()` makes one raw attempt per relay and converts failures without adding policy. | ✓ VERIFIED | `group.ts:234-235` delegates to `relay.event(event)` through the aggregation error boundary; group raw/high test passes. |
 | 9 | Group/Pool raw event surfaces reject policy options, while publish surfaces accept and forward policy. | ✓ VERIFIED | Narrow signatures in `group.ts:234`, `pool.ts:156`; publish forwarding at `group.ts:260` and `pool.ts:172`; declaration build passes. |
@@ -46,18 +41,18 @@ gaps:
 | 12 | Held changesets truthfully describe auth ownership, timeout rejection, and verdict error semantics. | ✓ VERIFIED | All five inspected changesets contain their mapped wording and target only `applesauce-relay`. |
 | 13 | Obsolete EVENT symbol threading/message reconstruction is absent while shared-family machinery remains available elsewhere. | ✓ VERIFIED | Region-scoped searches found no `AUTH_PHASE_GATE`, `WithAuthPhaseGate`, `AuthRequiredSignal`, or message-prefix reconstruction in EVENT/publish regions. |
 
-**Score:** 12/13 truths verified (0 present, behavior-unverified)
+**Score:** 13/13 truths verified (0 present, behavior-unverified)
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |---|---|---|---|
-| `packages/relay/src/relay.ts` | Raw EVENT implementation and high-level publish policy | ⚠️ PARTIAL | Substantive and wired; retry classification is broader than the required transient whitelist. |
+| `packages/relay/src/relay.ts` | Raw EVENT implementation and high-level publish policy | ✓ VERIFIED | Substantive and wired; the positive retry whitelist is consumed by `customRetryOperator()`, which is applied by `publish()`. |
 | `packages/relay/src/types.ts` | Narrow event surface and typed verdict contract | ✓ VERIFIED | `PublishOptions`, `PublishResponse`, and error classes are wired and declarations build. |
 | `packages/relay/src/operators/auth-retry.ts` | Shared auth machinery without EVENT gate threading | ✓ VERIFIED | `publish()` consumes it locally; EVENT region has no shared-symbol threading. |
 | `packages/relay/src/group.ts` | Raw-event/high-level-publish aggregation split | ✓ VERIFIED | Both branches delegate to the correct Relay method. |
 | `packages/relay/src/pool.ts` | Narrow forwarded public signatures | ✓ VERIFIED | Event forwards without options; publish forwards options. |
-| Relay test files | Real-wire and forwarding regression evidence | ✓ VERIFIED | All 11 relay test files pass, 314 tests total. |
+| Relay test files | Real-wire and forwarding regression evidence | ✓ VERIFIED | All 11 relay test files pass, 315 tests total, including arbitrary-error no-resend. |
 | Historic decision/requirement files | D-01/D-07/RAUTH-07 provenance | ✓ VERIFIED | Dated Phase 18 amendments present. |
 | Five EVENT changesets | One-change truthful release metadata | ✓ VERIFIED | Exact bodies and package scopes inspected. |
 
@@ -80,9 +75,11 @@ Not applicable: this phase changes a relay protocol API and policy flow, not a d
 
 | Behavior | Command | Result | Status |
 |---|---|---|---|
-| Full relay behavioral suite | `pnpm --filter applesauce-relay test` | 11 files, 314 tests passed | ✓ PASS |
+| Full relay behavioral suite | `pnpm --filter applesauce-relay test` | 11 files, 315 tests passed | ✓ PASS |
 | Public declarations compile | `pnpm --filter applesauce-relay build` | `tsc` exit 0 | ✓ PASS |
 | EVENT/publish obsolete-symbol absence | region-scoped `sed` + `rg` checks | no forbidden matches | ✓ PASS |
+| Arbitrary non-transient failure | named Vitest regression | rejects the original error; exactly one EVENT frame | ✓ PASS |
+| Retry-classifier mutation gate | replace positive whitelist guard with retry-by-default guard, run the named regression, then restore | named test failed (timeout), proving the no-resend oracle detects the regression | ✓ PASS |
 
 ### Probe Execution
 
@@ -106,7 +103,6 @@ No Phase 18 requirement is orphaned: all seven roadmap-mapped IDs appear in plan
 
 | File | Line | Pattern | Severity | Impact |
 |---|---|---|---|---|
-| `packages/relay/src/relay.ts` | 1407 | Retry-by-default for all errors except `RelayClosedError` | 🛑 Blocker | Unexpected non-transient failures can be replayed, contradicting the explicit transient classifier contract. |
 | `packages/relay/src/__tests__/relay.test.ts` | 1208 | Removed third `event()` argument still supplied in a runtime-only test | ⚠️ Warning | The package build excludes tests, so this is not compile-time evidence of the narrowed API; JavaScript silently ignores the extra argument. |
 
 No unreferenced `TBD`, `FIXME`, or `XXX` markers were found in the phase-modified files.
@@ -117,9 +113,9 @@ None. The phase behavior is protocol-level and covered by runnable tests; the re
 
 ### Gaps Summary
 
-The EVENT family is substantially re-layered and all roadmap requirements have implementation evidence. The phase cannot pass its stricter plan contract yet because the generic retry operator is not a positive transient classifier: it retries unknown non-`RelayClosedError` failures. Add a retryability whitelist and a non-transient no-resend regression. This gap is not deferred by any later milestone phase; later phases address other method families and do not promise to repair EVENT retry classification.
+No blocking gaps remain. The previous retry-classification gap is closed by a positive whitelist and a real-wire arbitrary-error no-resend regression. Full relay tests, declaration build, artifact checks, exact method-boundary wiring checks, provenance/changeset audits, and the retry-classifier mutation gate all pass.
 
 ---
 
-_Verified: 2026-08-20T16:10:38Z_
+_Verified: 2026-08-20T16:24:00Z_
 _Verifier: the agent (gsd-verifier)_
