@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 17
 current_phase_name: correctness-fixes-concord-residuals
 status: executing
-stopped_at: Completed 17-03-PLAN.md
-last_updated: "2026-08-20T12:02:55.315Z"
+stopped_at: Completed 17-04-PLAN.md
+last_updated: "2026-08-20T12:14:47.587Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 9
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 ## Current Position
 
 Phase: 17 (correctness-fixes-concord-residuals) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-20 — Phase 17 execution started
 
-Progress: [████████░░] 83%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -133,6 +133,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 17 P01 | 2m | 2 tasks | 3 files |
 | Phase 17 P02 | 4m | 2 tasks | 3 files |
 | Phase 17 P03 | 4m | 2 tasks | 3 files |
+| Phase 17 P04 | 11m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -322,6 +323,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Keep CLOSED prefix extension private while using a mutable Map for exact-key classification.
 - [Phase ?]: 17-02: Keep all four SQLite backends as range-preserving optional peers and verify the published tarball in an isolated npm consumer.
 - [Phase ?]: 17-03: Group-pointer compatibility encoding omits only a reconstructible default wss scheme while preserving all endpoint identity components.
+- [Phase ?]: Prevention supersedes RESID-01's earlier clear-on-recovery interpretation: transient AUTH never enters fatal UI state.
+- [Phase ?]: StreamSigners retains operation diagnostics without community or private-channel onAuthFailure UI sinks.
 
 ### Pending Todos
 
@@ -440,8 +443,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-20T12:02:55.296Z
-Stopped at: Completed 17-03-PLAN.md
+Last session: 2026-08-20T12:14:47.567Z
+Stopped at: Completed 17-04-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
