@@ -2,4 +2,4 @@
 "applesauce-relay": minor
 ---
 
-`PublishResponse` gains an optional `error` field carrying the original error object alongside the existing `message` string.
+Attach typed errors to relay rejection verdicts and RelayGroup-converted failures.
