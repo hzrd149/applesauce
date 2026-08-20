@@ -5,7 +5,7 @@
 // is covered by the puppeteer drivers.
 
 import { describe, expect, it, vi } from "vitest";
-import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, Subscription, firstValueFrom } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Observable, Subject, Subscription, firstValueFrom, throwError } from "rxjs";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
@@ -3300,6 +3300,7 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     subscriptionCalls: { relays: string[]; filters: { authors?: string[] }[]; options: Record<string, unknown> }[];
     requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[];
     authCalls: { pubkey: string; url: string }[];
+    authenticate: ReturnType<typeof vi.fn>;
   } {
     const subscriptionCalls: {
       relays: string[];
@@ -3308,16 +3309,17 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     }[] = [];
     const requestCalls: { filters: { authors?: string[] }[]; options: Record<string, unknown> }[] = [];
     const authCalls: { pubkey: string; url: string }[] = [];
+    const authenticate = vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
+      const pk = await signer.getPublicKey();
+      authCalls.push({ pubkey: pk, url: AUTH_URL });
+      return { ok: true, pubkey: pk, url: AUTH_URL } as unknown as PublishResponse;
+    });
     const relay = {
       url: AUTH_URL,
       challenge: null,
       challenge$: new BehaviorSubject<string | null>(null),
       isAuthenticated: () => false,
-      authenticate: vi.fn(async (signer: { getPublicKey: () => Promise<string> }) => {
-        const pk = await signer.getPublicKey();
-        authCalls.push({ pubkey: pk, url: AUTH_URL });
-        return { ok: true, pubkey: pk, url: AUTH_URL } as unknown as PublishResponse;
-      }),
+      authenticate,
       getSupported: async () => null,
       sync: () => EMPTY,
       request: (filters: unknown, options: Record<string, unknown> = {}) => {
@@ -3337,7 +3339,7 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
       request: (_relays: string[], filters: unknown) => relay.request(filters),
       publish: okAll,
     } as unknown as RelayPool;
-    return { pool, subscriptionCalls, requestCalls, authCalls };
+    return { pool, subscriptionCalls, requestCalls, authCalls, authenticate };
   }
 
   /** Synthesizes a `RelayAuthContext`-shaped value the way a relay's own
@@ -3398,15 +3400,13 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     community.dispose();
   });
 
-  // WR-02: with `authenticated$` removed (D-10), `error$` is the only signal an
-  // app has that a relay is rejecting the community's stream keys. Before this
-  // plan, a rejection occurring at any point AFTER `start()`'s walk completed
-  // was invisible until the NEXT walk read the latched `authFailure` field —
-  // this proves the fix surfaces it immediately, with no second walk.
-  it("a post-walk zero-answer auth rejection reaches error$ immediately with no second start() call, and status$'s error leg reflects it (WR-02)", async () => {
+  // Phase 17 RESID-01 supersedes Phase 15 WR-02's clear-on-recovery reading:
+  // transient per-relay AUTH is operation/diagnostic state, so preventing it
+  // from entering the fatal UI error surface is stronger than clearing it later.
+  it("keeps rejected, thrown, and unanswered AUTH out of fatal UI error state (RESID-01)", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
-    const { pool, subscriptionCalls } = authOraclePool();
+    const { pool, subscriptionCalls, authenticate } = authOraclePool();
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
 
     const community = new ConcordCommunity({
@@ -3427,24 +3427,50 @@ describe("ConcordCommunity scoped-AUTH oracle — CAUTH-01/02/04", () => {
     expect(community.error$.value).toBeNull();
     expect(community.phase$.value).toBe("live");
 
-    // AFTER the walk: the live subscription's own recorded handler is asked
-    // about a pubkey this community holds no signer for at all — plan 15-10's
-    // zero-answer path (WR-03's failNoSigner), reused here to drive WR-02's
-    // steady-state error$ surface with no dependency on a real relay rejection.
     const latest = subscriptionCalls[subscriptionCalls.length - 1]!;
     const onAuthRequired = latest.options.onAuthRequired as (ctx: unknown) => Promise<void>;
+    const authors = latest.filters[0]!.authors!;
+
+    authenticate.mockResolvedValueOnce({ ok: false, message: "denied", from: AUTH_URL });
+    await onAuthRequired(authRequiredCtx(pool, authors, "rejected"));
+    expect(community.error$.value).toBeNull();
+
+    authenticate.mockRejectedValueOnce(new Error("relay auth transport failed"));
+    await onAuthRequired(authRequiredCtx(pool, authors, "thrown"));
+    expect(community.error$.value).toBeNull();
+
     const unknownPubkey = "0".repeat(64);
     await onAuthRequired(authRequiredCtx(pool, [unknownPubkey], "live-1", [unknownPubkey]));
-
-    expect(community.error$.value).not.toBeNull();
-    expect(community.error$.value).toContain("no signer held");
-    // Still "live" — nothing re-entered start()'s "syncing" phase to surface this.
+    expect(community.error$.value).toBeNull();
     expect(community.phase$.value).toBe("live");
 
-    // The message reaches the status$ composite's error leg.
     const status = await firstValueFrom(community.status$);
-    expect(status.error).toBe(community.error$.value);
+    expect(status.error).toBeNull();
 
+    community.dispose();
+  });
+
+  it("still reports a genuine community sync failure through fatal UI state", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: [AUTH_URL] });
+    const pool = fakePool();
+    (pool.relay(AUTH_URL) as unknown as { request: unknown }).request = () =>
+      throwError(() => new Error("fatal sync failure"));
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: [AUTH_URL],
+    });
+
+    await community.start();
+
+    expect(community.error$.value).toBe("fatal sync failure");
+    expect(community.phase$.value).toBe("error");
+    expect((await firstValueFrom(community.status$)).error).toBe("fatal sync failure");
     community.dispose();
   });
 
