@@ -210,6 +210,8 @@ export type AuthRetryErrors = {
 
 /** Configuration for the {@link authRetry} operator */
 export type AuthRetryConfig<T> = {
+  /** Optional call-scoped counter shared across outer retry resubscriptions. */
+  counter?: { consecutive: number };
   /** What auth state to wait for. `false` terminates immediately without invoking the handler (RAUTH-06) */
   waitForAuth?: AuthRequirement;
   /** Invoked once per auth phase, even when `waitForAuth` is already satisfied (D-11) */
@@ -257,7 +259,11 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
     defer(() => {
       // Consecutive auth-failure counter. Lives in this per-subscription closure only — no relay-scoped
       // state — so concurrent operations never share or dedupe an auth outcome (RAUTH-05).
-      let consecutive = 0;
+      let consecutive = config.counter?.consecutive ?? 0;
+      const setConsecutive = (value: number) => {
+        consecutive = value;
+        if (config.counter) config.counter.consecutive = value;
+      };
 
       const runPhase = (signal: AuthRequiredSignal): Observable<never> => {
         // D-05: hoisted above both early returns so even a short-circuit path (opted out, retries
@@ -284,7 +290,7 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
           return throwError(() => config.errors.exhausted(signal.reason));
         }
 
-        consecutive++;
+        setConsecutive(consecutive + 1);
         // D-05: `phase n/N` uses the post-increment counter over the configured budget.
         const phase = `phase ${consecutive}/${authRetries}`;
 
@@ -378,7 +384,7 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
         tap((value) => {
           // D-07: the consecutive-counter reset intentionally emits no line of its own — the per-line
           // phase counter restarting at 1 on the next auth phase is what makes the reset observable.
-          if (config.isProgress(value)) consecutive = 0;
+          if (config.isProgress(value)) setConsecutive(0);
         }),
       );
     });

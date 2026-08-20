@@ -876,12 +876,14 @@ export class Relay {
     opts: RelayAuthOptions | undefined,
     gate: AuthPhaseGate,
     isProgress: ProgressPredicate<T>,
+    counter?: { consecutive: number },
   ): OperatorFunction<T | AuthRequiredSignal, T> {
     const waitForAuth = opts?.waitForAuth ?? true;
     const authTimeout = opts?.authTimeout ?? 30_000;
     const authRetries = opts?.authRetries ?? 1;
 
     return authRetry<T>({
+      counter,
       waitForAuth,
       onAuthRequired: opts?.onAuthRequired,
       authTimeout,
@@ -1534,6 +1536,7 @@ export class Relay {
     // D-07/D-15: all policy state is created once for this publish call. event() remains the raw,
     // readiness-aware one-attempt primitive and knows nothing about this gate or these options.
     const gate = new AuthPhaseGate();
+    const authCounter = { consecutive: 0 };
     const describeRequest = (): RelayAuthWireRequest => ({ verb: "EVENT", event });
     const attempt = defer(() =>
       this.event(event).pipe(
@@ -1545,7 +1548,7 @@ export class Relay {
 
     return lastValueFrom(
       attempt.pipe(
-        this.authRetryOperator(describeRequest, opts, gate, () => true),
+        this.authRetryOperator(describeRequest, opts, gate, () => true, authCounter),
         // Retry the publish until it succeeds or the number of retries is reached. D-07: with
         // customRetryOperator's RelayClosedError skip, terminal auth failures are never retried here.
         this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, this.publishRetry),
