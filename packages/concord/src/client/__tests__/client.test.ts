@@ -651,6 +651,62 @@ describe("ConcordClient community list (DI, no network)", () => {
     client.stop();
   });
 
+  it("member revocation publish failure skips unregister and all later local tombstones", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const store = new EventStore();
+    const add = vi.spyOn(store, "add");
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), relays: ["wss://fake"] });
+    await client.start();
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    await settle();
+    const invite = await client.invites.create(community.communityId, { base: "https://app.example" });
+    await settle();
+    published.length = 0;
+    add.mockClear();
+    vi.mocked(pool.publish).mockResolvedValueOnce([]);
+
+    const rejection = await client.invites.revoke(invite).catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(AggregateError);
+    expect((rejection as AggregateError).message).toContain("member bundle publication");
+    expect(add.mock.calls.some(([event]) => event.kind === INVITE_BUNDLE_KIND && event.pubkey === invite.signerPubkey)).toBe(false);
+    expect(inviteListPublishes(published)).toEqual([]);
+    expect(community.state$.value.inviteLinks.has(invite.signerPubkey)).toBe(true);
+    client.stop();
+  });
+
+  it("member revocation reports unregister failure after publishing the bundle but before private tombstoning", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const store = new EventStore();
+    const add = vi.spyOn(store, "add");
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), relays: ["wss://fake"] });
+    await client.start();
+    const community = await client.createNewCommunity("Test", "hi", ["wss://fake"]);
+    await settle();
+    const invite = await client.invites.create(community.communityId, { base: "https://app.example" });
+    await settle();
+    published.length = 0;
+    add.mockClear();
+    vi.mocked(pool.publish)
+      .mockResolvedValueOnce([
+        { ok: false, from: "wss://one", message: "rejected" },
+        { ok: true, from: "wss://two", message: "saved" },
+      ])
+      .mockRejectedValueOnce(new Error("registry unavailable"));
+
+    const rejection = await client.invites.revoke(invite).catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain("invite registry unregister");
+    expect((rejection as Error & { cause?: unknown }).cause).toEqual(new Error("registry unavailable"));
+    expect(add.mock.calls.some(([event]) => event.kind === INVITE_BUNDLE_KIND && event.pubkey === invite.signerPubkey)).toBe(true);
+    expect(inviteListPublishes(published)).toEqual([]);
+    expect(client.invites.get(invite.token)?.revoked).toBe(false);
+    client.stop();
+  });
+
   it("client.invites.revoke cleans up an invite after leaving the community", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const { pool, published } = fakePool();
