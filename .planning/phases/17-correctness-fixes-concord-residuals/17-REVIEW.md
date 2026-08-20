@@ -1,9 +1,11 @@
 ---
 phase: 17-correctness-fixes-concord-residuals
-reviewed: 2026-08-20T12:28:05Z
-depth: standard
-files_reviewed: 8
+reviewed: 2026-08-20T13:25:38Z
+depth: deep
+files_reviewed: 14
 files_reviewed_list:
+  - packages/common/src/helpers/__tests__/groups.test.ts
+  - packages/common/src/helpers/groups.ts
   - packages/concord/src/client/__tests__/client.test.ts
   - packages/concord/src/client/__tests__/community.test.ts
   - packages/concord/src/client/__tests__/private-channel.test.ts
@@ -12,50 +14,47 @@ files_reviewed_list:
   - packages/concord/src/client/invite-manager.ts
   - packages/concord/src/client/private-channel.ts
   - packages/concord/src/client/revocation.ts
+  - packages/relay/src/__tests__/relay.test.ts
+  - packages/relay/src/relay.ts
+  - packages/sqlite/package.json
+  - packages/sqlite/scripts/verify-optional-peers.mjs
 findings:
-  critical: 1
+  critical: 0
   warning: 0
   info: 0
-  total: 1
-status: issues_found
+  total: 0
+status: clean
 ---
 
 # Phase 17: Code Review Report
 
-**Reviewed:** 2026-08-20T12:28:05Z
-**Depth:** standard
-**Files Reviewed:** 8
-**Status:** issues_found
+**Reviewed:** 2026-08-20T13:25:38Z
+**Depth:** deep
+**Files Reviewed:** 14
+**Status:** clean
 
 ## Summary
 
-The canonical SUMMARY.md scope yielded eight Concord source and test files covering the fatal-only AUTH UI boundary and invite-revocation publication ordering. The AUTH boundary and direct revocation paths are internally consistent, but the new required-ack abstraction contains a public fallback that silently discards the guarantee it advertises.
+Reviewed every Phase 17 implementation and regression artifact, with a focused cross-file trace of the 17-06 required-publication gap closure through `ConcordCommunityAdmin`, `ConcordCommunity.publishToPlane`, relay acknowledgement validation, revocation ordering, and local tombstone mutation.
+
+The previous CR-01 is closed. A required invite-registry edition now rejects when `publishRequired` is absent, cannot fall through to optimistic `publish`, and applies its local control-plane echo only after at least one relay acknowledges the publication. The member and membership-free revocation paths retain acknowledgement-before-local-mutation ordering, while ordinary admin publications remain optimistic.
+
+All reviewed files meet quality standards. No issues found.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
+No BLOCKER or WARNING findings remain after the 17-06 gap closure.
 
-### CR-01: BLOCKER — required registry publication silently becomes optimistic when its callback is absent
+## Verification
 
-**File:** `packages/concord/src/client/admin.ts:151`
-
-**Issue:** `publishEdition(..., required = true)` uses `publishRequired` only when the optional callback happens to exist; otherwise it falls back to the ordinary optimistic `publish` callback. `ConcordCommunityAdmin` and its options are publicly exported, so a valid external construction that omits `publishRequired` can call `unregisterInviteLink()`, return success without inspecting any relay acknowledgements, and allow the enclosing revocation flow to report `revoked: true` even when every relay rejected the registry removal. This violates the method's required-publication contract and makes correctness depend on one particular constructor call site.
-
-**Fix:** Make `publishRequired` mandatory in `ConcordCommunityAdminOptions`, or fail closed when a required publication is requested without it. For example:
-
-```ts
-if (required) {
-  if (!this.opts.publishRequired) throw new Error("required publisher is not configured");
-  await this.opts.publishRequired(rumor);
-} else {
-  await this.opts.publish(rumor);
-}
-```
-
-Add a regression that constructs the exported admin without `publishRequired` and proves `unregisterInviteLink()` rejects rather than falling back to optimistic publication.
+- Focused exported-admin required-publication regression: 1 passed, 66 skipped.
+- Full `applesauce-concord` suite: 602 passed.
+- `applesauce-concord` TypeScript build: passed.
+- Focused group-pointer suite: 13 passed.
+- Focused relay suite: 175 passed.
 
 ---
 
-_Reviewed: 2026-08-20T12:28:05Z_
+_Reviewed: 2026-08-20T13:25:38Z_
 _Reviewer: the agent (gsd-code-reviewer)_
-_Depth: standard_
+_Depth: deep_
