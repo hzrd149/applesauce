@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 18
 current_phase_name: event-family-re-layer
 status: executing
-stopped_at: Completed 18-03-PLAN.md
-last_updated: "2026-08-20T16:04:32.368Z"
+stopped_at: Completed 18-04-PLAN.md
+last_updated: "2026-08-20T16:06:03.572Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 18 execution started
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 18
-  completed_plans: 16
+  completed_plans: 17
   percent: 18
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 ## Current Position
 
 Phase: 18 (event-family-re-layer) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-20 — Phase 18 execution started
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -139,6 +139,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 18 P01 | 12min | 2 tasks | 5 files |
 | Phase 18 P02 | 7min | 2 tasks | 4 files |
 | Phase 18 P03 | 4min | 2 tasks | 6 files |
+| Phase 18 P04 | 3min | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -336,6 +337,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 18-01: Raw event() owns readiness and exactly one write/reply interaction; publish() consumes its typed failures.
 - [Phase ?]: 18-02: A publish-owned auth counter persists across outer transient retry resubscriptions to enforce the additive wire bound.
 - [Phase ?]: 18-03: Group and Pool event methods remain raw; sync SEND temporarily delegates to publish until Phase 24.
+- [Phase ?]: 18-04: Historical decisions are amended in place: EVENT is the one-hop throw exception while multi-hop families retain value signalling.
 
 ### Pending Todos
 
@@ -454,8 +456,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-20T16:04:32.348Z
-Stopped at: Completed 18-03-PLAN.md
+Last session: 2026-08-20T16:06:03.551Z
+Stopped at: Completed 18-04-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
