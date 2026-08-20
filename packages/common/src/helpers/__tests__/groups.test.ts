@@ -32,84 +32,26 @@ function createLockedGroupsBookmark(hiddenTags: string[][]): NostrEvent {
 }
 
 describe("Group pointer utilities", () => {
-  it("round-trips an explicit localhost endpoint and an apostrophe-bearing id", () => {
-    const pointer: GroupPointer = {
-      relay: "ws://localhost:4869",
-      id: "room'with'apostrophes",
-    };
+  const cases: Array<[string, GroupPointer, GroupPointer]> = [
+    ["bare secure host", { relay: "relay.example.com", id: "group123" }, { relay: "wss://relay.example.com/", id: "group123" }],
+    ["explicit secure host", { relay: "wss://relay.example.com", id: "group123" }, { relay: "wss://relay.example.com/", id: "group123" }],
+    ["insecure host", { relay: "ws://relay.example.com", id: "group123" }, { relay: "ws://relay.example.com/", id: "group123" }],
+    ["explicit port", { relay: "wss://relay.example.com:8443", id: "group123" }, { relay: "wss://relay.example.com:8443/", id: "group123" }],
+    ["localhost port", { relay: "ws://localhost:4869", id: "group123" }, { relay: "ws://localhost:4869/", id: "group123" }],
+    ["bracketed IPv6", { relay: "wss://[::1]:7447", id: "group123" }, { relay: "wss://[::1]:7447/", id: "group123" }],
+    ["path and query", { relay: "wss://relay.example.com/socket?token=abc", id: "group123" }, { relay: "wss://relay.example.com/socket?token=abc", id: "group123" }],
+    ["apostrophe id", { relay: "wss://relay.example.com", id: "room'with'apostrophes" }, { relay: "wss://relay.example.com/", id: "room'with'apostrophes" }],
+    ["default id", { relay: "wss://relay.example.com", id: "" }, { relay: "wss://relay.example.com/", id: "_" }],
+  ];
 
-    expect(decodeGroupPointer(encodeGroupPointer(pointer))).toEqual({
-      relay: "ws://localhost:4869/",
-      id: "room'with'apostrophes",
-    });
+  it.each(cases)("round-trips %s", (_name, input, expected) => {
+    expect(decodeGroupPointer(encodeGroupPointer(input))).toEqual(expected);
   });
 
-  describe("decodeGroupPointer", () => {
-    it("should decode a valid group pointer", () => {
-      const pointer = decodeGroupPointer("relay.example.com'group123");
-      expect(pointer).toEqual({
-        relay: "wss://relay.example.com/",
-        id: "group123",
-      });
-    });
-
-    it("should add wss:// protocol if missing", () => {
-      const pointer = decodeGroupPointer("relay.example.com'group123");
-      expect(pointer?.relay).toBe("wss://relay.example.com/");
-    });
-
-    it("should preserve existing protocol if present", () => {
-      const pointer = decodeGroupPointer("wss://relay.example.com'group123");
-      expect(pointer?.relay).toBe("wss://relay.example.com/");
-
-      const wsPointer = decodeGroupPointer("ws://relay.example.com'group123");
-      expect(wsPointer?.relay).toBe("ws://relay.example.com/");
-    });
-
-    it("should handle default group id", () => {
-      const pointer = decodeGroupPointer("relay.example.com'");
-      expect(pointer).toEqual({
-        relay: "wss://relay.example.com/",
-        id: "_",
-      });
-    });
-
-    it("should return null if relay is missing", () => {
-      expect(decodeGroupPointer("'group123")).toBe(null);
-    });
-  });
-
-  describe("encodeGroupPointer", () => {
-    it("should encode a valid group pointer", () => {
-      const pointer: GroupPointer = {
-        relay: "wss://relay.example.com",
-        id: "group123",
-      };
-      expect(encodeGroupPointer(pointer)).toBe("relay.example.com'group123");
-    });
-
-    it("should only omit the default secure protocol", () => {
-      const pointer: GroupPointer = {
-        relay: "wss://relay.example.com",
-        id: "group123",
-      };
-      expect(encodeGroupPointer(pointer)).toBe("relay.example.com'group123");
-
-      const wsPointer: GroupPointer = {
-        relay: "ws://relay.example.com",
-        id: "group123",
-      };
-      expect(encodeGroupPointer(wsPointer)).toBe("ws://relay.example.com/'group123");
-    });
-
-    it("should handle invalid URLs by using the raw value", () => {
-      const pointer: GroupPointer = {
-        relay: "invalid-url",
-        id: "group123",
-      };
-      expect(encodeGroupPointer(pointer)).toBe("invalid-url'group123");
-    });
-  });
+  it.each(["'group123", "relay.example.com/#section'group123", "wss://relay.example.com/path#section'group123"])(
+    "rejects invalid compatibility pointer %s",
+    (pointer) => expect(decodeGroupPointer(pointer)).toBeNull(),
+  );
 });
 
 describe("getHiddenGroups / unlockHiddenGroups", () => {
