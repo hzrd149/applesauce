@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 17
 current_phase_name: correctness-fixes-concord-residuals
 status: verifying
-stopped_at: Completed 17-05-PLAN.md
-last_updated: "2026-08-20T12:24:58.085Z"
+stopped_at: Completed 17-06-PLAN.md
+last_updated: "2026-08-20T13:18:26.911Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 11
   completed_phases: 2
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 13
+  completed_plans: 13
   percent: 18
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 ## Current Position
 
 Phase: 17 (correctness-fixes-concord-residuals) — EXECUTING
-Plan: 5 of 5
+Plan: 6 of 6
 Status: Phase complete — ready for verification
 Last activity: 2026-08-20 — Phase 17 execution started
 
@@ -135,6 +135,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 17 P03 | 4m | 2 tasks | 3 files |
 | Phase 17 P04 | 11m | 2 tasks | 5 files |
 | Phase 17 P05 | 9m | 3 tasks | 6 files |
+| Phase 17 P06 | 4m | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -328,6 +329,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: StreamSigners retains operation diagnostics without community or private-channel onAuthFailure UI sinks.
 - [Phase ?]: RESID-02: Invite revocation uses any-relay acknowledgement and stage-labelled aggregate errors before local mutation.
 - [Phase ?]: RESID-02: Registry unregister uses a dedicated required-ack path while ordinary control publishing remains optimistic.
+- [Phase ?]: 17-06: Keep publishRequired optional for ordinary exported-admin consumers, but reject required publication before invoking publish when it is absent.
 
 ### Pending Todos
 
@@ -446,8 +448,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-20T12:24:58.065Z
-Stopped at: Completed 17-05-PLAN.md
+Last session: 2026-08-20T13:18:26.891Z
+Stopped at: Completed 17-06-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

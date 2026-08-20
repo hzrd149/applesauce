@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 3
 waived_count: 0
 fixed_count: 0
-total_count: 2
-last_updated: 2026-08-20T12:24:57.273Z
+total_count: 3
+last_updated: 2026-08-20T13:19:03.596Z
 ---
 
 # Broken Windows Ledger
@@ -17,6 +17,7 @@ last_updated: 2026-08-20T12:24:57.273Z
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
 | 1 | 17 | deviation | packages/concord/src/client/admin.ts |  | Added an acknowledged registry-unregister path required for ordered revocation success | open |  | 2026-08-20T12:24:57.153Z |  |
 | 2 | 17 | deviation | packages/concord/src/client/revocation.ts |  | Moved revocation outcome helper internal to avoid accidental public exports | open |  | 2026-08-20T12:24:57.273Z |  |
+| 3 | 17 | deviation | .planning/STATE.md |  | Corrected stale 5/5 plan counter after gap-closure plan 17-06 | open |  | 2026-08-20T13:19:03.596Z |  |
 
 ````json
 [
@@ -42,6 +43,18 @@ last_updated: 2026-08-20T12:24:57.273Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-20T12:24:57.273Z",
+    "resolved_at": null
+  },
+  {
+    "id": 3,
+    "kind": "deviation",
+    "phase": "17",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Corrected stale 5/5 plan counter after gap-closure plan 17-06",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-20T13:19:03.596Z",
     "resolved_at": null
   }
 ]
