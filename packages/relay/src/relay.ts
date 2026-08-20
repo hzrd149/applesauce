@@ -175,6 +175,23 @@ export class RelayEventTimeoutError extends Error {
   }
 }
 
+/** Whether an error represents a transport failure for which reconnecting can make progress. */
+function isReconnectableTransportError(error: unknown): error is CloseEvent {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "wasClean" in error &&
+    error.wasClean === false &&
+    "code" in error &&
+    typeof error.code === "number"
+  );
+}
+
+/** Publish retries are deliberately limited to typed reply timeouts and reconnectable transport failures. */
+function isRetryablePublishError(error: unknown): boolean {
+  return error instanceof RelayEventTimeoutError || isReconnectableTransportError(error);
+}
+
 /** NIP-01 machine-readable prefixes that indicate an error condition on CLOSED/OK messages */
 const CLOSED_ERROR_PREFIXES = new Map<string, new (reason: string) => RelayClosedError>([
   ["auth-required", AuthRequiredError],
@@ -1388,14 +1405,10 @@ export class Relay {
   }
 
   /**
-   * D-07 retry operator used only by `publish()`. Skips (re-throws
-   * rather than retries) any `RelayClosedError`, mirroring `customConnectionRetryOperator`'s existing
-   * skip (D-07): the auth family (`AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError`) all extend
-   * `RelayClosedError` precisely so this one check covers exhausted-auth, handler-rejection and
-   * phase-timeout alike, closing the hot-loop gap RESEARCH found — without it, this retry would
-   * multiply against the auth operator's own retries. The call-scoped auth counter persists across
-   * transient resubscriptions, enforcing the additive `1 + authRetries + retries` EVENT-write bound.
-   * Genuine negative OK verdicts stay values; only client/transport failures reach retry policy.
+   * D-07 retry operator used only by `publish()`. Its positive whitelist admits the typed reply
+   * timeout and unclean WebSocket closes; auth-family and unknown failures are re-thrown immediately.
+   * The call-scoped auth counter persists across transient resubscriptions, enforcing the additive
+   * `1 + authRetries + retries` EVENT-write bound.
    */
   protected customRetryOperator<T extends unknown = unknown>(
     times: undefined | boolean | number | RetryConfig,
@@ -1409,7 +1422,7 @@ export class Relay {
     return retry({
       ...config,
       delay: (error, count) => {
-        if (error instanceof RelayClosedError) return throwError(() => error);
+        if (!isRetryablePublishError(error)) return throwError(() => error);
 
         if (typeof config.delay === "number") return timer(config.delay);
         if (typeof config.delay === "function") return config.delay(error, count);

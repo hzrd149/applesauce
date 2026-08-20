@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
-import { firstValueFrom, of, Subject, throwError, timer } from "rxjs";
+import { firstValueFrom, mergeMap, of, Subject, throwError, timer } from "rxjs";
 import { filter, repeat, retry } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
@@ -933,6 +933,22 @@ describe("createReconnectTimer", () => {
 });
 
 describe("publish", () => {
+  it("does not resend EVENT after an arbitrary non-transient error", async () => {
+    const unexpected = new Error("unexpected operator failure");
+    const event = relay.event.bind(relay);
+    vi.spyOn(relay, "event").mockImplementation((value) =>
+      event(value).pipe(mergeMap(() => throwError(() => unexpected))),
+    );
+
+    const result = relay.publish(mockEvent, { retries: { count: 1, delay: 0 } });
+
+    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    server.send(["OK", mockEvent.id, true, ""]);
+
+    await expect(result).rejects.toBe(unexpected);
+    expect(server.messages.filter((message: any) => message[0] === "EVENT")).toHaveLength(1);
+  });
+
   it("keeps auth and transient retry budgets additive across one publish call", async () => {
     relay.eventTimeout = 20;
     const onAuthRequired = vi.fn(() => {
