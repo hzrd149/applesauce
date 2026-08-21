@@ -12,6 +12,7 @@ import {
   AuthTimeoutError,
   Relay,
   RelayClosedError,
+  RelayCountResponseError,
   RelayCountTimeoutError,
   RelayEventTimeoutError,
   RelayEventVerdictError,
@@ -2234,6 +2235,20 @@ describe("count", () => {
 
     await spy.onError();
     expect(spy.getError()).toBeInstanceOf(RelayClosedError);
+  });
+
+  it("should report clean socket completion before COUNT as a typed terminal error", async () => {
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { retries: 3 }), {
+      expectErrors: true,
+    });
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    server.close();
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(RelayCountResponseError);
+    expect(spy.getError()).toMatchObject({ message: "COUNT completed without a response" });
+    expect(server.messages.filter((message: any) => message[0] === "COUNT")).toHaveLength(1);
   });
 
   it("should error if no COUNT response received within timeout", async () => {

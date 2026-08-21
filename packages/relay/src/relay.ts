@@ -47,13 +47,14 @@ import {
   takeWhile,
   tap,
   throwError,
+  throwIfEmpty,
   timeout,
   timer,
 } from "rxjs";
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
-import { parseRelayCountResponse } from "./nip45.js";
+import { parseRelayCountResponse, RelayCountResponseError } from "./nip45.js";
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import {
   AUTH_PHASE_GATE,
@@ -1214,7 +1215,12 @@ export class Relay {
         takeUntil(messages.pipe(ignoreElements(), endWith(true))),
       );
 
-      return this.waitForReady(countObservable);
+      return this.waitForReady(countObservable).pipe(
+        // A clean socket completion before COUNT is still a failed request. Convert it before the
+        // reconnect operator so callers receive a typed terminal error instead of EmptyError (or a
+        // value-less successful completion), and so this application-level failure is not retried.
+        throwIfEmpty(() => new RelayCountResponseError("COUNT completed without a response")),
+      );
     }).pipe(
       authOperator,
       this.customRetryOperator(
