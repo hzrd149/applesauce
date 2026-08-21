@@ -5,16 +5,16 @@ milestone_name: relay-method-layering
 current_phase: 19
 current_phase_name: COUNT Becomes the High-Level Member
 status: planning
-stopped_at: Phase 18 passed re-verification (13/13); ready to plan Phase 19
-last_updated: "2026-08-20T16:22:35.613Z"
+stopped_at: Completed 19-03-PLAN.md
+last_updated: "2026-08-21T10:09:18.361Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 18 complete, transitioned to Phase 19
 progress:
   total_phases: 11
-  completed_phases: 3
-  total_plans: 18
-  completed_plans: 18
-  percent: 27
+  completed_phases: 4
+  total_plans: 21
+  completed_plans: 21
+  percent: 36
 ---
 
 # Project State
@@ -141,6 +141,9 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 18 P03 | 4min | 2 tasks | 6 files |
 | Phase 18 P04 | 3min | 1 tasks | 5 files |
 | Phase 18 P05 | 4min | 2 tasks | 7 files |
+| Phase 19 P01 | 12min | 2 tasks | 6 files |
+| Phase 19 P02 | 8min | 3 tasks | 3 files |
+| Phase 19 P03 | 5min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -340,6 +343,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 18-03: Group and Pool event methods remain raw; sync SEND temporarily delegates to publish until Phase 24.
 - [Phase ?]: 18-04: Historical decisions are amended in place: EVENT is the one-hop throw exception while multi-hop families retain value signalling.
 - [Phase ?]: 18-05: The breaking raw event signature receives its own major applesauce-relay changeset.
+- [Phase ?]: Phase 19: COUNT uses one whole-request deadline outside transport-only retry and suspends it during auth.
 
 ### Pending Todos
 
@@ -459,8 +463,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-20T16:12:24.921Z
-Stopped at: Phase 18 passed re-verification (13/13); ready to plan Phase 19
+Last session: 2026-08-21T10:09:18.340Z
+Stopped at: Completed 19-03-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
