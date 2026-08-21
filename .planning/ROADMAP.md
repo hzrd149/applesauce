@@ -164,7 +164,13 @@ Plans:
   3. `RelayCountResponse` carries validated `approximate`/`hll` fields when a relay sends them; a malformed payload rejects instead of becoming a typed lie via cast.
   4. Merging two relays' `hll` registers with the shipped register-wise max-merge helper against an independently hand-computed union cardinality produces the correct total.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+
+- [ ] 19-01-PLAN.md — Validate forward-compatible NIP-45 COUNT responses and independently prove HLL merge/estimation
+- [ ] 19-02-PLAN.md — Apply D-01 whole-request policy with transport-only retry and preserve Group/Pool forwarding
+- [ ] 19-03-PLAN.md — Publish root exports, focused docs, source audit, and the sole COUNT changeset
 
 ### Phase 20: AUTH Family Re-layer
 

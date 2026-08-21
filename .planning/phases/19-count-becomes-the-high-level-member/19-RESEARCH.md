@@ -33,7 +33,7 @@
 - Family boundaries: `event()`/`req()` are low-level interactions wrapped by `publish()`/`request()`/`subscription()`; COUNT intentionally has only the high-level `count()` member.
 - Preserve one shared COUNT operation per returned Observable and the same shared transport readiness precondition as EVENT/REQ. Each auth or retry resend creates a fresh unshared COUNT send/listen attempt.
 - Since COUNT is high-level-only, it owns one configurable whole-operation clock with no duplicated inner/outer clock. The clock includes readiness/backoff, suspends during active auth, and defaults to 10 seconds.
-- Keep auth and generic retry counters distinct, call-scoped, and additive. Positively allow only typed COUNT reply timeout and reconnectable unclean transport failure into retry policy.
+- Keep auth and generic retry counters distinct, call-scoped, and additive. Per D-01, only eligible reconnectable unclean transport failures may enter generic retry policy while time remains; whole-request deadline expiry is terminal.
 - Emit only validated COUNT responses. Completion/close without a COUNT reply, malformed response, relay refusal or typed CLOSED, terminal auth errors, and arbitrary/programming errors are terminal Observable errors.
 - Preserve established boolean/number retry defaults. Test custom timeout, reconnect, real retry resend, no-retry terminal/arbitrary errors, independent concurrent calls, synchronous auth reentrancy, auth-clock suspension, sharing, forward-compatible fields, and HLL utilities with mutation/non-vacuity probes.
 - Update docs and a focused single-change changeset. Leave Phase 23 an explicit contract to consume progressive per-relay Observables and never sum overlapping relay counts.
@@ -52,7 +52,7 @@
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| COUNT-01 | `count()` is the high-level family member with `reconnect`, `retries`, configurable `timeout`, and error-channel failures. | The current call graph, fresh-attempt seam, call-scoped auth counter requirement, retry classifier, timeout helper, Group/Pool forwarding, and one unresolved clock/retry collision are mapped below. [VERIFIED: codebase and locked context] |
+| COUNT-01 | `count()` is the high-level family member with `reconnect`, `retries`, configurable `timeout`, and error-channel failures. | The current call graph, fresh-attempt seam, call-scoped auth counter requirement, retry classifier, D-01 whole-request deadline, and Group/Pool forwarding are mapped below. [VERIFIED: codebase, locked context, and D-01] |
 | COUNT-02 | `RelayCountResponse` carries validated `count`, `approximate?`, and `hll?` instead of an unchecked cast. | The exact NIP-45 wire shape, validation matrix, safe-copy pattern, error class, unknown-field preservation, and boundary tests are specified below. [VERIFIED: codebase] [CITED: https://github.com/nostr-protocol/nips/blob/master/45.md] |
 | COUNT-03 | A register-wise maximum merge over NIP-45's 256-register HLL payload ships. | The public helper placement, shared HLL normalizer, merge loop, original-HLL estimator, and independent fixture constants are specified below. [CITED: https://github.com/nostr-protocol/nips/blob/master/45.md] [CITED: https://research.google.com/pubs/archive/40671.pdf] |
 </phase_requirements>
@@ -63,9 +63,9 @@ Phase 19 should evolve the existing `Relay.count()` pipeline in place. The curre
 
 NIP-45 requires an integer count, permits an optional boolean `approximate`, and encodes HLL as 256 concatenated uint8 registers, hence exactly 512 hexadecimal characters; multi-relay sketches merge by taking the maximum at each register. The specification deliberately does not prescribe one client estimator. Use the original HLL raw harmonic-mean estimate for `m = 256`, with linear counting when the raw estimate is at most `2.5m` and zero registers remain. This is small, dependency-free, independently testable, and directly matches the representation NIP-45 standardizes. [CITED: https://github.com/nostr-protocol/nips/blob/master/45.md] [CITED: https://research.google.com/pubs/archive/40671.pdf]
 
-One locked semantic collision must be resolved before implementation: a single whole-operation timeout that includes readiness and retry backoff must be downstream/outside `retry`, while an error can trigger `retry` only when it originates upstream/inside `retry`. Putting timeout inside retry makes it per-attempt and resets it across backoff; putting it outside gives the correct total bound but the retry operator never observes the timeout. A shared deadline cannot create a meaningful resend after it expires because no budget remains. The planner must add an explicit decision checkpoint rather than silently violate either invariant. [VERIFIED: operator-order analysis against current pipeline] [CITED: https://rxjs.dev/api/index/function/retry] [CITED: https://rxjs.dev/api/operators/timeout]
+The initial clock/retry collision is resolved by post-research decision D-01: the single suspendable whole-request deadline sits outside the retry loop, includes readiness and backoff, never resets, and terminates COUNT when it expires. Generic retry observes only eligible reconnectable transport failures that occur before that deadline. [VERIFIED: D-01 and operator-order analysis against current pipeline] [CITED: https://rxjs.dev/api/index/function/retry] [CITED: https://rxjs.dev/api/operators/timeout]
 
-**Primary recommendation:** Preserve the current COUNT attempt factory and outer `share()`, add a prototype-safe response parser plus typed COUNT errors, add pure `nip45.ts` merge/estimate helpers, and block policy-pipeline implementation until the timeout/retry collision is explicitly reconciled. [VERIFIED: codebase and locked context]
+**Primary recommendation:** Preserve the current COUNT attempt factory and outer `share()`, add a prototype-safe response parser plus typed COUNT errors, add pure `nip45.ts` merge/estimate helpers, and implement D-01 with the suspendable whole-request deadline outside reconnect retry. [VERIFIED: codebase, locked context, and D-01]
 
 ## Architectural Responsibility Map
 
@@ -186,7 +186,7 @@ const operation = defer(() => createCountAttempt()).pipe(
 return applyResolvedCountPolicy(operation, opts, gate).pipe(share());
 ```
 
-The planner must replace `applyResolvedCountPolicy` with the explicitly chosen clock/retry ordering after the open decision; it is not a suggested new abstraction by itself. [VERIFIED: clock/retry collision]
+The planner must replace `applyResolvedCountPolicy` with D-01's resolved ordering: reconnect retry inside one suspendable whole-request deadline. It is not a suggested new abstraction by itself. [VERIFIED: D-01]
 
 ### Pattern 2: Validate at the Socket Boundary and Preserve Unknown Fields Safely
 
@@ -214,11 +214,11 @@ function parseCountResponse(value: unknown): RelayCountResponse {
 
 **What:** Add `RelayCountTimeoutError` and `RelayCountResponseError`; parameterize the existing retry plumbing with a classifier or add an equally centralized classifier so only `RelayCountTimeoutError` and reconnectable unclean `CloseEvent` values can consume the generic retry budget. [VERIFIED: locked context and Phase 18 pattern]
 
-**When to use:** Once the timeout/retry ordering is resolved. Terminal auth subclasses, `RelayClosedError`, response errors, clean completion errors, and arbitrary errors must bypass retry. [VERIFIED: locked context]
+**When to use:** Inside D-01's whole-request deadline. Timeout expiry, terminal auth subclasses, `RelayClosedError`, response errors, clean completion errors, and arbitrary errors must bypass retry. [VERIFIED: D-01 and locked context]
 
 ```typescript
 function isRetryableCountError(error: unknown): boolean {
-  return error instanceof RelayCountTimeoutError || isReconnectableTransportError(error);
+  return isReconnectableTransportError(error);
 }
 
 // Reuse retry config parsing/backoff; inject the family classifier.
@@ -342,7 +342,7 @@ The public Observable contract is preserved, so there is no runtime subscriber m
 | Any other `CLOSED`, including unprefixed reason | Terminal `RelayClosedError`; no clean empty completion. [VERIFIED: locked context] | Never |
 | Source completes/closes before COUNT | `RelayCountResponseError`; zero values. [VERIFIED: locked context and recommended error placement] | Never |
 | Reconnectable unclean transport failure | Typed/structural transport error. [VERIFIED: Phase 18 classifier] | Yes, within generic budget |
-| COUNT timeout | `RelayCountTimeoutError`. [VERIFIED: locked context] | Semantics blocked by the clock/retry collision below |
+| COUNT timeout | `RelayCountTimeoutError`. [VERIFIED: locked context] | Terminal whole-request deadline per D-01; never enters generic retry |
 | Arbitrary/programming error | Same error identity reaches subscriber. [VERIFIED: locked context] | Never |
 
 ## Independent HLL Fixture Guidance
@@ -371,7 +371,7 @@ Malformed utility controls must cover empty iterable, 510/514-character strings,
 
 **Why it happens:** RxJS retries by resubscribing to its source after an upstream error; downstream errors do not flow backward into upstream operators. [CITED: https://rxjs.dev/api/index/function/retry]
 
-**How to avoid:** Add a planning checkpoint that chooses whole-operation terminal timeout or retryable per-attempt timeout/second clock, then amend the contradictory sentence before coding. [VERIFIED: locked-context comparison]
+**How to avoid:** Implement D-01 exactly: one suspendable whole-request deadline outside retry, with only reconnectable transport failures eligible for resend before expiry. [VERIFIED: D-01]
 
 **Warning signs:** A test shows multiple fresh 10-second timers, retry delay does not consume the total budget, or a timeout test expects a resend that can occur only after the total deadline. [VERIFIED: operator-order analysis]
 
@@ -517,10 +517,7 @@ This is one cohesive COUNT-family capability sentence; `minor` is the smallest b
 
 ## Open Questions
 
-1. **Is COUNT timeout a total operation deadline or a retryable per-attempt reply timeout?**
-   - What we know: The locked context requires one configurable whole-operation clock, including readiness/backoff and auth suspension, with no inner/outer duplication; it also requires a typed COUNT reply timeout to enter retry policy. [VERIFIED: `19-CONTEXT.md`]
-   - What's unclear: These requirements conflict under RxJS ordering. An outer clock is terminal; an inner clock resets per retry and excludes backoff. A deadline has no meaningful budget left after it expires. [CITED: https://rxjs.dev/api/index/function/retry] [CITED: https://rxjs.dev/api/operators/timeout]
-   - Recommendation: Preserve the stronger bounded-operation guarantee by making the single whole-operation timeout terminal and limiting real retry resends to reconnectable unclean transport failures, unless the user explicitly chooses a retryable per-attempt timeout or permits a second clock. Record the resolution in CONTEXT/provenance before implementation. [VERIFIED: first-principles constraint analysis]
+None. D-01 resolves the timeout/retry ordering: timeout is one terminal whole-request deadline, while generic retry is limited to eligible reconnectable transport failures before expiry.
 
 ## Environment Availability
 

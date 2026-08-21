@@ -139,7 +139,7 @@ The current `customRetryOperator` at `relay.ts:1407-1432` is publish-specific. G
 
 ```typescript
 function isRetryableCountError(error: unknown): boolean {
-  return error instanceof RelayCountTimeoutError || isReconnectableTransportError(error);
+  return isReconnectableTransportError(error);
 }
 ```
 
@@ -263,13 +263,13 @@ attempt -> retry -> suspendableTimeout
 
 A deadline error occurs only when the total budget is exhausted, so a “retry after that same deadline” has no useful budget left. Reusing one remaining-budget clock inside retry only changes the failure into immediate zero-budget resubscriptions (and any configured retry delay escapes the bound); it does not provide a meaningful response window.
 
-The planner must surface and record one of these choices before changing `count()`:
+Post-research decision D-01 selects the first choice:
 
 1. **Whole-operation terminal timeout (research recommendation):** keep one suspendable outer clock covering readiness, backoff, and attempts; `RelayCountTimeoutError` is terminal; only reconnectable unclean transport failure resends. This preserves the stronger bounded-operation invariant but amends the sentence saying timeout is retryable.
 2. **Retryable per-attempt timeout:** place the clock inside retry so a timeout causes a real resend; accept that the clock resets and does not include all backoff. This amends the whole-operation/single-clock semantic.
 3. **Two clocks:** a retryable reply clock inside plus a terminal operation deadline outside. This satisfies useful timeout resend and total bounding but explicitly abandons the “one clock/no duplication” decision.
 
-Do not hide the choice in operator order or write mutually inconsistent tests. The RED test must encode the selected behavior: total elapsed bound for option 1, a real post-timeout COUNT resend with a fresh response window for option 2, or both separately named clocks for option 3.
+Plans must encode D-01's total elapsed bound and prove timeout expiry causes no resend. Options 2 and 3 are rejected and must not appear in implementation tasks.
 
 ## Shared Patterns
 

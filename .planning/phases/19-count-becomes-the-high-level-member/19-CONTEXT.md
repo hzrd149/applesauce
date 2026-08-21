@@ -37,7 +37,7 @@ Keep `count()` as the COUNT family's single high-level Observable API, add confi
 - Family boundaries: `event()`/`req()` are low-level interactions wrapped by `publish()`/`request()`/`subscription()`; COUNT intentionally has only the high-level `count()` member.
 - Preserve one shared COUNT operation per returned Observable and the same shared transport readiness precondition as EVENT/REQ. Each auth or retry resend creates a fresh unshared COUNT send/listen attempt.
 - Since COUNT is high-level-only, it owns one configurable whole-operation clock with no duplicated inner/outer clock. The clock includes readiness/backoff, suspends during active auth, and defaults to 10 seconds.
-- Keep auth and generic retry counters distinct, call-scoped, and additive. Positively allow only typed COUNT reply timeout and reconnectable unclean transport failure into retry policy.
+- Keep auth and generic retry counters distinct, call-scoped, and additive. Positively allow only eligible reconnectable unclean transport failures into generic retry policy while time remains before the whole-operation deadline. Timeout expiry terminates COUNT and is not retryable.
 - Emit only validated COUNT responses. Completion/close without a COUNT reply, malformed response, relay refusal or typed CLOSED, terminal auth errors, and arbitrary/programming errors are terminal Observable errors.
 - Preserve established boolean/number retry defaults. Test custom timeout, reconnect, real retry resend, no-retry terminal/arbitrary errors, independent concurrent calls, synchronous auth reentrancy, auth-clock suspension, sharing, forward-compatible fields, and HLL utilities with mutation/non-vacuity probes.
 - Update docs and a focused single-change changeset. Leave Phase 23 an explicit contract to consume progressive per-relay Observables and never sum overlapping relay counts.
@@ -45,6 +45,9 @@ Keep `count()` as the COUNT family's single high-level Observable API, add confi
 ### the agent's Discretion
 - Choose helper module placement and typed error subclass details consistent with existing relay exports.
 - Choose the standard NIP-45/HLL estimator implementation details as long as the independent fixtures establish correctness.
+
+### Post-Discussion Resolution
+- **D-01 (2026-08-21):** A caller-supplied `timeout` covers the whole logical request across retries and reconnections for every request family. It includes readiness and backoff, suspends during active auth under the accepted policy, and never resets per attempt. For COUNT, deadline expiry is terminal and cannot consume the generic retry budget; only eligible reconnectable transport failures before the deadline may retry.
 
 </decisions>
 
