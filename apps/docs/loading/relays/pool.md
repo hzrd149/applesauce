@@ -218,6 +218,28 @@ pool.count(relays, { kinds: [1], authors: ["pubkey"] }).subscribe({
 });
 ```
 
+Pool and Group forward the caller ID and the same auth, `reconnect`, `retries`, and whole-request `timeout` options as `Relay.count()`. They return an Observable record keyed by relay URL.
+
+#### Integration
+
+```typescript
+import { estimateHllCardinality, mergeHllRegisters } from "applesauce-relay";
+
+pool.count(relays, filter, "union").subscribe((responses) => {
+  const sketches = Object.values(responses).flatMap((r) => (r.hll ? [r.hll] : []));
+  if (sketches.length) {
+    const merged = mergeHllRegisters(sketches);
+    console.log(estimateHllCardinality(merged));
+  }
+});
+```
+
+#### Best Practices
+
+- Never sum counts from overlapping relays.
+- Relays without compatible HLL sketches cannot contribute to the HLL union.
+- Group and Pool remain all-or-nothing in this phase: one relay error fails the record, and partial records or automatic aggregation are deferred to Phase 23.
+
 ### Sync Method
 
 The `sync` method performs bidirectional Negentropy synchronization (NIP-77) with relays:

@@ -299,6 +299,35 @@ setTimeout(() => {
 
 ## Counting Events
 
+### What it is
+
+`count()` is the COUNT family's high-level Observable API. It emits one validated NIP-45 response and completes; refusals, malformed responses, and timeouts use the error channel.
+
+### How to use it
+
+```typescript
+relay.count({ kinds: [1] }, "my-count", {
+  reconnect: true,
+  retries: 2,
+  timeout: 5_000,
+  onAuthRequired,
+}).subscribe({ next: console.log, error: console.error });
+```
+
+`timeout` is one whole-request deadline across readiness, retry, and backoff. It defaults to 10 seconds and pauses during active authentication. `false` disables it; `true` selects the relay default. `retries` takes precedence over the `reconnect` alias and accepts boolean, number, or RxJS retry configuration forms.
+
+Responses require a non-negative safe-integer `count`. Optional `approximate` must be boolean and `hll` must be a 512-character hexadecimal NIP-45 sketch, normalized to lowercase. Unknown response fields are preserved for forward compatibility. Invalid replies throw `RelayCountResponseError`; deadline expiry throws `RelayCountTimeoutError`.
+
+### Integration
+
+Use `mergeHllRegisters` and `estimateHllCardinality` when compatible relay responses include HLL sketches. RelayGroup and RelayPool forward the same options and response fields.
+
+### Best Practices
+
+- Supply a stable request ID when correlating logs.
+- Handle the Observable error channel explicitly.
+- Prefer HLL union estimates over summing overlapping relay counts.
+
 The `count` method sends a COUNT request to the relay (NIP-45) and returns an observable that emits a single count response:
 
 ```typescript
