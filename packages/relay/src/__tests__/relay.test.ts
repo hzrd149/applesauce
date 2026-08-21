@@ -12,12 +12,12 @@ import {
   AuthTimeoutError,
   Relay,
   RelayClosedError,
-  RelayCountResponseError,
   RelayCountTimeoutError,
   RelayEventTimeoutError,
   RelayEventVerdictError,
   SyncDirection,
 } from "../relay.js";
+import { RelayCountResponseError } from "../nip45.js";
 import { RelayInformation } from "../types";
 import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";
@@ -2188,18 +2188,20 @@ describe("multi-user authentication", () => {
 
 describe("count", () => {
   it("should trigger connection to relay", async () => {
-    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
 
     // Wait for connection
     await firstValueFrom(relay.connected$.pipe(filter(Boolean)));
 
     expect(relay.connected).toBe(true);
+    spy.unsubscribe();
   });
 
   it("should send expected messages to relay", async () => {
-    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
 
     await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    spy.unsubscribe();
   });
 
   it("should emit count response", async () => {
@@ -2264,12 +2266,123 @@ describe("count", () => {
     expect(spy.getError()).toBeInstanceOf(RelayCountTimeoutError);
   });
 
+  it("should honor a custom whole-request timeout", async () => {
+    vi.useFakeTimers();
+    const spy = subscribeSpyTo(relay.count({ kinds: [1] }, "count1", { timeout: 25 }), { expectErrors: true });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(spy.getError()).toBeInstanceOf(RelayCountTimeoutError);
+  });
+
+  it("should allow the whole-request timeout to be disabled", async () => {
+    vi.useFakeTimers();
+    const spy = subscribeSpyTo(relay.count({ kinds: [1] }, "count1", { timeout: false }));
+    await vi.advanceTimersByTimeAsync(relay.countTimeout * 2);
+
+    expect(spy.receivedError()).toBe(false);
+    server.send(["COUNT", "count1", { count: 4 }]);
+    expect(spy.getValues()).toEqual([{ count: 4 }]);
+  });
+
+  it("should reconnect and resend once after an unclean close", async () => {
+    relay.reconnectTimer = () => timer(50);
+    const spy = subscribeSpyTo(relay.count({ kinds: [1] }, "count1", { retries: { count: 1, delay: 50 }, timeout: false }), {
+      expectErrors: true,
+    });
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+    await server.closed;
+    server = new WS("wss://test", { jsonProtocol: true });
+    await server.connected;
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    server.send(["COUNT", "count1", { count: 8 }]);
+
+    expect(spy.getValues()).toEqual([{ count: 8 }]);
+    expect(server.messages.filter((message: any) => message[0] === "COUNT")).toHaveLength(1);
+  });
+
+  it("should let retries false override reconnect and prevent a resend", async () => {
+    relay.reconnectTimer = () => timer(50);
+    const spy = subscribeSpyTo(
+      relay.count({ kinds: [1] }, "count1", { retries: false, reconnect: { count: 3, delay: 0 }, timeout: false }),
+      { expectErrors: true },
+    );
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    server.error({ wasClean: false, code: 1006, reason: "relay crashed" });
+    await spy.onError();
+
+    expect(server.messages.filter((message: any) => message[0] === "COUNT")).toHaveLength(1);
+  });
+
+  it("should not retry terminal malformed COUNT or CLOSED responses", async () => {
+    const malformed = subscribeSpyTo(relay.count({ kinds: [1] }, "malformed", { retries: 3, timeout: false }), {
+      expectErrors: true,
+    });
+    await expect(server).toReceiveMessage(["COUNT", "malformed", { kinds: [1] }]);
+    server.send(["COUNT", "malformed", { count: -1 }]);
+    await malformed.onError();
+    await expect(server).toReceiveMessage(["CLOSE", "malformed"]);
+
+    const closed = subscribeSpyTo(relay.count({ kinds: [1] }, "closed", { retries: 3, timeout: false }), {
+      expectErrors: true,
+    });
+    await expect(server).toReceiveMessage(["COUNT", "closed", { kinds: [1] }]);
+    server.send(["CLOSED", "closed", "error: refused"]);
+    await closed.onError();
+
+    expect(malformed.getError()).toBeInstanceOf(RelayCountResponseError);
+    expect(closed.getError()).toBeInstanceOf(RelayClosedError);
+    expect(server.messages.filter((message: any) => message[0] === "COUNT")).toHaveLength(2);
+  });
+
+  it("should expire the whole-request deadline while waiting in retry backoff", async () => {
+    relay.reconnectTimer = () => timer(0);
+    const spy = subscribeSpyTo(
+      relay.count({ kinds: [1] }, "count1", { retries: { count: 1, delay: 100 }, timeout: 25 }),
+      { expectErrors: true },
+    );
+    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+    server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+    await spy.onError();
+
+    expect(spy.getError()).toBeInstanceOf(RelayCountTimeoutError);
+    expect(server.messages.filter((message: any) => message[0] === "COUNT")).toHaveLength(1);
+  });
+
+  it("should keep concurrent COUNT retry budgets independent", async () => {
+    relay.reconnectTimer = () => timer(50);
+    const noRetry = subscribeSpyTo(relay.count({ kinds: [1] }, "a", { retries: false, timeout: false }), {
+      expectErrors: true,
+    });
+    const retryOnce = subscribeSpyTo(relay.count({ kinds: [2] }, "b", { retries: { count: 1, delay: 50 }, timeout: false }), {
+      expectErrors: true,
+    });
+    await expect(server).toReceiveMessage(["COUNT", "a", { kinds: [1] }]);
+    await expect(server).toReceiveMessage(["COUNT", "b", { kinds: [2] }]);
+    const initialFrames = server.messages.slice();
+
+    server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+    await noRetry.onError();
+    await server.closed;
+    server = new WS("wss://test", { jsonProtocol: true });
+    await server.connected;
+    await expect(server).toReceiveMessage(["COUNT", "b", { kinds: [2] }]);
+    server.send(["COUNT", "b", { count: 2 }]);
+
+    expect(retryOnce.getValues()).toEqual([{ count: 2 }]);
+    expect(initialFrames.filter((message: any) => message[0] === "COUNT" && message[1] === "a")).toHaveLength(1);
+    expect(initialFrames.filter((message: any) => message[0] === "COUNT" && message[1] === "b")).toHaveLength(1);
+    expect(server.messages.filter((message: any) => message[0] === "COUNT" && message[1] === "a")).toHaveLength(0);
+    expect(server.messages.filter((message: any) => message[0] === "COUNT" && message[1] === "b")).toHaveLength(1);
+  });
+
   it("should not send multiple COUNT messages for multiple subscriptions", async () => {
     const sub = relay.count([{ kinds: [1] }], "count1");
-    sub.subscribe();
-    sub.subscribe();
-    sub.subscribe();
-    sub.subscribe();
+    const subscriptions = [sub.subscribe(), sub.subscribe(), sub.subscribe(), sub.subscribe()];
 
     // Wait for connection
     await server.connected;
@@ -2281,13 +2394,14 @@ describe("count", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(server.messages).toEqual([["COUNT", "count1", { kinds: [1] }]]);
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
   });
 
   it("should wait when relay isn't ready", async () => {
     // @ts-expect-error
     relay._ready$.next(false);
 
-    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
 
     // Wait 10ms to ensure the relay didn't receive anything
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -2298,6 +2412,7 @@ describe("count", () => {
     relay._ready$.next(true);
 
     await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+    spy.unsubscribe();
   });
 
   it("should handle multiple filters", async () => {

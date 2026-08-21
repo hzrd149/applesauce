@@ -11,6 +11,7 @@ import {
   catchError,
   combineLatest,
   defer,
+  defaultIfEmpty,
   distinctUntilChanged,
   EMPTY,
   endWith,
@@ -47,7 +48,6 @@ import {
   takeWhile,
   tap,
   throwError,
-  throwIfEmpty,
   timeout,
   timer,
 } from "rxjs";
@@ -1157,6 +1157,8 @@ export class Relay {
       // Attempt-scoped (CR-03): a stale value from a prior attempt would send a redundant CLOSE for a
       // COUNT the relay already closed.
       let relayClosedSub = false;
+      let transportClose: CloseEvent | undefined;
+      const closeSubscription = this.close$.subscribe((event) => (transportClose = event));
 
       // Create an observable that filters responses from the relay to just the ones for this COUNT.
       // Per-attempt: a fresh chain, so a resend after an auth-required signal always registers its own
@@ -1219,7 +1221,21 @@ export class Relay {
         // A clean socket completion before COUNT is still a failed request. Convert it before the
         // reconnect operator so callers receive a typed terminal error instead of EmptyError (or a
         // value-less successful completion), and so this application-level failure is not retried.
-        throwIfEmpty(() => new RelayCountResponseError("COUNT completed without a response")),
+        defaultIfEmpty(null),
+        mergeMap((response) =>
+          response !== null
+            ? of(response)
+            : timer(0).pipe(
+                mergeMap(() =>
+                  throwError(() =>
+                    transportClose && !transportClose.wasClean
+                      ? transportClose
+                      : new RelayCountResponseError("COUNT completed without a response"),
+                  ),
+                ),
+              ),
+        ),
+        finalize(() => closeSubscription.unsubscribe()),
       );
     }).pipe(
       authOperator,
