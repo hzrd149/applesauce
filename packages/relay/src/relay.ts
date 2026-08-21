@@ -53,6 +53,7 @@ import {
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
+import { parseRelayCountResponse } from "./nip45.js";
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import {
   AUTH_PHASE_GATE,
@@ -175,6 +176,13 @@ export class RelayEventTimeoutError extends Error {
   }
 }
 
+export class RelayCountTimeoutError extends Error {
+  constructor(public readonly url: string) {
+    super(`Timed out waiting for COUNT response from ${url}`);
+    this.name = "RelayCountTimeoutError";
+  }
+}
+
 /** Whether an error represents a transport failure for which reconnecting can make progress. */
 function isReconnectableTransportError(error: unknown): error is CloseEvent {
   return (
@@ -241,6 +249,8 @@ export type RelayOptions = {
   eventTimeout?: number;
   /** How long to wait for a publish to complete (default 30s) */
   publishTimeout?: number;
+  /** Whole logical COUNT request timeout (default 10s) */
+  countTimeout?: number;
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive?: number;
   /** Enable/disable ping functionality (default false) */
@@ -409,6 +419,8 @@ export class Relay {
   eventTimeout = 10_000;
   /** How long to wait for a publish to complete (default 30s) */
   publishTimeout = 30_000;
+  /** Whole logical COUNT request timeout (default 10s) */
+  countTimeout = 10_000;
 
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive = 30_000;
@@ -529,6 +541,7 @@ export class Relay {
     // Set common options
     if (opts?.eventTimeout !== undefined) this.eventTimeout = opts.eventTimeout;
     if (opts?.publishTimeout !== undefined) this.publishTimeout = opts.publishTimeout;
+    if (opts?.countTimeout !== undefined) this.countTimeout = opts.countTimeout;
     if (opts?.keepAlive !== undefined) this.keepAlive = opts.keepAlive;
     if (opts?.enablePing !== undefined) this.enablePing = opts.enablePing;
     if (opts?.pingFrequency !== undefined) this.pingFrequency = opts.pingFrequency;
@@ -1114,6 +1127,7 @@ export class Relay {
     // attempt of this count() call, which is what lets suspendableTimeout suspend its clock across
     // every auth phase rather than resetting per attempt.
     const gate = new AuthPhaseGate();
+    const authCounter = { consecutive: 0 };
 
     // A thunk describing the wire request this COUNT sent, for the shared operator's onAuthRequired context.
     const describeRequest = (): RelayAuthWireRequest => ({
@@ -1127,7 +1141,7 @@ export class Relay {
     // Annotated explicitly so the `with` callback below can't leak a `never` inference back into it.
     // COUNT responses carry no bookkeeping value of their own, so every response is real progress.
     const authOperator: OperatorFunction<RelayCountResponse | AuthRequiredSignal, RelayCountResponse> =
-      this.authRetryOperator(describeRequest, opts, gate, () => true);
+      this.authRetryOperator(describeRequest, opts, gate, () => true, authCounter);
 
     return defer(() => {
       // CR-03: mirrors req()'s CR-02 fix — one auth attempt owns one send and one terminating listen
@@ -1154,7 +1168,7 @@ export class Relay {
         // (mirrors req()'s existing value-signal check) rather than parsing then narrowing by
         // instanceof. Every other recognized CLOSED prefix still throws its typed error unchanged.
         map<any, RelayCountResponse | AuthRequiredSignal | null>((m) => {
-          if (m[0] === "COUNT") return m[2] as RelayCountResponse;
+          if (m[0] === "COUNT") return parseRelayCountResponse(m[2]);
           else if (m[0] === "CLOSED") {
             relayClosedSub = true;
             const reason = m[2] ?? "";
@@ -1167,8 +1181,7 @@ export class Relay {
               return authRequiredSignal(reason);
             }
 
-            const error = parseClosedError(reason);
-            if (error) throw error;
+            throw parseClosedError(reason) ?? new RelayClosedError(reason);
           }
           return null;
         }),
@@ -1204,15 +1217,21 @@ export class Relay {
       return this.waitForReady(countObservable);
     }).pipe(
       authOperator,
+      this.customRetryOperator(
+        opts?.retries ?? opts?.reconnect ?? true,
+        this.publishRetry,
+        isReconnectableTransportError,
+      ),
       // Complete on the first (genuine) COUNT response (COUNT responses are single-shot)
       take(1),
-      // D-15: suspend the 10s COUNT clock across the auth phase so a COUNT can survive an auth
-      // round-trip — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. Every
-      // COUNT response is real progress, so firstWhen is unconditionally true.
-      suspendableTimeout<RelayCountResponse>(10_000, gate, {
-        firstWhen: () => true,
-        with: () => throwError(() => new Error("COUNT timeout")),
-      }),
+      // D-01: one configurable whole-logical-request deadline spans readiness, retry and backoff.
+      // countTimeout defaults to 10 seconds, suspends during auth, and expires terminally outside retry.
+      opts?.timeout === false
+        ? identity
+        : suspendableTimeout<RelayCountResponse>(opts?.timeout === true ? this.countTimeout : (opts?.timeout ?? this.countTimeout), gate, {
+            firstWhen: () => true,
+            with: () => throwError(() => new RelayCountTimeoutError(this.url)),
+          }),
       share(),
     );
   }
@@ -1405,14 +1424,15 @@ export class Relay {
   }
 
   /**
-   * D-07 retry operator used only by `publish()`. Its positive whitelist admits the typed reply
-   * timeout and unclean WebSocket closes; auth-family and unknown failures are re-thrown immediately.
+   * Classifier-supplied retry policy shared by the high-level publish and COUNT families.
+   * Each caller supplies a positive allow-list; all other failures are re-thrown immediately.
    * The call-scoped auth counter persists across transient resubscriptions, enforcing the additive
    * `1 + authRetries + retries` EVENT-write bound.
    */
   protected customRetryOperator<T extends unknown = unknown>(
     times: undefined | boolean | number | RetryConfig,
     base?: RetryConfig,
+    classifier: (error: unknown) => boolean = isRetryablePublishError,
   ): MonoTypeOperatorFunction<T> {
     if (times === false || times === undefined) return identity;
 
@@ -1422,7 +1442,7 @@ export class Relay {
     return retry({
       ...config,
       delay: (error, count) => {
-        if (!isRetryablePublishError(error)) return throwError(() => error);
+        if (!classifier(error)) return throwError(() => error);
 
         if (typeof config.delay === "number") return timer(config.delay);
         if (typeof config.delay === "function") return config.delay(error, count);

@@ -12,6 +12,7 @@ import {
   AuthTimeoutError,
   Relay,
   RelayClosedError,
+  RelayCountTimeoutError,
   RelayEventTimeoutError,
   RelayEventVerdictError,
   SyncDirection,
@@ -2224,17 +2225,15 @@ describe("count", () => {
     expect(spy.getValues()).toEqual([{ count: 24 }]);
   });
 
-  it("should complete subscription when CLOSED message is received", async () => {
-    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
+  it("should error when CLOSED message is received before a COUNT response", async () => {
+    const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"), { expectErrors: true });
     await server.connected;
 
     // Send CLOSED message for the subscription
     server.send(["CLOSED", "count1", "reason"]);
 
-    // Verify the subscription completed cleanly (not errored)
-    await spy.onComplete();
-    expect(spy.receivedComplete()).toBe(true);
-    expect(spy.receivedError()).toBe(false);
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(RelayClosedError);
   });
 
   it("should error if no COUNT response received within timeout", async () => {
@@ -2247,7 +2246,7 @@ describe("count", () => {
     await Promise.resolve();
 
     expect(spy.receivedError()).toBe(true);
-    expect(spy.getError()?.message).toBe("COUNT timeout");
+    expect(spy.getError()).toBeInstanceOf(RelayCountTimeoutError);
   });
 
   it("should not send multiple COUNT messages for multiple subscriptions", async () => {

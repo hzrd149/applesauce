@@ -156,7 +156,11 @@ export type RelayReqOptions = {
 } & RelayAuthOptions;
 
 /** Options for the count method on the pool and relay */
-export type RelayCountOptions = RelayAuthOptions;
+export type RelayCountOptions = RelayAuthOptions & {
+  retries?: boolean | number | Parameters<typeof retry>[0];
+  reconnect?: boolean | number | Parameters<typeof retry>[0];
+  timeout?: boolean | number;
+};
 
 /** Options for the sync method on the pool and relay */
 export type RelaySyncOptions = RelayAuthOptions;
@@ -196,7 +200,7 @@ export type RelaySubscriptionOptions = RelayReqOptions;
 export type RelaySubscriptionResponse = NostrEvent | "EOSE";
 
 /** The response type when counting events on a relay */
-export type RelayCountResponse = { count: number };
+export type RelayCountResponse = Record<string, unknown> & { count: number; approximate?: boolean; hll?: string };
 
 /** A minimal signer interface for authenticating with a relay */
 export type AuthSigner = {
