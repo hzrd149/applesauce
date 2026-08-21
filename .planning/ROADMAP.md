@@ -160,7 +160,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. A caller can pass `reconnect`, `retries`, and `timeout` to `count()` the same way they can to `publish()` — the hardcoded 10s clock with no override is gone.
-  2. A COUNT failure (timeout, refusal, malformed reply) reaches the caller as a rejected promise instead of a value to inspect.
+  2. A COUNT failure (timeout, refusal, malformed reply) reaches the caller through the Observable error channel instead of as a value to inspect; Phase 19 discussion explicitly preserved the existing Observable API, superseding the roadmap-derived Promise proposal while retaining COUNT-01's canonical error-surface requirement.
   3. `RelayCountResponse` carries validated `approximate`/`hll` fields when a relay sends them; a malformed payload rejects instead of becoming a typed lie via cast.
   4. Merging two relays' `hll` registers with the shipped register-wise max-merge helper against an independently hand-computed union cardinality produces the correct total.
 
