@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 20
-current_phase_name: AUTH Family Re-layer
-status: complete
+current_phase: 21
+current_phase_name: Group Error Surface — request
+status: planning
 stopped_at: Completed 20-04-PLAN.md; Phase 20 complete without transition
-last_updated: "2026-08-31T16:31:28.215Z"
-last_activity: 2026-08-21
-last_activity_desc: Phase 19 complete, transitioned to Phase 20
+last_updated: "2026-08-31T16:55:11.273Z"
+last_activity: 2026-08-31
+last_activity_desc: Phase 20 complete, transitioned to Phase 21
 progress:
   total_phases: 11
   completed_phases: 5
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 
 ## Current Position
 
-Phase: 20 — AUTH Family Re-layer
-Plan: 4 of 4 complete
-Status: Phase complete — no transition requested
-Last activity: 2026-08-31 — Phase 20 complete; remained on Phase 20
+Phase: 21 — Group Error Surface — request()/subscription()
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-31 — Phase 20 complete, transitioned to Phase 21
 
 Progress: [██████████] 100%
 
