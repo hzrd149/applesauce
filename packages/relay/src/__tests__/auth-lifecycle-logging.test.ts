@@ -69,6 +69,24 @@ describe("auth lifecycle logging (14-06)", () => {
     expect((relay as any).log.namespace).toBe("applesauce:Relay:wss://namespace-shape.example");
   });
 
+  it("Phase 20: challenge wait and timeout stages redact the complete challenge", async () => {
+    const challenge = `phase-20-${"secret".repeat(AUTH_LOG_TEXT_LIMIT)}`;
+    const signer = { signEvent: () => new Promise<NostrEvent>(() => {}) };
+
+    await withDebugCapture(authNamespaceOf(relay), async (lines) => {
+      const promise = relay.authenticate(signer, { timeout: 30 }).catch((error) => error);
+      await expect(server.connected).resolves.toBeDefined();
+      server.send(["AUTH", challenge]);
+      await expect(promise).resolves.toMatchObject({ name: "RelayAuthChallengeTimeoutError" });
+
+      const captured = lines();
+      expect(captured.some((line) => line.includes("Waiting for NIP-42 authentication challenge"))).toBe(true);
+      expect(captured.some((line) => line.includes("Signing AUTH event"))).toBe(true);
+      expect(captured.some((line) => line.includes("Timed out AUTH operation"))).toBe(true);
+      expect(captured.some((line) => line.includes(challenge))).toBe(false);
+    });
+  });
+
   it("ALOG-01: a scripted successful NIP-42 exchange produces a readable challenge -> signing -> sent -> result trace", async () => {
     const user = new FakeUser();
     const bystanderA = new FakeUser();
