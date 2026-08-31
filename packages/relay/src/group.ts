@@ -67,12 +67,18 @@ export function isGroupReqProgress(message: GroupReqMessage): boolean {
 }
 
 /**
- * The `.name` values of `Relay`'s `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError`
+ * The `.name` values of Relay's terminal authentication errors
  * (`relay.ts`). Matched by string rather than `instanceof`/import, mirroring
  * `packages/loaders/src/loaders/sync-loader.ts`'s `RELAY_AUTH_ERROR_NAMES` duck-typed precedent —
  * a rename of any of those classes' pinned `.name` must update this set in the same change.
  */
-const RELAY_AUTH_ERROR_NAMES = new Set(["AuthRequiredError", "AuthHandlerError", "AuthTimeoutError"]);
+const RELAY_AUTH_ERROR_NAMES = new Set([
+  "AuthRequiredError",
+  "AuthHandlerError",
+  "AuthTimeoutError",
+  "RelayAuthChallengeTimeoutError",
+  "RelayAuthChallengeChangedError",
+]);
 
 /** Convert an error to a PublishResponse */
 function errorToPublishResponse(relay: Relay): MonoTypeOperatorFunction<PublishResponse> {

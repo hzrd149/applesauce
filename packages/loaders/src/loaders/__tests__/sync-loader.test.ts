@@ -4,6 +4,10 @@ import { Filter } from "applesauce-core/helpers/filter";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 import { asyncScheduler, lastValueFrom, NEVER, Observable, of, scheduled, Subject, toArray } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
+import {
+  RelayAuthChallengeChangedError,
+  RelayAuthChallengeTimeoutError,
+} from "../../../../relay/src/relay.js";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import {
@@ -1016,6 +1020,23 @@ describe("13-13: handler-less auth-phase suspension and auth-phase timer lifetim
 // the D-16 no-fallback guard with no compiler error to catch it.
 describe("13-12: D-16 all-name coverage and the paginated path's own bound", () => {
   const filter: Filter = { kinds: [1], authors: [user.pubkey] };
+
+  it.each([new RelayAuthChallengeTimeoutError("wss://relay/"), new RelayAuthChallengeChangedError("wss://relay/")])(
+    "rethrows the actual terminal %s instance without request fallback",
+    async (authError) => {
+      const eventStore = new EventStore();
+      const sync = vi.fn().mockReturnValue(throwError(authError));
+      const request = vi.fn().mockReturnValue(of());
+      const loader = createSyncLoader({ eventStore, request, getSupported: vi.fn().mockResolvedValue([77]), sync });
+      const { status$, events$ } = loader({ relays: ["wss://relay/"], filter });
+
+      const statusPromise = collect(status$);
+      events$.subscribe();
+      const last = (await statusPromise).at(-1) as SyncLoaderStatus;
+      expect(last.relays["wss://relay/"].error).toBe(authError);
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["AuthRequiredError", "AuthHandlerError"])(
     "errors the relay without falling back when negentropy sync fails with a %s name (D-16)",

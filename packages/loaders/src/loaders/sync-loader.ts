@@ -82,12 +82,18 @@ export type SyncAuthHandler = (context: SyncAuthContext) => void | Promise<void>
 
 /**
  * NOTE: these three `name` strings are load-bearing wire between packages. They are coupled to
- * `AuthHandlerError`/`AuthTimeoutError`/`AuthRequiredError`'s pinned `.name` values declared in
+ * Relay's terminal authentication errors have pinned `.name` values declared in
  * `packages/relay/src/relay.ts`. D-06 deliberately forbids importing those classes here, so this loader
  * duck-types against the exact strings instead — a rename in `relay.ts` must update this set in the same
  * change.
  */
-export const RELAY_AUTH_ERROR_NAMES = new Set(["AuthRequiredError", "AuthHandlerError", "AuthTimeoutError"]);
+export const RELAY_AUTH_ERROR_NAMES = new Set([
+  "AuthRequiredError",
+  "AuthHandlerError",
+  "AuthTimeoutError",
+  "RelayAuthChallengeTimeoutError",
+  "RelayAuthChallengeChangedError",
+]);
 
 /** The method a relay was loaded with */
 export type SyncRelayMethod = "negentropy" | "request";

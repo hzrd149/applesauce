@@ -6,7 +6,12 @@ import { WS } from "vitest-websocket-mock";
 
 import { RelayGroup } from "../group.js";
 import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
-import { AuthRequiredError, Relay } from "../relay.js";
+import {
+  AuthRequiredError,
+  Relay,
+  RelayAuthChallengeChangedError,
+  RelayAuthChallengeTimeoutError,
+} from "../relay.js";
 import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";
 
@@ -378,6 +383,21 @@ describe("dropped-relay diagnostics (14-03): human prose names the failure class
       expect(droppedLines[0].toLowerCase()).toContain("auth failure");
     });
   });
+
+  it.each([new RelayAuthChallengeTimeoutError("wss://relay1.test"), new RelayAuthChallengeChangedError("wss://relay1.test")])(
+    "classifies actual terminal %s instances as auth failures",
+    async (failure) => {
+      vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+      vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
+      vi.spyOn(relay1, "sync").mockReturnValue(throwError(() => failure));
+      vi.spyOn(relay2, "sync").mockReturnValue(of(mockEvent));
+
+      await withDebugCapture(NAMESPACE, async (lines) => {
+        await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
+        expect(lines().find((line) => line.includes(relay1.url))?.toLowerCase()).toContain("auth failure");
+      });
+    },
+  );
 
   it("an ordinary connection error is NOT reported as an auth failure, proving the two classes are distinguishable from output alone", async () => {
     vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
