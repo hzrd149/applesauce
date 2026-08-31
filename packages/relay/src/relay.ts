@@ -1328,8 +1328,8 @@ export class Relay {
     );
   }
 
-  /** Send an AUTH message. Can be called multiple times with events from different pubkeys to authenticate multiple users */
-  auth(event: NostrEvent): Promise<PublishResponse> {
+  /** Create a cancellable AUTH exchange and update authentication state only while it remains subscribed. */
+  private authExchange(event: NostrEvent, cancel$: Observable<unknown> = NEVER): Observable<PublishResponse> {
     const authEvent = event as KnownEvent<kinds.ClientAuth>;
 
     // Save the authentication event (deprecated mirror of the most recent AUTH attempt)
@@ -1345,28 +1345,32 @@ export class Relay {
     // sometimes not a statement of fact. The fixed AUTH route reaches that defer for every caller of
     // auth() (including one who signed their own AUTH event and called auth() directly), so nothing is
     // lost by moving it.
-    return lastValueFrom(
-      this.eventExchange(event, "AUTH").pipe(
-        tap((result) => {
-          // Update the pubkey's auth state, unless a newer AUTH attempt replaced this one
-          const current = this.authentications$.value[event.pubkey];
-          if (current?.event.id === event.id)
-            this.authentications$.next({
-              ...this.authentications$.value,
-              [event.pubkey]: { event: authEvent, response: result },
-            });
+    return this.eventExchange(event, "AUTH").pipe(
+      takeUntil(cancel$),
+      tap((result) => {
+        // Update the pubkey's auth state, unless a newer AUTH attempt replaced this one
+        const current = this.authentications$.value[event.pubkey];
+        if (current?.event.id === event.id)
+          this.authentications$.next({
+            ...this.authentications$.value,
+            [event.pubkey]: { event: authEvent, response: result },
+          });
 
-          // Update the deprecated mirror only when this is still the latest AUTH attempt.
-          if (this.authentication$.value?.id === event.id) this.authenticationResponse$.next(result);
+        // Update the deprecated mirror only when this is still the latest AUTH attempt.
+        if (this.authentication$.value?.id === event.id) this.authenticationResponse$.next(result);
 
-          // D-09: the connection track's result line — the relay's own OK message carried verbatim (only
-          // bounded) as the "why", joined to the challenge/signing/sent lines above by the full pubkey.
-          this.authLog(
-            `Relay ${result.ok ? "accepted" : "rejected"} AUTH for ${event.pubkey}: ${truncateForLog(result.message)}`,
-          );
-        }),
-      ),
+        // D-09: the connection track's result line — the relay's own OK message carried verbatim (only
+        // bounded) as the "why", joined to the challenge/signing/sent lines above by the full pubkey.
+        this.authLog(
+          `Relay ${result.ok ? "accepted" : "rejected"} AUTH for ${event.pubkey}: ${truncateForLog(result.message)}`,
+        );
+      }),
     );
+  }
+
+  /** Send an AUTH message. Can be called multiple times with events from different pubkeys to authenticate multiple users */
+  auth(event: NostrEvent): Promise<PublishResponse> {
+    return lastValueFrom(this.authExchange(event));
   }
 
   /** Negentropy sync event ids with the relay and an event store */
@@ -1524,7 +1528,7 @@ export class Relay {
             continue;
           }
 
-          return await bounded(this.auth(event));
+          return await bounded(lastValueFrom(this.authExchange(event, cancel$)));
         }
       } finally {
         abandoned = true;

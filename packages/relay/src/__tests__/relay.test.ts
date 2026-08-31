@@ -2152,6 +2152,37 @@ describe("authenticate", () => {
     expect(server.messages.some((message: any) => message[0] === "AUTH")).toBe(false);
     expect(relay.authentications).toEqual({});
   });
+
+  it("unsubscribes an AUTH exchange aborted after its wire write and ignores a late OK", async () => {
+    const controller = new AbortController();
+    const reason = new Error("stop after write");
+    const promise = relay.authenticate(signer, { timeout: 500, signal: controller.signal });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-after-write"]);
+    const auth = (await server.nextMessage) as ["AUTH", NostrEvent];
+
+    controller.abort(reason);
+    await expect(promise).rejects.toBe(reason);
+    server.send(["OK", auth[1].id, true, "too late"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(relay.authentications[signer.pubkey]).toMatchObject({ response: null });
+    expect(relay.authenticationResponse).toBeNull();
+  });
+
+  it("unsubscribes an AUTH exchange at the outer timeout and ignores a late OK", async () => {
+    const promise = relay.authenticate(signer, { timeout: 20 });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-timeout-after-write"]);
+    const auth = (await server.nextMessage) as ["AUTH", NostrEvent];
+
+    await expect(promise).rejects.toBeInstanceOf(RelayAuthChallengeTimeoutError);
+    server.send(["OK", auth[1].id, true, "too late"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(relay.authentications[signer.pubkey]).toMatchObject({ response: null });
+    expect(relay.authenticationResponse).toBeNull();
+  });
 });
 
 describe("multi-user authentication", () => {
