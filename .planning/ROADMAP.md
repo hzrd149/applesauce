@@ -185,7 +185,13 @@ Plans:
   4. `auth()` still sends exactly one AUTH frame via `event()`, never `publish()`, so it cannot recurse into the EVENT family's retry loop.
   5. If this phase adds a new terminal auth error class, `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes it in the same change — a dedicated test proves the loader classifies it as an auth failure, not a generic one.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 20-01-PLAN.md — Fix EVENT/AUTH routing over one private raw exchange and add the compile-time bypass guard
+- [ ] 20-02-PLAN.md — Add bounded challenge acquisition, freshness retries, cancellation, and lifecycle proof
+- [ ] 20-03-PLAN.md — Close terminal-error classifiers and downstream consumer compatibility
+- [ ] 20-04-PLAN.md — Align docs/provenance/release metadata and run the complete phase gate
 
 ### Phase 21: Group Error Surface — request()/subscription()
 
