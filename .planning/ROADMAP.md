@@ -72,7 +72,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 17: Correctness Fixes & Concord Residuals** - Independent relay/sqlite/NIP-29 bug fixes plus two Concord auth/publish-honesty gaps, none gated by the re-layering (completed 2026-08-20)
 - [x] **Phase 18: EVENT Family Re-layer** - `event()` sends once and throws; `publish()` becomes sole owner of the auth retry loop (completed 2026-08-20)
 - [x] **Phase 19: COUNT Becomes the High-Level Member** - `count()` gains `reconnect`/`retries`/`timeout` and a validated NIP-45 response shape with an HLL merge helper (completed 2026-08-21)
-- [ ] **Phase 20: AUTH Family Re-layer** - `authenticate()` acquires and re-verifies a challenge instead of racing a stale one under a slow signer
+- [x] **Phase 20: AUTH Family Re-layer** - `authenticate()` acquires and re-verifies a challenge instead of racing a stale one under a slow signer (completed 2026-08-31)
 - [ ] **Phase 21: Group Error Surface — request()/subscription()** - Total group failure raises a real aggregate error instead of completing empty or hanging forever
 - [ ] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop
 - [ ] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively
@@ -185,13 +185,14 @@ Plans:
   4. `auth()` sends exactly one fixed AUTH frame through the same private one-frame/one-reply primitive as `event()`, never `publish()`, so it cannot recurse into the EVENT family's retry loop.
   5. If this phase adds a new terminal auth error class, `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes it in the same change — a dedicated test proves the loader classifies it as an auth failure, not a generic one.
 
-**Plans**: 4 plans
+**Plans**: 4/4 plans executed
 
 Plans:
-- [ ] 20-01-PLAN.md — Fix EVENT/AUTH routing over one private raw exchange and add the compile-time bypass guard
-- [ ] 20-02-PLAN.md — Add bounded challenge acquisition, freshness retries, cancellation, and lifecycle proof
-- [ ] 20-03-PLAN.md — Close terminal-error classifiers and downstream consumer compatibility
-- [ ] 20-04-PLAN.md — Align docs/provenance/release metadata and run the complete phase gate
+
+- [x] 20-01-PLAN.md — Fix EVENT/AUTH routing over one private raw exchange and add the compile-time bypass guard
+- [x] 20-02-PLAN.md — Add bounded challenge acquisition, freshness retries, cancellation, and lifecycle proof
+- [x] 20-03-PLAN.md — Close terminal-error classifiers and downstream consumer compatibility
+- [x] 20-04-PLAN.md — Align docs/provenance/release metadata and run the complete phase gate
 
 ### Phase 21: Group Error Surface — request()/subscription()
 
@@ -305,7 +306,7 @@ Plans:
 | 17. Correctness Fixes & Concord Residuals | v7.0.0 | 6/6 | In Progress | - |
 | 18. EVENT Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 19. COUNT Becomes the High-Level Member | v7.0.0 | 3/3 | Complete | 2026-08-21 |
-| 20. AUTH Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
+| 20. AUTH Family Re-layer | v7.0.0 | 4/4 | Complete | 2026-08-31 |
 | 21. Group Error Surface — request()/subscription() | v7.0.0 | 0/TBD | Not started | - |
 | 22. REQ Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 23. Group count() Isolation | v7.0.0 | 0/TBD | Not started | - |

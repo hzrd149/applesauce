@@ -4,17 +4,17 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 20
 current_phase_name: AUTH Family Re-layer
-status: planning
-stopped_at: Phase 20 context gathered
-last_updated: "2026-08-31T15:42:17.244Z"
+status: complete
+stopped_at: Completed 20-04-PLAN.md; Phase 20 complete without transition
+last_updated: "2026-08-31T16:31:28.215Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 19 complete, transitioned to Phase 20
 progress:
   total_phases: 11
-  completed_phases: 4
-  total_plans: 21
-  completed_plans: 21
-  percent: 36
+  completed_phases: 5
+  total_plans: 25
+  completed_plans: 25
+  percent: 45
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 19 — COUNT high-level member (complete; no transition requested)
+**Current focus:** Phase 20 — AUTH Family Re-layer (complete; no transition requested)
 
 ## Current Position
 
 Phase: 20 — AUTH Family Re-layer
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-21 — Phase 19 complete, transitioned to Phase 20
+Plan: 4 of 4 complete
+Status: Phase complete — no transition requested
+Last activity: 2026-08-31 — Phase 20 complete; remained on Phase 20
 
 Progress: [██████████] 100%
 
@@ -144,6 +144,10 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 19 P01 | 12min | 2 tasks | 6 files |
 | Phase 19 P02 | 8min | 3 tasks | 3 files |
 | Phase 19 P03 | 5min | 3 tasks | 4 files |
+| Phase 20 P01 | 8min | 2 tasks | 4 files |
+| Phase 20 P02 | 10min | 2 tasks | 5 files |
+| Phase 20 P03 | 6min | 2 tasks | 7 files |
+| Phase 20 P04 | 8min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -344,6 +348,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 18-04: Historical decisions are amended in place: EVENT is the one-hop throw exception while multi-hop families retain value signalling.
 - [Phase ?]: 18-05: The breaking raw event signature receives its own major applesauce-relay changeset.
 - [Phase ?]: Phase 19: COUNT uses one whole-request deadline outside transport-only retry and suspends it during auth.
+- [Phase ?]: Phase 20: event() and auth() use fixed public verbs over one private one-frame/one-reply primitive.
+- [Phase ?]: Phase 20: authenticate() uses one 30-second-default absolute deadline and one default freshness retry.
 
 ### Pending Todos
 
@@ -463,9 +469,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-31T15:42:17.221Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-auth-family-re-layer/20-CONTEXT.md
+Last session: 2026-08-31T16:31:28.194Z
+Stopped at: Completed 20-04-PLAN.md; Phase 20 complete without transition
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.

@@ -38,11 +38,11 @@ findings changed the plan and are marked **[research]** below.
 
 ### AUTH Family
 
-- [ ] **AUTHF-01**: `authenticate()` acquires a challenge rather than reading `this.challenge` synchronously — a bounded wait, so "no challenge yet" on a fresh connection is transient rather than fatal, and a relay that never sends one fails on a clock rather than hanging
-- [ ] **AUTHF-02**: A challenge that moves while a slow signer (NIP-46 bunker, extension dialog) is signing produces a re-sign and resend within an explicit small bound, instead of writing an AUTH signed against a superseded challenge and reporting the relay's rejection as a refusal
-- [ ] **AUTHF-03**: Every failure `authenticate()` can produce reaches the caller through the promise rejection, so `.catch()` and `try`/`await` agree (subsumes 999.22)
-- [ ] **AUTHF-04**: `auth()` remains a single AUTH frame and its one reply, using the same private one-frame/one-reply primitive as `event()` with fixed AUTH routing and never calling `publish()`, so it cannot recurse into the auth loop EVT-02 installs
-- [ ] **AUTHF-05**: **[research]** `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes every terminal auth error class the relay can raise, with the duck-typed-by-`.name` gap closed so a new class is a visible failure rather than a silent non-match
+- [x] **AUTHF-01**: `authenticate()` acquires a challenge rather than reading `this.challenge` synchronously — a bounded wait, so "no challenge yet" on a fresh connection is transient rather than fatal, and a relay that never sends one fails on a clock rather than hanging
+- [x] **AUTHF-02**: A challenge that moves while a slow signer (NIP-46 bunker, extension dialog) is signing produces a re-sign and resend within an explicit small bound, instead of writing an AUTH signed against a superseded challenge and reporting the relay's rejection as a refusal
+- [x] **AUTHF-03**: Every failure `authenticate()` can produce reaches the caller through the promise rejection, so `.catch()` and `try`/`await` agree (subsumes 999.22)
+- [x] **AUTHF-04**: `auth()` remains a single AUTH frame and its one reply, using the same private one-frame/one-reply primitive as `event()` with fixed AUTH routing and never calling `publish()`, so it cannot recurse into the auth loop EVT-02 installs
+- [x] **AUTHF-05**: **[research]** `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes every terminal auth error class the relay can raise, with the duck-typed-by-`.name` gap closed so a new class is a visible failure rather than a silent non-match
 
 ### COUNT Family
 
@@ -147,11 +147,11 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | REQ-03 | Phase 22 | Pending |
 | REQ-04 | Phase 22 | Pending |
 | REQ-05 | Phase 22 | Pending |
-| AUTHF-01 | Phase 20 | Pending |
-| AUTHF-02 | Phase 20 | Pending |
-| AUTHF-03 | Phase 20 | Pending |
-| AUTHF-04 | Phase 20 | Pending |
-| AUTHF-05 | Phase 20 | Pending |
+| AUTHF-01 | Phase 20 | Complete |
+| AUTHF-02 | Phase 20 | Complete |
+| AUTHF-03 | Phase 20 | Complete |
+| AUTHF-04 | Phase 20 | Complete |
+| AUTHF-05 | Phase 20 | Complete |
 | COUNT-01 | Phase 19 | Complete |
 | COUNT-02 | Phase 19 | Complete |
 | COUNT-03 | Phase 19 | Complete |
