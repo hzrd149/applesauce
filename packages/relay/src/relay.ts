@@ -315,6 +315,11 @@ export class Relay {
   challenge$ = new BehaviorSubject<string | null>(null);
   /** All AUTH attempts on this connection keyed by pubkey (NIP-42 supports multiple authenticated users per connection) */
   authentications$ = new BehaviorSubject<Record<string, RelayAuthState>>({});
+  /** In-memory identities prevent deterministic event IDs from aliasing separate logical attempts. */
+  private authAttemptTokens = new Map<string, symbol>();
+  private latestAuthAttempt: symbol | null = null;
+  /** Duplicate wire IDs are serialized because an OK frame cannot distinguish concurrent identical events. */
+  private authEventQueues = new Map<string, Promise<void>>();
   /** The pubkeys that are currently authenticated on the connection, ordered oldest to most recent */
   authenticatedPubkeys$: Observable<string[]>;
   /** Boolean authentication state (true if at least one pubkey is authenticated) */
@@ -1331,6 +1336,9 @@ export class Relay {
   /** Create a cancellable AUTH exchange and update authentication state only while it remains subscribed. */
   private authExchange(event: NostrEvent, cancel$: Observable<unknown> = NEVER): Observable<PublishResponse> {
     const authEvent = event as KnownEvent<kinds.ClientAuth>;
+    const attempt = Symbol("AUTH attempt");
+    this.authAttemptTokens.set(event.pubkey, attempt);
+    this.latestAuthAttempt = attempt;
 
     // Save the authentication event (deprecated mirror of the most recent AUTH attempt)
     this.authentication$.next(authEvent);
@@ -1345,26 +1353,38 @@ export class Relay {
     // sometimes not a statement of fact. The fixed AUTH route reaches that defer for every caller of
     // auth() (including one who signed their own AUTH event and called auth() directly), so nothing is
     // lost by moving it.
-    return this.eventExchange(event, "AUTH").pipe(
+    let releaseTurn!: () => void;
+    const turn = new Promise<void>((resolve) => (releaseTurn = resolve));
+    const previous = this.authEventQueues.get(event.id) ?? Promise.resolve();
+    const tail = previous.catch(() => {}).then(() => turn);
+    this.authEventQueues.set(event.id, tail);
+    void tail.then(() => {
+      if (this.authEventQueues.get(event.id) === tail) this.authEventQueues.delete(event.id);
+    });
+
+    return from(previous.catch(() => {})).pipe(
       takeUntil(cancel$),
-      tap((result) => {
-        // Update the pubkey's auth state, unless a newer AUTH attempt replaced this one
-        const current = this.authentications$.value[event.pubkey];
-        if (current?.event.id === event.id)
-          this.authentications$.next({
-            ...this.authentications$.value,
-            [event.pubkey]: { event: authEvent, response: result },
-          });
+      switchMap(() =>
+        this.eventExchange(event, "AUTH").pipe(
+          takeUntil(cancel$),
+          tap((result) => {
+            // Update keyed and deprecated mirrors only if this is still the latest logical attempt.
+            if (this.authAttemptTokens.get(event.pubkey) === attempt)
+              this.authentications$.next({
+                ...this.authentications$.value,
+                [event.pubkey]: { event: authEvent, response: result },
+              });
+            if (this.latestAuthAttempt === attempt) this.authenticationResponse$.next(result);
 
-        // Update the deprecated mirror only when this is still the latest AUTH attempt.
-        if (this.authentication$.value?.id === event.id) this.authenticationResponse$.next(result);
-
-        // D-09: the connection track's result line — the relay's own OK message carried verbatim (only
-        // bounded) as the "why", joined to the challenge/signing/sent lines above by the full pubkey.
-        this.authLog(
-          `Relay ${result.ok ? "accepted" : "rejected"} AUTH for ${event.pubkey}: ${truncateForLog(result.message)}`,
-        );
-      }),
+            // D-09: the connection track's result line — the relay's own OK message carried verbatim (only
+            // bounded) as the "why", joined to the challenge/signing/sent lines above by the full pubkey.
+            this.authLog(
+              `Relay ${result.ok ? "accepted" : "rejected"} AUTH for ${event.pubkey}: ${truncateForLog(result.message)}`,
+            );
+          }),
+        ),
+      ),
+      finalize(() => releaseTurn()),
     );
   }
 

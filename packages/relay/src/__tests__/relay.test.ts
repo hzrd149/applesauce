@@ -2062,21 +2062,32 @@ describe("authenticate", () => {
     await expect(unbounded).rejects.toBeInstanceOf(RelayEventTimeoutError);
   });
 
-  it("shares multiple awaits of one call while separate calls remain independent", async () => {
-    const signEvent = vi.spyOn(signer, "signEvent");
-    const first = relay.authenticate(signer, { timeout: 500 });
+  it("serializes duplicate AUTH event IDs and keeps opposite outcomes with their logical calls", async () => {
+    const signEvent = vi.fn((template: Parameters<typeof signer.signEvent>[0]) =>
+      signer.signEvent({ ...template, created_at: 1_700_000_000 }),
+    );
+    const deterministicSigner = { signEvent };
+    const first = relay.authenticate(deterministicSigner, { timeout: 500 });
     const firstAgain = first;
-    const second = relay.authenticate(signer, { timeout: 500 });
+    const second = relay.authenticate(deterministicSigner, { timeout: 500 });
     await expect(server.connected).resolves.toBeDefined();
     server.send(["AUTH", "challenge-shared"]);
 
-    await vi.waitFor(() => expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(2));
-    for (const message of server.messages.filter((value: any) => value[0] === "AUTH") as ["AUTH", NostrEvent][]) {
-      server.send(["OK", message[1].id, true, ""]);
-    }
+    await vi.waitFor(() => expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1));
+    const firstFrame = server.messages.find((message: any) => message[0] === "AUTH") as ["AUTH", NostrEvent];
+    server.send(["OK", firstFrame[1].id, false, "older denied"]);
+    await expect(first).resolves.toMatchObject({ ok: false, message: "older denied" });
+    await expect(firstAgain).resolves.toMatchObject({ ok: false, message: "older denied" });
 
-    await expect(Promise.all([first, firstAgain, second])).resolves.toHaveLength(3);
+    await vi.waitFor(() => expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(2));
+    const secondFrame = server.messages.filter((message: any) => message[0] === "AUTH")[1] as ["AUTH", NostrEvent];
+    expect(secondFrame[1].id).toBe(firstFrame[1].id);
+    server.send(["OK", secondFrame[1].id, true, "newer accepted"]);
+
+    await expect(second).resolves.toMatchObject({ ok: true, message: "newer accepted" });
     expect(signEvent).toHaveBeenCalledTimes(2);
+    expect(relay.authentications[signer.pubkey]).toMatchObject({ response: { ok: true, message: "newer accepted" } });
+    expect(relay.authenticationResponse).toMatchObject({ ok: true, message: "newer accepted" });
   });
 
   it("discards a stale signed candidate and re-signs the current challenge", async () => {
