@@ -41,7 +41,9 @@ export class Vertex extends Relay {
       if (challenge && !authenticated && !authenticating) {
         console.info("[VERTEX] Authenticating to relay");
         authenticating = true;
-        this.authenticate(this.signer).finally(() => (authenticating = false));
+        void this.authenticate(this.signer)
+          .catch((error) => console.error("[VERTEX] Failed to authenticate to relay", error))
+          .finally(() => (authenticating = false));
       }
     });
   }
