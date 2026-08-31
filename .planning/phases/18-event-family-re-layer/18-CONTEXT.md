@@ -82,3 +82,7 @@ Make `event()` one readiness-aware EVENT/AUTH wire interaction and make `publish
 - Phase 24 will replace the temporary `sync()` SEND-through-`publish()` composition with one coherent sync-owned auth/clock/reconnect/concurrency policy.
 
 </deferred>
+
+## Phase 20 amendment (2026-08-31)
+
+Phase 18's one-attempt transport invariants remain authoritative: readiness, listener-before-write ordering, matching replies, fixed reply bounds, and fresh unshared attempts are preserved. Phase 20 intentionally supersedes only the public EVENT/AUTH verb selector: `event(event)` is fixed to EVENT, `auth(event)` is fixed to AUTH, and both use the private one-frame/one-reply primitive.

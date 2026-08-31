@@ -182,7 +182,7 @@ Plans:
   1. Calling `authenticate()` before a challenge has arrived waits, bounded, instead of throwing synchronously — a relay that never sends a challenge fails on a clock, not a hang.
   2. A challenge that changes mid-sign produces a re-sign and resend within a small explicit bound, instead of writing an AUTH against a stale challenge and reporting the relay's rejection as a refusal.
   3. Every failure `authenticate()` can produce reaches both `.catch()` and `try`/`await` callers identically.
-  4. `auth()` still sends exactly one AUTH frame via `event()`, never `publish()`, so it cannot recurse into the EVENT family's retry loop.
+  4. `auth()` sends exactly one fixed AUTH frame through the same private one-frame/one-reply primitive as `event()`, never `publish()`, so it cannot recurse into the EVENT family's retry loop.
   5. If this phase adds a new terminal auth error class, `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes it in the same change — a dedicated test proves the loader classifies it as an auth failure, not a generic one.
 
 **Plans**: 4 plans

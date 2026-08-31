@@ -120,50 +120,50 @@ relay
 
 ## Authentication
 
-The `Relay` class supports [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md) authentication and keeps track of the authentication state and challenge.
+The `Relay` class supports [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md) authentication and keeps track of the authentication state and challenge. `event()` always sends `EVENT`; `auth()` always sends one `AUTH` and returns its matching relay verdict.
 
 - `challenge$` - An observable that tracks the authentication challenge from the relay.
 - `authenticated$` - An observable that emits true when at least one user is authenticated.
 - `authentications$` - An observable of all authentication attempts on the connection, keyed by pubkey.
 - `authenticatedPubkeys$` - An observable of the pubkeys that are currently authenticated.
-- `authenticate` - An async method that can be used to authenticate the relay.
+- `authenticate` - Waits for a challenge, signs it, verifies freshness, and sends one current AUTH candidate.
 
 More information about authentication can be found in the [typedocs](https://applesauce.build/typedoc/classes/applesauce-relay.Relay).
 
 ```typescript
-// Listen for authentication challenges
-relay.challenge$.subscribe((challenge) => {
-  if (!challenge) return;
+const controller = new AbortController();
 
-  // Using browser extension as signer
-  relay
-    .authenticate(window.nostr)
-    .then(() => {
-      console.log("Authentication successful");
-    })
-    .catch((err) => {
-      console.error("Authentication failed:", err);
-    });
+const response = await relay.authenticate(window.nostr, {
+  timeout: 30_000,
+  challengeRetries: 1,
+  signal: controller.signal,
 });
 ```
+
+The timeout covers challenge acquisition, signer latency, freshness retries, and the AUTH reply. Pass `timeout: false` to disable that outer deadline; the fixed low-level reply bound still applies. If the challenge changes during signing, `authenticate()` discards the stale candidate and re-signs within `challengeRetries` (default `1`). Matching `OK true` and `OK false` replies are response values; timeout, freshness, signer, transport, and abort failures reject the promise.
 
 If you want to manually build the authentication event you can use the `auth` method to send the event to the relay.
 
 ```typescript
 import { makeAuthEvent } from "nostr-tools/nip42";
 
-// Listen for authentication challenges
 relay.challenge$.subscribe(async (challenge) => {
   if (!challenge) return;
-
-  // Create a new auth event and sign it
   const auth = await window.nostr.signEvent(makeAuthEvent(relay.url, challenge));
-
-  // Send it to the relay and wait for the response
   const response = await relay.auth(auth);
   console.log("Authentication response:", response);
 });
 ```
+
+### Integration
+
+Use `authenticate()` for normal signer integration, including remote or interactive signers. Use `challenge$` plus `auth()` only when an application intentionally owns challenge freshness and event construction itself.
+
+### Best Practices
+
+- Pass an `AbortSignal` when authentication belongs to a cancellable view or operation.
+- Treat `ok: false` as a relay verdict; catch rejected promises for client, signer, freshness, timeout, abort, and transport failures.
+- Prefer `authenticate()` unless manual AUTH event construction is required.
 
 ### Multiple users
 

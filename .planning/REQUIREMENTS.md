@@ -41,7 +41,7 @@ findings changed the plan and are marked **[research]** below.
 - [ ] **AUTHF-01**: `authenticate()` acquires a challenge rather than reading `this.challenge` synchronously — a bounded wait, so "no challenge yet" on a fresh connection is transient rather than fatal, and a relay that never sends one fails on a clock rather than hanging
 - [ ] **AUTHF-02**: A challenge that moves while a slow signer (NIP-46 bunker, extension dialog) is signing produces a re-sign and resend within an explicit small bound, instead of writing an AUTH signed against a superseded challenge and reporting the relay's rejection as a refusal
 - [ ] **AUTHF-03**: Every failure `authenticate()` can produce reaches the caller through the promise rejection, so `.catch()` and `try`/`await` agree (subsumes 999.22)
-- [ ] **AUTHF-04**: `auth()` remains a single AUTH frame and its one reply, still calling `event()` and never `publish()`, so it cannot recurse into the auth loop EVT-02 installs
+- [ ] **AUTHF-04**: `auth()` remains a single AUTH frame and its one reply, using the same private one-frame/one-reply primitive as `event()` with fixed AUTH routing and never calling `publish()`, so it cannot recurse into the auth loop EVT-02 installs
 - [ ] **AUTHF-05**: **[research]** `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes every terminal auth error class the relay can raise, with the duck-typed-by-`.name` gap closed so a new class is a visible failure rather than a silent non-match
 
 ### COUNT Family
