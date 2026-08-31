@@ -34,7 +34,7 @@ created: 2026-08-31
 | 20-02-01 | 2 | AUTHF-01, AUTHF-03 | Fresh-connect wait, 30s-default whole deadline, signer/transport/reply rejection | focused relay test + build | pending |
 | 20-02-02 | 2 | AUTHF-02, AUTHF-03 | Freshness matrix, abort/late suppression, multi-await/call independence, newest state, redacted logs | relay + lifecycle suites | pending |
 | 20-03-01 | 3 | AUTHF-05 | Actual exported errors classify in Group and loaders; non-auth control does not | Group + loader tests/build | pending |
-| 20-03-02 | 3 | AUTHF-03 | Concord verdict/rejection and Vertex raw auth compatibility | package tests/builds | pending |
+| 20-03-02 | 3 | AUTHF-03 | Concord verdict/rejection and Vertex challenge-driven authenticate compatibility | package tests/builds including new vertex.test.ts | pending |
 | 20-04-01 | 4 | AUTHF-01..04 | Docs build and authoritative provenance audit | docs build + positive searches | pending |
 | 20-04-02 | 4 | AUTHF-01..05 | Exact changeset, static contract, and complete package gates | Plan 20-04 exact command | pending |
 

@@ -277,17 +277,15 @@ return await this.auth(event);
 |---|-------|---------|---------------|
 | A1 | Error names should be `RelayAuthChallengeTimeoutError` and `RelayAuthChallengeChangedError`. | Summary | Low; names are discretionary, but every mirror/test/doc must use the chosen names consistently. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Default outer authenticate timeout value**
    - What we know: D-05 adds `timeout?: number | false`; D-06 defines semantics but not the numeric default. [VERIFIED: context]
-   - What's unclear: whether it should default to `publishTimeout` (30s), a new `authenticateTimeout`, or another fixed value.
-   - Recommendation: use `publishTimeout` as the existing whole-operation one-result default unless planning records a dedicated default; test the chosen value explicitly. [ASSUMED]
+   - Resolution: default to the existing `publishTimeout` value (30s), captured once as the whole-operation deadline and tested explicitly; do not add a second timeout property. [RESOLVED: 2026-08-31 planning]
 
 2. **Type-test location**
    - What we know: package build excludes current runtime tests, and Phase 18 verification found an extra argument survived in a test. [VERIFIED: Phase 18 verification]
-   - What's unclear: the repo has no obvious dedicated tsd harness.
-   - Recommendation: add a small compile-included fixture or a Vitest source file with `// @ts-expect-error`; verify with the exact command that compiles it, not runtime execution alone. [VERIFIED: TypeScript behavior; placement discretionary]
+   - Resolution: create `packages/relay/type-tests/event-auth-types.ts` plus `packages/relay/tsconfig.type-tests.json`, and verify it with `pnpm --filter applesauce-relay exec tsc -p tsconfig.type-tests.json --noEmit`; runtime Vitest files remain non-authoritative for extra-argument rejection. [RESOLVED: 2026-08-31 planning]
 
 ## Environment Availability
 

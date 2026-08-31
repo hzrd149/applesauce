@@ -244,7 +244,7 @@ This already matches the verdict-value/error-rejection contract. Use build/type 
 
 ### `packages/extra/src/vertex.ts` (service, event-driven)
 
-**Analog:** the file's relay challenge subscription and direct `auth()` call near its constructor (search `challenge$` / `authenticate`). Preserve its manual challenge-driven flow as the raw-path compatibility case: a pre-signed event continues through `auth()` exactly once. Do not migrate it to `authenticate()` unless the consumer already owns a signer compatible with the high-level API and the plan explicitly calls for that semantic change.
+**Analog:** the file's relay challenge subscription calls `authenticate(this.signer)` near its constructor. Preserve this high-level integration: the subscription is the trigger, Relay owns challenge acquisition/signing/freshness, and Vertex's local `authenticating` guard prevents overlapping calls. Add a focused Vertex test because no existing Extra test covers this path; do not convert it to manual signing plus `auth()` or route it through the removed public event verb selector.
 
 ### `apps/docs/loading/relays/relays.md` (documentation, request-response)
 
