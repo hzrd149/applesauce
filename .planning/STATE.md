@@ -5,8 +5,8 @@ milestone_name: relay-method-layering
 current_phase: 20
 current_phase_name: AUTH Family Re-layer
 status: planning
-stopped_at: Completed 19-03-PLAN.md
-last_updated: "2026-08-21T10:23:14.931Z"
+stopped_at: Phase 20 context gathered
+last_updated: "2026-08-31T15:42:17.244Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 19 complete, transitioned to Phase 20
 progress:
@@ -463,9 +463,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-21T10:09:18.340Z
-Stopped at: Completed 19-03-PLAN.md
-Resume file: None
+Last session: 2026-08-31T15:42:17.221Z
+Stopped at: Phase 20 context gathered
+Resume file: .planning/phases/20-auth-family-re-layer/20-CONTEXT.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
