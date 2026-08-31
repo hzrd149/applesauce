@@ -1485,6 +1485,14 @@ export class Relay {
     return (async () => {
       const signal = opts?.signal;
       const retries = opts?.challengeRetries ?? 1;
+      if (!Number.isFinite(retries) || !Number.isInteger(retries) || retries < 0)
+        throw new RangeError("challengeRetries must be a finite non-negative integer");
+      if (
+        opts?.timeout !== undefined &&
+        opts.timeout !== false &&
+        (!Number.isFinite(opts.timeout) || opts.timeout < 0)
+      )
+        throw new RangeError("timeout must be false or a finite non-negative duration");
       const cancel$ = new Subject<void>();
       let abandoned = false;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;

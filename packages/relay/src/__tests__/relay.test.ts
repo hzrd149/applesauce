@@ -2014,6 +2014,49 @@ describe("multiplex", () => {
 describe("authenticate", () => {
   const signer = new FakeUser();
 
+  it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid challengeRetries policy %s before connecting",
+    async (challengeRetries) => {
+      await expect(relay.authenticate(signer, { challengeRetries })).rejects.toThrow(
+        "challengeRetries must be a finite non-negative integer",
+      );
+      expect(server.messages).toEqual([]);
+    },
+  );
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid timeout policy %s before connecting",
+    async (timeout) => {
+      await expect(relay.authenticate(signer, { timeout })).rejects.toThrow(
+        "timeout must be false or a finite non-negative duration",
+      );
+      expect(server.messages).toEqual([]);
+    },
+  );
+
+  it("allows a zero timeout and expires before writing AUTH", async () => {
+    await expect(relay.authenticate(signer, { timeout: 0 })).rejects.toBeInstanceOf(
+      RelayAuthChallengeTimeoutError,
+    );
+    expect(server.messages).toEqual([]);
+  });
+
+  it("allows zero challenge retries and rejects the first post-sign challenge change", async () => {
+    const user = new FakeUser();
+    const signEvent = vi.fn(async (template: Parameters<typeof user.signEvent>[0]) => {
+      const event = await user.signEvent(template);
+      relay.challenge$.next("changed");
+      return event;
+    });
+    const promise = relay.authenticate({ signEvent }, { timeout: 500, challengeRetries: 0 });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "original"]);
+
+    await expect(promise).rejects.toBeInstanceOf(RelayAuthChallengeChangedError);
+    expect(signEvent).toHaveBeenCalledOnce();
+    expect(server.messages.some((message: any) => message[0] === "AUTH")).toBe(false);
+  });
+
   it("waits for a challenge and rejects at the whole-operation deadline", async () => {
     const promise = relay.authenticate(signer, { timeout: 20 });
 

@@ -209,9 +209,9 @@ export type AuthSigner = {
 
 /** Whole-operation policy for {@link Relay.authenticate}. */
 export type RelayAuthenticateOptions = {
-  /** Wall-clock bound for challenge acquisition, signing, freshness retries, and AUTH reply. Default 30 seconds. */
+  /** Finite non-negative wall-clock bound for the whole operation. Zero expires immediately; false disables it. Default 30 seconds. */
   timeout?: number | false;
-  /** Number of post-sign challenge changes to tolerate. Default 1. */
+  /** Finite non-negative integer number of post-sign challenge changes to tolerate. Zero permits no changes. Default 1. */
   challengeRetries?: number;
   /** Cancels the logical authentication operation. */
   signal?: AbortSignal;
