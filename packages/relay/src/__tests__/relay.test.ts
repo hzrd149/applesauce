@@ -2121,6 +2121,8 @@ describe("authenticate", () => {
     server.send(["OK", firstFrame[1].id, false, "older denied"]);
     await expect(first).resolves.toMatchObject({ ok: false, message: "older denied" });
     await expect(firstAgain).resolves.toMatchObject({ ok: false, message: "older denied" });
+    expect(relay.authentications[signer.pubkey]).toMatchObject({ response: null });
+    expect(relay.authenticationResponse).toBeNull();
 
     await vi.waitFor(() => expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(2));
     const secondFrame = server.messages.filter((message: any) => message[0] === "AUTH")[1] as ["AUTH", NostrEvent];
@@ -2222,6 +2224,8 @@ describe("authenticate", () => {
 
     expect(relay.authentications[signer.pubkey]).toMatchObject({ response: null });
     expect(relay.authenticationResponse).toBeNull();
+    expect(relay.authenticated).toBe(false);
+    expect(relay.authenticatedPubkeys).toEqual([]);
   });
 
   it("unsubscribes an AUTH exchange at the outer timeout and ignores a late OK", async () => {
@@ -2236,6 +2240,8 @@ describe("authenticate", () => {
 
     expect(relay.authentications[signer.pubkey]).toMatchObject({ response: null });
     expect(relay.authenticationResponse).toBeNull();
+    expect(relay.authenticated).toBe(false);
+    expect(relay.authenticatedPubkeys).toEqual([]);
   });
 });
 
