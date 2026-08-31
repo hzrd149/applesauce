@@ -9,6 +9,8 @@ describe("exports", () => {
         "AuthRequiredError",
         "AuthTimeoutError",
         "Relay",
+        "RelayAuthChallengeChangedError",
+        "RelayAuthChallengeTimeoutError",
         "RelayClosedError",
         "RelayCountResponseError",
         "RelayCountTimeoutError",

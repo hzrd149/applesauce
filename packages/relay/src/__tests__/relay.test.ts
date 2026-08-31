@@ -1,7 +1,7 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
 import { firstValueFrom, mergeMap, of, Subject, throwError, timer } from "rxjs";
-import { filter, repeat, retry } from "rxjs/operators";
+import { filter, repeat, retry, take } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
@@ -12,6 +12,8 @@ import {
   AuthTimeoutError,
   Relay,
   RelayClosedError,
+  RelayAuthChallengeChangedError,
+  RelayAuthChallengeTimeoutError,
   RelayCountTimeoutError,
   RelayEventTimeoutError,
   RelayEventVerdictError,
@@ -2012,31 +2014,143 @@ describe("multiplex", () => {
 describe("authenticate", () => {
   const signer = new FakeUser();
 
-  it("should throw an error if challenge is not received", () => {
-    expect(() => relay.authenticate(signer)).toThrow("Have not received authentication challenge");
+  it("waits for a challenge and rejects at the whole-operation deadline", async () => {
+    const promise = relay.authenticate(signer, { timeout: 20 });
+
+    await expect(server.connected).resolves.toBeDefined();
+    await expect(promise).rejects.toBeInstanceOf(RelayAuthChallengeTimeoutError);
+    expect(server.messages.some((message: any) => message[0] === "AUTH")).toBe(false);
   });
 
-  it("should handle full authentication flow", async () => {
-    subscribeSpyTo(relay.subscription([{ kinds: [1] }]));
-
-    // Receive REQ
-    await server.nextMessage;
-
-    // Send AUTH challenge
+  it("connects from fresh state and completes the full authentication flow", async () => {
+    const promise = relay.authenticate(signer, { timeout: 500 });
+    await expect(server.connected).resolves.toBeDefined();
     server.send(["AUTH", "challenge-string"]);
-
-    // Wait for challenge
-    await firstValueFrom(relay.challenge$.pipe(filter((c) => c !== null)));
-
-    // Send AUTH
-    relay.authenticate(signer);
-
-    // Send AUTH response
-    const auth = (await server.nextMessage) as ["AUTH", NostrEvent];
+    await vi.waitFor(() =>
+      expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1),
+    );
+    const auth = server.messages.find((message: any) => message[0] === "AUTH") as ["AUTH", NostrEvent];
     server.send(["OK", auth[1].id, true, ""]);
 
-    // Wait for authenticated
-    await firstValueFrom(relay.authenticated$.pipe(filter((v) => v !== false)));
+    await expect(promise).resolves.toMatchObject({ ok: true });
+    expect(relay.isAuthenticated(signer.pubkey)).toBe(true);
+  });
+
+  it("preserves signer rejection identity", async () => {
+    const failure = new Error("signer refused");
+    const promise = relay.authenticate({ signEvent: () => Promise.reject(failure) }, { timeout: 500 });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-string"]);
+
+    await expect(promise).rejects.toBe(failure);
+  });
+
+  it("applies one deadline across signer latency", async () => {
+    const hung = relay.authenticate({ signEvent: () => new Promise<NostrEvent>(() => {}) }, { timeout: 20 });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-hung"]);
+    await expect(hung).rejects.toBeInstanceOf(RelayAuthChallengeTimeoutError);
+  });
+
+  it("keeps the raw reply bound when the outer timeout is disabled", async () => {
+    relay.eventTimeout = 20;
+    const unbounded = relay.authenticate(signer, { timeout: false });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-unbounded"]);
+    const auth = (await server.nextMessage) as ["AUTH", NostrEvent];
+    expect(auth[0]).toBe("AUTH");
+    await expect(unbounded).rejects.toBeInstanceOf(RelayEventTimeoutError);
+  });
+
+  it("shares multiple awaits of one call while separate calls remain independent", async () => {
+    const signEvent = vi.spyOn(signer, "signEvent");
+    const first = relay.authenticate(signer, { timeout: 500 });
+    const firstAgain = first;
+    const second = relay.authenticate(signer, { timeout: 500 });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-shared"]);
+
+    await vi.waitFor(() => expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(2));
+    for (const message of server.messages.filter((value: any) => value[0] === "AUTH") as ["AUTH", NostrEvent][]) {
+      server.send(["OK", message[1].id, true, ""]);
+    }
+
+    await expect(Promise.all([first, firstAgain, second])).resolves.toHaveLength(3);
+    expect(signEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("discards a stale signed candidate and re-signs the current challenge", async () => {
+    const user = new FakeUser();
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => (releaseFirst = resolve));
+    const challenges: string[] = [];
+    const signEvent = vi.fn(async (template: Parameters<typeof user.signEvent>[0]) => {
+      const challenge = template.tags.find((tag) => tag[0] === "challenge")?.[1] ?? "";
+      challenges.push(challenge);
+      if (challenges.length === 1) await firstGate;
+      return user.signEvent(template);
+    });
+
+    const promise = relay.authenticate({ signEvent }, { timeout: 500 });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-one"]);
+    await vi.waitFor(() => expect(signEvent).toHaveBeenCalledTimes(1));
+    relay.challenge$.next("challenge-two");
+    releaseFirst();
+
+    await vi.waitFor(() =>
+      expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1),
+    );
+    const auth = server.messages.find((message: any) => message[0] === "AUTH") as ["AUTH", NostrEvent];
+    expect(auth[1].tags).toContainEqual(["challenge", "challenge-two"]);
+    expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1);
+    server.send(["OK", auth[1].id, false, "denied"]);
+    await expect(promise).resolves.toMatchObject({ ok: false, message: "denied" });
+    expect(challenges).toEqual(["challenge-one", "challenge-two"]);
+  });
+
+  it("rejects exact freshness exhaustion without writing a stale candidate", async () => {
+    const user = new FakeUser();
+    let attempt = 0;
+    const signEvent = vi.fn(async (template: Parameters<typeof user.signEvent>[0]) => {
+      attempt += 1;
+      const event = await user.signEvent(template);
+      relay.challenge$.next(`challenge-${attempt + 1}`);
+      return event;
+    });
+    const promise = relay.authenticate({ signEvent }, { timeout: 500, challengeRetries: 1 });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-1"]);
+
+    await expect(promise).rejects.toBeInstanceOf(
+      RelayAuthChallengeChangedError,
+    );
+    expect(signEvent).toHaveBeenCalledTimes(2);
+    expect(server.messages.some((message: any) => message[0] === "AUTH")).toBe(false);
+  });
+
+  it("aborts a deferred signer and suppresses its late AUTH frame", async () => {
+    const user = new FakeUser();
+    const controller = new AbortController();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const signEvent = vi.fn(async (template: Parameters<typeof user.signEvent>[0]) => {
+      await gate;
+      return user.signEvent(template);
+    });
+    const reason = new Error("stop auth");
+    const promise = relay.authenticate({ signEvent }, { timeout: 500, signal: controller.signal });
+    await expect(server.connected).resolves.toBeDefined();
+    server.send(["AUTH", "challenge-abort"]);
+    await vi.waitFor(() => expect(signEvent).toHaveBeenCalledOnce());
+    controller.abort(reason);
+
+    await expect(promise).rejects.toBe(reason);
+    release();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(server.messages.some((message: any) => message[0] === "AUTH")).toBe(false);
+    expect(relay.authentications).toEqual({});
   });
 });
 

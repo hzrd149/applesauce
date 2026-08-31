@@ -207,6 +207,16 @@ export type AuthSigner = {
   signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent>;
 };
 
+/** Whole-operation policy for {@link Relay.authenticate}. */
+export type RelayAuthenticateOptions = {
+  /** Wall-clock bound for challenge acquisition, signing, freshness retries, and AUTH reply. Default 30 seconds. */
+  timeout?: number | false;
+  /** Number of post-sign challenge changes to tolerate. Default 1. */
+  challengeRetries?: number;
+  /** Cancels the logical authentication operation. */
+  signal?: AbortSignal;
+};
+
 /** Filters that can be passed to request methods on the pool or relay */
 export type FilterInput =
   // A single filter

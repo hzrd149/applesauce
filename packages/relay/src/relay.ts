@@ -76,6 +76,7 @@ import {
   NegentropySyncStore,
   PublishOptions,
   RelayAuthContext,
+  RelayAuthenticateOptions,
   RelayAuthOptions,
   RelayAuthWireRequest,
   RelayAuthWireVerb,
@@ -158,6 +159,22 @@ export class AuthTimeoutError extends RelayClosedError {
   constructor(reason: string) {
     super(reason);
     this.name = "AuthTimeoutError";
+  }
+}
+
+/** The whole authenticate operation expired before it could return a relay verdict. */
+export class RelayAuthChallengeTimeoutError extends Error {
+  constructor(public readonly url: string) {
+    super(`Timed out waiting to authenticate with ${url}`);
+    this.name = "RelayAuthChallengeTimeoutError";
+  }
+}
+
+/** The relay challenge changed too many times while AUTH candidates were being signed. */
+export class RelayAuthChallengeChangedError extends Error {
+  constructor(public readonly url: string) {
+    super(`Authentication challenge changed too many times for ${url}`);
+    this.name = "RelayAuthChallengeChangedError";
   }
 }
 
@@ -1439,19 +1456,84 @@ export class Relay {
     return firstValueFrom(merge(observable, abort$).pipe(take(1)));
   }
 
-  /** Authenticate with the relay using a signer */
-  authenticate(signer: AuthSigner): Promise<PublishResponse> {
-    if (!this.challenge) throw new Error("Have not received authentication challenge");
+  /** Authenticate with bounded challenge acquisition, signing, freshness checks, and one raw AUTH verdict. */
+  authenticate(signer: AuthSigner, opts?: RelayAuthenticateOptions): Promise<PublishResponse> {
+    return (async () => {
+      const signal = opts?.signal;
+      const retries = opts?.challengeRetries ?? 1;
+      const cancel$ = new Subject<void>();
+      let abandoned = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let removeAbort = () => {};
+      let rejectCancellation!: (reason: unknown) => void;
+      const cancellation = new Promise<never>((_, reject) => (rejectCancellation = reject));
 
-    // D-09/D-10: authenticate() is the only place signing happens, which is why this line lives here
-    // rather than in auth() — it is the only thing that separates "the signer never answered" (a hung
-    // NIP-46 bunker or an unanswered extension dialog) from "the relay never replied".
-    this.authLog(`Signing AUTH event for challenge ${truncateForLog(this.challenge)}, waiting on signer`);
+      const abortReason = () => {
+        if (signal?.reason !== undefined) return signal.reason;
+        return new DOMException("The operation was aborted", "AbortError");
+      };
+      const abandon = (reason: unknown, stage: "timeout" | "abort") => {
+        if (abandoned) return;
+        abandoned = true;
+        this.authLog(`${stage === "timeout" ? "Timed out" : "Aborted"} AUTH operation`);
+        rejectCancellation(reason);
+        cancel$.next();
+        cancel$.complete();
+      };
 
-    const p = signer.signEvent(makeAuthEvent(this.url, this.challenge));
-    const start = p instanceof Promise ? from(p) : of(p);
+      if (signal) {
+        const onAbort = () => abandon(abortReason(), "abort");
+        signal.addEventListener("abort", onAbort, { once: true });
+        removeAbort = () => signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) onAbort();
+      }
+      if (opts?.timeout !== false) {
+        timeoutId = setTimeout(
+          () => abandon(new RelayAuthChallengeTimeoutError(this.url), "timeout"),
+          opts?.timeout ?? this.publishTimeout,
+        );
+      }
 
-    return lastValueFrom(start.pipe(switchMap((event) => this.auth(event))));
+      const bounded = <T>(value: Promise<T>): Promise<T> => Promise.race([value, cancellation]);
+      const waitForChallenge = async (): Promise<string> => {
+        this.authLog("Waiting for NIP-42 authentication challenge");
+        return bounded(
+          firstValueFrom(
+            merge(
+              this.challenge$.pipe(filter((challenge): challenge is string => challenge !== null)),
+              this.watchTower,
+            ).pipe(takeUntil(cancel$), take(1)),
+          ),
+        );
+      };
+
+      try {
+        let changes = 0;
+        while (true) {
+          const challenge = await waitForChallenge();
+          if (abandoned) return await cancellation;
+
+          this.authLog(`Signing AUTH event for challenge ${truncateForLog(challenge)}, waiting on signer`);
+          const event = await bounded(Promise.resolve().then(() => signer.signEvent(makeAuthEvent(this.url, challenge))));
+          if (abandoned) return await cancellation;
+
+          if (this.challenge !== challenge) {
+            changes += 1;
+            this.authLog(`AUTH challenge changed after signing; discarding candidate and re-signing (${changes}/${retries})`);
+            if (changes > retries) throw new RelayAuthChallengeChangedError(this.url);
+            continue;
+          }
+
+          return await bounded(this.auth(event));
+        }
+      } finally {
+        abandoned = true;
+        cancel$.next();
+        cancel$.complete();
+        removeAbort();
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      }
+    })();
   }
 
   /**
