@@ -1167,22 +1167,24 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
 
   });
 
-  it('RAUTH-06: event(..., "AUTH") never invokes the handler even when the relay answers auth-required', async () => {
+  it("RAUTH-06: auth() stays raw when the relay answers auth-required", async () => {
     const onAuthRequired = vi.fn();
     const authEvent = { ...mockEvent, id: "auth-event-id" };
-    const spy = subscribeSpyTo(relay.event(authEvent, "AUTH"));
+    const publish = vi.spyOn(relay, "publish");
+    const result = relay.auth(authEvent);
 
     await expect(server).toReceiveMessage(["AUTH", authEvent]);
     server.send(["OK", authEvent.id, false, "auth-required: need to authenticate"]);
 
-    await spy.onComplete();
-    expect(onAuthRequired).not.toHaveBeenCalled();
-    expect(spy.getLastValue()).toMatchObject({
+    const verdict = await result;
+    expect(verdict).toMatchObject({
       ok: false,
       from: "wss://test",
       message: "auth-required: need to authenticate",
     });
-    expect(spy.getLastValue()?.error).toBeInstanceOf(RelayEventVerdictError);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+    expect(verdict.error).toBeInstanceOf(RelayEventVerdictError);
   });
 
   it("RAUTH-06: waitForAuth:false never invokes the handler", async () => {

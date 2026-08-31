@@ -1258,8 +1258,8 @@ export class Relay {
     );
   }
 
-  /** Send an EVENT or AUTH message and return an observable of PublishResponse that completes or errors */
-  event(event: NostrEvent, verb: "EVENT" | "AUTH" = "EVENT"): Observable<PublishResponse> {
+  /** Shared readiness-aware one-frame/one-matching-OK exchange for EVENT and AUTH. */
+  private eventExchange(event: NostrEvent, verb: "EVENT" | "AUTH"): Observable<PublishResponse> {
     // D-01: each subscription creates one fresh listener and one write. Readiness is outside this
     // defer, so the fixed reply clock begins only after the socket is ready and the frame is written.
     return this.waitForReady(
@@ -1269,13 +1269,6 @@ export class Relay {
           map((m): PublishResponse => {
             const ok = m[2] as boolean;
             const message = m[3] as string;
-            if (verb === "EVENT" && !ok && message.startsWith(AUTH_REQUIRED_PREFIX)) {
-              this.authLog(
-                `Relay refused ${describeWireRequest({ verb: "EVENT", event })} — authentication required: ${truncateForLog(message)}`,
-              );
-              this.receivedAuthRequiredFor("EVENT");
-              throw new AuthRequiredError(message);
-            }
             return {
               ok,
               message,
@@ -1302,6 +1295,22 @@ export class Relay {
     );
   }
 
+  /** Send one EVENT frame and observe its matching OK response. */
+  event(event: NostrEvent): Observable<PublishResponse> {
+    return this.eventExchange(event, "EVENT").pipe(
+      map((response) => {
+        if (!response.ok && response.message?.startsWith(AUTH_REQUIRED_PREFIX)) {
+          this.authLog(
+            `Relay refused ${describeWireRequest({ verb: "EVENT", event })} — authentication required: ${truncateForLog(response.message)}`,
+          );
+          this.receivedAuthRequiredFor("EVENT");
+          throw new AuthRequiredError(response.message);
+        }
+        return response;
+      }),
+    );
+  }
+
   /** Send an AUTH message. Can be called multiple times with events from different pubkeys to authenticate multiple users */
   auth(event: NostrEvent): Promise<PublishResponse> {
     const authEvent = event as KnownEvent<kinds.ClientAuth>;
@@ -1313,14 +1322,14 @@ export class Relay {
     const { [event.pubkey]: _replaced, ...rest } = this.authentications$.value;
     this.authentications$.next({ ...rest, [event.pubkey]: { event: authEvent, response: null } });
 
-    // D-10/WR-03: the "Sending AUTH event" line itself now lives inside event()'s control defer (the
+    // D-10/WR-03: the "Sending AUTH event" line itself lives inside eventExchange()'s control defer (the
     // actual write side effect, guarded to the AUTH-verb path), not here — logging it here fired even
     // when a reconnect was armed and waitForReady deferred the write indefinitely, so the line was
-    // sometimes not a statement of fact. event(event, "AUTH") reaches that defer for every caller of
+    // sometimes not a statement of fact. The fixed AUTH route reaches that defer for every caller of
     // auth() (including one who signed their own AUTH event and called auth() directly), so nothing is
     // lost by moving it.
     return lastValueFrom(
-      this.event(event, "AUTH").pipe(
+      this.eventExchange(event, "AUTH").pipe(
         tap((result) => {
           // Update the pubkey's auth state, unless a newer AUTH attempt replaced this one
           const current = this.authentications$.value[event.pubkey];
@@ -1330,8 +1339,8 @@ export class Relay {
               [event.pubkey]: { event: authEvent, response: result },
             });
 
-          // Update the deprecated mirror of the last AUTH response
-          this.authenticationResponse$.next(result);
+          // Update the deprecated mirror only when this is still the latest AUTH attempt.
+          if (this.authentication$.value?.id === event.id) this.authenticationResponse$.next(result);
 
           // D-09: the connection track's result line — the relay's own OK message carried verbatim (only
           // bounded) as the "why", joined to the challenge/signing/sent lines above by the full pubkey.
